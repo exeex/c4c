@@ -1,69 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/562_bir_direct_call_semantic_boundary_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce Direct-Call Boundary Evidence
+Current Step ID: 2
+Current Step Title: Classify The Missing Direct-Call Fact
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: reproduced retained representative
-`tests/c/external/gcc_torture/src/20000717-1.c` through the semantic BIR
-boundary and captured same-snapshot evidence under
-`build/agent_state/562_step1_direct_call_boundary/`.
+Step 2: classified the first missing direct-call fact for retained
+`tests/c/external/gcc_torture/src/20000717-1.c` as **byval aggregate argument
+handoff**, not callee classification, return result publication, argument
+source publication, or prepared handoff.
 
-Exact commands:
-- `./build/c4cll --dump-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c > build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-bir.stdout 2> build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-bir.stderr`
-- `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c > build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-prepared-bir.stdout 2> build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-prepared-bir.stderr`
-- `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c -o build/agent_state/562_step1_direct_call_boundary/20000717-1.rv64.o > build/agent_state/562_step1_direct_call_boundary/20000717-1.codegen-obj.stdout 2> build/agent_state/562_step1_direct_call_boundary/20000717-1.codegen-obj.stderr`
-- `./build/c4cll --codegen llvm --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c -o build/agent_state/562_step1_direct_call_boundary/20000717-1.llvm.ll`
-
-Diagnostic text from semantic BIR:
-`error: backend BIR dump requires semantic lir_to_bir lowering before the prepared handoff: semantic lir_to_bir failed outside the currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory (including scalar-cast/scalar-binop and alloca/gep/load/store local-memory), and local/global memory semantics, plus semantic call families (direct-call, indirect-call, and call-return) and explicit runtime or intrinsic families such as variadic, stack-state, absolute-value, memcpy, memset, and inline-asm placeholders; latest function failure: semantic lir_to_bir function 'foo' failed in semantic call family 'direct-call semantic family'`
-
-Failing call tied to the row:
-- Source call: `foo` returns `bar(i, t)` in
-  `tests/c/external/gcc_torture/src/20000717-1.c`.
-- Auxiliary LLVM route names the matching call as
+Same-run evidence:
+- Step 1 semantic BIR still fails before any BIR body is emitted:
+  `build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-bir.stderr`
+  reports `semantic lir_to_bir function 'foo' failed in semantic call family
+  'direct-call semantic family'`.
+- Step 1 prepared/object evidence rejects before prepared handoff for the same
+  semantic prerequisite failure:
+  `build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-prepared-bir.stderr`
+  and
+  `build/agent_state/562_step1_direct_call_boundary/20000717-1.codegen-obj.stderr`.
+- The matching LLVM call is
   `%t0 = call i32 (i32, %struct.trio) @bar(i32 %p.i, %struct.trio %p.t)` in
   `build/agent_state/562_step1_direct_call_boundary/20000717-1.llvm-call-sites.txt`.
-- Retained direct-call family row:
-  `docs/rv64_gcc_torture_post_contract/bir_semantic_admission_rows.md` lists
-  `src/20000717-1.c`, function `foo`, topic
-  `semantic call family 'direct-call semantic family'`.
+- Focused HIR evidence captured in
+  `build/agent_state/562_step2_direct_call_fact/20000717-1.dump-hir.stdout`
+  shows `struct trio size=12 align=4` and `foo` as `return bar(i#P1, t#P0)`.
+- Focused debugger evidence captured in
+  `build/agent_state/562_step2_direct_call_fact/20000717-1.gdb-note.stdout`
+  confirms the failure note is emitted from
+  `BirFunctionLowerer::lower_call_inst` before `lower_block` returns.
 
-Evidence locations and route boundary:
-- Semantic BIR evidence:
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-bir.stderr`
-  with status `exit=1`; no BIR body was emitted.
-- Prepared BIR rejection:
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-prepared-bir.stderr`
-  with status `exit=1`; it rejects before prepared handoff because semantic
-  `lir_to_bir` failed in the same `foo` direct-call family.
-- RV64 object route rejection:
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.codegen-obj.stderr`
-  with status `exit=2`; object handoff rejects for the same semantic
-  `lir_to_bir` prerequisite failure.
-- One failing call was tied to a visible semantic BIR fact family: yes, the
-  only call in `foo` is the direct call to `bar`, and the semantic boundary
-  reports `foo` in `direct-call semantic family`. The exact first bad
-  direct-call fact is not yet classified.
+Classification:
+- Direct callee classification is not the first bad fact: Step 1 and LLVM name
+  the call as direct `@bar`, and the semantic diagnostic reaches the
+  direct-call family in `foo`.
+- Return result publication is not the first bad fact: the call return is scalar
+  `i32`, with no sret aggregate return in the source, HIR, or LLVM call.
+- Prepared handoff is not the first bad fact: both prepared BIR and RV64 object
+  paths reject because semantic `lir_to_bir` never publishes the call.
+- Route6 argument-source/publication records are unavailable, not negative
+  evidence, because no semantic BIR `CallInst` is emitted for this call.
+- The first visible non-scalar fact is the by-value `struct trio` argument
+  `t#P0`/`%p.t`. `lower_call_inst` has a dedicated byval aggregate path that
+  must lower a byval aggregate operand to a pointer-backed BIR call argument
+  before `CallArgumentSourceRelationship`/route6 publication can exist.
+  Therefore the first owner is BIR byval aggregate argument handling for a
+  direct-call argument sourced from a by-value aggregate parameter.
 
 ## Suggested Next
 
-Continue with Step 2: inspect call-publication evidence for the `foo` to `bar`
-direct call in `src/20000717-1.c` and classify the first bad fact as callee,
-argument source, return result, byval/sret, prepared handoff, or evidence gap.
+Continue with Step 3: add focused BIR call-publication coverage for a direct
+call that passes a by-value aggregate parameter as an aggregate argument. The
+coverage should expose the expected byval ABI/source fact before any repair is
+attempted.
 
 ## Watchouts
 
 - The representative fails before a semantic BIR body is emitted, so prepared
-  BIR and RV64 object evidence are rejection points, not later-stage ownership
-  proof.
-- The call passes a `struct trio` argument through a direct call; byval/sret or
-  aggregate argument publication may be relevant, but Step 1 did not prove the
-  first bad fact.
+  BIR, RV64 object, and route6 lookup evidence are absence-of-publication
+  boundaries, not later-stage ownership proof.
+- Keep the next packet independent of `src/20000717-1.c` if practical: the
+  missing fact is semantic byval aggregate argument handoff for direct calls,
+  not a named-case shortcut.
 - Do not use expectation rewrites, unsupported downgrades, diagnostic renames,
   or named-case shortcuts as progress.
 
@@ -73,6 +75,6 @@ Ran delegated proof:
 `git diff --check -- todo.md && scripts/plan_review_state.py show`.
 
 Result: passed. `scripts/plan_review_state.py show` reported
-`current_step_id` as `1`, `current_step_title` as
-`Reproduce Direct-Call Boundary Evidence`, and no pending baseline or code
-review. This evidence-only proof did not create or update `test_after.log`.
+`current_step_id` as `2`, `current_step_title` as
+`Classify The Missing Direct-Call Fact`, and no pending baseline or code
+review. This evidence-only packet did not create or update `test_after.log`.
