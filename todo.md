@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/565_prepared_move_bundle_widening_stack_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Widening Move-Bundle Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Widening Authority Coverage
 
 # Current Packet
 
@@ -54,20 +54,52 @@ available, leaving RV64 to fail-close with the classifier-owned diagnostic.
 
 ## Suggested Next
 
-Advance to plan Step 2 with focused prepared/backend coverage for the semantic
-widening shape before repairing it. The next packet should add a test that
-constructs or observes a `BeforeInstruction` stack-slot source to stack-slot
-destination conversion-adjacent move where the destination integer width is
-larger than the source width, and asserts that the old state is rejected with
-`authority=none` until prepared authority is made explicit.
+Plan Step 2, `Add Focused Widening Authority Coverage`, is ready for an
+executor packet.
 
-Prefer coverage that drives the repair toward an explicit prepared split into
-conversion plus stack-destination facts, or an equivalently explicit prepared
-widening authority, rather than reusing the existing stack-to-stack byte-copy
-path. The current RV64 stack-slot-to-stack-slot helper only accepts
-`source_size_bytes >= destination_size_bytes`; these representatives require
-`i16 -> i32` and `i8 -> i32`, so a plain stack copy would be the wrong semantic
-model.
+Packet objective: add focused prepared/backend coverage for conversion-adjacent
+integer widening moves from one stack slot to another, using semantic width and
+storage facts rather than representative filenames or diagnostic text. The
+coverage should construct or observe a `BeforeInstruction` move whose source
+home and destination home are both `stack_slot`, whose destination integer
+width is larger than the source width, and whose current prepared state reaches
+the old `authority=none` rejection until an explicit prepared authority shape
+or prepared conversion-plus-stack-destination split is implemented.
+
+Required coverage shape:
+
+- Cover both representative width families, `i8 -> i32` and `i16 -> i32`, or
+  one width-general fixture that demonstrably subsumes both.
+- Assert the prepared contract directly: widening authority must become
+  explicit before RV64 object-route consumption, either as a dedicated prepared
+  widening authority or as explicit prepared conversion plus stack-destination
+  move facts.
+- Preserve rejection coverage for unsupported move-bundle shapes so unrelated
+  memory-to-memory copies do not become authorized.
+
+Executor boundaries:
+
+- Owned files: `todo.md`, focused backend/prepared tests, and only the directly
+  adjacent prepared move-bundle test helpers needed to express the coverage.
+- Do not touch `plan.md`, the source idea, `ideas/closed/`, `review/`, RV64
+  object-emission implementation, unsupported markers, expected pass/fail
+  accounting, or representative allowlists.
+- Do not implement the full prepared repair unless the focused coverage cannot
+  be compiled or expressed without a minimal contract surface; if that happens,
+  keep the repair limited to publishing explicit prepared authority for the
+  tested widening shape and record that Step 3 may already be partially or
+  fully consumed.
+
+Proof command requested for the executor:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
+```
+
+Done when `test_after.log` records a passing backend subset and `todo.md`
+states whether the coverage is red-only pending Step 3 repair, or whether a
+minimal prepared-authority contract was also added and Step 3 should be
+re-scoped.
 
 ## Watchouts
 
