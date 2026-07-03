@@ -33,6 +33,14 @@ prepared_pointer_value_base_offset(
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t size_bytes);
 
+[[nodiscard]] std::optional<std::size_t>
+prepared_pointer_value_stack_home_base_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes);
+
 [[nodiscard]] std::optional<std::int32_t>
 prepared_byval_stack_slot_pointer_access_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,

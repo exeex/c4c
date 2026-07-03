@@ -3890,6 +3890,62 @@ prepare::PreparedBirModule make_prepared_pointer_value_scalar_local_module(
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_pointer_value_scalar_stack_home_local_module() {
+  auto prepared = make_prepared_pointer_value_scalar_local_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto pointer_name = prepared.names.value_names.find("%p");
+  const auto object_id = prepare::PreparedObjectId{17};
+  const auto slot_id = prepare::PreparedFrameSlotId{17};
+  if (function_name == c4c::kInvalidFunctionName ||
+      pointer_name == c4c::kInvalidValueName ||
+      prepared.value_locations.functions.empty() ||
+      prepared.value_locations.functions[0].value_homes.empty() ||
+      prepared.addressing.functions.empty()) {
+    return prepared;
+  }
+
+  auto& pointer_home = prepared.value_locations.functions[0].value_homes[0];
+  pointer_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  pointer_home.register_name = std::nullopt;
+  pointer_home.slot_id = slot_id;
+  pointer_home.offset_bytes = std::size_t{0};
+  pointer_home.size_bytes = std::size_t{8};
+  pointer_home.align_bytes = std::size_t{8};
+
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = object_id,
+      .function_name = function_name,
+      .value_name = pointer_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = object_id,
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .frame_slot_order = {slot_id},
+  });
+  prepared.addressing.functions[0].frame_size_bytes = 16;
+  prepared.addressing.functions[0].frame_alignment_bytes = 8;
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_pointer_value_i8_local_store_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name =
@@ -12216,6 +12272,36 @@ int builds_prepared_pointer_value_scalar_local_object() {
   return 0;
 }
 
+int builds_prepared_pointer_value_scalar_stack_home_local_object() {
+  const auto prepared =
+      make_prepared_pointer_value_scalar_stack_home_local_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared pointer-value stack-home local RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared pointer-value stack-home local object to publish text/main");
+  }
+  if (text->bytes.size() < 32 || text->size_bytes != text->bytes.size() ||
+      main_symbol->value != 0 || main_symbol->size_bytes != text->bytes.size()) {
+    return fail("expected prepared pointer-value stack-home local object text layout");
+  }
+  if (!contains_u32_sequence(text->bytes,
+                             {0x00013383,
+                              0x00900313,
+                              0x00639123,
+                              0x00013383,
+                              0x00239283})) {
+    return fail("expected pointer-value stack-home local object to load the base from its stack home before sh/lh");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected pointer-value stack-home local object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_pointer_value_scalar_local_store_with_t1_base_object() {
   const auto prepared = make_prepared_pointer_value_scalar_local_module("t1");
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -19091,6 +19177,7 @@ int main() {
   status |= rejects_prepared_f64_local_frame_fail_closed_shapes();
   status |= rejects_prepared_scalar_local_subobject_fail_closed_shapes();
   status |= builds_prepared_pointer_value_scalar_local_object();
+  status |= builds_prepared_pointer_value_scalar_stack_home_local_object();
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
   status |= builds_prepared_pointer_value_i8_local_store_object();
   status |= builds_prepared_pointer_value_f64_local_object();

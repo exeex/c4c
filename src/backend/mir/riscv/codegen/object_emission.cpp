@@ -7859,6 +7859,12 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                     *size_bytes)
                .has_value() &&
           !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
+               .has_value() &&
+          !prepared_pointer_value_stack_home_base_offset(stack_layout,
+                                                        &lookups,
+                                                        access,
+                                                        stack_frame_bytes,
+                                                        *size_bytes)
                .has_value()) {
         return std::string{
             "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
@@ -7877,6 +7883,12 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                          *size_bytes)
              .has_value() &&
         !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
+             .has_value() &&
+        !prepared_pointer_value_stack_home_base_offset(stack_layout,
+                                                      &lookups,
+                                                      access,
+                                                      stack_frame_bytes,
+                                                      *size_bytes)
              .has_value()) {
       return std::string{
           "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};

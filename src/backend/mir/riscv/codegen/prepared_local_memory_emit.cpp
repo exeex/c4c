@@ -1342,6 +1342,111 @@ prepared_pointer_value_base_offset(
       static_cast<std::int32_t>(access->address.byte_offset)};
 }
 
+std::optional<std::size_t> prepared_pointer_value_stack_home_base_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || access == nullptr ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes > size_bytes ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return std::nullopt;
+  }
+  const auto value_id_it =
+      lookups->value_homes.value_ids.find(*access->address.pointer_value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end()) {
+    return std::nullopt;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(value_id_it->second);
+  if (home_it == lookups->value_homes.homes_by_id.end() ||
+      home_it->second == nullptr) {
+    return std::nullopt;
+  }
+  const auto& home = *home_it->second;
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
+      !home.size_bytes.has_value() || !home.align_bytes.has_value() ||
+      home.value_name != *access->address.pointer_value_name ||
+      *home.size_bytes < 8 || *home.align_bytes > 8) {
+    return std::nullopt;
+  }
+  const auto frame_slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *home.slot_id &&
+                            slot.function_name == home.function_name;
+                   });
+  if (frame_slot_it == stack_layout.frame_slots.end() ||
+      frame_slot_it->offset_bytes != *home.offset_bytes ||
+      frame_slot_it->size_bytes != *home.size_bytes ||
+      frame_slot_it->align_bytes != *home.align_bytes) {
+    return std::nullopt;
+  }
+  const auto object_it =
+      std::find_if(stack_layout.objects.begin(),
+                   stack_layout.objects.end(),
+                   [&](const prepare::PreparedStackObject& object) {
+                     return object.object_id == frame_slot_it->object_id &&
+                            object.function_name == home.function_name;
+                   });
+  if (object_it == stack_layout.objects.end() ||
+      object_it->value_name != home.value_name ||
+      object_it->size_bytes != *home.size_bytes ||
+      object_it->align_bytes != *home.align_bytes ||
+      object_it->source_kind == "byval_param" ||
+      object_it->source_kind == "sret_param") {
+    return std::nullopt;
+  }
+  if (*home.offset_bytes > stack_frame_bytes ||
+      stack_frame_bytes - *home.offset_bytes < 8) {
+    return std::nullopt;
+  }
+  return *home.offset_bytes;
+}
+
+std::optional<std::pair<std::uint32_t, std::int32_t>>
+materialize_prepared_pointer_value_base_offset(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes,
+    std::uint32_t scratch_register) {
+  const auto base_register =
+      prepared_pointer_value_base_offset(lookups, access, size_bytes);
+  if (base_register.has_value()) {
+    return base_register;
+  }
+  const auto stack_home_offset =
+      prepared_pointer_value_stack_home_base_offset(stack_layout,
+                                                   lookups,
+                                                   access,
+                                                   stack_frame_bytes,
+                                                   size_bytes);
+  if (!stack_home_offset.has_value() ||
+      !append_rv64_load_stack_offset_to_register_local(fragment,
+                                                      scratch_register,
+                                                      *stack_home_offset,
+                                                      8)) {
+    return std::nullopt;
+  }
+  return std::pair<std::uint32_t, std::int32_t>{
+      scratch_register,
+      static_cast<std::int32_t>(access->address.byte_offset)};
+}
+
 std::optional<std::int32_t> prepared_byval_stack_slot_pointer_access_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -1659,12 +1764,18 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
       }
       return fragment;
     }
+    RiscvEncodedFragment fragment;
     const auto pointer_base =
-        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+        materialize_prepared_pointer_value_base_offset(fragment,
+                                                      stack_layout,
+                                                      lookups,
+                                                      access,
+                                                      stack_frame_bytes,
+                                                      *size_bytes,
+                                                      7);
     if (!pointer_base.has_value()) {
       return std::nullopt;
     }
-    RiscvEncodedFragment fragment;
     const auto source_fpr = append_rv64_prepare_floating_value_for_store_local(
         fragment,
         scratch_fpr,
@@ -1746,14 +1857,20 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
       }
       return fragment;
     }
+    RiscvEncodedFragment fragment;
     const auto pointer_base =
-        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+        materialize_prepared_pointer_value_base_offset(fragment,
+                                                      stack_layout,
+                                                      lookups,
+                                                      access,
+                                                      stack_frame_bytes,
+                                                      *size_bytes,
+                                                      7);
     if (!pointer_base.has_value()) {
       return std::nullopt;
     }
     const std::uint32_t value_register =
         rv64_temporary_gpr_avoiding_local(pointer_base->first);
-    RiscvEncodedFragment fragment;
     if (!append_rv64_materialize_or_move_store_value_local(fragment,
                                                           value_register,
                                                           stack_layout,
@@ -1826,7 +1943,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
       return fragment;
     }
     const auto pointer_base =
-        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+        materialize_prepared_pointer_value_base_offset(fragment,
+                                                      stack_layout,
+                                                      lookups,
+                                                      access,
+                                                      stack_frame_bytes,
+                                                      *size_bytes,
+                                                      6);
     if (!pointer_base.has_value() ||
         !append_rv64_load_base_to_fpr_local(fragment,
                                            *destination,
@@ -1896,8 +2019,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
       }
       return fragment;
     }
+    RiscvEncodedFragment fragment;
     const auto pointer_base =
-        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+        materialize_prepared_pointer_value_base_offset(fragment,
+                                                      stack_layout,
+                                                      lookups,
+                                                      access,
+                                                      stack_frame_bytes,
+                                                      *size_bytes,
+                                                      7);
     if (!pointer_base.has_value()) {
       return std::nullopt;
     }
@@ -1915,7 +2045,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
       return std::nullopt;
     }
     const std::uint32_t destination_register = destination.value_or(6);
-    RiscvEncodedFragment fragment;
     if (!append_rv64_load_base_to_register_local(fragment,
                                                 destination_register,
                                                 pointer_base->first,
