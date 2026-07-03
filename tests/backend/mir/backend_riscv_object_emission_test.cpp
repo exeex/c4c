@@ -242,6 +242,8 @@ constexpr const char* kGenericPreparedMoveBundleDiagnostic =
     "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
 constexpr const char* kGenericUnsupportedInstructionFragmentDiagnostic =
     "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+constexpr const char* kUnsupportedSameModuleCallAbiDiagnostic =
+    "unsupported_call_abi: RV64 object route requires supported ordinary same-module call ABI/result lowering";
 
 bool prepared_rejection_diagnostic_matches(const std::string& actual,
                                            const std::string& expected) {
@@ -249,7 +251,8 @@ bool prepared_rejection_diagnostic_matches(const std::string& actual,
     return true;
   }
   return (expected == kGenericPreparedMoveBundleDiagnostic ||
-          expected == kGenericUnsupportedInstructionFragmentDiagnostic) &&
+          expected == kGenericUnsupportedInstructionFragmentDiagnostic ||
+          expected == kUnsupportedSameModuleCallAbiDiagnostic) &&
          actual.rfind(expected, 0) == 0;
 }
 
@@ -11135,8 +11138,7 @@ int builds_prepared_immediate_null_same_module_call_object() {
 int expect_scalar_register_result_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
 }
 
 int rejects_prepared_scalar_register_result_call_fail_closed_shapes() {
@@ -11238,8 +11240,7 @@ int builds_prepared_byval_stack_copy_same_module_call_object() {
 int expect_byval_stack_copy_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
 }
 
 int rejects_prepared_byval_stack_copy_call_fail_closed_shapes() {
@@ -11382,15 +11383,15 @@ int builds_representative_prepared_same_module_sret_call_object() {
 int expect_same_module_sret_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
 }
 
 int rejects_prepared_same_module_sret_call_fail_closed_shapes() {
   auto prepared = make_prepared_same_module_sret_call_module();
   prepared.call_plans.functions[0].calls[0].wrapper_kind =
       prepare::PreparedCallWrapperKind::DirectExternFixedArity;
-  if (expect_same_module_sret_call_rejection(prepared) != 0) {
+  if (expect_prepared_rejection_diagnostic(
+          prepared, kGenericUnsupportedInstructionFragmentDiagnostic) != 0) {
     return 1;
   }
 
@@ -11526,8 +11527,7 @@ int builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object() {
 int expect_scalar_stack_result_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
 }
 
 int rejects_prepared_scalar_stack_result_call_fail_closed_shapes() {
@@ -12115,8 +12115,7 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
       .arguments[0]
       .source_selection->preserved_register_name = std::nullopt;
   if (expect_prepared_rejection_diagnostic(
-          prepared,
-          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+          prepared, kGenericUnsupportedInstructionFragmentDiagnostic) !=
       0) {
     return 1;
   }
@@ -12138,8 +12137,7 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
   selection.preserved_stack_size_bytes = std::size_t{8};
   selection.preserved_stack_align_bytes = std::size_t{8};
   if (expect_prepared_rejection_diagnostic(
-          prepared,
-          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+          prepared, kGenericUnsupportedInstructionFragmentDiagnostic) !=
       0) {
     return 1;
   }
@@ -12181,8 +12179,7 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
       .preservation_source
       .storage_kind = prepare::PreparedMoveStorageKind::None;
   if (expect_prepared_rejection_diagnostic(
-          prepared,
-          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+          prepared, kGenericUnsupportedInstructionFragmentDiagnostic) !=
       0) {
     return 1;
   }
@@ -16550,8 +16547,7 @@ int builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object() {
 int expect_frame_slot_value_arg_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
 }
 
 int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
@@ -16571,7 +16567,8 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
 
   prepared = make_prepared_frame_slot_value_arg_call_module();
   prepared.value_locations.functions[1].value_homes[0].slot_id = std::nullopt;
-  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+  if (expect_prepared_rejection_diagnostic(
+          prepared, kGenericUnsupportedInstructionFragmentDiagnostic) != 0) {
     return 1;
   }
 
@@ -16823,8 +16820,7 @@ int rejects_prepared_frame_slot_address_arg_emit_selected_storage_fail_closed() 
 int expect_frame_slot_address_arg_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
 }
 
 int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {

@@ -7951,7 +7951,9 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    c4c::FunctionNameId function_name,
     c4c::BlockLabelId prepared_block_label,
+    std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::bir::Block& block,
     const c4c::backend::bir::Inst& inst,
@@ -8086,6 +8088,37 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       call != nullptr && call->inline_asm.has_value()) {
     return std::string{
         "unsupported_inline_asm_fragment: RV64 object route requires a complete supported inline-asm carrier"};
+  }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst);
+      call != nullptr && !call->inline_asm.has_value()) {
+    const auto* call_plan = prepare::find_indexed_prepared_call_plan(
+        &lookups.call_plans, nullptr, block_index, instruction_index);
+    if (call_plan != nullptr &&
+        call_plan->wrapper_kind == prepare::PreparedCallWrapperKind::SameModule) {
+      std::ostringstream out;
+      out << "unsupported_call_abi: RV64 object route requires supported ordinary same-module call ABI/result lowering"
+          << "; function=" << rv64_prepared_function_name(names, function_name)
+          << "; block=" << rv64_prepared_block_label(names, prepared_block_label)
+          << "; block_index=" << block_index
+          << "; instruction_index=" << instruction_index
+          << "; callee="
+          << (call_plan->direct_callee_name.has_value()
+                  ? std::string_view{*call_plan->direct_callee_name}
+                  : std::string_view{call->callee})
+          << "; args=" << call->args.size()
+          << "; planned_args=" << call_plan->arguments.size()
+          << "; result=";
+      if (call->result.has_value()) {
+        out << bir::render_type(call->result->type);
+        if (call->result->kind == bir::Value::Kind::Named &&
+            !call->result->name.empty()) {
+          out << " " << call->result->name;
+        }
+      } else {
+        out << "none";
+      }
+      return out.str();
+    }
   }
   if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
       binary != nullptr && bir::is_compare_opcode(binary->opcode) &&
@@ -8543,7 +8576,9 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                     prepared.stack_layout,
                     prepared.names,
                     lookups,
+                    control_flow.function_name,
                     prepared_block_label,
+                    event.block_index,
                     event.instruction_index,
                     *block,
                     *event.instruction,
@@ -8642,7 +8677,9 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                     prepared.stack_layout,
                     prepared.names,
                     lookups,
+                    control_flow.function_name,
                     prepared_block_label,
+                    block_index,
                     instruction_index,
                     block,
                     block.insts[instruction_index],

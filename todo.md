@@ -8,47 +8,25 @@ Current Step Title: Review And Close Readiness
 
 ## Just Finished
 
-Step 6 close-readiness review rejected closure for the 572 source idea.
+Step 6 diagnostic close blocker follow-up is complete.
 
-Accepted as satisfied:
+Unsupported ordinary same-module `CallInst` ABI/result shapes now reject with
+the call-specific `unsupported_call_abi` diagnostic instead of falling through
+to the generic `unsupported_instruction_fragment` diagnostic. The diagnostic
+keeps fail-closed behavior and records the function, block, instruction index,
+callee, planned argument count, and call result owner context.
 
-- The old ordinary same-module `CallInst` fallback is gone for both retained
-  representatives. `build/agent_state/572_rv64_same_module_call_result_lowering/summary.tsv`
-  records `src/20000412-2.c` as `lowered_and_runtime_matched` and
-  `src/20000622-1.c` as `blocked_by_later_non_call_family`.
-- The `src/20000622-1.c` remaining failure is not a call-fallback failure: the
-  rerun now reaches runtime comparison and aborts with
-  `[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
-  `c4c_exit=Subprocess aborted`.
-- Focused backend coverage includes same-module GPR argument passing, prior
-  call-result consumption, frame-slot GPR arguments, and integer/GPR result
-  publication.
-
-Close blocker:
-
-- The source idea still has an unmet diagnostic acceptance item. It explicitly
-  scopes in diagnostics that distinguish unsupported call ABI forms from the
-  generic unsupported instruction fallback, but the focused unsupported
-  same-module call shapes still assert
-  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`.
-  This does fail closed, but it is not the narrower call-specific diagnostic
-  required by the active source idea and Step 6 runbook.
-
-Lifecycle split:
-
-- Created `ideas/open/577_rv64_20000622_1_runtime_abort_after_call_lowering.md`
-  for the distinct `src/20000622-1.c` runtime abort. Do not solve that abort
-  inside this 572 plan unless the supervisor explicitly switches lifecycle
-  state.
+Focused backend tests now assert the call-specific diagnostic for unsupported
+same-module scalar register results, byval stack-copy arguments, sret memory
+returns, scalar stack results, frame-slot value arguments, and frame-slot
+address arguments. Non-call producer failures, inline asm, direct extern/probe
+call checks, and stack-frame admission failures remain on their existing
+diagnostic surfaces.
 
 ## Suggested Next
 
-Keep 572 active and delegate a narrow executor packet for the remaining
-diagnostic acceptance item: unsupported ordinary same-module call ABI/result
-shapes should reject with a call-specific diagnostic rather than the generic
-`unsupported_instruction_fragment` fallback. After that passes focused backend
-proof, rerun Step 6 close-readiness and then the close-time backend regression
-gate.
+Rerun Step 6 close-readiness for 572 and decide whether to hand the plan to the
+plan owner for closure or any close-time regression gate the supervisor wants.
 
 ## Watchouts
 
@@ -63,22 +41,13 @@ gate.
 - Do not use the new `src/20000622-1.c` runtime-abort follow-up as a reason to
   expand 572. The abort is separate from the ordinary same-module call fallback
   repair.
-- Do not close 572 until unsupported ordinary same-module call ABI/result
-  forms have distinguishable call-specific diagnostics or the source idea is
-  explicitly narrowed by the supervisor.
+- The diagnostic follow-up did not implement new ABI lowering; it only narrowed
+  unsupported ordinary same-module call rejection surfaces.
 
 ## Proof
 
-Close-readiness inputs reviewed:
+Passed:
 
-- Source idea: `ideas/open/572_rv64_same_module_call_result_lowering.md`.
-- Active runbook: `plan.md`.
-- Step 5 summary:
-  `build/agent_state/572_rv64_same_module_call_result_lowering/summary.tsv`.
-- Step 5 `src/20000622-1.c` log:
-  `build/agent_state/572_rv64_same_module_call_result_lowering/src_20000622-1.c/object-route.log`.
-- Existing broad backend proof in `test_before.log`: 346/346 backend tests
-  passed.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`
 
-The close-time regression gate was not run because source-idea completion is
-false.
+Proof log: `test_after.log`.
