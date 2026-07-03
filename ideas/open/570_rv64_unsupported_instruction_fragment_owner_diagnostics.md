@@ -2,7 +2,7 @@
 
 Status: Open
 Type: Evidence-enabling diagnostic improvement
-Parent: `ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md`
+Parent: `ideas/closed/549_rv64_runtime_and_no_diagnostic_triage.md`
 Owning Layer: RV64 object-route diagnostics
 
 ## Goal
