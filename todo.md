@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/564_rv64_fpr_callee_saved_frame_slots.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect FPR Callee-Saved Boundary
+Current Step ID: 2
+Current Step Title: Add Focused FPR Frame-Slot Coverage
 
 ## Just Finished
 
@@ -52,13 +52,34 @@ Owning boundary is still RV64 consumer-owned:
 
 ## Suggested Next
 
-Advance to Step 2. Add focused RV64 backend coverage for prepared FPR
-callee-saved frame-slot consumption using an explicit prepared `fpr:fs1` slot
-shape. The coverage should assert that the prepared FPR saved-register fact,
-slot offset, slot size, and save index are consumed as target facts, while
-missing or malformed prepared FPR slot facts still fail closed. Do not repair
-prepared frame production; the current dumps prove it is already publishing
-the representative facts.
+Execute Step 2, `Add Focused FPR Frame-Slot Coverage`.
+
+Executor packet:
+
+- Objective: add focused RV64 backend coverage for prepared FPR
+  callee-saved frame-slot consumption using an explicit prepared `fpr:fs1`
+  slot shape.
+- Owned files: `todo.md`, focused RV64 backend/object-emission tests, and only
+  the minimum RV64 frame/object-emission test helpers needed to express the
+  prepared FPR saved-register fact shape.
+- Do not touch: prepared frame-layout production, `plan.md`, the source idea,
+  `ideas/closed/`, `review/`, expectations, unsupported markers, allowlists, or
+  pass/fail accounting.
+- Coverage requirements: prove the prepared FPR saved-register fact, save
+  index, stack slot offset, and 8-byte slot size are explicit target facts; add
+  or preserve a fail-closed case for missing or malformed prepared FPR slot
+  facts; keep existing GPR callee-saved frame behavior covered.
+- Repair rule: stay coverage-first. If the positive coverage cannot be
+  expressed without a minimal RV64 consumer hook, include only the smallest
+  target-consumer surface needed for the test; do not implement full
+  save/restore materialization unless required to make the Step 2 contract
+  observable.
+- Proof command:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- Done when: backend proof passes, `test_after.log` is fresh, `todo.md`
+  records files changed and whether Step 3 remains a separate repair packet,
+  and the diff contains no filename/register-only shortcuts or weakened
+  unsupported contracts.
 
 ## Watchouts
 
