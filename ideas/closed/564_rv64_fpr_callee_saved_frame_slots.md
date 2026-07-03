@@ -1,6 +1,6 @@
 # RV64 FPR Callee-Saved Frame Slots
 
-Status: Open
+Status: Closed
 Type: RV64 frame implementation
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Derived From: `ideas/closed/548_prepared_global_stack_frame_infrastructure_review.md`
@@ -63,6 +63,38 @@ support non-GPR prepared callee-saved register save slots (fpr:fs1)
 - The implementation keeps GPR frame behavior stable and does not widen scope
   without fresh row evidence.
 - Remaining representative failures, if any, have a new concrete owner.
+
+## Closure Notes
+
+Closed on 2026-07-03 after `d57660794 materialize FPR callee-saved frame
+slots`.
+
+Accepted evidence:
+
+- `6286dc3cd [todo_only] record FPR callee-saved boundary`
+- `8d04a28ce [todo_only] advance FPR frame-slot coverage state`
+- `1867cff54 cover prepared FPR callee-saved slots`
+- `606eb255a [todo_only] advance FPR callee-saved repair state`
+- `d57660794 materialize FPR callee-saved frame slots`
+
+Close proof:
+
+- Backend proof passed in `test_after.log`: `345/345`.
+- Regression guard passed against `test_before.log`: before `345/0`, after
+  `345/0`.
+- Representative probe for `src/20000603-1.c` and `src/20030209-1.c` no
+  longer contains the old non-GPR prepared callee-saved register save-slot
+  diagnostic for `fpr:fs1`.
+
+Residuals are outside this source idea:
+
+- `src/20000603-1.c` now fails later at
+  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`.
+- `src/20030209-1.c` has a distinct large-offset GPR saved-register frame-slot
+  residual for prepared `gpr:s1` at `stack80000`.
+
+The large-offset GPR residual is tracked separately in
+`ideas/open/566_rv64_large_offset_gpr_callee_saved_frame_slots.md`.
 
 ## Reviewer Reject Signals
 
