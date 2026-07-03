@@ -5384,6 +5384,54 @@ make_prepared_before_instruction_stack_to_stack_move_bundle_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_before_instruction_stack_widening_move_bundle_module(
+    bir::TypeKind source_type,
+    std::size_t source_size_bytes) {
+  auto prepared = make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  auto& function = prepared.module.functions[0];
+  auto& local_slot = function.local_slots[0];
+  auto& store =
+      std::get<bir::StoreLocalInst>(function.blocks[0].insts[0]);
+  auto& load =
+      std::get<bir::LoadLocalInst>(function.blocks[0].insts[1]);
+  auto& sum =
+      std::get<bir::BinaryInst>(function.blocks[0].insts[2]);
+  local_slot.type = source_type;
+  local_slot.size_bytes = source_size_bytes;
+  local_slot.align_bytes = source_size_bytes;
+  store.value = source_type == bir::TypeKind::I8
+                    ? bir::Value::immediate_i8(5)
+                    : bir::Value::immediate_i16(5);
+  store.align_bytes = source_size_bytes;
+  load.result = bir::Value::named(source_type, "%loaded");
+  load.align_bytes = source_size_bytes;
+  sum.operand_type = bir::TypeKind::I32;
+  sum.lhs = bir::Value::named(bir::TypeKind::I32, "%loaded");
+  sum.result = bir::Value::named(bir::TypeKind::I32, "%sum");
+
+  auto& locations = prepared.value_locations.functions[0];
+  locations.value_homes[0].size_bytes = source_size_bytes;
+  locations.value_homes[0].align_bytes = source_size_bytes;
+  prepared.stack_layout.frame_slots[1].size_bytes = source_size_bytes;
+  prepared.stack_layout.frame_slots[1].align_bytes = source_size_bytes;
+  prepared.addressing.functions[0].accesses[0].address.size_bytes =
+      source_size_bytes;
+  prepared.addressing.functions[0].accesses[0].address.align_bytes =
+      source_size_bytes;
+  prepared.addressing.functions[0].accesses[1].address.size_bytes =
+      source_size_bytes;
+  prepared.addressing.functions[0].accesses[1].address.align_bytes =
+      source_size_bytes;
+
+  auto& bundle = locations.move_bundles[0];
+  bundle.authority_kind =
+      prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion;
+  bundle.moves[0].authority_kind =
+      prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion;
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_ashr_module(
     bir::TypeKind type,
     bool immediate_shift) {
@@ -12189,6 +12237,63 @@ int builds_prepared_mixed_stack_destination_move_bundle_object() {
   return 0;
 }
 
+int rejects_explicit_prepared_stack_widening_authority_until_rv64_consumes_it() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  const auto expect_rejected_width = [&](bir::TypeKind source_type,
+                                         std::size_t source_size_bytes,
+                                         const char* source_type_name) {
+    const auto prepared =
+        make_prepared_before_instruction_stack_widening_move_bundle_module(
+            source_type, source_size_bytes);
+    const auto& bundle =
+        prepared.value_locations.functions[0].move_bundles[0];
+    const auto& move = bundle.moves[0];
+    if (bundle.authority_kind !=
+            prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion ||
+        move.authority_kind !=
+            prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion ||
+        move.reason != "consumer_stack_to_stack") {
+      return fail("prepared stack widening fixture did not publish explicit stack-slot widening authority");
+    }
+
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (result.ok() || result.module.has_value()) {
+      return fail("explicit prepared stack widening authority should remain fail-closed until RV64 consumes it");
+    }
+    if (result.prepared_consumer_category.has_value() ||
+        result.diagnostic.find(diagnostic) != 0 ||
+        result.diagnostic.find("authority=stack_slot_widening_conversion") ==
+            std::string::npos ||
+        result.diagnostic.find("move[0].reason=consumer_stack_to_stack") ==
+            std::string::npos ||
+        result.diagnostic.find("move[0].source_home_kind=stack_slot") ==
+            std::string::npos ||
+        result.diagnostic.find("move[0].destination_home_kind=stack_slot") ==
+            std::string::npos ||
+        result.diagnostic.find(std::string("move[0].source_type=") +
+                               source_type_name) == std::string::npos ||
+        result.diagnostic.find("move[0].destination_type=i32") ==
+            std::string::npos ||
+        result.diagnostic.find(
+            "unsupported_prepared_move_bundle_classification") !=
+            std::string::npos) {
+      return fail("explicit stack widening authority should be visible before RV64 rejection, got `" +
+                  result.diagnostic + "`");
+    }
+    return 0;
+  };
+
+  if (const int status =
+          expect_rejected_width(bir::TypeKind::I8, 1, "i8");
+      status != 0) {
+    return status;
+  }
+  return expect_rejected_width(bir::TypeKind::I16, 2, "i16");
+}
+
 int rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
@@ -18103,6 +18208,8 @@ int main() {
   status |= rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes();
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
   status |= builds_prepared_mixed_stack_destination_move_bundle_object();
+  status |=
+      rejects_explicit_prepared_stack_widening_authority_until_rv64_consumes_it();
   status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();

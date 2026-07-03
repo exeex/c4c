@@ -185,6 +185,17 @@ constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
   return it == function_locations.value_homes.end() ? nullptr : &*it;
 }
 
+[[nodiscard]] bool prepared_stack_slot_home_is_narrower_than_destination(
+    const PreparedValueHome& source_home,
+    const PreparedValueHome& destination_home) {
+  return source_home.kind == PreparedValueHomeKind::StackSlot &&
+         destination_home.kind == PreparedValueHomeKind::StackSlot &&
+         source_home.size_bytes.has_value() &&
+         destination_home.size_bytes.has_value() &&
+         *source_home.size_bytes > 0 &&
+         *source_home.size_bytes < *destination_home.size_bytes;
+}
+
 [[nodiscard]] PreparedMoveResolution normalize_prepared_move_publication(
     const PreparedValueLocationFunction& function_locations,
     PreparedMoveResolution move) {
@@ -211,6 +222,14 @@ constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
     move.reason = "consumer_register_to_stack";
   } else if (source_home->kind == PreparedValueHomeKind::StackSlot) {
     move.reason = "consumer_stack_to_stack";
+    const auto* destination_home =
+        find_prepared_value_home_by_id(function_locations, move.to_value_id);
+    if (destination_home != nullptr &&
+        prepared_stack_slot_home_is_narrower_than_destination(
+            *source_home, *destination_home)) {
+      move.authority_kind =
+          PreparedMoveAuthorityKind::StackSlotWideningConversion;
+    }
   }
   return move;
 }

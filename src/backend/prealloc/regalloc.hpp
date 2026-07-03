@@ -183,6 +183,7 @@ enum class PreparedMoveResolutionOpKind {
 enum class PreparedMoveAuthorityKind {
   None,
   OutOfSsaParallelCopy,
+  StackSlotWideningConversion,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_move_authority_kind_name(
@@ -192,6 +193,8 @@ enum class PreparedMoveAuthorityKind {
       return "none";
     case PreparedMoveAuthorityKind::OutOfSsaParallelCopy:
       return "out_of_ssa_parallel_copy";
+    case PreparedMoveAuthorityKind::StackSlotWideningConversion:
+      return "stack_slot_widening_conversion";
   }
   return "unknown";
 }
