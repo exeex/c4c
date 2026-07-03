@@ -1,8 +1,8 @@
 # RV64 Inline Asm Carrier Lowering
 
-Status: Open
+Status: Closed
 Type: Capability repair
-Parent: `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
+Parent: `ideas/closed/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
 Owning Layer: RV64 object lowering for inline asm carrier calls
 
 ## Goal
@@ -69,6 +69,35 @@ Evidence:
 - Existing diagnostic category stability is preserved where unsupported cases
   remain unsupported.
 - No unrelated RV64 lowering families are modified as part of the proof.
+
+## Closure Notes
+
+Closed after Step 5 close-readiness review.
+
+The focused carrier implementation handles complete no-result side-effecting
+`llvm.inline_asm` carriers with `~{memory}` without falling through to the old
+generic `unsupported_instruction_fragment` fallback. Unsupported carrier forms
+now retain a narrower inline-asm-specific diagnostic.
+
+Step 4 evidence under
+`build/agent_state/571_rv64_inline_asm_carrier_lowering/` records:
+
+- `src/20071211-1.c`: lowered; object route passed.
+- `src/pr51933.c`: still unsupported with
+  `unsupported_inline_asm_fragment` for the unsupported constraint carrier.
+- `src/pr56982.c`: inline asm carrier compile blocker cleared; now reaches
+  `RV64_BACKEND_RUNTIME_MISMATCH` with c4c segfaulting.
+- `src/pr78438.c`: lowered; object route passed.
+
+No representative still fails first through the old generic
+`unsupported_instruction_fragment` inline asm carrier path. The post-carrier
+`src/pr56982.c` runtime mismatch/segfault is outside this carrier idea and is
+tracked separately in
+`ideas/open/576_rv64_pr56982_post_carrier_runtime_mismatch.md`.
+
+Focused close gate:
+
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$')`
 
 ## Reviewer Reject Signals
 
