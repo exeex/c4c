@@ -1013,7 +1013,7 @@ int verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination
   return 0;
 }
 
-int verify_move_bundle_consumer_rejects_select_materialization_stack_destination_sources() {
+int verify_move_bundle_consumer_accepts_select_materialization_stack_destination_sources() {
   auto fixture = make_fixture();
   fixture.bir_function.blocks[1].insts.push_back(
       select_inst("%select.stack.store"));
@@ -1119,18 +1119,16 @@ int verify_move_bundle_consumer_rejects_select_materialization_stack_destination
       prepare::diagnose_prepared_object_consumer(classification);
   if (!expect(before_select->instruction_index == select_instruction_index,
               "select-materialized copy event should stay attached to the select instruction") ||
+      !expect(before_select->instruction ==
+                  &fixture.bir_function.blocks[1].insts[select_instruction_index],
+              "select-materialized copy event should expose the select instruction") ||
       !expect(classification.status ==
-                  prepare::PreparedObjectMoveBundleConsumerStatus::
-                      AmbiguousNonParallelMultiSourceStackDestination,
-              "select-materialized multi-source stack destination should fail closed") ||
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available,
+              "select-materialized multi-source stack destination should be classified as available") ||
       !expect(classification.move_count == 3,
               "select-materialized stack-destination classification should preserve all move sources") ||
-      !expect(diagnostic.has_value(),
-              "select-materialized stack-destination classification should produce a diagnostic") ||
-      !expect(diagnostic->category ==
-                  prepare::PreparedObjectConsumerDiagnosticCategory::
-                      AmbiguousNonParallelMultiSourceStackDestination,
-              "select-materialized stack-destination diagnostic category mismatch")) {
+      !expect(!diagnostic.has_value(),
+              "select-materialized stack-destination classification should not produce a diagnostic")) {
     return 1;
   }
 
@@ -1695,7 +1693,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto result =
-          verify_move_bundle_consumer_rejects_select_materialization_stack_destination_sources();
+          verify_move_bundle_consumer_accepts_select_materialization_stack_destination_sources();
       result != 0) {
     return EXIT_FAILURE;
   }
