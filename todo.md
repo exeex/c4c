@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/546_rv64_instruction_fragment_current_classification.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify Semantic Families And First Owners
+Current Step ID: 4
+Current Step Title: Screen F128 And Producer-Gap Rows
 
 ## Just Finished
 
@@ -65,7 +65,7 @@ than ordinary scalar progress.
 
 ## Suggested Next
 
-Next packet: Step 4 (`Screen F128 And Producer-Gap Rows`). Use
+Current packet: Step 4 (`Screen F128 And Producer-Gap Rows`). Use
 `build/agent_state/546_step3_instruction_fragment_classification.tsv` as the
 input. Screen the `28` `f128_or_long_double_primary` rows in detail, then split
 the `143` `rv64_or_prepared_boundary` rows into producer/prepared-contract
