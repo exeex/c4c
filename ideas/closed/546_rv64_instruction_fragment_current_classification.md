@@ -1,6 +1,6 @@
 # RV64 Instruction-Fragment Current Classification
 
-Status: Open
+Status: Closed
 Type: Current bucket classification
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: RV64/MIR object lowering, with producer-gap boundaries
@@ -57,3 +57,38 @@ implementation ideas.
 - Reject mixing F128 helper or long-double work into ordinary scalar
   instruction-fragment slices.
 
+## Closure Notes
+
+Closed after the active runbook refreshed the row authority, classified all
+current rows, screened non-RV64 implementation lanes, and produced follow-up
+routing.
+
+Durable evidence:
+
+- Refreshed coherent scan:
+  `build/agent_state/rv64_gcc_torture_backend_current_20260703T015523Z.log`
+  with `total=1467`, `passed=425`, and `failed=1042`.
+- Accepted current row set:
+  `build/agent_state/unsupported_instruction_fragment_current_rows.tsv`
+  with `265` `unsupported_instruction_fragment` rows.
+- Classification:
+  `build/agent_state/546_step3_instruction_fragment_classification.tsv`.
+- Screening:
+  `build/agent_state/546_step4_instruction_fragment_screening.tsv`.
+- Follow-up routing:
+  `build/agent_state/546_step5_followup_routing.md` and
+  `build/agent_state/546_step5_followup_routing.tsv`.
+
+Final routing:
+
+- `87` implementation-ready RV64 object-lowering rows.
+- `28` F128/long-double rows routed to
+  `ideas/open/426_f128_quarantine_and_external_softfloat_policy.md`.
+- `143` producer/prepared-boundary rows routed away from ordinary RV64
+  implementation pending authority work.
+- `5` ABI/call-boundary rows routed away from ordinary instruction lowering.
+- `2` evidence-gap rows routed to evidence recovery.
+
+The first follow-up implementation idea is
+`ideas/open/567_rv64_integer_div_rem_instruction_fragment_lowering.md` for the
+`30` current integer div/rem rows owned by RV64 object lowering.
