@@ -1,6 +1,6 @@
 # Prepared Object-Data Zero-Fill Contract
 
-Status: Open
+Status: Closed
 Type: Prepared contract implementation
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Derived From: `ideas/closed/548_prepared_global_stack_frame_infrastructure_review.md`
@@ -69,6 +69,23 @@ emitted_byte_count=0 zero_fill_byte_count=0
   the representative filename.
 - Any remaining failure is classified as a downstream consumer gap with concrete
   evidence, not inferred around missing prepared facts.
+
+## Closure Note
+
+Completed by publishing full-extent prepared BSS zero-fill authority for
+eligible implicit-zero globals and all-zero initializer element lists when no
+initializer symbol is present. Focused backend coverage now asserts the lowered
+const pointer-element aggregate shape through semantic object-data facts, and
+the representative `src/20000412-1.c` allowlist probe passes with no downstream
+owner.
+
+Close proof:
+
+- Backend subset guard: `test_before.log` vs `test_after.log`, both 345/345
+  passed, monotonic guard passed.
+- Representative proof:
+  `build/agent_state/562_step2_zero_fill_after.log`, `total=1 passed=1
+  failed=0`.
 
 ## Reviewer Reject Signals
 
