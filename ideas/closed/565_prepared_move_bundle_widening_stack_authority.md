@@ -1,6 +1,6 @@
 # Prepared Move-Bundle Widening Stack Authority
 
-Status: Open
+Status: Closed
 Type: Prepared classifier implementation
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Derived From: `ideas/closed/548_prepared_global_stack_frame_infrastructure_review.md`
@@ -74,6 +74,21 @@ Representative shapes:
 - RV64 handoff is attempted only after prepared authority is explicit.
 - Any remaining representative failure is a later owner with a concrete
   diagnostic, not the same prepared classifier rejection.
+
+## Closure Note
+
+Closed after explicit `StackSlotWideningConversion` authority was published for
+stack-slot to stack-slot integer widening moves and RV64 consumed that authority
+with narrow-source load plus widened destination store materialization.
+
+Backend proof passed `345/345`, and regression guard accepted the matching
+backend before/after logs. Representative rows `src/20010224-1.c` and
+`src/pr87623.c` no longer contain `unsupported_prepared_move_bundle_classification`,
+`authority=none`, `unsupported_move_bundle_target_shape`, or
+`authority=stack_slot_widening_conversion` in the post-repair logs. They now
+fail as downstream `[RV64_BACKEND_RUNTIME_MISMATCH]` rows, which belongs to
+the separate open runtime/no-diagnostic triage lane rather than this prepared
+move-bundle authority source idea.
 
 ## Reviewer Reject Signals
 
