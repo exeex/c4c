@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/564_rv64_fpr_callee_saved_frame_slots.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused FPR Frame-Slot Coverage
+Current Step ID: 3
+Current Step Title: Repair RV64 FPR Callee-Saved Slot Consumption
 
 ## Just Finished
 
@@ -51,13 +51,15 @@ Executor packet:
   unrelated global/F128/F64 lanes.
 - Repair requirements: reuse `rv64_prepared_saved_callee_fpr_stack_offset(...)`
   for fact validation; emit appropriate 8-byte FPR stack saves/restores for
-  prepared FPR callee-saved slots; preserve GPR save/restore behavior; keep
-  malformed/missing FPR facts fail-closed.
+  prepared FPR callee-saved slots, using `fsd`/`fld` or the existing RV64
+  emitter equivalent; preserve GPR save/restore behavior; keep malformed or
+  missing FPR facts fail-closed; do not synthesize prepared frame layout.
 - Proof command:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 - Done when: backend proof passes and focused object-emission coverage proves
   valid prepared FPR callee-saved save/restore materialization without
-  accepting malformed FPR slot facts.
+  accepting malformed FPR slot facts, and `todo.md` records whether Step 4
+  representative reconciliation remains.
 
 ## Watchouts
 
