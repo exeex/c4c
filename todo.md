@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/563_rv64_f64_global_memory_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect F64 Global-Memory Boundary
+Current Step ID: 2
+Current Step Title: Add Focused F64 Global-Memory Coverage
 
 # Current Packet
 
@@ -46,11 +46,33 @@ Prepared facts are present before the RV64 gate:
 
 ## Suggested Next
 
-Advance to Step 2 coverage/repair preparation: add focused backend coverage for
-a prepared `F64` global load with explicit prepared global-symbol memory access
-facts and FPR destination storage. The test should prove RV64 still fails closed
-when prepared access facts are absent, and should not fabricate object data,
-symbols, relocations, or initializer facts in target lowering.
+Executor packet for plan Step 2, `Add Focused F64 Global-Memory Coverage`:
+
+- Objective: add focused backend coverage for RV64 prepared `F64` global-memory
+  load consumption, proving the target consumes an explicit prepared
+  global-symbol access with FPR destination storage and does not infer missing
+  prepared facts.
+- Owned files: `todo.md`, focused backend tests for RV64 prepared global-memory
+  object emission, and the minimal RV64 prepared global-memory consumer code
+  only if the coverage cannot be expressed against the current public helpers.
+- Do not touch: `plan.md`, `ideas/open/563_rv64_f64_global_memory_consumption.md`,
+  `ideas/closed/`, `review/`, expectation files, unsupported markers,
+  allowlists, prepared object-data production, zero-fill contracts, F128,
+  long-double, stack-frame, or FPR callee-saved work.
+- Coverage requirements: include a prepared `double` / `F64` global load with
+  explicit prepared global-symbol memory access facts, `size=8` / `align=8`,
+  scalar-layout and proven-in-bounds authority, and FPR destination storage.
+  Also prove absence of the required prepared access facts remains fail-closed.
+- Proof command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
+```
+
+- Done when: focused coverage either fails at the current RV64 F64 type gate or
+  directly proves the repaired contract; backend proof is recorded in
+  `todo.md`; and no testcase-shaped shortcut, diagnostic filter, expectation
+  rewrite, or weakened unsupported contract is used as progress.
 
 ## Watchouts
 
