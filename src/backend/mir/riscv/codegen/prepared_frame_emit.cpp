@@ -269,6 +269,12 @@ bool rv64_prepared_is_callee_saved_gpr_register_name(std::string_view name) {
          name == "s11";
 }
 
+bool rv64_prepared_is_callee_saved_fpr_register_name(std::string_view name) {
+  return name == "fs0" || name == "fs1" || name == "fs2" || name == "fs3" ||
+         name == "fs4" || name == "fs5" || name == "fs6" || name == "fs7" ||
+         name == "fs8" || name == "fs9" || name == "fs10" || name == "fs11";
+}
+
 std::optional<std::int32_t> rv64_prepared_saved_callee_gpr_stack_offset(
     const c4c::backend::prepare::PreparedSavedRegister& saved,
     std::size_t stack_frame_bytes) {
@@ -302,6 +308,54 @@ std::optional<std::int32_t> rv64_prepared_saved_callee_gpr_stack_offset(
       !slot.stack_offset_bytes.has_value() ||
       !slot.size_bytes.has_value() ||
       *slot.size_bytes != 8 ||
+      slot.stack_offset_bytes > std::optional<std::size_t>{stack_frame_bytes} ||
+      stack_frame_bytes - *slot.stack_offset_bytes < *slot.size_bytes ||
+      *slot.stack_offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(*slot.stack_offset_bytes))) {
+    return std::nullopt;
+  }
+
+  return static_cast<std::int32_t>(*slot.stack_offset_bytes);
+}
+
+std::optional<std::int32_t> rv64_prepared_saved_callee_fpr_stack_offset(
+    const c4c::backend::prepare::PreparedSavedRegister& saved,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (saved.bank != prepare::PreparedRegisterBank::Fpr ||
+      saved.register_name.empty() ||
+      !rv64_prepared_is_callee_saved_fpr_register_name(saved.register_name) ||
+      saved.contiguous_width != 1 ||
+      saved.occupied_register_names.size() != 1 ||
+      saved.occupied_register_names.front() != saved.register_name ||
+      !saved.placement.has_value() ||
+      saved.placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      saved.placement->pool != prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      saved.placement->contiguous_width != 1 ||
+      !saved.slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(
+          *saved.slot_placement)) {
+    return std::nullopt;
+  }
+
+  const auto& slot = *saved.slot_placement;
+  if (slot.bank != prepare::PreparedRegisterBank::Fpr ||
+      slot.register_name != saved.register_name ||
+      slot.contiguous_width != 1 ||
+      slot.occupied_register_names.size() != 1 ||
+      slot.occupied_register_names.front() != saved.register_name ||
+      slot.save_index != saved.save_index ||
+      !slot.register_placement.has_value() ||
+      slot.register_placement != saved.placement ||
+      !slot.stack_offset_bytes.has_value() ||
+      !slot.size_bytes.has_value() ||
+      *slot.size_bytes != 8 ||
+      !slot.align_bytes.has_value() ||
+      *slot.align_bytes != 8 ||
+      !slot.fixed_location ||
       slot.stack_offset_bytes > std::optional<std::size_t>{stack_frame_bytes} ||
       stack_frame_bytes - *slot.stack_offset_bytes < *slot.size_bytes ||
       *slot.stack_offset_bytes >

@@ -3,6 +3,7 @@
 #include "src/backend/mir/riscv/codegen/object_emission.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_call_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_emit_context.hpp"
+#include "src/backend/mir/riscv/codegen/prepared_frame_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_module_emit.hpp"
 #include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
@@ -2456,6 +2457,37 @@ prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
           }},
   });
   return prepared;
+}
+
+prepare::PreparedSavedRegister make_prepared_fpr_callee_saved_fs1() {
+  const prepare::PreparedRegisterPlacement fs1_placement{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedSavedRegisterSlotPlacement fs1_slot{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .register_name = "fs1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"fs1"},
+      .save_index = 0,
+      .register_placement = fs1_placement,
+      .slot_id = prepare::PreparedFrameSlotId{11},
+      .stack_offset_bytes = std::size_t{24},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  return prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .register_name = "fs1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"fs1"},
+      .save_index = 0,
+      .placement = fs1_placement,
+      .slot_placement = fs1_slot,
+  };
 }
 
 prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
@@ -11151,6 +11183,66 @@ int rejects_raw_fpr_formal_param_home_without_target_identity() {
       "supported GPR or prepared FPR register homes");
 }
 
+int records_prepared_fpr_callee_saved_frame_slot_facts() {
+  const auto saved = make_prepared_fpr_callee_saved_fs1();
+  const auto offset =
+      rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 40);
+  if (offset != std::optional<std::int32_t>{24}) {
+    return fail("expected prepared FPR callee-saved slot offset fact");
+  }
+  if (saved.bank != prepare::PreparedRegisterBank::Fpr ||
+      saved.register_name != "fs1" || saved.save_index != 0 ||
+      !saved.slot_placement.has_value() ||
+      saved.slot_placement->slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{11}} ||
+      saved.slot_placement->stack_offset_bytes != std::optional<std::size_t>{24} ||
+      saved.slot_placement->size_bytes != std::optional<std::size_t>{8} ||
+      saved.slot_placement->align_bytes != std::optional<std::size_t>{8}) {
+    return fail("expected explicit prepared FPR saved-register slot facts");
+  }
+  return 0;
+}
+
+int rejects_malformed_prepared_fpr_callee_saved_frame_slot_facts() {
+  auto saved = make_prepared_fpr_callee_saved_fs1();
+  saved.slot_placement = std::nullopt;
+  if (rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 40).has_value()) {
+    return fail("expected missing prepared FPR saved slot to fail closed");
+  }
+
+  saved = make_prepared_fpr_callee_saved_fs1();
+  saved.slot_placement->save_index = 1;
+  if (rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 40).has_value()) {
+    return fail("expected mismatched prepared FPR save index to fail closed");
+  }
+
+  saved = make_prepared_fpr_callee_saved_fs1();
+  saved.slot_placement->size_bytes = std::size_t{4};
+  if (rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 40).has_value()) {
+    return fail("expected malformed prepared FPR slot size to fail closed");
+  }
+
+  saved = make_prepared_fpr_callee_saved_fs1();
+  saved.slot_placement->fixed_location = false;
+  if (rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 40).has_value()) {
+    return fail("expected non-fixed prepared FPR saved slot to fail closed");
+  }
+
+  saved = make_prepared_fpr_callee_saved_fs1();
+  saved.placement->bank = prepare::PreparedRegisterBank::Gpr;
+  if (rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 40).has_value()) {
+    return fail("expected mismatched prepared FPR placement to fail closed");
+  }
+
+  saved = make_prepared_fpr_callee_saved_fs1();
+  if (rv64::rv64_prepared_saved_callee_fpr_stack_offset(saved, 16).has_value()) {
+    return fail("expected out-of-frame prepared FPR saved slot to fail closed");
+  }
+
+  return 0;
+}
+
 int builds_prepared_scalar_local_frame_object() {
   const auto prepared = make_prepared_scalar_local_frame_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -18356,6 +18448,8 @@ int main() {
   status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
+  status |= records_prepared_fpr_callee_saved_frame_slot_facts();
+  status |= rejects_malformed_prepared_fpr_callee_saved_frame_slot_facts();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_large_fixed_stack_frame_adjustment_object();
   status |= builds_prepared_large_fixed_slot_addressing_object();

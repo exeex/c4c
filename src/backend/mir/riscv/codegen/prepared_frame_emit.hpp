@@ -59,8 +59,16 @@ rv64_prepared_validated_fixed_frame_size(
 [[nodiscard]] bool rv64_prepared_is_callee_saved_gpr_register_name(
     std::string_view name);
 
+[[nodiscard]] bool rv64_prepared_is_callee_saved_fpr_register_name(
+    std::string_view name);
+
 [[nodiscard]] std::optional<std::int32_t>
 rv64_prepared_saved_callee_gpr_stack_offset(
+    const c4c::backend::prepare::PreparedSavedRegister& saved,
+    std::size_t stack_frame_bytes);
+
+[[nodiscard]] std::optional<std::int32_t>
+rv64_prepared_saved_callee_fpr_stack_offset(
     const c4c::backend::prepare::PreparedSavedRegister& saved,
     std::size_t stack_frame_bytes);
 
