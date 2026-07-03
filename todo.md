@@ -8,94 +8,82 @@ Current Step Title: Add Focused F64 Global-Memory Coverage
 
 ## Just Finished
 
-Completed plan Step 1, `Inspect F64 Global-Memory Boundary`, for
+Completed plan Step 2, `Add Focused F64 Global-Memory Coverage`, for
 `ideas/open/563_rv64_f64_global_memory_consumption.md`.
 
-Fresh representative proof for `src/20001121-1.c` still fails at:
+Changed files:
 
-```text
-unsupported_global_data: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared global memory accesses
+- `src/backend/mir/riscv/codegen/prepared_global_memory_emit.hpp`
+- `src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp`
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+
+Added focused backend coverage for a prepared `double` / `F64` global load with
+explicit prepared global-symbol access facts: `size=8`, `align=8`,
+direct base-plus-offset global-symbol addressing, scalar-layout authority,
+proven-in-bounds range, and FPR destination storage. The positive test asserts
+RV64 emits `fld ft0, 0(t1)` through the prepared relocation pair instead of
+using a filename-shaped path or diagnostic filter.
+
+Added the fail-closed companion coverage: the same prepared F64 load without
+prepared memory-access facts still rejects with the prepared global-symbol
+base-plus-offset diagnostic.
+
+The packet also added the minimal RV64 consumer surface needed for the focused
+contract: prepared F64 global loads now use the existing prepared global-symbol
+facts, select an FPR destination, emit an `fld`, and keep unsupported or missing
+prepared facts rejected. This effectively consumes Step 3's F64 global-memory
+repair work for loads.
+
+Supervisor representative follow-up for `src/20001121-1.c`:
+
+```sh
+printf '%s\n' src/20001121-1.c > build/agent_state/563_step2_f64_global_after.allowlist && ALLOWLIST=build/agent_state/563_step2_f64_global_after.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/563_step2_f64_global_after.log 2>&1
 ```
 
-Current boundary is RV64 consumer-owned. The diagnostic is emitted from
-`src/backend/mir/riscv/codegen/object_emission.cpp::diagnose_unsupported_prepared_instruction_fragment(...)`
-for `bir::LoadGlobalInst`, after
-`rv64_global_scalar_memory_size_for_type(load->result.type)` rejects the
-`double` / `F64` result type. The attempted lowering path is
-`src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp::fragment_for_prepared_load_global(...)`,
-which currently uses the same integer/pointer scalar-size gate before checking
-prepared global-memory facts and before selecting a destination register.
+Result: expected failure remains, `total=1 passed=0 failed=1`, but the old
+F64 global-memory type-gate diagnostic is gone. The new downstream owner is:
 
-Prepared facts are present before the RV64 gate:
-
-- BIR/prepared target type fact: `foo` contains
-  `bir.load_global double @d`.
-- Target storage fact: `%t0` is assigned FPR storage, `ft0`.
-- Global-memory access fact: prepared addressing records
-  `base=global_symbol result=%t0 symbol=d offset=0 size=8 align=8
-  base_plus_offset=yes layout_authority=scalar_layout
-  range_verdict=proven_in_bounds`.
-- Prepared object-data ownership does not appear to be the first blocker:
-  `double d;` is an implicit-zero global, and
-  `populate_prepared_object_data_plans(...)` publishes BSS zero-fill facts for
-  eligible implicit-zero globals.
-- Relocation emission has not occurred yet because
-  `build_rv64_prepared_text_object_module_with_diagnostics(...)` admits and
-  lowers functions before `append_rv64_prepared_data_objects(...)`; the global
-  symbol fact needed for the eventual PC-relative relocation is present.
+```text
+unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering
+```
 
 ## Suggested Next
 
-Executor packet for plan Step 2, `Add Focused F64 Global-Memory Coverage`:
+Executor packet for plan Step 4, `Reconcile Representative And Residual Owner`:
 
-- Objective: add focused backend coverage for RV64 prepared `F64` global-memory
-  load consumption, proving the target consumes an explicit prepared
-  global-symbol access with FPR destination storage and does not infer missing
-  prepared facts.
-- Owned files: `todo.md`, focused backend tests for RV64 prepared global-memory
-  object emission, and the minimal RV64 prepared global-memory consumer code
-  only if the coverage cannot be expressed against the current public helpers.
-- Do not touch: `plan.md`, `ideas/open/563_rv64_f64_global_memory_consumption.md`,
-  `ideas/closed/`, `review/`, expectation files, unsupported markers,
-  allowlists, prepared object-data production, zero-fill contracts, F128,
-  long-double, stack-frame, or FPR callee-saved work.
-- Coverage requirements: include a prepared `double` / `F64` global load with
-  explicit prepared global-symbol memory access facts, `size=8` / `align=8`,
-  scalar-layout and proven-in-bounds authority, and FPR destination storage.
-  Also prove absence of the required prepared access facts remains fail-closed.
-- Proof command:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
-```
-
-- Done when: focused coverage either fails at the current RV64 F64 type gate or
-  directly proves the repaired contract; backend proof is recorded in
-  `todo.md`; and no testcase-shaped shortcut, diagnostic filter, expectation
-  rewrite, or weakened unsupported contract is used as progress.
+- Classify the recorded `unsupported_terminator_fragment` residual as
+  downstream from this F64 global-memory source idea.
+- Recommend lifecycle close or split based on whether the terminator residual
+  is already covered by an existing open idea.
 
 ## Watchouts
 
-- Keep ownership in RV64 prepared global-memory consumption. Current evidence
-  does not move ownership back to prepared producer state.
-- The integer/pointer global-memory path uses GPR load/store helpers. F64
-  global loads need an FPR-aware lane, likely `fld`-style consumption of the
-  already-prepared global-symbol base-plus-offset facts.
-- Do not mix F128, long-double, stack-frame, FPR callee-saved slot, or prepared
-  zero-fill work into this lane.
+- The focused repair covers prepared F64 `LoadGlobalInst` consumption only.
+  It does not implement F64 stores, F32 globals, F128, long-double, stack-frame,
+  or FPR callee-saved work.
+- The focused test intentionally uses a void function so the coverage remains
+  about global-memory consumption, not F64 return ABI lowering.
+- The representative has advanced to a downstream terminator-lowering residual;
+  keep that owner distinct from this prepared F64 global-memory consumer lane.
 - Do not special-case `src/20001121-1.c`, diagnostic strings, allowlists,
   expected outputs, unsupported markers, or pass/fail accounting.
 
 ## Proof
 
-Inspection-only packet. No `test_after.log` was written.
-
-Commands/logs:
+Required proof command:
 
 ```sh
-printf '%s\n' src/20001121-1.c > build/agent_state/563_step1_f64_global_boundary.allowlist && ALLOWLIST=build/agent_state/563_step1_f64_global_boundary.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/563_step1_f64_global_boundary.log 2>&1
-build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20001121-1.c > build/agent_state/563_step1_f64_global_boundary.prepared.txt 2> build/agent_state/563_step1_f64_global_boundary.prepared.err
-build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20001121-1.c > build/agent_state/563_step1_f64_global_boundary.bir.txt 2> build/agent_state/563_step1_f64_global_boundary.bir.err
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
 ```
 
-Representative result: `total=1 passed=0 failed=1`.
+Result: passed, `345/345` backend tests. Log path: `test_after.log`.
+
+Supervisor follow-up checks:
+
+- Regression guard passed: before=`345/0`, after=`345/0`.
+- Representative probe log:
+  `build/agent_state/563_step2_f64_global_after.log`.
+- Representative result: `total=1 passed=0 failed=1`; old F64 global-memory
+  type-gate diagnostic gone; downstream terminator residual recorded above.

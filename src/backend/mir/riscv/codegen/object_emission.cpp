@@ -7726,7 +7726,9 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                                prepared_block_label,
                                                                instruction_index);
     const auto size_bytes = rv64_global_scalar_memory_size_for_type(load->result.type);
-    if (!size_bytes.has_value()) {
+    const auto floating_size_bytes =
+        rv64_global_floating_memory_size_for_type(load->result.type);
+    if (!size_bytes.has_value() && !floating_size_bytes.has_value()) {
       return std::string{
           "unsupported_global_data: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared global memory accesses"};
     }

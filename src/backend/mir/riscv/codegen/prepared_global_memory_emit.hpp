@@ -19,6 +19,9 @@ struct PreparedCurrentInstructionContext;
 [[nodiscard]] std::optional<std::size_t> rv64_global_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
+[[nodiscard]] std::optional<std::size_t> rv64_global_floating_memory_size_for_type(
+    c4c::backend::bir::TypeKind type);
+
 [[nodiscard]] std::optional<RiscvEncodedFragment>
 fragment_for_prepared_symbol_address_materialization(
     const c4c::backend::prepare::PreparedBirModule& prepared,
