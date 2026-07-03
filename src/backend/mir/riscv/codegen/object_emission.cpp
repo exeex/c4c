@@ -1719,6 +1719,8 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     std::uint32_t destination_register,
@@ -1814,6 +1816,8 @@ fragment_for_prepared_out_of_ssa_moves(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     std::size_t stack_frame_bytes,
     prepare::PreparedObjectTraversalEventKind event_kind,
     const c4c::backend::prepare::PreparedParallelCopyBundle& parallel_copy_bundle,
@@ -1965,6 +1969,7 @@ fragment_for_prepared_out_of_ssa_moves(
               control_flow,
               function,
               lookups,
+              carrier_alias_authorities,
               move_bundle,
               move,
               *destination,
@@ -2189,6 +2194,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
           control_flow,
           function,
           lookups,
+          carrier_alias_authorities,
           stack_frame_bytes,
           event_kind,
           *parallel_copy_bundle,
@@ -5865,6 +5871,24 @@ bool prepared_select_edge_binary_source_has_authorized_consumers(
              function_name, carrier_alias_authorities, publication);
 }
 
+bool prepared_select_edge_publication_has_emittable_source_block(
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    const c4c::backend::prepare::PreparedJoinTransfer& join_transfer) {
+  if (!publication.source_producer_block_label.has_value()) {
+    return false;
+  }
+  if (*publication.source_producer_block_label == join_transfer.join_block_label) {
+    return true;
+  }
+  return *publication.source_producer_block_label == publication.predecessor_label &&
+         publication.successor_label == join_transfer.join_block_label &&
+         publication.parallel_copy_execution_site ==
+             c4c::backend::prepare::PreparedParallelCopyExecutionSite::
+                 PredecessorTerminator &&
+         publication.parallel_copy_execution_block_label ==
+             std::optional<c4c::BlockLabelId>{publication.predecessor_label};
+}
+
 bool prepared_value_names_match(const c4c::backend::prepare::PreparedNameTables& names,
                                 const c4c::backend::bir::Value& lhs,
                                 const c4c::backend::bir::Value& rhs) {
@@ -6059,6 +6083,8 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     std::uint32_t destination_register,
@@ -6123,17 +6149,26 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
     return {.matched = true};
   }
 
-  const auto* source_block =
-      find_prepared_bir_block_by_prepared_label(names,
-                                                function,
-                                                join_transfer.join_block_label);
-  if (source_block == nullptr) {
-    return {.matched = true};
-  }
-  const auto* binary =
-      find_prepared_binary_producer_in_block(names,
-                                             *source_block,
-                                             parallel_copy_move->source_value);
+  std::optional<c4c::BlockLabelId> source_producer_block_label;
+  const c4c::backend::bir::BinaryInst* binary = nullptr;
+  auto find_binary_in_source_block = [&](c4c::BlockLabelId block_label) {
+    if (binary != nullptr) {
+      return;
+    }
+    const auto* source_block =
+        find_prepared_bir_block_by_prepared_label(names, function, block_label);
+    if (source_block == nullptr) {
+      return;
+    }
+    binary = find_prepared_binary_producer_in_block(names,
+                                                   *source_block,
+                                                   parallel_copy_move->source_value);
+    if (binary != nullptr) {
+      source_producer_block_label = block_label;
+    }
+  };
+  find_binary_in_source_block(*move_bundle.source_parallel_copy_predecessor_label);
+  find_binary_in_source_block(join_transfer.join_block_label);
   if (binary == nullptr ||
       !c4c::backend::bir::is_compare_opcode(binary->opcode) ||
       binary->result.type != c4c::backend::bir::TypeKind::I32 ||
@@ -6142,12 +6177,41 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
                                                                 binary->lhs) ||
       !rv64_select_edge_binary_operand_is_register_or_immediate(names,
                                                                 lookups,
-                                                                binary->rhs) ||
+                                                                binary->rhs)) {
+    return {.matched = true};
+  }
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      lookups == nullptr ? nullptr : &lookups->edge_publications,
+      *move_bundle.source_parallel_copy_predecessor_label,
+      *move_bundle.source_parallel_copy_successor_label,
+      move.to_value_id);
+  const bool has_authorized_consumers =
+      publication != nullptr &&
+      publication->status ==
+          prepare::PreparedEdgePublicationLookupStatus::Available &&
+      publication->carrier_kind ==
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization &&
+      publication->source_value_id ==
+          std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      publication->source_producer_kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+      publication->source_binary == binary &&
+      publication->join_transfer == &join_transfer &&
+      prepared_select_edge_binary_source_has_authorized_consumers(
+          names,
+          control_flow,
+          function,
+          control_flow.function_name,
+          carrier_alias_authorities,
+          *binary,
+          *publication,
+          join_transfer);
+  if (!has_authorized_consumers &&
       !prepared_select_edge_binary_source_has_only_carrier_uses(names,
-                                                                control_flow,
-                                                                function,
-                                                                *binary,
-                                                                join_transfer)) {
+                                                               control_flow,
+                                                               function,
+                                                               *binary,
+                                                               join_transfer)) {
     return {.matched = true};
   }
 
@@ -6166,7 +6230,7 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
       names,
       function,
       lookups,
-      join_transfer.join_block_label,
+      *source_producer_block_label,
       *binary,
       stack_frame_bytes);
   if (!fragment.has_value()) {
@@ -6224,6 +6288,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
         control_flow,
         function,
         lookups,
+        carrier_alias_authorities,
         move_bundle,
         move,
         destination_register,
@@ -6243,8 +6308,9 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
   if (join_transfer == nullptr || binary == nullptr ||
       !prepared_join_transfer_edge_copies_are_published(control_flow,
                                                         *join_transfer) ||
-      publication->source_producer_block_label !=
-          join_transfer->join_block_label) {
+      !prepared_select_edge_publication_has_emittable_source_block(
+          *publication,
+          *join_transfer)) {
     return {.matched = true};
   }
   if (!c4c::backend::bir::is_compare_opcode(binary->opcode) ||
@@ -6360,8 +6426,9 @@ bool prepared_binary_is_select_edge_owned_source(
         publication.join_transfer == nullptr ||
         !prepared_join_transfer_edge_copies_are_published(control_flow,
                                                           *publication.join_transfer) ||
-        publication.source_producer_block_label !=
-            publication.join_transfer->join_block_label ||
+        !prepared_select_edge_publication_has_emittable_source_block(
+            publication,
+            *publication.join_transfer) ||
         !c4c::backend::bir::is_compare_opcode(binary.opcode) ||
         binary.result.type != c4c::backend::bir::TypeKind::I32 ||
         !rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
