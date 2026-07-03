@@ -2736,6 +2736,34 @@ prepare::PreparedCallArgumentSourceSelection prior_preserved_s2_selection(
   };
 }
 
+prepare::PreparedCallArgumentSourceSelection ptrtoint_d_preserved_s1_selection(
+    c4c::ValueNameId source_name) {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+      .source_value_id = prepare::PreparedValueId{4},
+      .source_value_name = source_name,
+      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      .source_size_bytes = std::size_t{8},
+      .source_align_bytes = std::size_t{8},
+      .preserved_call_block_index = std::size_t{0},
+      .preserved_call_instruction_index = std::size_t{1},
+      .preservation_route =
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+      .preserved_register_name = std::string{"s1"},
+      .preserved_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .preserved_register_contiguous_width = std::size_t{1},
+      .preserved_occupied_register_names = {std::string{"s1"}},
+      .preserved_register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+              .slot_index = 1,
+              .contiguous_width = 1,
+          },
+      .preserved_callee_saved_save_index = std::size_t{0},
+  };
+}
+
 prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
@@ -2971,6 +2999,281 @@ prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
       .align_bytes = std::size_t{8},
       .fixed_location = true,
   };
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers =
+          {prepare::PreparedSavedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "s1",
+              .contiguous_width = 1,
+              .occupied_register_names = {"s1"},
+              .save_index = 0,
+              .placement = s1_placement,
+              .slot_placement = s1_slot,
+          }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule
+make_prepared_ptrtoint_param_survives_nested_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto consume_name = prepared.names.function_names.intern("consume_bits");
+  const auto keep_name = prepared.names.function_names.intern("nested_keep");
+  const auto function_name =
+      prepared.names.function_names.intern("ptrtoint_param_survives_call");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto param_a_name = prepared.names.value_names.intern("%p.a");
+  const auto param_b_name = prepared.names.value_names.intern("%p.b");
+  const auto param_c_name = prepared.names.value_names.intern("%p.c");
+  const auto int_name = prepared.names.value_names.intern("%d");
+
+  bir::Block consume_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  bir::Block keep_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+
+  bir::CastInst cast;
+  cast.opcode = bir::CastOpcode::PtrToInt;
+  cast.result = bir::Value::named(bir::TypeKind::I64, "%d");
+  cast.operand = bir::Value::named(bir::TypeKind::Ptr, "%p.c");
+
+  bir::CallInst keep_call;
+  keep_call.callee = "nested_keep";
+  keep_call.return_type = bir::TypeKind::Void;
+
+  bir::CallInst consume_call;
+  consume_call.callee = "consume_bits";
+  consume_call.args = {bir::Value::named(bir::TypeKind::I64, "%d")};
+  consume_call.arg_types = {bir::TypeKind::I64};
+  consume_call.return_type = bir::TypeKind::Void;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {cast, keep_call, consume_call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "consume_bits",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::I64,
+          .name = "%p.bits",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(consume_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "nested_keep",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(keep_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "ptrtoint_param_survives_call",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params =
+          {
+              bir::Param{
+                  .type = bir::TypeKind::I64,
+                  .name = "%p.a",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+              bir::Param{
+                  .type = bir::TypeKind::I64,
+                  .name = "%p.b",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+              bir::Param{
+                  .type = bir::TypeKind::Ptr,
+                  .name = "%p.c",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+          },
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = consume_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = keep_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = consume_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 20,
+          .function_name = consume_name,
+          .value_name = prepared.names.value_names.intern("%p.bits"),
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"a0"},
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = param_a_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = param_b_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a1"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = function_name,
+                  .value_name = param_c_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a2"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 4,
+                  .function_name = function_name,
+                  .value_name = int_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+              },
+          },
+  });
+
+  const prepare::PreparedRegisterPlacement s1_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+                  .direct_callee_name = std::string{"nested_keep"},
+                  .preserved_values = {prepare::PreparedCallPreservedValue{
+                      .value_id = prepare::PreparedValueId{4},
+                      .value_name = int_name,
+                      .route = prepare::PreparedCallPreservationRoute::
+                          CalleeSavedRegister,
+                      .callee_saved_save_index = std::size_t{0},
+                      .contiguous_width = 1,
+                      .register_name = std::string{"s1"},
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {std::string{"s1"}},
+                      .register_placement = s1_placement,
+                      .preservation_source =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .value_id = prepare::PreparedValueId{4},
+                              .value_name = int_name,
+                              .register_name = std::string{"s1"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .contiguous_width = 1,
+                              .occupied_register_names = {std::string{"s1"}},
+                          },
+                      .preservation_destination =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .value_id = prepare::PreparedValueId{4},
+                              .value_name = int_name,
+                              .register_name = std::string{"s1"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .contiguous_width = 1,
+                              .occupied_register_names = {std::string{"s1"}},
+                              .callee_saved_save_index = std::size_t{0},
+                              .register_placement = s1_placement,
+                          },
+                  }},
+              },
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 2,
+                  .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+                  .direct_callee_name = std::string{"consume_bits"},
+                  .arguments = {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 2,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{4},
+                      .source_register_name = std::string{"s1"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .source_selection =
+                          ptrtoint_d_preserved_s1_selection(int_name),
+                  }},
+              },
+          },
+  });
+
+  const prepare::PreparedSavedRegisterSlotPlacement s1_slot{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s1"},
+      .save_index = 0,
+      .register_placement = s1_placement,
+      .slot_id = prepare::PreparedFrameSlotId{20},
+      .stack_offset_bytes = std::size_t{0},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = consume_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = keep_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+  });
   prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
       .function_name = function_name,
       .frame_size_bytes = 16,
@@ -12108,6 +12411,61 @@ int builds_prepared_prior_preserved_arg_call_object() {
   return 0;
 }
 
+int builds_prepared_ptrtoint_param_survives_nested_same_module_call_object() {
+  const auto prepared =
+      make_prepared_ptrtoint_param_survives_nested_same_module_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared ptrtoint-param nested-call RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* consume = object::find_symbol(module, "consume_bits");
+  const auto* keep = object::find_symbol(module, "nested_keep");
+  const auto* main = object::find_symbol(module, "ptrtoint_param_survives_call");
+  if (text == nullptr || consume == nullptr || keep == nullptr || main == nullptr) {
+    return fail("expected ptrtoint-param nested-call object to publish text/functions");
+  }
+  if (module.relocations.size() != 2 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[1].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[1].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != keep->id ||
+      module.relocations[1].symbol != consume->id ||
+      module.relocations[0].offset >= module.relocations[1].offset ||
+      module.relocations[0].offset < main->value ||
+      module.relocations[1].offset >= main->value + main->size_bytes) {
+    return fail("expected ordered nested_keep/consume_bits same-module call relocations");
+  }
+  const auto keep_call_offset = module.relocations[0].offset;
+  const auto consume_call_offset = module.relocations[1].offset;
+  bool materialized_c_to_d = false;
+  for (std::size_t offset = main->value; offset + 4 <= keep_call_offset;
+       offset += 4) {
+    if (read_u32(text->bytes, offset) == 0x00060493) {
+      materialized_c_to_d = true;
+      break;
+    }
+  }
+  if (!materialized_c_to_d) {
+    return fail("expected incoming pointer parameter in a2 to materialize as ptrtoint local in s1 before nested call");
+  }
+  if (read_u32(text->bytes, consume_call_offset - 4) != 0x00048513) {
+    return fail("expected nested-call-preserved ptrtoint local in s1 to feed a0 for later same-module call");
+  }
+  const auto epilogue_offset = main->value + main->size_bytes - 16;
+  if (read_u32(text->bytes, epilogue_offset + 0) != 0x00013483 ||
+      read_u32(text->bytes, epilogue_offset + 4) != 0x01813083 ||
+      read_u32(text->bytes, epilogue_offset + 8) != 0x02010113 ||
+      read_u32(text->bytes, epilogue_offset + 12) != 0x00008067) {
+    return fail("expected s1 preservation to survive through function epilogue");
+  }
+  return 0;
+}
+
 int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
   auto prepared = make_prepared_prior_preserved_arg_call_module();
   prepared.call_plans.functions[0]
@@ -20266,6 +20624,8 @@ int main() {
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_prior_result_multi_gpr_same_module_call_object();
   status |= builds_prepared_prior_preserved_arg_call_object();
+  status |=
+      builds_prepared_ptrtoint_param_survives_nested_same_module_call_object();
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();
   status |= builds_byval_stack_slot_param_home_object();
   status |= rejects_byval_stack_slot_param_home_fail_closed_shapes();
