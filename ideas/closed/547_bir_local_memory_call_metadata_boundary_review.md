@@ -1,6 +1,6 @@
 # BIR Local-Memory And Call-Metadata Boundary Review
 
-Status: Open
+Status: Closed
 Type: Producer-boundary review
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: BIR semantic producer and prepared contract
@@ -43,6 +43,30 @@ work in a producer-boundary review until row-level evidence exists.
   lowering proceeds.
 - No tests, expectations, or unsupported markers are weakened.
 
+## Completion Notes
+
+Closed after Step 4 split the retained evidence into two narrower follow-up
+ideas:
+
+- `ideas/open/561_prepared_local_address_base_plus_offset_boundary_evidence.md`
+  owns the retained 41-row local-memory prepared/RV64 evidence gap.
+- `ideas/open/562_bir_direct_call_semantic_boundary_evidence.md` owns the
+  retained 26-row BIR direct-call semantic boundary evidence gap.
+
+Step 3 classified `prepared_local_address_base_plus_offset_missing` as a
+prepared/RV64 evidence gap rather than a BIR-owned implementation route.
+Representative retained logs reach the RV64 object route, but focused prepared
+dumps are still required to prove whether the prepared base-plus-offset fact is
+missing/incoherent or present and rejected.
+
+Step 3 classified `semantic_lir_to_bir_direct_call_family` as BIR-owned at the
+direct-call semantic boundary, with a remaining focused evidence gap inside
+`BirFunctionLowerer::lower_call_inst`. The follow-up must name the missing
+callee, argument, return, byval/sret, or publication fact before repair.
+
+The latest summary-file rows remain separate from the retained work-root
+evidence until a fresh matching scan replaces the mixed summary state.
+
 ## Reviewer Reject Signals
 
 - Reject RV64 memory or call lowering that recovers missing address, argument,
@@ -54,4 +78,3 @@ work in a producer-boundary review until row-level evidence exists.
   call-metadata rows.
 - Reject keeping the exact old local-memory failure mode behind a new
   abstraction name.
-
