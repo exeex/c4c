@@ -3314,6 +3314,69 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   return static_cast<std::int32_t>(offset);
 }
 
+std::optional<std::int32_t> prepared_frame_slot_value_home_call_argument_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    c4c::backend::bir::TypeKind argument_type,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      !argument.source_value_id.has_value() ||
+      !argument.source_slot_id.has_value() ||
+      !argument.source_selection.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& selection = *argument.source_selection;
+  const auto route_report =
+      prepare::verify_prepared_frame_slot_value_source_route_contract(&selection);
+  const auto route = prepare::as_frame_slot_value_source_route(selection);
+  if (route_report.fail_closed || !route.has_value() ||
+      route->source_value_id != *argument.source_value_id) {
+    return std::nullopt;
+  }
+
+  const auto size_bytes = rv64_scalar_memory_size_for_type(argument_type);
+  const auto* source_home =
+      prepared_value_home_for_id(lookups, *argument.source_value_id);
+  if (!size_bytes.has_value() ||
+      route->source_size_bytes != *size_bytes ||
+      route->source_align_bytes > *size_bytes ||
+      source_home == nullptr ||
+      source_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !source_home->slot_id.has_value() ||
+      *source_home->slot_id != *argument.source_slot_id ||
+      !source_home->offset_bytes.has_value() ||
+      (argument.source_stack_offset_bytes.has_value() &&
+       *argument.source_stack_offset_bytes != *source_home->offset_bytes)) {
+    return std::nullopt;
+  }
+
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *source_home->slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      slot_it->offset_bytes != *source_home->offset_bytes ||
+      slot_it->size_bytes < *size_bytes ||
+      slot_it->align_bytes > *size_bytes) {
+    return std::nullopt;
+  }
+
+  const auto offset = *source_home->offset_bytes;
+  if (offset > stack_frame_bytes ||
+      stack_frame_bytes - offset < *size_bytes ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+  return static_cast<std::int32_t>(offset);
+}
+
 std::optional<std::int32_t> prepared_sret_memory_return_argument_address_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -4029,12 +4092,20 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
     if (argument.source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
         arg_index < call.arg_types.size()) {
-      const auto offset =
+      auto offset =
           prepared_frame_slot_call_argument_offset(stack_layout,
                                                    lookups,
                                                    argument,
                                                    call.arg_types[arg_index],
                                                    stack_frame_bytes);
+      if (!offset.has_value()) {
+        offset = prepared_frame_slot_value_home_call_argument_offset(
+            stack_layout,
+            lookups,
+            argument,
+            call.arg_types[arg_index],
+            stack_frame_bytes);
+      }
       if (!offset.has_value() ||
           !append_rv64_load_stack_to_register(fragment,
                                              *destination,

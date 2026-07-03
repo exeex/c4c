@@ -1,43 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/572_rv64_same_module_call_result_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish Integer/GPR Call Results
+Current Step ID: 3
+Current Step Title: Implement RV64 Same-Module Call Emission
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 audit for ordinary same-module integer/GPR call-result
-publication. No code or test change was needed.
+Completed the Step 3 implementation follow-up for the Step 5
+`src/20000622-1.c` blocker. The RV64 object call emitter now handles ordinary
+same-module GPR call arguments whose physical source is a prepared frame-slot
+home even when the `FrameSlotValue` selection still describes the original
+local slot route. The repair remains semantic: it validates the selected value
+id, scalar size/alignment, prepared value home, argument source slot/offset,
+stack layout slot, and immediate-range offset before loading the argument.
 
-- The exact register-result publication path is
-  `fragment_for_prepared_call(...)` after the emitted `R_RISCV_CALL_PLT`
-  call pair: require `call.result` and `call_plan->result` to agree; require a
-  register-to-register GPR result plan with `destination_value_id`,
-  `source_register_name`, and `destination_register_name`; reject floating
-  result types; resolve the ABI result source with
-  `rv64_register_number(result.source_register_name)`; resolve the owner home
-  with `prepared_value_home_for_id(lookups, result.destination_value_id)`; map
-  that register home with `gpr_register_number_for_home(...)`; require the
-  prepared home to be a register matching the planned destination; then publish
-  by `append_rv64_move(fragment, destination, source)`.
-- `builds_prepared_immediate_null_same_module_call_object()` proves the
-  integer call result is copied from `a0` to the owner GPR and then used by the
-  later return move.
-- `builds_prepared_prior_result_multi_gpr_same_module_call_object()` proves a
-  first call result is published from `a0` to `%first`, then consumed as a GPR
-  argument to a second same-module call, and also proves the second call result
-  is published before later return use.
+Focused backend coverage now includes a representative-shaped same-module call
+with two frame-slot GPR source arguments loaded into `a0`/`a1`, a prior-
+preserved GPR source argument moved from `s2` into `a2`, and the call result
+published from `a0` to the prepared owner GPR.
+
+Reran `src/20000622-1.c` with absolute artifact/output paths:
+
+- `src/20000412-2.c`: `rc=0`,
+  `classification=lowered_and_runtime_matched`; log:
+  `build/agent_state/572_rv64_same_module_call_result_lowering/src_20000412-2.c/object-route.log`.
+  The representative now passes the RV64 object-route compile, link, and qemu
+  runtime comparison.
+- `src/20000622-1.c`: `rc=1`,
+  `classification=blocked_by_later_non_call_family`; log:
+  `build/agent_state/572_rv64_same_module_call_result_lowering/src_20000622-1.c/object-route.log`.
+  It moved past `still_old_generic_call_fallback`.
+- Exact remaining first blocker:
+  `[RV64_BACKEND_RUNTIME_MISMATCH]` for
+  `/workspaces/c4c/tests/c/external/gcc_torture/src/20000622-1.c`,
+  with `clang_exit=0` and `c4c_exit=Subprocess aborted`.
+- Updated summary artifact:
+  `build/agent_state/572_rv64_same_module_call_result_lowering/summary.tsv`.
 
 ## Suggested Next
 
-Run the Step 5 representative evidence packet for `src/20000412-2.c` and
-`src/20000622-1.c`.
+Proceed to Step 6 close-readiness review for this runbook. The source idea's
+call-fallback acceptance condition is satisfied for both representatives; the
+new `src/20000622-1.c` runtime abort should be classified before any separate
+follow-up idea is opened.
 
 ## Watchouts
 
-- This plan is limited to ordinary same-module RV64 call/result lowering.
+- This plan remains limited to ordinary same-module RV64 call/result lowering.
 - Do not treat `llvm.inline_asm` carriers as ordinary calls.
 - Do not implement select, floating-point binary, pointer arithmetic,
   prepared-authority, broad ABI, or runtime-comparison work here.
@@ -48,22 +59,26 @@ Run the Step 5 representative evidence packet for `src/20000412-2.c` and
 - Unsupported ordinary call ABI forms still fail closed through the existing
   generic `unsupported_instruction_fragment` surface in this bounded packet;
   precise call-specific diagnostics were not implemented here.
-- Register-destination GPR call results are covered by the focused tests. The
-  audited path rejects missing result owners/homes, non-register destinations,
-  non-GPR banks, mismatched prepared homes, and floating result types by
-  returning `std::nullopt` to the existing fail-closed diagnostic surface.
-- Stack-slot, FP, varargs, aggregate, and broad external-call result forms are
-  outside this Step 4 packet.
-- `emit_riscv_simple_call(...)` also allows `DirectExternFixedArity`; the 572
-  slice should keep same-module semantics as the proof focus and avoid
-  widening into broad external ABI policy.
+- The `src/20000622-1.c` rerun now reaches runtime execution and aborts, so
+  any next packet should first classify the abort before expanding code changes.
 
 ## Proof
 
-Run:
+Ran:
 
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`
 
 Result: build succeeded; focused `backend_riscv_object_emission` CTest passed.
 
 Proof log: `test_after.log`.
+
+Representative rerun:
+
+`src/20000412-2.c` was rerun through `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` with absolute `OUT_CLANG_BIN`, `OUT_OBJECT`, and `OUT_C4C_BIN` paths under `/workspaces/c4c/build/agent_state/572_rv64_same_module_call_result_lowering/src_20000412-2.c/`.
+
+Result: `lowered_and_runtime_matched`.
+
+`src/20000622-1.c` was rerun through `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` with absolute `OUT_CLANG_BIN`, `OUT_OBJECT`, and `OUT_C4C_BIN` paths under `/workspaces/c4c/build/agent_state/572_rv64_same_module_call_result_lowering/src_20000622-1.c/`.
+
+Result: moved past `still_old_generic_call_fallback`; now blocked by
+`[RV64_BACKEND_RUNTIME_MISMATCH]` with `c4c_exit=Subprocess aborted`.

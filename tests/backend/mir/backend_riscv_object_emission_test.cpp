@@ -2705,6 +2705,34 @@ prepare::PreparedCallArgumentSourceSelection prior_preserved_s1_selection(
   };
 }
 
+prepare::PreparedCallArgumentSourceSelection prior_preserved_s2_selection(
+    c4c::ValueNameId source_name, prepare::PreparedValueId source_id) {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+      .source_value_id = source_id,
+      .source_value_name = source_name,
+      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      .source_size_bytes = std::size_t{8},
+      .source_align_bytes = std::size_t{8},
+      .preserved_call_block_index = std::size_t{0},
+      .preserved_call_instruction_index = std::size_t{1},
+      .preservation_route =
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+      .preserved_register_name = std::string{"s2"},
+      .preserved_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .preserved_register_contiguous_width = std::size_t{1},
+      .preserved_occupied_register_names = {std::string{"s2"}},
+      .preserved_register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+              .slot_index = 2,
+              .contiguous_width = 1,
+          },
+      .preserved_callee_saved_save_index = std::size_t{0},
+  };
+}
+
 prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
@@ -9542,6 +9570,260 @@ prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_frame_slot_value_and_prior_preserved_arg_call_module() {
+  auto prepared = make_prepared_frame_slot_value_arg_call_module();
+  const auto keep_name = prepared.names.function_names.intern("keep");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto prior_name = prepared.names.value_names.intern("%p.b");
+  const auto second_spill_name = prepared.names.value_names.intern("%spill2");
+
+  bir::CallInst keep_call;
+  keep_call.callee = "keep";
+  keep_call.return_type = bir::TypeKind::Void;
+
+  auto& sink = prepared.module.functions[0];
+  sink.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "%p.y",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  sink.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "%p.z",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  auto& main = prepared.module.functions[1];
+  main.return_type = bir::TypeKind::I64;
+  main.return_size_bytes = 8;
+  main.return_align_bytes = 8;
+  main.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "%p.b",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  auto& entry = main.blocks[0];
+  entry.insts.insert(entry.insts.begin() + 1, keep_call);
+  auto* sink_call = std::get_if<bir::CallInst>(&entry.insts[2]);
+  if (sink_call != nullptr) {
+    sink_call->result = bir::Value::named(bir::TypeKind::I64, "%result");
+    sink_call->args = {bir::Value::named(bir::TypeKind::I64, "%spill"),
+                       bir::Value::named(bir::TypeKind::I64, "%spill2"),
+                       bir::Value::named(bir::TypeKind::I64, "%p.b")};
+    sink_call->arg_types = {bir::TypeKind::I64,
+                            bir::TypeKind::I64,
+                            bir::TypeKind::I64};
+    sink_call->return_type = bir::TypeKind::I64;
+  }
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I64, "%result");
+
+  bir::Block keep_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "keep",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(keep_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = keep_name,
+  });
+
+  auto& sink_homes = prepared.value_locations.functions[0].value_homes;
+  sink_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 20,
+      .function_name = prepared.names.function_names.intern("sink"),
+      .value_name = prepared.names.value_names.intern("%p.y"),
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a1"},
+  });
+  sink_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 21,
+      .function_name = prepared.names.function_names.intern("sink"),
+      .value_name = prepared.names.value_names.intern("%p.z"),
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a2"},
+  });
+
+  auto& main_homes = prepared.value_locations.functions[1].value_homes;
+  main_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 4,
+      .function_name = main_name,
+      .value_name = second_spill_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{4},
+      .offset_bytes = 24,
+  });
+  main_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 5,
+      .function_name = main_name,
+      .value_name = prior_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a1"},
+  });
+  main_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 6,
+      .function_name = main_name,
+      .value_name = prepared.names.value_names.intern("%result"),
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+
+  auto sink_plan = prepared.call_plans.functions[0].calls[0];
+  sink_plan.instruction_index = 2;
+  auto& first_arg = sink_plan.arguments[0];
+  first_arg.instruction_index = 2;
+  first_arg.source_selection->source_slot_id = prepare::PreparedFrameSlotId{0};
+  first_arg.source_selection->source_stack_offset_bytes = std::size_t{0};
+  sink_plan.arguments.push_back(prepare::PreparedCallArgumentPlan{
+      .instruction_index = 2,
+      .arg_index = 1,
+      .value_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+      .source_value_id = prepare::PreparedValueId{4},
+      .source_slot_id = prepare::PreparedFrameSlotId{4},
+      .source_stack_offset_bytes = 24,
+      .destination_register_name = std::string{"a1"},
+      .destination_contiguous_width = 1,
+      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_selection = prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          .source_value_id = prepare::PreparedValueId{4},
+          .source_value_name = second_spill_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+          .source_slot_id = prepare::PreparedFrameSlotId{4},
+          .source_stack_offset_bytes = 24,
+          .source_size_bytes = 8,
+          .source_align_bytes = 8,
+      },
+  });
+  sink_plan.arguments.push_back(prepare::PreparedCallArgumentPlan{
+      .instruction_index = 2,
+      .arg_index = 2,
+      .value_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+      .source_value_id = prepare::PreparedValueId{5},
+      .source_register_name = std::string{"a1"},
+      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .destination_register_name = std::string{"a2"},
+      .destination_contiguous_width = 1,
+      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_selection =
+          prior_preserved_s2_selection(prior_name, prepare::PreparedValueId{5}),
+  });
+  sink_plan.result = prepare::PreparedCallResultPlan{
+      .instruction_index = 2,
+      .value_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_value_id = prepare::PreparedValueId{6},
+      .source_register_name = std::string{"a0"},
+      .source_contiguous_width = 1,
+      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .destination_register_name = std::string{"t0"},
+      .destination_contiguous_width = 1,
+      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+  };
+
+  const prepare::PreparedRegisterPlacement s2_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 2,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedCallPlan keep_plan{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+      .direct_callee_name = std::string{"keep"},
+      .preserved_values = {prepare::PreparedCallPreservedValue{
+          .value_id = prepare::PreparedValueId{5},
+          .value_name = prior_name,
+          .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .callee_saved_save_index = std::size_t{0},
+          .contiguous_width = 1,
+          .register_name = std::string{"s2"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .occupied_register_names = {std::string{"s2"}},
+          .register_placement = s2_placement,
+          .preservation_source =
+              prepare::PreparedCallBoundaryEffectEndpoint{
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .value_id = prepare::PreparedValueId{5},
+                  .value_name = prior_name,
+                  .register_name = std::string{"a1"},
+                  .register_bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .occupied_register_names = {std::string{"a1"}},
+              },
+          .preservation_destination =
+              prepare::PreparedCallBoundaryEffectEndpoint{
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .value_id = prepare::PreparedValueId{5},
+                  .value_name = prior_name,
+                  .register_name = std::string{"s2"},
+                  .register_bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .occupied_register_names = {std::string{"s2"}},
+                  .callee_saved_save_index = std::size_t{0},
+                  .register_placement = s2_placement,
+              },
+      }},
+  };
+  prepared.call_plans.functions[0].calls = {keep_plan, sink_plan};
+
+  const prepare::PreparedSavedRegisterSlotPlacement s2_slot{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s2",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s2"},
+      .save_index = 0,
+      .register_placement = s2_placement,
+      .slot_id = prepare::PreparedFrameSlotId{20},
+      .stack_offset_bytes = std::size_t{0},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = keep_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+  });
+  auto& main_frame = prepared.frame_plan.functions[1];
+  main_frame.frame_size_bytes = 40;
+  main_frame.frame_alignment_bytes = 16;
+  main_frame.frame_slot_order.push_back(prepare::PreparedFrameSlotId{4});
+  main_frame.saved_callee_registers = {prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s2",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s2"},
+      .save_index = 0,
+      .placement = s2_placement,
+      .slot_placement = s2_slot,
+  }};
+  prepared.stack_layout.frame_size_bytes = 40;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{4},
+      .function_name = main_name,
+      .offset_bytes = 24,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("sink");
@@ -16225,6 +16507,46 @@ int builds_prepared_frame_slot_value_arg_call_object() {
   return 0;
 }
 
+int builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object() {
+  const auto prepared =
+      make_prepared_frame_slot_value_and_prior_preserved_arg_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared frame-slot/prior-preserved arg call RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* sink = object::find_symbol(module, "sink");
+  const auto* keep = object::find_symbol(module, "keep");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || sink == nullptr || keep == nullptr || main == nullptr) {
+    return fail("expected frame-slot/prior-preserved arg call object to publish text/functions");
+  }
+  if (module.relocations.size() != 2 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[1].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[1].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != keep->id ||
+      module.relocations[1].symbol != sink->id ||
+      module.relocations[0].offset >= module.relocations[1].offset ||
+      module.relocations[1].offset < main->value + 24) {
+    return fail("expected ordered keep/sink same-module call relocations in main");
+  }
+  const auto sink_call_offset = module.relocations[1].offset;
+  if (read_u32(text->bytes, sink_call_offset - 12) != 0x01013503 ||
+      read_u32(text->bytes, sink_call_offset - 8) != 0x01813583 ||
+      read_u32(text->bytes, sink_call_offset - 4) != 0x00090613) {
+    return fail("expected same-module call to consume two frame-slot GPR args and prior-preserved s2");
+  }
+  if (read_u32(text->bytes, sink_call_offset + 8) != 0x00050293) {
+    return fail("expected same-module call result to publish from a0 to %result owner register");
+  }
+  return 0;
+}
+
 int expect_frame_slot_value_arg_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
@@ -20048,6 +20370,8 @@ int main() {
   status |= publishes_select_publication_stack_home_move_intent_fields();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
+  status |=
+      builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
   status |= builds_prepared_frame_slot_address_arg_call_object();
   status |= builds_prepared_frame_slot_address_arg_call_load_local_payload_object();
