@@ -1792,6 +1792,155 @@ prepare::PreparedBirModule make_prepared_scalar_same_module_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_immediate_null_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  const auto callee_name = prepared.names.function_names.intern("mix");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto param_x_name = prepared.names.value_names.intern("%p.x");
+  const auto param_p_name = prepared.names.value_names.intern("%p.p");
+  const auto main_result_name = prepared.names.value_names.intern("%main.t0");
+
+  bir::Block callee_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  callee_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%p.x");
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%main.t0");
+  call.callee = "mix";
+  call.args = {bir::Value::immediate_i32(100), null_pointer_value()};
+  call.arg_types = {bir::TypeKind::I32, bir::TypeKind::Ptr};
+  call.return_type = bir::TypeKind::I32;
+  bir::Block main_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  main_entry.terminator.value =
+      bir::Value::named(bir::TypeKind::I32, "%main.t0");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "mix",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .params =
+          {
+              bir::Param{
+                  .type = bir::TypeKind::I32,
+                  .name = "%p.x",
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+              },
+              bir::Param{
+                  .type = bir::TypeKind::Ptr,
+                  .name = "%p.p",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+          },
+      .blocks = {std::move(callee_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(main_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = main_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = callee_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = callee_name,
+                  .value_name = param_x_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = callee_name,
+                  .value_name = param_p_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a1"},
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = main_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = main_name,
+                  .value_name = main_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"mix"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal = bir::Value::immediate_i32(100),
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal = null_pointer_value(),
+                      .destination_register_name = std::string{"a1"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+              },
+          .result = prepare::PreparedCallResultPlan{
+              .instruction_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::Register,
+              .destination_value_id = 3,
+              .source_register_name = std::string{"a0"},
+              .source_contiguous_width = 1,
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = std::string{"t0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
@@ -2287,6 +2436,246 @@ prepare::PreparedBirModule make_prepared_two_arg_scalar_call_module() {
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
           },
       }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule
+make_prepared_prior_result_multi_gpr_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  const auto seed_name = prepared.names.function_names.intern("seed");
+  const auto combine_name = prepared.names.function_names.intern("combine");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto combine_x_name = prepared.names.value_names.intern("%p.x");
+  const auto combine_y_name = prepared.names.value_names.intern("%p.y");
+  const auto combine_p_name = prepared.names.value_names.intern("%p.p");
+  const auto first_result_name = prepared.names.value_names.intern("%first");
+  const auto second_result_name = prepared.names.value_names.intern("%second");
+
+  bir::Block seed_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  seed_entry.terminator.value = bir::Value::immediate_i64(11);
+
+  bir::Block combine_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  combine_entry.terminator.value = bir::Value::named(bir::TypeKind::I64, "%p.x");
+
+  bir::CallInst first_call;
+  first_call.result = bir::Value::named(bir::TypeKind::I64, "%first");
+  first_call.callee = "seed";
+  first_call.return_type = bir::TypeKind::I64;
+
+  bir::CallInst second_call;
+  second_call.result = bir::Value::named(bir::TypeKind::I64, "%second");
+  second_call.callee = "combine";
+  second_call.args = {bir::Value::named(bir::TypeKind::I64, "%first"),
+                      bir::Value::immediate_i64(7),
+                      null_pointer_value()};
+  second_call.arg_types = {bir::TypeKind::I64,
+                           bir::TypeKind::I64,
+                           bir::TypeKind::Ptr};
+  second_call.return_type = bir::TypeKind::I64;
+
+  bir::Block main_entry{
+      .label = "entry",
+      .insts = {first_call, second_call},
+      .terminator = bir::Terminator{},
+  };
+  main_entry.terminator.value = bir::Value::named(bir::TypeKind::I64, "%second");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "seed",
+      .return_type = bir::TypeKind::I64,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .blocks = {std::move(seed_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "combine",
+      .return_type = bir::TypeKind::I64,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .params =
+          {
+              bir::Param{
+                  .type = bir::TypeKind::I64,
+                  .name = "%p.x",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+              bir::Param{
+                  .type = bir::TypeKind::I64,
+                  .name = "%p.y",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+              bir::Param{
+                  .type = bir::TypeKind::Ptr,
+                  .name = "%p.p",
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+          },
+      .blocks = {std::move(combine_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I64,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .blocks = {std::move(main_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = seed_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = combine_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = main_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = combine_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = combine_name,
+                  .value_name = combine_x_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = combine_name,
+                  .value_name = combine_y_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a1"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = combine_name,
+                  .value_name = combine_p_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a2"},
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = main_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 4,
+                  .function_name = main_name,
+                  .value_name = first_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 5,
+                  .function_name = main_name,
+                  .value_name = second_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t1"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+                  .direct_callee_name = std::string{"seed"},
+                  .result = prepare::PreparedCallResultPlan{
+                      .instruction_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_value_id = 4,
+                      .source_register_name = std::string{"a0"},
+                      .source_contiguous_width = 1,
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"t0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+              },
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+                  .direct_callee_name = std::string{"combine"},
+                  .arguments =
+                      {
+                          prepare::PreparedCallArgumentPlan{
+                              .instruction_index = 1,
+                              .arg_index = 0,
+                              .value_bank = prepare::PreparedRegisterBank::Gpr,
+                              .source_encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .source_value_id = prepare::PreparedValueId{4},
+                              .source_register_name = std::string{"t0"},
+                              .source_register_bank =
+                                  prepare::PreparedRegisterBank::Gpr,
+                              .destination_register_name = std::string{"a0"},
+                              .destination_contiguous_width = 1,
+                              .destination_register_bank =
+                                  prepare::PreparedRegisterBank::Gpr,
+                          },
+                          prepare::PreparedCallArgumentPlan{
+                              .instruction_index = 1,
+                              .arg_index = 1,
+                              .value_bank = prepare::PreparedRegisterBank::Gpr,
+                              .source_encoding =
+                                  prepare::PreparedStorageEncodingKind::Immediate,
+                              .source_literal = bir::Value::immediate_i64(7),
+                              .destination_register_name = std::string{"a1"},
+                              .destination_contiguous_width = 1,
+                              .destination_register_bank =
+                                  prepare::PreparedRegisterBank::Gpr,
+                          },
+                          prepare::PreparedCallArgumentPlan{
+                              .instruction_index = 1,
+                              .arg_index = 2,
+                              .value_bank = prepare::PreparedRegisterBank::Gpr,
+                              .source_encoding =
+                                  prepare::PreparedStorageEncodingKind::Immediate,
+                              .source_literal = null_pointer_value(),
+                              .destination_register_name = std::string{"a2"},
+                              .destination_contiguous_width = 1,
+                              .destination_register_bank =
+                                  prepare::PreparedRegisterBank::Gpr,
+                          },
+                      },
+                  .result = prepare::PreparedCallResultPlan{
+                      .instruction_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_value_id = 5,
+                      .source_register_name = std::string{"a0"},
+                      .source_contiguous_width = 1,
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"t1"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+              },
+          },
   });
   return prepared;
 }
@@ -10426,6 +10815,41 @@ int builds_prepared_scalar_same_module_call_object() {
   return 0;
 }
 
+int builds_prepared_immediate_null_same_module_call_object() {
+  const auto prepared = make_prepared_immediate_null_same_module_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared immediate/null same-module call to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "mix");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected prepared immediate/null call object to publish text/functions");
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id ||
+      module.relocations[0].offset < main->value + 16) {
+    return fail("expected immediate/null same-module call relocation in main");
+  }
+  const auto call_offset = module.relocations[0].offset;
+  if (read_u32(text->bytes, call_offset - 8) != 0x06400513 ||
+      read_u32(text->bytes, call_offset - 4) != 0x00000593) {
+    return fail("expected same-module call to materialize immediate i32 and null pointer GPR args");
+  }
+  if (read_u32(text->bytes, call_offset + 8) != 0x00050293 ||
+      read_u32(text->bytes, call_offset + 12) != 0x00028513 ||
+      read_u32(text->bytes, call_offset + 24) != 0x00008067) {
+    return fail("expected integer call result to publish from a0 to owner register before return use");
+  }
+  return 0;
+}
+
 int expect_scalar_register_result_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
@@ -11304,6 +11728,53 @@ int builds_prepared_two_arg_scalar_call_object() {
       module->relocations[0].type != R_RISCV_CALL_PLT ||
       module->relocations[0].symbol != callee->id) {
     return fail("expected two-arg same-module call relocation at call pair");
+  }
+  return 0;
+}
+
+int builds_prepared_prior_result_multi_gpr_same_module_call_object() {
+  const auto prepared =
+      make_prepared_prior_result_multi_gpr_same_module_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared prior-result multi-GPR same-module call to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* seed = object::find_symbol(module, "seed");
+  const auto* combine = object::find_symbol(module, "combine");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || seed == nullptr || combine == nullptr || main == nullptr) {
+    return fail("expected prior-result multi-GPR call object to publish text/functions");
+  }
+  if (module.relocations.size() != 2 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[1].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[1].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != seed->id ||
+      module.relocations[1].symbol != combine->id ||
+      module.relocations[0].offset >= module.relocations[1].offset ||
+      module.relocations[0].offset < main->value + 8 ||
+      module.relocations[1].offset < main->value + 32) {
+    return fail("expected ordered same-module seed/combine call relocations in main");
+  }
+  const auto first_call_offset = module.relocations[0].offset;
+  const auto second_call_offset = module.relocations[1].offset;
+  if (read_u32(text->bytes, first_call_offset + 8) != 0x00050293) {
+    return fail("expected first call result to publish from a0 to %first owner register");
+  }
+  if (read_u32(text->bytes, second_call_offset - 12) != 0x00028513 ||
+      read_u32(text->bytes, second_call_offset - 8) != 0x00700593 ||
+      read_u32(text->bytes, second_call_offset - 4) != 0x00000613) {
+    return fail("expected second same-module call to consume prior result plus GPR immediates");
+  }
+  if (read_u32(text->bytes, second_call_offset + 8) != 0x00050313 ||
+      read_u32(text->bytes, second_call_offset + 12) != 0x00030513 ||
+      read_u32(text->bytes, second_call_offset + 24) != 0x00008067) {
+    return fail("expected second call result to publish before later return use");
   }
   return 0;
 }
@@ -19446,6 +19917,7 @@ int main() {
   status |=
       reports_generic_fallback_context_for_prepared_rematerialized_instruction();
   status |= builds_prepared_scalar_same_module_call_object();
+  status |= builds_prepared_immediate_null_same_module_call_object();
   status |= rejects_prepared_scalar_register_result_call_fail_closed_shapes();
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
   status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();
@@ -19474,6 +19946,7 @@ int main() {
   status |=
       rejects_aggregate_va_arg_helper_without_access_plan_payload_write_address();
   status |= builds_prepared_two_arg_scalar_call_object();
+  status |= builds_prepared_prior_result_multi_gpr_same_module_call_object();
   status |= builds_prepared_prior_preserved_arg_call_object();
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();
   status |= builds_byval_stack_slot_param_home_object();

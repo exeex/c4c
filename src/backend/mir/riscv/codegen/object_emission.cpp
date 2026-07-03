@@ -4007,11 +4007,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         argument.source_literal.has_value()) {
       const auto immediate =
           integer_immediate_for_value({}, nullptr, *argument.source_literal);
-      if (!immediate.has_value()) {
-        return std::nullopt;
+      if (immediate.has_value()) {
+        append_rv64_load_immediate(fragment, *destination, *immediate);
+        continue;
       }
-      append_rv64_load_immediate(fragment, *destination, *immediate);
-      continue;
+      if (is_rv64_null_pointer_value(*argument.source_literal)) {
+        append_rv64_load_immediate(fragment, *destination, 0);
+        continue;
+      }
+      return std::nullopt;
     }
     if (argument.source_encoding == prepare::PreparedStorageEncodingKind::Register &&
         argument.source_register_bank == prepare::PreparedRegisterBank::Gpr &&
