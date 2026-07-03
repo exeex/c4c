@@ -1630,6 +1630,16 @@ c4c_add_backend_codegen_route_test(
   FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr, %struct.Pair) @use(ptr @id_pair, %struct.Pair %t2)|call %struct.Pair (%struct.Pair) %p.fn(%struct.Pair %p.p)"
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_byval_param_direct_call_publication_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/byval_param_direct_call_publication.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/byval_param_direct_call_publication_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @forward_trio(ptr byval(size=12, align=4) %p.value, i32 %p.seed) -> i32 {|bir.call i32 consume_trio(i32 %p.seed, ptr byval(size=12, align=4) %lv.param.p.value)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "call i32 (i32, %struct.Trio) @consume_trio"
+)
+
 add_test(
   NAME backend_codegen_route_x86_64_nested_member_pointer_array_observe_semantic_bir
   COMMAND "${CMAKE_COMMAND}"
