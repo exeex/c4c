@@ -1,70 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/562_bir_direct_call_semantic_boundary_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Repair Only The Named Direct-Call Boundary
+Current Step ID: 5
+Current Step Title: Prove Representative And Adjacent Call Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: repaired the BIR byval aggregate direct-call argument publication
-boundary and added the focused tracked Step 3 surface.
+Step 5: proved the original direct-call representative
+`tests/c/external/gcc_torture/src/20000717-1.c` after the Step 4 BIR repair.
 
-Changed files:
-- `src/backend/bir/lir_to_bir/calling.cpp`
-- `tests/backend/bir/CMakeLists.txt`
-- `tests/backend/case/byval_param_direct_call_publication.c`
-
-Completed work:
-- Direct-call typed argument parsing now accepts a callee-expected byval pointer
-  ABI parameter when the source call still spells the argument as a non-scalar
-  aggregate value, leaving layout selection to the structured argument/type-ref
-  metadata.
-- Direct-call scalar argument type lookup now falls back from empty structured
-  argument type refs to populated `arg_type_refs`, which keeps adjacent scalar
-  arguments from failing before the byval aggregate argument is lowered.
-- Byval aggregate call argument lowering now publishes an existing aggregate
-  parameter slot as the call argument source when the operand names a by-value
-  aggregate formal.
-- Added the tracked semantic BIR route test
-  `backend_codegen_route_x86_64_byval_param_direct_call_publication_observe_semantic_bir`,
-  requiring the direct call
-  `bir.call i32 consume_trio(i32 %p.seed, ptr byval(size=12, align=4) %lv.param.p.value)`
-  and forbidding the LLVM aggregate-value call spelling
-  `call i32 (i32, %struct.Trio) @consume_trio`.
+Observed route results:
+- Semantic BIR succeeds for the RV64 target and emits direct byval aggregate
+  calls:
+  - `bir.call i32 bar(i32 %p.i, ptr byval(size=12, align=4) %lv.param.p.t)`
+  - `bir.call i32 foo(ptr byval(size=12, align=4) %lv.t, i32 4)`
+- Prepared BIR succeeds and records same-module call plans for both direct
+  calls, including stack-copy aggregate transport for the byval payloads.
+- RV64 object generation succeeds and writes
+  `build/agent_state/562_step5_direct_call_representative/20000717-1.rv64.o`
+  as a non-empty object file.
+- No first bad fact remains for this representative in the semantic BIR,
+  prepared BIR, or RV64 object routes covered by the delegated command.
 
 ## Suggested Next
 
-Supervisor should review the Step 4 diff for route quality and decide whether
-the active runbook is ready for lifecycle review or another bounded packet.
+Supervisor should decide whether Step 5 completion is enough to send the active
+runbook to lifecycle review/closure, or whether another packet should add a
+tracked regression surface for `20000717-1.c`.
 
 ## Watchouts
 
-- The actual canonical byval parameter slot for `%p.value` is
-  `%lv.param.p.value`, not the Step 3 forecast spelling
-  `%lv.param.value.value`.
-- The repair does not touch RV64 call lowering or reconstruct target-shaped
-  argument chunks; it only publishes the semantic BIR direct-call argument fact.
-- Diagnostics remain fail-closed through the existing direct-call semantic
-  family guards when structured metadata is absent or aggregate layout cannot
-  be selected.
+- The representative now reaches the RV64 object route, so any next failure
+  family is outside the delegated direct-call proof command.
+- The prepared dump still records select carrier publication limitations in
+  `bar`:
+  `missing_carrier_aliases` for the `%t15` predecessor and
+  `unsupported_publication` for the immediate predecessor. These did not block
+  the delegated direct-call/object proof.
+- Evidence lives under
+  `build/agent_state/562_step5_direct_call_representative/`.
 
 ## Proof
 
 Ran delegated proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log && git diff --check -- todo.md src/backend/bir tests/backend`.
+`cmake --build --preset default && mkdir -p build/agent_state/562_step5_direct_call_representative && ./build/c4cll --dump-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c > build/agent_state/562_step5_direct_call_representative/20000717-1.dump-bir.stdout 2> build/agent_state/562_step5_direct_call_representative/20000717-1.dump-bir.stderr && ./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c > build/agent_state/562_step5_direct_call_representative/20000717-1.dump-prepared-bir.stdout 2> build/agent_state/562_step5_direct_call_representative/20000717-1.dump-prepared-bir.stderr && ./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000717-1.c -o build/agent_state/562_step5_direct_call_representative/20000717-1.rv64.o > build/agent_state/562_step5_direct_call_representative/20000717-1.codegen-obj.stdout 2> build/agent_state/562_step5_direct_call_representative/20000717-1.codegen-obj.stderr && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log && git diff --check -- todo.md`.
 
-Result: passed. `test_after.log` contains the backend CTest subset output and
-reports `Total Test time (real) =   2.21 sec`.
+Result: passed. `test_after.log` contains the backend CTest subset output with
+`346/346` selected tests passing and reports
+`Total Test time (real) =   2.11 sec`.
 Supervisor regression comparison also passed with:
 
 ```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
 
-The strict monotonic guard passed because the focused backend route test
-increased the selected CTest count from 345 to 346.
+Evidence artifacts:
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.dump-bir.stdout`
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.dump-bir.stderr`
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.dump-prepared-bir.stdout`
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.dump-prepared-bir.stderr`
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.codegen-obj.stdout`
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.codegen-obj.stderr`
+- `build/agent_state/562_step5_direct_call_representative/20000717-1.rv64.o`
 
-Focused pre-proof check also passed:
-`ctest --test-dir build --output-on-failure -R '^backend_codegen_route_x86_64_byval_param_direct_call_publication_observe_semantic_bir$'`.
+All three representative stderr files are empty; the object file is 1776 bytes.
