@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/546_rv64_instruction_fragment_current_classification.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct Current Instruction-Fragment Rows
+Current Step ID: 2
+Current Step Title: Recover Or Refresh Authoritative Row Scope
 
 ## Just Finished
 
@@ -26,10 +26,12 @@ artifact from the stable scan pointer plus available per-case logs:
 
 ## Suggested Next
 
-Step 2 should not classify the 179-row table as the intended 137-row current
-scope without supervisor acceptance. Preferred next packet: refresh or recover
-a matching full-scan summary/per-case-log snapshot, then classify semantic
-families and first owners from the confirmed current row set.
+Step 2 (`Recover Or Refresh Authoritative Row Scope`) should repair the row
+authority before classification. Preferred next packet: recover a matching
+full-scan summary/per-case-log snapshot for the stable scan anchor, or refresh
+the full RV64 gcc_torture backend scan and regenerate the row TSV from one
+coherent run. Step 3 may classify semantic families and first owners only after
+`todo.md` records the accepted authoritative row TSV and count.
 
 ## Watchouts
 
@@ -45,6 +47,9 @@ families and first owners from the confirmed current row set.
 - Expected count is 137; reconstructed current-on-disk evidence is 179
   (`+42` drift). The artifact records observed rows instead of guessing a
   137-row subset.
+- Treat `build/agent_state/unsupported_instruction_fragment_current_rows.tsv`
+  as mixed-time drift evidence until Step 2 accepts a recovered or refreshed
+  coherent basis.
 - Do not implement RV64 lowering, edit expectations, or weaken unsupported markers in this classification packet.
 - Screen primary-F128 rows into the quarantine lane before ordinary-C bucket ranking.
 

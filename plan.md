@@ -10,7 +10,7 @@ rows before any implementation slice uses stale historical sub-buckets.
 
 ## Goal
 
-Produce a current, row-level classification of the 137
+Produce a current, row-level classification of the authoritative
 `unsupported_instruction_fragment` failures into RV64 implementation buckets,
 producer gaps, and F128 quarantine rows.
 
@@ -33,9 +33,13 @@ or 82-row instruction-fragment counts as current implementation scope.
 ## Current Targets
 
 - Current diagnostic: `unsupported_instruction_fragment`
-- Current expected count: 137 rows from the stable 2026-07-02 scan evidence
+- Source-idea expected count: 137 rows from the stable 2026-07-02 scan evidence
 - Current scan anchor:
   `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`
+- Step 1 reconstruction drift: available per-case logs currently show 179
+  observed rows, including 62 rows whose logs are newer than the stable scan;
+  do not classify that table as the 137-row source scope until authority is
+  repaired by Step 2.
 - Historical taxonomy inputs are allowed as hints only after the current row
   set is reconstructed.
 
@@ -70,6 +74,9 @@ new implementation ideas are created.
 - Use historical instruction-fragment classifications only to propose labels,
   never as current row counts.
 - Screen F128-primary rows before ranking ordinary-C RV64 buckets.
+- If the stable scan, summary TSV, and per-case logs disagree, repair the row
+  authority first by recovering a matching snapshot or refreshing the full scan;
+  do not proceed to semantic classification on mutable mixed-time logs.
 - If a coherent implementation bucket emerges, create or request a narrow
   source idea with concrete row evidence and explicit reviewer reject signals.
 
@@ -100,13 +107,45 @@ Completion check:
 - `todo.md` records a current row artifact, a count check, and the next
   classification packet.
 
-## Step 2: Classify Semantic Families And First Owners
+## Step 2: Recover Or Refresh Authoritative Row Scope
+
+Goal: Establish the authoritative row set that Step 3 may classify.
+
+Primary targets:
+
+- `build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`
+- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
+- `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
+- `build/agent_state/unsupported_instruction_fragment_current_rows.tsv`
+
+Actions:
+
+- Prefer recovering a matching summary/per-case-log snapshot for the stable
+  scan anchor if it exists in ignored artifacts or documented post-contract
+  evidence.
+- If no matching snapshot exists, refresh the full RV64 gcc_torture backend
+  scan and regenerate the row TSV from one coherent run.
+- Record the authoritative command, scan log, row TSV, row count, and whether
+  the count is the source-expected 137 or a new coherent current count.
+- Preserve the 179-row mixed-time artifact only as drift evidence; do not use it
+  as classification scope unless the supervisor explicitly accepts the refreshed
+  or recovered basis.
+- Update `todo.md` with the authority decision and the Step 3 packet input.
+
+Completion check:
+
+- `todo.md` names one authoritative row TSV, one coherent scan/source basis,
+  the accepted row count, and any stale or drift artifact that must not be
+  reused.
+
+## Step 3: Classify Semantic Families And First Owners
 
 Goal: Assign each current row to a semantic family and first owner.
 
 Primary targets:
 
-- Current row TSV from Step 1
+- Authoritative row TSV from Step 2
 - Per-case logs and adjacent prepared/BIR dumps generated only as needed
 - `docs/rv64_gcc_torture_post_contract/` classification notes if a durable
   artifact is needed
@@ -126,7 +165,7 @@ Completion check:
 - `todo.md` records the classification table location, sub-bucket counts,
   representative rows, and first-owner rationale.
 
-## Step 3: Screen F128 And Producer-Gap Rows
+## Step 4: Screen F128 And Producer-Gap Rows
 
 Goal: Remove non-ordinary-C or producer-owned rows from the RV64 implementation
 queue before ranking buckets.
@@ -147,7 +186,7 @@ Completion check:
 - `todo.md` records screened counts and names the remaining
   implementation-ready ordinary-C RV64 buckets.
 
-## Step 4: Produce Follow-Up Routing
+## Step 5: Produce Follow-Up Routing
 
 Goal: Turn the classification into actionable lifecycle routing without doing
 implementation work in this plan.
