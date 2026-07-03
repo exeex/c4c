@@ -1,4 +1,4 @@
-# RV64 Integer Div/Rem Instruction-Fragment Lowering
+# RV64 Integer Div/Rem Residual Instruction-Fragment Lowering
 
 Status: Open
 Type: RV64 object-lowering implementation follow-up
@@ -7,9 +7,9 @@ Owning Layer: RV64/MIR object lowering
 
 ## Goal
 
-Lower coherent BIR integer division and remainder fragments in RV64/MIR object
-emission for the `30` current `integer_div_rem` rows classified from the
-refreshed instruction-fragment scan.
+Clear or reroute the `30` current `integer_div_rem` rows classified from the
+refreshed instruction-fragment scan after proving the exact RV64 object
+instruction fragment that still owns each representative failure.
 
 ## Why This Exists
 
@@ -18,6 +18,13 @@ implementation-ready RV64 object-lowering rows. The highest-value and clearest
 first follow-up is the `integer_div_rem` bucket: `30` rows with direct BIR
 `sdiv`, `udiv`, `srem`, or `urem` evidence and first owner
 `rv64_object_lowering`.
+
+Step 1 of the active runbook corrected the route premise: the current tree
+already has semantic RV64 object lowering for BIR `sdiv`, `udiv`, `srem`, and
+`urem`, with focused object-emission coverage for all four operations at I32
+and I64 width. The representative rows still fail with the generic
+`unsupported_instruction_fragment` diagnostic, but the next owner must be
+proven at the exact later fragment before adding any new lowering.
 
 The durable source evidence is:
 
@@ -33,18 +40,21 @@ The durable source evidence is:
 
 ## In Scope
 
-- Add generalized RV64 object lowering for coherent BIR `sdiv`, `udiv`,
-  `srem`, and `urem` fragments.
+- Pin the first unsupported instruction fragment in representative
+  `integer_div_rem` rows after the existing div/rem object-emission path.
+- Repair a generalized RV64 object-lowering gap only when the pinned fragment
+  is semantic, route-owned, and not already covered by existing div/rem opcode
+  support.
 - Preserve signed versus unsigned semantics and operand-width behavior required
-  by the existing BIR/prepared facts.
-- Add focused backend/object-emission coverage for signed division, unsigned
-  division, signed remainder, and unsigned remainder.
+  by the existing BIR/prepared facts when any div/rem-adjacent repair is needed.
+- Extend focused backend/object-emission coverage only for the newly pinned
+  missing semantic path, not to duplicate existing div/rem opcode tests.
 - Prove representative gcc_torture rows from the classified `integer_div_rem`
   bucket, including at least a small allowlist drawn from:
   `src/20001026-1.c`, `src/20050215-1.c`, `src/20090113-2.c`,
   `src/20090113-3.c`, and `src/20101013-1.c`.
-- Record any residual failures as downstream owners only after the original
-  `unsupported_instruction_fragment` div/rem gap is gone.
+- Record residual failures as downstream owners when the pinned fragment is not
+  an implementation-ready RV64 object-lowering gap for this idea.
 
 ## Out Of Scope
 
@@ -59,14 +69,17 @@ The durable source evidence is:
 
 ## Acceptance Criteria
 
-- Focused backend tests prove generalized RV64 lowering for `sdiv`, `udiv`,
-  `srem`, and `urem` without testcase-shaped dispatch.
-- Representative `integer_div_rem` gcc_torture rows no longer fail with the
-  div/rem-owned `unsupported_instruction_fragment` diagnostic.
+- The route records that raw RV64 object lowering for `sdiv`, `udiv`, `srem`,
+  and `urem` already exists, including I32/I64 focused backend coverage.
+- The first still-unsupported representative instruction fragment is pinned
+  with concrete BIR/prepared evidence before implementation proceeds.
+- Any implementation patch repairs a generalized semantic RV64 object-lowering
+  gap, not a duplicate div/rem opcode encoder or testcase-shaped shortcut.
+- Representative `integer_div_rem` gcc_torture rows no longer fail with an
+  unowned generic `unsupported_instruction_fragment` diagnostic for this route.
 - Existing non-div/rem instruction-fragment buckets are not silently folded
   into this slice.
-- Any remaining representative failures name concrete downstream owners rather
-  than retaining the same div/rem lowering gap.
+- Any remaining representative failures name concrete downstream owners.
 - Regression proof includes the supervisor-selected backend subset and a
   representative allowlist run for the div/rem rows.
 
@@ -74,8 +87,11 @@ The durable source evidence is:
 
 - Reject testcase-name dispatch, named-case constants, or allowlist filtering
   presented as div/rem lowering progress.
+- Reject duplicate div/rem opcode encoders or new div/rem tests presented as
+  progress without pinning a missing fragment beyond the existing semantic
+  support.
 - Reject raw diagnostic matching, opcode-text-only matching, or fragment-text
-  string matching instead of semantic BIR instruction lowering.
+  string matching instead of semantic BIR/prepared instruction evidence.
 - Reject helper-call substitutions that bypass or obscure generalized RV64
   `div`, `divu`, `rem`, or `remu` semantics without explicit route approval.
 - Reject expectation rewrites, unsupported downgrades, or weaker test

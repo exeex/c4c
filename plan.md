@@ -1,25 +1,24 @@
-# RV64 Integer Div/Rem Instruction-Fragment Lowering Runbook
+# RV64 Integer Div/Rem Residual Instruction-Fragment Lowering Runbook
 
 Status: Active
 Source Idea: ideas/open/567_rv64_integer_div_rem_instruction_fragment_lowering.md
 
 ## Purpose
 
-Close the RV64 object-lowering gap for coherent BIR integer division and
-remainder instructions from the current `unsupported_instruction_fragment`
-classification.
+Clear or reroute the RV64 object-lowering residuals for rows classified under
+the current `integer_div_rem` `unsupported_instruction_fragment` family.
 
 ## Goal
 
-Generalize RV64/MIR object emission for BIR `sdiv`, `udiv`, `srem`, and
-`urem` so the routed `30` `integer_div_rem` rows no longer fail for the
-div/rem-owned instruction-fragment diagnostic.
+Pin the first still-unsupported semantic instruction fragment in the routed
+`30` `integer_div_rem` rows, then repair only the proven RV64 object-lowering
+gap or route the row to its concrete downstream owner.
 
 ## Core Rule
 
-Implement semantic BIR div/rem lowering. Do not use testcase names, raw
-diagnostic text, allowlist behavior, or expectation changes as evidence of
-capability progress.
+Do not add duplicate div/rem opcode lowering. Step 1 proved the raw
+`sdiv`/`udiv`/`srem`/`urem` RV64 object path already exists; any next code
+change must be driven by the exact later unsupported fragment.
 
 ## Read First
 
@@ -37,7 +36,8 @@ capability progress.
 
 ## Current Targets
 
-- Operation family: BIR `sdiv`, `udiv`, `srem`, `urem`
+- Operation family: rows initially classified from BIR `sdiv`, `udiv`, `srem`,
+  and `urem` evidence
 - Owner: `rv64_object_lowering`
 - Routed row count: `30`
 - Representative rows:
@@ -46,13 +46,17 @@ capability progress.
   - `src/20090113-2.c`
   - `src/20090113-3.c`
   - `src/20101013-1.c`
-- Expected implementation surfaces:
-  - RV64 object traversal that currently reports
-    `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`
-  - RV64 scalar ALU instruction selection for `div`, `divu`, `rem`, `remu`
-    and their 32-bit `*w` forms
-  - Backend object-emission tests that prove signed/unsigned division and
-    signed/unsigned remainder
+- Known boundary facts from Step 1:
+  - `object_emission.cpp` already routes `bir::BinaryInst` through
+    `fragment_for_prepared_binary(...)`.
+  - `prepared_scalar_emit.cpp` already maps `SDiv`, `UDiv`, `SRem`, and
+    `URem` to `div/divu/rem/remu` and `divw/divuw/remw/remuw`.
+  - `alu.cpp` already has the corresponding mnemonic selection.
+  - Focused object-emission coverage already covers all four operations at
+    I32 and I64 width.
+  - Representative rows still fail with the generic
+    `unsupported_instruction_fragment`, so Step 2 must identify the later
+    fragment before implementation.
 
 ## Non-Goals
 
@@ -67,20 +71,19 @@ capability progress.
 
 ## Working Model
 
-The source idea owns only rows where current BIR evidence already contains
-coherent integer div/rem operations and Step 4 classified the first owner as
-RV64 object lowering. The executor should first confirm the exact current
-lowering boundary, then add one generalized path that consumes semantic BIR
-opcodes and emits the correct RV64 M-extension instruction for each operation
-and width.
+The source idea owns only the routed rows while their first real current owner
+is still RV64 object lowering. Step 1 showed that the obvious raw div/rem
+encoder is not missing. The executor must now instrument or reproduce the
+representative path precisely enough to name the first unsupported instruction
+after existing div/rem lowering has had a chance to run.
 
 ## Execution Rules
 
 - Keep row evidence tied to the refreshed 2026-07-03 coherent scan artifacts.
-- Preserve signed versus unsigned semantics for every opcode.
-- Preserve 32-bit versus 64-bit operand-width behavior; use `divw`, `divuw`,
-  `remw`, and `remuw` where the existing BIR/prepared facts require I32/U32.
-- Add focused backend coverage before claiming representative progress.
+- Preserve signed versus unsigned semantics and width behavior if a
+  div/rem-adjacent repair is eventually required.
+- Do not add more focused div/rem opcode tests unless the new test exercises a
+  newly pinned missing semantic path.
 - Prove at least one representative allowlist drawn from the routed div/rem
   rows after the focused backend proof is green.
 - If a representative row advances to a different diagnostic, record the new
@@ -122,56 +125,55 @@ Completion check:
 - `todo.md` names the authoritative 30-row input, baseline representative
   result, and the concrete RV64 object-emission hook for Step 2.
 
-## Step 2: Add Generalized RV64 Div/Rem Object Lowering
+## Step 2: Pin First Downstream Unsupported Fragment
 
-Goal: Lower BIR `sdiv`, `udiv`, `srem`, and `urem` through one generalized
-RV64 object-emission path.
+Goal: Identify the first concrete unsupported BIR/prepared instruction in a
+representative routed row after the existing div/rem binary hook.
 
 Primary targets:
 
 - `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `src/backend/mir/riscv/codegen/alu.cpp`
-- Existing RV64 object-emission operand/register helpers
+- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
+- Representative BIR and prepared-BIR dumps under `build/agent_state/`
+- A focused unit-level reproducer if it can isolate the same fragment
 
 Actions:
 
-- Consume semantic BIR binary opcodes, not testcase names or diagnostic text.
-- Map signed division to `div`/`divw`.
-- Map unsigned division to `divu`/`divuw`.
-- Map signed remainder to `rem`/`remw`.
-- Map unsigned remainder to `remu`/`remuw`.
-- Reuse existing operand materialization and result publication patterns where
-  possible.
-- Fail closed with a concrete diagnostic if required operand/result facts are
-  missing or inconsistent.
-- Keep non-div/rem instruction-fragment cases on their existing route.
+- Start from one representative such as `src/20001026-1.c`.
+- Determine whether the failing fragment is a later `BinaryInst`, `SelectInst`,
+  result publication, memory/home materialization, or another semantic shape.
+- Use structured dumps, local tracing, or a focused reproducer; do not classify
+  from the generic diagnostic text alone.
+- Record the pinned instruction kind, operand/result facts, and exact current
+  rejecting hook in `todo.md`.
+- If the first owner is not an implementation-ready RV64 object-lowering gap,
+  route it in `todo.md` instead of stretching this plan.
 
 Completion check:
 
-- Focused backend tests for all four opcode families pass locally.
-- Existing non-div/rem unsupported-instruction tests still preserve their
-  expected diagnostic behavior.
+- `todo.md` names the first unsupported fragment, the rejecting hook, the
+  semantic owner, and the next repair or reroute decision.
 
-## Step 3: Add Focused Object-Emission Coverage
+## Step 3: Repair Pinned RV64 Object-Lowering Gap
 
-Goal: Prove the generalized lowering contract independently of named
-gcc_torture cases.
+Goal: Add a generalized RV64 object-emission repair only for the semantic gap
+identified in Step 2.
 
 Primary target:
 
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 
 Actions:
 
-- Add or extend focused RV64 object-emission tests for:
-  - signed division
-  - unsigned division
-  - signed remainder
-  - unsigned remainder
-  - 32-bit and 64-bit width selection where the local helpers support both
-- Include at least one fail-closed malformed-fact case if Step 2 adds new
-  validation branches.
-- Avoid weakening any existing unsupported-instruction assertions.
+- Consume semantic BIR/prepared facts, not testcase names, diagnostics, or
+  allowlist membership.
+- Reuse existing operand materialization and result publication patterns where
+  possible.
+- Add focused coverage for the newly repaired semantic path.
+- Include fail-closed coverage if the repair adds new validation branches.
+- Preserve existing non-owned unsupported-instruction behavior.
 
 Completion check:
 
@@ -180,10 +182,11 @@ Completion check:
 - `cmake --build --preset default` and the supervisor-selected backend subset
   pass.
 
-## Step 4: Prove Representative Div/Rem Rows
+## Step 4: Prove Representative Routed Rows
 
-Goal: Show that the representative routed rows no longer fail for the
-div/rem-owned `unsupported_instruction_fragment` gap.
+Goal: Show that the representative routed rows no longer fail for the pinned
+`unsupported_instruction_fragment` gap or are assigned to a concrete
+downstream owner.
 
 Primary targets:
 
@@ -197,11 +200,11 @@ Actions:
 - Run a representative allowlist including at least the source-idea examples:
   `src/20001026-1.c`, `src/20050215-1.c`, `src/20090113-2.c`,
   `src/20090113-3.c`, and `src/20101013-1.c`.
-- Confirm the original div/rem-owned unsupported diagnostic is gone for those
-  rows.
+- Confirm the generic unsupported fragment pinned in Step 2 is gone for those
+  rows, or record the exact downstream owner if the route was rerouted.
 - Record any new residual diagnostic and downstream owner in `todo.md`.
-- If nearby div/rem rows still retain the same owned diagnostic, do not accept
-  the slice until Step 2 is generalized or Step 1 ownership is corrected.
+- If nearby `integer_div_rem` rows still retain the same owned diagnostic, do
+  not accept the slice until Step 3 is generalized or ownership is corrected.
 
 Completion check:
 
@@ -215,8 +218,9 @@ packet.
 
 Actions:
 
-- Verify focused tests cover all four div/rem operation families.
-- Verify representative rows no longer fail for the owned div/rem lowering gap.
+- Verify Step 1's existing div/rem opcode coverage remains in place.
+- Verify representative rows no longer fail for the Step 2 pinned lowering gap,
+  or have been routed to concrete downstream owners.
 - Compare remaining residuals against existing open ideas before creating new
   source ideas.
 - If remaining same-family rows still fail with the old gap, keep the plan

@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/567_rv64_integer_div_rem_instruction_fragment_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct Div/Rem Lowering Boundary
+Current Step ID: 2
+Current Step Title: Pin First Downstream Unsupported Fragment
 
 ## Just Finished
 
@@ -57,10 +57,16 @@ Hook findings:
 
 ## Suggested Next
 
+Plan-owner repair advanced the active route to Step 2:
+`Pin First Downstream Unsupported Fragment`.
+
 Executor packet for Step 2: add focused instrumentation or a targeted
 unit-level reproducer that pins the first unsupported instruction in one routed
-representative after the existing div/rem fragment path, then repair that
-general semantic object-emission gap without testcase-name dispatch.
+representative after the existing div/rem fragment path. Do not add duplicate
+div/rem opcode lowering or duplicate all-opcode div/rem tests. If the pinned
+fragment is implementation-ready RV64 object lowering, record the exact repair
+target for Step 3; otherwise route the row to a concrete downstream owner in
+`todo.md`.
 
 ## Watchouts
 
