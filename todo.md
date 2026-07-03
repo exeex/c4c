@@ -1,60 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/561_prepared_local_address_base_plus_offset_boundary_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce Local Address Evidence
+Current Step ID: 2
+Current Step Title: Classify The Prepared/RV64 Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced retained representative `src/20000519-1.c` from
-`tests/c/external/gcc_torture/src/20000519-1.c` through same-snapshot semantic
-BIR, prepared BIR, MIR debug observation, and RV64 object routing.
+Step 2 classified the prepared/RV64 boundary for the reproduced
+`src/20000519-1.c` local-memory failure from
+`build/agent_state/561_step1_20000519_1/`.
 
-Commands:
+First-owner conclusion: RV64-owned. Prepared is not missing the local-memory
+access fact for the failing instruction, and the `%t0` stack-home publication is
+not incoherent by itself. The first rejecting owner is the RV64 prepared
+local-memory consumer, which currently accepts pointer-value base-plus-offset
+only when the pointer base already has a register home instead of materializing
+the published stack-home pointer value.
 
-```sh
-./build/c4cll --dump-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c > build/agent_state/561_step1_20000519_1/semantic_bir.txt 2> build/agent_state/561_step1_20000519_1/semantic_bir.stderr
-./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c > build/agent_state/561_step1_20000519_1/prepared_bir.txt 2> build/agent_state/561_step1_20000519_1/prepared_bir.stderr
-./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c -o build/agent_state/561_step1_20000519_1/rv64.o > build/agent_state/561_step1_20000519_1/rv64_obj.stdout 2> build/agent_state/561_step1_20000519_1/rv64_obj.stderr
-./build/c4cll --trace-mir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c > build/agent_state/561_step1_20000519_1/trace_mir.txt 2> build/agent_state/561_step1_20000519_1/trace_mir.stderr
-./build/c4cll --dump-mir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c > build/agent_state/561_step1_20000519_1/dump_mir.txt 2> build/agent_state/561_step1_20000519_1/dump_mir.stderr
-```
+Same-run evidence:
 
-Results: semantic BIR, prepared BIR, trace MIR, and dump MIR exited 0; RV64
-object route exited 2.
+- Semantic BIR keeps the failing access as `bar`, `block_1`, instruction 2:
+  `%t2 = bir.load_local i32 %t2.addr, addr %t0`.
+- Prepared BIR publishes the matching access as
+  `access block=block_1 inst_index=2 base=pointer_value result=%t2 pointer=%t0 offset=0 size=4 align=4 base_plus_offset=yes layout_authority=opaque_compatibility range_verdict=unknown_compatible`.
+- Prepared BIR publishes `%t0` in `bar` as a normal stack-home pointer value:
+  `home %t0 value_id=2 kind=stack_slot slot_id=6 offset=24` and
+  `storage %t0 value_id=2 encoding=frame_slot ... slot_id=#6 stack_offset=24`.
+- The RV64 object route rejects with
+  `unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing`.
 
-Tied failing access:
-
-- Semantic BIR: `bar`, `block_1`, instruction 2:
-  `%t2 = bir.load_local i32 %t2.addr, addr %t0`
-  in `build/agent_state/561_step1_20000519_1/semantic_bir.txt`.
-- Prepared BIR: matching prepared-addressing row:
-  `access block=block_1 inst_index=2 base=pointer_value result=%t2 pointer=%t0 offset=0 size=4 align=4 base_plus_offset=yes layout_authority=opaque_compatibility range_verdict=unknown_compatible`
-  in `build/agent_state/561_step1_20000519_1/prepared_bir.txt`.
-- Prepared storage for the pointer base: `%t0` is published as
-  `encoding=frame_slot ... slot_id=#6 stack_offset=24`, not as a GPR base, in
-  `build/agent_state/561_step1_20000519_1/prepared_bir.txt`.
-- RV64 rejection point:
-  `--codegen obj failed: RISC-V backend object route unsupported prepared module shape: unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing`
-  in `build/agent_state/561_step1_20000519_1/rv64_obj.stderr`.
-
-Evidence tie: yes. The same `bar` load through pointer value `%t0` is visible
-in semantic BIR and prepared BIR. Prepared publishes the access as
-`base_plus_offset=yes`, but RV64 object emission rejects the module at the
-local-memory consumer boundary because the pointer-value base `%t0` has no
-usable register home for `prepared_pointer_value_base_offset`.
+Boundary detail: the RV64 helper `prepared_pointer_value_base_offset` verifies
+the access is a default, non-volatile pointer-value base-plus-offset access with
+matching size/alignment/offset, then calls
+`gpr_register_number_for_value_name_local` for the pointer base. That lookup
+returns a register only for prepared homes accepted by
+`rv64_prepared_gpr_register_number_for_home`, which requires a `Register` or
+`PointerBasePlusOffset` home with a register name. For this failing `bar` value,
+prepared published `%t0` as a `StackSlot`, so the RV64 consumer declines the
+otherwise-visible prepared access instead of loading the pointer base from
+slot `#6`/stack offset `24` into a scratch register and using it.
 
 ## Suggested Next
 
-Execute Step 2 by classifying whether the first owner is prepared publication
-of a pointer-value base usable from a stack home, or the RV64 prepared
-local-memory consumer's refusal to materialize that published stack-home
-pointer base.
+Execute the next RV64-local-memory packet by teaching the RV64 prepared
+local-memory consumer to materialize a pointer-value base from a prepared stack
+home, then use that scratch register for the existing pointer-value
+base-plus-offset load/store path.
 
 ## Watchouts
 
+- Keep the repair semantic: do not special-case `src/20000519-1.c`; the route
+  should handle prepared pointer-value base-plus-offset accesses whose pointer
+  base has a coherent stack-slot home.
 - Do not reconstruct local-memory facts from RV64 target-specific instruction
   shapes.
 - Do not combine this route with direct-call metadata repair.
@@ -63,18 +62,19 @@ pointer base.
 - Do not use named-case shortcuts for retained torture representatives.
 - Keep `review/557_step13_vector_local_memory_review.md` untouched unless the
   supervisor explicitly brings it into scope.
-- The object-route diagnostic is not annotated with a function or instruction
-  index; the access tie above uses BIR traversal order plus the RV64 local
-  memory helper predicate that requires a frame-slot absolute offset or a
-  pointer-value base register.
+- The object-route diagnostic is still not annotated with a function or
+  instruction index; the access tie uses the Step 1 same-run BIR traversal order
+  plus the RV64 local-memory helper predicate that rejects stack-home pointer
+  bases.
 
 ## Proof
 
-Step 1 validation:
+Step 2 validation:
 
 ```sh
 git diff --check -- todo.md && scripts/plan_review_state.py show
 ```
 
-Result: passed. Plan-review state reported `current_step_id` as `1` and
-`current_step_title` as `Reproduce Local Address Evidence`.
+Result: passed. `scripts/plan_review_state.py show` reported the separate
+hook-backed state as `current_step_id` `2` and `current_step_title`
+`Classify The Prepared/RV64 Boundary` after supervisor alignment.
