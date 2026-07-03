@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/565_prepared_move_bundle_widening_stack_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Widening Authority Coverage
+Current Step ID: 3
+Current Step Title: Repair Prepared Widening Authority
 
 # Current Packet
 
@@ -64,13 +64,31 @@ moved to RV64 consumption/materialization of that explicit prepared authority.
 Plan Step 3, `Repair Prepared Widening Authority`, is ready for an executor
 packet.
 
-Recommended next packet: teach RV64 object-route consumption to lower
-`PreparedMoveAuthorityKind::StackSlotWideningConversion` for stack-slot source
-to stack-slot destination integer widening without treating it as a raw
-same-width byte copy. Keep the repair constrained to the explicit authority
-shape, preserve generic rejection for authority-none memory-to-memory copies,
-and then run the two representative allowlist rows to classify any downstream
-owner after RV64 materializes the widening move.
+Executor packet:
+
+- Objective: teach RV64 object-route consumption/materialization to lower
+  `PreparedMoveAuthorityKind::StackSlotWideningConversion` semantically for
+  stack-slot source to stack-slot destination integer widening.
+- Expected lowering: consume or split the explicit prepared authority into an
+  integer value extension from the narrower source slot plus a stack
+  destination write. Do not authorize it as a raw stack byte-copy.
+- Owned boundaries: RV64 move-bundle/object-route materialization for the
+  explicit `stack_slot_widening_conversion` authority and directly adjacent
+  tests. Prepared authority publication from Step 2 is already complete.
+- Required preservation: authority-none memory-to-memory copies and unrelated
+  unsupported move-bundle shapes must still reject/fail closed.
+- Representative checks after backend proof: run the two-row allowlist for
+  `src/20010224-1.c` and `src/pr87623.c` with verbose failures, record whether
+  either row passes or moves to a downstream owner, and keep any distinct
+  residual work out of this step unless it is required to materialize the
+  widening authority.
+- Proof command: use the supervisor-selected backend subset command and write
+  the canonical executor proof to `test_after.log`.
+- Done when: focused backend tests pass, the backend subset passes, RV64 no
+  longer fails these rows at `unsupported_move_bundle_target_shape` for
+  `authority=stack_slot_widening_conversion`, and `todo.md` records changed
+  files, proof commands, representative results, and any downstream residual
+  owner.
 
 ## Watchouts
 
