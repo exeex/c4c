@@ -1,6 +1,6 @@
 # Prepared Local Address Base-Plus-Offset Boundary Evidence
 
-Status: Open
+Status: Closed
 Type: Focused producer/consumer evidence gap
 Parent: `ideas/closed/547_bir_local_memory_call_metadata_boundary_review.md`
 Owning Layer: Prepared contract and RV64 prepared local-memory consumer
@@ -59,6 +59,25 @@ base-plus-offset fact is absent/incoherent or present and rejected by RV64.
 - The old `unsupported_local_memory_access` failure mode is either removed by
   the named capability repair or explicitly remains blocked with the missing
   evidence recorded.
+
+## Completion Notes
+
+Closed on 2026-07-03 after Step 5 completed the active runbook.
+
+- The representative `tests/c/external/gcc_torture/src/20000519-1.c` now emits
+  an RV64 object with:
+  `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c -o build/agent_state/561_step5_20000519_1/rv64.o`.
+- The Step 1 prepared pointer-value stack-home local-memory first bad fact no
+  longer blocks object emission, and Step 5 did not expose a new first bad
+  prepared/RV64 fact for the representative.
+- The focused repair path was proven by the executor-updated Step 5 packet and
+  the supervisor-selected backend subset.
+- Close-gate regression guard passed for the backend subset:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log && python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+  The guard reported `before: passed=345 failed=0 total=345` and
+  `after : passed=345 failed=0 total=345`.
+
+No separate leftover lifecycle blocker remains for this idea.
 
 ## Reviewer Reject Signals
 
