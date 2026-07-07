@@ -480,6 +480,71 @@ int check_lir_to_bir_signature_lowering_publishes_vector_carriers() {
   return 0;
 }
 
+int check_lir_to_bir_signature_lowering_fails_closed_for_wide_vector_carriers() {
+  auto make_module = [] {
+    lir::LirModule module;
+    module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    return module;
+  };
+
+  lir::LirModule return_module = make_module();
+  {
+    lir::LirFunction function;
+    function.name = "wide_vector_return";
+    function.signature_text = "define <8 x i32> @wide_vector_return()";
+    function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+    function.signature_return_type_ref = lir::LirTypeRef("<8 x i32>");
+    lir::LirBlock entry;
+    entry.label = "entry";
+    entry.terminator = lir::LirRet{
+        .value_str = std::string("zeroinitializer"),
+        .type_str = "<8 x i32>",
+    };
+    function.blocks.push_back(std::move(entry));
+    return_module.functions.push_back(std::move(function));
+  }
+  const auto return_lowered = c4c::backend::try_lower_to_bir_with_options(
+      return_module, c4c::backend::BirLoweringOptions{});
+  if (return_lowered.module.has_value() ||
+      !contains_note(return_lowered.notes,
+                     "function",
+                     "semantic lir_to_bir function 'wide_vector_return' failed in "
+                     "function-signature semantic family")) {
+    return fail("wide vector return signature fixture did not fail closed");
+  }
+
+  lir::LirModule param_module = make_module();
+  {
+    c4c::TypeSpec vector_param_type{.base = c4c::TB_INT};
+    lir::LirFunction function;
+    function.name = "wide_vector_param";
+    function.signature_text = "define void @wide_vector_param(<4 x float> %v)";
+    function.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
+    function.signature_return_type_ref = lir::LirTypeRef("void");
+    function.signature_params.push_back(
+        lir::LirSignatureParam{.name = "%v", .type = vector_param_type});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x float>"));
+    lir::LirBlock entry;
+    entry.label = "entry";
+    entry.terminator = lir::LirRet{.type_str = "void"};
+    function.blocks.push_back(std::move(entry));
+    param_module.functions.push_back(std::move(function));
+  }
+  const auto param_lowered = c4c::backend::try_lower_to_bir_with_options(
+      param_module, c4c::backend::BirLoweringOptions{});
+  if (param_lowered.module.has_value() ||
+      !contains_note(param_lowered.notes,
+                     "function",
+                     "semantic lir_to_bir function 'wide_vector_param' failed in "
+                     "function-signature semantic family")) {
+    return fail("wide vector parameter signature fixture did not fail closed");
+  }
+  return 0;
+}
+
 int check_lir_to_bir_signature_lowering_publishes_empty_struct_return_info() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
@@ -1372,6 +1437,11 @@ int main() {
     return status;
   }
   if (const int status = check_lir_to_bir_signature_lowering_publishes_vector_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_lir_to_bir_signature_lowering_fails_closed_for_wide_vector_carriers();
       status != 0) {
     return status;
   }

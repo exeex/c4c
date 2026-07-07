@@ -8,33 +8,37 @@ Current Step Title: Repair Function-Signature Producer Boundary
 
 ## Just Finished
 
-Step 2 completed the focused structured aggregate return-info producer repair.
-`src/backend/bir/lir_to_bir/call_abi.cpp` now accepts zero-sized structured
-`Struct` layouts as valid signature aggregates when the layout resolver
-publishes nonzero alignment, instead of rejecting them solely because the ABI
-payload size is zero. Invalid layouts and zero-sized non-struct aggregate
-shapes still fail closed.
+Step 2 resolved the larger-vector producer decision as a deliberate fail-closed
+function-signature boundary rather than admitting a misleading scalar or VRM
+carrier. `call_abi.cpp` already has a general small fixed-vector carrier rule
+for vectors up to 8 bytes; BIR has no current signature ABI carrier that
+faithfully represents wider LLVM vector return/parameter layouts such as
+`<4 x float>`, `<8 x i32>`, or `<4 x i64>` without making a downstream
+multi-register or memory ABI ownership decision.
 
 Focused BIR coverage was added in
-`tests/backend/bir/backend_prepare_structured_context_test.cpp` for an RV64
-empty structured return signature. The coverage verifies that BIR lowering
-publishes returned-in-memory return ABI metadata and a zero-byte, align-1 sret
-formal parameter for `%struct.Empty`.
+`tests/backend/bir/backend_prepare_structured_context_test.cpp` to document the
+boundary: `<8 x i32>` return-info lowering and `<4 x float>` parameter-layout
+lowering both fail closed at `function-signature semantic family`.
 
-Direct representative probes now advance beyond the original function-signature
-boundary without expectation, unsupported-marker, allowlist, or classification
-changes:
+Direct representative probes were refreshed without expectation,
+unsupported-marker, allowlist, or classification changes:
 
-- `src/zero-struct-2.c` / `one_raw_spinlock` now fails later in
-  `alloca local-memory semantic family`.
+- `src/ieee/pr72824-2.c` / `foo` still fails in `function-signature semantic
+  family` with visible LLVM signature `define internal void @foo(ptr %p.x,
+  <4 x float> %p.value)`.
+- `src/pr70903.c` / `foo` still fails in `function-signature semantic family`
+  with visible LLVM signature `define internal <8 x i32> @foo(<4 x i64>
+  %p.x) noinline`.
+- `src/simd-6.c` / `foo` now advances beyond the original function-signature
+  boundary and fails later in `scalar-binop semantic family`; its visible LLVM
+  signature is `define <8 x i8> @foo(<8 x i8> %p.x, <8 x i8> %p.y)`.
 
 ## Suggested Next
 
-Continue Step 2 only if the supervisor has another current
-function-signature-specific representative. Otherwise move to Step 3 closure
-handoff, because the named vector and zero-sized structured aggregate
-representatives now advance to downstream scalar/local-memory or scalar-cast
-owner boundaries.
+Move to Step 3 closure handoff for the function-signature producer plan, or
+open a separate owner decision for wide LLVM vector ABI representation before
+trying to admit 16-byte and 32-byte vector signatures.
 
 ## Watchouts
 
@@ -43,10 +47,13 @@ owner boundaries.
 - Do not route the newly exposed `alloca local-memory semantic family`,
   `scalar-cast semantic family`, or `scalar/local-memory semantic family`
   failures into this function-signature producer plan.
-- The vector repair intentionally publishes a scalar integer ABI carrier for
-  small fixed vectors; larger vector signatures such as `<4 x float>` or
-  `<8 x i32>` still need a separate owner decision before claiming full vector
-  signature closure.
+- Do not route the newly exposed `scalar-binop semantic family` failure in
+  `src/simd-6.c` into this function-signature producer plan.
+- Larger vector signatures such as `<4 x float>`, `<8 x i32>`, and `<4 x i64>`
+  need a separate ABI representation owner decision before signature admission;
+  mapping them to `I128`, scalar integer pairs, or `Vrm*` inside `call_abi.cpp`
+  would cross into downstream ABI/object ownership without a real carrier
+  contract.
 - `src/20071029-1.c` currently reports `foo`, but its visible LLVM signature is
   scalar; keep it as a sample for aggregate temporary or parameter-layout
   follow-up rather than vector evidence.
