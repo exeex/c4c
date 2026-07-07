@@ -8,14 +8,16 @@ Current Step Title: Add Scalar-Control-Flow BIR Coverage
 
 ## Just Finished
 
-Lifecycle split completed after the prior Step 1 inspection proved that
-function-signature, scalar-control-flow, and scalar-binop failures do not share
-one repairable BIR semantic producer boundary. The active runbook now owns only
-the scalar-control-flow producer route.
+Step 1 - Add Scalar-Control-Flow BIR Coverage: added focused BIR coverage for
+the scalar-control-flow producer boundary. The new coverage asserts that
+same-block scalar comparison operands and fused branch conditions publish
+materialized producer facts today, while phi operands and predecessor-block
+condition values remain outside the admitted producer boundary.
 
 ## Suggested Next
 
-Delegate Step 1: Add Scalar-Control-Flow BIR Coverage.
+Delegate the producer repair packet for scalar-control-flow phi/cross-CFG
+producer admission, using the new BIR coverage as the expected boundary.
 
 ## Watchouts
 
@@ -25,7 +27,10 @@ Delegate Step 1: Add Scalar-Control-Flow BIR Coverage.
   `ideas/open/562_bir_scalar_binop_semantic_producer_admission.md`.
 - Do not claim scalar-control-flow progress through expectation rewrites,
   unsupported downgrades, allowlist edits, or named-case shortcuts.
+- Current coverage documents the repair boundary only; it does not implement
+  phi or predecessor-block producer admission.
 
 ## Proof
 
-Lifecycle-only split; no build or test proof required.
+Ran `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$'; } 2>&1 | tee test_after.log`:
+passed. Proof log: `test_after.log`.
