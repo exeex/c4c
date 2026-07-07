@@ -130,6 +130,19 @@ bool enforce_structured_signature_aggregate_layouts(
   return target_profile.arch == c4c::TargetArch::Aarch64;
 }
 
+bool is_valid_signature_aggregate_layout(
+    const BirFunctionLowerer::AggregateTypeLayout& layout) {
+  if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+      layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) {
+    return false;
+  }
+  if (layout.align_bytes == 0) {
+    return false;
+  }
+  return layout.size_bytes != 0 ||
+         layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Struct;
+}
+
 std::optional<std::string> parse_signature_byval_pointee_type(std::string_view type_text) {
   constexpr std::string_view kPrefix = "ptr byval(";
 
@@ -225,9 +238,7 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_signature_aggregate
                                                                              *structured_layouts)
                   .layout
             : lir_to_bir_detail::compute_aggregate_type_layout(normalized_type, type_decls);
-    if ((layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
-         layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
-        layout.size_bytes == 0 || layout.align_bytes == 0) {
+    if (!is_valid_signature_aggregate_layout(layout)) {
       return std::nullopt;
     }
     return layout;
@@ -242,9 +253,7 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_signature_aggregate
                                                                          type_decls,
                                                                          *structured_layouts)
               .layout;
-      if ((layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
-           layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
-          layout.size_bytes == 0 || layout.align_bytes == 0) {
+      if (!is_valid_signature_aggregate_layout(layout)) {
         return std::nullopt;
       }
       return layout;
@@ -259,10 +268,7 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_signature_aggregate
                                                                          type_decls,
                                                                          *structured_layouts);
   const auto& layout = lookup.layout;
-  if (!lookup.used_structured_layout ||
-      (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
-       layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
-      layout.size_bytes == 0 || layout.align_bytes == 0) {
+  if (!lookup.used_structured_layout || !is_valid_signature_aggregate_layout(layout)) {
     return std::nullopt;
   }
   return layout;

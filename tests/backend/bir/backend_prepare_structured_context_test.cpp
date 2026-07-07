@@ -480,6 +480,58 @@ int check_lir_to_bir_signature_lowering_publishes_vector_carriers() {
   return 0;
 }
 
+int check_lir_to_bir_signature_lowering_publishes_empty_struct_return_info() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId empty_id = module.struct_names.intern("%struct.Empty");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = empty_id,
+  });
+  module.type_decls.push_back("%struct.Empty = type {}");
+
+  lir::LirFunction decl;
+  decl.name = "empty_struct_sig";
+  decl.is_declaration = true;
+  decl.signature_text = "declare %struct.Empty @empty_struct_sig(void)";
+  decl.return_type = c4c::TypeSpec{.base = c4c::TB_STRUCT};
+  decl.signature_return_type_ref =
+      lir::LirTypeRef::struct_type("%struct.Empty", empty_id);
+  module.functions.push_back(std::move(decl));
+
+  const auto lowered =
+      c4c::backend::try_lower_to_bir_with_options(module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return fail("empty structured return signature fixture did not lower to BIR");
+  }
+  if (lowered.module->functions.size() != 1) {
+    return fail("empty structured return signature fixture did not preserve declaration");
+  }
+
+  const bir::Function& function = lowered.module->functions.front();
+  if (function.return_type != bir::TypeKind::Void ||
+      function.return_size_bytes != 0 ||
+      function.return_align_bytes != 1 ||
+      !function.return_abi.has_value() ||
+      !function.return_abi->returned_in_memory ||
+      function.return_abi->primary_class != bir::AbiValueClass::Memory) {
+    return fail("BIR signature lowering did not publish empty structured return ABI metadata");
+  }
+  if (function.params.size() != 1 ||
+      !function.params.front().is_sret ||
+      function.params.front().type != bir::TypeKind::Ptr ||
+      function.params.front().size_bytes != 0 ||
+      function.params.front().align_bytes != 1 ||
+      !function.params.front().abi.has_value() ||
+      !function.params.front().abi->sret_pointer) {
+    return fail("BIR signature lowering did not publish empty structured sret parameter metadata");
+  }
+  return 0;
+}
+
 int check_backend_layout_lookup_prefers_structured_table() {
   using c4c::backend::lir_to_bir_detail::AggregateTypeLayout;
   using c4c::backend::lir_to_bir_detail::build_backend_structured_layout_table;
@@ -1320,6 +1372,11 @@ int main() {
     return status;
   }
   if (const int status = check_lir_to_bir_signature_lowering_publishes_vector_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_lir_to_bir_signature_lowering_publishes_empty_struct_return_info();
       status != 0) {
     return status;
   }
