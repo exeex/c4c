@@ -12,6 +12,24 @@ using lir_to_bir_detail::parse_i64;
 
 namespace {
 
+bool is_fixed_vector_type_text(std::string_view text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.size() < 6 || trimmed.front() != '<' || trimmed.back() != '>') {
+    return false;
+  }
+  const auto x_pos = trimmed.find(" x ");
+  if (x_pos <= 1 || x_pos == std::string_view::npos) {
+    return false;
+  }
+
+  std::uint64_t lane_count = 0;
+  const auto lanes = trimmed.substr(1, x_pos - 1);
+  const auto* begin = lanes.data();
+  const auto* end = begin + lanes.size();
+  const auto parsed = std::from_chars(begin, end, lane_count);
+  return parsed.ec == std::errc{} && parsed.ptr == end && lane_count > 0;
+}
+
 std::optional<bir::TypeKind> lower_canonical_select_scalar_type(std::string_view text) {
   if (const auto lowered = lower_integer_type(text); lowered.has_value()) {
     return lowered;
@@ -638,6 +656,13 @@ std::optional<bool> BirFunctionLowerer::lower_scalar_family_inst(
 
   if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
     if (bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    if (is_fixed_vector_type_text(bin->type_str.str())) {
+      context_.note("function",
+                    "semantic lir_to_bir function '" + function_.name +
+                        "' failed in vector-binop semantic family");
       return false;
     }
 

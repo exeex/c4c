@@ -211,6 +211,7 @@ lir::LirCallSignature void_call_signature(
 LirModule make_admitted_scalar_float_globals_module();
 LirModule make_f128_scalar_constant_binop_fails_closed_module();
 LirModule make_admitted_f128_variable_scalar_binops_module();
+LirModule make_fixed_vector_binop_fails_closed_module();
 LirModule make_admitted_scalar_i16_globals_module();
 LirModule make_admitted_i16_scalar_bitfield_binops_module();
 int expect_aarch64_extern_data_global_uses_got_policy();
@@ -439,6 +440,21 @@ int expect_admitted_f128_variable_scalar_binops() {
     return fail("F128 fneg should lower as zero-minus-operand with a full-width zero payload");
   }
 
+  return 0;
+}
+
+int expect_fixed_vector_binop_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_fixed_vector_binop_fails_closed_module(), BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("fixed-vector binops must not lower through scalar BIR BinaryInst facts");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "semantic lir_to_bir function 'fixed_vector_binop_fails_closed' "
+                     "failed in vector-binop semantic family")) {
+    return fail("missing explicit vector-binop failure for unsupported fixed-vector mul");
+  }
   return 0;
 }
 
@@ -12545,6 +12561,33 @@ LirModule make_admitted_f128_variable_scalar_binops_module() {
   return module;
 }
 
+LirModule make_fixed_vector_binop_fails_closed_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "fixed_vector_binop_fails_closed";
+  function.signature_text = "define void @fixed_vector_binop_fails_closed()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%mul"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Mul,
+      .type_str = "<8 x i8>",
+      .lhs = LirOperand("%lhs"),
+      .rhs = LirOperand("%rhs"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_gep_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -14929,6 +14972,11 @@ int main() {
           expect_admitted_f128_variable_scalar_binops();
       f128_variable_scalar_binops_status != 0) {
     return f128_variable_scalar_binops_status;
+  }
+
+  if (const int fixed_vector_binop_status = expect_fixed_vector_binop_fails_closed();
+      fixed_vector_binop_status != 0) {
+    return fixed_vector_binop_status;
   }
 
   if (const int gep_status = expect_failure_notes(

@@ -22,6 +22,31 @@ using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
 
+namespace {
+
+bool is_fixed_vector_type_text(std::string_view text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.size() < 6 || trimmed.front() != '<' || trimmed.back() != '>') {
+    return false;
+  }
+  const auto x_pos = trimmed.find(" x ");
+  if (x_pos <= 1 || x_pos == std::string_view::npos) {
+    return false;
+  }
+
+  bool saw_nonzero_digit = false;
+  const auto lanes = trimmed.substr(1, x_pos - 1);
+  for (const char lane_char : lanes) {
+    if (lane_char < '0' || lane_char > '9') {
+      return false;
+    }
+    saw_nonzero_digit = saw_nonzero_digit || lane_char != '0';
+  }
+  return saw_nonzero_digit;
+}
+
+}  // namespace
+
 bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const c4c::codegen::lir::LirInst& inst,
     std::vector<bir::Inst>* lowered_insts,
@@ -69,6 +94,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   };
   const auto fail_scalar_binop = [&]() {
     note_function_lowering_family_failure("scalar-binop semantic family");
+    return false;
+  };
+  const auto fail_vector_binop = [&]() {
+    note_function_lowering_family_failure("vector-binop semantic family");
     return false;
   };
   const auto fail_alloca = [&]() {
@@ -279,6 +308,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
     if (bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return fail_scalar_binop();
+    }
+    if (is_fixed_vector_type_text(bin->type_str.str())) {
+      return fail_vector_binop();
     }
 
     const auto opcode = lower_scalar_binary_opcode(bin->opcode);
