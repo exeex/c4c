@@ -1619,6 +1619,9 @@ bool prepared_bir_value_has_name(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Value& value,
     c4c::ValueNameId value_name) {
+  if (value_name == c4c::kInvalidValueName) {
+    return false;
+  }
   return value.kind == c4c::backend::bir::Value::Kind::Named &&
          !value.name.empty() && names.value_names.find(value.name) == value_name;
 }
@@ -1627,9 +1630,18 @@ bool prepared_bir_values_have_same_name(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Value& lhs,
     const c4c::backend::bir::Value& rhs) {
-  return lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-         rhs.kind == c4c::backend::bir::Value::Kind::Named && !lhs.name.empty() &&
-         !rhs.name.empty() && names.value_names.find(lhs.name) == names.value_names.find(rhs.name);
+  if (lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+      rhs.kind != c4c::backend::bir::Value::Kind::Named ||
+      lhs.name.empty() || rhs.name.empty()) {
+    return false;
+  }
+  const auto lhs_name = names.value_names.find(lhs.name);
+  const auto rhs_name = names.value_names.find(rhs.name);
+  if (lhs_name != c4c::kInvalidValueName &&
+      rhs_name != c4c::kInvalidValueName) {
+    return lhs_name == rhs_name;
+  }
+  return lhs.name == rhs.name;
 }
 
 std::optional<c4c::backend::bir::TypeKind> prepared_bir_value_type_for_name(
@@ -6896,11 +6908,147 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
     std::string_view block_label,
     std::size_t instruction_index,
     const c4c::backend::bir::SelectInst& select,
-    std::size_t stack_frame_bytes) {
+    std::size_t stack_frame_bytes,
+    const c4c::backend::bir::Block* block,
+    std::optional<std::uint32_t> forced_destination_register,
+    std::size_t recursion_depth);
+
+const c4c::backend::bir::SelectInst* find_same_block_scalar_select_producer(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block* block,
+    const c4c::backend::bir::Value& value,
+    std::size_t before_instruction_index,
+    std::size_t* producer_instruction_index) {
+  if (block == nullptr || value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return nullptr;
+  }
+  const auto limit = std::min(before_instruction_index, block->insts.size());
+  for (std::size_t index = 0; index < limit; ++index) {
+    const auto* select =
+        std::get_if<c4c::backend::bir::SelectInst>(&block->insts.at(index));
+    if (select == nullptr ||
+        !prepared_bir_values_have_same_name(names, select->result, value)) {
+      continue;
+    }
+    if (producer_instruction_index != nullptr) {
+      *producer_instruction_index = index;
+    }
+    return select;
+  }
+  return nullptr;
+}
+
+bool select_inst_uses_value(const c4c::backend::prepare::PreparedNameTables& names,
+                            const c4c::backend::bir::SelectInst& select,
+                            const c4c::backend::bir::Value& value) {
+  return prepared_bir_values_have_same_name(names, select.lhs, value) ||
+         prepared_bir_values_have_same_name(names, select.rhs, value) ||
+         prepared_bir_values_have_same_name(names, select.true_value, value) ||
+         prepared_bir_values_have_same_name(names, select.false_value, value);
+}
+
+std::optional<std::size_t> unique_later_same_block_select_consumer_index(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block* block,
+    const c4c::backend::bir::SelectInst& select,
+    std::size_t instruction_index) {
+  if (block == nullptr ||
+      select.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      instruction_index >= block->insts.size()) {
+    return std::nullopt;
+  }
+  std::optional<std::size_t> consumer_index;
+  for (std::size_t index = instruction_index + 1U; index < block->insts.size();
+       ++index) {
+    const auto* consumer =
+        std::get_if<c4c::backend::bir::SelectInst>(&block->insts.at(index));
+    if (consumer == nullptr) {
+      continue;
+    }
+    if (!select_inst_uses_value(names, *consumer, select.result)) {
+      continue;
+    }
+    if (consumer_index.has_value()) {
+      return std::nullopt;
+    }
+    consumer_index = index;
+  }
+  return consumer_index;
+}
+
+bool append_rv64_move_value_or_same_block_select_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::string_view function_name,
+    std::string_view block_label,
+    const c4c::backend::bir::Block* block,
+    std::size_t before_instruction_index,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes,
+    std::size_t recursion_depth) {
+  if (append_rv64_move_value_to_register(fragment,
+                                         destination,
+                                         stack_layout,
+                                         names,
+                                         lookups,
+                                         value,
+                                         stack_frame_bytes)) {
+    return true;
+  }
+  if (recursion_depth > 16U) {
+    return false;
+  }
+  std::size_t producer_instruction_index = 0;
+  const auto* nested_select = find_same_block_scalar_select_producer(
+      names, block, value, before_instruction_index, &producer_instruction_index);
+  if (nested_select == nullptr) {
+    return false;
+  }
+  const auto unique_consumer = unique_later_same_block_select_consumer_index(
+      names, block, *nested_select, producer_instruction_index);
+  if (!unique_consumer.has_value() || *unique_consumer != before_instruction_index) {
+    return false;
+  }
+  auto nested_fragment = fragment_for_prepared_select(stack_layout,
+                                                      names,
+                                                      lookups,
+                                                      function_name,
+                                                      block_label,
+                                                      producer_instruction_index,
+                                                      *nested_select,
+                                                      stack_frame_bytes,
+                                                      block,
+                                                      destination,
+                                                      recursion_depth + 1U);
+  if (!nested_fragment.has_value()) {
+    return false;
+  }
+  append_fragment(fragment, std::move(*nested_fragment));
+  return true;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::SelectInst& select,
+    std::size_t stack_frame_bytes,
+    const c4c::backend::bir::Block* block,
+    std::optional<std::uint32_t> forced_destination_register,
+    std::size_t recursion_depth) {
   if (select.result.type != c4c::backend::bir::TypeKind::I8 &&
       select.result.type != c4c::backend::bir::TypeKind::I16 &&
       select.result.type != c4c::backend::bir::TypeKind::I32 &&
       select.result.type != c4c::backend::bir::TypeKind::I64) {
+    return std::nullopt;
+  }
+  if (recursion_depth > 16U) {
     return std::nullopt;
   }
   const auto normalized =
@@ -6918,15 +7066,23 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
   }
   const auto* destination_home = prepared_value_home_for(names, lookups, select.result);
   const auto destination =
-      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+      forced_destination_register.has_value()
+          ? forced_destination_register
+          : (destination_home == nullptr ? std::nullopt
+                                         : gpr_register_number_for_home(*destination_home));
   const auto destination_stack_offset =
-      destination_home == nullptr
+      forced_destination_register.has_value() || destination_home == nullptr
           ? std::nullopt
           : prepared_stack_slot_home_absolute_offset(stack_layout,
                                                      *destination_home,
                                                      stack_frame_bytes,
                                                      *size_bytes);
   if (!destination.has_value() && !destination_stack_offset.has_value()) {
+    if (unique_later_same_block_select_consumer_index(
+            names, block, select, instruction_index)
+            .has_value()) {
+      return RiscvEncodedFragment{};
+    }
     return std::nullopt;
   }
   const std::uint32_t destination_register = destination.value_or(30);
@@ -6936,30 +7092,45 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
       rv64_select_local_label(function_name, block_label, instruction_index, "end");
 
   RiscvEncodedFragment fragment;
-  if (!append_rv64_move_value_to_register(fragment,
-                                          28,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          normalized->lhs,
-                                          stack_frame_bytes) ||
-      !append_rv64_move_value_to_register(fragment,
-                                          29,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          normalized->rhs,
-                                          stack_frame_bytes)) {
+  if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                               28,
+                                                               stack_layout,
+                                                               names,
+                                                               lookups,
+                                                               function_name,
+                                                               block_label,
+                                                               block,
+                                                               instruction_index,
+                                                               normalized->lhs,
+                                                               stack_frame_bytes,
+                                                               recursion_depth) ||
+      !append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                               29,
+                                                               stack_layout,
+                                                               names,
+                                                               lookups,
+                                                               function_name,
+                                                               block_label,
+                                                               block,
+                                                               instruction_index,
+                                                               normalized->rhs,
+                                                               stack_frame_bytes,
+                                                               recursion_depth)) {
     return std::nullopt;
   }
   append_rv64_local_branch(fragment, *funct3, 28, 29, true_label);
-  if (!append_rv64_move_value_to_register(fragment,
-                                          destination_register,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          select.false_value,
-                                          stack_frame_bytes)) {
+  if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                               destination_register,
+                                                               stack_layout,
+                                                               names,
+                                                               lookups,
+                                                               function_name,
+                                                               block_label,
+                                                               block,
+                                                               instruction_index,
+                                                               select.false_value,
+                                                               stack_frame_bytes,
+                                                               recursion_depth)) {
     return std::nullopt;
   }
   append_rv64_local_jump(fragment, end_label);
@@ -6967,13 +7138,18 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
       .offset_bytes = fragment.bytes.size(),
       .name = true_label,
   });
-  if (!append_rv64_move_value_to_register(fragment,
-                                          destination_register,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          select.true_value,
-                                          stack_frame_bytes)) {
+  if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                               destination_register,
+                                                               stack_layout,
+                                                               names,
+                                                               lookups,
+                                                               function_name,
+                                                               block_label,
+                                                               block,
+                                                               instruction_index,
+                                                               select.true_value,
+                                                               stack_frame_bytes,
+                                                               recursion_depth)) {
     return std::nullopt;
   }
   fragment.labels.push_back(RiscvObjectLabel{
@@ -8504,7 +8680,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                                               block),
                                                      instruction_index,
                                                      *select,
-                                                     stack_frame_bytes);
+                                                     stack_frame_bytes,
+                                                     &block,
+                                                     std::nullopt,
+                                                     0);
         if (fragment.has_value()) {
           return fragment;
         }

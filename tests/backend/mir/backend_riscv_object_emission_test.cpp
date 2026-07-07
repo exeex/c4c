@@ -7282,6 +7282,196 @@ prepare::PreparedBirModule make_prepared_small_integer_ordinary_select_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_nested_i32_ordinary_select_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto guard_name = prepared.names.value_names.intern("%guard");
+  const auto fallback_name = prepared.names.value_names.intern("%fallback");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%inner"),
+                  .compare_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                  .rhs = bir::Value::immediate_i32(0),
+                  .true_value = bir::Value::immediate_i32(7),
+                  .false_value =
+                      bir::Value::named(bir::TypeKind::I32, "%fallback"),
+              },
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+                  .compare_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%guard"),
+                  .rhs = bir::Value::immediate_i32(0),
+                  .true_value = bir::Value::named(bir::TypeKind::I32, "%inner"),
+                  .false_value = bir::Value::immediate_i32(3),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 4;
+  prepared.stack_layout.frame_alignment_bytes = 4;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{3},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, lhs_name, "t0", 5),
+              rv64_gpr_home(2, function_name, guard_name, "t1", 6),
+              rv64_gpr_home(3, function_name, fallback_name, "t2", 7),
+              rv64_sized_stack_slot_home(4,
+                                         function_name,
+                                         selected_name,
+                                         prepare::PreparedFrameSlotId{3},
+                                         0,
+                                         4),
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_reused_nested_i32_ordinary_select_module() {
+  auto prepared = make_prepared_nested_i32_ordinary_select_module();
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto second_name = prepared.names.value_names.intern("%second");
+
+  auto& entry = prepared.module.functions.front().blocks.front();
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%second"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%guard"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = bir::Value::named(bir::TypeKind::I32, "%inner"),
+      .false_value = bir::Value::immediate_i32(5),
+  });
+
+  prepared.stack_layout.frame_size_bytes = 8;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{4},
+      .function_name = function_name,
+      .offset_bytes = 4,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions.front().value_homes.push_back(
+      rv64_sized_stack_slot_home(5,
+                                 function_name,
+                                 second_name,
+                                 prepare::PreparedFrameSlotId{4},
+                                 4,
+                                 4));
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_tree_i32_ordinary_select_module() {
+  auto prepared = make_prepared_nested_i32_ordinary_select_module();
+  auto& entry = prepared.module.functions.front().blocks.front();
+  entry.insts.clear();
+  entry.insts = {
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%left.a"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::immediate_i32(7),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%fallback"),
+      },
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%left.b"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::immediate_i32(7),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%fallback"),
+      },
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%left"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%guard"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::named(bir::TypeKind::I32, "%left.a"),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%left.b"),
+      },
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%right.a"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::immediate_i32(7),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%fallback"),
+      },
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%right.b"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::immediate_i32(7),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%fallback"),
+      },
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%right"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%guard"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::named(bir::TypeKind::I32, "%right.a"),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%right.b"),
+      },
+      bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+          .rhs = bir::Value::immediate_i32(0),
+          .true_value = bir::Value::named(bir::TypeKind::I32, "%left"),
+          .false_value = bir::Value::named(bir::TypeKind::I32, "%right"),
+      },
+  };
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_join_transfer_select_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -15779,6 +15969,93 @@ int builds_prepared_small_integer_ordinary_select_materialization_objects() {
   return 0;
 }
 
+int materializes_nested_i32_ordinary_select_without_intermediate_home_object() {
+  const auto prepared = make_prepared_nested_i32_ordinary_select_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected nested i32 ordinary select RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* skipped_true_label =
+      object::find_symbol(*module, ".Lmain_entry_select_0_true");
+  const auto* skipped_end_label =
+      object::find_symbol(*module, ".Lmain_entry_select_0_end");
+  const auto* final_true_label =
+      object::find_symbol(*module, ".Lmain_entry_select_1_true");
+  const auto* final_end_label =
+      object::find_symbol(*module, ".Lmain_entry_select_1_end");
+  if (text == nullptr || main_symbol == nullptr ||
+      skipped_true_label == nullptr || skipped_end_label == nullptr ||
+      final_true_label == nullptr || final_end_label == nullptr) {
+    return fail("expected nested i32 ordinary select object to publish both select label pairs");
+  }
+  if (text->bytes.size() <= 44 || text->size_bytes <= 44 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != text->size_bytes) {
+    return fail("expected nested i32 ordinary select object to materialize more than one select");
+  }
+  bool saw_branch_relocation = false;
+  bool saw_jump_relocation = false;
+  for (const auto& relocation : module->relocations) {
+    saw_branch_relocation = saw_branch_relocation ||
+                            relocation.type == R_RISCV_BRANCH;
+    saw_jump_relocation = saw_jump_relocation || relocation.type == R_RISCV_JAL;
+  }
+  if (!saw_branch_relocation || !saw_jump_relocation) {
+    return fail("expected nested i32 ordinary select object to use local select control flow");
+  }
+  return 0;
+}
+
+int materializes_tree_i32_ordinary_select_without_intermediate_home_object() {
+  const auto prepared = make_prepared_tree_i32_ordinary_select_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected tree i32 ordinary select RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* first_true_label =
+      object::find_symbol(*module, ".Lmain_entry_select_0_true");
+  const auto* branch_true_label =
+      object::find_symbol(*module, ".Lmain_entry_select_2_true");
+  const auto* final_true_label =
+      object::find_symbol(*module, ".Lmain_entry_select_6_true");
+  const auto* final_end_label =
+      object::find_symbol(*module, ".Lmain_entry_select_6_end");
+  if (text == nullptr || main_symbol == nullptr ||
+      first_true_label == nullptr || branch_true_label == nullptr ||
+      final_true_label == nullptr || final_end_label == nullptr) {
+    return fail("expected tree i32 ordinary select object to publish nested select labels");
+  }
+  if (text->bytes.size() <= 100 || text->size_bytes <= 100 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != text->size_bytes) {
+    return fail("expected tree i32 ordinary select object to materialize nested select tree");
+  }
+  std::size_t branch_relocations = 0;
+  std::size_t jump_relocations = 0;
+  for (const auto& relocation : module->relocations) {
+    branch_relocations += relocation.type == R_RISCV_BRANCH ? 1U : 0U;
+    jump_relocations += relocation.type == R_RISCV_JAL ? 1U : 0U;
+  }
+  if (branch_relocations < 6U || jump_relocations < 6U) {
+    return fail("expected tree i32 ordinary select object to emit nested select control flow");
+  }
+  return 0;
+}
+
+int rejects_reused_nested_i32_ordinary_select_without_intermediate_home_object() {
+  const auto prepared =
+      make_prepared_reused_nested_i32_ordinary_select_module();
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected reused no-home nested i32 ordinary select to remain fail-closed");
+  }
+  return 0;
+}
+
 int skips_published_prepared_join_transfer_select_carrier_object() {
   const auto prepared =
       make_prepared_join_transfer_select_with_published_copies_module();
@@ -21027,6 +21304,12 @@ int main() {
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();
   status |= builds_prepared_small_integer_ordinary_select_materialization_objects();
+  status |=
+      materializes_nested_i32_ordinary_select_without_intermediate_home_object();
+  status |=
+      materializes_tree_i32_ordinary_select_without_intermediate_home_object();
+  status |=
+      rejects_reused_nested_i32_ordinary_select_without_intermediate_home_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= materializes_published_prepared_join_transfer_select_stack_carrier_object();
   status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
