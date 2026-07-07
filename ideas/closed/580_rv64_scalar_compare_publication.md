@@ -1,6 +1,6 @@
 # RV64 Scalar Compare Publication
 
-Status: Open
+Status: Closed
 Type: Focused RV64 object-emission repair
 Parent: `ideas/open/550_rv64_scalar_fpr_residual_salvage.md`
 Owning Layer: RV64 object scalar compare result publication
@@ -59,6 +59,24 @@ compare result publication.
 - Select-consuming compare rows are either proven to advance or left with a
   later, narrower owner that is not the original compare-publication failure.
 - Backend validation for the touched RV64 bucket passes.
+
+## Closure Notes
+
+Closed after semantic RV64 object-emission support for ordinary F32/F64 `eq`
+and `ne` compare result publication into prepared GPR homes, including direct
+publication and select-consuming paths covered by focused backend tests.
+
+Representative residual rows advanced beyond
+`unsupported_scalar_compare_publication`:
+
+- `src/20080529-1.c` now reaches later `unsupported_call_abi`.
+- `src/loop-8.c` now reaches later `unsupported_move_bundle_target_shape`.
+
+Close-gate backend validation passed with matching canonical logs:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+reported 346 passed, 0 failed in both `test_before.log` and `test_after.log`;
+the regression guard passed with non-decreasing mode for this lifecycle-only
+close.
 
 ## Reviewer Reject Signals
 
