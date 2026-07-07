@@ -1,6 +1,6 @@
 # RV64 Pointer Arithmetic Lowering
 
-Status: Open
+Status: Closed
 Type: Capability repair
 Parent: `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
 Owning Layer: RV64 object lowering for pointer-valued binary instructions
@@ -60,6 +60,21 @@ Evidence:
   diagnostics.
 - No unrelated RV64 lowering family is changed as part of the acceptance
   proof.
+
+## Closure Note
+
+Closed on the narrower fail-closed diagnostic acceptance path. The focused
+RV64 object-emission coverage now reports `unsupported_pointer_arithmetic` for
+pointer-result add/sub forms with loaded pointer base plus scaled integer byte
+offset after supported materialization/lowering paths fail, while unrelated
+unsupported instruction families remain on their existing diagnostics.
+
+The representative `src/20000819-1.c` route still stops at the same pointer
+arithmetic owner rather than advancing to object completion, but its first
+failure is no longer the old generic `unsupported_instruction_fragment`; it is
+the specific pointer-arithmetic diagnostic allowed by this idea's acceptance
+criteria. Backend close-gate proof used the matching command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
 
 ## Reviewer Reject Signals
 
