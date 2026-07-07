@@ -8,40 +8,49 @@ Current Step Title: Prove The Representative Route
 
 ## Just Finished
 
-Completed Step 4 follow-up: repaired the RV64 object-route F64 binary
-operand-materialization gap for semantic immediate operands such as
-`bir.sdiv double 1.0, %t4`.
+Completed Step 4 follow-up: repaired the RV64 object-route F32 floating binary
+gap reached at `owner=float %t10`.
 
-The prepared F64 binary path now materializes immediate F64 bit patterns into
-scratch FPRs through the existing RV64 immediate loader and `fmv.d.x`, while
-preserving the existing FPR-home operand path for `add`, `sub`, `mul`, and
-`div`. The focused object-emission coverage proves both lhs-immediate and
-rhs-immediate F64 `sdiv` shapes, and the existing F128/remainder unsupported
-forms remain fail-closed.
-
-Representative result: `src/20000605-1.c` now advances past the old
-`owner=double %t5` blocker. The next unsupported owner reached is:
+The exact observed shape is a prepared same-type F32 multiply with FPR homes:
 
 ```text
-unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering;
-function=render_image_rgb_a; block=entry; block_index=0; instruction_index=11;
-instruction_kind=BinaryInst; owner=float %t10
+%t10 = bir.mul float %t9, %t8
+home %t10 value_id=9 kind=register reg=fs2
+move_bundle phase=before_instruction block_index=0 instruction_index=11
+  move from_value_id=8 to_value_id=9 destination_storage=register placement=fpr:callee_saved#1/w1
+  move from_value_id=7 to_value_id=9 destination_storage=register placement=fpr:callee_saved#1/w1
+```
+
+The prepared scalar FP binary path is now type-parametric for F32/F64 hardware
+`add`, `sub`, `mul`, and `div`, while F128 and unsupported FP remainder forms
+remain fail-closed. Focused object-emission coverage now proves F32 `fmul.s`
+through FPR homes in addition to the existing F64 `fdiv.d` and F64 immediate
+coverage.
+
+Representative result: `src/20000605-1.c` advances past the old
+`owner=float %t10` unsupported `BinaryInst`. The next blocker is:
+
+```text
+prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination:
+prepared move-bundle classifier rejected ambiguous non-parallel multi-source
+stack-destination authority
 ```
 
 ## Suggested Next
 
-Delegate a bounded follow-up for Step 4 to inspect and repair the new
-representative blocker at `owner=float %t10`, likely the corresponding F32
-floating binary lowering/materialization gap.
+Delegate a bounded follow-up for Step 4 to classify and repair the ambiguous
+non-parallel multi-source stack-destination move-bundle authority now reached
+by the representative object route, if it belongs to the FP binary route rather
+than a separate prepared move-bundle capability.
 
 ## Watchouts
 
-- The `double %t5` representative owner is no longer the first blocker.
-- F64 immediate materialization reinterprets the full 64-bit immediate payload
-  into the signed immediate loader, so sign-bit-set FP constants are not
-  artificially rejected by this helper.
-- Scratch FPR selection avoids the destination and existing operand FPR homes.
-- The F128 and F64 remainder cases remain deliberate fail-closed coverage.
+- The `float %t10` representative owner is no longer the first blocker.
+- The F32 `%t10` repair is semantic FPR-home lowering; it does not match source
+  filenames, function names, block names, or value names.
+- Scratch FPR selection still avoids the destination and existing operand FPR
+  homes.
+- The F128 and F32/F64 remainder cases remain deliberate fail-closed coverage.
 
 ## Proof
 
@@ -56,18 +65,20 @@ Result: passed. Proof log: `test_after.log`.
 Supervisor guard result:
 `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 346/346.
 
-Representative rerun command used the requested fresh Step 4b artifact path:
+Representative rerun command used the requested fresh Step 4c artifact path:
 
 ```sh
-cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=/usr/bin/clang -DQEMU_RISCV64=/usr/bin/qemu-riscv64 -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/20000605-1.c -DROOT=/workspaces/c4c/tests/c/external/gcc_torture -DTARGET_TRIPLE=riscv64-linux-gnu -DSYSROOT=/usr/riscv64-linux-gnu -DOUT_CLANG_BIN=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4b/src_20000605-1.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4b/src_20000605-1.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4b/src_20000605-1.c/c4c.bin -DCASE_TIMEOUT_SEC=20 -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake
+cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=/usr/bin/clang -DQEMU_RISCV64=/usr/bin/qemu-riscv64 -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/20000605-1.c -DROOT=/workspaces/c4c/tests/c/external/gcc_torture -DTARGET_TRIPLE=riscv64-linux-gnu -DSYSROOT=/usr/riscv64-linux-gnu -DOUT_CLANG_BIN=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/c4c.bin -DCASE_TIMEOUT_SEC=20 -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake
 ```
 
 Result: failed as an object-route compile failure with exit code 1, but
-advanced past `owner=double %t5` and reached `owner=float %t10`.
+advanced past `owner=float %t10` and reached the ambiguous non-parallel
+multi-source stack-destination move-bundle authority blocker.
 
 Representative artifacts:
 
-- `build/agent_state/574_rv64_floating_point_binary_lowering/step4b/src_20000605-1.c/object-route.log`
-- `build/agent_state/574_rv64_floating_point_binary_lowering/step4b/src_20000605-1.c/object-route.rc`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/prepared-focus.txt`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/object-route.log`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/object-route.rc`
 
 Proof log: `test_before.log` after supervisor roll-forward.

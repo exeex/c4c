@@ -6881,7 +6881,9 @@ prepare::PreparedBirModule make_prepared_scalar_fpr_binary_module(
       .label_id = block_label,
   };
 
-  const std::size_t size_bytes = type == bir::TypeKind::F128 ? 16 : 8;
+  const std::size_t size_bytes = type == bir::TypeKind::F128 ? 16
+                                 : type == bir::TypeKind::F32  ? 4
+                                                               : 8;
   prepared.module.functions.push_back(bir::Function{
       .name = "fp_binary",
       .return_type = bir::TypeKind::Void,
@@ -15957,6 +15959,37 @@ int builds_prepared_scalar_f64_binary_object() {
   return 0;
 }
 
+int builds_prepared_scalar_f32_binary_object() {
+  const auto prepared =
+      make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::Mul,
+                                             bir::TypeKind::F32);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar fmul.s RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* function = object::find_symbol(module, "fp_binary");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared scalar fmul.s object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      function->value != 0 || function->size_bytes != 8 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared scalar fmul.s object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x10b50053 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected fmul.s ft0, fa0, fa1 followed by ret");
+  }
+  if (!module.relocations.empty()) {
+    return fail("expected scalar fmul.s object to need no relocations");
+  }
+  return 0;
+}
+
 int rejects_prepared_scalar_fp_binary_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
@@ -15970,6 +16003,12 @@ int rejects_prepared_scalar_fp_binary_fail_closed_shapes() {
 
   prepared = make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::SRem,
                                                     bir::TypeKind::F64);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::SRem,
+                                                    bir::TypeKind::F32);
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
@@ -21527,6 +21566,7 @@ int main() {
   status |= reports_generic_fallback_context_for_prepared_traversal_instruction();
   status |= builds_prepared_scalar_divrem_object();
   status |= builds_prepared_scalar_f64_binary_object();
+  status |= builds_prepared_scalar_f32_binary_object();
   status |= rejects_prepared_scalar_fp_binary_fail_closed_shapes();
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();

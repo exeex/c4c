@@ -1764,24 +1764,31 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
 }
 
 
-std::optional<std::uint32_t> rv64_f64_binary_funct7(
-    c4c::backend::bir::BinaryOpcode opcode) {
+std::optional<std::uint32_t> rv64_fp_binary_funct7(
+    c4c::backend::bir::BinaryOpcode opcode,
+    c4c::backend::bir::TypeKind type) {
+  const std::uint32_t precision_bit =
+      type == c4c::backend::bir::TypeKind::F64 ? 0x01 : 0x00;
+  if (type != c4c::backend::bir::TypeKind::F32 &&
+      type != c4c::backend::bir::TypeKind::F64) {
+    return std::nullopt;
+  }
   switch (opcode) {
     case c4c::backend::bir::BinaryOpcode::Add:
-      return 0x01;  // fadd.d
+      return 0x00 | precision_bit;  // fadd.s/fadd.d
     case c4c::backend::bir::BinaryOpcode::Sub:
-      return 0x05;  // fsub.d
+      return 0x04 | precision_bit;  // fsub.s/fsub.d
     case c4c::backend::bir::BinaryOpcode::Mul:
-      return 0x09;  // fmul.d
+      return 0x08 | precision_bit;  // fmul.s/fmul.d
     case c4c::backend::bir::BinaryOpcode::SDiv:
-      return 0x0d;  // fdiv.d
+      return 0x0c | precision_bit;  // fdiv.s/fdiv.d
     default:
       return std::nullopt;
   }
 }
 
 
-std::optional<std::uint32_t> choose_f64_binary_scratch_fpr(
+std::optional<std::uint32_t> choose_fp_binary_scratch_fpr(
     std::initializer_list<std::optional<std::uint32_t>> occupied) {
   constexpr std::uint32_t candidates[] = {5, 6, 7, 28, 29, 30, 31};
   for (const auto candidate : candidates) {
@@ -1800,7 +1807,7 @@ std::optional<std::uint32_t> choose_f64_binary_scratch_fpr(
 }
 
 
-std::optional<std::uint32_t> materialize_f64_binary_operand(
+std::optional<std::uint32_t> materialize_fp_binary_operand(
     RiscvEncodedFragment& fragment,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -1812,11 +1819,19 @@ std::optional<std::uint32_t> materialize_f64_binary_operand(
     return fpr_register_number_for_home(*home);
   }
   if (value.kind != c4c::backend::bir::Value::Kind::Immediate ||
-      value.type != c4c::backend::bir::TypeKind::F64) {
+      (value.type != c4c::backend::bir::TypeKind::F32 &&
+       value.type != c4c::backend::bir::TypeKind::F64)) {
     return std::nullopt;
   }
   std::int64_t bits = 0;
-  std::memcpy(&bits, &value.immediate_bits, sizeof(bits));
+  if (value.type == c4c::backend::bir::TypeKind::F32) {
+    std::int32_t f32_bits = 0;
+    const auto raw_bits = static_cast<std::uint32_t>(value.immediate_bits);
+    std::memcpy(&f32_bits, &raw_bits, sizeof(f32_bits));
+    bits = f32_bits;
+  } else {
+    std::memcpy(&bits, &value.immediate_bits, sizeof(bits));
+  }
   append_rv64_load_immediate(fragment,
                              scratch_gpr,
                              bits);
@@ -1828,17 +1843,18 @@ std::optional<std::uint32_t> materialize_f64_binary_operand(
 }
 
 
-std::optional<RiscvEncodedFragment> fragment_for_prepared_f64_binary(
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_binary(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::BinaryInst& binary) {
-  if (binary.result.type != c4c::backend::bir::TypeKind::F64 ||
-      binary.operand_type != c4c::backend::bir::TypeKind::F64 ||
-      binary.lhs.type != c4c::backend::bir::TypeKind::F64 ||
-      binary.rhs.type != c4c::backend::bir::TypeKind::F64) {
+  if ((binary.result.type != c4c::backend::bir::TypeKind::F32 &&
+       binary.result.type != c4c::backend::bir::TypeKind::F64) ||
+      binary.operand_type != binary.result.type ||
+      binary.lhs.type != binary.result.type ||
+      binary.rhs.type != binary.result.type) {
     return std::nullopt;
   }
-  const auto funct7 = rv64_f64_binary_funct7(binary.opcode);
+  const auto funct7 = rv64_fp_binary_funct7(binary.opcode, binary.result.type);
   if (!funct7.has_value()) {
     return std::nullopt;
   }
@@ -1855,9 +1871,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_f64_binary(
       lhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*lhs_home);
   const auto rhs_home_register =
       rhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*rhs_home);
-  const auto lhs_scratch = choose_f64_binary_scratch_fpr(
+  const auto lhs_scratch = choose_fp_binary_scratch_fpr(
       {*destination, lhs_home_register, rhs_home_register});
-  const auto rhs_scratch = choose_f64_binary_scratch_fpr(
+  const auto rhs_scratch = choose_fp_binary_scratch_fpr(
       {*destination, lhs_home_register, rhs_home_register, lhs_scratch});
   if (!lhs_scratch.has_value() || !rhs_scratch.has_value()) {
     return std::nullopt;
@@ -1865,19 +1881,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_f64_binary(
 
   RiscvEncodedFragment fragment;
   const auto lhs =
-      materialize_f64_binary_operand(fragment,
-                                     names,
-                                     lookups,
-                                     binary.lhs,
-                                     *lhs_scratch,
-                                     28);
+      materialize_fp_binary_operand(fragment,
+                                    names,
+                                    lookups,
+                                    binary.lhs,
+                                    *lhs_scratch,
+                                    28);
   const auto rhs =
-      materialize_f64_binary_operand(fragment,
-                                     names,
-                                     lookups,
-                                     binary.rhs,
-                                     *rhs_scratch,
-                                     29);
+      materialize_fp_binary_operand(fragment,
+                                    names,
+                                    lookups,
+                                    binary.rhs,
+                                    *rhs_scratch,
+                                    29);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
@@ -2158,7 +2174,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes) {
-  if (auto fragment = fragment_for_prepared_f64_binary(names, lookups, binary)) {
+  if (auto fragment = fragment_for_prepared_fp_binary(names, lookups, binary)) {
     return fragment;
   }
   if (binary.result.type != c4c::backend::bir::TypeKind::I32 &&
