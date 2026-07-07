@@ -1395,7 +1395,8 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
 
   if (const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator)) {
     bir::ReturnTerminator lowered_ret;
-    if (ret->value_str.has_value()) {
+    if (ret->value_str.has_value() &&
+        (return_info_->type != bir::TypeKind::Void || return_info_->returned_via_sret)) {
       const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
       if (return_info_->returned_via_sret) {
         if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {

@@ -3539,6 +3539,52 @@ int expect_scalar_control_flow_producer_boundary_admits_phi_edge_producers() {
   return 0;
 }
 
+int expect_scalar_control_flow_void_return_ignores_legacy_payload() {
+  namespace bir = c4c::backend::bir;
+
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  LirFunction function;
+  function.name = "legacy_void_return_payload";
+  function.signature_text = "define void @legacy_void_return_payload()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.size() != 1) {
+    return fail("legacy void return payload should not block scalar-control-flow lowering");
+  }
+  if (contains_note(result.notes,
+                    "function",
+                    "failed in scalar-control-flow semantic family")) {
+    return fail("legacy void return payload should not report scalar-control-flow failure");
+  }
+
+  const auto& lowered_function = result.module->functions.front();
+  if (lowered_function.blocks.size() != 1) {
+    return fail("legacy void return payload fixture should lower to one block");
+  }
+  const auto& lowered_entry = lowered_function.blocks.front();
+  if (!lowered_entry.insts.empty()) {
+    return fail("legacy void return payload fixture should not synthesize instructions");
+  }
+  if (lowered_entry.terminator.kind != bir::TerminatorKind::Return ||
+      lowered_entry.terminator.value.has_value()) {
+    return fail("legacy void return payload should lower to a plain void return");
+  }
+
+  return 0;
+}
+
 c4c::backend::bir::Module make_block_label_verifier_identity_module() {
   namespace bir = c4c::backend::bir;
 
@@ -14141,6 +14187,11 @@ int main() {
           expect_scalar_control_flow_producer_boundary_admits_phi_edge_producers();
       scalar_control_flow_producer_status != 0) {
     return scalar_control_flow_producer_status;
+  }
+  if (const int void_return_payload_status =
+          expect_scalar_control_flow_void_return_ignores_legacy_payload();
+      void_return_payload_status != 0) {
+    return void_return_payload_status;
   }
   if (const int verifier_block_label_id_status = expect_bir_verifier_prefers_block_label_ids();
       verifier_block_label_id_status != 0) {
