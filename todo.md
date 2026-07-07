@@ -1,61 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/562_bir_scalar_binop_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Scalar-Binop Evidence
+Current Step ID: 2
+Current Step Title: Repair Scalar-Binop Producer Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed scalar-binop evidence for
+Step 2 repaired the F128 scalar-binop producer boundary for
 `ideas/open/562_bir_scalar_binop_semantic_producer_admission.md`.
 
-Representative outcomes:
-- `src/960513-1.c`, function `f`: still fails at the original BIR
-  `scalar-binop semantic family` boundary. Current LLVM has `fneg fp128`,
-  repeated `fmul fp128`, and `fsub fp128`; the first owned producer gap is
-  F128 scalar-binop operand/opcode admission rather than outer failure
-  publication.
-- `src/simd-6.c`, function `foo`: still reports `scalar-binop semantic
-  family`, but the operation is `mul <8 x i8>` and should be treated as a
-  vector-binop owner-boundary candidate, not proof of ordinary scalar-binop
-  closure.
-- `src/960327-1.c`, `src/960402-1.c`, `src/960608-1.c`: semantic BIR dump now
-  succeeds; their RV64 object path failures are downstream object instruction
-  fragment boundaries.
-- `src/960521-1.c`: fails later in `store local-memory semantic family`.
-- `src/pr60960.c`: remains downstream in `scalar/local-memory semantic family`.
-- `src/20050316-3.c`: remains downstream in `scalar-cast semantic family`.
+Decision: admit named F128 arithmetic through the general scalar-binop producer
+rule now, while keeping arbitrary F128 literal constants fail-closed at the
+existing 64-bit immediate lane boundary.
 
-Existing focused BIR coverage already documents fail-closed F128 scalar
-constant binops plus admitted I16 and F32 scalar-binop publication, so Step 1
-does not prove closure readiness. It exposes a real Step 2 decision point for
-F128 scalar-binop producer admission.
+Implemented behavior:
+- `fneg fp128` now synthesizes a full-width F128 zero operand and emits the
+  existing BIR `Sub` scalar-binop shape.
+- Named `fmul fp128` and `fsub fp128` continue through the shared scalar-binop
+  opcode and operand path as BIR `Mul` and `Sub`.
+- Focused BIR notes coverage now verifies named F128 `fneg`/`fmul`/`fsub`
+  publication with F128 operand/result typing, while the existing F128
+  constant-binop fail-closed test remains in place.
+
+Representative movement:
+- `src/960513-1.c`, function `f`: advances beyond the original BIR
+  `scalar-binop semantic family` boundary; its generated
+  `llvm_gcc_c_torture_src_960513_1_c` test now passes.
 
 ## Suggested Next
 
-Execute Step 2 as a focused producer packet: decide whether F128 scalar-binop
-admission belongs in this scalar producer lane, then either publish the missing
-F128 operand/opcode facts with focused BIR coverage or record an explicit
-fail-closed owner boundary for F128 arithmetic that is strong enough for a
-plan-owner route decision.
+Execute Step 3: run closure-focused validation and hand off to the plan owner
+to decide whether scalar-binop producer admission is complete or whether the
+remaining vector-binop owner-boundary evidence needs a split.
 
 ## Watchouts
 
-- Do not edit expectations, unsupported markers, allowlists, classifications,
-  or the outer `latest function failure` note as evidence of progress.
-- Do not route this packet into scalar-control-flow, function-signature, RV64
-  lowering, or object-emission work before BIR scalar-binop publication is
-  proven correct.
-- `src/960513-1.c` is not a named-case fix target; any repair must be a general
-  F128 scalar-binop operand/opcode rule or an explicit owner-boundary decision.
+- F128 scalar constants are still deliberately fail-closed unless a future
+  packet adds full-width literal parsing beyond the current producer scope.
 - `src/simd-6.c` is vector arithmetic after small-vector signature admission;
-  do not use it to justify scalar-binop closure or scalar-only F128 work.
+  keep it separate from scalar-binop closure unless the supervisor explicitly
+  routes a vector-binop owner-boundary packet.
+- No expectations, unsupported markers, allowlists, or row classifications were
+  changed for this slice.
 
 ## Proof
 
 Ran:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 
-Result: backend subset passed; `test_after.log` contains the fresh proof.
+Result: backend subset passed `346/346`; `test_after.log` contains the fresh
+proof.
+
+Additional representative check:
+`ctest --test-dir build --output-on-failure -R '^llvm_gcc_c_torture_src_960513_1_c$'`
+
+Result: passed.

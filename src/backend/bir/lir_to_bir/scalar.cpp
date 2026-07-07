@@ -251,6 +251,9 @@ std::optional<std::pair<bir::Value, bir::Value>> BirFunctionLowerer::lower_scala
       return std::pair<bir::Value, bir::Value>{bir::Value::immediate_f32_bits(0u), *operand};
     case bir::TypeKind::F64:
       return std::pair<bir::Value, bir::Value>{bir::Value::immediate_f64_bits(0u), *operand};
+    case bir::TypeKind::F128:
+      return std::pair<bir::Value, bir::Value>{bir::Value::immediate_f128_bits(0u, 0u),
+                                                *operand};
     default:
       return std::nullopt;
   }

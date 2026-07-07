@@ -210,6 +210,7 @@ lir::LirCallSignature void_call_signature(
 
 LirModule make_admitted_scalar_float_globals_module();
 LirModule make_f128_scalar_constant_binop_fails_closed_module();
+LirModule make_admitted_f128_variable_scalar_binops_module();
 LirModule make_admitted_scalar_i16_globals_module();
 LirModule make_admitted_i16_scalar_bitfield_binops_module();
 int expect_aarch64_extern_data_global_uses_got_policy();
@@ -402,6 +403,40 @@ int expect_f128_scalar_constant_binop_fails_closed() {
                      "semantic family")) {
     return fail("missing module summary for unsupported F128 scalar constant");
   }
+  return 0;
+}
+
+int expect_admitted_f128_variable_scalar_binops() {
+  auto result = try_lower_to_bir_with_options(
+      make_admitted_f128_variable_scalar_binops_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected variable F128 scalar binops to lower to semantic BIR");
+  }
+
+  const auto& insts = result.module->functions.front().blocks.front().insts;
+  constexpr std::array<c4c::backend::bir::BinaryOpcode, 3> expected_opcodes = {
+      c4c::backend::bir::BinaryOpcode::Sub,
+      c4c::backend::bir::BinaryOpcode::Mul,
+      c4c::backend::bir::BinaryOpcode::Sub,
+  };
+  if (insts.size() != expected_opcodes.size()) {
+    return fail("variable F128 scalar binops should lower to the expected binary instructions");
+  }
+  for (std::size_t index = 0; index < expected_opcodes.size(); ++index) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&insts[index]);
+    if (binary == nullptr || binary->opcode != expected_opcodes[index] ||
+        binary->operand_type != TypeKind::F128 || binary->result.type != TypeKind::F128 ||
+        binary->lhs.type != TypeKind::F128 || binary->rhs.type != TypeKind::F128) {
+      return fail("variable F128 scalar binops should preserve opcode and F128 operand typing");
+    }
+  }
+
+  const auto* fneg = std::get_if<c4c::backend::bir::BinaryInst>(&insts.front());
+  if (fneg == nullptr || fneg->lhs != c4c::backend::bir::Value::immediate_f128_bits(0u, 0u) ||
+      fneg->rhs != c4c::backend::bir::Value::named(TypeKind::F128, "%lhs")) {
+    return fail("F128 fneg should lower as zero-minus-operand with a full-width zero payload");
+  }
+
   return 0;
 }
 
@@ -12321,6 +12356,48 @@ LirModule make_f128_scalar_constant_binop_fails_closed_module() {
   return module;
 }
 
+LirModule make_admitted_f128_variable_scalar_binops_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_f128_variable_scalar_binops";
+  function.signature_text = "define f128 @admitted_f128_variable_scalar_binops()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_LONGDOUBLE};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%neg"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FNeg,
+      .type_str = "f128",
+      .lhs = LirOperand("%lhs"),
+      .rhs = LirOperand(""),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%mul"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FMul,
+      .type_str = "f128",
+      .lhs = LirOperand("%neg"),
+      .rhs = LirOperand("%rhs"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%sub"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FSub,
+      .type_str = "f128",
+      .lhs = LirOperand("%mul"),
+      .rhs = LirOperand("%lhs"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%sub"),
+      .type_str = "f128",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_gep_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -14664,6 +14741,12 @@ int main() {
           expect_f128_scalar_constant_binop_fails_closed();
       f128_scalar_constant_status != 0) {
     return f128_scalar_constant_status;
+  }
+
+  if (const int f128_variable_scalar_binops_status =
+          expect_admitted_f128_variable_scalar_binops();
+      f128_variable_scalar_binops_status != 0) {
+    return f128_variable_scalar_binops_status;
   }
 
   if (const int gep_status = expect_failure_notes(
