@@ -14820,6 +14820,57 @@ int rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes() {
   return 0;
 }
 
+int rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle() {
+  auto prepared =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+
+  auto* compare = std::get_if<bir::BinaryInst>(
+      &prepared.module.functions[0].blocks[0].insts[0]);
+  if (compare == nullptr) {
+    return fail("expected fixture to keep binary compare owner");
+  }
+  compare->rhs = bir::Value::named(bir::TypeKind::I32, "%rhs");
+
+  auto& locations = prepared.value_locations.functions[0];
+  locations.value_homes.push_back(
+      rv64_gpr_home(4, function_name, rhs_name, "s2", 18));
+  auto& bundle = locations.move_bundles[0];
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 4,
+      .to_value_id = 2,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_contiguous_width = 1,
+      .block_index = 0,
+      .instruction_index = 0,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "consumer_register_to_stack",
+  });
+
+  if (bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      prepared.control_flow.functions[0].parallel_copy_bundles.empty() ==
+          false ||
+      bundle.moves.size() != 2 ||
+      bundle.moves[0].from_value_id == bundle.moves[1].from_value_id ||
+      bundle.moves[0].to_value_id != bundle.moves[1].to_value_id) {
+    return fail("ambiguous stack-destination fixture did not publish the intended authority shape");
+  }
+
+  if (expect_prepared_consumer_rejection_diagnostic(
+          prepared,
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              AmbiguousNonParallelMultiSourceStackDestination,
+          "prepared move-bundle classifier rejected ambiguous non-parallel "
+          "multi-source stack-destination authority") != 0) {
+    return fail("ambiguous non-parallel multi-source stack-destination move bundle should reject");
+  }
+
+  return 0;
+}
+
 int builds_prepared_stack_to_stack_before_instruction_move_bundle_object() {
   const auto prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
@@ -21536,6 +21587,8 @@ int main() {
   status |= rejects_prepared_before_return_stack_to_register_abi_move_fail_closed_shapes();
   status |= builds_prepared_register_to_stack_before_instruction_move_bundle_object();
   status |= rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes();
+  status |=
+      rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle();
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
   status |= builds_prepared_mixed_stack_destination_move_bundle_object();
   status |=
