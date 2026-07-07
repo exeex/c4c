@@ -993,9 +993,42 @@ classify_prepared_object_move_bundle_consumer(
           AmbiguousNonParallelMultiSourceStackDestination;
       return result;
     }
+    if (move_bundle.authority_kind ==
+        PreparedMoveAuthorityKind::StackDestinationRegisterFanIn) {
+      const bool all_moves_authorized = std::all_of(
+          move_bundle.moves.begin(),
+          move_bundle.moves.end(),
+          [](const PreparedMoveResolution& move) {
+            return move.authority_kind ==
+                   PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+          });
+      if (!all_moves_authorized) {
+        result.status = PreparedObjectMoveBundleConsumerStatus::
+            MismatchedStackDestinationRegisterFanInMoveAuthority;
+        return result;
+      }
+      result.status = PreparedObjectMoveBundleConsumerStatus::Available;
+      return result;
+    }
     result.status = PreparedObjectMoveBundleConsumerStatus::
         UnsupportedNonParallelMultiSourceStackDestinationAuthority;
     return result;
+  }
+
+  if (move_bundle.authority_kind ==
+      PreparedMoveAuthorityKind::StackDestinationRegisterFanIn) {
+    const bool all_moves_authorized = std::all_of(
+        move_bundle.moves.begin(),
+        move_bundle.moves.end(),
+        [](const PreparedMoveResolution& move) {
+          return move.authority_kind ==
+                 PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+        });
+    if (!all_moves_authorized) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          MismatchedStackDestinationRegisterFanInMoveAuthority;
+      return result;
+    }
   }
 
   result.status = PreparedObjectMoveBundleConsumerStatus::Available;
@@ -1263,6 +1296,13 @@ std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consume
               UnsupportedNonParallelMultiSourceStackDestinationAuthority,
           "prepared move-bundle classifier rejected unsupported non-parallel "
           "multi-source stack-destination authority");
+    case PreparedObjectMoveBundleConsumerStatus::
+        MismatchedStackDestinationRegisterFanInMoveAuthority:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              MismatchedStackDestinationRegisterFanInMoveAuthority,
+          "prepared move-bundle classifier rejected stack-destination "
+          "register fan-in authority because bundle and move facts disagree");
   }
   return std::nullopt;
 }

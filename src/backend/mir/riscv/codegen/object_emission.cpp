@@ -1879,6 +1879,10 @@ bool prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
 bool prepared_before_instruction_move_bundle_requires_suppression_authority(
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
 
+bool prepared_move_has_matching_stack_destination_register_fan_in_authority(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move);
+
 std::optional<RiscvEncodedFragment>
 fragment_for_predecessor_select_publication_immediate_to_gpr(
     const prepare::PreparedNameTables& names,
@@ -2467,6 +2471,69 @@ std::optional<std::size_t> prepared_stack_slot_home_size_bytes(
   return slot->size_bytes;
 }
 
+bool rv64_prepared_move_bundle_has_register_fan_in_stack_destination(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      move_bundle.moves.size() < 2) {
+    return false;
+  }
+  for (std::size_t lhs_index = 0; lhs_index < move_bundle.moves.size();
+       ++lhs_index) {
+    const auto& lhs = move_bundle.moves[lhs_index];
+    if (lhs.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+        lhs.destination_storage_kind !=
+            prepare::PreparedMoveStorageKind::StackSlot ||
+        lhs.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        lhs.uses_cycle_temp_source || lhs.source_immediate_i32.has_value()) {
+      continue;
+    }
+    const auto* lhs_source_home =
+        prepared_value_home_for_id(lookups, lhs.from_value_id);
+    const auto* lhs_destination_home =
+        prepared_value_home_for_id(lookups, lhs.to_value_id);
+    if (lhs_source_home == nullptr || lhs_destination_home == nullptr ||
+        lhs_source_home->kind != prepare::PreparedValueHomeKind::Register ||
+        lhs_destination_home->kind !=
+            prepare::PreparedValueHomeKind::StackSlot) {
+      continue;
+    }
+    for (std::size_t rhs_index = lhs_index + 1;
+         rhs_index < move_bundle.moves.size();
+         ++rhs_index) {
+      const auto& rhs = move_bundle.moves[rhs_index];
+      if (rhs.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          rhs.destination_storage_kind !=
+              prepare::PreparedMoveStorageKind::StackSlot ||
+          rhs.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          rhs.uses_cycle_temp_source || rhs.source_immediate_i32.has_value()) {
+        continue;
+      }
+      const auto* rhs_source_home =
+          prepared_value_home_for_id(lookups, rhs.from_value_id);
+      const auto* rhs_destination_home =
+          prepared_value_home_for_id(lookups, rhs.to_value_id);
+      if (rhs_source_home == nullptr || rhs_destination_home == nullptr ||
+          rhs_source_home->kind != prepare::PreparedValueHomeKind::Register ||
+          rhs_destination_home->kind !=
+              prepare::PreparedValueHomeKind::StackSlot) {
+        continue;
+      }
+      if (lhs.to_value_id == rhs.to_value_id ||
+          (lhs_destination_home->slot_id.has_value() &&
+           rhs_destination_home->slot_id.has_value() &&
+           lhs_destination_home->slot_id == rhs_destination_home->slot_id) ||
+          (lhs_destination_home->offset_bytes.has_value() &&
+           rhs_destination_home->offset_bytes.has_value() &&
+           lhs_destination_home->offset_bytes ==
+               rhs_destination_home->offset_bytes)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2503,6 +2570,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
   }
   if (prepared_before_instruction_move_bundle_requires_suppression_authority(
           move_bundle)) {
+    return std::nullopt;
+  }
+  if (move_bundle.authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn &&
+      rv64_prepared_move_bundle_has_register_fan_in_stack_destination(
+          lookups, move_bundle)) {
     return std::nullopt;
   }
   if (parallel_copy_bundle != nullptr) {
@@ -2573,10 +2646,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
 
     if (move.destination_storage_kind ==
         prepare::PreparedMoveStorageKind::StackSlot) {
+      const bool stack_destination_register_fan_in_authorized =
+          prepared_move_has_matching_stack_destination_register_fan_in_authority(
+              move_bundle, move);
       if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
           (move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None &&
            move_bundle.authority_kind !=
-               prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion) ||
+               prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion &&
+           move_bundle.authority_kind !=
+               prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn) ||
           move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
           (move.reason != "consumer_register_to_stack" &&
            move.reason != "consumer_stack_to_stack") ||
@@ -2611,7 +2689,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       }
       if (move.reason == "consumer_register_to_stack" &&
           source_home->kind == prepare::PreparedValueHomeKind::Register) {
-        if (move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+        if ((!stack_destination_register_fan_in_authorized &&
+             move.authority_kind != prepare::PreparedMoveAuthorityKind::None) ||
             move.destination_register_name.has_value() ||
             !move.destination_occupied_register_names.empty() ||
             move.destination_register_placement.has_value() ||
@@ -2878,7 +2957,11 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
   const bool plain_stack_copy_authority =
       move_bundle.authority_kind == prepare::PreparedMoveAuthorityKind::None &&
       move.authority_kind == prepare::PreparedMoveAuthorityKind::None;
-  if (!explicit_widening_authority && !plain_stack_copy_authority) {
+  const bool stack_destination_register_fan_in_authority =
+      prepared_move_has_matching_stack_destination_register_fan_in_authority(
+          move_bundle, move);
+  if (!explicit_widening_authority && !plain_stack_copy_authority &&
+      !stack_destination_register_fan_in_authority) {
     return std::nullopt;
   }
   if (!prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
@@ -2930,7 +3013,8 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
       rv64_fixed_integer_type(*destination_type) &&
       *source_size_bytes < *destination_size_bytes;
   if (!widening_stack_conversion &&
-      (!plain_stack_copy_authority ||
+      ((!plain_stack_copy_authority &&
+        !stack_destination_register_fan_in_authority) ||
        *source_size_bytes < *destination_size_bytes)) {
     return std::nullopt;
   }
@@ -5973,6 +6057,15 @@ bool prepared_before_instruction_move_bundle_requires_suppression_authority(
         return move.destination_storage_kind ==
                prepare::PreparedMoveStorageKind::Register;
       });
+}
+
+bool prepared_move_has_matching_stack_destination_register_fan_in_authority(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move) {
+  return move_bundle.authority_kind ==
+             prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn &&
+         move.authority_kind ==
+             prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
 }
 
 std::optional<std::string>

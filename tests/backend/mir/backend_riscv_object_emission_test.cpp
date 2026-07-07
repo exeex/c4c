@@ -15900,10 +15900,25 @@ int rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle() 
   if (expect_prepared_consumer_rejection_diagnostic(
           explicit_authority,
           prepare::PreparedObjectConsumerDiagnosticCategory::
+              MismatchedStackDestinationRegisterFanInMoveAuthority,
+          "prepared move-bundle classifier rejected stack-destination "
+          "register fan-in authority because bundle and move facts disagree") !=
+      0) {
+    return fail("bundle-only stack-destination fan-in authority should reject as contradictory");
+  }
+
+  auto unsupported_authority = prepared;
+  unsupported_authority.value_locations.functions[0]
+      .move_bundles[0]
+      .authority_kind =
+      prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion;
+  if (expect_prepared_consumer_rejection_diagnostic(
+          unsupported_authority,
+          prepare::PreparedObjectConsumerDiagnosticCategory::
               UnsupportedNonParallelMultiSourceStackDestinationAuthority,
           "prepared move-bundle classifier rejected unsupported non-parallel "
           "multi-source stack-destination authority") != 0) {
-    return fail("explicit stack-destination fan-in authority should not yet emit arbitrary fan-in");
+    return fail("unsupported stack-destination fan-in authority should stay fail-closed");
   }
 
   auto unknown_authority = prepared;
@@ -16019,6 +16034,11 @@ int publishes_legal_select_stack_destination_register_fan_in_authority() {
       .true_value = bir::Value::named(bir::TypeKind::I32, "%lhs"),
       .false_value = bir::Value::named(bir::TypeKind::I32, "%rhs"),
   };
+  prepared.module.functions[0].blocks[0].insts.resize(1);
+  prepared.module.functions[0].return_type = bir::TypeKind::Void;
+  prepared.module.functions[0].return_size_bytes = 0;
+  prepared.module.functions[0].return_align_bytes = 1;
+  prepared.module.functions[0].blocks[0].terminator.value = std::nullopt;
 
   auto& locations = prepared.value_locations.functions[0];
   locations.value_homes.push_back(
@@ -16029,6 +16049,8 @@ int publishes_legal_select_stack_destination_register_fan_in_authority() {
                            stack_source_name,
                            prepare::PreparedFrameSlotId{13},
                            8));
+  locations.value_homes[2].size_bytes = std::size_t{4};
+  locations.value_homes[3].size_bytes = std::size_t{4};
   prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
       .slot_id = prepare::PreparedFrameSlotId{13},
       .function_name = function_name,
@@ -16061,6 +16083,20 @@ int publishes_legal_select_stack_destination_register_fan_in_authority() {
       .reason = "consumer_stack_to_stack",
   });
 
+  const auto unprepared_result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (unprepared_result.ok() || unprepared_result.module.has_value() ||
+      unprepared_result.diagnostic.find(
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+          0 ||
+      unprepared_result.diagnostic.find("authority=none") ==
+          std::string::npos ||
+      unprepared_result.diagnostic.find(
+          "fragment_status=generic_move_bundle_materialization_failed") ==
+          std::string::npos) {
+    return fail("legal select-shaped stack-destination fan-in should still reject without prepared authority");
+  }
+
   auto unsupported_producer = prepared;
   unsupported_producer.module.functions[0].blocks[0].insts[0] = bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Eq,
@@ -16091,6 +16127,13 @@ int publishes_legal_select_stack_destination_register_fan_in_authority() {
           prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
       locations.value_homes[1].value_name != selected_name) {
     return fail("legal select stack-destination fan-in did not publish authority");
+  }
+
+  const auto emitted =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!emitted.ok() || !emitted.module.has_value()) {
+    return fail("authorized select stack-destination fan-in should emit, got `" +
+                emitted.diagnostic + "`");
   }
 
   return 0;
