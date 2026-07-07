@@ -1,50 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/581_rv64_ordinary_floating_cast_lowering.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Implement Ordinary Floating Cast Lowering
+Current Step ID: Step 4
+Current Step Title: Prove Representative Route Advancement
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by repairing RV64 object `CastInst` lowering for
-ordinary F32/F64 immediate-source width casts.
+Completed `plan.md` Step 4 by rerunning the retained ordinary floating-cast
+representatives after Step 3 and recording their current RV64 object routes.
 
-Implementation facts:
-- `fragment_for_prepared_floating_cast` now accepts an F32/F64 immediate
-  operand when the cast is an ordinary `FPExt F32 -> F64` or
-  `FPTrunc F64 -> F32` into an FPR home.
-- The immediate path materializes the raw floating bits through scratch `t3`
-  and an available scratch FPR, then emits the same `fcvt.d.s` or `fcvt.s.d`
-  instruction used by FPR-register-source width casts.
-- Existing FPR-register-source width casts, integer-to-FP casts, and
-  FP-to-integer casts remain on their existing lowering paths.
-- Unsupported types and unsupported homes still fail closed through the
-  existing `unsupported_floating_cast` object-route diagnostic; no route
-  allowlists, expectation rewrites, unsupported-marker changes, or filename
-  checks were used.
-- The focused constant F64-to-F32 `FPTrunc` fixture now builds an RV64 object
-  and asserts materialized F64 bits, `fmv.d.x`, `fcvt.s.d`, `ret`, and no
-  relocations.
+Representative route results:
+- `src/920618-1.c`: prepared dump rc `0`; RV64 object route rc `1`; advanced
+  past the prior `unsupported_floating_cast` owner to
+  `unsupported_terminator_fragment: BIR terminator requires unsupported RV64
+  object lowering`.  Fresh prepared context still contains the ordinary
+  `%t0 = bir.fptrunc double 0x3FF199999999999A to float` in `@main`, then a
+  fused `sle float 0x00000000, %t0` branch from `entry` to `block_1`/`block_2`.
+- `src/ieee/pr67218.c`: prepared dump rc `0`; RV64 object route rc `1`;
+  advanced past the prior `unsupported_floating_cast` owner to
+  `unsupported_terminator_fragment: BIR terminator requires unsupported RV64
+  object lowering`.  Fresh prepared context contains the retained
+  `@foo` chain `%t1 = bir.uitofp i32 %t0 to float` and
+  `%t2 = bir.fpext float %t1 to double`, plus `@main` with an immediate
+  F32-to-F64 cast used by a double compare.
+- `src/pr23941.c`: prepared dump rc `0`; RV64 object route rc `1`; advanced
+  past the prior `unsupported_floating_cast` owner to
+  `unsupported_terminator_fragment: BIR terminator requires unsupported RV64
+  object lowering`.  Fresh prepared context contains the retained ordinary
+  `%t0 = bir.fptrunc double 0x4000000000000000 to float`, F32 arithmetic,
+  `%t2 = bir.fpext float %t1 to double`, local store/load, and a fused double
+  compare branch in `@main`.
+
+The route diagnostic for the later terminator owner is generic and does not
+print function/block/instruction coordinates.  The prepared dumps saved under
+the Step 4 artifact directory provide the available CFG context.  F128 and
+long-double rows remain quarantined and were not used as completion evidence.
 
 ## Suggested Next
 
-Execute `plan.md` Step 4 by rerunning the representative routes from Step 1
-and recording whether `920618-1.c`, `pr67218.c`, and `pr23941.c` now advance
-past the prior `unsupported_floating_cast` owner, with F128/long-double rows
-remaining quarantined.
+Execute `plan.md` Step 5 by running the supervisor-selected backend validation
+subset and recording whether the focused coverage plus representative route
+advancement are ready for plan-owner closure evaluation.  Treat the later
+`unsupported_terminator_fragment` owner as a separate downstream route, not as
+more floating-cast work.
 
 ## Watchouts
 
 - Keep this lane limited to ordinary F32/F64 casts.
-- If Step 4 still sees `unsupported_floating_cast`, distinguish unsupported
-  ordinary F32/F64 source/destination shapes from intentionally quarantined
-  F128/long-double/helper shapes before widening this route.
+- All three retained representatives now advance beyond
+  `unsupported_floating_cast`; do not widen this lane to terminator lowering.
 - The focused `UIToFP i32 -> F32` plus `FPExt F32 -> F64` chain was already
-  supported before Step 3; any remaining `pr67218.c` issue is likely in the
-  representative route context or a downstream owner rather than that minimal
-  chain.
+  supported before Step 3; `pr67218.c` now also clears the representative-route
+  floating-cast owner and stops at a downstream terminator owner.
 - Immediate floating-source materialization is now supported for ordinary
   F32/F64 width casts only.
 - Do not use F128, long-double, soft-float helper, scalar compare, or variadic
@@ -57,5 +66,11 @@ remaining quarantined.
 
 Proof output is in `test_after.log`.
 
-- `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`: pass.
-- Focused subset result: `backend_riscv_object_emission` passed, 1/1 tests.
+- `cmake --build --preset default --target c4cll`: pass.
+- Fresh prepared dumps for `src/920618-1.c`, `src/ieee/pr67218.c`, and
+  `src/pr23941.c`: all rc `0`.
+- Fresh RV64 object routes for those three representatives: all rc `1`, each
+  now at downstream `unsupported_terminator_fragment` rather than the old
+  `unsupported_floating_cast` owner.
+- Step 4 artifacts are under
+  `build/agent_state/581_rv64_ordinary_floating_cast_lowering/step4/`.
