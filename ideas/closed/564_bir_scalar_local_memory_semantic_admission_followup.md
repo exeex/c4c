@@ -1,7 +1,6 @@
 # BIR Scalar Local-Memory Semantic Admission Follow-Up
 
-Status: Open
-Activation Priority: Deferred until the supervisor selects the scalar/local-memory lane.
+Status: Closed
 Type: Downstream semantic admission follow-up
 Parent: `ideas/open/560_bir_scalar_signature_control_semantic_producer_admission.md`
 Owning Layer: BIR scalar/local-memory producer
@@ -52,6 +51,26 @@ boundary and should be handled outside the scalar-control-flow runbook.
   produced or rejected fail-closed correctly.
 - Any remaining failures are recorded under their own downstream owner
   boundary rather than folded into scalar-control-flow or scalar-binop work.
+
+## Closure Note
+
+Closed after the scalar/local-memory runbook added focused unordered floating
+compare admission coverage and routed `fcmp uno` to an explicit fail-closed
+owner-boundary diagnostic:
+`unordered-float-compare scalar/local-memory semantic family`.
+
+The four target IEEE representatives (`src/ieee/fp-cmp-8.c`,
+`src/ieee/fp-cmp-8f.c`, `src/ieee/fp-cmp-8l.c`, and `src/ieee/pr38016.c`)
+advanced beyond the original generic `scalar/local-memory semantic family`
+blocker for semantic reasons. The chosen representation decision was not to
+map unordered floating predicates onto existing integer-style BIR comparison
+opcodes; `fcmp uno` remains rejected at the scalar/local-memory owner boundary
+until a structured unordered-float representation/lowering path exists.
+
+Close-time backend guard passed with `346/346` backend tests passing before and
+after. A broader attempted `^(backend_|string_authority_guard$)` validation
+failed only in pre-existing authority-classification findings outside this
+idea's implementation scope.
 
 ## Reviewer Reject Signals
 
