@@ -1,6 +1,6 @@
 # RV64 pr56982 Post-Carrier Runtime Mismatch
 
-Status: Open
+Status: Closed
 Type: Capability investigation
 Parent: `ideas/closed/571_rv64_inline_asm_carrier_lowering.md`
 Owning Layer: RV64 object route runtime behavior after inline asm carrier lowering
@@ -63,6 +63,20 @@ Evidence:
   as a later distinct owner in a separate follow-up idea.
 - No inline asm carrier fallback, unsupported marker, allowlist, or runtime
   comparison file is changed as the main proof.
+
+## Closure Note
+
+Closed after identifying the first post-carrier owner as RV64 object emission
+reusing the prepared persistent `s1` home for the global symbol address `@env`
+as a later call argument. The repair rematerializes `SymbolAddress` call
+arguments before the generic `PriorPreservation` fallback. The representative
+`src/pr56982.c` RV64 object route now exits `0`; the old
+`RV64_BACKEND_RUNTIME_MISMATCH` with c4c segfault from stale symbol-address
+reuse is gone and no later owner remained for this representative route.
+
+Close gate used matching backend logs:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Regression guard passed with 346 passed before and 346 passed after.
 
 ## Reviewer Reject Signals
 
