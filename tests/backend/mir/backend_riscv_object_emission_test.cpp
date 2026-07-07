@@ -1512,6 +1512,255 @@ prepare::PreparedBirModule make_prepared_string_call_argument_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_global_symbol_address_prior_preserved_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("symbol_address_survives_call");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto symbol_value_name = prepared.names.value_names.intern("@global_state");
+  const auto result_name = prepared.names.value_names.intern("%status");
+  const auto global_name = prepared.names.link_names.intern("global_state");
+
+  bir::CallInst first_call;
+  first_call.result = bir::Value::named(bir::TypeKind::I32, "%status");
+  first_call.callee = "capture";
+  first_call.args = {bir::Value::named_symbol_pointer("@global_state", global_name)};
+  first_call.arg_types = {bir::TypeKind::Ptr};
+  first_call.return_type = bir::TypeKind::I32;
+
+  bir::CallInst second_call;
+  second_call.callee = "consume";
+  second_call.args = {bir::Value::named_symbol_pointer("@global_state", global_name)};
+  second_call.arg_types = {bir::TypeKind::Ptr};
+  second_call.return_type = bir::TypeKind::Void;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {first_call, second_call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%status");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "symbol_address_survives_call",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global_state",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I64,
+      .is_constant = false,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = bir::Value::immediate_i64(0),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  publish_prepared_object_data(prepared);
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = symbol_value_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+          },
+  });
+
+  const prepare::PreparedRegisterPlacement s1_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedSavedRegisterSlotPlacement s1_slot{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s1"},
+      .save_index = 0,
+      .register_placement = s1_placement,
+      .slot_id = prepare::PreparedFrameSlotId{20},
+      .stack_offset_bytes = std::size_t{0},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .wrapper_kind =
+                      prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"capture"},
+                  .arguments = {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::SymbolAddress,
+                      .source_value_id = prepare::PreparedValueId{1},
+                      .source_symbol_name = std::string{"@global_state"},
+                      .source_symbol_name_id = global_name,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  }},
+                  .result = prepare::PreparedCallResultPlan{
+                      .instruction_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_value_id = prepare::PreparedValueId{2},
+                      .source_register_name = std::string{"a0"},
+                      .source_contiguous_width = 1,
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+                  .preserved_values = {prepare::PreparedCallPreservedValue{
+                      .value_id = prepare::PreparedValueId{1},
+                      .value_name = symbol_value_name,
+                      .route = prepare::PreparedCallPreservationRoute::
+                          CalleeSavedRegister,
+                      .callee_saved_save_index = std::size_t{0},
+                      .contiguous_width = 1,
+                      .register_name = std::string{"s1"},
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {std::string{"s1"}},
+                      .register_placement = s1_placement,
+                      .preservation_source =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .value_id = prepare::PreparedValueId{1},
+                              .value_name = symbol_value_name,
+                              .register_name = std::string{"a0"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .contiguous_width = 1,
+                              .occupied_register_names = {std::string{"a0"}},
+                          },
+                      .preservation_destination =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .value_id = prepare::PreparedValueId{1},
+                              .value_name = symbol_value_name,
+                              .register_name = std::string{"s1"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .contiguous_width = 1,
+                              .occupied_register_names = {std::string{"s1"}},
+                              .callee_saved_save_index = std::size_t{0},
+                              .register_placement = s1_placement,
+                          },
+                  }},
+              },
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .wrapper_kind =
+                      prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"consume"},
+                  .arguments = {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 1,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::SymbolAddress,
+                      .source_value_id = prepare::PreparedValueId{1},
+                      .source_symbol_name = std::string{"@global_state"},
+                      .source_symbol_name_id = global_name,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind = prepare::
+                                  PreparedCallArgumentSourceSelectionKind::
+                                      PriorPreservation,
+                              .source_value_id = prepare::PreparedValueId{1},
+                              .source_value_name = symbol_value_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::Register,
+                              .source_size_bytes = std::size_t{8},
+                              .source_align_bytes = std::size_t{8},
+                              .preserved_call_block_index = std::size_t{0},
+                              .preserved_call_instruction_index = std::size_t{0},
+                              .preservation_route = prepare::
+                                  PreparedCallPreservationRoute::
+                                      CalleeSavedRegister,
+                              .preserved_register_name = std::string{"s1"},
+                              .preserved_register_bank =
+                                  prepare::PreparedRegisterBank::Gpr,
+                              .preserved_register_contiguous_width =
+                                  std::size_t{1},
+                              .preserved_occupied_register_names =
+                                  {std::string{"s1"}},
+                              .preserved_register_placement = s1_placement,
+                              .preserved_callee_saved_save_index =
+                                  std::size_t{0},
+                          },
+                  }},
+              },
+          },
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers =
+          {prepare::PreparedSavedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "s1",
+              .contiguous_width = 1,
+              .occupied_register_names = {"s1"},
+              .save_index = 0,
+              .placement = s1_placement,
+              .slot_placement = s1_slot,
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_address_module() {
   auto prepared = make_prepared_symbol_address_module(
       prepare::PreparedAddressMaterializationKind::DirectGlobal,
@@ -20994,6 +21243,85 @@ int emits_prepared_string_call_argument_relocation_to_object_symbol() {
   return 0;
 }
 
+int emits_prepared_global_symbol_address_prior_preserved_arg_relocation() {
+  const auto prepared =
+      make_prepared_global_symbol_address_prior_preserved_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared symbol-address prior-preserved call object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* main =
+      object::find_symbol(module, "symbol_address_survives_call");
+  const auto* global_symbol = object::find_symbol(module, "global_state");
+  const auto* capture = object::find_symbol(module, "capture");
+  const auto* consume = object::find_symbol(module, "consume");
+  if (text == nullptr || main == nullptr || global_symbol == nullptr ||
+      capture == nullptr || consume == nullptr) {
+    return fail("expected symbol-address prior-preserved call object symbols");
+  }
+
+  std::optional<std::uint64_t> first_call_offset;
+  std::optional<std::uint64_t> second_call_offset;
+  bool saw_later_symbol_hi = false;
+  bool saw_later_symbol_lo = false;
+  for (const auto& relocation : module.relocations) {
+    if (relocation.section != text->id) {
+      continue;
+    }
+    if (relocation.type == R_RISCV_CALL_PLT &&
+        relocation.symbol == capture->id) {
+      first_call_offset = relocation.offset;
+      continue;
+    }
+    if (relocation.type == R_RISCV_CALL_PLT &&
+        relocation.symbol == consume->id) {
+      second_call_offset = relocation.offset;
+      continue;
+    }
+  }
+  if (!first_call_offset.has_value() || !second_call_offset.has_value() ||
+      *first_call_offset >= *second_call_offset ||
+      *first_call_offset < main->value ||
+      *second_call_offset >= main->value + main->size_bytes) {
+    return fail("expected ordered calls around symbol-address preservation");
+  }
+
+  for (const auto& relocation : module.relocations) {
+    if (relocation.section != text->id ||
+        relocation.offset <= *first_call_offset ||
+        relocation.offset >= *second_call_offset) {
+      continue;
+    }
+    if (relocation.type == R_RISCV_PCREL_HI20 &&
+        relocation.symbol == global_symbol->id) {
+      saw_later_symbol_hi = true;
+      const auto* auipc_label =
+          object::find_symbol(module, ".Lpcrel_call_arg_symbol_address_survives_call_0_1_0");
+      saw_later_symbol_lo =
+          auipc_label != nullptr &&
+          std::any_of(module.relocations.begin(),
+                      module.relocations.end(),
+                      [&](const object::RelocationRecord& lo) {
+                        return lo.section == text->id &&
+                               lo.offset == relocation.offset + 4 &&
+                               lo.type == R_RISCV_PCREL_LO12_I &&
+                               lo.symbol == auipc_label->id;
+                      });
+    }
+  }
+  if (!saw_later_symbol_hi || !saw_later_symbol_lo) {
+    return fail("expected later call argument to rematerialize the global symbol address instead of trusting a prior callee-saved home");
+  }
+  if (read_u32(text->bytes, *second_call_offset - 4) == 0x00048513) {
+    return fail("expected later call argument not to copy an uninitialized/stale s1 home into a0");
+  }
+  return 0;
+}
+
 int emits_prepared_global_address_relocations_to_object_symbol() {
   const auto prepared = make_prepared_global_address_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -21978,6 +22306,8 @@ int main() {
   status |= emits_prepared_constant_f64_global_object_storage();
   status |= emits_prepared_string_address_relocations_to_object_symbol();
   status |= emits_prepared_string_call_argument_relocation_to_object_symbol();
+  status |=
+      emits_prepared_global_symbol_address_prior_preserved_arg_relocation();
   status |= emits_prepared_global_address_relocations_to_object_symbol();
   status |= emits_prepared_global_load_relocations_and_instruction();
   status |= emits_prepared_global_i8_load_and_zext_instruction();

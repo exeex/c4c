@@ -4089,6 +4089,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                 publication->address_offset));  // addi rd, sp, off
       continue;
     }
+    if (argument.source_encoding ==
+            prepare::PreparedStorageEncodingKind::SymbolAddress &&
+        (argument.source_symbol_name.has_value() ||
+         argument.source_symbol_name_id.has_value())) {
+      auto symbol = prepared_call_argument_object_symbol(prepared, argument);
+      if (!symbol.has_value()) {
+        return std::nullopt;
+      }
+      const std::string auipc_label = ".Lpcrel_call_arg_" +
+                                      std::string{function_name} + "_" +
+                                      std::to_string(block_index) + "_" +
+                                      std::to_string(instruction_index) + "_" +
+                                      std::to_string(arg_index);
+      append_rv64_fragment(
+          fragment,
+          make_rv64_pcrel_address_fragment(
+              *destination,
+              std::move(symbol->first),
+              auipc_label,
+              symbol->second,
+              argument.source_pointer_byte_delta.value_or(0)));
+      continue;
+    }
     if (argument.source_selection.has_value()) {
       switch (argument.source_selection->kind) {
         case prepare::PreparedCallArgumentSourceSelectionKind::None:
@@ -4183,29 +4206,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                                  call.arg_types[arg_index]))) {
         return std::nullopt;
       }
-      continue;
-    }
-    if (argument.source_encoding ==
-            prepare::PreparedStorageEncodingKind::SymbolAddress &&
-        (argument.source_symbol_name.has_value() ||
-         argument.source_symbol_name_id.has_value())) {
-      auto symbol = prepared_call_argument_object_symbol(prepared, argument);
-      if (!symbol.has_value()) {
-        return std::nullopt;
-      }
-      const std::string auipc_label = ".Lpcrel_call_arg_" +
-                                      std::string{function_name} + "_" +
-                                      std::to_string(block_index) + "_" +
-                                      std::to_string(instruction_index) + "_" +
-                                      std::to_string(arg_index);
-      append_rv64_fragment(
-          fragment,
-          make_rv64_pcrel_address_fragment(
-              *destination,
-              std::move(symbol->first),
-              auipc_label,
-              symbol->second,
-              argument.source_pointer_byte_delta.value_or(0)));
       continue;
     }
     return std::nullopt;
