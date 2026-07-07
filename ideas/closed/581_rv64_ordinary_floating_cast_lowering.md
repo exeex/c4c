@@ -1,6 +1,6 @@
 # RV64 Ordinary Floating Cast Lowering
 
-Status: Open
+Status: Closed
 Type: Focused RV64 object-emission repair
 Parent: `ideas/open/550_rv64_scalar_fpr_residual_salvage.md`
 Owning Layer: RV64 object `CastInst` lowering for ordinary F32/F64 forms
@@ -56,6 +56,26 @@ F128/long-double work; they must not justify this idea's implementation.
 - Quarantined F128/long-double rows remain outside the proof and are not used
   to claim this idea complete.
 - Backend validation for the touched RV64 bucket passes.
+
+## Closure Notes
+
+Closed after the active runbook completed all acceptance criteria.
+
+- Focused RV64 object-emission coverage now proves ordinary F32/F64 width casts,
+  including immediate-source `FPTrunc F64 -> F32`, immediate-source
+  `FPExt F32 -> F64`, and the retained `UIToFP i32 -> F32` plus
+  `FPExt F32 -> F64` chain.
+- Implementation uses semantic opcode/type/home lowering rather than retained
+  row names.
+- Representative route proof for `src/920618-1.c`, `src/ieee/pr67218.c`, and
+  `src/pr23941.c` advanced all three retained ordinary cast rows past
+  `unsupported_floating_cast` to downstream `unsupported_terminator_fragment`.
+- F128, long-double, soft-float helper, scalar compare, and variadic helper rows
+  stayed outside the proof claim.
+- Backend close gate passed with matching `^backend_` before/after logs.
+
+The downstream `unsupported_terminator_fragment` owner is a separate follow-up
+candidate and is not part of this ordinary floating-cast lowering idea.
 
 ## Reviewer Reject Signals
 
