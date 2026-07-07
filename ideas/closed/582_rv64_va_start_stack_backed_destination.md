@@ -1,8 +1,8 @@
 # RV64 Va Start Stack-Backed Destination
 
-Status: Open
+Status: Closed
 Type: Focused RV64 variadic helper repair
-Parent: `ideas/open/550_rv64_scalar_fpr_residual_salvage.md`
+Parent: `ideas/closed/550_rv64_scalar_fpr_residual_salvage.md`
 Owning Layer: RV64 variadic helper lowering
 
 ## Goal
@@ -56,6 +56,27 @@ owner is variadic helper destination-address lowering.
   destination-address materialization failure.
 - The proof does not rely on scalar compare or floating-cast changes.
 - Backend validation for the touched RV64 helper bucket passes.
+
+## Closure Notes
+
+Closed after focused helper support for stack-backed
+`destination_va_list_address` homes landed in RV64 `va_start` lowering.
+Focused backend coverage now constructs a stack-slot `destination_va_list` plus
+a distinct stack-backed destination-address operand and passes with semantic
+helper support.
+
+The retained representative
+`tests/c/external/gcc_torture/src/va-arg-21.c` advances past the old
+`unsupported_variadic_helper_lowering` owner. Its current downstream route
+failure is `unsupported_instruction_fragment` at
+`%t1 = bir.call ptr malloc(i64 4)`, which is ordinary call lowering outside
+this idea's `va_start` destination-address boundary. The prepared helper
+operands still show stack-backed destination-address slots `#17` and `#18`,
+and the case-local f128 carrier/helper sections remain empty.
+
+Close-gate backend regression logs were regenerated for the lifecycle-only
+close. Both canonical logs report 346 backend tests passed and 0 failed, and
+the regression guard passed with non-decreasing pass count allowed.
 
 ## Reviewer Reject Signals
 
