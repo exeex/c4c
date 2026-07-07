@@ -1,56 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/581_rv64_ordinary_floating_cast_lowering.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce Ordinary Cast Owners
+Current Step ID: Step 2
+Current Step Title: Add Focused Failing Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by refreshing the retained RV64 ordinary
-floating-cast representatives under
-`build/agent_state/581_rv64_ordinary_floating_cast_lowering/step1/`.
-`cmake --build --preset default --target c4cll` passed, prepared dumps returned
-0, and object-route attempts returned 1 with the current first owner still
-`unsupported_floating_cast`.
+Completed `plan.md` Step 2 by adding focused RV64 object-emission coverage in
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` without changing
+lowering behavior.
 
-Owner facts:
-- `src/920618-1.c`: first owner is RV64 object `CastInst` lowering for
-  `%t0 = bir.fptrunc double 0x3FF199999999999A to float`; source is a double
-  immediate, destination is float, result home is FPR `ft0`; no chained cast
-  before the owner.
-- `src/ieee/pr67218.c`: first owner is RV64 object `CastInst` lowering for
-  `%t1 = bir.uitofp i32 %t0 to float` followed by
-  `%t2 = bir.fpext float %t1 to double`; operand `%t0` is in GPR `t0`, `%t1`
-  is in FPR `ft0`, and `%t2` is in FPR `fs1`; this is a chained int-to-F32
-  plus F32-to-F64 route, with an additional F32 zero-immediate-to-F64 compare
-  operand in `main`.
-- `src/pr23941.c`: first owner is RV64 object `CastInst` lowering for
-  `%t0 = bir.fptrunc double 0x4000000000000000 to float`; the row later
-  includes `%t2 = bir.fpext float %t1 to double`; `%t0` and `%t2` are in FPR
-  `ft0`, `%t1` is in FPR `fs1`; this is a chained ordinary F64-to-F32,
-  F32-arithmetic, F32-to-F64 route.
-
-The F128/long-double quarantine remains unchanged: `src/20040709-1.c` and
-`src/ieee/20011123-1.c` stayed outside this proof and were not used to justify
-the ordinary F32/F64 lane.
+Coverage facts:
+- Added an explicit retained-chain fixture for `UIToFP i32 -> F32` from GPR
+  `t0` into FPR `ft0`, immediately followed by `FPExt F32 -> F64` into FPR
+  `fs1`. This semantic chain currently builds and emits
+  `fcvt.s.wu ft0, t0, rne; fcvt.d.s fs1, ft0, rne; ret`, so Step 3 should not
+  treat that minimal home combination as a missing lowering target.
+- Split the constant F64-to-F32 `FPTrunc` immediate-source case into its own
+  focused precise rejection test. It still rejects with
+  `unsupported_floating_cast`, making immediate floating-source materialization
+  for ordinary FPR width casts the concrete Step 3 target.
+- Kept existing FPR-register-source `FPExt`/`FPTrunc` positive coverage intact
+  and avoided F128, long-double, helper-based casts, route allowlists, or
+  residual testcase-name matching.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 by adding focused RV64 object-emission coverage for
-semantic ordinary cast forms: constant F64-to-F32 `fptrunc`, FPR-register
-F32-to-F64 `fpext`, and the retained `uitofp i32 to float` chain if the focused
-fixture can cover it without row-name matching.
+Execute `plan.md` Step 3 by teaching RV64 object `CastInst` lowering to
+materialize ordinary F32/F64 immediate operands for width casts, starting with
+constant F64-to-F32 `FPTrunc` into an FPR home, while preserving the current
+fail-closed diagnostics for unsupported types and homes.
 
 ## Watchouts
 
-- Keep this lane limited to ordinary F32/F64 casts and the retained
-  `uitofp i32 to float` evidence if it still shares the same owner.
-- The current route diagnostic already says some prepared FPR width casts and
-  I32/I64-to-F32/F64 integer-to-floating casts are supported; Step 2 should
-  target the missing operand/home combinations proven above rather than weaken
-  that diagnostic.
+- Keep this lane limited to ordinary F32/F64 casts.
+- The focused `UIToFP i32 -> F32` plus `FPExt F32 -> F64` chain is already
+  supported in the minimal GPR/FPR home combination; if representative routes
+  still fail, investigate surrounding operands or downstream owners rather
+  than reimplementing that exact chain.
+- The current missing target is immediate floating-source materialization for
+  FPR width casts, not FPR-register-source width casts.
 - Do not use F128, long-double, soft-float helper, scalar compare, or variadic
   helper work as justification for this idea.
 - Do not claim progress through unsupported-marker changes, expectation
@@ -61,9 +52,5 @@ fixture can cover it without row-name matching.
 
 Proof output is in `test_after.log`.
 
-- `cmake --build --preset default --target c4cll`: pass.
-- Fresh prepared dumps for `src/920618-1.c`, `src/ieee/pr67218.c`, and
-  `src/pr23941.c`: all return code 0.
-- Fresh RV64 object-route attempts for those three representatives: all return
-  code 1 with `unsupported_floating_cast`, confirming current owner facts for
-  this classification step.
+- `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`: pass.
+- Focused subset result: `backend_riscv_object_emission` passed, 1/1 tests.

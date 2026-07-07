@@ -5565,6 +5565,65 @@ prepare::PreparedBirModule make_prepared_sitofp_i32_immediate_to_f64_module() {
   return prepared;
 }
 
+prepare::PreparedValueHome rv64_gpr_home(prepare::PreparedValueId value_id,
+                                         c4c::FunctionNameId function_name,
+                                         c4c::ValueNameId value_name,
+                                         std::string register_name,
+                                         std::size_t physical_index);
+
+prepare::PreparedBirModule make_prepared_uitofp_i32_to_f32_then_fpext_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("uitofp_i32_to_f32_then_fpext");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto f32_name = prepared.names.value_names.intern("%f32");
+  const auto f64_name = prepared.names.value_names.intern("%f64");
+
+  bir::CastInst to_f32;
+  to_f32.opcode = bir::CastOpcode::UIToFP;
+  to_f32.operand = bir::Value::named(bir::TypeKind::I32, "%src");
+  to_f32.result = bir::Value::named(bir::TypeKind::F32, "%f32");
+
+  bir::CastInst to_f64;
+  to_f64.opcode = bir::CastOpcode::FPExt;
+  to_f64.operand = bir::Value::named(bir::TypeKind::F32, "%f32");
+  to_f64.result = bir::Value::named(bir::TypeKind::F64, "%f64");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {to_f32, to_f64},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "uitofp_i32_to_f32_then_fpext",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, source_name, "t0", 5),
+              make_fpr_home(function_name, f32_name, 2, "ft0", 0),
+              make_fpr_home(function_name, f64_name, 3, "fs1", 9),
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_unsupported_floating_cast_module() {
   return make_prepared_fpr_cast_module("unsupported_floating_cast",
                                        bir::CastOpcode::FPExt,
@@ -20309,6 +20368,34 @@ int builds_prepared_sitofp_i32_immediate_to_f64_object() {
   return 0;
 }
 
+int builds_prepared_uitofp_i32_to_f32_then_fpext_object() {
+  const auto prepared = make_prepared_uitofp_i32_to_f32_then_fpext_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared UIToFP i32 to F32 then FPExt RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function =
+      object::find_symbol(*module, "uitofp_i32_to_f32_then_fpext");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared UIToFP/FPExt object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      function->value != 0 || function->size_bytes != 12 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared UIToFP/FPExt object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xd0128053 ||
+      read_u32(text->bytes, 4) != 0x420004d3 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected fcvt.s.wu ft0, t0, rne; fcvt.d.s fs1, ft0, rne; ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared UIToFP/FPExt object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_fp_to_int_casts_with_rtz_rounding_object() {
   struct TestCase {
     const char* function;
@@ -20483,12 +20570,13 @@ int rejects_prepared_fp_to_int_cast_fail_closed_shapes() {
     return 1;
   }
 
-  if (expect_prepared_rejection_diagnostic(make_prepared_f64_immediate_fptrunc_module(),
-                                           diagnostic) != 0) {
-    return 1;
-  }
-
   return 0;
+}
+
+int rejects_prepared_f64_immediate_fptrunc_with_precise_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_f64_immediate_fptrunc_module(),
+      "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts, I32/I64-to-F32/F64 integer-to-floating casts, and FPR-register-source F32/F64-to-I32/I64 floating-to-integer casts");
 }
 
 int builds_prepared_before_return_fpr_f32_abi_move_object() {
@@ -22491,8 +22579,10 @@ int main() {
   status |= builds_prepared_fpr_fptrunc_object();
   status |= builds_prepared_formal_fpr_fpext_to_ft0_object();
   status |= builds_prepared_sitofp_i32_immediate_to_f64_object();
+  status |= builds_prepared_uitofp_i32_to_f32_then_fpext_object();
   status |= builds_prepared_fp_to_int_casts_with_rtz_rounding_object();
   status |= rejects_prepared_fp_to_int_cast_fail_closed_shapes();
+  status |= rejects_prepared_f64_immediate_fptrunc_with_precise_diagnostic();
   status |= builds_prepared_before_return_fpr_f32_abi_move_object();
   status |= builds_prepared_before_return_fpr_f64_abi_move_object();
   status |= rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes();
