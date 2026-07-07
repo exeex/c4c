@@ -146,7 +146,43 @@ Completion check:
 - Focused backend object-emission tests pass and the implementation does not
   bypass prepared validation or rely on testcase-shaped identifiers.
 
-### Step 4: Prove The Representative Route
+### Step 4: Repair Producer-Side Authority Or Narrow The Diagnostic
+
+Goal: Address the unchanged representative authority shape that remains after
+the consumer-side classifier narrowing, before claiming representative-route
+progress.
+
+Primary targets: prepared-BIR producer/publication surfaces under
+`src/backend/bir/` and the RV64 prepared consumer/classifier surfaces under
+`src/backend/mir/riscv/codegen/`.
+
+Actions:
+
+- Reinspect the Step 4 prepared dump and direct object-route evidence under
+  `build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/`.
+- Identify where the non-parallel multi-source stack-destination authority is
+  created or preserved: producer publication, prepared move-bundle formation,
+  stack destination ownership, or RV64 consumer classification.
+- If the representative shape is semantically lowerable, repair the
+  producer/consumer authority contract so the prepared bundle records ordered,
+  mutually exclusive, select-backed, or otherwise lowerable stack-destination
+  semantics instead of reaching the broad ambiguity bucket.
+- If the representative shape is genuinely invalid, narrow the diagnostic at
+  the producer or earliest authoritative consumer so it explains the specific
+  unsupported authority condition, not just the generic
+  `ambiguous_non_parallel_multi_source_stack_destination` category.
+- Keep the existing genuinely ambiguous fail-closed coverage intact and add or
+  adjust focused coverage only for semantic authority behavior, not the
+  representative filename or temporary names.
+
+Completion check:
+
+- Focused backend/prepared-object proof shows the producer-side authority
+  shape is repaired or the diagnostic is narrowed before the representative
+  proof is rerun; the old generic ambiguity remains covered for genuinely
+  ambiguous bundles.
+
+### Step 5: Prove The Representative Route
 
 Goal: Verify the 574 representative no longer fails first on the same prepared
 move-bundle classifier rejection.
@@ -168,7 +204,7 @@ Completion check:
   rejection is gone for the representative shape, or the failure is narrowed to
   a specific unsupported stack-destination authority diagnostic.
 
-### Step 5: Backend Guard And Closure Readiness
+### Step 6: Backend Guard And Closure Readiness
 
 Goal: Establish that the move-bundle authority slice is acceptance-ready
 without regressing nearby backend coverage.
