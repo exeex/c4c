@@ -1,6 +1,6 @@
 # RV64 Stack-Destination Move-Bundle Authority Contract
 
-Status: Open
+Status: Closed
 Type: Prepared/RV64 architecture repair
 Parent: `ideas/closed/579_rv64_prepared_stack_destination_move_bundle_authority.md`
 Owning Layer: Prepared move-bundle authority and RV64 prepared-object consumer
@@ -89,6 +89,19 @@ function names, or target-shaped fragments.
   fail-closed.
 - Backend validation for the touched prepared/RV64 object-emission bucket
   passes with matching before/after proof.
+
+## Closure Note
+
+Closed after the active runbook implemented the prepared stack-destination
+fan-in authority taxonomy, producer publication, RV64 consumption, focused
+positive and negative coverage, the 579 representative rerun, and the backend
+regression guard.
+
+The representative
+`llvm_gcc_c_torture_src_20000605_1_c` now advances past
+`producer_authority_missing_for_register_fan_in_stack_destination`. The backend
+guard used matching `^backend_` before/after logs and passed with 346/346 tests
+passing before and after, with no new failures.
 
 ## Reviewer Reject Signals
 
