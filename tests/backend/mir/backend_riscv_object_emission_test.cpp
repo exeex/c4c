@@ -6873,22 +6873,30 @@ prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
 
 prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
     bir::TypeKind operand_type,
-    bool with_select_consumer) {
+    bool with_select_consumer,
+    bool rhs_zero_immediate = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
 
   const auto function_name =
-      prepared.names.function_names.intern(with_select_consumer
-                                               ? "fpr_compare_select_publication"
-                                               : "fpr_compare_publication");
+      prepared.names.function_names.intern(
+          rhs_zero_immediate ? "fpr_compare_zero_publication"
+          : with_select_consumer ? "fpr_compare_select_publication"
+                                 : "fpr_compare_publication");
   const auto block_label = prepared.names.block_labels.intern("entry");
   const auto lhs_name = prepared.names.value_names.intern("%lhs");
   const auto rhs_name = prepared.names.value_names.intern("%rhs");
   const auto compare_name = prepared.names.value_names.intern("%cmp");
   const auto selected_name = prepared.names.value_names.intern("%selected");
-  const char* function = with_select_consumer ? "fpr_compare_select_publication"
-                                              : "fpr_compare_publication";
+  const char* function = rhs_zero_immediate ? "fpr_compare_zero_publication"
+                         : with_select_consumer ? "fpr_compare_select_publication"
+                                                : "fpr_compare_publication";
+  const auto rhs_value = rhs_zero_immediate
+                             ? (operand_type == bir::TypeKind::F32
+                                    ? bir::Value::immediate_f32_bits(0)
+                                    : bir::Value::immediate_f64_bits(0))
+                             : bir::Value::named(operand_type, "%rhs");
 
   bir::Block entry{
       .label = "entry",
@@ -6899,7 +6907,7 @@ prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
                   .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
                   .operand_type = operand_type,
                   .lhs = bir::Value::named(operand_type, "%lhs"),
-                  .rhs = bir::Value::named(operand_type, "%rhs"),
+                  .rhs = rhs_value,
               },
           },
       .terminator = bir::Terminator{},
@@ -6944,9 +6952,11 @@ prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
 
   std::vector<prepare::PreparedValueHome> homes = {
       std::move(lhs_home),
-      std::move(rhs_home),
       rv64_gpr_home(3, function_name, compare_name, "s1", 9),
   };
+  if (!rhs_zero_immediate) {
+    homes.insert(homes.begin() + 1, std::move(rhs_home));
+  }
   if (with_select_consumer) {
     homes.push_back(rv64_gpr_home(4, function_name, selected_name, "a0", 10));
   }
@@ -16734,6 +16744,39 @@ int builds_prepared_f32_scalar_compare_publication_object() {
   return 0;
 }
 
+int builds_prepared_f32_scalar_compare_zero_publication_object() {
+  const auto prepared =
+      make_prepared_fpr_compare_publication_module(bir::TypeKind::F32,
+                                                  false,
+                                                  true);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared F32 scalar compare zero publication to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* function =
+      object::find_symbol(*result.module, "fpr_compare_zero_publication");
+  if (text == nullptr || function == nullptr || text->bytes.empty() ||
+      function->size_bytes != text->bytes.size()) {
+    return fail("expected F32 scalar compare zero publication object to publish text/function");
+  }
+  if (!contains_u32_sequence(text->bytes,
+                             {
+                                 0x00000313,  // addi t1, zero, 0
+                                 0xf0030fd3,  // fmv.w.x ft11, t1
+                                 0xa1f524d3,  // feq.s s1, fa0, ft11
+                                 0x0014c493,  // xori s1, s1, 1
+                             })) {
+    return fail("expected F32 scalar compare zero publication to materialize zero and emit feq.s into prepared GPR home");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected F32 scalar compare zero publication object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_f64_scalar_compare_select_consumer_publication_object() {
   const auto prepared =
       make_prepared_fpr_compare_publication_module(bir::TypeKind::F64, true);
@@ -22344,6 +22387,7 @@ int main() {
   status |= rejects_prepared_pointer_arithmetic_with_precise_diagnostic();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_f32_scalar_compare_publication_object();
+  status |= builds_prepared_f32_scalar_compare_zero_publication_object();
   status |= builds_prepared_f64_scalar_compare_select_consumer_publication_object();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();

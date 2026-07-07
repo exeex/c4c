@@ -5144,6 +5144,33 @@ std::optional<std::uint32_t> rv64_fp_compare_funct7(
   }
 }
 
+bool is_rv64_zero_floating_immediate(const c4c::backend::bir::Value& value) {
+  return value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+         rv64_floating_type(value.type) &&
+         value.immediate == 0 && value.immediate_bits == 0;
+}
+
+std::optional<std::uint32_t> rv64_fpr_compare_operand_register(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::uint32_t scratch_fpr,
+    std::optional<std::uint32_t> scratch_gpr) {
+  if (const auto reg = fpr_register_number_for_value(names, lookups, value);
+      reg.has_value()) {
+    return reg;
+  }
+  if (!is_rv64_zero_floating_immediate(value) || !scratch_gpr.has_value()) {
+    return std::nullopt;
+  }
+  append_rv64_load_immediate(fragment, *scratch_gpr, 0);
+  if (!append_rv64_gpr_to_fpr_move(fragment, scratch_fpr, *scratch_gpr, value.type)) {
+    return std::nullopt;
+  }
+  return scratch_fpr;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -5161,19 +5188,42 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication
   }
 
   const auto* destination_home = prepared_value_home_for(names, lookups, binary.result);
-  const auto* lhs_home = prepared_value_home_for(names, lookups, binary.lhs);
-  const auto* rhs_home = prepared_value_home_for(names, lookups, binary.rhs);
   const auto destination =
       destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
-  const auto lhs =
-      lhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*lhs_home);
-  const auto rhs =
-      rhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*rhs_home);
-  if (!destination.has_value() || !lhs.has_value() || !rhs.has_value()) {
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+  const bool needs_zero_materialization =
+      is_rv64_zero_floating_immediate(binary.lhs) ||
+      is_rv64_zero_floating_immediate(binary.rhs);
+  const auto scratch_gpr =
+      needs_zero_materialization ? rv64_unoccupied_temporary_gpr(lookups)
+                                 : std::optional<std::uint32_t>{};
+  if (needs_zero_materialization && !scratch_gpr.has_value()) {
+    return std::nullopt;
+  }
+  const auto lhs_home_reg = fpr_register_number_for_value(names, lookups, binary.lhs);
+  const auto rhs_home_reg = fpr_register_number_for_value(names, lookups, binary.rhs);
+  constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
+  const auto scratch_fpr_it =
+      std::find_if(scratch_fpr_candidates.begin(),
+                   scratch_fpr_candidates.end(),
+                   [&](std::uint32_t candidate) {
+                     return (!lhs_home_reg.has_value() || *lhs_home_reg != candidate) &&
+                            (!rhs_home_reg.has_value() || *rhs_home_reg != candidate);
+                   });
+  if (scratch_fpr_it == scratch_fpr_candidates.end()) {
     return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
+  const auto lhs = rv64_fpr_compare_operand_register(
+      fragment, names, lookups, binary.lhs, *scratch_fpr_it, scratch_gpr);
+  const auto rhs = rv64_fpr_compare_operand_register(
+      fragment, names, lookups, binary.rhs, *scratch_fpr_it, scratch_gpr);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
   append_le32(fragment.bytes,
               encode_r_type(0x53, *destination, 2, *lhs, *rhs, *funct7));
   if (binary.opcode == c4c::backend::bir::BinaryOpcode::Ne) {
