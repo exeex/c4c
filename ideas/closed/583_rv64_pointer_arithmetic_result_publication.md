@@ -1,6 +1,6 @@
 # RV64 Pointer Arithmetic Result Publication
 
-Status: Open
+Status: Closed
 Type: Focused RV64 object-emission repair
 Parent: `ideas/closed/575_rv64_pointer_arithmetic_lowering.md`
 Owning Layer: RV64 object lowering for pointer-valued binary arithmetic
@@ -14,16 +14,15 @@ offset, without relying on testcase-specific fallbacks.
 ## Why This Exists
 
 Idea 575 closed on the narrower fail-closed diagnostic path rather than a
-capability repair. The representative `src/20000819-1.c` route still stops at
-the same pointer arithmetic owner, but now reports
-`unsupported_pointer_arithmetic` instead of the old generic
-`unsupported_instruction_fragment`.
+capability repair. The representative `src/20000819-1.c` route still stopped at
+the same pointer arithmetic owner, but reported `unsupported_pointer_arithmetic`
+instead of the old generic `unsupported_instruction_fragment`.
 
-The retained evidence from 575 shows this is a late RV64 object-emission gap:
-prepared BIR already exposes the pointer-valued binary instruction, its loaded
-pointer base, the scaled integer byte offset, and the pointer result owner.
-The missing tail is RV64 materialization plus publication of that pointer
-result so later memory uses can consume the prepared owner.
+The retained evidence from 575 showed this was a late RV64 object-emission gap:
+prepared BIR already exposed the pointer-valued binary instruction, its loaded
+pointer base, the scaled integer byte offset, and the pointer result owner. The
+missing tail was RV64 materialization plus publication of that pointer result
+so later memory uses could consume the prepared owner.
 
 ## In Scope
 
@@ -33,7 +32,7 @@ result so later memory uses can consume the prepared owner.
   home expected by later memory operations.
 - Focused object-emission coverage for loaded-base plus scaled-offset pointer
   arithmetic, including frame/register destination homes where current
-  evidence justifies them.
+  evidence justified them.
 - Representative route proof showing at least one retained pointer arithmetic
   row advances past the old `unsupported_pointer_arithmetic` owner or exposes a
   later, narrower owner.
@@ -58,8 +57,8 @@ result so later memory uses can consume the prepared owner.
   materialization from a pointer base plus integer byte offset without matching
   a representative filename, function, block, value name, or diagnostic string.
 - The implementation publishes the pointer result to the prepared destination
-  home; later consumers must not observe the same missing pointer-owner
-  failure through a renamed helper path.
+  home; later consumers must not observe the same missing pointer-owner failure
+  through a renamed helper path.
 - Unsupported pointer arithmetic shapes remain fail-closed with a narrower
   pointer-arithmetic diagnostic.
 - A representative `src/20000819-1.c` route rerun no longer stops at the old
@@ -67,6 +66,28 @@ result so later memory uses can consume the prepared owner.
   pointer add shape, or records a distinct downstream owner with concrete
   route evidence.
 - Backend validation for the touched RV64 object-emission bucket passes.
+
+## Closure Notes
+
+Closed after RV64 object emission learned to materialize supported pointer
+add/sub results from a prepared pointer base plus integer byte offset and
+publish the pointer result into the prepared destination register or stack
+home. Focused object-emission coverage now proves add/sub publication and
+preserves fail-closed diagnostics for missing result homes.
+
+The retained `src/20000819-1.c` representative advanced beyond the old
+compile-time owner:
+`function=foo`, `block=entry`, `instruction_index=7`, `owner=ptr %t4`. It now
+builds the C4C object and linked binary, then fails downstream with
+`[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
+`c4c_exit=Subprocess aborted`.
+
+The runtime mismatch is tracked separately in
+`ideas/open/584_rv64_20000819_runtime_mismatch_after_pointer_publication.md`.
+
+Close proof: Step 5 backend validation passed with
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`.
+CTest reported `100% tests passed, 0 tests failed out of 346`.
 
 ## Reviewer Reject Signals
 
