@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <charconv>
 
 namespace c4c::backend {
 
@@ -339,6 +340,66 @@ std::optional<HfaReturnFacts> aarch64_hfa_return_facts(
   return HfaReturnFacts{.lane_type = *lane_type, .lane_count = lane_count};
 }
 
+std::optional<std::int64_t> parse_positive_i64(std::string_view text) {
+  std::int64_t value = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc() || result.ptr != end || value <= 0) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+std::optional<std::size_t> scalar_signature_type_size_bytes(std::string_view text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed == "i1" || trimmed == "i8") {
+    return 1;
+  }
+  if (trimmed == "i16") {
+    return 2;
+  }
+  if (trimmed == "i32" || trimmed == "float") {
+    return 4;
+  }
+  if (trimmed == "i64" || trimmed == "double" || trimmed == "ptr" ||
+      trimmed.rfind("ptr ", 0) == 0) {
+    return 8;
+  }
+  return std::nullopt;
+}
+
+std::optional<bir::TypeKind> lower_fixed_vector_signature_carrier_type(
+    std::string_view type_text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  if (trimmed.size() < 6 || trimmed.front() != '<' || trimmed.back() != '>') {
+    return std::nullopt;
+  }
+  const auto x_pos = trimmed.find(" x ");
+  if (x_pos == std::string_view::npos || x_pos <= 1) {
+    return std::nullopt;
+  }
+
+  const auto lane_count = parse_positive_i64(trimmed.substr(1, x_pos - 1));
+  if (!lane_count.has_value()) {
+    return std::nullopt;
+  }
+  const auto lane_size = scalar_signature_type_size_bytes(
+      trimmed.substr(x_pos + 3, trimmed.size() - x_pos - 4));
+  if (!lane_size.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto total_size = static_cast<std::size_t>(*lane_count) * *lane_size;
+  if (total_size <= 4) {
+    return bir::TypeKind::I32;
+  }
+  if (total_size <= 8) {
+    return bir::TypeKind::I64;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 bool BirFunctionLowerer::is_void_param_sentinel(const c4c::TypeSpec& type) {
@@ -454,6 +515,16 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
     return LoweredReturnInfo{
         .type = *scalar_type,
         .abi = lir_to_bir_detail::compute_function_return_abi(target_profile, *scalar_type, false),
+    };
+  }
+  if (const auto vector_carrier = lower_fixed_vector_signature_carrier_type(trimmed);
+      vector_carrier.has_value()) {
+    return LoweredReturnInfo{
+        .type = *vector_carrier,
+        .size_bytes = lir_to_bir_detail::type_size_bytes(*vector_carrier),
+        .align_bytes = lir_to_bir_detail::type_size_bytes(*vector_carrier),
+        .abi = lir_to_bir_detail::compute_function_return_abi(
+            target_profile, *vector_carrier, false),
     };
   }
   if (const auto aggregate_layout =
@@ -674,7 +745,10 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
         return false;
       }
 
-      const auto lowered_type = lower_scalar_or_function_pointer_type(param.type);
+      auto lowered_type = lower_scalar_or_function_pointer_type(param.type);
+      if (!lowered_type.has_value()) {
+        lowered_type = lower_fixed_vector_signature_carrier_type(param.type);
+      }
       if (!lowered_type.has_value() || param.operand.empty()) {
         return false;
       }
@@ -757,7 +831,10 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
       lowered->is_variadic = true;
       return true;
     }
-    const auto lowered_type = lower_scalar_or_function_pointer_type(param.type);
+    auto lowered_type = lower_scalar_or_function_pointer_type(param.type);
+    if (!lowered_type.has_value()) {
+      lowered_type = lower_fixed_vector_signature_carrier_type(param.type);
+    }
     if (lowered_type.has_value()) {
       if (param.operand.empty()) {
         return false;

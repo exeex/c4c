@@ -420,6 +420,66 @@ int check_lir_to_bir_signature_lowering_prefers_structured_metadata() {
   return 0;
 }
 
+int check_lir_to_bir_signature_lowering_publishes_vector_carriers() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  c4c::TypeSpec vector_param_type{.base = c4c::TB_INT};
+
+  lir::LirFunction i64_decl;
+  i64_decl.name = "vector_i64_sig";
+  i64_decl.is_declaration = true;
+  i64_decl.signature_text = "declare void @vector_i64_sig(void)";
+  i64_decl.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
+  i64_decl.signature_return_type_ref = lir::LirTypeRef("<2 x i32>");
+  i64_decl.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%v", .type = vector_param_type});
+  i64_decl.signature_param_type_refs.push_back(lir::LirTypeRef("<2 x i32>"));
+  module.functions.push_back(std::move(i64_decl));
+
+  lir::LirFunction i32_decl;
+  i32_decl.name = "vector_i32_sig";
+  i32_decl.is_declaration = true;
+  i32_decl.signature_text = "declare void @vector_i32_sig(void)";
+  i32_decl.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
+  i32_decl.signature_return_type_ref = lir::LirTypeRef("<4 x i8>");
+  i32_decl.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%v", .type = vector_param_type});
+  i32_decl.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x i8>"));
+  module.functions.push_back(std::move(i32_decl));
+
+  const auto lowered =
+      c4c::backend::try_lower_to_bir_with_options(module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return fail("structured vector signature fixture did not lower to BIR");
+  }
+  if (lowered.module->functions.size() != 2) {
+    return fail("structured vector signature fixture did not preserve declarations");
+  }
+
+  const bir::Function& i64_function = lowered.module->functions[0];
+  if (i64_function.return_type != bir::TypeKind::I64 || !i64_function.return_abi.has_value() ||
+      i64_function.return_abi->type != bir::TypeKind::I64 ||
+      i64_function.params.size() != 1 || i64_function.params.front().type != bir::TypeKind::I64 ||
+      !i64_function.params.front().abi.has_value() ||
+      i64_function.params.front().abi->type != bir::TypeKind::I64) {
+    return fail("BIR signature lowering did not publish <2 x i32> carrier ABI metadata");
+  }
+
+  const bir::Function& i32_function = lowered.module->functions[1];
+  if (i32_function.return_type != bir::TypeKind::I32 || !i32_function.return_abi.has_value() ||
+      i32_function.return_abi->type != bir::TypeKind::I32 ||
+      i32_function.params.size() != 1 || i32_function.params.front().type != bir::TypeKind::I32 ||
+      !i32_function.params.front().abi.has_value() ||
+      i32_function.params.front().abi->type != bir::TypeKind::I32) {
+    return fail("BIR signature lowering did not publish <4 x i8> carrier ABI metadata");
+  }
+  return 0;
+}
+
 int check_backend_layout_lookup_prefers_structured_table() {
   using c4c::backend::lir_to_bir_detail::AggregateTypeLayout;
   using c4c::backend::lir_to_bir_detail::build_backend_structured_layout_table;
@@ -1256,6 +1316,10 @@ int main() {
     return status;
   }
   if (const int status = check_lir_to_bir_signature_lowering_prefers_structured_metadata();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_lir_to_bir_signature_lowering_publishes_vector_carriers();
       status != 0) {
     return status;
   }
