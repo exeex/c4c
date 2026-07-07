@@ -707,6 +707,12 @@ prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_unfused_register_condition_branch_module() {
+  auto prepared = make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne);
+  prepared.control_flow.functions.front().branch_conditions.clear();
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -12467,6 +12473,12 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   return 0;
 }
 
+int reports_prepared_register_condition_terminator_fragment_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_unfused_register_condition_branch_module(),
+      "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
+}
+
 int builds_prepared_rematerialized_nonzero_return_object() {
   const auto prepared = make_prepared_rematerialized_return_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -17412,6 +17424,16 @@ int rejects_reused_nested_i32_ordinary_select_without_intermediate_home_object()
   if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
     return fail("expected reused no-home nested i32 ordinary select to remain fail-closed");
   }
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {
+              "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering",
+              "function=main",
+              "block=entry",
+              "instruction_kind=SelectInst",
+          }) != 0) {
+    return 1;
+  }
   return 0;
 }
 
@@ -18298,6 +18320,43 @@ int rejects_published_prepared_join_transfer_select_ambiguous_publications_objec
     return fail("expected edge-compare select object path to reject stack operand source");
   }
   return 0;
+}
+
+int reports_prepared_select_publication_move_bundle_fragment_diagnostic() {
+  auto prepared = make_prepared_join_transfer_select_with_published_copies_module();
+  auto& false_source_home =
+      prepared.value_locations.functions.front().value_homes.at(1);
+  false_source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  false_source_home.register_name.reset();
+  false_source_home.target_register_identity.reset();
+  false_source_home.slot_id = prepare::PreparedFrameSlotId{7};
+  false_source_home.offset_bytes = 0;
+  false_source_home.size_bytes = std::size_t{4};
+  false_source_home.align_bytes = std::size_t{4};
+  prepared.stack_layout.frame_size_bytes = 4;
+  prepared.stack_layout.frame_alignment_bytes = 4;
+  prepared.stack_layout.frame_slots = {prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{7},
+      .function_name = prepared.names.function_names.find("main"),
+      .offset_bytes = 0,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  }};
+
+  return expect_prepared_rejection_diagnostic_contains(
+      prepared,
+      {
+          "unsupported_move_bundle_target_shape: prepared select publication move bundle requires unsupported RV64 moves",
+          "select_publication_evidence=yes",
+          "event_kind=pre_terminator_copies",
+          "function=main",
+          "parallel_copy_execution_site=predecessor_terminator",
+          "selected_move_carrier=select_materialization",
+          "publication_status=available",
+          "publication_source_home_kind=stack_slot",
+          "publication_destination_home_kind=register",
+          "select_publication_rejection_reason=intent_status_unsupported_source_home",
+      });
 }
 
 int publishes_select_publication_stack_home_move_intent_fields() {
@@ -22755,6 +22814,7 @@ int main() {
   status |= builds_prepared_fused_ugt_ptr_register_compare_branch_object();
   status |= builds_prepared_fused_ule_ptr_register_compare_branch_object();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
+  status |= reports_prepared_register_condition_terminator_fragment_diagnostic();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_traversed_wide_rematerialized_return_object();
   status |= rejects_prepared_rematerialized_return_without_typed_immediate_fact();
@@ -22914,6 +22974,7 @@ int main() {
   status |=
       keeps_unauthorized_prepared_select_edge_source_producer_suppression_fail_closed();
   status |= rejects_published_prepared_join_transfer_select_ambiguous_publications_object();
+  status |= reports_prepared_select_publication_move_bundle_fragment_diagnostic();
   status |= publishes_select_publication_stack_home_move_intent_fields();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
