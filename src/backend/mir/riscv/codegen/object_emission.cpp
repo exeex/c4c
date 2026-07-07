@@ -5457,6 +5457,96 @@ rv64_prepared_move_bundle_classification_failure_diagnostic(
         classification,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
   const auto* move_bundle = classification.move_bundle;
+  if (move_bundle != nullptr && move_bundle->moves.size() == 2 &&
+      classification.status == prepare::PreparedObjectMoveBundleConsumerStatus::
+              AmbiguousNonParallelMultiSourceStackDestination &&
+      classification.parallel_copy_bundle == nullptr &&
+      move_bundle->phase == prepare::PreparedMovePhase::BeforeInstruction &&
+      move_bundle->authority_kind == prepare::PreparedMoveAuthorityKind::None) {
+    const auto& lhs = move_bundle->moves[0];
+    const auto& rhs = move_bundle->moves[1];
+    const auto stack_register_move =
+        [](const prepare::PreparedMoveResolution& move) {
+          return move.authority_kind == prepare::PreparedMoveAuthorityKind::None &&
+                 !move.source_parallel_copy_step_index.has_value() &&
+                 !move.source_parallel_copy_predecessor_label.has_value() &&
+                 !move.source_parallel_copy_successor_label.has_value() &&
+                 move.destination_kind ==
+                     prepare::PreparedMoveDestinationKind::Value &&
+                 move.destination_storage_kind ==
+                     prepare::PreparedMoveStorageKind::StackSlot &&
+                 move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+                 !move.uses_cycle_temp_source &&
+                 !move.source_immediate_i32.has_value() &&
+                 move.reason == "consumer_register_to_stack";
+        };
+    const auto* lhs_source_home =
+        prepared_value_home_for_id(lookups, lhs.from_value_id);
+    const auto* lhs_destination_home =
+        prepared_value_home_for_id(lookups, lhs.to_value_id);
+    const auto* rhs_source_home =
+        prepared_value_home_for_id(lookups, rhs.from_value_id);
+    const auto* rhs_destination_home =
+        prepared_value_home_for_id(lookups, rhs.to_value_id);
+    const bool same_stack_destination =
+        lhs.to_value_id == rhs.to_value_id ||
+        (lhs_destination_home != nullptr && rhs_destination_home != nullptr &&
+         lhs_destination_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+         rhs_destination_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+         ((lhs_destination_home->slot_id.has_value() &&
+           rhs_destination_home->slot_id.has_value() &&
+           lhs_destination_home->slot_id == rhs_destination_home->slot_id) ||
+          (lhs_destination_home->offset_bytes.has_value() &&
+           rhs_destination_home->offset_bytes.has_value() &&
+           lhs_destination_home->offset_bytes ==
+               rhs_destination_home->offset_bytes)));
+    if (stack_register_move(lhs) && stack_register_move(rhs) &&
+        lhs_source_home != nullptr && rhs_source_home != nullptr &&
+        lhs_destination_home != nullptr && rhs_destination_home != nullptr &&
+        lhs_source_home->kind == prepare::PreparedValueHomeKind::Register &&
+        rhs_source_home->kind == prepare::PreparedValueHomeKind::Register &&
+        lhs_destination_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+        rhs_destination_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+        lhs.from_value_id != rhs.from_value_id && same_stack_destination) {
+      std::ostringstream out;
+      out << "unsupported_prepared_move_bundle_classification: "
+             "non-parallel register-source fan-in to one stack destination "
+             "has no ordering or mutually-exclusive authority";
+      out << " event_kind="
+          << prepare::prepared_object_traversal_event_kind_name(event.kind);
+      out << " function="
+          << rv64_prepared_function_name(names, control_flow.function_name);
+      out << " block_index=" << event.block_index;
+      if (event.prepared_block != nullptr) {
+        out << " block_label="
+            << rv64_prepared_block_label(names,
+                                         event.prepared_block->block_label);
+      }
+      out << " instruction_index=" << event.instruction_index;
+      out << " phase=" << prepare::prepared_move_phase_name(move_bundle->phase);
+      out << " authority="
+          << prepare::prepared_move_authority_kind_name(
+                 move_bundle->authority_kind);
+      out << " move_count=" << move_bundle->moves.size();
+      out << " parallel_copy=no";
+      out << " move[0].from_value_id=" << lhs.from_value_id;
+      out << " move[0].to_value_id=" << lhs.to_value_id;
+      out << " move[0].source_home_kind="
+          << prepare::prepared_value_home_kind_name(lhs_source_home->kind);
+      out << " move[0].destination_home_kind="
+          << prepare::prepared_value_home_kind_name(lhs_destination_home->kind);
+      out << " move[1].from_value_id=" << rhs.from_value_id;
+      out << " move[1].to_value_id=" << rhs.to_value_id;
+      out << " move[1].source_home_kind="
+          << prepare::prepared_value_home_kind_name(rhs_source_home->kind);
+      out << " move[1].destination_home_kind="
+          << prepare::prepared_value_home_kind_name(rhs_destination_home->kind);
+      out << " diagnostic_owner=rv64_prepared_move_bundle_consumer";
+      out << " fragment_status="
+             "producer_authority_missing_for_register_fan_in_stack_destination";
+      return out.str();
+    }
+  }
   if (move_bundle == nullptr || move_bundle->moves.size() != 1) {
     return std::nullopt;
   }
@@ -9433,6 +9523,19 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                   });
           if (auto diagnostic =
                   prepare::diagnose_prepared_object_consumer(classification)) {
+            if (auto classification_diagnostic =
+                    rv64_prepared_move_bundle_classification_failure_diagnostic(
+                        prepared.names,
+                        control_flow,
+                        *function,
+                        event,
+                        classification,
+                        &lookups)) {
+              return RiscvPreparedObjectFunctionResult{
+                  .prepared_consumer_category = diagnostic->category,
+                  .diagnostic = std::move(*classification_diagnostic),
+              };
+            }
             return RiscvPreparedObjectFunctionResult{
                 .prepared_consumer_category = diagnostic->category,
                 .diagnostic = std::move(diagnostic->message),

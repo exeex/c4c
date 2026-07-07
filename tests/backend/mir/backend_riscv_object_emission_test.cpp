@@ -14859,13 +14859,78 @@ int rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle() 
     return fail("ambiguous stack-destination fixture did not publish the intended authority shape");
   }
 
+  const auto two_source_result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (two_source_result.ok() || two_source_result.module.has_value() ||
+      two_source_result.prepared_consumer_category !=
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              AmbiguousNonParallelMultiSourceStackDestination ||
+      two_source_result.diagnostic.find(
+          "unsupported_prepared_move_bundle_classification: "
+          "non-parallel register-source fan-in to one stack destination "
+          "has no ordering or mutually-exclusive authority") != 0 ||
+      two_source_result.diagnostic.find(
+          "fragment_status=producer_authority_missing_for_register_fan_in_stack_destination") ==
+          std::string::npos) {
+    return fail("two-register-source stack destination should reject with narrowed authority diagnostic");
+  }
+  const auto two_source_image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(
+          prepared);
+  if (two_source_image.ok() || two_source_image.image.has_value() ||
+      two_source_image.prepared_consumer_category !=
+          two_source_result.prepared_consumer_category ||
+      two_source_image.diagnostic != two_source_result.diagnostic) {
+    return fail("ELF writer should preserve narrowed two-source stack-destination diagnostic");
+  }
+
+  auto generic_ambiguous =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  const auto generic_function_name =
+      generic_ambiguous.names.function_names.find("main");
+  const auto generic_rhs_name =
+      generic_ambiguous.names.value_names.intern("%rhs");
+  const auto generic_stack_name =
+      generic_ambiguous.names.value_names.intern("%stack.source");
+  auto& generic_locations = generic_ambiguous.value_locations.functions[0];
+  generic_locations.value_homes.push_back(
+      rv64_gpr_home(4, generic_function_name, generic_rhs_name, "s2", 18));
+  generic_locations.value_homes.push_back(
+      rv64_stack_slot_home(5,
+                           generic_function_name,
+                           generic_stack_name,
+                           prepare::PreparedFrameSlotId{12},
+                           16));
+  auto& generic_bundle = generic_locations.move_bundles[0];
+  generic_bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 4,
+      .to_value_id = 2,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_contiguous_width = 1,
+      .block_index = 0,
+      .instruction_index = 0,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "consumer_register_to_stack",
+  });
+  generic_bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 5,
+      .to_value_id = 2,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_contiguous_width = 1,
+      .block_index = 0,
+      .instruction_index = 0,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "consumer_stack_to_stack",
+  });
   if (expect_prepared_consumer_rejection_diagnostic(
-          prepared,
+          generic_ambiguous,
           prepare::PreparedObjectConsumerDiagnosticCategory::
               AmbiguousNonParallelMultiSourceStackDestination,
           "prepared move-bundle classifier rejected ambiguous non-parallel "
           "multi-source stack-destination authority") != 0) {
-    return fail("ambiguous non-parallel multi-source stack-destination move bundle should reject");
+    return fail("generic ambiguous multi-source stack-destination move bundle should reject");
   }
 
   prepared =

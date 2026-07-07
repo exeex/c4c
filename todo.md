@@ -8,29 +8,37 @@ Current Step Title: Repair Producer-Side Authority Or Narrow The Diagnostic
 
 ## Just Finished
 
-Lifecycle repair after the prior Step 4 representative proof showed the direct
-RV64 object route still failed on the unchanged
-`ambiguous_non_parallel_multi_source_stack_destination` diagnostic.
+Step 4 narrowed the unchanged representative authority failure at the RV64
+prepared consumer surface.  The Step 4 prepared dump showed non-parallel
+`before_instruction` / `authority=none` move bundles with two distinct register
+sources targeting the same stack-slot destination; no ordered, parallel-copy,
+select-backed, or mutually-exclusive authority was present in the bundle.  The
+RV64 object path now reports a specific
+`producer_authority_missing_for_register_fan_in_stack_destination` diagnostic
+for that two-register-source stack-destination shape while preserving the
+shared `ambiguous_non_parallel_multi_source_stack_destination` category.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: use the saved Step 4 prepared dump and direct
-route evidence to find where the non-parallel multi-source stack-destination
-authority is created or preserved, then either repair the producer/consumer
-authority contract for the lowerable shape or narrow the diagnostic at the
-earliest authoritative surface.
+Proceed to Step 5: rerun the representative RV64 object route for
+`src/20000605-1.c` and save the result under the Step 5 agent-state path to
+confirm the old generic ambiguity text has either become the narrower
+stack-destination authority diagnostic or advanced to a later owner.
 
 ## Watchouts
 
 - Keep this mapped to
   `ideas/open/579_rv64_prepared_stack_destination_move_bundle_authority.md`.
-- Do not rerun representative proof as closure evidence until the new Step 4
-  producer-side or diagnostic repair has fresh focused proof.
 - Do not bypass the prepared move-bundle classifier broadly or key behavior to
   `src/20000605-1.c`, `render_image_rgb_a`, temporary names, or wrapper text.
-- Preserve fail-closed behavior for genuinely ambiguous non-parallel
-  multi-source stack-destination bundles.
+- The earliest shared classifier lives under `src/backend/prealloc/`, which was
+  outside this packet's owned files; this slice keeps the narrower message in
+  the owned RV64 prepared consumer return path without changing the shared enum
+  category.
+- Focused coverage keeps a three-move genuinely ambiguous stack-destination
+  bundle on the old generic fail-closed diagnostic.
 
 ## Proof
 
-No code proof was run for this lifecycle-only repair.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`
+passed; proof log: `test_after.log`.
