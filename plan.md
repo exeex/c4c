@@ -1,171 +1,177 @@
-# RV64 Floating-Point Binary Lowering Runbook
+# RV64 Prepared Stack-Destination Move-Bundle Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/574_rv64_floating_point_binary_lowering.md
+Source Idea: ideas/open/579_rv64_prepared_stack_destination_move_bundle_authority.md
 
 ## Purpose
 
-Repair the RV64 object-route lowering gap for scalar floating-point BIR binary
-operations, starting with the double-precision division owner identified by the
-570 unsupported-instruction diagnostics.
+Repair or narrow the RV64 object-route prepared move-bundle classifier blocker
+reached after floating-point binary lowering advanced the representative route.
 
 ## Goal
 
-Make scalar double floating-point binary operations materialize and publish
-their result through RV64 object emission without falling through to the generic
-unsupported instruction path.
+Make the valid prepared stack-destination move-bundle authority shape lower
+semantically, or prove it is invalid with a narrower fail-closed diagnostic.
 
 ## Core Rule
 
-Implement semantic FP binary lowering and diagnostics; do not match
-`src/20000605-1.c`, `render_image_rgb_a`, `%t5`, or any other testcase-shaped
-identifier.
+Classify and lower the move-bundle authority by storage semantics, not by
+`src/20000605-1.c`, `render_image_rgb_a`, temporary names, or a broad bypass of
+prepared validation.
 
 ## Read First
 
-- `ideas/open/574_rv64_floating_point_binary_lowering.md`
-- `build/agent_state/570_unsupported_instruction_fragment_diagnostics/classification.tsv`
-- `build/agent_state/570_unsupported_instruction_fragment_diagnostics/src_20000605-1.c/dump-prepared-bir.txt`
-- `build/agent_state/570_unsupported_instruction_fragment_diagnostics/src_20000605-1.c/object-route.log`
+- `ideas/open/579_rv64_prepared_stack_destination_move_bundle_authority.md`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/object-route.log`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/object-route.rc`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/prepared-focus.txt`
+- `src/backend/bir/`
 - `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 
 ## Current Targets
 
-- RV64 object emission for scalar double BIR binary operations, beginning with
-  the observed `bir.sdiv double 1.0, %t4` shape.
-- Operand materialization and result publication for the FP binary owner.
-- Focused backend coverage for supported double FP binary lowering and
-  fail-closed unsupported FP binary forms.
+- The first prepared move-bundle classifier rejection reached in the 574
+  Step 4c representative artifact.
+- The move-bundle authority, source values, destination stack slot, and owner
+  that make the classifier report
+  `ambiguous_non_parallel_multi_source_stack_destination`.
+- Focused coverage for the valid supported authority shape and for a genuinely
+  ambiguous fail-closed shape.
 
 ## Non-Goals
 
-- Do not implement F128 or long-double lowering.
-- Do not mix in floating-point casts, truncation, comparisons, libcall policy,
-  pointer arithmetic, select lowering, inline asm, or call ABI repairs unless a
-  later first-owner investigation creates a separate source idea.
+- Do not implement additional FP binary, F128, cast, truncation, runtime
+  comparison, pointer, call, inline asm, or select repairs.
+- Do not weaken prepared move-bundle validation so invalid stack authority is
+  silently accepted.
 - Do not change expected runtime output, unsupported markers, allowlists, or
-  route classification as the proof of progress.
-- Do not perform broad floating-point rewrites beyond the object-emission
-  support required by this source idea.
+  route classification as proof of progress.
+- Do not perform broad prepared-move rewrites beyond the authority shape proven
+  by this source idea.
 
 ## Working Model
 
-- The current representative first unsupported owner is a BIR `BinaryInst` with
-  double operands and a double result.
-- Lowering should map supported scalar FP binary operations to the appropriate
-  RV64 floating-point instructions when the target features and operand types
-  permit it.
-- Unsupported FP binary forms should produce a narrower diagnostic or fail
-  closed through the existing unsupported path rather than silently generating
-  incorrect code.
-- If the representative advances to a later cast, truncation, comparison, or
-  runtime mismatch, record that later owner for a follow-up instead of widening
-  this runbook.
+- The representative blocker is currently a prepared consumer classification
+  failure, not a `BinaryInst` lowering failure.
+- The repair must distinguish a semantically ordered or mutually exclusive
+  stack-destination move bundle from a genuinely ambiguous multi-source stack
+  destination.
+- If the shape is valid, RV64 object emission should materialize the required
+  sources and publish/store the destination consistently with prepared
+  authority.
+- If the shape is invalid, the route should fail closed with a narrower
+  diagnostic that explains why this stack-destination authority cannot be
+  lowered.
 
 ## Execution Rules
 
 - Keep each code-changing step paired with focused backend proof.
-- Prefer existing RV64 object-emission helpers and publication patterns before
-  adding new abstractions.
-- Preserve existing integer, pointer, select, inline asm, and call behavior.
-- Treat diagnostic-only edits as insufficient unless they accompany real
-  semantic lowering or a deliberately narrower fail-closed path.
+- Prefer existing prepared move, publication, and RV64 object-emission helpers
+  before adding new abstractions.
+- Preserve existing FP binary, integer, pointer, select, inline asm, and call
+  behavior.
+- Treat diagnostic-only edits as insufficient unless they prove a deliberately
+  narrower fail-closed path for an invalid authority shape.
 - Keep `todo.md` as the packet scratchpad; do not edit the source idea unless
   source intent changes or a separate follow-up must be recorded.
 
 ## Ordered Steps
 
-### Step 1: Reproduce And Localize The FP Binary Owner
+### Step 1: Reproduce And Localize The Move-Bundle Authority
 
-Goal: Confirm the current FP binary failure shape and the relevant object
-emission entry points before implementation.
+Goal: Confirm the current prepared move-bundle classifier rejection and identify
+the semantic authority shape before implementation.
 
 Primary target: RV64 object route for `src/20000605-1.c`.
 
 Actions:
 
-- Inspect the 570 evidence files named above.
-- Reproduce the representative object route or an equivalent focused dump if
-  the existing evidence is stale.
-- Identify the object-emission function that rejects or skips the double
-  `BinaryInst`.
-- Record in `todo.md` the exact owner, operation, operand sources, and current
-  failure path.
+- Inspect the 574 Step 4c route artifacts named above.
+- Reproduce the representative object route or an equivalent focused prepared
+  dump if the existing evidence is stale.
+- Identify the move bundle, source values, destination storage, owner
+  instruction, and classifier branch that reports
+  `ambiguous_non_parallel_multi_source_stack_destination`.
+- Record in `todo.md` whether the sources appear ordered, mutually exclusive,
+  or genuinely ambiguous.
 
 Completion check:
 
-- `todo.md` names the current FP binary owner and the implementation surface
-  for Step 2 without changing code.
+- `todo.md` names the exact move-bundle authority shape and implementation
+  surface for Step 2 without changing code.
 
-### Step 2: Add Focused FP Binary Object-Emission Coverage
+### Step 2: Add Focused Move-Bundle Authority Coverage
 
-Goal: Pin the desired supported and unsupported behavior before the lowering
-change.
+Goal: Pin the desired supported and fail-closed behavior before changing the
+classifier or materialization path.
 
 Primary target: `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
 
 Actions:
 
-- Add a focused test for a supported scalar double FP binary operation that
-  requires operand materialization and result publication.
-- Add or preserve focused fail-closed coverage for an unsupported FP binary
-  form or type.
-- Keep tests semantic and operation/type based, not tied to the representative
-  filename or value names.
+- Add focused coverage for the supported stack-destination authority shape if
+  Step 1 proves it is semantically valid.
+- Add or preserve focused coverage for a genuinely ambiguous non-parallel
+  multi-source stack-destination shape that must remain fail-closed.
+- Keep tests semantic and storage/authority based, not tied to the
+  representative filename or value names.
 
 Completion check:
 
 - The focused backend test target exposes the missing supported behavior or
-  verifies the intended fail-closed diagnostic contract.
+  verifies the intended narrower fail-closed diagnostic contract.
 
-### Step 3: Implement Double FP Binary Lowering
+### Step 3: Repair Or Narrow The Stack-Destination Authority Path
 
-Goal: Emit RV64 object code for the supported scalar double FP binary shape and
-publish the result for later consumers.
+Goal: Lower the valid prepared stack-destination move bundle, or fail closed
+with a precise diagnostic when the authority is invalid.
 
 Primary target: `src/backend/mir/riscv/codegen/object_emission.cpp`.
 
 Actions:
 
-- Reuse existing scalar/FPR materialization and publication helpers where
-  possible.
-- Lower supported double FP binary operations through RV64 floating-point
-  instructions with correct operand registers and result ownership.
-- Keep unsupported operations, unsupported types, and unmaterializable operands
-  fail-closed.
-- Avoid changing unrelated integer, pointer, select, call, or inline asm paths.
+- Reuse existing prepared move-bundle classification, publication, and RV64
+  materialization helpers where possible.
+- If the shape is valid, materialize sources and store/publish the stack
+  destination in the order required by prepared authority.
+- If the shape is invalid, replace the broad ambiguous rejection with a
+  narrower diagnostic that names the unsupported authority condition.
+- Avoid changing unrelated FP binary, integer, pointer, select, call, or inline
+  asm paths.
 
 Completion check:
 
 - Focused backend object-emission tests pass and the implementation does not
-  rely on testcase-shaped identifiers.
+  bypass prepared validation or rely on testcase-shaped identifiers.
 
 ### Step 4: Prove The Representative Route
 
-Goal: Verify the original 570 representative no longer fails first on the
-generic FP binary owner.
+Goal: Verify the 574 representative no longer fails first on the same prepared
+move-bundle classifier rejection.
 
 Primary target: RV64 object route for `src/20000605-1.c`.
 
 Actions:
 
 - Rerun the representative object route and save the log under
-  `build/agent_state/574_rv64_floating_point_binary_lowering/`.
-- Compare the new result with the 570 object-route evidence.
-- If the route advances to a later cast, truncation, comparison, or runtime
-  mismatch, record that as a distinct later owner in `todo.md`.
+  `build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/`.
+- Compare the new result with the 574 Step 4c object-route evidence.
+- If the route advances to a later FP cast, runtime mismatch, pointer, call,
+  select, or unrelated owner, record that as a distinct later owner in
+  `todo.md`.
 
 Completion check:
 
-- The old generic unsupported FP binary fallback is gone for the representative
-  shape, or the failure is narrowed to a specific unsupported FP binary
-  operation/type diagnostic.
+- The old `ambiguous_non_parallel_multi_source_stack_destination` classifier
+  rejection is gone for the representative shape, or the failure is narrowed to
+  a specific unsupported stack-destination authority diagnostic.
 
 ### Step 5: Backend Guard And Closure Readiness
 
-Goal: Establish that the FP binary slice is acceptance-ready without
-regressing nearby backend coverage.
+Goal: Establish that the move-bundle authority slice is acceptance-ready
+without regressing nearby backend coverage.
 
 Primary target: backend CTest subset.
 

@@ -1,6 +1,6 @@
 # RV64 Floating-Point Binary Lowering
 
-Status: Open
+Status: Closed
 Type: Capability repair
 Parent: `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
 Owning Layer: RV64 object lowering for floating-point binary instructions
@@ -60,6 +60,42 @@ Evidence:
 - The proof does not rely on `src/20000605-1.c` filename matching.
 - Any later cast/runtime failure is recorded as a separate follow-up instead
   of being mixed into this idea.
+
+## Closure Note
+
+Closed after RV64 prepared scalar FP binary lowering advanced the representative
+route past the original `owner=double %t5` double division and the later
+`owner=float %t10` float multiply `BinaryInst` owner.
+
+Completed work:
+
+- F64 prepared FP binary lowering through FPR homes for supported hardware
+  operations.
+- F64 immediate operand materialization through existing RV64 immediate loading
+  plus `fmv.d.x`.
+- F32/F64 type-parametric hardware `add`, `sub`, `mul`, and `div` lowering
+  with focused object-emission coverage.
+- Fail-closed coverage for F128 and unsupported FP remainder forms.
+
+Representative `src/20000605-1.c` now advances to a distinct prepared
+move-bundle classifier blocker:
+
+```text
+prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination
+```
+
+That blocker is outside this FP binary source idea and has been split into
+`ideas/open/579_rv64_prepared_stack_destination_move_bundle_authority.md`.
+
+Close-time backend guard:
+
+```sh
+cmake --build --preset default &&
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+Result: `346/346` backend tests passing before and after; regression guard
+passed with `--allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
