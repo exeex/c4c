@@ -1,64 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/580_rv64_scalar_compare_publication.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove Representative Route Advancement
+Current Step ID: Step 5
+Current Step Title: Backend Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Re-executed `plan.md` Step 4 representative RV64 object-route proof after the
-zero-immediate compare-publication follow-up.
+Completed `plan.md` Step 5 backend closure-readiness validation for the RV64
+scalar compare publication slice.
 
-`tests/c/external/gcc_torture/src/20080529-1.c` now advances past the previous
-`unsupported_scalar_compare_publication` owner. The route exits `1` and now
-stops at a later owner:
-`unsupported_call_abi`, `function=main`, `instruction_index=0`,
-`callee=test`, `result=i32 %t0`.
+Focused proof is already in place from Step 3: the RV64 object-emission test
+passes after semantic F32/F64 `eq`/`ne` compare-publication support, including
+zero-immediate compare operands.
 
-`tests/c/external/gcc_torture/src/loop-8.c` also stays past
-`unsupported_scalar_compare_publication`. The route exits `1` and still stops
-at the later pre-terminator move-bundle owner:
-`unsupported_move_bundle_target_shape`,
-`fragment_status=generic_move_bundle_materialization_failed`, `function=bar`,
-`block_label=logic.rhs.end.3`, `instruction_index=0`.
+Representative route evidence from Step 4/4b satisfies the route-advancement
+gate:
 
-Prepared dumps were rerun for both representatives and both returned `0`.
+- `tests/c/external/gcc_torture/src/20080529-1.c` advances past the previous
+  `unsupported_scalar_compare_publication` owner and now stops at later
+  `unsupported_call_abi`, `function=main`, `instruction_index=0`,
+  `callee=test`, `result=i32 %t0`.
+- `tests/c/external/gcc_torture/src/loop-8.c` also stays past
+  `unsupported_scalar_compare_publication` and now stops at later
+  `unsupported_move_bundle_target_shape`,
+  `fragment_status=generic_move_bundle_materialization_failed`, `function=bar`,
+  `block_label=logic.rhs.end.3`, `instruction_index=0`.
+
+Backend validation passed: 346 backend tests ran, 0 failed.
 
 ## Suggested Next
 
-Proceed to supervisor review of whether Step 4 satisfies the route-advancement
-gate, then choose either closure-readiness validation for this idea or a new
-packet for the later `unsupported_call_abi`/move-bundle owners if those belong
-inside the active source idea.
+Proceed to supervisor closure evaluation for
+`ideas/open/580_rv64_scalar_compare_publication.md`.
 
 ## Watchouts
 
 - Neither representative route passes yet; both now fail on later non-compare
   owners.
-- This packet did not touch source, tests, `plan.md`, or source idea files.
+- Later owners to keep outside this source idea unless the supervisor opens a
+  follow-up are `unsupported_call_abi` and
+  `unsupported_move_bundle_target_shape`.
+- This packet did not touch source, tests, `plan.md`, source idea files, or
+  route artifacts.
 - The untracked `ideas/open/583_rv64_pointer_arithmetic_result_publication.md`
   remains unrelated and untouched.
 
 ## Proof
 
-Commands/artifacts:
+Command:
 
-- Build freshness check: `cmake --build --preset default --target c4cll`
-  returned `0` (`ninja: no work to do`).
-- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_20080529-1.c/object-route.cmd`
-  returned `1`; stdout/stderr/merged log are saved as `object-route.out`,
-  `object-route.err`, and `object-route.log` in the same directory.
-- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_20080529-1.c/dump-prepared-bir.cmd`
-  returned `0`; dump artifacts are saved as `dump-prepared-bir.txt`,
-  `dump-prepared-bir.err`, and `dump-prepared-bir.rc` in the same directory.
-- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_loop-8.c/object-route.cmd`
-  returned `1`; stdout/stderr/merged log are saved as `object-route.out`,
-  `object-route.err`, and `object-route.log` in the same directory.
-- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_loop-8.c/dump-prepared-bir.cmd`
-  returned `0`; dump artifacts are saved as `dump-prepared-bir.txt`,
-  `dump-prepared-bir.err`, and `dump-prepared-bir.rc` in the same directory.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
-No root `test_after.log` was produced because the delegated proof requested
-per-case route artifacts under `step4b/`.
+Result: passed. `test_after.log` is the canonical proof log and reports
+`100% tests passed, 0 tests failed out of 346`.
+
+This supervisor-selected backend subset is sufficient for closure-readiness of
+this slice because focused object-emission coverage is green and both
+representative routes advance beyond the old compare-publication owner. The
+source idea appears ready for supervisor/plan-owner closure evaluation.
