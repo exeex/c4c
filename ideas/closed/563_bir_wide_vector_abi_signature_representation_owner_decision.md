@@ -1,6 +1,6 @@
 # BIR Wide Vector ABI Signature Representation Owner Decision
 
-Status: Open
+Status: Closed
 Type: ABI representation owner follow-up
 Parent: `ideas/closed/561_bir_function_signature_semantic_producer_admission.md`
 Owning Layer: BIR ABI representation / signature carrier contract
@@ -71,3 +71,18 @@ publish misleading scalar, VRM, or ad hoc multi-register metadata.
 - Reject routing downstream scalar-binop, scalar-cast, local-memory, alloca, or
   object-emission failures back into this owner decision after signature facts
   are correctly published.
+
+## Closure Note
+
+Closed after Step 3 validation. The accepted BIR ABI signature carrier contract
+admits fixed vectors over 8 and up to 16 bytes through the explicit `I128`
+memory ABI carrier, while vectors over 16 bytes remain fail-closed at the
+documented function-signature owner boundary. Focused coverage includes 16-byte
+parameter and return publication plus 32-byte return and parameter-only
+fail-closed assertions.
+
+Close gate used the canonical backend subset logs: `test_before.log` and
+`test_after.log` both reported 346/346 passing, and the regression guard passed
+with non-decreasing pass-count mode. The rejected full-suite baseline candidate
+failed only `string_authority_guard`, which reports pre-existing string
+authority entries outside this wide-vector ABI signature owner slice.
