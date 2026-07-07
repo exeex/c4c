@@ -6852,6 +6852,66 @@ prepare::PreparedBirModule make_prepared_scalar_binary_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_fpr_binary_module(
+    bir::BinaryOpcode opcode,
+    bir::TypeKind type) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("fp_binary");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto result_name = prepared.names.value_names.intern("%result");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = opcode,
+                  .result = bir::Value::named(type, "%result"),
+                  .operand_type = type,
+                  .lhs = bir::Value::named(type, "%lhs"),
+                  .rhs = bir::Value::named(type, "%rhs"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  const std::size_t size_bytes = type == bir::TypeKind::F128 ? 16 : 8;
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fp_binary",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, lhs_name, 1, "fa0", 10),
+              make_fpr_home(function_name, rhs_name, 2, "fa1", 11),
+              make_fpr_home(function_name, result_name, 3, "ft0", 0),
+          },
+  });
+  for (auto& home : prepared.value_locations.functions.back().value_homes) {
+    home.size_bytes = size_bytes;
+    home.align_bytes = size_bytes;
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -15757,6 +15817,57 @@ int builds_prepared_scalar_divrem_object() {
   return 0;
 }
 
+int builds_prepared_scalar_f64_binary_object() {
+  const auto prepared =
+      make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::SDiv,
+                                             bir::TypeKind::F64);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar fdiv.d RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* function = object::find_symbol(module, "fp_binary");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared scalar fdiv.d object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      function->value != 0 || function->size_bytes != 8 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared scalar fdiv.d object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x1ab50053 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected fdiv.d ft0, fa0, fa1 followed by ret");
+  }
+  if (!module.relocations.empty()) {
+    return fail("expected scalar fdiv.d object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_scalar_fp_binary_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+
+  auto prepared =
+      make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::SDiv,
+                                             bir::TypeKind::F128);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::SRem,
+                                                    bir::TypeKind::F64);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_prepared_scalar_division_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
@@ -21306,6 +21417,8 @@ int main() {
   status |= rejects_prepared_scalar_ashr_invalid_immediate_object();
   status |= reports_generic_fallback_context_for_prepared_traversal_instruction();
   status |= builds_prepared_scalar_divrem_object();
+  status |= builds_prepared_scalar_f64_binary_object();
+  status |= rejects_prepared_scalar_fp_binary_fail_closed_shapes();
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
