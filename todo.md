@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/563_bir_wide_vector_abi_signature_representation_owner_decision.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Decide And Implement Wide-Vector ABI Carrier Contract
+Current Step ID: 3
+Current Step Title: Broader Validation And Closure Handoff
 
 # Current Packet
 
