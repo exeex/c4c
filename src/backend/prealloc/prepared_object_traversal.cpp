@@ -231,8 +231,7 @@ namespace {
 prepared_move_bundle_has_ambiguous_multi_source_stack_destination(
     const PreparedMoveBundle& move_bundle,
     const PreparedValueHomeLookups* value_home_lookups) {
-  if (move_bundle.authority_kind != PreparedMoveAuthorityKind::None ||
-      move_bundle.phase != PreparedMovePhase::BeforeInstruction ||
+  if (move_bundle.phase != PreparedMovePhase::BeforeInstruction ||
       move_bundle.moves.size() < 2) {
     return false;
   }
@@ -989,8 +988,13 @@ classify_prepared_object_move_bundle_consumer(
           move_bundle, query.value_home_lookups) &&
       !prepared_move_bundle_is_select_materialization_stack_destination(
           move_bundle, query.value_home_lookups, event.instruction)) {
+    if (move_bundle.authority_kind == PreparedMoveAuthorityKind::None) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          AmbiguousNonParallelMultiSourceStackDestination;
+      return result;
+    }
     result.status = PreparedObjectMoveBundleConsumerStatus::
-        AmbiguousNonParallelMultiSourceStackDestination;
+        UnsupportedNonParallelMultiSourceStackDestinationAuthority;
     return result;
   }
 
@@ -1251,6 +1255,13 @@ std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consume
           PreparedObjectConsumerDiagnosticCategory::
               AmbiguousNonParallelMultiSourceStackDestination,
           "prepared move-bundle classifier rejected ambiguous non-parallel "
+          "multi-source stack-destination authority");
+    case PreparedObjectMoveBundleConsumerStatus::
+        UnsupportedNonParallelMultiSourceStackDestinationAuthority:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedNonParallelMultiSourceStackDestinationAuthority,
+          "prepared move-bundle classifier rejected unsupported non-parallel "
           "multi-source stack-destination authority");
   }
   return std::nullopt;

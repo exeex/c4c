@@ -1,78 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/584_rv64_stack_destination_move_bundle_authority_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map The Existing Authority Surface
+Current Step ID: 2
+Current Step Title: Define The Prepared Authority Taxonomy
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Map The Existing Authority Surface completed as a discovery-only
+Step 2: Define The Prepared Authority Taxonomy completed as a taxonomy-only
 packet.
 
-Producer-side owner and current authority model:
-- `src/backend/prealloc/regalloc.hpp` owns the shared move-bundle taxonomy:
-  `PreparedMoveAuthorityKind`, `prepared_move_authority_kind_name`,
-  `PreparedMoveResolution`, and `PreparedMoveBundle`.
-- Current authority kinds are `None`, `OutOfSsaParallelCopy`, and
-  `StackSlotWideningConversion`; there is no explicit prepared authority kind
-  yet for non-parallel register-source fan-in to one stack destination.
-- `src/backend/prealloc/value_locations.hpp` owns `PreparedMoveBundle` storage
-  and per-bundle evidence fields: function, phase, authority, block/instruction
-  position, optional parallel-copy predecessor/successor labels, moves, and ABI
-  bindings.
-- `src/backend/prealloc/prepared_object_traversal.cpp` currently owns the
-  fail-closed producer/consumer classifier for this gap:
-  `prepared_move_bundle_has_ambiguous_multi_source_stack_destination`,
-  `prepared_move_bundle_is_select_materialization_stack_destination`, and
-  `classify_prepared_object_move_bundle_consumer`.
-- The current missing-authority classifier status is
+Changed files:
+- `src/backend/prealloc/regalloc.hpp`
+- `src/backend/prealloc/prepared_object_traversal.hpp`
+- `src/backend/prealloc/prepared_object_traversal.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+- `test_after.log`
+
+Implemented:
+- Added `PreparedMoveAuthorityKind::StackDestinationRegisterFanIn` with stable
+  spelling `stack_destination_register_fan_in`.
+- Added
   `PreparedObjectMoveBundleConsumerStatus::
-  AmbiguousNonParallelMultiSourceStackDestination` in
-  `src/backend/prealloc/prepared_object_traversal.hpp`.
-
-RV64 consumer surface:
-- `src/backend/mir/riscv/codegen/object_emission.cpp` consumes the prepared
-  object traversal classification in `prepared_function_to_object_function`,
-  then either accepts `classification.move_bundle` or rejects before
-  `fragment_for_prepared_move_bundle`.
-- The current missing-authority diagnostic string is produced by
-  `rv64_prepared_move_bundle_classification_failure_diagnostic` in
-  `src/backend/mir/riscv/codegen/object_emission.cpp`, with
-  `diagnostic_owner=rv64_prepared_move_bundle_consumer` and
-  `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
-- Existing legal RV64 prepared stack-destination publication support is in
-  `src/backend/mir/riscv/codegen/prepared_edge_publication_emit.cpp`:
-  `prepared_select_publication_gpr_to_stack_destination_is_admitted`,
-  `prepared_select_publication_gpr_to_stack_destination_matches_bundle`,
-  `prepared_predecessor_select_publication_bundle_is_stack_join_materialized`,
-  and `prepared_predecessor_select_publication_bundle_is_rv64_object_admitted`.
-
-Focused test targets found:
-- Negative missing-authority target:
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp`,
-  `rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle`.
-- Positive existing RV64 stack-destination publication target:
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp`, the
-  `stack_destination` section in
-  `builds_prepared_select_publication_move_object`.
-- Producer/classifier target for taxonomy/fail-closed coverage:
-  `tests/backend/bir/backend_prepare_stack_layout_test.cpp`, especially
-  `check_select_edge_source_producer_placement_contract`, plus any new focused
-  prepared-object move-bundle classifier assertions near the existing
-  stack-destination classifier setup.
+  UnsupportedNonParallelMultiSourceStackDestinationAuthority` and matching
+  diagnostic category/name to keep explicit unsupported or unknown fan-in
+  authority distinct from missing authority.
+- Adjusted the prepared move-bundle classifier so missing authority still
+  reports `AmbiguousNonParallelMultiSourceStackDestination`, while explicit or
+  unknown non-parallel multi-source stack-destination authority remains
+  fail-closed.
+- Added focused taxonomy/name coverage and RV64 rejection coverage proving the
+  new authority spelling is representable but does not make arbitrary
+  multi-source stack-destination fan-in emit.
 
 ## Suggested Next
 
-Delegate Step 2. Define the minimal prepared authority taxonomy/evidence for
-stack-destination register-source fan-in by editing
-`src/backend/prealloc/regalloc.hpp`,
-`src/backend/prealloc/value_locations.hpp` if new evidence fields are needed,
-`src/backend/prealloc/prepared_object_traversal.hpp`, and
-`src/backend/prealloc/prepared_object_traversal.cpp`. Add focused producer
-tests proving explicit missing/unknown authority remains fail-closed and the
-new supported authority spelling is representable.
+Delegate Step 3. Publish `StackDestinationRegisterFanIn` only from the
+producer/classifier surface that can prove the legal fan-in shape, and keep
+ambiguous or unsupported shapes on the existing fail-closed diagnostics.
 
 ## Watchouts
 
@@ -82,6 +50,11 @@ new supported authority spelling is representable.
   diagnostic-string-specific authority.
 - Preserve fail-closed behavior for missing, unknown, unsupported, and
   genuinely ambiguous stack-destination fan-in.
+- The new authority enum is representable, but Step 2 deliberately does not
+  make RV64 accept arbitrary non-parallel stack-destination fan-in.
+- `value_locations.hpp` did not need new fields for this packet; the existing
+  bundle and move evidence already carries function, phase, authority,
+  source/destination value IDs, homes via lookups, and producer location.
 - Do not make RV64 infer legality from the current diagnostic path; the next
   implementation packet should publish producer authority in prealloc first,
   then a later RV64 packet can consume it.
@@ -98,4 +71,4 @@ Ran exactly:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the proof output; CTest reports
-`Total Test time (real) = 1.96 sec`.
+`Total Test time (real) = 2.12 sec`.

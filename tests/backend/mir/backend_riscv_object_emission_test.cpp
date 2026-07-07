@@ -15892,6 +15892,32 @@ int rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle() 
     return fail("ELF writer should preserve narrowed two-source stack-destination diagnostic");
   }
 
+  auto explicit_authority = prepared;
+  explicit_authority.value_locations.functions[0]
+      .move_bundles[0]
+      .authority_kind =
+      prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+  if (expect_prepared_consumer_rejection_diagnostic(
+          explicit_authority,
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedNonParallelMultiSourceStackDestinationAuthority,
+          "prepared move-bundle classifier rejected unsupported non-parallel "
+          "multi-source stack-destination authority") != 0) {
+    return fail("explicit stack-destination fan-in authority should not yet emit arbitrary fan-in");
+  }
+
+  auto unknown_authority = prepared;
+  unknown_authority.value_locations.functions[0].move_bundles[0].authority_kind =
+      static_cast<prepare::PreparedMoveAuthorityKind>(999);
+  if (expect_prepared_consumer_rejection_diagnostic(
+          unknown_authority,
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedNonParallelMultiSourceStackDestinationAuthority,
+          "prepared move-bundle classifier rejected unsupported non-parallel "
+          "multi-source stack-destination authority") != 0) {
+    return fail("unknown stack-destination fan-in authority should stay fail-closed");
+  }
+
   auto generic_ambiguous =
       make_prepared_before_instruction_register_to_stack_move_bundle_module();
   const auto generic_function_name =

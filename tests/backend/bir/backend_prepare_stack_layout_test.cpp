@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/prepared_object_traversal.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"
 #include "src/backend/prealloc/regalloc/value_homes.hpp"
@@ -8843,6 +8844,21 @@ int check_select_edge_source_producer_placement_contract() {
           prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
               MoveDestinationMismatch) != "move_destination_mismatch") {
     return fail("expected placement status name to stay stable");
+  }
+  if (prepare::prepared_move_authority_kind_name(
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn) !=
+      "stack_destination_register_fan_in") {
+    return fail("expected stack-destination register fan-in authority name");
+  }
+  if (prepare::prepared_move_authority_kind_name(
+          static_cast<prepare::PreparedMoveAuthorityKind>(999)) != "unknown") {
+    return fail("expected unknown prepared move authority to stay fail-closed");
+  }
+  if (prepare::prepared_object_move_bundle_consumer_status_name(
+          prepare::PreparedObjectMoveBundleConsumerStatus::
+              UnsupportedNonParallelMultiSourceStackDestinationAuthority) !=
+      "unsupported_non_parallel_multi_source_stack_destination_authority") {
+    return fail("expected unsupported stack-destination authority status name");
   }
 
   prepare::PreparedBirModule prepared;
