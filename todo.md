@@ -1,23 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/563_rv64_object_lowering_control_flow_fragments.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Prove Representatives And Route Remaining Failures
+Current Step ID: 6
+Current Step Title: Broader Validation And Closure Decision
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 proved the five targeted RV64 object-lowering representatives with the
-supervisor-selected torture subset. All requested rows passed:
+Step 6 broader backend validation passed after the Step 3 through Step 5 RV64
+object-lowering repairs. The focused Step 5 representatives had already passed:
 `src/20000314-3.c`, `src/930614-1.c`, `src/pr35456.c`,
 `src/980604-1.c`, and `src/pr39501.c`.
 
 ## Suggested Next
 
-Proceed to Step 6 broader validation and closure decision. Keep the next
-packet validation-focused unless the broader proof exposes a fresh RV64 object
-fragment failure.
+Ask the plan owner to decide whether the active RV64 object-lowering source
+idea is complete and should close, or whether any remaining work should be
+split into a follow-up idea/runbook.
 
 ## Watchouts
 
@@ -29,21 +29,20 @@ fragment failure.
   allowlist edits, or named torture-case shortcuts as progress.
 - No remaining downstream diagnostic is current for the five Step 5
   representatives under the delegated CTest proof.
-- If Step 6 finds another `unsupported_terminator_fragment`,
-  `unsupported_move_bundle_target_shape`, or `unsupported_instruction_fragment`
-  while emitting prepared RV64 object fragments, that stays inside this source
-  idea. Fresh function-signature, call ABI, scalar-binop, scalar/local-memory,
-  or BIR producer boundaries should be split or routed to their existing source
-  ideas later.
+- The broader backend proof did not expose a fresh RV64 object-fragment
+  blocker.
+- Fresh function-signature, call ABI, scalar-binop, scalar/local-memory, or BIR
+  producer boundaries should be split or routed to their existing source ideas
+  later rather than expanding this RV64 object-lowering runbook.
 
 ## Proof
 
 Ran:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R 'llvm_gcc_c_torture_src_(20000314_3|930614_1|pr35456|980604_1|pr39501)_c' >> test_after.log 2>&1`
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.
 
-Representative outcomes:
+Prior Step 5 representative outcomes:
 - `llvm_gcc_c_torture_src_20000314_3_c`: passed.
 - `llvm_gcc_c_torture_src_930614_1_c`: passed.
 - `llvm_gcc_c_torture_src_pr35456_c`: passed.
