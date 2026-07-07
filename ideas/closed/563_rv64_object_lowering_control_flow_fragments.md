@@ -1,6 +1,6 @@
 # RV64 Object Lowering For Prepared Control-Flow Fragments
 
-Status: Open
+Status: Closed
 Activation Priority: Deferred until the supervisor selects the RV64 object-lowering lane.
 Type: Downstream backend follow-up
 Parent: `ideas/open/560_bir_scalar_signature_control_semantic_producer_admission.md`
@@ -66,3 +66,22 @@ runbook active.
   terminator/select/object fragments.
 - Reject claims of scalar-control-flow producer progress from this idea; its
   owner boundary is RV64 object lowering.
+
+## Completion Note
+
+Closed after the active RV64 object-lowering runbook repaired the prepared
+terminator, prepared move-bundle/select-publication, and BIR `SelectInst`
+object-fragment blockers covered by this idea. Focused backend coverage and
+the five tracked representatives passed:
+`src/20000314-3.c`, `src/930614-1.c`, `src/pr35456.c`,
+`src/980604-1.c`, and `src/pr39501.c`.
+
+Close-time backend regression guard used matching `^backend_` scope:
+`cmake --build --preset default` followed by
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` in both
+`test_before.log` and `test_after.log`; both logs passed 346/346 tests with no
+new failures.
+
+Remaining function-signature, call ABI, scalar-binop, scalar/local-memory, or
+BIR producer boundaries remain out of scope for this closed RV64 object-lowering
+idea and should route to their existing or future source ideas.
