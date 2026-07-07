@@ -1,39 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/574_rv64_floating_point_binary_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Double FP Binary Lowering
+Current Step ID: 4
+Current Step Title: Prove The Representative Route
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: implemented RV64 object-route lowering for prepared scalar
-double floating-point binary operations with FPR homes.
+Completed Step 4: reran the `src/20000605-1.c` RV64 object-route
+representative in a fresh Step 4 artifact directory.
 
-Added a prepared F64 binary fragment path that requires F64 result, operand
-type, and F64 lhs/rhs values, then emits RV64D register-register operations
-from prepared FPR homes. `bir.sdiv double` now lowers semantically to
-`fdiv.d` and the Step 2 focused object-emission test passes.
+Result: the route does not advance past the old 570 owner. It still fails at
+the same generic unsupported instruction fragment:
 
-The supported F64 path also maps the same prepared FPR shape for `Add`, `Sub`,
-and `Mul` to `fadd.d`, `fsub.d`, and `fmul.d`. Unsupported FP binary forms
-still fail closed: `bir.sdiv fp128` and `bir.srem double` remain rejected by
-the existing unsupported instruction diagnostic in the focused suite.
+```text
+unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering;
+function=render_image_rgb_a; block=entry; block_index=0; instruction_index=5;
+instruction_kind=BinaryInst; owner=double %t5
+```
+
+The Step 3 prepared F64/FPR binary support is present in the local source and
+`build/c4cll` is newer than the edited implementation file, so this Step 4
+result appears to reflect a remaining representative-shape gap rather than a
+stale binary. The Step 1 owner has an immediate `double 1.0` lhs and an FPR
+producer rhs, while Step 3 explicitly covered prepared FPR-home operands.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: run the delegated representative object-route
-proof for the localized `20000605-1.c` failure and record whether it advances
-past the old `double %t5` unsupported binary owner.
+Delegate a bounded follow-up that inspects and repairs the representative
+operand-materialization gap for `bir.sdiv double 1.0, %t4`, likely by extending
+the semantic F64 binary path to materialize supported F64 immediate operands
+instead of requiring both operands to already have FPR homes.
 
 ## Watchouts
 
-- The new object-emission path handles only prepared F64 values already in FPR
-  homes. It does not materialize F64 values from stack homes or immediates.
-- The representative owner observed in Step 1 uses `BinaryOpcode::SDiv` for
-  floating division, so Step 4 should verify the object route reaches `fdiv.d`
-  for that owner rather than the integer division path.
+- The representative still stops at the generic `BinaryInst` owner before any
+  later cast, truncation, comparison, or runtime issue is reached.
+- The old owner uses `BinaryOpcode::SDiv` for floating division, but the lhs is
+  the immediate constant `double 1.0`; this is outside the current FPR-home-only
+  Step 3 shape.
 - The F128 and F64 remainder cases remain deliberate fail-closed coverage.
 
 ## Proof
@@ -41,14 +47,19 @@ past the old `double %t5` unsupported binary owner.
 Delegated proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'
+cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=/usr/bin/clang -DQEMU_RISCV64=/usr/bin/qemu-riscv64 -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/20000605-1.c -DROOT=/workspaces/c4c/tests/c/external/gcc_torture -DTARGET_TRIPLE=riscv64-linux-gnu -DSYSROOT=/usr/riscv64-linux-gnu -DOUT_CLANG_BIN=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4/src_20000605-1.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4/src_20000605-1.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/agent_state/574_rv64_floating_point_binary_lowering/step4/src_20000605-1.c/c4c.bin -DCASE_TIMEOUT_SEC=20 -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake
 ```
 
-Result: passed. `backend_riscv_object_emission` reported 1/1 test passing, and
-the focused F64 binary coverage now builds an object containing
-`fdiv.d ft0, fa0, fa1` followed by `ret`.
+Result: failed as an object-route compile failure with exit code 1.
 
-Supervisor guard result:
-`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 346/346.
+The old generic FP binary owner is not gone:
+`unsupported_instruction_fragment ... instruction_kind=BinaryInst; owner=double %t5`.
+No later owner/blocker was reached.
 
-Proof log: `test_before.log` after supervisor roll-forward.
+Proof artifacts:
+
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4/src_20000605-1.c/object-route.log`
+- `build/agent_state/574_rv64_floating_point_binary_lowering/step4/src_20000605-1.c/object-route.rc`
+
+No CTest proof was requested for this proof-only packet, and `test_after.log`
+was not updated.
