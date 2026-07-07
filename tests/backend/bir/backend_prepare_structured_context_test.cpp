@@ -480,7 +480,7 @@ int check_lir_to_bir_signature_lowering_publishes_vector_carriers() {
   return 0;
 }
 
-int check_lir_to_bir_signature_lowering_fails_closed_for_wide_vector_carriers() {
+int check_lir_to_bir_signature_lowering_handles_wide_vector_carriers() {
   auto make_module = [] {
     lir::LirModule module;
     module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
@@ -535,12 +535,47 @@ int check_lir_to_bir_signature_lowering_fails_closed_for_wide_vector_carriers() 
   }
   const auto param_lowered = c4c::backend::try_lower_to_bir_with_options(
       param_module, c4c::backend::BirLoweringOptions{});
-  if (param_lowered.module.has_value() ||
-      !contains_note(param_lowered.notes,
+  if (!param_lowered.module.has_value() || param_lowered.module->functions.size() != 1) {
+    return fail("16-byte vector parameter signature fixture did not lower to BIR");
+  }
+  const bir::Function& param_function = param_lowered.module->functions.front();
+  if (param_function.params.size() != 1 ||
+      param_function.params.front().type != bir::TypeKind::I128 ||
+      !param_function.params.front().abi.has_value() ||
+      param_function.params.front().abi->type != bir::TypeKind::I128 ||
+      param_function.params.front().abi->size_bytes != 16 ||
+      param_function.params.front().abi->align_bytes != 16 ||
+      param_function.params.front().abi->primary_class != bir::AbiValueClass::Memory ||
+      param_function.params.front().abi->passed_in_register ||
+      !param_function.params.front().abi->passed_on_stack) {
+    return fail("16-byte vector parameter signature fixture did not publish I128 ABI carrier metadata");
+  }
+
+  lir::LirModule oversized_param_module = make_module();
+  {
+    c4c::TypeSpec vector_param_type{.base = c4c::TB_INT};
+    lir::LirFunction function;
+    function.name = "oversized_vector_param";
+    function.signature_text = "define void @oversized_vector_param(<4 x i64> %v)";
+    function.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
+    function.signature_return_type_ref = lir::LirTypeRef("void");
+    function.signature_params.push_back(
+        lir::LirSignatureParam{.name = "%v", .type = vector_param_type});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x i64>"));
+    lir::LirBlock entry;
+    entry.label = "entry";
+    entry.terminator = lir::LirRet{.type_str = "void"};
+    function.blocks.push_back(std::move(entry));
+    oversized_param_module.functions.push_back(std::move(function));
+  }
+  const auto oversized_param_lowered = c4c::backend::try_lower_to_bir_with_options(
+      oversized_param_module, c4c::backend::BirLoweringOptions{});
+  if (oversized_param_lowered.module.has_value() ||
+      !contains_note(oversized_param_lowered.notes,
                      "function",
-                     "semantic lir_to_bir function 'wide_vector_param' failed in "
+                     "semantic lir_to_bir function 'oversized_vector_param' failed in "
                      "function-signature semantic family")) {
-    return fail("wide vector parameter signature fixture did not fail closed");
+    return fail("32-byte vector parameter signature fixture did not fail closed");
   }
   return 0;
 }
@@ -1441,7 +1476,7 @@ int main() {
     return status;
   }
   if (const int status =
-          check_lir_to_bir_signature_lowering_fails_closed_for_wide_vector_carriers();
+          check_lir_to_bir_signature_lowering_handles_wide_vector_carriers();
       status != 0) {
     return status;
   }

@@ -403,6 +403,9 @@ std::optional<bir::TypeKind> lower_fixed_vector_signature_carrier_type(
   if (total_size <= 8) {
     return bir::TypeKind::I64;
   }
+  if (total_size <= 16) {
+    return bir::TypeKind::I128;
+  }
   return std::nullopt;
 }
 

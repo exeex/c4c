@@ -298,6 +298,8 @@ int expect_aarch64_hfa_va_arg_register_save_lane_load_lowers_semantically();
 int expect_structured_signature_return_materializes_sret_from_type_ref();
 int expect_metadata_rich_signature_return_without_struct_id_fails_closed();
 int expect_signature_return_with_mismatched_struct_id_fails_closed();
+int expect_wide_vector_signature_param_publishes_i128_carrier();
+int expect_wide_vector_signature_return_publishes_i128_carrier();
 int expect_runtime_memcpy_pointer_destination_publishes_memory_effect();
 int expect_runtime_memcpy_global_gep_source_publishes_memory_effect();
 int expect_runtime_memset_global_destination_publishes_memory_effect();
@@ -11633,6 +11635,151 @@ LirModule make_bad_function_signature_module() {
   return module;
 }
 
+LirModule make_wide_vector_signature_param_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "wide_vector_signature_param";
+  function.signature_text = "define void @wide_vector_signature_param(<4 x float> %p.value)";
+  function.signature_return_type_ref = lir::LirTypeRef("void");
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.value"});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x float>"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_wide_vector_signature_param_publishes_i128_carrier() {
+  auto result = try_lower_to_bir_with_options(
+      make_wide_vector_signature_param_module(), BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("16-byte vector signature parameter should lower through an explicit ABI carrier");
+  }
+  const auto& function = result.module->functions.front();
+  if (function.params.size() != 1) {
+    return fail("16-byte vector signature parameter should publish exactly one BIR param");
+  }
+  const auto& param = function.params.front();
+  if (param.type != TypeKind::I128 ||
+      param.size_bytes != 0 ||
+      param.align_bytes != 0 ||
+      !param.abi.has_value() ||
+      param.abi->type != TypeKind::I128 ||
+      param.abi->size_bytes != 16 ||
+      param.abi->align_bytes != 16 ||
+      param.abi->primary_class != c4c::backend::bir::AbiValueClass::Memory ||
+      param.abi->passed_in_register ||
+      !param.abi->passed_on_stack) {
+    return fail("16-byte vector signature parameter should publish the I128 memory ABI carrier");
+  }
+  return 0;
+}
+
+LirModule make_wide_vector_signature_return_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "wide_vector_signature_return";
+  function.signature_text =
+      "define <4 x float> @wide_vector_signature_return(<4 x float> %p.value)";
+  function.signature_return_type_ref = lir::LirTypeRef("<4 x float>");
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.value"});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x float>"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "%p.value",
+      .type_str = "<4 x float>",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_wide_vector_signature_return_publishes_i128_carrier() {
+  auto result = try_lower_to_bir_with_options(
+      make_wide_vector_signature_return_module(), BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("16-byte vector signature return should lower through an explicit ABI carrier");
+  }
+  const auto& function = result.module->functions.front();
+  if (function.return_type != TypeKind::I128 ||
+      function.return_size_bytes != 16 ||
+      function.return_align_bytes != 16 ||
+      !function.return_abi.has_value() ||
+      function.return_abi->type != TypeKind::I128 ||
+      function.return_abi->primary_class != c4c::backend::bir::AbiValueClass::Memory ||
+      !function.return_abi->returned_in_memory) {
+    return fail("16-byte vector signature return should publish the I128 memory ABI carrier");
+  }
+  if (function.blocks.empty() ||
+      !function.blocks.front().terminator.value.has_value() ||
+      function.blocks.front().terminator.value->type != TypeKind::I128) {
+    return fail("16-byte vector return terminator should use the I128 carrier value");
+  }
+  return 0;
+}
+
+LirModule make_oversized_vector_signature_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  LirFunction function;
+  function.name = "oversized_vector_signature";
+  function.signature_text =
+      "define <8 x i32> @oversized_vector_signature(<4 x i64> %p.value)";
+  function.signature_return_type_ref = lir::LirTypeRef("<8 x i32>");
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.value"});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x i64>"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "%p.value",
+      .type_str = "<8 x i32>",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_oversized_vector_signature_param_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  LirFunction function;
+  function.name = "oversized_vector_signature_param";
+  function.signature_text =
+      "define void @oversized_vector_signature_param(<4 x i64> %p.value)";
+  function.signature_return_type_ref = lir::LirTypeRef("void");
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.value"});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("<4 x i64>"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_scalar_control_flow_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -14321,6 +14468,41 @@ int main() {
           expect_signature_return_with_mismatched_struct_id_fails_closed();
       mismatched_signature_return_id_status != 0) {
     return mismatched_signature_return_id_status;
+  }
+  if (const int wide_vector_param_status =
+          expect_wide_vector_signature_param_publishes_i128_carrier();
+      wide_vector_param_status != 0) {
+    return wide_vector_param_status;
+  }
+  if (const int wide_vector_return_status =
+          expect_wide_vector_signature_return_publishes_i128_carrier();
+      wide_vector_return_status != 0) {
+    return wide_vector_return_status;
+  }
+  if (const int oversized_vector_status = expect_failure_notes(
+          "oversized_vector_signature",
+          make_oversized_vector_signature_module(),
+          kModuleSummary,
+          "failed in function-signature semantic family",
+          "latest function failure: semantic lir_to_bir function 'oversized_vector_signature' failed in function-signature semantic family",
+          "missing module capability-bucket summary note for oversized vector signature",
+          "missing oversized vector function-signature failure note",
+          "missing module note carrying oversized vector function-signature failure");
+      oversized_vector_status != 0) {
+    return oversized_vector_status;
+  }
+  if (const int oversized_vector_param_status =
+          expect_failure_notes(
+              "oversized_vector_signature_param",
+              make_oversized_vector_signature_param_module(),
+              kModuleSummary,
+              "failed in function-signature semantic family",
+              "latest function failure: semantic lir_to_bir function 'oversized_vector_signature_param' failed in function-signature semantic family",
+              "missing module capability-bucket summary note for oversized vector parameter signature",
+              "missing oversized vector parameter function-signature failure note",
+              "missing module note carrying oversized vector parameter function-signature failure");
+      oversized_vector_param_status != 0) {
+    return oversized_vector_param_status;
   }
 
   if (const int indirect_call_status = expect_failure_notes(
