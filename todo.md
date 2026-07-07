@@ -1,52 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/584_rv64_20000819_runtime_mismatch_after_pointer_publication.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce And Capture Runtime Abort
+Current Step ID: Step 2
+Current Step Title: Isolate First Divergence Or Abort Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced the current RV64 runtime abort for
-`tests/c/external/gcc_torture/src/20000819-1.c` with fresh artifacts under
-`build/agent_state/584_rv64_20000819_runtime_mismatch_after_pointer_publication/step1/src_20000819-1.c/`.
+Step 2 isolated the first concrete divergence for
+`tests/c/external/gcc_torture/src/20000819-1.c` with evidence under
+`build/agent_state/584_rv64_20000819_runtime_mismatch_after_pointer_publication/step2/src_20000819-1.c/`.
 
-- Build command: `cmake --build --preset default --target c4cll`, return code
-  `0`.
-- Prepared dump command: `build/c4cll -I /workspaces/c4c --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000819-1.c`,
-  return code `0`.
-- RV64 object/runtime route command: `cmake ... -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`,
-  return code `1`.
-- Current failure mode remains `[RV64_BACKEND_RUNTIME_MISMATCH]` with
-  `clang_exit=0` and `c4c_exit=Subprocess aborted`.
-- Fresh route artifacts include `dump-prepared-bir.txt`, `object-route.log`,
-  `c4c.o`, `c4c.bin`, and `clang.bin`.
-- `unsupported_pointer_arithmetic` is absent from the fresh Step 1 route logs
-  and artifacts.
+- Direct execution confirmed `clang.bin` returns `0` under qemu-riscv64 while
+  `c4c.bin` aborts with shell return code `134`, so the mismatch is not only a
+  CMake harness artifact.
+- First owner: `main`, `entry`, instruction `0`,
+  `bir.call void foo(ptr %t2, i32 1)`.
+- Prepared BIR records the first argument as a computed global address:
+  `call_arg_source index=0 encoding=computed_address source_value=%t2 source_base=@a source_delta=4`.
+- Prepared homes/call metadata then treat `%t2` as an already available
+  register value: `%t2 value_id=18 kind=register reg=s1`, and the call arg is
+  encoded as `source_encoding=register source_reg=s1` to ABI register `a0`.
+- C4C object emission for `main` emits `mv a0,s1; li a1,1; call foo`, with no
+  `@a + 4` materialization and no relocation for `a` in `.rela.text`.
+- Clang materializes the pointer before the call with `auipc a0,... # a`,
+  `addi a0,a0,4`, `li a1,1`, then calls `foo`.
+- Classification: narrow downstream RV64 object/prepared-data publication
+  capability for computed global-address call arguments, not a runtime harness
+  issue and not fresh evidence that the pointer-publication repair inside
+  `foo` is wrong.
 
 ## Suggested Next
 
-Run Step 2: isolate the first divergence or abort owner by comparing the fresh
-`clang.bin` and `c4c.bin` behavior and inspecting the generated RV64 object and
-prepared BIR around the abort path.
+Run Step 3: add focused coverage for computed global-address call-argument
+publication in the RV64 object route. The test should prove a call argument
+whose source is `@global + constant_delta` is materialized into the ABI
+argument register before a same-module or external call, without relying on the
+`20000819-1.c` filename.
 
 ## Watchouts
 
-- Do not classify the representative as unsupported or weaken the runtime
-  comparison.
-- Do not match on filename, function name, block name, value name, or exact
-  command output.
-- Do not reopen pointer arithmetic publication unless fresh evidence proves the
-  published pointer result is still semantically wrong.
-- The Step 1 route now builds C4C object and linked binary successfully before
-  runtime comparison aborts; this is downstream of the old compile-time pointer
-  publication owner.
+- The first bad value is passed by `main` before `foo` can execute meaningful
+  pointer-loop semantics: `foo` receives stale/unmaterialized `s1` through
+  `a0` instead of `&a[1]`.
+- `c4c.o` does contain global object `a` in `.data` with bytes
+  `02000000 00000000`; the missing piece is code/relocation to materialize
+  `@a + 4` for the call argument.
+- Avoid repairing this through a representative-specific route; the owner is
+  computed-address call-argument publication.
 
 ## Proof
 
-Step 1 reproduction proof wrote `test_after.log`.
+Step 2 investigation proof wrote `test_after.log`.
 
-- `cmake --build --preset default --target c4cll`
-- `build/c4cll -I /workspaces/c4c --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000819-1.c`
-- `cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=/usr/bin/clang -DQEMU_RISCV64=/usr/bin/qemu-riscv64 -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/20000819-1.c -DROOT=/workspaces/c4c/tests/c/external/gcc_torture -DTARGET_TRIPLE=riscv64-linux-gnu -DSYSROOT=/usr/riscv64-linux-gnu -DOUT_CLANG_BIN=/workspaces/c4c/build/agent_state/584_rv64_20000819_runtime_mismatch_after_pointer_publication/step1/src_20000819-1.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/agent_state/584_rv64_20000819_runtime_mismatch_after_pointer_publication/step1/src_20000819-1.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/agent_state/584_rv64_20000819_runtime_mismatch_after_pointer_publication/step1/src_20000819-1.c/c4c.bin -DCASE_TIMEOUT_SEC=20 -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`
+- Runtime comparison used the Step 1 `clang.bin` and `c4c.bin` directly with
+  `timeout 20 /usr/bin/qemu-riscv64 -L /usr/riscv64-linux-gnu ...`.
+- Object/binary evidence was captured with
+  `riscv64-linux-gnu-objdump -dr --no-show-raw-insn`,
+  `riscv64-linux-gnu-readelf -Ws`, and `riscv64-linux-gnu-readelf -r`.
+- Key artifacts: `owner-evidence.txt`, `commands-and-returns.txt`,
+  `c4c-o-objdump-dr.txt`, `c4c-bin-objdump-dr.txt`,
+  `clang-bin-objdump-dr.txt`, `clang-run.log`, and `c4c-run.log`.
