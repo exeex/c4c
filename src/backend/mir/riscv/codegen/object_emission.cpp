@@ -40,6 +40,7 @@ namespace object = c4c::backend::mir::object;
 namespace prepare = c4c::backend::prepare;
 
 constexpr std::uint32_t kRv64VaStartOverflowAreaScratch = 6;  // t1
+constexpr std::uint32_t kRv64VaStartDestinationScratch = 5;    // t0
 namespace bir = c4c::backend::bir;
 
 constexpr std::uint16_t kElfMachineRiscv = 243;
@@ -492,15 +493,26 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
   }
   const auto destination_address =
       gpr_register_number_for_home(payload->destination_va_list_address);
-  if (payload->destination_va_list_address.kind !=
-          prepare::PreparedValueHomeKind::Register ||
-      !destination_address.has_value()) {
+  const bool destination_address_is_stack_slot =
+      payload->destination_va_list_address.kind ==
+          prepare::PreparedValueHomeKind::StackSlot &&
+      prepared_stack_slot_home_offset(stack_layout,
+                                      payload->destination_va_list_address,
+                                      stack_frame_bytes,
+                                      8)
+          .has_value();
+  if ((payload->destination_va_list_address.kind !=
+           prepare::PreparedValueHomeKind::Register ||
+       !destination_address.has_value()) &&
+      !destination_address_is_stack_slot) {
     return std::string{
-        "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home"};
+        "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR or stack-slot home"};
   }
-  if (*destination_address == kRv64VaStartOverflowAreaScratch) {
+  if (destination_address.has_value() &&
+      (*destination_address == kRv64VaStartOverflowAreaScratch ||
+       *destination_address == kRv64VaStartDestinationScratch)) {
     return std::string{
-        "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases the overflow-area scratch register"};
+        "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases a helper scratch register"};
   }
   if (!entry_plan.va_list_layout.size_bytes.has_value()) {
     return std::string{
@@ -513,6 +525,12 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
            .has_value()) {
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list in a supported prepared stack-slot home"};
+  }
+  if (destination_address_is_stack_slot &&
+      payload->destination_va_list_address.slot_id ==
+          payload->destination_va_list.slot_id) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases the destination va_list stack slot"};
   }
   if (!fits_signed_12_bit_immediate(
           static_cast<std::int64_t>(*entry_plan.overflow_area.base_stack_offset_bytes))) {
@@ -1422,14 +1440,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
                                       payload->destination_va_list,
                                       stack_frame_bytes,
                                       *entry_plan->va_list_layout.size_bytes);
-  if (overflow_field == nullptr || !destination.has_value() ||
-      !destination_offset.has_value()) {
+  const auto destination_register =
+      destination.value_or(kRv64VaStartDestinationScratch);
+  if (overflow_field == nullptr || !destination_offset.has_value()) {
     return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
   append_le32(fragment.bytes,
-              encode_i_type(0x13, *destination, 0, 2, *destination_offset));
+              encode_i_type(0x13, destination_register, 0, 2, *destination_offset));
   append_le32(fragment.bytes,
               encode_i_type(0x13,
                             kRv64VaStartOverflowAreaScratch,
@@ -1440,7 +1459,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
   if (!append_rv64_store_register_to_base(
           fragment,
           kRv64VaStartOverflowAreaScratch,
-          *destination,
+          destination_register,
           static_cast<std::int32_t>(overflow_field->offset_bytes),
           overflow_field->size_bytes)) {
     return std::nullopt;

@@ -12976,7 +12976,7 @@ int rejects_variadic_va_start_with_missing_saved_gpr_publication_fact() {
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[rv64.incoming_variadic_gpr_publications]");
 }
 
-int rejects_variadic_va_start_stack_backed_destination_address() {
+int materializes_variadic_va_start_stack_backed_destination_address() {
   const auto prepared = make_prepared_variadic_va_start_module(
       true /*include_overflow_area_initial_state*/,
       true /*destination_va_list_is_stack_slot*/,
@@ -12998,9 +12998,33 @@ int rejects_variadic_va_start_stack_backed_destination_address() {
               prepare::PreparedFrameSlotId{6}}) {
     return fail("expected RV64 va_start fixture to model stack-backed destination address");
   }
-  return expect_prepared_rejection_diagnostic(
-      std::move(prepared),
-      "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home");
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected stack-backed destination-address va_start RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "rv64_va_start");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected stack-backed destination-address va_start object to publish text/function");
+  }
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      function->value != 0 || function->size_bytes != 28 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected stack-backed destination-address va_start object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfb010113 ||
+      read_u32(text->bytes, 4) != 0x04810293 ||
+      read_u32(text->bytes, 8) != 0x00810313 ||
+      read_u32(text->bytes, 12) != 0x0062b023 ||
+      read_u32(text->bytes, 16) != 0x00000513 ||
+      read_u32(text->bytes, 20) != 0x05010113 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected stack-backed destination-address va_start to materialize through helper scratch registers");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected stack-backed destination-address va_start helper to need no relocations");
+  }
+  return 0;
 }
 
 int materializes_fact_complete_variadic_va_start_with_saved_gpr_publications() {
@@ -13135,21 +13159,13 @@ int rejects_malformed_variadic_va_start_destination_homes() {
           "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list in a supported prepared stack-slot home") != 0) {
     return 1;
   }
-  if (expect_prepared_rejection_diagnostic(
-          make_prepared_variadic_va_start_module(
-              true /*include_overflow_area_initial_state*/,
-              true /*destination_va_list_is_stack_slot*/,
-              false /*destination_address_is_gpr*/),
-          "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home") != 0) {
-    return 1;
-  }
   return expect_prepared_rejection_diagnostic(
       make_prepared_variadic_va_start_module(
           true /*include_overflow_area_initial_state*/,
           true /*destination_va_list_is_stack_slot*/,
           true /*destination_address_is_gpr*/,
           "t1"),
-      "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases the overflow-area scratch register");
+      "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases a helper scratch register");
 }
 
 int lowers_fact_complete_variadic_va_end_as_noop() {
@@ -22440,7 +22456,7 @@ int main() {
   status |= builds_fact_complete_helper_free_variadic_entry_object();
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |= rejects_variadic_va_start_with_missing_saved_gpr_publication_fact();
-  status |= rejects_variadic_va_start_stack_backed_destination_address();
+  status |= materializes_variadic_va_start_stack_backed_destination_address();
   status |=
       materializes_fact_complete_variadic_va_start_with_saved_gpr_publications();
   status |= loads_rv64_va_start_published_word_after_helper();
