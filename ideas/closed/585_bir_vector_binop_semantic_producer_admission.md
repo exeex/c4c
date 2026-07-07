@@ -1,6 +1,6 @@
 # BIR Vector Binop Semantic Producer Admission
 
-Status: Open
+Status: Closed
 Type: Producer implementation follow-up
 Parent: `ideas/closed/562_bir_scalar_binop_semantic_producer_admission.md`
 Owning Layer: BIR semantic producer
@@ -59,6 +59,23 @@ closure does not silently absorb vector arithmetic work.
   correct.
 - Any residual failures are documented as downstream owner boundaries rather
   than counted against scalar-binop closure.
+
+## Closure Notes
+
+Closed after selecting the explicit fail-closed owner boundary for fixed-vector
+`LirBinOp`: BIR scalar `BinaryInst` facts are not published for LLVM fixed
+vectors until a lane-aware vector-binop fact shape exists. Focused coverage
+exercises a representative `<8 x i8> mul` fixture and checks the
+`vector-binop semantic family` diagnostic.
+
+Representative `src/simd-6.c` evidence remains at the intentional
+`vector-binop semantic family` boundary. This is accepted as the documented
+producer-owner decision for this idea, not downstream vector ABI or RV64
+lowering progress.
+
+Close-time backend regression guard passed with matching canonical logs:
+`test_before.log` and `test_after.log` both report `346/346` backend tests
+passing, with zero new failures.
 
 ## Reviewer Reject Signals
 
