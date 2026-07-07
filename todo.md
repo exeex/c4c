@@ -8,31 +8,34 @@ Current Step Title: Prove The Representative Route
 
 ## Just Finished
 
-Completed Step 3 classifier-side narrowing for the prepared stack-destination
-authority path.
+Completed Step 4 representative-route proof for `src/20000605-1.c`.
 
-`prepared_move_bundle_has_ambiguous_multi_source_stack_destination` now treats
-the ambiguous non-parallel multi-source rejection as a normal value-to-stack
-move authority check: both candidate moves must be ordinary `Move` records,
-target value destinations, publish stack-slot destination storage, have no
-cycle-temp or immediate source, and carry no independent move authority. The
-valid supported register-to-stack behavior remains accepted, and the Step 2
-binary/compare two-register-source fixture still rejects with
-`AmbiguousNonParallelMultiSourceStackDestination`.
+The direct RV64 object route still exits `2` with the same first blocker as
+Step 1 and the parent 574 Step 4c evidence:
 
-Added a metadata-mismatch guard to
-`rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle` so
-same-destination multi-source records that do not actually publish stack-slot
-destination storage fall through to the existing generic move-bundle shape
-diagnostic instead of being mislabeled as the stack-destination authority
-ambiguity.
+```text
+prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination:
+prepared move-bundle classifier rejected ambiguous non-parallel multi-source stack-destination authority
+```
+
+Compared with Step 1
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step1/src_20000605-1.c/object-route.log`,
+the new direct Step 4 log is byte-identical. Compared with parent 574
+`build/agent_state/574_rv64_floating_point_binary_lowering/step4c/src_20000605-1.c/object-route.log`,
+the diagnostic content is unchanged; only the wrapper text differs because
+Step 4 ran `build/c4cll` directly instead of the CMake torture-case wrapper.
+
+Conclusion: the old
+`ambiguous_non_parallel_multi_source_stack_destination` rejection is unchanged;
+the representative route did not advance to a later FP cast, runtime mismatch,
+pointer, call, select, or unrelated owner, and it did not narrow to a more
+specific unsupported stack-destination authority diagnostic.
 
 ## Suggested Next
 
-Step 4 should run the representative-route handoff: verify the original
-binary/compare route that motivated the ambiguity now fails closed with the
-classifier-owned diagnostic, while keeping nearby valid stack-destination move
-bundle materialization accepted.
+Supervisor should route the next packet back to implementation or plan review:
+the representative still fails at the same move-bundle classifier authority, so
+Step 4 does not provide closure evidence for this idea.
 
 ## Watchouts
 
@@ -48,13 +51,37 @@ bundle materialization accepted.
   destination records keep their existing RV64 shape diagnostics, while true
   non-parallel multi-register-source stack-destination bundles remain
   classifier rejections.
+- This Step 4 proof shows the representative `src/20000605-1.c` route still
+  hits the true non-parallel multi-source stack-destination rejection. Any next
+  repair should address that prepared authority shape directly or explicitly
+  split/retire the current route; there is no later owner to hand off yet.
 
 ## Proof
 
-Delegated proof passed; log path `test_after.log`.
+Delegated representative proof ran and failed with the unchanged expected
+blocker; evidence is under
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/`.
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$' > test_after.log 2>&1
+build/c4cll -I /workspaces/c4c --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000605-1.c -o build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/object-route.o
 ```
 
-Result: build succeeded; `backend_riscv_object_emission` passed.
+Result: rc `2`; stdout
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/object-route.out`
+is empty; stderr/log
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/object-route.err`
+and
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/object-route.log`
+record the unchanged
+`ambiguous_non_parallel_multi_source_stack_destination` diagnostic; rc is saved
+at
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/object-route.rc`.
+
+Fresh prepared dump also saved:
+
+```sh
+build/c4cll -I /workspaces/c4c --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000605-1.c
+```
+
+Result: rc `0`; dump path
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step4/src_20000605-1.c/dump-prepared-bir.txt`.
