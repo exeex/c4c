@@ -7283,6 +7283,7 @@ prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
   const auto byte_offset_name =
       prepared.names.value_names.intern("%scaled.byte_offset");
   const auto result_name = prepared.names.value_names.intern("%result.ptr");
+  const auto store_slot_name = prepared.names.slot_names.intern("%result.store");
 
   bir::Block entry{
       .label = "entry",
@@ -7312,6 +7313,20 @@ prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
                   .rhs = bir::Value::named(bir::TypeKind::I64,
                                            "%scaled.byte_offset"),
               },
+              bir::StoreLocalInst{
+                  .slot_name = "%result.store",
+                  .slot_id = store_slot_name,
+                  .value = bir::Value::immediate_i8(42),
+                  .align_bytes = 1,
+                  .address = bir::MemoryAddress{
+                      .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                      .base_value =
+                          bir::Value::named(bir::TypeKind::Ptr, "%result.ptr"),
+                      .byte_offset = 0,
+                      .size_bytes = 1,
+                      .align_bytes = 1,
+                  },
+              },
           },
       .terminator = bir::Terminator{},
       .label_id = block_label,
@@ -7331,12 +7346,19 @@ prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
           .align_bytes = 8,
       }},
       .local_slots = {bir::LocalSlot{
-          .name = "%lv.base",
-          .slot_id = slot_name,
-          .type = bir::TypeKind::Ptr,
-          .size_bytes = 8,
-          .align_bytes = 8,
-      }},
+                          .name = "%lv.base",
+                          .slot_id = slot_name,
+                          .type = bir::TypeKind::Ptr,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                      },
+                      bir::LocalSlot{
+                          .name = "%result.store",
+                          .slot_id = store_slot_name,
+                          .type = bir::TypeKind::I8,
+                          .size_bytes = 1,
+                          .align_bytes = 1,
+                      }},
       .blocks = {std::move(entry)},
   });
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
@@ -7369,20 +7391,36 @@ prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
       .function_name = function_name,
       .frame_size_bytes = 8,
       .frame_alignment_bytes = 8,
-      .accesses = {prepare::PreparedMemoryAccess{
-          .function_name = function_name,
-          .block_label = block_label,
-          .inst_index = 0,
-          .result_value_name = base_name,
-          .address = prepare::PreparedAddress{
-              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
-              .frame_slot_id = prepare::PreparedFrameSlotId{0},
-              .byte_offset = 0,
-              .size_bytes = 8,
-              .align_bytes = 8,
-              .can_use_base_plus_offset = true,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .result_value_name = base_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 3,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                      .pointer_value_name = result_name,
+                      .byte_offset = 0,
+                      .size_bytes = 1,
+                      .align_bytes = 1,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
           },
-      }},
   });
   return prepared;
 }
@@ -16803,16 +16841,28 @@ int rejects_prepared_scalar_remainder_fail_closed_shapes() {
 }
 
 int rejects_prepared_pointer_arithmetic_with_precise_diagnostic() {
-  return expect_prepared_rejection_diagnostic_contains(
-      make_prepared_loaded_base_pointer_arithmetic_module(),
-      {
-          "unsupported_pointer_arithmetic: RV64 object route requires prepared pointer arithmetic lowering for loaded pointer base plus scaled integer byte offset",
-          "function=pointer_arithmetic",
-          "block=entry",
-          "instruction_index=2",
-          "instruction_kind=BinaryInst",
-          "owner=ptr %result.ptr",
-      });
+  const std::vector<std::string> expected = {
+      "unsupported_pointer_arithmetic: RV64 object route requires prepared pointer arithmetic lowering for loaded pointer base plus scaled integer byte offset",
+      "function=pointer_arithmetic",
+      "block=entry",
+      "instruction_index=2",
+      "instruction_kind=BinaryInst",
+      "owner=ptr %result.ptr",
+  };
+  if (expect_prepared_rejection_diagnostic_contains(
+          make_prepared_loaded_base_pointer_arithmetic_module(
+              bir::BinaryOpcode::Add),
+          expected) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic_contains(
+          make_prepared_loaded_base_pointer_arithmetic_module(
+              bir::BinaryOpcode::Sub),
+          expected) != 0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int rejects_prepared_scalar_compare_publication_missing_home() {
