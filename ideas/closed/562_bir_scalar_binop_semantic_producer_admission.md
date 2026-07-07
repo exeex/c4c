@@ -1,6 +1,6 @@
 # BIR Scalar Binop Semantic Producer Admission
 
-Status: Open
+Status: Closed
 Activation Priority: Deferred until the supervisor selects the scalar-binop lane.
 Type: Producer implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
@@ -71,3 +71,16 @@ lowering and function-signature lowering.
   scalar-binop BIR instruction facts are correct.
 - Reject broad scalar rewrites that retain the exact same binop admission
   failure behind new helper names.
+
+## Closure Notes
+
+Closed after focused F128 named scalar arithmetic coverage and implementation
+admitted `fneg`, `fmul`, and `fsub` through the general scalar-binop opcode and
+operand path. The representative `src/960513-1.c` function `f` advances beyond
+the original BIR `scalar-binop semantic family` boundary and its generated
+`llvm_gcc_c_torture_src_960513_1_c` test passes.
+
+Remaining scalar-cast, scalar/local-memory, alloca local-memory, RV64 object,
+and vector arithmetic stops are separate owner families. The vector arithmetic
+residual exposed by `src/simd-6.c` is tracked separately in
+`ideas/open/585_bir_vector_binop_semantic_producer_admission.md`.
