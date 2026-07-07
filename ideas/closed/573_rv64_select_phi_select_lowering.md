@@ -1,9 +1,27 @@
 # RV64 Select And Phi-Select Lowering
 
-Status: Open
+Status: Closed
 Type: Capability repair
-Parent: `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
+Parent: `ideas/closed/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
 Owning Layer: RV64 object lowering for BIR select materialization
+
+## Closure Notes
+
+Closed after the active runbook completed all five steps. RV64 object emission
+now materializes scalar integer select values for the observed prepared-BIR
+shape, including nested/phi-select publication, while reused no-home select
+producer shapes remain fail-closed until a real publication strategy exists.
+
+Focused object-emission tests cover simple scalar select behavior,
+nested/phi-select publication, and unsupported/reused no-home fail-closed
+cases. The `src/20030408-1.c` object-route representative passed after the
+select materialization and select-edge cast rematerialization repairs, without
+filename-, function-, block-, or value-name-specific handling.
+
+Close-time backend regression guard passed with no new failures:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` reported
+346/346 passing in `test_after.log`, compared against the matching green
+backend baseline in `test_before.log`.
 
 ## Goal
 
