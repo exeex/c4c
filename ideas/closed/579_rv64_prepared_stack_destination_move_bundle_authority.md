@@ -1,6 +1,6 @@
 # RV64 Prepared Stack-Destination Move-Bundle Authority
 
-Status: Open
+Status: Closed
 Type: Capability repair
 Parent: `ideas/closed/574_rv64_floating_point_binary_lowering.md`
 Owning Layer: RV64 prepared object-route move-bundle classification and
@@ -68,6 +68,41 @@ Evidence:
 - Any later FP cast, runtime mismatch, pointer, call, select, or unrelated
   owner is recorded as a separate follow-up instead of being mixed into this
   idea.
+
+## Closure Notes
+
+Closed on the narrower fail-closed acceptance path. Step 1 localized the
+prepared move bundle to two register sources, `value_id=22` and `value_id=23`,
+fanning into stack-slot `value_id=24` before `render_image_rgb_a` block
+`for.cond.2` instruction index 2 with no producer ordering, mutual exclusion,
+or parallel-copy authority.
+
+Focused RV64 object-emission coverage now asserts the narrower diagnostic
+`producer_authority_missing_for_register_fan_in_stack_destination` for the
+two-register-source fan-in to one stack destination, while preserving the
+shared `ambiguous_non_parallel_multi_source_stack_destination` category for a
+genuinely ambiguous stack-destination bundle.
+
+The representative route still exits with code 2, but it no longer leaves the
+owner classified only by the old generic ambiguity. Its current route evidence
+is saved under
+`build/agent_state/579_rv64_prepared_stack_destination_move_bundle_authority/step5/src_20000605-1.c/`
+and includes:
+
+```text
+diagnostic_owner=rv64_prepared_move_bundle_consumer
+fragment_status=producer_authority_missing_for_register_fan_in_stack_destination
+```
+
+Backend closure proof used:
+
+```bash
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+The close-time regression guard compared matching backend `test_before.log`
+and `test_after.log` captures.
 
 ## Reviewer Reject Signals
 
