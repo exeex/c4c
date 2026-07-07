@@ -20573,10 +20573,37 @@ int rejects_prepared_fp_to_int_cast_fail_closed_shapes() {
   return 0;
 }
 
-int rejects_prepared_f64_immediate_fptrunc_with_precise_diagnostic() {
-  return expect_prepared_rejection_diagnostic(
-      make_prepared_f64_immediate_fptrunc_module(),
-      "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts, I32/I64-to-F32/F64 integer-to-floating casts, and FPR-register-source F32/F64-to-I32/I64 floating-to-integer casts");
+int builds_prepared_f64_immediate_fptrunc_object() {
+  const auto prepared = make_prepared_f64_immediate_fptrunc_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared F64 immediate FPTrunc RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "f64_immediate_fptrunc");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared F64 immediate FPTrunc object to publish text/function");
+  }
+  if (text->bytes.size() != 56 || text->size_bytes != 56 ||
+      function->value != 0 || function->size_bytes != 56 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared F64 immediate FPTrunc object text layout");
+  }
+  const std::uint32_t expected[] = {
+      0x00400e13, 0x00ce1e13, 0xff2e0e13, 0x00ce1e13,
+      0x99ae0e13, 0x00ce1e13, 0x99ae0e13, 0x00ce1e13,
+      0x99ae0e13, 0x00ce1e13, 0x99ae0e13, 0xf20e02d3,
+      0x40128053, 0x00008067,
+  };
+  for (std::size_t index = 0; index < std::size(expected); ++index) {
+    if (read_u32(text->bytes, index * 4) != expected[index]) {
+      return fail("expected materialized F64 bits, fmv.d.x, fcvt.s.d, and ret");
+    }
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared F64 immediate FPTrunc object to need no relocations");
+  }
+  return 0;
 }
 
 int builds_prepared_before_return_fpr_f32_abi_move_object() {
@@ -22582,7 +22609,7 @@ int main() {
   status |= builds_prepared_uitofp_i32_to_f32_then_fpext_object();
   status |= builds_prepared_fp_to_int_casts_with_rtz_rounding_object();
   status |= rejects_prepared_fp_to_int_cast_fail_closed_shapes();
-  status |= rejects_prepared_f64_immediate_fptrunc_with_precise_diagnostic();
+  status |= builds_prepared_f64_immediate_fptrunc_object();
   status |= builds_prepared_before_return_fpr_f32_abi_move_object();
   status |= builds_prepared_before_return_fpr_f64_abi_move_object();
   status |= rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes();
