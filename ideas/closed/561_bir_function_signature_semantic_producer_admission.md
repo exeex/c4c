@@ -1,11 +1,20 @@
 # BIR Function Signature Semantic Producer Admission
 
-Status: Open
+Status: Closed
 Activation Priority: Deferred until the supervisor selects the function-signature lane.
 Type: Producer implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
 Owning Layer: BIR semantic producer
 Split From: `ideas/open/560_bir_scalar_signature_control_semantic_producer_admission.md`
+
+## Closure Note
+
+Closed after focused BIR producer work admitted the confirmed small-vector and
+empty-struct signature cases while preserving fail-closed behavior for ABI
+representations without a carrier contract. The remaining wide LLVM vector
+signature cases are tracked separately in
+`ideas/open/563_bir_wide_vector_abi_signature_representation_owner_decision.md`
+instead of being folded into this completed function-signature producer lane.
 
 ## Goal
 
