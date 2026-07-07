@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/585_target_abi_contract_and_value_consumption_research.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Document Prepared Value Consumption
+Current Step ID: 5
+Current Step Title: Evaluate Preservation Freshness Risk
 
 # Current Packet
 
