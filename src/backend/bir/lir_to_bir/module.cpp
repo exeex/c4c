@@ -1,6 +1,8 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <charconv>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -772,6 +774,43 @@ c4c::LinkNameId resolve_initializer_symbol_link_name_id(
   return c4c::kInvalidLinkName;
 }
 
+std::optional<bir::Value> lower_canonical_select_f128_literal(
+    const c4c::codegen::lir::LirOperand& operand) {
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
+      operand.kind() != c4c::codegen::lir::LirOperandKind::SpecialToken &&
+      operand.kind() != c4c::codegen::lir::LirOperandKind::RawText) {
+    return std::nullopt;
+  }
+
+  std::string_view text = operand.str();
+  if (text.size() >= 3 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X') &&
+      (text[2] == 'L' || text[2] == 'l')) {
+    text.remove_prefix(3);
+  } else if (text.size() >= 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+    text.remove_prefix(2);
+  } else {
+    return std::nullopt;
+  }
+
+  if (text.size() != 32) {
+    return std::nullopt;
+  }
+
+  std::uint64_t high_bits = 0;
+  std::uint64_t low_bits = 0;
+  const auto* begin = text.data();
+  const auto* middle = begin + 16;
+  const auto* end = begin + text.size();
+  const auto high_result = std::from_chars(begin, middle, high_bits, 16);
+  const auto low_result = std::from_chars(middle, end, low_bits, 16);
+  if (high_result.ec != std::errc() || high_result.ptr != middle ||
+      low_result.ec != std::errc() || low_result.ptr != end) {
+    return std::nullopt;
+  }
+
+  return bir::Value::immediate_f128_bits(low_bits, high_bits);
+}
+
 void apply_resolved_pointer_initializer_value_ids(bir::Module* module,
                                                   const GlobalTypes& global_types) {
   for (auto& global : module->globals) {
@@ -947,7 +986,14 @@ std::optional<bir::Value> BirFunctionLowerer::lower_select_chain_value(
     const ValueMap& value_aliases,
     std::vector<bir::Inst>* lowered_insts) const {
   if (incoming.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-    return lower_value(incoming, expected_type, value_aliases);
+    if (auto lowered = lower_value(incoming, expected_type, value_aliases);
+        lowered.has_value()) {
+      return lowered;
+    }
+    if (expected_type == bir::TypeKind::F128) {
+      return lower_canonical_select_f128_literal(incoming);
+    }
+    return std::nullopt;
   }
   if (const auto alias = value_aliases.find(incoming.str()); alias != value_aliases.end()) {
     return alias->second;
@@ -1030,8 +1076,8 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
       return std::nullopt;
     }
   }
-  const auto phi_type = lir_to_bir_detail::lower_integer_type(phi->type_str.str());
-  if (!phi_type.has_value()) {
+  const auto phi_type = lower_scalar_or_function_pointer_type(phi->type_str.str());
+  if (!phi_type.has_value() || *phi_type == bir::TypeKind::Ptr) {
     return std::nullopt;
   }
 
@@ -1084,10 +1130,6 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
   if (!lower_function_params(function_, context_.target_profile, return_info, type_decls_, &lowered)) {
     return std::nullopt;
   }
-  if (!collect_phi_lowering_plans().has_value()) {
-    return std::nullopt;
-  }
-
   bir::Block lowered_block;
   lowered_block.label = entry.label;
   lowered_block.insts = std::move(prelude_insts);

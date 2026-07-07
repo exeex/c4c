@@ -10,6 +10,48 @@ namespace c4c::backend {
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 
+namespace {
+
+std::optional<bir::TypeKind> lower_canonical_select_scalar_type(std::string_view text) {
+  if (const auto lowered = lower_integer_type(text); lowered.has_value()) {
+    return lowered;
+  }
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed == "i128") {
+    return bir::TypeKind::I128;
+  }
+  if (trimmed == "float") {
+    return bir::TypeKind::F32;
+  }
+  if (trimmed == "double") {
+    return bir::TypeKind::F64;
+  }
+  if (trimmed == "x86_fp80" || trimmed == "f128" || trimmed == "fp128") {
+    return bir::TypeKind::F128;
+  }
+  return std::nullopt;
+}
+
+std::optional<bir::Value> make_canonical_select_i128_immediate(
+    const c4c::codegen::lir::LirOperand& operand) {
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
+      operand.kind() != c4c::codegen::lir::LirOperandKind::SpecialToken) {
+    return std::nullopt;
+  }
+  const auto parsed = parse_i64(operand.str());
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  return bir::Value{
+      .kind = bir::Value::Kind::Immediate,
+      .type = bir::TypeKind::I128,
+      .immediate = *parsed,
+      .immediate_bits = static_cast<std::uint64_t>(*parsed),
+  };
+}
+
+}  // namespace
+
 std::optional<unsigned> BirFunctionLowerer::integer_type_bit_width(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -66,6 +108,9 @@ bool BirFunctionLowerer::is_canonical_select_chain_binop(bir::BinaryOpcode opcod
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
       return true;
     default:
       return false;
@@ -640,8 +685,8 @@ bool BirFunctionLowerer::resolve_select_chain_inst(const c4c::codegen::lir::LirI
       return false;
     }
 
-    const auto from_type = lower_integer_type(cast->from_type.str());
-    const auto to_type = lower_integer_type(cast->to_type.str());
+    const auto from_type = lower_canonical_select_scalar_type(cast->from_type.str());
+    const auto to_type = lower_canonical_select_scalar_type(cast->to_type.str());
     if (!from_type.has_value() || !to_type.has_value()) {
       return false;
     }
@@ -730,32 +775,73 @@ bool BirFunctionLowerer::lower_canonical_select_entry_inst(
   }
 
   const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst);
-  if (cast == nullptr || cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-    return false;
-  }
+  if (cast != nullptr) {
+    if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
 
-  const auto opcode = lower_cast_opcode(cast->kind);
-  const auto from_type = lower_integer_type(cast->from_type.str());
-  const auto to_type = lower_integer_type(cast->to_type.str());
-  if (!opcode.has_value() || !from_type.has_value() || !to_type.has_value()) {
-    return false;
-  }
+    const auto opcode = lower_cast_opcode(cast->kind);
+    const auto from_type = lower_canonical_select_scalar_type(cast->from_type.str());
+    const auto to_type = lower_canonical_select_scalar_type(cast->to_type.str());
+    if (!opcode.has_value() || !from_type.has_value() || !to_type.has_value()) {
+      return false;
+    }
 
-  const auto operand = lower_value(cast->operand, *from_type, value_aliases);
-  if (!operand.has_value()) {
-    return false;
-  }
+    const auto operand = lower_value(cast->operand, *from_type, value_aliases);
+    if (!operand.has_value()) {
+      return false;
+    }
 
-  if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type); folded.has_value()) {
-    value_aliases[cast->result.str()] = *folded;
+    if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type); folded.has_value()) {
+      value_aliases[cast->result.str()] = *folded;
+      return true;
+    }
+
+    lowered_insts->push_back(bir::CastInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*to_type, cast->result.str()),
+        .operand = *operand,
+    });
+    value_aliases[cast->result.str()] = bir::Value::named(*to_type, cast->result.str());
     return true;
   }
 
-  lowered_insts->push_back(bir::CastInst{
+  const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+  if (bin == nullptr || bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return false;
+  }
+
+  const auto opcode = lower_scalar_binary_opcode(bin->opcode);
+  const auto value_type = lower_canonical_select_scalar_type(bin->type_str.str());
+  if (!opcode.has_value() || !value_type.has_value() ||
+      !is_canonical_select_chain_binop(*opcode)) {
+    return false;
+  }
+
+  const auto lower_operand = [&](const c4c::codegen::lir::LirOperand& operand) {
+    if (const auto lowered = lower_value(operand, *value_type, value_aliases);
+        lowered.has_value()) {
+      return lowered;
+    }
+    if (*value_type == bir::TypeKind::I128) {
+      return make_canonical_select_i128_immediate(operand);
+    }
+    return std::optional<bir::Value>{};
+  };
+  const auto lhs = lower_operand(bin->lhs);
+  const auto rhs = lower_operand(bin->rhs);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return false;
+  }
+
+  lowered_insts->push_back(bir::BinaryInst{
       .opcode = *opcode,
-      .result = bir::Value::named(*to_type, cast->result.str()),
-      .operand = *operand,
+      .result = bir::Value::named(*value_type, bin->result.str()),
+      .operand_type = *value_type,
+      .lhs = *lhs,
+      .rhs = *rhs,
   });
+  value_aliases[bin->result.str()] = bir::Value::named(*value_type, bin->result.str());
   return true;
 }
 

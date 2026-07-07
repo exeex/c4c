@@ -3585,6 +3585,149 @@ int expect_scalar_control_flow_void_return_ignores_legacy_payload() {
   return 0;
 }
 
+int expect_scalar_control_flow_f128_select_admits_signbit_prelude() {
+  namespace bir = c4c::backend::bir;
+
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  c4c::TypeSpec long_double_type{};
+  long_double_type.base = c4c::TB_LONGDOUBLE;
+
+  LirFunction function;
+  function.name = "f128_signbit_select";
+  function.signature_text = "define fp128 @f128_signbit_select(fp128 %p.x)";
+  function.return_type = long_double_type;
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%bits"),
+      .kind = LirCastKind::Bitcast,
+      .from_type = "fp128",
+      .operand = LirOperand("%p.x"),
+      .to_type = "i128",
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%sign"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::LShr,
+      .type_str = "i128",
+      .lhs = LirOperand("%bits"),
+      .rhs = LirOperand("127"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%sign.i32"),
+      .kind = LirCastKind::Trunc,
+      .from_type = "i128",
+      .operand = LirOperand("%sign"),
+      .to_type = "i32",
+  });
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%cond"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "i32",
+      .lhs = LirOperand("%sign.i32"),
+      .rhs = LirOperand("0"),
+  });
+  entry.terminator = LirCondBr{
+      .cond_name = "%cond",
+      .true_label = "then",
+      .false_label = "else",
+  };
+
+  LirBlock then_block;
+  then_block.label = "then";
+  then_block.terminator = LirBr{
+      .target_label = "then.end",
+  };
+
+  LirBlock then_end;
+  then_end.label = "then.end";
+  then_end.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock else_block;
+  else_block.label = "else";
+  else_block.insts.push_back(LirCastOp{
+      .result = LirOperand("%zero.fp128"),
+      .kind = LirCastKind::FPExt,
+      .from_type = "double",
+      .operand = LirOperand("0x0000000000000000"),
+      .to_type = "fp128",
+  });
+  else_block.terminator = LirBr{
+      .target_label = "else.end",
+  };
+
+  LirBlock else_end;
+  else_end.label = "else.end";
+  else_end.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock join;
+  join.label = "join";
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "fp128",
+      .incoming = {
+          {"0xL80000000000000004000921FB54442D1", "then.end"},
+          {"%zero.fp128", "else.end"},
+      },
+  });
+  join.terminator = LirRet{
+      .value_str = "%merged",
+      .type_str = "fp128",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(then_end));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(else_end));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  const auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.size() != 1) {
+    return fail("F128 signbit canonical select should lower to semantic BIR");
+  }
+  if (contains_note(result.notes,
+                    "function",
+                    "failed in scalar-control-flow semantic family")) {
+    return fail("F128 signbit canonical select should not report scalar-control-flow failure");
+  }
+
+  const auto& lowered_function = result.module->functions.front();
+  if (lowered_function.return_type != TypeKind::F128 || lowered_function.blocks.size() != 1) {
+    return fail("F128 signbit canonical select should lower as one F128-return block");
+  }
+  const auto& lowered_entry = lowered_function.blocks.front();
+  const bir::SelectInst* lowered_select = nullptr;
+  for (const auto& inst : lowered_entry.insts) {
+    if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+      lowered_select = select;
+      break;
+    }
+  }
+  if (lowered_select == nullptr ||
+      lowered_select->result != bir::Value::named(TypeKind::F128, "%merged") ||
+      lowered_select->true_value.type != TypeKind::F128 ||
+      lowered_select->true_value.kind != bir::Value::Kind::Immediate ||
+      !lowered_select->true_value.f128_payload.has_value() ||
+      lowered_select->false_value != bir::Value::named(TypeKind::F128, "%zero.fp128")) {
+    return fail("F128 signbit canonical select should publish F128 select values");
+  }
+  if (lowered_entry.terminator.kind != bir::TerminatorKind::Return ||
+      lowered_entry.terminator.value != bir::Value::named(TypeKind::F128, "%merged")) {
+    return fail("F128 signbit canonical select should return the selected F128 value");
+  }
+
+  return 0;
+}
+
 c4c::backend::bir::Module make_block_label_verifier_identity_module() {
   namespace bir = c4c::backend::bir;
 
@@ -14192,6 +14335,11 @@ int main() {
           expect_scalar_control_flow_void_return_ignores_legacy_payload();
       void_return_payload_status != 0) {
     return void_return_payload_status;
+  }
+  if (const int f128_select_status =
+          expect_scalar_control_flow_f128_select_admits_signbit_prelude();
+      f128_select_status != 0) {
+    return f128_select_status;
   }
   if (const int verifier_block_label_id_status = expect_bir_verifier_prefers_block_label_ids();
       verifier_block_label_id_status != 0) {
