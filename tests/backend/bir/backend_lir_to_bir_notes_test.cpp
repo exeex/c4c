@@ -3423,105 +3423,117 @@ int expect_structured_block_label_ids() {
   return 0;
 }
 
-int expect_scalar_control_flow_producer_boundary_is_same_block_only() {
+int expect_scalar_control_flow_producer_boundary_admits_phi_edge_producers() {
   namespace bir = c4c::backend::bir;
 
-  bir::Block entry;
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_scalar_control_flow_phi_edge";
+  function.signature_text = "define i1 @admitted_scalar_control_flow_phi_edge()";
+
+  LirBlock entry;
   entry.label = "entry";
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Add,
-      .result = bir::Value::named(TypeKind::I32, "%sum"),
-      .operand_type = TypeKind::I32,
-      .lhs = bir::Value::named(TypeKind::I32, "%arg"),
-      .rhs = bir::Value::immediate_i32(1),
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%cond"),
+      .is_float = false,
+      .predicate = "eq",
+      .type_str = "i32",
+      .lhs = LirOperand("1"),
+      .rhs = LirOperand("1"),
   });
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Sgt,
-      .result = bir::Value::named(TypeKind::I1, "%cond"),
-      .operand_type = TypeKind::I32,
-      .lhs = bir::Value::named(TypeKind::I32, "%sum"),
-      .rhs = bir::Value::immediate_i32(9),
-  });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(TypeKind::I1, "%cond"),
+  entry.terminator = LirCondBr{
+      .cond_name = "%cond",
       .true_label = "then",
       .false_label = "else",
   };
 
-  const auto materialized = bir::find_materialized_condition_producer_identity(
-      entry, bir::Value::named(TypeKind::I1, "%cond"), entry.insts.size());
-  if (!materialized.available || materialized.binary == nullptr ||
-      materialized.instruction_index != 1 || materialized.condition_value_name != "%cond" ||
-      !materialized.lhs.has_value() || !materialized.rhs.has_value()) {
-    return fail("same-block scalar compare should publish a materialized condition producer");
-  }
-  if (materialized.lhs->producer_kind != bir::ComparisonProducerKind::Binary ||
-      materialized.lhs->producer_instruction_index != 0 ||
-      materialized.lhs->produced_value == nullptr ||
-      materialized.lhs->produced_value->name != "%sum") {
-    return fail("same-block scalar compare should admit the binary lhs producer");
-  }
-  if (materialized.rhs->producer_kind != bir::ComparisonProducerKind::Immediate ||
-      materialized.rhs->integer_constant != std::optional<std::int64_t>{9}) {
-    return fail("same-block scalar compare should preserve immediate rhs producer facts");
-  }
+  LirBlock then_block;
+  then_block.label = "then";
+  then_block.terminator = LirCondBr{
+      .cond_name = "%cond",
+      .true_label = "join",
+      .false_label = "else",
+  };
 
-  const auto fused = bir::find_fused_compare_operand_producer_facts(
-      entry, bir::Value::named(TypeKind::I32, "%sum"), bir::Value::immediate_i32(9),
-      entry.insts.size());
-  if (!fused.available || !fused.lhs.has_value() || !fused.rhs.has_value() ||
-      fused.lhs->producer_kind != bir::ComparisonProducerKind::Binary ||
-      fused.lhs->producer_instruction_index != 0 ||
-      fused.rhs->producer_kind != bir::ComparisonProducerKind::Immediate ||
-      fused.rhs->integer_constant != std::optional<std::int64_t>{9}) {
-    return fail("fused branch condition should expose the same same-block scalar producers");
-  }
+  LirBlock else_block;
+  else_block.label = "else";
+  else_block.terminator = LirBr{
+      .target_label = "join",
+  };
 
-  bir::Block join;
+  LirBlock join;
   join.label = "join";
-  join.insts.push_back(bir::PhiInst{
-      .result = bir::Value::named(TypeKind::I32, "%merged"),
-      .incomings = {bir::PhiIncoming{
-                        .label = "entry",
-                        .value = bir::Value::named(TypeKind::I32, "%sum"),
-                    },
-                    bir::PhiIncoming{
-                        .label = "else",
-                        .value = bir::Value::immediate_i32(0),
-                    }},
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "i1",
+      .incoming = {
+          {"%cond", "then"},
+          {"false", "else"},
+      },
   });
-  join.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Sgt,
-      .result = bir::Value::named(TypeKind::I1, "%phi.cond"),
-      .operand_type = TypeKind::I32,
-      .lhs = bir::Value::named(TypeKind::I32, "%merged"),
-      .rhs = bir::Value::immediate_i32(0),
-  });
-  join.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(TypeKind::I1, "%phi.cond"),
-      .true_label = "then",
-      .false_label = "else",
+  join.terminator = LirRet{
+      .value_str = "%merged",
+      .type_str = "i1",
   };
 
-  const auto phi_condition = bir::find_materialized_condition_producer_identity(
-      join, bir::Value::named(TypeKind::I1, "%phi.cond"), join.insts.size());
-  if (!phi_condition.available || phi_condition.lhs.has_value() ||
-      !phi_condition.rhs.has_value() ||
-      phi_condition.rhs->producer_kind != bir::ComparisonProducerKind::Immediate) {
-    return fail("scalar-control-flow boundary should not admit phi operands as producers yet");
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  const auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.size() != 1) {
+    return fail("scalar-control-flow phi edge fixture should lower to one BIR function");
   }
 
-  bir::Block successor;
-  successor.label = "successor";
-  successor.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(TypeKind::I1, "%cond"),
-      .true_label = "then",
-      .false_label = "else",
+  const auto& lowered_function = result.module->functions.front();
+  const auto find_block = [&](std::string_view label) -> const bir::Block* {
+    for (const auto& block : lowered_function.blocks) {
+      if (block.label == label) {
+        return &block;
+      }
+    }
+    return nullptr;
   };
-  const auto cross_block = bir::find_materialized_condition_producer_identity(
-      successor, bir::Value::named(TypeKind::I1, "%cond"), successor.insts.size());
-  if (cross_block.available) {
-    return fail("scalar-control-flow boundary should not admit predecessor-block condition producers yet");
+
+  const auto* then_bir = find_block("then");
+  const auto* else_bir = find_block("else");
+  const auto* join_bir = find_block("join");
+  if (then_bir == nullptr || else_bir == nullptr || join_bir == nullptr) {
+    return fail("scalar-control-flow phi edge fixture should keep CFG blocks");
+  }
+
+  const auto then_condition = bir::find_materialized_condition_producer_identity(
+      *then_bir, bir::Value::named(TypeKind::I1, "%cond"), then_bir->insts.size());
+  if (!then_condition.available || then_condition.binary == nullptr ||
+      then_condition.condition_value_name != "%cond" ||
+      !then_condition.lhs.has_value() ||
+      then_condition.lhs->producer_kind != bir::ComparisonProducerKind::Immediate ||
+      !then_condition.rhs.has_value() ||
+      then_condition.rhs->producer_kind != bir::ComparisonProducerKind::Immediate) {
+    return fail("cross-CFG branch condition should materialize its scalar producer in the predecessor block");
+  }
+
+  const auto edge_index = bir::route5_build_edge_join_source_index(lowered_function);
+  const auto then_edge = bir::route5_find_cfg_edge_publication(
+      edge_index, *then_bir, *join_bir, bir::Value::named(TypeKind::I1, "%merged"));
+  if (!then_edge.available ||
+      then_edge.status != bir::Route5PublicationStatus::Available ||
+      then_edge.source_value_name != "%cond" ||
+      then_edge.source_producer_kind != bir::Route5PublicationSourceKind::Binary ||
+      !then_edge.source_producer_instruction_index.has_value()) {
+    return fail("scalar phi edge should admit the predecessor materialized condition producer");
+  }
+
+  const auto else_edge = bir::route5_find_cfg_edge_publication(
+      edge_index, *else_bir, *join_bir, bir::Value::named(TypeKind::I1, "%merged"));
+  if (!else_edge.available ||
+      else_edge.source_value_kind != bir::Value::Kind::Immediate ||
+      else_edge.source_producer_kind != bir::Route5PublicationSourceKind::Immediate) {
+    return fail("scalar phi edge should keep immediate incoming producer facts");
   }
 
   return 0;
@@ -14126,7 +14138,7 @@ int main() {
     return structured_block_label_id_status;
   }
   if (const int scalar_control_flow_producer_status =
-          expect_scalar_control_flow_producer_boundary_is_same_block_only();
+          expect_scalar_control_flow_producer_boundary_admits_phi_edge_producers();
       scalar_control_flow_producer_status != 0) {
     return scalar_control_flow_producer_status;
   }

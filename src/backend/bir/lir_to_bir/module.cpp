@@ -1249,9 +1249,23 @@ bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock
 
 bool BirFunctionLowerer::initialize_aggregate_phi_state() {
   pending_aggregate_phi_copies_.clear();
+  pending_scalar_phi_producers_.clear();
 
   for (const auto& [_, block_plans] : phi_plans_) {
     for (const auto& phi_plan : block_plans) {
+      if (phi_plan.kind == PhiLoweringPlan::Kind::ScalarValue) {
+        for (const auto& [label, operand] : phi_plan.incomings) {
+          if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+            continue;
+          }
+          pending_scalar_phi_producers_[label].push_back(PendingScalarPhiProducer{
+              .source_name = operand.str(),
+              .type = phi_plan.type,
+          });
+        }
+        continue;
+      }
+
       if (phi_plan.kind != PhiLoweringPlan::Kind::AggregateValue) {
         continue;
       }
@@ -1272,6 +1286,50 @@ bool BirFunctionLowerer::initialize_aggregate_phi_state() {
     }
   }
 
+  return true;
+}
+
+bool BirFunctionLowerer::apply_pending_scalar_phi_producers(
+    std::string_view predecessor_label,
+    std::vector<bir::Inst>* lowered_insts) {
+  const auto pending_it = pending_scalar_phi_producers_.find(std::string(predecessor_label));
+  if (pending_it == pending_scalar_phi_producers_.end()) {
+    return true;
+  }
+
+  const auto has_materialized_producer = [&](std::string_view name, bir::TypeKind type) {
+    for (const auto& inst : *lowered_insts) {
+      const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+      if (binary == nullptr ||
+          binary->result.kind != bir::Value::Kind::Named ||
+          binary->result.name != name ||
+          binary->result.type != type) {
+        continue;
+      }
+      return true;
+    }
+    return false;
+  };
+
+  for (const auto& pending : pending_it->second) {
+    if (pending.type != bir::TypeKind::I1 ||
+        has_materialized_producer(pending.source_name, pending.type)) {
+      continue;
+    }
+    const auto compare_it = compare_exprs_.find(pending.source_name);
+    if (compare_it == compare_exprs_.end()) {
+      continue;
+    }
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = compare_it->second.opcode,
+        .result = bir::Value::named(pending.type, pending.source_name),
+        .operand_type = compare_it->second.operand_type,
+        .lhs = compare_it->second.lhs,
+        .rhs = compare_it->second.rhs,
+    });
+  }
+
+  pending_scalar_phi_producers_.erase(pending_it);
   return true;
 }
 
@@ -1547,6 +1605,7 @@ bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
 
   if (!lower_block_phi_insts(block, &lowered_block) ||
       !lower_block_insts(block, &lowered_block) ||
+      !apply_pending_scalar_phi_producers(block.label, &lowered_block.insts) ||
       !apply_pending_aggregate_phi_copies(block.label, &lowered_block.insts) ||
       !lower_block_terminator(block, &lowered_block, &trailing_blocks)) {
     return false;

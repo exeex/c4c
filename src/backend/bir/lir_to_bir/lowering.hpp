@@ -504,6 +504,14 @@ class BirFunctionLowerer {
   using PendingAggregatePhiCopyMap =
       std::unordered_map<std::string, std::vector<PendingAggregatePhiCopy>>;
 
+  struct PendingScalarPhiProducer {
+    std::string source_name;
+    bir::TypeKind type = bir::TypeKind::Void;
+  };
+
+  using PendingScalarPhiProducerMap =
+      std::unordered_map<std::string, std::vector<PendingScalarPhiProducer>>;
+
   struct AggregateParamInfo {
     // Compatibility LIR type text retained for byval aggregate layout.
     std::string type_text;
@@ -1472,6 +1480,8 @@ class BirFunctionLowerer {
                              bir::Block* lowered_block);
   bool lower_block_insts(const c4c::codegen::lir::LirBlock& block,
                          bir::Block* lowered_block);
+  bool apply_pending_scalar_phi_producers(std::string_view predecessor_label,
+                                          std::vector<bir::Inst>* lowered_insts);
   bool lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
                               bir::Block* lowered_block,
                               std::vector<bir::Block>* trailing_blocks);
@@ -1488,6 +1498,7 @@ class BirFunctionLowerer {
   std::optional<LoweredReturnInfo> return_info_;
   PhiBlockPlanMap phi_plans_;
   PendingAggregatePhiCopyMap pending_aggregate_phi_copies_;
+  PendingScalarPhiProducerMap pending_scalar_phi_producers_;
   AggregateParamMap aggregate_params_;
   ValueMap value_aliases_;
   CompareMap compare_exprs_;

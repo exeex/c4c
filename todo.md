@@ -1,23 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/560_bir_scalar_signature_control_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Add Scalar-Control-Flow BIR Coverage
+Current Step ID: 2
+Current Step Title: Repair Scalar-Control-Flow Producer Admission
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Add Scalar-Control-Flow BIR Coverage: added focused BIR coverage for
-the scalar-control-flow producer boundary. The new coverage asserts that
-same-block scalar comparison operands and fused branch conditions publish
-materialized producer facts today, while phi operands and predecessor-block
-condition values remain outside the admitted producer boundary.
+Step 2 - Repair Scalar-Control-Flow Producer Admission: added scalar phi-edge
+producer materialization at the predecessor boundary. When a scalar `i1` phi
+incoming names a compare result produced earlier in the controlling CFG path,
+the predecessor block now gets a real BIR `BinaryInst` before its terminator so
+Route 7 branch-condition lookup and Route 5 phi-edge publication both observe
+the semantic producer.
 
 ## Suggested Next
 
-Delegate the producer repair packet for scalar-control-flow phi/cross-CFG
-producer admission, using the new BIR coverage as the expected boundary.
+Delegate the Step 3 RV64 representative proof packet for scalar-control-flow
+rows, starting with `src/20000314-3.c` / `attr_eq` or the supervisor-selected
+current substitute.
 
 ## Watchouts
 
@@ -27,10 +29,16 @@ producer admission, using the new BIR coverage as the expected boundary.
   `ideas/open/562_bir_scalar_binop_semantic_producer_admission.md`.
 - Do not claim scalar-control-flow progress through expectation rewrites,
   unsupported downgrades, allowlist edits, or named-case shortcuts.
-- Current coverage documents the repair boundary only; it does not implement
-  phi or predecessor-block producer admission.
+- This packet needed a narrow private declaration in
+  `src/backend/bir/lir_to_bir/lowering.hpp` for the pending scalar phi producer
+  map; the implementation remains in `module.cpp`.
+- The repair intentionally materializes only scalar `i1` compare producers for
+  phi-edge/control-flow admission and does not widen into scalar-binop,
+  function-signature, RV64 ABI, or object-emission lowering.
 
 ## Proof
 
 Ran `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$'; } 2>&1 | tee test_after.log`:
-passed. Proof log: `test_after.log`.
+passed. Supervisor acceptance also ran
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`:
+passed, 346/346 backend tests.
