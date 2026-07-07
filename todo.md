@@ -8,69 +8,60 @@ Current Step Title: Decide Unordered Floating Compare Representation
 
 ## Just Finished
 
-Step 4 - Prove IEEE Representatives And Route Downstream Failures completed as
-a diagnostic/proof packet. Direct RV64 backend probes show that all four target
-IEEE representatives advanced beyond the umbrella `scalar/local-memory semantic
-family` diagnostic and now stop at the narrower fail-closed unordered floating
-compare boundary:
+Step 5 - Decide Unordered Floating Compare Representation completed as a
+representation decision packet. Existing BIR comparison representation is the
+single `bir::BinaryOpcode` enum plus `BinaryInst`/`CompareExpr`, and its compare
+members are `Eq`, `Ne`, signed integer relations, and unsigned integer
+relations only. Consumers treat those opcodes as directly evaluable or
+emittable comparison predicates:
 
-- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8.c`: latest function failure
-  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
-  semantic family`; reached narrower unordered-float compare boundary: yes.
-- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8f.c`: latest function failure
-  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
-  semantic family`; reached narrower unordered-float compare boundary: yes.
-- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8l.c`: latest function failure
-  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
-  semantic family`; reached narrower unordered-float compare boundary: yes.
-- `tests/c/external/gcc_torture/src/ieee/pr38016.c`: latest function failure
-  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
-  semantic family`; reached narrower unordered-float compare boundary: yes.
+- `bir::is_compare_opcode()` / `is_comparison_binary_opcode()` classify only
+  `Eq`, `Ne`, `Slt`, `Sle`, `Sgt`, `Sge`, `Ult`, `Ule`, `Ugt`, and `Uge`.
+- `route7_comparison_instruction_record()` records a compare by copying
+  `BinaryInst::opcode` into `Route7ComparisonInstructionRecord::predicate`.
+- `evaluate_comparison_integer_constant()` evaluates comparison opcodes by
+  integer truth tables.
+- RV64 object emission lowers BIR compare predicates to simple integer compare
+  instruction sequences.
 
-The remaining downstream work is still scalar/local-memory semantic
-representation for unordered floating compare predicates: BIR needs an explicit
-semantic representation/lowering decision for unordered predicates such as
-`fcmp uno`. No evidence from this packet routes the blocker to another owner.
+Decision: `fcmp uno` should remain an explicit fail-closed scalar/local-memory
+owner-boundary rejection for now, not a new `BinaryOpcode` and not a lossy
+mapping onto `Ne` or another existing ordered/integer-style opcode. The current
+`lower_scalar_or_local_memory_inst()` guard for float `LirCmpPredicate::Uno`
+already encodes that decision by stopping before generic scalar compare lowering
+and reporting `unordered-float-compare scalar/local-memory semantic family`.
+The focused `unordered_float_uno_compare` admission test already documents this
+predicate-family behavior, while nearby `admitted_float_une_compare` confirms
+that admitted unordered-family predicates are not hidden behind the generic
+scalar/local-memory diagnostic.
+
+No Step 6 code or test change was necessary in this packet: Step 6's current
+behavior is already the selected explicit fail-closed rejection. A future change
+to actually lower `fcmp uno` should introduce a structured unordered floating
+compare representation/lowering path rather than extending the existing
+integer-style `BinaryOpcode` contract with an opcode that current consumers
+cannot evaluate or emit correctly.
 
 ## Suggested Next
 
-Plan-owner lifecycle review decision: continue within this source idea rather
-than move to closure. Step 4 proved that the representatives advanced to a
-narrower same-owner boundary, but the source idea still calls for repairing the
-semantic producer or lowering rule responsible for the scalar/local-memory
-diagnostics.
-
-Next executable packet is Step 5 - Decide Unordered Floating Compare
-Representation. The packet should make an owner-level decision for representing
-or lowering `fcmp uno` rather than mapping it onto an existing ordered
-comparison opcode.
+Next executable packet can treat Step 6 - Lower Or Reject `fcmp uno` At The
+Owner Boundary as already satisfied by the current narrow fail-closed rejection,
+then move to Step 7 proof of the IEEE representatives unless the supervisor
+wants an additional no-code Step 6 confirmation packet.
 
 ## Watchouts
 
 - This packet intentionally made no source, test, expectation, unsupported
   marker, allowlist, or lowering-behavior changes.
-- The observed diagnostic is function-level `test_isunordered` for all four
-  representatives, so the live blocker remains the `fcmp uno` unordered
-  predicate path after any earlier casts or setup have lowered far enough.
-- `ord` and `ueq` remain nearby unordered/ordered predicate-family questions;
-  do not fold them into the next slice without focused coverage and a semantic
-  representation decision.
+- Do not add a raw `Uno` `BinaryOpcode` without updating all comparison
+  classifiers, route records, constant evaluators, and target emitters that
+  currently assume compare opcodes are simple integer-style predicates.
+- Do not map `fcmp uno` to `Ne`; that would erase NaN/unordered semantics and
+  would be a semantic overfit.
+- `ord` and `ueq` remain nearby predicate-family questions; keep any future
+  decision predicate-family based and covered by focused tests.
 
 ## Proof
-
-Direct diagnostics:
-
-`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/fp-cmp-8.c`
-
-`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/fp-cmp-8f.c`
-
-`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/fp-cmp-8l.c`
-
-`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/pr38016.c`
-
-Each direct diagnostic exited 1 at the expected fail-closed boundary:
-`latest function failure: semantic lir_to_bir function 'test_isunordered'
-failed in unordered-float-compare scalar/local-memory semantic family`.
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
