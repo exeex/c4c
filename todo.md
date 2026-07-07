@@ -1,51 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/574_rv64_floating_point_binary_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused FP Binary Object-Emission Coverage
+Current Step ID: 3
+Current Step Title: Implement Double FP Binary Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: added focused backend object-emission coverage for scalar
-RV64 floating-point binary lowering before implementation.
+Completed Step 3: implemented RV64 object-route lowering for prepared scalar
+double floating-point binary operations with FPR homes.
 
-Added supported-behavior coverage for `bir.sdiv double` with FPR homes for both
-operands and the result. The test expects the prepared object route to emit
-`fdiv.d ft0, fa0, fa1` followed by `ret`, with no relocations.
+Added a prepared F64 binary fragment path that requires F64 result, operand
+type, and F64 lhs/rhs values, then emits RV64D register-register operations
+from prepared FPR homes. `bir.sdiv double` now lowers semantically to
+`fdiv.d` and the Step 2 focused object-emission test passes.
 
-Added fail-closed coverage for unsupported FP binary forms:
-
-- `bir.sdiv fp128` remains rejected through the existing
-  `unsupported_instruction_fragment` diagnostic.
-- `bir.srem double` remains rejected through the existing
-  `unsupported_instruction_fragment` diagnostic.
-
-The focused test currently fails before implementation at the new supported
-F64 binary assertion:
-
-```text
-expected prepared scalar fdiv.d RV64 object module to build, got `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering; function=fp_binary; block=entry; block_index=0; instruction_index=0; instruction_kind=BinaryInst; owner=double %result`
-```
+The supported F64 path also maps the same prepared FPR shape for `Add`, `Sub`,
+and `Mul` to `fadd.d`, `fsub.d`, and `fmul.d`. Unsupported FP binary forms
+still fail closed: `bir.sdiv fp128` and `bir.srem double` remain rejected by
+the existing unsupported instruction diagnostic in the focused suite.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: implement RV64 object-route lowering for
-supported scalar double FP binary operations, starting with `bir.sdiv double`
-to `fdiv.d`, using prepared FPR operand/result homes and leaving unsupported FP
-types/opcodes fail-closed.
+Execute Step 4 from `plan.md`: run the delegated representative object-route
+proof for the localized `20000605-1.c` failure and record whether it advances
+past the old `double %t5` unsupported binary owner.
 
 ## Watchouts
 
-- The supported test is semantic and fixture-local; it does not reference
-  `src/20000605-1.c`, `render_image_rgb_a`, `%t5`, or any representative-only
-  spelling.
-- BIR uses `BinaryOpcode::SDiv` for the observed floating division owner, so
-  Step 3 must key lowering on both opcode and floating type instead of treating
-  every `SDiv` as an integer division.
-- The F128 and F64 remainder cases are deliberate fail-closed coverage and
-  should not be weakened to make the test binary pass.
+- The new object-emission path handles only prepared F64 values already in FPR
+  homes. It does not materialize F64 values from stack homes or immediates.
+- The representative owner observed in Step 1 uses `BinaryOpcode::SDiv` for
+  floating division, so Step 4 should verify the object route reaches `fdiv.d`
+  for that owner rather than the integer division path.
+- The F128 and F64 remainder cases remain deliberate fail-closed coverage.
 
 ## Proof
 
@@ -55,7 +44,11 @@ Delegated proof command:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'
 ```
 
-Result: build passed; focused CTest failed as expected before implementation on
-the new supported F64 binary object-emission assertion.
+Result: passed. `backend_riscv_object_emission` reported 1/1 test passing, and
+the focused F64 binary coverage now builds an object containing
+`fdiv.d ft0, fa0, fa1` followed by `ret`.
 
-Proof log: `test_after.log`
+Supervisor guard result:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 346/346.
+
+Proof log: `test_before.log` after supervisor roll-forward.
