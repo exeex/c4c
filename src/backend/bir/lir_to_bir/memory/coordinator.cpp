@@ -91,6 +91,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     note_function_lowering_family_failure("aggregate-extract semantic family");
     return false;
   };
+  const auto fail_unordered_float_compare = [&]() {
+    note_function_lowering_family_failure(
+        "unordered-float-compare scalar/local-memory semantic family");
+    return false;
+  };
   const auto resolve_runtime_pointer_address =
       [&](std::string_view operand_name) -> std::optional<PointerAddress> {
     const auto operand = std::string(operand_name);
@@ -164,7 +169,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         value_aliases[std::string(result_name)] =
             bir::Value::named(bir::TypeKind::Ptr, std::string(slot_name));
       };
-  if (std::holds_alternative<c4c::codegen::lir::LirCmpOp>(inst)) {
+  if (const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst)) {
+    if (cmp->is_float &&
+        cmp->predicate.typed() == c4c::codegen::lir::LirCmpPredicate::Uno) {
+      return fail_unordered_float_compare();
+    }
     const auto scalar_result =
         lower_scalar_family_inst(inst, value_aliases, compare_exprs, lowered_insts);
     return scalar_result.value_or(false);

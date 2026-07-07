@@ -11485,6 +11485,42 @@ LirModule make_admitted_float_une_compare_module() {
   return module;
 }
 
+LirModule make_unordered_float_uno_compare_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "unordered_float_uno_compare";
+  function.signature_text = "define i32 @unordered_float_uno_compare()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%t0"),
+      .is_float = true,
+      .predicate = "uno",
+      .type_str = "double",
+      .lhs = LirOperand("0x4028AE147AE147AE"),
+      .rhs = LirOperand("0x404C63D70A3D70A4"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t1"),
+      .kind = LirCastKind::ZExt,
+      .from_type = "i1",
+      .operand = LirOperand("%t0"),
+      .to_type = "i32",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t1"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_admitted_null_indirect_call_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -14353,6 +14389,22 @@ int main() {
           "scalar/local-memory semantic-family note");
       admitted_float_une_compare_status != 0) {
     return admitted_float_une_compare_status;
+  }
+
+  if (const int unordered_float_uno_compare_status = expect_failure_notes(
+          "unordered_float_uno_compare",
+          make_unordered_float_uno_compare_module(),
+          kModuleSummary,
+          "failed in unordered-float-compare scalar/local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function "
+          "'unordered_float_uno_compare' failed in unordered-float-compare "
+          "scalar/local-memory semantic family",
+          "missing module capability-bucket summary note",
+          "missing specific unordered float compare function note",
+          "missing module note carrying the unordered float compare semantic-family "
+          "failure");
+      unordered_float_uno_compare_status != 0) {
+    return unordered_float_uno_compare_status;
   }
 
   if (const int admitted_null_indirect_call_status = expect_success_without_function_note(
