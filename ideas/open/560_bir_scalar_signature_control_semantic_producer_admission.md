@@ -62,6 +62,24 @@ instruction lowering.
 - Remaining downstream failures, if any, are assigned to their own owner
   boundary instead of expanding this idea.
 
+## Lifecycle Note
+
+The active scalar-control-flow runbook was retired after Step 4 review. The ten
+tracked RV64 scalar-control-flow representatives all advanced beyond their
+original `scalar-control-flow semantic family` BIR admission diagnostics, and
+the remaining failures now belong to downstream owner boundaries:
+
+- RV64 object lowering for prepared terminator/select/object fragments is
+  tracked by `ideas/open/563_rv64_object_lowering_control_flow_fragments.md`.
+- Scalar-binop producer work remains tracked by
+  `ideas/open/562_bir_scalar_binop_semantic_producer_admission.md`.
+- Scalar/local-memory follow-up work is tracked by
+  `ideas/open/564_bir_scalar_local_memory_semantic_admission_followup.md`.
+
+Close was rejected for this lifecycle pass because `test_after.log` was absent
+while the delegation prohibited touching test logs, so the plan-owner close
+gate could not run a matching regression guard.
+
 ## Reviewer Reject Signals
 
 - Reject fixes that only change the outer `latest function failure` note,
