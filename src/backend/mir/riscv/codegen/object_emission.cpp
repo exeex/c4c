@@ -8702,6 +8702,46 @@ bool prepared_branch_condition_is_supported_pointer_branch(
          branch_condition.rhs.has_value();
 }
 
+bool rv64_prepared_condition_type_is_gpr_truth_value(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I1:
+    case c4c::backend::bir::TypeKind::I8:
+    case c4c::backend::bir::TypeKind::I16:
+    case c4c::backend::bir::TypeKind::I32:
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return true;
+    default:
+      return false;
+  }
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_register_condition_branch(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& condition,
+    std::string true_label,
+    std::string false_label) {
+  if (condition.kind != c4c::backend::bir::Value::Kind::Named ||
+      !rv64_prepared_condition_type_is_gpr_truth_value(condition.type)) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for(names, lookups, condition);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  const auto condition_register = gpr_register_number_for_home(*home);
+  if (!condition_register.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  append_rv64_local_branch(fragment, 1, *condition_register, 0, std::move(true_label));
+  append_rv64_local_jump(fragment, std::move(false_label));
+  return fragment;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -8867,7 +8907,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
       }
       const auto compare_it = compares.find(block.terminator.condition.name);
       if (compare_it == compares.end()) {
-        return std::nullopt;
+        return fragment_for_prepared_register_condition_branch(
+            names,
+            lookups,
+            block.terminator.condition,
+            true_asm_label,
+            false_asm_label);
       }
       return fragment_for_prepared_compare_branch(prepared.stack_layout,
                                                   names,

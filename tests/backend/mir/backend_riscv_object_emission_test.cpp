@@ -12443,15 +12443,6 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
     return 1;
   }
 
-  auto missing_branch_condition =
-      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
-                                                bir::TypeKind::Ptr);
-  missing_branch_condition.control_flow.functions.front().branch_conditions.clear();
-  if (expect_prepared_rejection_diagnostic(missing_branch_condition,
-                                           diagnostic) != 0) {
-    return 1;
-  }
-
   auto missing_lhs_home =
       make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
                                                 bir::TypeKind::Ptr);
@@ -12473,10 +12464,92 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   return 0;
 }
 
-int reports_prepared_register_condition_terminator_fragment_diagnostic() {
-  return expect_prepared_rejection_diagnostic(
-      make_prepared_unfused_register_condition_branch_module(),
-      "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
+int builds_prepared_register_condition_branch_object() {
+  const auto prepared = make_prepared_unfused_register_condition_branch_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared register-condition branch RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label = object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected register-condition branch object symbols and text");
+  }
+  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
+      function->value != 0 || function->size_bytes != 24 ||
+      true_label->value != 8 || false_label->value != 16) {
+    return fail("expected register-condition branch object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00039063 ||
+      read_u32(text->bytes, 4) != 0x0000006f ||
+      read_u32(text->bytes, 8) != 0x00100513 ||
+      read_u32(text->bytes, 12) != 0x00008067 ||
+      read_u32(text->bytes, 16) != 0x00000513 ||
+      read_u32(text->bytes, 20) != 0x00008067) {
+    return fail("expected register condition to lower as bne t2, zero plus false jump");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != R_RISCV_BRANCH ||
+      module->relocations[0].symbol != true_label->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 4 ||
+      module->relocations[1].type != R_RISCV_JAL ||
+      module->relocations[1].symbol != false_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected register-condition branch local relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_register_condition_branch_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering";
+  const auto expect_rejects = [](const prepare::PreparedBirModule& prepared,
+                                 const char* expected_diagnostic,
+                                 const char* shape) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (result.ok() || result.module.has_value()) {
+      return fail(std::string{"expected "} + shape + " to stay fail-closed");
+    }
+    if (result.prepared_consumer_category.has_value()) {
+      return fail(std::string{"expected RV64-local diagnostic for "} + shape);
+    }
+    if (result.diagnostic != expected_diagnostic) {
+      return fail(std::string{"expected terminator diagnostic for "} + shape +
+                  ", got `" + result.diagnostic + "`");
+    }
+    return 0;
+  };
+
+  auto prepared = make_prepared_unfused_register_condition_branch_module();
+  prepared.value_locations.functions.front().value_homes.clear();
+  if (expect_rejects(prepared, diagnostic, "missing register-condition home") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_unfused_register_condition_branch_module();
+  auto& condition_home = prepared.value_locations.functions.front().value_homes.front();
+  condition_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  condition_home.register_name = std::nullopt;
+  if (expect_rejects(prepared, diagnostic, "stack register-condition home") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_unfused_register_condition_branch_module();
+  prepared.module.functions.front().blocks.front().terminator.condition =
+      bir::Value::named(bir::TypeKind::F32, "%cmp");
+  if (expect_rejects(prepared, diagnostic, "floating register-condition terminator") != 0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int builds_prepared_rematerialized_nonzero_return_object() {
@@ -22814,7 +22887,8 @@ int main() {
   status |= builds_prepared_fused_ugt_ptr_register_compare_branch_object();
   status |= builds_prepared_fused_ule_ptr_register_compare_branch_object();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
-  status |= reports_prepared_register_condition_terminator_fragment_diagnostic();
+  status |= builds_prepared_register_condition_branch_object();
+  status |= rejects_prepared_register_condition_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_traversed_wide_rematerialized_return_object();
   status |= rejects_prepared_rematerialized_return_without_typed_immediate_fact();

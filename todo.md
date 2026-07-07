@@ -8,26 +8,19 @@ Current Step Title: Repair Prepared Terminator Object Lowering
 
 ## Just Finished
 
-Step 1 coverage slice added focused RV64 object diagnostic hooks for the current
-prepared fragment blockers:
-
-- `src/20000314-3.c`, `src/930614-1.c`, and `src/pr35456.c` map to the
-  prepared terminator object-fragment blocker,
-  `unsupported_terminator_fragment`; covered by
-  `reports_prepared_register_condition_terminator_fragment_diagnostic`.
-- `src/980604-1.c` maps to the prepared move-bundle/select-publication blocker,
-  `unsupported_move_bundle_target_shape`; covered by
-  `reports_prepared_select_publication_move_bundle_fragment_diagnostic`.
-- `src/pr39501.c` maps to the plain BIR `SelectInst` object-fragment blocker,
-  `unsupported_instruction_fragment`; covered by the extended
-  `rejects_reused_nested_i32_ordinary_select_without_intermediate_home_object`
-  diagnostic assertion.
+Step 2 repaired the prepared terminator object-lowering shape exposed by the
+register-condition representatives. RV64 object emission now lowers a prepared
+named GPR truth-value condition as `bne condition, zero, true` followed by a
+local jump to the false successor, while missing homes, stack homes, and
+floating condition values remain fail-closed with the existing
+`unsupported_terminator_fragment` diagnostic.
 
 ## Suggested Next
 
-Delegate Step 2 from `plan.md`: inspect the prepared terminator facts for the
-terminator representatives and implement the semantic RV64 object terminator
-fragment rule, keeping malformed prepared facts fail-closed.
+Delegate Step 3 from `plan.md`: inspect the `src/980604-1.c`
+prepared move-bundle/select-publication target shape and repair the semantic
+RV64 move or admission path without weakening ambiguous or unsupported bundle
+rejections.
 
 ## Watchouts
 
@@ -37,14 +30,22 @@ fragment rule, keeping malformed prepared facts fail-closed.
   own open ideas.
 - Do not use row reclassification, expectation rewrites, unsupported markers,
   allowlist edits, or named torture-case shortcuts as progress.
-- If focused BIR evidence shows prepared facts are malformed, stop and report
-  the owner-boundary mismatch instead of expanding this RV64 object runbook.
-- Step 1 only locked down current RV64-local object diagnostics; it did not
-  repair lowering or change representative classifications.
+- Clearing fused compare `branch_conditions` on the focused fixture is now a
+  supported unfused register-condition branch shape, not a malformed prepared
+  fact. Malformed condition coverage should mutate the condition home or type.
+- The Step 2 repair only covers already-homed scalar/pointer GPR condition
+  values; it does not repair move bundles, select publication, or plain
+  `SelectInst` object lowering.
 
 ## Proof
 
 Ran:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed after the Step 2 repair. Proof log: `test_after.log`.
+
+Supervisor follow-up:
+`ctest --test-dir build -j --output-on-failure -R 'llvm_gcc_c_torture_src_(20000314_3|930614_1|pr35456)_c'`
+
+Result: passed; the Step 2 terminator representatives now advance beyond the
+previous `unsupported_terminator_fragment` blocker.
