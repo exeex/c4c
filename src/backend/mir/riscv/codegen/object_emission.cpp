@@ -5572,6 +5572,94 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication
   return fragment;
 }
 
+bool append_rv64_fp_compare_to_register(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::backend::bir::BinaryOpcode opcode,
+    c4c::backend::bir::TypeKind operand_type,
+    const c4c::backend::bir::Value& lhs_value,
+    const c4c::backend::bir::Value& rhs_value,
+    std::uint32_t destination_register) {
+  if (operand_type != lhs_value.type || operand_type != rhs_value.type) {
+    return false;
+  }
+  const auto funct7 = rv64_fp_compare_funct7(operand_type);
+  if (!funct7.has_value()) {
+    return false;
+  }
+
+  const auto lhs_home_reg = fpr_register_number_for_value(names, lookups, lhs_value);
+  const auto rhs_home_reg = fpr_register_number_for_value(names, lookups, rhs_value);
+  constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
+  const auto scratch_fpr_it =
+      std::find_if(scratch_fpr_candidates.begin(),
+                   scratch_fpr_candidates.end(),
+                   [&](std::uint32_t candidate) {
+                     return (!lhs_home_reg.has_value() || *lhs_home_reg != candidate) &&
+                            (!rhs_home_reg.has_value() || *rhs_home_reg != candidate);
+                   });
+  if (scratch_fpr_it == scratch_fpr_candidates.end()) {
+    return false;
+  }
+
+  const bool needs_zero_materialization =
+      is_rv64_zero_floating_immediate(lhs_value) ||
+      is_rv64_zero_floating_immediate(rhs_value);
+  const auto scratch_gpr =
+      needs_zero_materialization ? rv64_unoccupied_temporary_gpr(lookups)
+                                 : std::optional<std::uint32_t>{};
+
+  const auto lhs = rv64_fpr_compare_operand_register(
+      fragment, names, lookups, lhs_value, *scratch_fpr_it, scratch_gpr);
+  const auto rhs = rv64_fpr_compare_operand_register(
+      fragment, names, lookups, rhs_value, *scratch_fpr_it, scratch_gpr);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return false;
+  }
+
+  auto append_compare = [&](std::uint32_t funct3,
+                            std::uint32_t lhs,
+                            std::uint32_t rhs) {
+    append_le32(fragment.bytes,
+                encode_r_type(0x53,
+                              destination_register,
+                              funct3,
+                              lhs,
+                              rhs,
+                              *funct7));
+  };
+
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Eq:
+      append_compare(2, *lhs, *rhs);
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Ne:
+      append_compare(2, *lhs, *rhs);
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Slt:
+      append_compare(1, *lhs, *rhs);
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+      append_compare(1, *rhs, *lhs);
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Sle:
+      append_compare(0, *lhs, *rhs);
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Sge:
+      append_compare(0, *rhs, *lhs);
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool append_rv64_materialize_cast_dependency_authority(
     RiscvEncodedFragment& fragment,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord& record,
@@ -7864,13 +7952,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
   if (recursion_depth > 16U) {
     return std::nullopt;
   }
+  const bool floating_condition = rv64_floating_type(select.compare_type);
   const auto normalized =
-      normalize_rv64_branch_predicate(select.predicate, select.lhs, select.rhs);
-  if (!normalized.has_value()) {
-    return std::nullopt;
-  }
-  const auto funct3 = rv64_branch_funct3(normalized->opcode);
-  if (!funct3.has_value()) {
+      floating_condition
+          ? std::optional<Rv64NormalizedBranchPredicate>{}
+          : normalize_rv64_branch_predicate(select.predicate, select.lhs, select.rhs);
+  const auto funct3 =
+      normalized.has_value() ? rv64_branch_funct3(normalized->opcode)
+                             : std::optional<std::uint32_t>{};
+  if ((!floating_condition &&
+       (!normalized.has_value() || !funct3.has_value())) ||
+      (floating_condition &&
+       (select.compare_type != select.lhs.type ||
+        select.compare_type != select.rhs.type))) {
     return std::nullopt;
   }
   const auto size_bytes =
@@ -7925,33 +8019,47 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
       rv64_select_local_label(function_name, block_label, instruction_index, "end");
 
   RiscvEncodedFragment fragment;
-  if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
-                                                               28,
-                                                               stack_layout,
-                                                               names,
-                                                               lookups,
-                                                               function_name,
-                                                               block_label,
-                                                               block,
-                                                               instruction_index,
-                                                               normalized->lhs,
-                                                               stack_frame_bytes,
-                                                               recursion_depth) ||
-      !append_rv64_move_value_or_same_block_select_to_register(fragment,
-                                                               29,
-                                                               stack_layout,
-                                                               names,
-                                                               lookups,
-                                                               function_name,
-                                                               block_label,
-                                                               block,
-                                                               instruction_index,
-                                                               normalized->rhs,
-                                                               stack_frame_bytes,
-                                                               recursion_depth)) {
-    return std::nullopt;
+  if (floating_condition) {
+    if (!append_rv64_fp_compare_to_register(fragment,
+                                           names,
+                                           lookups,
+                                           select.predicate,
+                                           select.compare_type,
+                                           select.lhs,
+                                           select.rhs,
+                                           28)) {
+      return std::nullopt;
+    }
+    append_rv64_local_branch(fragment, 1, 28, 0, true_label);
+  } else {
+    if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                                 28,
+                                                                 stack_layout,
+                                                                 names,
+                                                                 lookups,
+                                                                 function_name,
+                                                                 block_label,
+                                                                 block,
+                                                                 instruction_index,
+                                                                 normalized->lhs,
+                                                                 stack_frame_bytes,
+                                                                 recursion_depth) ||
+        !append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                                 29,
+                                                                 stack_layout,
+                                                                 names,
+                                                                 lookups,
+                                                                 function_name,
+                                                                 block_label,
+                                                                 block,
+                                                                 instruction_index,
+                                                                 normalized->rhs,
+                                                                 stack_frame_bytes,
+                                                                 recursion_depth)) {
+      return std::nullopt;
+    }
+    append_rv64_local_branch(fragment, *funct3, 28, 29, true_label);
   }
-  append_rv64_local_branch(fragment, *funct3, 28, 29, true_label);
   if (floating_result) {
     if (!append_rv64_move_floating_value_or_same_block_select_to_fpr(
             fragment,

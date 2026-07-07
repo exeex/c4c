@@ -8241,6 +8241,62 @@ prepare::PreparedBirModule make_prepared_f64_ordinary_select_stack_result_module
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_f32_fpr_predicate_ordinary_select_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("float_min1");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%p.a");
+  const auto rhs_name = prepared.names.value_names.intern("%p.b");
+  const auto result_name = prepared.names.value_names.intern("%t8");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Slt,
+                  .result = bir::Value::named(bir::TypeKind::F32, "%t8"),
+                  .compare_type = bir::TypeKind::F32,
+                  .lhs = bir::Value::named(bir::TypeKind::F32, "%p.a"),
+                  .rhs = bir::Value::named(bir::TypeKind::F32, "%p.b"),
+                  .true_value = bir::Value::named(bir::TypeKind::F32, "%p.a"),
+                  .false_value = bir::Value::named(bir::TypeKind::F32, "%p.b"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "float_min1",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, lhs_name, 1, "fa0", 10),
+              make_fpr_home(function_name, rhs_name, 2, "fa1", 11),
+              make_fpr_home(function_name, result_name, 3, "ft0", 0),
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_nested_i32_ordinary_select_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -17529,6 +17585,49 @@ int builds_prepared_f64_ordinary_select_materialization_object() {
   return 0;
 }
 
+int builds_prepared_f32_fpr_predicate_ordinary_select_materialization_object() {
+  const auto prepared =
+      make_prepared_f32_fpr_predicate_ordinary_select_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected prepared F32 FPR-predicate ordinary select RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "float_min1");
+  const auto* true_label =
+      object::find_symbol(*module, ".Lfloat_min1_entry_select_0_true");
+  const auto* end_label =
+      object::find_symbol(*module, ".Lfloat_min1_entry_select_0_end");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      end_label == nullptr || text->bytes.empty() ||
+      function->size_bytes != text->bytes.size()) {
+    return fail("expected prepared F32 FPR-predicate ordinary select object labels");
+  }
+  if (!contains_u32(text->bytes, 0xa0b51e53) ||  // flt.s t3, fa0, fa1
+      !contains_u32(text->bytes, 0x20b58053) ||  // fmv.s ft0, fa1
+      !contains_u32(text->bytes, 0x20a50053)) {  // fmv.s ft0, fa0
+    return fail("expected F32 FPR-predicate select to compare FPRs and move selected FPR payloads");
+  }
+  bool saw_condition_branch = false;
+  bool saw_jump_relocation = false;
+  for (const auto& relocation : module->relocations) {
+    if (relocation.type == R_RISCV_BRANCH &&
+        relocation.symbol == true_label->id) {
+      saw_condition_branch = true;
+    }
+    saw_jump_relocation =
+        saw_jump_relocation ||
+        (relocation.type == R_RISCV_JAL && relocation.symbol == end_label->id);
+  }
+  if (!saw_condition_branch || !saw_jump_relocation) {
+    return fail("expected F32 FPR-predicate select branch and jump relocations");
+  }
+  return 0;
+}
+
 int materializes_nested_i32_ordinary_select_without_intermediate_home_object() {
   const auto prepared = make_prepared_nested_i32_ordinary_select_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -23240,6 +23339,8 @@ int main() {
   status |= builds_prepared_normalized_sle_select_materialization_object();
   status |= builds_prepared_small_integer_ordinary_select_materialization_objects();
   status |= builds_prepared_f64_ordinary_select_materialization_object();
+  status |=
+      builds_prepared_f32_fpr_predicate_ordinary_select_materialization_object();
   status |=
       materializes_nested_i32_ordinary_select_without_intermediate_home_object();
   status |=
