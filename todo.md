@@ -1,56 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/564_bir_scalar_local_memory_semantic_admission_followup.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Prove IEEE Representatives After Unordered Compare Work
+Current Step ID: 8
+Current Step Title: Broader Validation And Closure Decision
 
 # Current Packet
 
 ## Just Finished
 
-Step 7 - Prove IEEE Representatives After Unordered Compare Work completed as a
-no-code proof packet. Step 6 is complete by the Step 5 representation decision:
-`fcmp uno` remains an explicit fail-closed scalar/local-memory owner-boundary
-rejection through the current `unordered-float-compare scalar/local-memory
-semantic family` diagnostic, rather than being lowered into an existing
-integer-style BIR comparison opcode.
+Step 8 - Broader Validation And Closure Decision completed as a bookkeeping
+and proof packet. The backend acceptance subset remains green after the Step 5
+representation decision and Step 6 fail-closed owner-boundary behavior for
+`fcmp uno`.
 
-After that decision, all four affected IEEE representatives still advance to
-the same narrow owner-boundary diagnostic:
+Recorded closure-decision evidence:
 
-- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8.c`: latest function failure:
-  semantic lir_to_bir function `test_isunordered` failed in
-  `unordered-float-compare scalar/local-memory semantic family`.
-- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8f.c`: latest function failure:
-  semantic lir_to_bir function `test_isunordered` failed in
-  `unordered-float-compare scalar/local-memory semantic family`.
-- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8l.c`: latest function failure:
-  semantic lir_to_bir function `test_isunordered` failed in
-  `unordered-float-compare scalar/local-memory semantic family`.
-- `tests/c/external/gcc_torture/src/ieee/pr38016.c`: latest function failure:
-  semantic lir_to_bir function `test_isunordered` failed in
-  `unordered-float-compare scalar/local-memory semantic family`.
+- Backend proof is green with `100% tests passed, 0 tests failed out of 346`.
+- The supervisor attempted broader `^(backend_|string_authority_guard$)`
+  validation.
+- That broader validation failed only in `string_authority_guard` with
+  authority findings at:
+  - `src/backend/bir/lir_to_bir/lowering.hpp:512 PendingScalarPhiProducerMap`
+  - `src/backend/bir/lir_to_bir/lowering.hpp:1519 BirFunctionLowerer::loaded_local_integer_pointer_values_`
+  - `src/backend/prealloc/stack_layout/alloca_coalescing.cpp:16 SlotTypeMap`
+- The authority-check failure is recorded as a closure risk outside this
+  packet's code changes; this packet did not create a separate
+  authority-classification idea or lifecycle transition.
 
-No source, test, expectation, unsupported marker, allowlist, or lowering
-behavior changes were made.
+No implementation, tests, expectations, unsupported markers, allowlists,
+scripts/string_authority_classifications.json, `plan.md`, or source idea files
+were changed.
 
 ## Suggested Next
 
-Next packet should execute Step 8 - Broader Validation And Closure Decision:
-run the supervisor-selected broader validation, then route to plan-owner for the
-closure/continue decision based on the active source idea and proof state.
+Next packet should route to plan-owner for the source-idea closure/continue
+decision, using the green backend proof and the broader
+`string_authority_guard` failure as explicit closure-decision evidence.
 
 ## Watchouts
 
-- This packet intentionally made no source, test, expectation, unsupported
-  marker, allowlist, or lowering-behavior changes.
-- Do not add a raw `Uno` `BinaryOpcode` without updating all comparison
-  classifiers, route records, constant evaluators, and target emitters that
-  currently assume compare opcodes are simple integer-style predicates.
-- Do not map `fcmp uno` to `Ne`; that would erase NaN/unordered semantics and
-  would be a semantic overfit.
-- `ord` and `ueq` remain nearby predicate-family questions; keep any future
-  decision predicate-family based and covered by focused tests.
+- The broader validation issue is authority-classification state, not a failed
+  backend subset or an implementation change from this packet.
+- Leave any lifecycle decision for the authority findings to supervisor or
+  plan-owner; this executor packet intentionally did not create a separate
+  idea.
+- `fcmp uno` remains an explicit fail-closed scalar/local-memory
+  owner-boundary rejection through `unordered-float-compare scalar/local-memory
+  semantic family`.
 
 ## Proof
 
@@ -60,10 +56,10 @@ Result: pass. CTest reported `100% tests passed, 0 tests failed out of 346`.
 
 Proof log: `test_after.log`.
 
-Direct diagnostics also run with:
+Broader supervisor-attempted validation:
 
-`build/c4cll --codegen asm --target riscv64-linux-gnu <representative>`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)'`
 
-Each representative failed at `test_isunordered` with
-`unordered-float-compare scalar/local-memory semantic family`, matching the
-selected Step 6 fail-closed owner-boundary rejection.
+Result: failed only in `string_authority_guard` with the authority findings
+listed above. This is recorded as closure-decision evidence; the delegated
+proof log remains the fresh backend proof in `test_after.log`.
