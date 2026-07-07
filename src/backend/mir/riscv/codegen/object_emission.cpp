@@ -5132,6 +5132,57 @@ bool append_rv64_compare_registers_to_register(
   }
 }
 
+std::optional<std::uint32_t> rv64_fp_compare_funct7(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::F32:
+      return 0x50;
+    case c4c::backend::bir::TypeKind::F64:
+      return 0x51;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::BinaryInst& binary) {
+  if (binary.result.type != c4c::backend::bir::TypeKind::I32 ||
+      binary.operand_type != binary.lhs.type ||
+      binary.operand_type != binary.rhs.type ||
+      (binary.opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Ne)) {
+    return std::nullopt;
+  }
+  const auto funct7 = rv64_fp_compare_funct7(binary.operand_type);
+  if (!funct7.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* destination_home = prepared_value_home_for(names, lookups, binary.result);
+  const auto* lhs_home = prepared_value_home_for(names, lookups, binary.lhs);
+  const auto* rhs_home = prepared_value_home_for(names, lookups, binary.rhs);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  const auto lhs =
+      lhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*lhs_home);
+  const auto rhs =
+      rhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*rhs_home);
+  if (!destination.has_value() || !lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_r_type(0x53, *destination, 2, *lhs, *rhs, *funct7));
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Ne) {
+    append_le32(fragment.bytes,
+                encode_i_type(0x13, *destination, 4, *destination, 1));
+  }
+  return fragment;
+}
+
 bool append_rv64_materialize_cast_dependency_authority(
     RiscvEncodedFragment& fragment,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord& record,
@@ -8828,6 +8879,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
             fragment.has_value()) {
           return fragment;
         }
+        if (auto fragment = fragment_for_prepared_fp_compare_publication(
+                prepared.names,
+                &lookups,
+                *binary);
+            fragment.has_value()) {
+          return fragment;
+        }
       }
       auto fragment = fragment_for_prepared_binary(prepared.stack_layout,
                                                    prepared.names,
@@ -9348,6 +9406,10 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                                  instruction_index,
                                                                  *binary,
                                                                  stack_frame_bytes) &&
+      !fragment_for_prepared_fp_compare_publication(names,
+                                                    &lookups,
+                                                    *binary)
+           .has_value() &&
       !fragment_for_prepared_binary(stack_layout,
                                     names,
                                     &lookups,
