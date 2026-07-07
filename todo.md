@@ -1,44 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/584_rv64_stack_destination_move_bundle_authority_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Rerun The 579 Representative Route
+Current Step ID: 6
+Current Step Title: Broader Backend Regression Guard
 
 # Current Packet
 
 ## Just Finished
 
-Step 5: Rerun The 579 Representative Route completed for the representative
-test `llvm_gcc_c_torture_src_20000605_1_c`
-(`tests/c/external/gcc_torture/src/20000605-1.c`).
+Step 6: Broader Backend Regression Guard completed for the prepared/RV64
+object-emission authority work.
 
 Changed files:
 - `todo.md`
 - `test_after.log`
 
 Result:
-- The representative route passed.
-- `producer_authority_missing_for_register_fan_in_stack_destination` does not
-  appear in `test_after.log`.
-- Because the representative passed without that diagnostic, it advanced past
-  the old stack-destination fan-in blocker.
+- The broader backend validation command passed.
+- Existing genuinely ambiguous stack-destination bundles remain fail-closed
+  based on the covered backend tests; the validation did not require expectation
+  downgrades or testcase-shaped bypasses.
+- The active runbook appears ready for plan-owner closure review.
 
 ## Suggested Next
 
-Supervisor owns the next routing decision. If Step 5 exhausts the runbook,
-delegate plan-owner review/closure decision next.
+Delegate plan-owner review/closure decision for the active runbook.
 
 ## Watchouts
 
-- This packet did not touch implementation files or tests; it only reran the
-  delegated representative route and recorded the result.
-- No current executor blocker remains for this representative test.
+- This packet did not touch implementation files, tests, `plan.md`, source
+  ideas, or `test_before.log`; it only ran the delegated backend validation and
+  recorded the result.
+- No current executor blocker remains for Step 6.
 
 ## Proof
 
 Ran exactly:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_20000605_1_c$'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the proof output; CTest reports
-`100% tests passed, 0 tests failed out of 1` and
-`Total Test time (real) =   0.10 sec`.
+`100% tests passed, 0 tests failed out of 346` and
+`Total Test time (real) =   1.96 sec`.
