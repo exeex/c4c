@@ -12,7 +12,9 @@
 #include "../../../prealloc/prepared_contract_verifier.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 
 namespace c4c::backend::riscv::codegen {
@@ -1779,6 +1781,53 @@ std::optional<std::uint32_t> rv64_f64_binary_funct7(
 }
 
 
+std::optional<std::uint32_t> choose_f64_binary_scratch_fpr(
+    std::initializer_list<std::optional<std::uint32_t>> occupied) {
+  constexpr std::uint32_t candidates[] = {5, 6, 7, 28, 29, 30, 31};
+  for (const auto candidate : candidates) {
+    bool available = true;
+    for (const auto value : occupied) {
+      if (value.has_value() && *value == candidate) {
+        available = false;
+        break;
+      }
+    }
+    if (available) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+
+std::optional<std::uint32_t> materialize_f64_binary_operand(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::uint32_t scratch_fpr,
+    std::uint32_t scratch_gpr) {
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  if (home != nullptr) {
+    return fpr_register_number_for_home(*home);
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      value.type != c4c::backend::bir::TypeKind::F64) {
+    return std::nullopt;
+  }
+  std::int64_t bits = 0;
+  std::memcpy(&bits, &value.immediate_bits, sizeof(bits));
+  append_rv64_load_immediate(fragment,
+                             scratch_gpr,
+                             bits);
+  if (!append_rv64_gpr_to_fpr_move(
+          fragment, scratch_fpr, scratch_gpr, value.type)) {
+    return std::nullopt;
+  }
+  return scratch_fpr;
+}
+
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_f64_binary(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -1795,19 +1844,43 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_f64_binary(
   }
 
   const auto* destination_home = prepared_value_home_for(names, lookups, binary.result);
-  const auto* lhs_home = prepared_value_home_for(names, lookups, binary.lhs);
-  const auto* rhs_home = prepared_value_home_for(names, lookups, binary.rhs);
   const auto destination =
       destination_home == nullptr ? std::nullopt : fpr_register_number_for_home(*destination_home);
-  const auto lhs =
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+  const auto* lhs_home = prepared_value_home_for(names, lookups, binary.lhs);
+  const auto* rhs_home = prepared_value_home_for(names, lookups, binary.rhs);
+  const auto lhs_home_register =
       lhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*lhs_home);
-  const auto rhs =
+  const auto rhs_home_register =
       rhs_home == nullptr ? std::nullopt : fpr_register_number_for_home(*rhs_home);
-  if (!destination.has_value() || !lhs.has_value() || !rhs.has_value()) {
+  const auto lhs_scratch = choose_f64_binary_scratch_fpr(
+      {*destination, lhs_home_register, rhs_home_register});
+  const auto rhs_scratch = choose_f64_binary_scratch_fpr(
+      {*destination, lhs_home_register, rhs_home_register, lhs_scratch});
+  if (!lhs_scratch.has_value() || !rhs_scratch.has_value()) {
     return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
+  const auto lhs =
+      materialize_f64_binary_operand(fragment,
+                                     names,
+                                     lookups,
+                                     binary.lhs,
+                                     *lhs_scratch,
+                                     28);
+  const auto rhs =
+      materialize_f64_binary_operand(fragment,
+                                     names,
+                                     lookups,
+                                     binary.rhs,
+                                     *rhs_scratch,
+                                     29);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
   append_le32(fragment.bytes,
               encode_r_type(0x53, *destination, 0, *lhs, *rhs, *funct7));
   return fragment;

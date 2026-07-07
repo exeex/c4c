@@ -6912,6 +6912,73 @@ prepare::PreparedBirModule make_prepared_scalar_fpr_binary_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_f64_immediate_binary_module(
+    bool lhs_immediate) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("fp_binary");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto result_name = prepared.names.value_names.intern("%result");
+  const auto lhs = lhs_immediate
+                       ? bir::Value::immediate_f64_bits(0x3ff0000000000000ULL)
+                       : bir::Value::named(bir::TypeKind::F64, "%lhs");
+  const auto rhs = lhs_immediate
+                       ? bir::Value::named(bir::TypeKind::F64, "%rhs")
+                       : bir::Value::immediate_f64_bits(0x3ff0000000000000ULL);
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::SDiv,
+                  .result = bir::Value::named(bir::TypeKind::F64, "%result"),
+                  .operand_type = bir::TypeKind::F64,
+                  .lhs = lhs,
+                  .rhs = rhs,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fp_binary",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  auto homes = std::vector<prepare::PreparedValueHome>{
+      make_fpr_home(function_name, result_name, 1, "ft0", 0),
+  };
+  if (lhs_immediate) {
+    homes.push_back(make_fpr_home(function_name, rhs_name, 2, "fa1", 11));
+  } else {
+    homes.push_back(make_fpr_home(function_name, lhs_name, 2, "fa0", 10));
+  }
+  for (auto& home : homes) {
+    home.size_bytes = 8;
+    home.align_bytes = 8;
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = std::move(homes),
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -15818,10 +15885,10 @@ int builds_prepared_scalar_divrem_object() {
 }
 
 int builds_prepared_scalar_f64_binary_object() {
-  const auto prepared =
+  auto prepared =
       make_prepared_scalar_fpr_binary_module(bir::BinaryOpcode::SDiv,
                                              bir::TypeKind::F64);
-  const auto result =
+  auto result =
       rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
   if (!result.module.has_value()) {
     return fail("expected prepared scalar fdiv.d RV64 object module to build, got `" +
@@ -15844,6 +15911,48 @@ int builds_prepared_scalar_f64_binary_object() {
   }
   if (!module.relocations.empty()) {
     return fail("expected scalar fdiv.d object to need no relocations");
+  }
+
+  prepared = make_prepared_scalar_f64_immediate_binary_module(true);
+  result = rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar fdiv.d lhs-immediate RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  text = object::find_section(*result.module, ".text");
+  function = object::find_symbol(*result.module, "fp_binary");
+  if (text == nullptr || function == nullptr || text->bytes.size() < 16 ||
+      function->size_bytes != text->bytes.size()) {
+    return fail("expected prepared scalar fdiv.d lhs-immediate object text layout");
+  }
+  if (!contains_u32(text->bytes, 0xf20e02d3) ||
+      !contains_u32(text->bytes, 0x1ab28053) ||
+      read_u32(text->bytes, text->bytes.size() - 4) != 0x00008067) {
+    return fail("expected lhs F64 immediate materialization before fdiv.d");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected scalar fdiv.d lhs-immediate object to need no relocations");
+  }
+
+  prepared = make_prepared_scalar_f64_immediate_binary_module(false);
+  result = rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar fdiv.d rhs-immediate RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  text = object::find_section(*result.module, ".text");
+  function = object::find_symbol(*result.module, "fp_binary");
+  if (text == nullptr || function == nullptr || text->bytes.size() < 16 ||
+      function->size_bytes != text->bytes.size()) {
+    return fail("expected prepared scalar fdiv.d rhs-immediate object text layout");
+  }
+  if (!contains_u32(text->bytes, 0xf20e8353) ||
+      !contains_u32(text->bytes, 0x1a650053) ||
+      read_u32(text->bytes, text->bytes.size() - 4) != 0x00008067) {
+    return fail("expected rhs F64 immediate materialization before fdiv.d");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected scalar fdiv.d rhs-immediate object to need no relocations");
   }
   return 0;
 }
