@@ -1,40 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/576_rv64_pr56982_post_carrier_runtime_mismatch.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce post-carrier runtime mismatch and collect evidence
+Current Step ID: 2
+Current Step Title: Identify the first post-carrier semantic owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: reproduced the fresh `src/pr56982.c` RV64 object-route
-post-carrier runtime mismatch and saved route plus prepared-BIR evidence under
-`build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/`.
+Completed Step 2: identified the first post-carrier semantic owner for
+`src/pr56982.c` as RV64 prepared/object emission materialization for a
+symbol-address value with a persistent callee-saved register home.
 
-Route command:
-`cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=/usr/bin/clang -DQEMU_RISCV64=/usr/bin/qemu-riscv64 -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/pr56982.c -DROOT=/workspaces/c4c/tests/c/external/gcc_torture -DTARGET_TRIPLE=riscv64-linux-gnu -DSYSROOT=/usr/riscv64-linux-gnu -DOUT_CLANG_BIN=/workspaces/c4c/build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/c4c.bin -DCASE_TIMEOUT_SEC=20 -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`
+Owner:
+- Function: `f`
+- Source operation path: `int x = setjmp(env); ... longjmp(env, 42);`
+- Prepared value: global symbol address `@env`, value id `6`
+- Prepared location: `home @env value_id=6 kind=register reg=s1`
+- Failing callsite: `longjmp(ptr @env, i32 42)`, prepared block index `6`,
+  instruction index `0`
 
-Artifacts:
-- Route command: `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/object-route.cmd`
-- Route rc: `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/object-route.rc` (`1`)
-- Route stdout: `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/object-route.out`
-- Route stderr: `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/object-route.err`
-- Merged route log: `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/object-route.log`
-- Generated binaries/objects: `clang.bin`, `c4c.o`, `c4c.bin` in the same directory
-- Prepared-BIR command: `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step1/src_pr56982.c/dump-prepared-bir.cmd`
-- Prepared-BIR rc/stdout/stderr: `dump-prepared-bir.rc` (`0`), `dump-prepared-bir.txt`, `dump-prepared-bir.err`
+Evidence:
+- Owner notes:
+  `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/owner-notes.md`
+- c4c disassembly:
+  `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/c4c.bin.objdump.txt`
+- c4c object disassembly:
+  `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/c4c.o.objdump.txt`
+- clang reference disassembly:
+  `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/clang.bin.objdump.txt`
+- qemu runtime trace:
+  `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/qemu-in-asm-cpu.trace`
+- qemu strace:
+  `build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/qemu-strace.err`
 
-Current symptom: `[RV64_BACKEND_RUNTIME_MISMATCH]` with `clang_exit=0` and
-`c4c_exit=Segmentation fault`; both outputs are empty in the route log. The old
-inline asm carrier compile diagnostic is absent from the route log, and the
-prepared dump still records the inline asm carrier evidence for later tracing.
+Finding: prepared-BIR records `@env` as `s1` and asks call preservation to keep
+that value across `_setjmp`, `g`, and `longjmp`, but generated c4c code only
+materializes `&env` into `a0` for `_setjmp`. It never initializes `s1` with the
+symbol address. The later `longjmp` path emits `mv a0,s1`, so qemu enters libc
+`longjmp` with `a0=1`, `a1=42`, `s1=1` and then faults with
+`SIGSEGV si_addr=0x00000000000000d1`.
+
+Recommended implementation surface: RV64 object emission/call argument
+materialization for symbol-address values whose prepared home is a register,
+especially callee-saved homes used as preserved values across calls. This
+appears local to the active idea, not a separate durable initiative.
 
 ## Suggested Next
 
-Execute Step 2: inspect the saved Step 1 route artifacts and prepared-BIR dump
-to identify the first post-carrier semantic owner of the c4c segfault/runtime
-mismatch.
+Execute Step 3: add focused RV64 backend proof for the symbol-address register
+home owner without matching `src/pr56982.c` by name. The proof should expose
+that a global symbol address used across multiple calls must not source a later
+call argument from an uninitialized callee-saved register home.
 
 ## Watchouts
 
@@ -42,12 +59,23 @@ mismatch.
 - Do not use filename-specific handling for `src/pr56982.c`.
 - Do not claim progress from expectation rewrites, unsupported-marker edits,
   allowlist changes, or runtime comparison changes.
+- The observed c4c fault is explained before any general setjmp/longjmp
+  semantic modeling issue: the immediate bad fact is `longjmp` receiving
+  `a0=1` instead of `&env`.
+- The clang reference rematerializes `&env` for both `_setjmp` and `longjmp`;
+  c4c rematerializes it only for `_setjmp`.
 
 ## Proof
 
-Step 1 reproduction proof ran the saved RV64 object route command in
-`object-route.cmd`; result was the expected failing route rc `1` with
-`RV64_BACKEND_RUNTIME_MISMATCH`. Supporting prepared-BIR dump ran with
-`build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr56982.c`
-and exited `0`. No root `test_after.log` was produced because this packet was
-evidence-only and the delegated proof requested per-case route artifacts.
+Step 2 proof was evidence inspection plus generated artifact capture under
+`build/agent_state/576_rv64_pr56982_post_carrier_runtime_mismatch/step2/src_pr56982.c/`.
+Commands used:
+- `riscv64-linux-gnu-objdump -dr .../c4c.o`
+- `riscv64-linux-gnu-objdump -dr .../c4c.bin`
+- `riscv64-linux-gnu-objdump -dr .../clang.bin`
+- `timeout 20 qemu-riscv64 -L /usr/riscv64-linux-gnu -strace .../c4c.bin`
+- `timeout 20 qemu-riscv64 -L /usr/riscv64-linux-gnu -d in_asm,cpu -D .../qemu-in-asm-cpu.trace .../c4c.bin`
+
+Both qemu runs exited `139`, reproducing the segfault. No root
+`test_after.log` was produced because this was an evidence/classification
+packet and the delegated proof requested Step 2 artifacts.
