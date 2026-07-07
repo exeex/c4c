@@ -177,7 +177,85 @@ Completion check:
   `scalar/local-memory semantic family` diagnostic because semantic facts are
   produced or rejected fail-closed correctly.
 
-### Step 5: Broader Validation And Closure Decision
+### Step 5: Decide Unordered Floating Compare Representation
+
+Goal: Choose and encode the scalar/local-memory semantic representation for
+unordered floating compare predicates such as `fcmp uno`.
+
+Primary targets:
+- `src/backend/bir/lir_to_bir/memory/coordinator.cpp`
+- `src/backend/bir/lir_to_bir/scalar.cpp`
+- Focused BIR semantic admission tests under `tests/backend/bir/`
+- Nearby predicate coverage for `uno`, `ord`, and `ueq` only when the same
+  representation decision requires it
+
+Actions:
+- Inspect the existing BIR comparison representation and scalar compare
+  lowering path before adding new behavior.
+- Decide whether unordered predicates need a new BIR semantic opcode/fact,
+  a structured lowering sequence, or an explicit unsupported diagnostic at the
+  scalar/local-memory boundary.
+- Add focused coverage for the representation decision without naming IEEE
+  filenames as the semantic trigger.
+- Preserve the narrower fail-closed diagnostic for predicates or operand
+  shapes that still lack a valid representation.
+
+Completion check:
+- The unordered floating compare representation decision is documented by
+  focused tests and code behavior, and `fcmp uno` no longer stops at a missing
+  generic BIR comparison opcode/fact unless the chosen owner-level decision is
+  explicit rejection.
+
+### Step 6: Lower Or Reject `fcmp uno` At The Owner Boundary
+
+Goal: Implement the selected scalar/local-memory lowering or fail-closed
+rejection behavior for `fcmp uno`.
+
+Primary targets:
+- `src/backend/bir/lir_to_bir/memory/coordinator.cpp`
+- `src/backend/bir/lir_to_bir/scalar.cpp`
+- Narrow helpers that own BIR comparison facts or predicate mapping
+
+Actions:
+- Implement the smallest semantic lowering or rejection rule required by the
+  Step 5 representation decision.
+- Keep ordered comparisons and existing scalar/local-memory comparisons on
+  their current supported paths.
+- Do not map `uno` onto an ordered comparison opcode unless the resulting BIR
+  semantics explicitly preserve unordered floating behavior.
+- Keep malformed, unsupported, or not-yet-represented unordered predicates
+  fail-closed with a diagnostic that names the unordered float compare
+  boundary.
+
+Completion check:
+- Focused BIR/backend coverage passes for the selected `fcmp uno` behavior.
+- The affected IEEE representatives either advance beyond
+  `unordered-float-compare scalar/local-memory semantic family` or stop at a
+  newly justified downstream owner boundary.
+
+### Step 7: Prove IEEE Representatives After Unordered Compare Work
+
+Goal: Verify the affected IEEE rows advance because unordered floating compare
+semantics are represented or rejected at the correct owner boundary.
+
+Primary targets:
+- `src/ieee/fp-cmp-8.c`
+- `src/ieee/fp-cmp-8f.c`
+- `src/ieee/fp-cmp-8l.c`
+- `src/ieee/pr38016.c`
+
+Actions:
+- Run the supervisor-selected proof subset for the target representatives.
+- Compare nearby same-family rows where practical so proof is not
+  testcase-shaped.
+- Record any remaining downstream owner boundary in `todo.md`; create or
+  request a separate idea only if it is outside this source idea.
+
+Completion check:
+- The affected representatives pass or advance beyond the unordered floating
+  compare scalar/local-memory diagnostic for semantic reasons.
+
+### Step 8: Broader Validation And Closure Decision
 
 Goal: Decide whether the scalar/local-memory source idea is complete or needs a
 follow-up runbook.

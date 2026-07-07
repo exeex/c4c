@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/564_bir_scalar_local_memory_semantic_admission_followup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove IEEE Representatives And Route Downstream Failures
+Current Step ID: 5
+Current Step Title: Decide Unordered Floating Compare Representation
 
 # Current Packet
 
@@ -34,10 +34,16 @@ semantic representation/lowering decision for unordered predicates such as
 
 ## Suggested Next
 
-Execute the next scalar/local-memory semantic representation packet for
-unordered floating compare predicates. The packet should make an owner-level
-decision for representing or lowering `fcmp uno` rather than mapping it onto an
-existing ordered comparison opcode.
+Plan-owner lifecycle review decision: continue within this source idea rather
+than move to closure. Step 4 proved that the representatives advanced to a
+narrower same-owner boundary, but the source idea still calls for repairing the
+semantic producer or lowering rule responsible for the scalar/local-memory
+diagnostics.
+
+Next executable packet is Step 5 - Decide Unordered Floating Compare
+Representation. The packet should make an owner-level decision for representing
+or lowering `fcmp uno` rather than mapping it onto an existing ordered
+comparison opcode.
 
 ## Watchouts
 
