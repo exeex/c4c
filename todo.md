@@ -1,49 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/580_rv64_scalar_compare_publication.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Implement Semantic Compare Publication
+Current Step ID: Step 4
+Current Step Title: Prove Representative Route Advancement
 
 # Current Packet
 
 ## Just Finished
 
-Finished the `plan.md` Step 3 follow-up for the simple representative gap:
-ordinary F32/F64 `eq`/`ne` compare publication now accepts a materializable
-floating zero immediate operand in addition to prepared FPR-home operands.
+Re-executed `plan.md` Step 4 representative RV64 object-route proof after the
+zero-immediate compare-publication follow-up.
 
-The RV64 object-emission repair is semantic: it recognizes zero F32/F64 BIR
-immediates by type and immediate bits, materializes zero through a scratch GPR
-and scratch FPR, then emits the existing `feq.s`/`feq.d` plus `xori` path for
-`ne`. It does not match testcase names, source file names, route logs, ordered
-compares, or arbitrary nonzero floating constants.
+`tests/c/external/gcc_torture/src/20080529-1.c` now advances past the previous
+`unsupported_scalar_compare_publication` owner. The route exits `1` and now
+stops at a later owner:
+`unsupported_call_abi`, `function=main`, `instruction_index=0`,
+`callee=test`, `result=i32 %t0`.
 
-Focused coverage now includes an F32 compare publication fixture matching the
-`%lhs != 0.0f` shape that blocked `src/20080529-1.c`.
+`tests/c/external/gcc_torture/src/loop-8.c` also stays past
+`unsupported_scalar_compare_publication`. The route exits `1` and still stops
+at the later pre-terminator move-bundle owner:
+`unsupported_move_bundle_target_shape`,
+`fragment_status=generic_move_bundle_materialization_failed`, `function=bar`,
+`block_label=logic.rhs.end.3`, `instruction_index=0`.
+
+Prepared dumps were rerun for both representatives and both returned `0`.
 
 ## Suggested Next
 
-Rerun `plan.md` Step 4 representative route proof for `src/20080529-1.c` and
-`src/loop-8.c` to confirm the simple route now advances past
-`unsupported_scalar_compare_publication` and to re-record the current later
-owner, if any.
+Proceed to supervisor review of whether Step 4 satisfies the route-advancement
+gate, then choose either closure-readiness validation for this idea or a new
+packet for the later `unsupported_call_abi`/move-bundle owners if those belong
+inside the active source idea.
 
 ## Watchouts
 
-- Zero-immediate materialization requires an available temporary GPR; fully
-  occupied temporary-GPR shapes still fail closed.
-- The implementation intentionally stays limited to F32/F64 `eq`/`ne`
-  publication. Ordered compares and nonzero floating immediates remain outside
-  this packet.
-- The previous Step 4 proof found `src/loop-8.c` already advanced to a later
-  pre-terminator move-bundle owner; this packet did not rerun per-case routes.
+- Neither representative route passes yet; both now fail on later non-compare
+  owners.
+- This packet did not touch source, tests, `plan.md`, or source idea files.
+- The untracked `ideas/open/583_rv64_pointer_arithmetic_result_publication.md`
+  remains unrelated and untouched.
 
 ## Proof
 
-Command:
+Commands/artifacts:
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`
+- Build freshness check: `cmake --build --preset default --target c4cll`
+  returned `0` (`ninja: no work to do`).
+- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_20080529-1.c/object-route.cmd`
+  returned `1`; stdout/stderr/merged log are saved as `object-route.out`,
+  `object-route.err`, and `object-route.log` in the same directory.
+- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_20080529-1.c/dump-prepared-bir.cmd`
+  returned `0`; dump artifacts are saved as `dump-prepared-bir.txt`,
+  `dump-prepared-bir.err`, and `dump-prepared-bir.rc` in the same directory.
+- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_loop-8.c/object-route.cmd`
+  returned `1`; stdout/stderr/merged log are saved as `object-route.out`,
+  `object-route.err`, and `object-route.log` in the same directory.
+- `build/agent_state/580_rv64_scalar_compare_publication/step4b/src_loop-8.c/dump-prepared-bir.cmd`
+  returned `0`; dump artifacts are saved as `dump-prepared-bir.txt`,
+  `dump-prepared-bir.err`, and `dump-prepared-bir.rc` in the same directory.
 
-Result: passed. The focused RV64 object-emission subset ran
-`backend_riscv_object_emission`, 1 test, 0 failed. Proof log:
-`test_after.log`.
+No root `test_after.log` was produced because the delegated proof requested
+per-case route artifacts under `step4b/`.
