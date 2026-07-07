@@ -9,22 +9,20 @@ Current Step Title: Step 2 follow-up / Step 3 remaining rows - Scalar-Control-Fl
 ## Just Finished
 
 Step 2 follow-up / Step 3 remaining rows - Scalar-Control-Flow RV64
-Same-Family Repair: repaired the next canonical-select producer shape exposed
-by `src/20080502-1.c` / `foo`. The scalar-control-flow canonical select path
-now admits the F128 signbit-style prelude used by the row: `fp128` to `i128`
-bitcast, `i128` shift, trunc/compare condition, an `fpext` false arm, and a
-raw `0xL...` F128 literal true arm. The generic PHI planner gate was removed
-from the already-recognized canonical select route because that route consumes
-its single select PHI itself and the generic planner is still an
-integer/aggregate CFG planner.
+Same-Family Repair: repaired the next generic CFG PHI admission blocker exposed
+by `src/930614-1.c` / `main`. The scalar-control-flow PHI planner now admits
+all scalar/function-pointer BIR value types through the existing
+`lower_scalar_or_function_pointer_type` carrier instead of only integer PHIs.
+This admits the row's `phi double` join while preserving existing pointer PHI
+behavior such as `@g`/`null` joins.
 
-Touched adjacent `src/backend/bir/lir_to_bir/scalar.cpp` because investigation
-proved the canonical select scalar helper was the true owner for entry-prelude
-casts/binops and chain arm casts. Kept F128 literal parsing local to canonical
-select so closed scalar-binop F128 constant behavior remains unchanged.
+Added focused `backend_lir_to_bir_notes` coverage for a generic F64 PHI join.
+The fixture intentionally uses two PHIs so it exercises the generic CFG PHI
+planner rather than the canonical-select fast path.
 
-The current RV64 representatives now show two rows advanced beyond the original
-scalar-control-flow admission diagnostic:
+The current RV64 representatives now show the target row and several nearby
+same-family rows advanced beyond their original scalar-control-flow admission
+diagnostics:
 
 Per-row classification:
 
@@ -35,20 +33,28 @@ Per-row classification:
 - `src/20080502-1.c`: advanced beyond `foo` /
   `scalar-control-flow semantic family`; now fails later at `main` in
   `scalar-binop semantic family`.
-- `src/930614-1.c`: still original diagnostic; latest function failure is
-  `main` in `scalar-control-flow semantic family`.
-- `src/980604-1.c`: still original diagnostic; latest function failure is
-  `main` in `scalar-control-flow semantic family`.
-- `src/ieee/fp-cmp-8.c`: still original diagnostic; latest function failure is
-  `test_isunordered` in `scalar-control-flow semantic family`.
-- `src/ieee/fp-cmp-8f.c`: still original diagnostic; latest function failure is
-  `test_isunordered` in `scalar-control-flow semantic family`.
-- `src/ieee/fp-cmp-8l.c`: still original diagnostic; latest function failure is
-  `test_isunordered` in `scalar-control-flow semantic family`.
-- `src/ieee/pr38016.c`: still original diagnostic; latest function failure is
-  `test_isunordered` in `scalar-control-flow semantic family`.
-- `src/pr35456.c`: still original diagnostic; latest function failure is
-  `not_fabs` in `scalar-control-flow semantic family`.
+- `src/930614-1.c`: advanced beyond `main` /
+  `scalar-control-flow semantic family`; now fails downstream in RV64 object
+  lowering with `unsupported_terminator_fragment`.
+- `src/980604-1.c`: advanced beyond `main` /
+  `scalar-control-flow semantic family`; now fails downstream in RV64 object
+  lowering with `unsupported_move_bundle_target_shape` for select publication
+  moves.
+- `src/ieee/fp-cmp-8.c`: advanced beyond `test_isunordered` /
+  `scalar-control-flow semantic family`; now fails in
+  `scalar/local-memory semantic family`.
+- `src/ieee/fp-cmp-8f.c`: advanced beyond `test_isunordered` /
+  `scalar-control-flow semantic family`; now fails in
+  `scalar/local-memory semantic family`.
+- `src/ieee/fp-cmp-8l.c`: advanced beyond `test_isunordered` /
+  `scalar-control-flow semantic family`; now fails in
+  `scalar/local-memory semantic family`.
+- `src/ieee/pr38016.c`: advanced beyond `test_isunordered` /
+  `scalar-control-flow semantic family`; now fails in
+  `scalar/local-memory semantic family`.
+- `src/pr35456.c`: advanced beyond `not_fabs` /
+  `scalar-control-flow semantic family`; now fails downstream in RV64 object
+  lowering with `unsupported_terminator_fragment`.
 - `src/pr39501.c`: advanced beyond semantic admission and now fails downstream
   in RV64 object lowering with `unsupported_instruction_fragment` for a BIR
   `SelectInst` in `float_min1`.
@@ -56,9 +62,10 @@ Per-row classification:
 ## Suggested Next
 
 Delegate a follow-up scalar-control-flow implementation packet for the
-remaining same-family rows, starting with `src/930614-1.c` / `main` because
-`src/20000314-3.c` and `src/20080502-1.c` have moved out of their original BIR
-scalar-control-flow admission blockers.
+remaining active scalar-control-flow work only after supervisor review of the
+new row map. This packet moved all currently allowlisted rows beyond the
+original scalar-control-flow diagnostic; remaining failures now sit in
+downstream RV64 object lowering, scalar-binop, or scalar/local-memory families.
 
 ## Watchouts
 
@@ -73,16 +80,16 @@ scalar-control-flow admission blockers.
   acceptance green.
 - The five supervisor-reported aggregate/sret regressions now pass under the
   required targeted proof.
-- `src/20000314-3.c` is no longer a BIR scalar-control-flow semantic admission
-  blocker. Its remaining root cause is downstream RV64 object support for the
-  prepared BIR terminator fragment, which is outside this packet's Do Not Touch
-  boundaries.
-- The remaining same-family rows still reporting original
-  `scalar-control-flow semantic family` diagnostics are `src/930614-1.c`,
-  `src/980604-1.c`, `src/ieee/fp-cmp-8.c`, `src/ieee/fp-cmp-8f.c`,
-  `src/ieee/fp-cmp-8l.c`, `src/ieee/pr38016.c`, and `src/pr35456.c`. Do not
-  route those through either the void-return or F128 signbit canonical-select
-  fixes unless generated LIR proves the same carrier.
+- `src/20000314-3.c`, `src/930614-1.c`, and `src/pr35456.c` are no longer BIR
+  scalar-control-flow semantic admission blockers. Their remaining root cause
+  is downstream RV64 object support for prepared BIR terminators, which is
+  outside this packet's Do Not Touch boundaries.
+- `src/980604-1.c` is now downstream RV64 prepared move-bundle/select
+  publication work, also outside this packet.
+- `src/20080502-1.c` is now scalar-binop work. The IEEE rows are now
+  scalar/local-memory work. Keep those families in their own packets/plans.
+- No allowlisted row currently remains at the original
+  `scalar-control-flow semantic family` diagnostic after this packet's proof.
 
 ## Proof
 
@@ -98,20 +105,11 @@ harness still reported `total=10 passed=0 failed=10`, with `src/20000314-3.c`
 remaining beyond the original scalar-control-flow admission diagnostic at the
 downstream `unsupported_terminator_fragment` blocker.
 
-Supervisor acceptance reran
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`:
-passed, 346/346 backend tests. Current `test_after.log` contains this final
-backend acceptance run.
-
 Current packet proof ran `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$' && ALLOWLIST=build/agent_state/560_step3_scalar_control_flow.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh; } 2>&1 | tee test_after.log`.
 Build completed, `backend_lir_to_bir_notes` passed, and the RV64 progress
-harness exited 0 while reporting `total=10 passed=0 failed=10`. Per-row proof:
-`src/20000314-3.c` remains downstream at `unsupported_terminator_fragment`;
-`src/20080502-1.c` advanced beyond `foo` / `scalar-control-flow semantic
-family` to `main` / `scalar-binop semantic family`; `src/pr39501.c` remains
-downstream at RV64 `unsupported_instruction_fragment` for a BIR `SelectInst`;
-the seven rows listed in Watchouts remain original scalar-control-flow
-admission blockers.
+harness exited 0 while reporting `total=10 passed=0 failed=10`. Per-row proof
+is recorded above; prior advancements for `src/20000314-3.c`,
+`src/20080502-1.c`, and `src/pr39501.c` were preserved.
 
 Supervisor acceptance reran
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`:

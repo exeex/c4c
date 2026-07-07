@@ -5,8 +5,6 @@
 
 namespace c4c::backend {
 
-using lir_to_bir_detail::lower_integer_type;
-
 BirFunctionLowerer::BlockLookup BirFunctionLowerer::make_block_lookup() const {
   // Raw LIR block spellings are a pre-BIR lowering lookup. Emitted BIR block
   // references receive BlockLabelId during module finalization.
@@ -137,7 +135,8 @@ std::optional<BirFunctionLowerer::PhiBlockPlanMap> BirFunctionLowerer::collect_p
           .result_name = phi->result.str(),
           .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(phi->type_str.str())),
       };
-      if (const auto phi_type = lower_integer_type(plan.type_text); phi_type.has_value()) {
+      if (const auto phi_type = lower_scalar_or_function_pointer_type(plan.type_text);
+          phi_type.has_value()) {
         plan.kind = PhiLoweringPlan::Kind::ScalarValue;
         plan.type = *phi_type;
       } else {

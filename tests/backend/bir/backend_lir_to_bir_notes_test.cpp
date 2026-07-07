@@ -3539,6 +3539,114 @@ int expect_scalar_control_flow_producer_boundary_admits_phi_edge_producers() {
   return 0;
 }
 
+int expect_scalar_control_flow_admits_f64_phi_join() {
+  namespace bir = c4c::backend::bir;
+
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  c4c::TypeSpec double_type{};
+  double_type.base = c4c::TB_DOUBLE;
+
+  LirFunction function;
+  function.name = "admitted_scalar_control_flow_f64_phi_join";
+  function.signature_text = "define double @admitted_scalar_control_flow_f64_phi_join()";
+  function.return_type = double_type;
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%cond"),
+      .is_float = false,
+      .predicate = "eq",
+      .type_str = "i32",
+      .lhs = LirOperand("1"),
+      .rhs = LirOperand("1"),
+  });
+  entry.terminator = LirCondBr{
+      .cond_name = "%cond",
+      .true_label = "then",
+      .false_label = "else",
+  };
+
+  LirBlock then_block;
+  then_block.label = "then";
+  then_block.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock else_block;
+  else_block.label = "else";
+  else_block.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock join;
+  join.label = "join";
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "double",
+      .incoming = {
+          {"0x3FF0000000000000", "then"},
+          {"0x0000000000000000", "else"},
+      },
+  });
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%side"),
+      .type_str = "i32",
+      .incoming = {
+          {"1", "then"},
+          {"0", "else"},
+      },
+  });
+  join.terminator = LirRet{
+      .value_str = "%merged",
+      .type_str = "double",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  const auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.size() != 1) {
+    return fail("F64 scalar-control-flow phi join should lower to semantic BIR");
+  }
+  if (contains_note(result.notes,
+                    "function",
+                    "failed in scalar-control-flow semantic family")) {
+    return fail("F64 scalar-control-flow phi join should not report scalar-control-flow failure");
+  }
+
+  const auto& lowered_function = result.module->functions.front();
+  const auto* join_block = [&]() -> const bir::Block* {
+    for (const auto& block : lowered_function.blocks) {
+      if (block.label == "join") {
+        return &block;
+      }
+    }
+    return nullptr;
+  }();
+  if (join_block == nullptr || join_block->insts.empty()) {
+    return fail("F64 scalar-control-flow phi join should keep the join block");
+  }
+  const auto* phi = std::get_if<bir::PhiInst>(&join_block->insts.front());
+  if (phi == nullptr || phi->result != bir::Value::named(TypeKind::F64, "%merged") ||
+      phi->incomings.size() != 2 ||
+      phi->incomings[0].value.type != TypeKind::F64 ||
+      phi->incomings[1].value.type != TypeKind::F64) {
+    return fail("F64 scalar-control-flow phi join should lower an F64 PhiInst");
+  }
+  if (join_block->terminator.kind != bir::TerminatorKind::Return ||
+      join_block->terminator.value != bir::Value::named(TypeKind::F64, "%merged")) {
+    return fail("F64 scalar-control-flow phi join should return the merged value");
+  }
+
+  return 0;
+}
+
 int expect_scalar_control_flow_void_return_ignores_legacy_payload() {
   namespace bir = c4c::backend::bir;
 
@@ -14330,6 +14438,10 @@ int main() {
           expect_scalar_control_flow_producer_boundary_admits_phi_edge_producers();
       scalar_control_flow_producer_status != 0) {
     return scalar_control_flow_producer_status;
+  }
+  if (const int f64_phi_status = expect_scalar_control_flow_admits_f64_phi_join();
+      f64_phi_status != 0) {
+    return f64_phi_status;
   }
   if (const int void_return_payload_status =
           expect_scalar_control_flow_void_return_ignores_legacy_payload();
