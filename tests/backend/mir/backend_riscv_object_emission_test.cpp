@@ -1845,6 +1845,110 @@ make_prepared_global_symbol_address_prior_preserved_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_computed_global_address_call_arg_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("computed_global_call_arg");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto base_value_name = prepared.names.value_names.intern("@global_table");
+  const auto computed_value_name =
+      prepared.names.value_names.intern("%global.plus4");
+  const auto global_name = prepared.names.link_names.intern("global_table");
+
+  bir::CallInst call;
+  call.callee = "sink";
+  call.args = {bir::Value::named(bir::TypeKind::Ptr, "%global.plus4")};
+  call.arg_types = {bir::TypeKind::Ptr};
+  call.return_type = bir::TypeKind::Void;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "computed_global_call_arg",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global_table",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I64,
+      .is_constant = false,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = bir::Value::immediate_i64(0),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  publish_prepared_object_data(prepared);
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = base_value_name,
+                  .kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+                  .pointer_base_symbol_name = global_name,
+                  .pointer_byte_delta = std::int64_t{0},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = computed_value_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"sink"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding =
+                  prepare::PreparedStorageEncodingKind::ComputedAddress,
+              .source_value_id = prepare::PreparedValueId{2},
+              .source_base_value_id = prepare::PreparedValueId{1},
+              .source_symbol_name = std::string{"@global_table"},
+              .source_symbol_name_id = global_name,
+              .source_register_name = std::string{"s1"},
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_base_value_name = base_value_name,
+              .source_pointer_byte_delta = std::int64_t{4},
+              .destination_register_name = std::string{"a0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_address_module() {
   auto prepared = make_prepared_symbol_address_module(
       prepare::PreparedAddressMaterializationKind::DirectGlobal,
@@ -21847,6 +21951,75 @@ int emits_prepared_global_symbol_address_prior_preserved_arg_relocation() {
   return 0;
 }
 
+int emits_prepared_computed_global_address_call_argument_relocation() {
+  const auto prepared = make_prepared_computed_global_address_call_arg_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared computed global-address call argument object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* function =
+      object::find_symbol(module, "computed_global_call_arg");
+  const auto* global_symbol = object::find_symbol(module, "global_table");
+  const auto* auipc_label =
+      object::find_symbol(module, ".Lpcrel_call_arg_computed_global_call_arg_0_0_0");
+  const auto* sink_symbol = object::find_symbol(module, "sink");
+  if (text == nullptr || function == nullptr || global_symbol == nullptr ||
+      auipc_label == nullptr || sink_symbol == nullptr) {
+    return fail("expected computed global-address call argument object symbols");
+  }
+
+  std::optional<std::uint64_t> hi_offset;
+  std::optional<std::uint64_t> call_offset;
+  for (const auto& relocation : module.relocations) {
+    if (relocation.section != text->id) {
+      continue;
+    }
+    if (relocation.type == R_RISCV_PCREL_HI20 &&
+        relocation.symbol == global_symbol->id) {
+      hi_offset = relocation.offset;
+      continue;
+    }
+    if (relocation.type == R_RISCV_CALL_PLT &&
+        relocation.symbol == sink_symbol->id) {
+      call_offset = relocation.offset;
+      continue;
+    }
+  }
+  const bool saw_lo =
+      hi_offset.has_value() &&
+      std::any_of(module.relocations.begin(),
+                  module.relocations.end(),
+                  [&](const object::RelocationRecord& relocation) {
+                    return relocation.section == text->id &&
+                           relocation.offset == *hi_offset + 4 &&
+                           relocation.type == R_RISCV_PCREL_LO12_I &&
+                           relocation.symbol == auipc_label->id;
+                  });
+  if (!hi_offset.has_value() || !saw_lo || !call_offset.has_value() ||
+      *hi_offset >= *call_offset || *hi_offset < function->value ||
+      *call_offset >= function->value + function->size_bytes) {
+    return fail("expected computed global-address argument relocation pair before call relocation");
+  }
+  if (*hi_offset + 8 > text->bytes.size()) {
+    return fail("expected computed global-address argument materialization bytes");
+  }
+  const std::uint32_t auipc = read_u32(text->bytes, *hi_offset);
+  const std::uint32_t addi = read_u32(text->bytes, *hi_offset + 4);
+  if ((auipc & 0x7fU) != 0x17U || riscv_rd(auipc) != 10U ||
+      (addi & 0x7fU) != 0x13U || riscv_rd(addi) != 10U ||
+      riscv_rs1(addi) != 10U || riscv_i_imm(addi) != 4) {
+    return fail("expected computed global-address call argument to materialize global + 4 into a0");
+  }
+  if (*call_offset >= 4 && read_u32(text->bytes, *call_offset - 4) == 0x00048513) {
+    return fail("expected computed global-address call argument not to copy stale s1 into a0");
+  }
+  return 0;
+}
+
 int emits_prepared_global_address_relocations_to_object_symbol() {
   const auto prepared = make_prepared_global_address_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -22840,6 +23013,7 @@ int main() {
   status |= emits_prepared_string_call_argument_relocation_to_object_symbol();
   status |=
       emits_prepared_global_symbol_address_prior_preserved_arg_relocation();
+  status |= emits_prepared_computed_global_address_call_argument_relocation();
   status |= emits_prepared_global_address_relocations_to_object_symbol();
   status |= emits_prepared_global_load_relocations_and_instruction();
   status |= emits_prepared_global_i8_load_and_zext_instruction();

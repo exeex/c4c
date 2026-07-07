@@ -213,6 +213,24 @@ prepared_call_argument_object_symbol(
       RiscvObjectFixupTargetKind::Object};
 }
 
+std::optional<std::pair<std::string, RiscvObjectFixupTargetKind>>
+prepared_call_relationship_object_symbol(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::CallArgumentSourceRelationship& relationship) {
+  if (relationship.source_encoding !=
+          c4c::backend::bir::CallArgumentSourceEncodingKind::ComputedAddress ||
+      !relationship.source_base_value_name.has_value() ||
+      relationship.source_base_value_name->empty() ||
+      relationship.source_base_value_name->front() != '@' ||
+      !relationship.source_pointer_byte_delta.has_value()) {
+    return std::nullopt;
+  }
+
+  c4c::backend::prepare::PreparedCallArgumentPlan argument;
+  argument.source_symbol_name = relationship.source_base_value_name;
+  return prepared_call_argument_object_symbol(prepared, argument);
+}
+
 struct RiscvPreparedObjectFunctionResult {
   std::optional<RiscvObjectFunction> function;
   std::optional<prepare::PreparedObjectConsumerDiagnosticCategory>
@@ -4038,6 +4056,36 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     if (!destination.has_value()) {
       return std::nullopt;
     }
+    const auto* source_relationship =
+        bir::find_call_argument_source_relationship(call, arg_index);
+    const bool relationship_matches_argument_value =
+        source_relationship != nullptr &&
+        (!source_relationship->source_value_name.has_value() ||
+         (arg_index < call.args.size() &&
+          call.args[arg_index].kind == bir::Value::Kind::Named &&
+          call.args[arg_index].name == *source_relationship->source_value_name));
+    if (relationship_matches_argument_value &&
+        source_relationship->source_encoding ==
+            bir::CallArgumentSourceEncodingKind::ComputedAddress) {
+      const auto symbol =
+          prepared_call_relationship_object_symbol(prepared, *source_relationship);
+      if (symbol.has_value()) {
+        const std::string auipc_label = ".Lpcrel_call_arg_" +
+                                        std::string{function_name} + "_" +
+                                        std::to_string(block_index) + "_" +
+                                        std::to_string(instruction_index) + "_" +
+                                        std::to_string(arg_index);
+        append_rv64_fragment(
+            fragment,
+            make_rv64_pcrel_address_fragment(
+                *destination,
+                std::move(symbol->first),
+                auipc_label,
+                symbol->second,
+                *source_relationship->source_pointer_byte_delta));
+        continue;
+      }
+    }
     if (argument.source_selection.has_value() &&
         argument.source_selection->kind ==
             prepare::PreparedCallArgumentSourceSelectionKind::
@@ -4108,10 +4156,20 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                 publication->address_offset));  // addi rd, sp, off
       continue;
     }
-    if (argument.source_encoding ==
+    const bool symbolic_call_argument =
+        argument.source_encoding ==
             prepare::PreparedStorageEncodingKind::SymbolAddress &&
         (argument.source_symbol_name.has_value() ||
-         argument.source_symbol_name_id.has_value())) {
+         argument.source_symbol_name_id.has_value());
+    const bool computed_global_call_argument =
+        argument.source_encoding ==
+            prepare::PreparedStorageEncodingKind::ComputedAddress &&
+        argument.source_base_value_id.has_value() &&
+        argument.source_base_value_name.has_value() &&
+        argument.source_pointer_byte_delta.has_value() &&
+        (argument.source_symbol_name.has_value() ||
+         argument.source_symbol_name_id.has_value());
+    if (symbolic_call_argument || computed_global_call_argument) {
       auto symbol = prepared_call_argument_object_symbol(prepared, argument);
       if (!symbol.has_value()) {
         return std::nullopt;
@@ -10563,6 +10621,8 @@ RiscvEncodedFragment make_rv64_pcrel_address_fragment(
     RiscvObjectFixupTargetKind target_kind,
     std::int64_t addend) {
   RiscvEncodedFragment fragment;
+  const std::int32_t encoded_low_addend =
+      (addend >= -2048 && addend <= 2047) ? static_cast<std::int32_t>(addend) : 0;
   append_le32(fragment.bytes,
               encode_u_type(0x17, destination_register, 0));  // auipc rd, 0
   append_le32(fragment.bytes,
@@ -10570,7 +10630,7 @@ RiscvEncodedFragment make_rv64_pcrel_address_fragment(
                             destination_register,
                             0,
                             destination_register,
-                            0));  // addi rd, rd, 0
+                            encoded_low_addend));  // addi rd, rd, lo
   fragment.labels.push_back(RiscvObjectLabel{
       .offset_bytes = 0,
       .name = auipc_label_name,
