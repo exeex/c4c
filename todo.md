@@ -3,53 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/582_rv64_va_start_stack_backed_destination.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce Va Start Destination Owner
+Current Step ID: Step 2
+Current Step Title: Add Focused Helper Coverage
 
 ## Just Finished
 
-Step 1 from `plan.md` is complete for `src/va-arg-21.c`.
+Step 2 from `plan.md` is complete.
 
-Fresh proof rebuilt `c4cll`, regenerated the prepared dump, and reran the RV64
-object route. The current owner remains
-`unsupported_variadic_helper_lowering`, with the concrete route diagnostic:
+Added focused RV64 object-emission coverage for the semantic `va_start` helper
+shape where:
 
-`RV64 va_start helper requires destination va_list address in a prepared GPR home`
+- `destination_va_list` is a prepared stack-slot home.
+- `destination_va_list_address` is also stack-backed, in a distinct prepared
+  stack slot.
+- The current precise diagnostic remains
+  `unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home`.
 
-Route coordinates and prepared helper facts:
-
-- Function: `doit`
-- Helper: `va_start`
-- Helper operand 1: `block=0 inst=7`,
-  `dst_va_list=%t1:stack_slot:slot=#32:offset=288`,
-  `dst_va_list_addr=%t1:stack_slot:slot=#17:offset=136`
-- Helper operand 2: `block=0 inst=26`,
-  `dst_va_list=%t6:stack_slot:slot=#33:offset=296`,
-  `dst_va_list_addr=%t6:stack_slot:slot=#18:offset=144`
-- Storage evidence: `%t1` and `%t6` address values are `encoding=frame_slot`
-  GPR stack homes at `slot#17+stack136` and `slot#18+stack144`, not prepared
-  GPR homes.
-- Case-local `prepared-f128-carriers` and `prepared-f128-runtime-helpers`
-  sections remain empty; f128-looking libc declarations are not the active
-  owner.
-- Code-path clue: the emitted diagnostic maps to the RV64 `va_start`
-  destination-address home validation in
-  `src/backend/mir/riscv/codegen/object_emission.cpp`.
+The fixture is backend-local and does not depend on `src/va-arg-21.c`, source
+text, function/block coordinates, or representative value names.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: add focused RV64 backend coverage for the
-semantic `va_start` helper shape where the destination va_list address is
-stack-backed and must not be matched by representative filename or source text.
+Execute Step 3 from `plan.md`: repair RV64 `va_start` destination-address
+materialization for supported stack-backed `destination_va_list_address` homes,
+or replace the current broad GPR-only rejection with a narrower fail-closed
+destination-address materialization diagnostic.
 
 ## Watchouts
 
-- Do not treat f128-looking libc declarations as the owner without prepared
-  carrier/helper evidence.
-- Do not match `src/va-arg-21.c` by filename, function, block, or source text.
-- The focused test should model the semantic helper operands: `va_start`
-  destination values in prepared stack slots and `dst_va_list_addr` values
-  whose current homes are stack-backed instead of GPR materialized.
+- Preserve the semantic helper shape; do not match `src/va-arg-21.c` by
+  filename, function, block, value name, or source text.
+- The focused negative test now asserts distinct stack slots for the va_list
+  object and the stack-backed destination address before checking the current
+  diagnostic.
+- Keep unsupported non-stack or aliasing helper forms fail-closed.
 - Preserve unrelated open ideas, including untracked
   `ideas/open/583_rv64_pointer_arithmetic_result_publication.md`.
 
@@ -57,16 +44,8 @@ stack-backed and must not be matched by representative filename or source text.
 
 Proof log: `test_after.log`.
 
-Commands:
+Command:
 
-- `cmake --build --preset default --target c4cll`: passed, rc 0
-- `build/c4cll -I /workspaces/c4c --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/va-arg-21.c`: passed, rc 0
-- RV64 object-route harness for `tests/c/external/gcc_torture/src/va-arg-21.c`:
-  failed as expected for classification, rc 1, at the current
-  `unsupported_variadic_helper_lowering` owner.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`
 
-Artifacts:
-
-- `build/agent_state/582_rv64_va_start_stack_backed_destination/step1/summary.md`
-- `build/agent_state/582_rv64_va_start_stack_backed_destination/step1/src_va-arg-21.c/dump-prepared-bir.txt`
-- `build/agent_state/582_rv64_va_start_stack_backed_destination/step1/src_va-arg-21.c/object-route.err`
+Result: passed, `backend_riscv_object_emission` 1/1.

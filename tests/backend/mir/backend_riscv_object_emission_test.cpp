@@ -861,6 +861,18 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
     prepared.stack_layout.frame_size_bytes = 80;
     prepared.stack_layout.frame_alignment_bytes = 16;
   }
+  if (!destination_address_is_gpr) {
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = prepare::PreparedFrameSlotId{6},
+        .object_id = 3,
+        .function_name = function_name,
+        .offset_bytes = 64,
+        .size_bytes = 8,
+        .align_bytes = 8,
+    });
+    prepared.stack_layout.frame_size_bytes = 80;
+    prepared.stack_layout.frame_alignment_bytes = 16;
+  }
   if (include_overflow_area_initial_state) {
     prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
         .slot_id = prepare::PreparedFrameSlotId{7},
@@ -938,10 +950,10 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
       .slot_id = destination_address_is_gpr
                      ? std::nullopt
                      : std::optional<prepare::PreparedFrameSlotId>{
-                           prepare::PreparedFrameSlotId{5}},
+                           prepare::PreparedFrameSlotId{6}},
       .offset_bytes = destination_address_is_gpr
                           ? std::nullopt
-                          : std::optional<std::size_t>{72},
+                          : std::optional<std::size_t>{64},
       .size_bytes = destination_address_is_gpr
                         ? std::nullopt
                         : std::optional<std::size_t>{8},
@@ -12964,6 +12976,33 @@ int rejects_variadic_va_start_with_missing_saved_gpr_publication_fact() {
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[rv64.incoming_variadic_gpr_publications]");
 }
 
+int rejects_variadic_va_start_stack_backed_destination_address() {
+  const auto prepared = make_prepared_variadic_va_start_module(
+      true /*include_overflow_area_initial_state*/,
+      true /*destination_va_list_is_stack_slot*/,
+      false /*destination_address_is_gpr*/);
+  const auto& va_start_homes =
+      prepared.variadic_entry_plans.functions.front().helper_operand_homes.front();
+  const auto* typed_va_start =
+      prepare::find_prepared_variadic_va_start_operand_homes(va_start_homes);
+  if (typed_va_start == nullptr ||
+      typed_va_start->destination_va_list.kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      typed_va_start->destination_va_list.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{5}} ||
+      typed_va_start->destination_va_list_address.kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      typed_va_start->destination_va_list_address.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{6}}) {
+    return fail("expected RV64 va_start fixture to model stack-backed destination address");
+  }
+  return expect_prepared_rejection_diagnostic(
+      std::move(prepared),
+      "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home");
+}
+
 int materializes_fact_complete_variadic_va_start_with_saved_gpr_publications() {
   const auto prepared =
       make_prepared_variadic_va_start_with_saved_gpr_publications_module();
@@ -22401,6 +22440,7 @@ int main() {
   status |= builds_fact_complete_helper_free_variadic_entry_object();
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |= rejects_variadic_va_start_with_missing_saved_gpr_publication_fact();
+  status |= rejects_variadic_va_start_stack_backed_destination_address();
   status |=
       materializes_fact_complete_variadic_va_start_with_saved_gpr_publications();
   status |= loads_rv64_va_start_published_word_after_helper();
