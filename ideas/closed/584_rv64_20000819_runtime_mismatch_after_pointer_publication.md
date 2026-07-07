@@ -1,6 +1,6 @@
 # RV64 20000819 Runtime Mismatch After Pointer Publication
 
-Status: Open
+Status: Closed
 Type: Focused RV64 runtime follow-up
 Parent: `ideas/closed/583_rv64_pointer_arithmetic_result_publication.md`
 Owning Layer: RV64 object/runtime route for GCC torture representative execution
@@ -54,6 +54,30 @@ diagnostic owner was reported by the object route.
 - The representative no longer fails with `[RV64_BACKEND_RUNTIME_MISMATCH]`
   for the same abort cause.
 - Relevant RV64 backend validation passes after the repair.
+
+## Closure Notes
+
+Closed after the route isolated the runtime abort owner to `main`, `entry`,
+instruction `0`, where the computed global-address call argument `%t2` for
+`@a + 4` was treated as already available in `s1` and copied to `a0`.
+
+RV64 object emission now materializes computed global-address call arguments
+through the semantic relocation path before the call. Focused
+`backend_riscv_object_emission` coverage proves the shape without relying on
+the `20000819-1.c` representative as the only assertion.
+
+The representative
+`tests/c/external/gcc_torture/src/20000819-1.c` now passes the RV64
+object/runtime route. The previous `[RV64_BACKEND_RUNTIME_MISMATCH]` /
+`Subprocess aborted` cause is gone; `main` materializes `a + 4` into `a0`
+with a PC-relative relocation pair before `foo`, with no stale `mv a0,s1`
+before that call.
+
+Close proof: Step 5 backend validation passed with
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`.
+CTest reported `100% tests passed, 0 tests failed out of 346`.
+
+No separate follow-up idea is required for this source idea.
 
 ## Reviewer Reject Signals
 
