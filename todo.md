@@ -1,51 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/564_bir_scalar_local_memory_semantic_admission_followup.md
 Source Plan Path: plan.md
-Current Step ID: 2/3
-Current Step Title: Add Focused Semantic Admission Coverage + Narrow Fail-Closed Diagnostic
+Current Step ID: 4
+Current Step Title: Prove IEEE Representatives And Route Downstream Failures
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Add Focused Semantic Admission Coverage completed with the smallest
-Step 3 diagnostic repair. Added generic focused BIR coverage for an
-`unordered_float_uno_compare` LIR shape that lowers a floating `fcmp uno`
-producer followed by `zext` and return; this is predicate-family coverage and
-is not tied to an IEEE filename.
+Step 4 - Prove IEEE Representatives And Route Downstream Failures completed as
+a diagnostic/proof packet. Direct RV64 backend probes show that all four target
+IEEE representatives advanced beyond the umbrella `scalar/local-memory semantic
+family` diagnostic and now stop at the narrower fail-closed unordered floating
+compare boundary:
 
-The coverage now asserts that unsupported `uno` does not silently collapse into
-the umbrella `scalar/local-memory semantic family`. Since BIR currently has no
-unordered floating compare opcode/fact representation, the coordinator emits a
-narrow fail-closed producer-boundary note:
+- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8.c`: latest function failure
+  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
+  semantic family`; reached narrower unordered-float compare boundary: yes.
+- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8f.c`: latest function failure
+  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
+  semantic family`; reached narrower unordered-float compare boundary: yes.
+- `tests/c/external/gcc_torture/src/ieee/fp-cmp-8l.c`: latest function failure
+  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
+  semantic family`; reached narrower unordered-float compare boundary: yes.
+- `tests/c/external/gcc_torture/src/ieee/pr38016.c`: latest function failure
+  `test_isunordered` failed in `unordered-float-compare scalar/local-memory
+  semantic family`; reached narrower unordered-float compare boundary: yes.
 
-`unordered-float-compare scalar/local-memory semantic family`
-
-Changed files:
-
-- `src/backend/bir/lir_to_bir/memory/coordinator.cpp`
-- `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`
-- `todo.md`
-- `test_after.log`
+The remaining downstream work is still scalar/local-memory semantic
+representation for unordered floating compare predicates: BIR needs an explicit
+semantic representation/lowering decision for unordered predicates such as
+`fcmp uno`. No evidence from this packet routes the blocker to another owner.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: prove the target IEEE representatives now
-advance to the narrower unordered-float-compare scalar/local-memory diagnostic
-instead of the umbrella scalar/local-memory family, then route the remaining
-semantic representation work as the next owner decision.
+Execute the next scalar/local-memory semantic representation packet for
+unordered floating compare predicates. The packet should make an owner-level
+decision for representing or lowering `fcmp uno` rather than mapping it onto an
+existing ordered comparison opcode.
 
 ## Watchouts
 
-- This packet intentionally did not add a new BIR opcode or lower `uno` as an
-  existing ordered/relational opcode; doing so would be semantically incorrect.
-- No expectations, unsupported markers, allowlists, or IEEE filename shortcuts
-  were changed.
+- This packet intentionally made no source, test, expectation, unsupported
+  marker, allowlist, or lowering-behavior changes.
+- The observed diagnostic is function-level `test_isunordered` for all four
+  representatives, so the live blocker remains the `fcmp uno` unordered
+  predicate path after any earlier casts or setup have lowered far enough.
 - `ord` and `ueq` remain nearby unordered/ordered predicate-family questions;
-  do not fold them into this slice without focused coverage and a semantic
+  do not fold them into the next slice without focused coverage and a semantic
   representation decision.
 
 ## Proof
+
+Direct diagnostics:
+
+`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/fp-cmp-8.c`
+
+`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/fp-cmp-8f.c`
+
+`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/fp-cmp-8l.c`
+
+`build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/ieee/pr38016.c`
+
+Each direct diagnostic exited 1 at the expected fail-closed boundary:
+`latest function failure: semantic lir_to_bir function 'test_isunordered'
+failed in unordered-float-compare scalar/local-memory semantic family`.
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
