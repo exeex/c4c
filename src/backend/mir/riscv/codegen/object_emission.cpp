@@ -1742,6 +1742,8 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
         carrier_alias_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
@@ -1839,6 +1841,8 @@ fragment_for_prepared_out_of_ssa_moves(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
         carrier_alias_authorities,
     std::size_t stack_frame_bytes,
@@ -1992,6 +1996,7 @@ fragment_for_prepared_out_of_ssa_moves(
               control_flow,
               function,
               lookups,
+              dependency_operand_authorities,
               carrier_alias_authorities,
               move_bundle,
               move,
@@ -2217,6 +2222,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
           control_flow,
           function,
           lookups,
+          dependency_operand_authorities,
           carrier_alias_authorities,
           stack_frame_bytes,
           event_kind,
@@ -6368,21 +6374,28 @@ fragment_for_prepared_select_edge_source_dependencies(
   }
 
   std::vector<const c4c::backend::bir::BinaryInst*> candidate_producers;
+  std::vector<const c4c::backend::bir::CastInst*> candidate_casts;
   for (const auto& inst : source_block->insts) {
     const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
-    if (binary == nullptr) {
+    if (binary != nullptr) {
+      if (binary == &source_binary ||
+          prepared_value_names_match(names, binary->result, source_binary.result)) {
+        break;
+      }
+      candidate_producers.push_back(binary);
       continue;
     }
-    if (binary == &source_binary ||
-        prepared_value_names_match(names, binary->result, source_binary.result)) {
-      break;
+    const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst);
+    if (cast != nullptr) {
+      candidate_casts.push_back(cast);
     }
-    candidate_producers.push_back(binary);
   }
 
   std::vector<const c4c::backend::bir::BinaryInst*> emitted_producers;
+  std::vector<const c4c::backend::bir::CastInst*> emitted_casts;
   RiscvEncodedFragment fragment;
   std::vector<const c4c::backend::bir::BinaryInst*> active_producers;
+  std::vector<const c4c::backend::bir::CastInst*> active_casts;
   auto find_producer_for_value = [&](const c4c::backend::bir::Value& value)
       -> const c4c::backend::bir::BinaryInst* {
     if (value.kind != c4c::backend::bir::Value::Kind::Named) {
@@ -6398,6 +6411,22 @@ fragment_for_prepared_select_edge_source_dependencies(
                      });
     return producer_it == candidate_producers.end() ? nullptr : *producer_it;
   };
+  auto find_cast_for_value = [&](const c4c::backend::bir::Value& value)
+      -> const c4c::backend::bir::CastInst* {
+    if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+      return nullptr;
+    }
+    const auto cast_it =
+        std::find_if(candidate_casts.begin(),
+                     candidate_casts.end(),
+                     [&](const c4c::backend::bir::CastInst* cast) {
+                       return prepared_value_names_match(names,
+                                                         value,
+                                                         cast->result);
+                     });
+    return cast_it == candidate_casts.end() ? nullptr : *cast_it;
+  };
+  std::function<bool(const c4c::backend::bir::CastInst*)> emit_cast;
   std::function<bool(const c4c::backend::bir::BinaryInst*)> emit_producer =
       [&](const c4c::backend::bir::BinaryInst* producer) -> bool {
     if (producer == nullptr) {
@@ -6427,7 +6456,9 @@ fragment_for_prepared_select_edge_source_dependencies(
     }
     active_producers.push_back(producer);
     if (!emit_producer(find_producer_for_value(producer->lhs)) ||
-        !emit_producer(find_producer_for_value(producer->rhs))) {
+        !emit_cast(find_cast_for_value(producer->lhs)) ||
+        !emit_producer(find_producer_for_value(producer->rhs)) ||
+        !emit_cast(find_cast_for_value(producer->rhs))) {
       return false;
     }
     active_producers.pop_back();
@@ -6444,17 +6475,78 @@ fragment_for_prepared_select_edge_source_dependencies(
     emitted_producers.push_back(producer);
     return true;
   };
+  emit_cast = [&](const c4c::backend::bir::CastInst* cast) -> bool {
+    if (cast == nullptr) {
+      return true;
+    }
+    const auto already_emitted =
+        std::any_of(emitted_casts.begin(),
+                    emitted_casts.end(),
+                    [&](const c4c::backend::bir::CastInst* emitted) {
+                      return prepared_value_names_match(names,
+                                                        cast->result,
+                                                        emitted->result);
+                    });
+    if (already_emitted) {
+      return true;
+    }
+    const auto is_active =
+        std::any_of(active_casts.begin(),
+                    active_casts.end(),
+                    [&](const c4c::backend::bir::CastInst* active) {
+                      return prepared_value_names_match(names,
+                                                        cast->result,
+                                                        active->result);
+                    });
+    if (is_active) {
+      return false;
+    }
+    active_casts.push_back(cast);
+    if (!emit_producer(find_producer_for_value(cast->operand)) ||
+        !emit_cast(find_cast_for_value(cast->operand))) {
+      return false;
+    }
+    active_casts.pop_back();
+
+    auto cast_fragment = fragment_for_prepared_cast(stack_layout,
+                                                    names,
+                                                    lookups,
+                                                    *cast,
+                                                    stack_frame_bytes);
+    if (!cast_fragment.has_value()) {
+      return false;
+    }
+    append_fragment(fragment, std::move(*cast_fragment));
+    emitted_casts.push_back(cast);
+    return true;
+  };
   if (!emit_producer(find_producer_for_value(source_binary.lhs)) ||
+      !emit_cast(find_cast_for_value(source_binary.lhs)) ||
       !emit_producer(find_producer_for_value(source_binary.rhs))) {
+    return std::nullopt;
+  }
+  if (!emit_cast(find_cast_for_value(source_binary.rhs))) {
     return std::nullopt;
   }
 
   const auto operand_ready = [&](const c4c::backend::bir::Value& value) {
-    return !prepared_select_edge_source_value_needs_binary_producer(
-        names,
-        value,
-        candidate_producers,
-        emitted_producers);
+    const auto needs_binary =
+        prepared_select_edge_source_value_needs_binary_producer(
+            names,
+            value,
+            candidate_producers,
+            emitted_producers);
+    const auto* cast = find_cast_for_value(value);
+    const auto needs_cast =
+        cast != nullptr &&
+        !std::any_of(emitted_casts.begin(),
+                     emitted_casts.end(),
+                     [&](const c4c::backend::bir::CastInst* emitted) {
+                       return prepared_value_names_match(names,
+                                                         cast->result,
+                                                         emitted->result);
+                     });
+    return !needs_binary && !needs_cast;
   };
   if (!operand_ready(source_binary.lhs) || !operand_ready(source_binary.rhs)) {
     return std::nullopt;
@@ -6469,6 +6561,8 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
         carrier_alias_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
@@ -6627,11 +6721,36 @@ fragment_for_prepared_block_entry_select_edge_source_producer(
   }
   auto edge_binary = *binary;
   edge_binary.result = parallel_copy_move->destination_value;
-  auto edge_fragment = fragment_for_prepared_binary(stack_layout,
-                                                    names,
-                                                    lookups,
-                                                    edge_binary,
-                                                    stack_frame_bytes);
+  std::optional<RiscvEncodedFragment> edge_fragment;
+  if (publication != nullptr) {
+    edge_fragment = fragment_for_prepared_select_edge_binary_with_cast_dependencies(
+        stack_layout,
+        names,
+        lookups,
+        control_flow.function_name,
+        dependency_operand_authorities,
+        *publication,
+        edge_binary,
+        destination_register,
+        stack_frame_bytes);
+    if (!edge_fragment.has_value()) {
+      if (rv64_select_edge_binary_has_available_cast_dependency_authority(
+              names,
+              control_flow.function_name,
+              dependency_operand_authorities,
+              *publication,
+              edge_binary)) {
+        return {.matched = true};
+      }
+    }
+  }
+  if (!edge_fragment.has_value()) {
+    edge_fragment = fragment_for_prepared_binary(stack_layout,
+                                                 names,
+                                                 lookups,
+                                                 edge_binary,
+                                                 stack_frame_bytes);
+  }
   if (!edge_fragment.has_value()) {
     return {.matched = true};
   }
@@ -6677,6 +6796,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
         control_flow,
         function,
         lookups,
+        dependency_operand_authorities,
         carrier_alias_authorities,
         move_bundle,
         move,

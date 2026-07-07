@@ -16601,6 +16601,7 @@ int suppresses_authorized_prepared_select_edge_source_producer_setup_object() {
     return fail("expected suppressed select-edge setup object labels");
   }
   bool saw_edge_compare = false;
+  bool saw_cast_source_materialization = false;
   for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
     const auto instruction = read_u32(text->bytes, offset);
     const auto opcode = instruction & 0x7fU;
@@ -16608,6 +16609,10 @@ int suppresses_authorized_prepared_select_edge_source_producer_setup_object() {
     const auto funct3 = (instruction >> 12) & 0x7U;
     const auto rs1 = (instruction >> 15) & 0x1fU;
     const auto rs2 = (instruction >> 20) & 0x1fU;
+    if (offset >= false_copy_label->value && offset < join_label->value &&
+        rd == 29 && opcode != 0x03U) {
+      saw_cast_source_materialization = true;
+    }
     if (opcode == 0x33U && rd == 10 && funct3 == 3 && rs1 == 29 &&
         rs2 == 28) {
       saw_edge_compare = true;
@@ -16615,6 +16620,9 @@ int suppresses_authorized_prepared_select_edge_source_producer_setup_object() {
   }
   if (!saw_edge_compare) {
     return fail("expected predecessor edge to remain the compare materializer");
+  }
+  if (!saw_cast_source_materialization) {
+    return fail("expected predecessor edge compare to materialize cast source");
   }
   return 0;
 }
