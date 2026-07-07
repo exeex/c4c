@@ -138,9 +138,81 @@ bool is_rv64_store_to_sp(std::uint32_t word,
          riscv_s_imm(word) == offset;
 }
 
+bool is_rv64_store_to_register(std::uint32_t word,
+                               unsigned funct3,
+                               unsigned base_register,
+                               std::int32_t offset) {
+  return (word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == funct3 &&
+         riscv_rs1(word) == base_register && riscv_s_imm(word) == offset;
+}
+
 bool is_rv64_add(std::uint32_t word) {
   return (word & 0x7fU) == 0x33U && ((word >> 12) & 0x7U) == 0U &&
          ((word >> 25) & 0x7fU) == 0U;
+}
+
+bool is_rv64_sub(std::uint32_t word) {
+  return (word & 0x7fU) == 0x33U && ((word >> 12) & 0x7U) == 0U &&
+         ((word >> 25) & 0x7fU) == 0x20U;
+}
+
+bool is_rv64_mv(std::uint32_t word,
+                unsigned destination_register,
+                unsigned source_register) {
+  return (word & 0x7fU) == 0x13U && ((word >> 12) & 0x7U) == 0U &&
+         riscv_rd(word) == destination_register &&
+         riscv_rs1(word) == source_register &&
+         riscv_i_imm(word) == 0;
+}
+
+bool contains_prepared_pointer_arithmetic_result_publication(
+    const std::vector<std::uint8_t>& bytes,
+    bool is_subtract) {
+  constexpr unsigned base_register = 9U;
+  constexpr unsigned offset_register = 18U;
+  constexpr unsigned result_register = 6U;
+  for (std::size_t arithmetic_offset = 0;
+       arithmetic_offset + 4 <= bytes.size();
+       arithmetic_offset += 4) {
+    const std::uint32_t arithmetic_word = read_u32(bytes, arithmetic_offset);
+    if (is_subtract) {
+      if (!is_rv64_sub(arithmetic_word) ||
+          riscv_rs1(arithmetic_word) != base_register ||
+          riscv_rs2(arithmetic_word) != offset_register) {
+        continue;
+      }
+    } else {
+      if (!is_rv64_add(arithmetic_word)) {
+        continue;
+      }
+      const bool base_plus_offset =
+          (riscv_rs1(arithmetic_word) == base_register &&
+           riscv_rs2(arithmetic_word) == offset_register) ||
+          (riscv_rs1(arithmetic_word) == offset_register &&
+           riscv_rs2(arithmetic_word) == base_register);
+      if (!base_plus_offset) {
+        continue;
+      }
+    }
+
+    const unsigned arithmetic_result = riscv_rd(arithmetic_word);
+    bool published = arithmetic_result == result_register;
+    for (std::size_t publish_offset = arithmetic_offset + 4;
+         publish_offset + 4 <= bytes.size();
+         publish_offset += 4) {
+      const std::uint32_t publish_word = read_u32(bytes, publish_offset);
+      if (!published &&
+          is_rv64_mv(publish_word, result_register, arithmetic_result)) {
+        published = true;
+        continue;
+      }
+      if (published &&
+          is_rv64_store_to_register(publish_word, 0U, result_register, 0)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool contains_frame_slot_dynamic_pointer_result_publication(
@@ -16840,7 +16912,39 @@ int rejects_prepared_scalar_remainder_fail_closed_shapes() {
   return 0;
 }
 
-int rejects_prepared_pointer_arithmetic_with_precise_diagnostic() {
+int builds_prepared_pointer_arithmetic_result_publication_object() {
+  for (const auto opcode : {bir::BinaryOpcode::Add, bir::BinaryOpcode::Sub}) {
+    const auto prepared =
+        make_prepared_loaded_base_pointer_arithmetic_module(opcode);
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected prepared pointer arithmetic RV64 object to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*result.module, ".text");
+    const auto* function = object::find_symbol(*result.module,
+                                               "pointer_arithmetic");
+    if (text == nullptr || function == nullptr) {
+      return fail("expected prepared pointer arithmetic object to publish text/function");
+    }
+    if (function->value != 0 || function->size_bytes != text->size_bytes ||
+        text->size_bytes != text->bytes.size()) {
+      return fail("expected prepared pointer arithmetic object text layout");
+    }
+    if (!contains_prepared_pointer_arithmetic_result_publication(
+            text->bytes,
+            opcode == bir::BinaryOpcode::Sub)) {
+      return fail("expected pointer arithmetic object to publish result pointer and store through it");
+    }
+    if (!result.module->relocations.empty()) {
+      return fail("expected prepared pointer arithmetic object to need no relocations");
+    }
+  }
+  return 0;
+}
+
+int rejects_prepared_pointer_arithmetic_missing_result_home_with_precise_diagnostic() {
   const std::vector<std::string> expected = {
       "unsupported_pointer_arithmetic: RV64 object route requires prepared pointer arithmetic lowering for loaded pointer base plus scaled integer byte offset",
       "function=pointer_arithmetic",
@@ -16849,17 +16953,12 @@ int rejects_prepared_pointer_arithmetic_with_precise_diagnostic() {
       "instruction_kind=BinaryInst",
       "owner=ptr %result.ptr",
   };
-  if (expect_prepared_rejection_diagnostic_contains(
-          make_prepared_loaded_base_pointer_arithmetic_module(
-              bir::BinaryOpcode::Add),
-          expected) != 0) {
-    return 1;
-  }
-  if (expect_prepared_rejection_diagnostic_contains(
-          make_prepared_loaded_base_pointer_arithmetic_module(
-              bir::BinaryOpcode::Sub),
-          expected) != 0) {
-    return 1;
+  for (const auto opcode : {bir::BinaryOpcode::Add, bir::BinaryOpcode::Sub}) {
+    auto prepared = make_prepared_loaded_base_pointer_arithmetic_module(opcode);
+    prepared.value_locations.functions[0].value_homes.pop_back();
+    if (expect_prepared_rejection_diagnostic_contains(prepared, expected) != 0) {
+      return 1;
+    }
   }
 
   return 0;
@@ -22605,7 +22704,8 @@ int main() {
   status |= rejects_prepared_scalar_fp_binary_fail_closed_shapes();
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
-  status |= rejects_prepared_pointer_arithmetic_with_precise_diagnostic();
+  status |= builds_prepared_pointer_arithmetic_result_publication_object();
+  status |= rejects_prepared_pointer_arithmetic_missing_result_home_with_precise_diagnostic();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_f32_scalar_compare_publication_object();
   status |= builds_prepared_f32_scalar_compare_zero_publication_object();

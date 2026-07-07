@@ -2228,6 +2228,87 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
   if (auto fragment = fragment_for_prepared_fp_binary(names, lookups, binary)) {
     return fragment;
   }
+  if ((binary.opcode == c4c::backend::bir::BinaryOpcode::Add ||
+       binary.opcode == c4c::backend::bir::BinaryOpcode::Sub) &&
+      binary.result.type == c4c::backend::bir::TypeKind::Ptr) {
+    const auto destination_home =
+        prepared_value_home_for(names, lookups, binary.result);
+    const auto destination =
+        destination_home == nullptr
+            ? std::nullopt
+            : gpr_register_number_for_home(*destination_home);
+    const auto destination_stack_offset =
+        destination_home == nullptr
+            ? std::nullopt
+            : prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                       *destination_home,
+                                                       stack_frame_bytes,
+                                                       8);
+    if (!destination.has_value() && !destination_stack_offset.has_value()) {
+      return std::nullopt;
+    }
+
+    const c4c::backend::bir::Value* base = nullptr;
+    const c4c::backend::bir::Value* offset = nullptr;
+    const bool is_sub = binary.opcode == c4c::backend::bir::BinaryOpcode::Sub;
+    if (binary.lhs.type == c4c::backend::bir::TypeKind::Ptr &&
+        binary.rhs.type != c4c::backend::bir::TypeKind::Ptr) {
+      base = &binary.lhs;
+      offset = &binary.rhs;
+    } else if (!is_sub &&
+               binary.rhs.type == c4c::backend::bir::TypeKind::Ptr &&
+               binary.lhs.type != c4c::backend::bir::TypeKind::Ptr) {
+      base = &binary.rhs;
+      offset = &binary.lhs;
+    } else {
+      return std::nullopt;
+    }
+
+    const auto base_register = gpr_register_number_for_value(names, lookups, *base);
+    if (!base_register.has_value()) {
+      return std::nullopt;
+    }
+
+    RiscvEncodedFragment fragment;
+    const std::uint32_t destination_register = destination.value_or(28);
+    const auto offset_immediate = integer_immediate_for_value(names, lookups, *offset);
+    if (offset_immediate.has_value()) {
+      if (is_sub && *offset_immediate == std::numeric_limits<std::int64_t>::min()) {
+        return std::nullopt;
+      }
+      const std::int64_t adjusted_offset =
+          is_sub ? -*offset_immediate : *offset_immediate;
+      if (!fits_signed_12_bit_immediate(adjusted_offset)) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                0,
+                                *base_register,
+                                static_cast<std::int32_t>(adjusted_offset)));
+    } else {
+      const auto offset_register = gpr_register_number_for_value(names, lookups, *offset);
+      if (!offset_register.has_value()) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                0,
+                                *base_register,
+                                *offset_register,
+                                is_sub ? 0x20 : 0));
+    }
+    if (destination_stack_offset.has_value() &&
+        !append_rv64_store_register_to_stack_offset(fragment,
+                                                   destination_register,
+                                                   *destination_stack_offset,
+                                                   8)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
   if (binary.result.type != c4c::backend::bir::TypeKind::I32 &&
       binary.result.type != c4c::backend::bir::TypeKind::I64) {
     return std::nullopt;
@@ -3118,7 +3199,8 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     }
     return std::nullopt;
   }
-  if (home->kind != prepare::PreparedValueHomeKind::StackSlot &&
+  if (home->kind != prepare::PreparedValueHomeKind::Register &&
+      home->kind != prepare::PreparedValueHomeKind::StackSlot &&
       home->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset) {
     return std::nullopt;
   }
