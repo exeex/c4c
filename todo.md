@@ -1,43 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/550_rv64_scalar_fpr_residual_salvage.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Classify First Semantic Owners
+Current Step ID: Step 4
+Current Step Title: Split Coherent Follow-Ups Or Record No-Implementation
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by classifying first semantic owners for the eight
-retained non-quarantined rows. The row-by-row result is saved in
+Completed `plan.md` Step 4 by splitting the retained actionable owner groups
+from Step 3 into separate open follow-up ideas. The row-by-row owner evidence
+remains saved in
 `build/agent_state/550_rv64_scalar_fpr_residual_salvage/step3/owners.tsv`,
 with a narrative summary in
 `build/agent_state/550_rv64_scalar_fpr_residual_salvage/step3/summary.md`.
 
-First-owner groups:
+Follow-up ideas created:
 
-- Scalar compare publication: `src/20080529-1.c`, `src/930818-1.c`,
-  `src/loop-8.c`, and `src/strct-pack-1.c` all first hit RV64 object-emission
-  publication for non-terminator FPR compare results in prepared GPR homes.
-- Floating cast: `src/920618-1.c`, `src/ieee/pr67218.c`, and
-  `src/pr23941.c` first hit RV64 object `CastInst` lowering for ordinary
-  F32/F64 cast forms, not F128/long-double helper work.
-- Variadic helper: `src/va-arg-21.c` first hits RV64 `va_start` helper lowering
-  where prepared helper operands place the destination va_list address in stack
-  slots instead of prepared GPR homes.
+- `ideas/open/580_rv64_scalar_compare_publication.md` for
+  `src/20080529-1.c`, `src/930818-1.c`, `src/loop-8.c`, and
+  `src/strct-pack-1.c`.
+- `ideas/open/581_rv64_ordinary_floating_cast_lowering.md` for
+  `src/920618-1.c`, `src/ieee/pr67218.c`, and `src/pr23941.c`.
+- `ideas/open/582_rv64_va_start_stack_backed_destination.md` for
+  `src/va-arg-21.c`.
 
-No retained group shares implementation ownership with another group. The
-scalar compare publication and floating-cast groups are coherent enough for
-separate follow-up ideas. The variadic helper row is coherent only as a
-separate helper-focused idea; this scalar/FPR lane should not mix it into a
-compare or cast implementation packet.
+No implementation follow-up was created for the Step 2 quarantined
+F128/long-double rows `src/20040709-1.c` and `src/ieee/20011123-1.c`; those
+rows are outside this scalar/FPR/helper salvage lane's implementation scope.
+Each created idea has its own reviewer reject signals and does not mix scalar
+compare, floating cast, and variadic helper work.
 
 ## Suggested Next
 
-Have the supervisor route lifecycle follow-up from this classification. The
-next coherent implementation packet should target only one owner group, or the
-plan owner should split the groups into separate `ideas/open/` follow-ups if
-the current classification runbook is considered exhausted.
+Proceed to `plan.md` Step 5 closure-readiness evaluation for
+`ideas/open/550_rv64_scalar_fpr_residual_salvage.md`. The likely lifecycle
+question is whether this classification/splitting source idea is now complete
+because all retained rows have reproduction status, F128 screening,
+first-owner classification, and separate follow-up ideas where implementation
+is justified.
 
 ## Watchouts
 
@@ -54,14 +55,13 @@ the current classification runbook is considered exhausted.
   the variadic `va_start` helper destination-address home.
 - Do not claim implementation progress from expectation rewrites, unsupported
   marker changes, or named-case shortcuts.
-- Split coherent implementation follow-ups into separate `ideas/open/` files
-  instead of widening this classification plan.
+- Do not implement the new follow-up ideas under this classification runbook;
+  the supervisor should switch lifecycle state when choosing one.
 
 ## Proof
 
-Evidence-only packet; no build or root `test_after.log` was required. Proof
-used Step 1 `residual-inventory.tsv`, Step 2 `screening.tsv`, the Step 2
-prepared dumps, current per-case route logs, and a targeted read of the RV64
-object-emission diagnostic surfaces. Artifacts:
+Lifecycle-only split packet; no build or root `test_after.log` was required.
+Proof used Step 1 `residual-inventory.tsv`, Step 2 `screening.tsv`, the Step 2
+prepared dumps, current per-case route logs, and Step 3 owner artifacts:
 `build/agent_state/550_rv64_scalar_fpr_residual_salvage/step3/owners.tsv` and
 `build/agent_state/550_rv64_scalar_fpr_residual_salvage/step3/summary.md`.
