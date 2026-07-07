@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/585_bir_vector_binop_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Or Fail-Close Vector-Binop Producer Admission
+Current Step ID: 3
+Current Step Title: Broader Validation And Closure Handoff
 
 # Current Packet
 
