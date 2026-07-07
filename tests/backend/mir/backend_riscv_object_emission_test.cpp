@@ -8167,6 +8167,80 @@ prepare::PreparedBirModule make_prepared_small_integer_ordinary_select_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_f64_ordinary_select_stack_result_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto guard_name = prepared.names.value_names.intern("%guard");
+  const auto true_name = prepared.names.value_names.intern("%lhs");
+  const auto false_name = prepared.names.value_names.intern("%rhs");
+  const auto result_name = prepared.names.value_names.intern("%selected");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(bir::TypeKind::F64, "%selected"),
+                  .compare_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%guard"),
+                  .rhs = bir::Value::immediate_i32(0),
+                  .true_value = bir::Value::named(bir::TypeKind::F64, "%lhs"),
+                  .false_value = bir::Value::named(bir::TypeKind::F64, "%rhs"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 8;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{7},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, guard_name, "t0", 5),
+              make_fpr_home(function_name, true_name, 2, "ft0", 0),
+              make_fpr_home(function_name, false_name, 3, "ft1", 1),
+              rv64_sized_stack_slot_home(4,
+                                         function_name,
+                                         result_name,
+                                         prepare::PreparedFrameSlotId{7},
+                                         0,
+                                         8),
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_nested_i32_ordinary_select_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -17414,6 +17488,47 @@ int builds_prepared_small_integer_ordinary_select_materialization_objects() {
   return 0;
 }
 
+int builds_prepared_f64_ordinary_select_materialization_object() {
+  const auto prepared = make_prepared_f64_ordinary_select_stack_result_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected prepared F64 ordinary select RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* true_label =
+      object::find_symbol(*module, ".Lmain_entry_select_0_true");
+  const auto* end_label =
+      object::find_symbol(*module, ".Lmain_entry_select_0_end");
+  if (text == nullptr || main_symbol == nullptr || true_label == nullptr ||
+      end_label == nullptr) {
+    return fail("expected prepared F64 ordinary select object to publish select labels");
+  }
+  if (text->bytes.empty() || text->size_bytes != text->bytes.size() ||
+      main_symbol->value != 0 || main_symbol->size_bytes != text->size_bytes) {
+    return fail("expected prepared F64 ordinary select object text layout");
+  }
+  if (!contains_u32(text->bytes, 0x22108f53) ||  // fmv.d ft10, ft1
+      !contains_u32(text->bytes, 0x22000f53) ||  // fmv.d ft10, ft0
+      !contains_u32(text->bytes, 0x01e13027)) {  // fsd ft10, 0(sp)
+    return fail("expected prepared F64 ordinary select to move FPR payloads and store stack result");
+  }
+  bool saw_branch_relocation = false;
+  bool saw_jump_relocation = false;
+  for (const auto& relocation : module->relocations) {
+    saw_branch_relocation = saw_branch_relocation ||
+                            relocation.type == R_RISCV_BRANCH;
+    saw_jump_relocation = saw_jump_relocation || relocation.type == R_RISCV_JAL;
+  }
+  if (!saw_branch_relocation || !saw_jump_relocation) {
+    return fail("expected prepared F64 ordinary select local branch/jump relocations");
+  }
+  return 0;
+}
+
 int materializes_nested_i32_ordinary_select_without_intermediate_home_object() {
   const auto prepared = make_prepared_nested_i32_ordinary_select_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -23124,6 +23239,7 @@ int main() {
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();
   status |= builds_prepared_small_integer_ordinary_select_materialization_objects();
+  status |= builds_prepared_f64_ordinary_select_materialization_object();
   status |=
       materializes_nested_i32_ordinary_select_without_intermediate_home_object();
   status |=

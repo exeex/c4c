@@ -7719,6 +7719,128 @@ bool append_rv64_move_value_or_same_block_select_to_register(
   return true;
 }
 
+std::optional<std::uint32_t> rv64_scratch_fpr_avoiding(
+    std::optional<std::uint32_t> first,
+    std::optional<std::uint32_t> second,
+    std::optional<std::uint32_t> third) {
+  constexpr std::array<std::uint32_t, 3> candidates = {30, 31, 29};
+  const auto conflicts = [&](std::uint32_t candidate) {
+    return (first.has_value() && *first == candidate) ||
+           (second.has_value() && *second == candidate) ||
+           (third.has_value() && *third == candidate);
+  };
+  const auto it =
+      std::find_if(candidates.begin(), candidates.end(), [&](std::uint32_t candidate) {
+        return !conflicts(candidate);
+      });
+  return it == candidates.end() ? std::nullopt
+                                : std::optional<std::uint32_t>{*it};
+}
+
+bool append_rv64_move_floating_value_to_fpr(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
+  if (!rv64_floating_type(value.type)) {
+    return false;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    if (value.immediate_bits >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return false;
+    }
+    const auto scratch_gpr = rv64_unoccupied_temporary_gpr(lookups);
+    if (!scratch_gpr.has_value()) {
+      return false;
+    }
+    append_rv64_load_immediate(
+        fragment, *scratch_gpr, static_cast<std::int64_t>(value.immediate_bits));
+    return append_rv64_gpr_to_fpr_move(fragment,
+                                       destination,
+                                       *scratch_gpr,
+                                       value.type);
+  }
+  if (const auto source = fpr_register_number_for_value(names, lookups, value);
+      source.has_value()) {
+    return append_rv64_fpr_move(fragment, destination, *source, value.type);
+  }
+  const auto* stack_home = prepared_value_home_for(names, lookups, value);
+  const auto stack_offset =
+      stack_home == nullptr
+          ? std::nullopt
+          : prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                     *stack_home,
+                                                     stack_frame_bytes,
+                                                     value.type == c4c::backend::bir::TypeKind::F32
+                                                         ? std::size_t{4}
+                                                         : std::size_t{8});
+  if (stack_offset.has_value()) {
+    return append_rv64_load_stack_offset_to_fpr(fragment,
+                                               destination,
+                                               *stack_offset,
+                                               value.type);
+  }
+  return false;
+}
+
+bool append_rv64_move_floating_value_or_same_block_select_to_fpr(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::string_view function_name,
+    std::string_view block_label,
+    const c4c::backend::bir::Block* block,
+    std::size_t before_instruction_index,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes,
+    std::size_t recursion_depth) {
+  if (append_rv64_move_floating_value_to_fpr(fragment,
+                                            destination,
+                                            stack_layout,
+                                            names,
+                                            lookups,
+                                            value,
+                                            stack_frame_bytes)) {
+    return true;
+  }
+  if (recursion_depth > 16U) {
+    return false;
+  }
+  std::size_t producer_instruction_index = 0;
+  const auto* nested_select = find_same_block_scalar_select_producer(
+      names, block, value, before_instruction_index, &producer_instruction_index);
+  if (nested_select == nullptr || !rv64_floating_type(nested_select->result.type)) {
+    return false;
+  }
+  const auto unique_consumer = unique_later_same_block_select_consumer_index(
+      names, block, *nested_select, producer_instruction_index);
+  if (!unique_consumer.has_value() || *unique_consumer != before_instruction_index) {
+    return false;
+  }
+  auto nested_fragment = fragment_for_prepared_select(stack_layout,
+                                                      names,
+                                                      lookups,
+                                                      function_name,
+                                                      block_label,
+                                                      producer_instruction_index,
+                                                      *nested_select,
+                                                      stack_frame_bytes,
+                                                      block,
+                                                      destination,
+                                                      recursion_depth + 1U);
+  if (!nested_fragment.has_value()) {
+    return false;
+  }
+  append_fragment(fragment, std::move(*nested_fragment));
+  return true;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -7731,10 +7853,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
     const c4c::backend::bir::Block* block,
     std::optional<std::uint32_t> forced_destination_register,
     std::size_t recursion_depth) {
+  const bool floating_result = rv64_floating_type(select.result.type);
   if (select.result.type != c4c::backend::bir::TypeKind::I8 &&
       select.result.type != c4c::backend::bir::TypeKind::I16 &&
       select.result.type != c4c::backend::bir::TypeKind::I32 &&
-      select.result.type != c4c::backend::bir::TypeKind::I64) {
+      select.result.type != c4c::backend::bir::TypeKind::I64 &&
+      !floating_result) {
     return std::nullopt;
   }
   if (recursion_depth > 16U) {
@@ -7749,7 +7873,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
   if (!funct3.has_value()) {
     return std::nullopt;
   }
-  const auto size_bytes = rv64_scalar_memory_size_for_type(select.result.type);
+  const auto size_bytes =
+      floating_result
+          ? std::optional<std::size_t>{
+                select.result.type == c4c::backend::bir::TypeKind::F32
+                    ? std::size_t{4}
+                    : std::size_t{8}}
+          : rv64_scalar_memory_size_for_type(select.result.type);
   if (!size_bytes.has_value()) {
     return std::nullopt;
   }
@@ -7757,8 +7887,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
   const auto destination =
       forced_destination_register.has_value()
           ? forced_destination_register
-          : (destination_home == nullptr ? std::nullopt
-                                         : gpr_register_number_for_home(*destination_home));
+          : (destination_home == nullptr
+                 ? std::nullopt
+                 : (floating_result ? fpr_register_number_for_home(*destination_home)
+                                    : gpr_register_number_for_home(*destination_home)));
   const auto destination_stack_offset =
       forced_destination_register.has_value() || destination_home == nullptr
           ? std::nullopt
@@ -7774,7 +7906,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
     }
     return std::nullopt;
   }
-  const std::uint32_t destination_register = destination.value_or(30);
+  const auto false_source_fpr =
+      floating_result ? fpr_register_number_for_value(names, lookups, select.false_value)
+                      : std::optional<std::uint32_t>{};
+  const auto true_source_fpr =
+      floating_result ? fpr_register_number_for_value(names, lookups, select.true_value)
+                      : std::optional<std::uint32_t>{};
+  const std::uint32_t destination_register =
+      destination.value_or(floating_result
+                               ? rv64_scratch_fpr_avoiding(false_source_fpr,
+                                                           true_source_fpr,
+                                                           std::nullopt)
+                                     .value_or(30)
+                               : 30);
   const std::string true_label =
       rv64_select_local_label(function_name, block_label, instruction_index, "true");
   const std::string end_label =
@@ -7808,49 +7952,93 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
     return std::nullopt;
   }
   append_rv64_local_branch(fragment, *funct3, 28, 29, true_label);
-  if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
-                                                               destination_register,
-                                                               stack_layout,
-                                                               names,
-                                                               lookups,
-                                                               function_name,
-                                                               block_label,
-                                                               block,
-                                                               instruction_index,
-                                                               select.false_value,
-                                                               stack_frame_bytes,
-                                                               recursion_depth)) {
-    return std::nullopt;
+  if (floating_result) {
+    if (!append_rv64_move_floating_value_or_same_block_select_to_fpr(
+            fragment,
+            destination_register,
+            stack_layout,
+            names,
+            lookups,
+            function_name,
+            block_label,
+            block,
+            instruction_index,
+            select.false_value,
+            stack_frame_bytes,
+            recursion_depth)) {
+      return std::nullopt;
+    }
+  } else {
+    if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                                 destination_register,
+                                                                 stack_layout,
+                                                                 names,
+                                                                 lookups,
+                                                                 function_name,
+                                                                 block_label,
+                                                                 block,
+                                                                 instruction_index,
+                                                                 select.false_value,
+                                                                 stack_frame_bytes,
+                                                                 recursion_depth)) {
+      return std::nullopt;
+    }
   }
   append_rv64_local_jump(fragment, end_label);
   fragment.labels.push_back(RiscvObjectLabel{
       .offset_bytes = fragment.bytes.size(),
       .name = true_label,
   });
-  if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
-                                                               destination_register,
-                                                               stack_layout,
-                                                               names,
-                                                               lookups,
-                                                               function_name,
-                                                               block_label,
-                                                               block,
-                                                               instruction_index,
-                                                               select.true_value,
-                                                               stack_frame_bytes,
-                                                               recursion_depth)) {
-    return std::nullopt;
+  if (floating_result) {
+    if (!append_rv64_move_floating_value_or_same_block_select_to_fpr(
+            fragment,
+            destination_register,
+            stack_layout,
+            names,
+            lookups,
+            function_name,
+            block_label,
+            block,
+            instruction_index,
+            select.true_value,
+            stack_frame_bytes,
+            recursion_depth)) {
+      return std::nullopt;
+    }
+  } else {
+    if (!append_rv64_move_value_or_same_block_select_to_register(fragment,
+                                                                 destination_register,
+                                                                 stack_layout,
+                                                                 names,
+                                                                 lookups,
+                                                                 function_name,
+                                                                 block_label,
+                                                                 block,
+                                                                 instruction_index,
+                                                                 select.true_value,
+                                                                 stack_frame_bytes,
+                                                                 recursion_depth)) {
+      return std::nullopt;
+    }
   }
   fragment.labels.push_back(RiscvObjectLabel{
       .offset_bytes = fragment.bytes.size(),
       .name = end_label,
   });
-  if (destination_stack_offset.has_value() &&
-      !append_rv64_store_register_to_stack_offset(fragment,
-                                                 destination_register,
-                                                 *destination_stack_offset,
-                                                 *size_bytes)) {
-    return std::nullopt;
+  if (destination_stack_offset.has_value()) {
+    if (floating_result) {
+      if (!append_rv64_store_fpr_to_stack_offset(fragment,
+                                                destination_register,
+                                                *destination_stack_offset,
+                                                select.result.type)) {
+        return std::nullopt;
+      }
+    } else if (!append_rv64_store_register_to_stack_offset(fragment,
+                                                          destination_register,
+                                                          *destination_stack_offset,
+                                                          *size_bytes)) {
+      return std::nullopt;
+    }
   }
   return fragment;
 }
@@ -9391,7 +9579,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
         const auto* result_home =
             prepared_value_home_for(prepared.names, &lookups, select->result);
         if (result_home != nullptr &&
-            gpr_register_number_for_home(*result_home).has_value()) {
+            (gpr_register_number_for_home(*result_home).has_value() ||
+             fpr_register_number_for_home(*result_home).has_value())) {
           return RiscvEncodedFragment{};
         }
       }
