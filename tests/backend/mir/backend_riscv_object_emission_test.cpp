@@ -6852,6 +6852,125 @@ prepare::PreparedBirModule make_prepared_scalar_binary_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
+    bir::BinaryOpcode pointer_opcode = bir::BinaryOpcode::Add) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("pointer_arithmetic");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%lv.base");
+  const auto base_name = prepared.names.value_names.intern("%base.loaded");
+  const auto index_name = prepared.names.value_names.intern("%p.index");
+  const auto byte_offset_name =
+      prepared.names.value_names.intern("%scaled.byte_offset");
+  const auto result_name = prepared.names.value_names.intern("%result.ptr");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::Ptr, "%base.loaded"),
+                  .slot_name = "%lv.base",
+                  .slot_id = slot_name,
+                  .align_bytes = 8,
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Mul,
+                  .result =
+                      bir::Value::named(bir::TypeKind::I64,
+                                        "%scaled.byte_offset"),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::named(bir::TypeKind::I64, "%p.index"),
+                  .rhs = bir::Value::immediate_i64(4),
+              },
+              bir::BinaryInst{
+                  .opcode = pointer_opcode,
+                  .result =
+                      bir::Value::named(bir::TypeKind::Ptr, "%result.ptr"),
+                  .operand_type = bir::TypeKind::Ptr,
+                  .lhs = bir::Value::named(bir::TypeKind::Ptr, "%base.loaded"),
+                  .rhs = bir::Value::named(bir::TypeKind::I64,
+                                           "%scaled.byte_offset"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value =
+      bir::Value::named(bir::TypeKind::Ptr, "%result.ptr");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "pointer_arithmetic",
+      .return_type = bir::TypeKind::Ptr,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .params = {bir::Param{
+          .type = bir::TypeKind::I64,
+          .name = "%p.index",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .local_slots = {bir::LocalSlot{
+          .name = "%lv.base",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 8;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{0},
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, base_name, "s1", 9),
+              rv64_gpr_home(2, function_name, index_name, "t0", 5),
+              rv64_gpr_home(3, function_name, byte_offset_name, "s2", 18),
+              rv64_gpr_home(4, function_name, result_name, "t1", 6),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 8,
+      .frame_alignment_bytes = 8,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .result_value_name = base_name,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = prepare::PreparedFrameSlotId{0},
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_fpr_binary_module(
     bir::BinaryOpcode opcode,
     bir::TypeKind type) {
@@ -16224,6 +16343,19 @@ int rejects_prepared_scalar_remainder_fail_closed_shapes() {
   return 0;
 }
 
+int rejects_prepared_pointer_arithmetic_with_precise_diagnostic() {
+  return expect_prepared_rejection_diagnostic_contains(
+      make_prepared_loaded_base_pointer_arithmetic_module(),
+      {
+          "unsupported_pointer_arithmetic: RV64 object route requires prepared pointer arithmetic lowering for loaded pointer base plus scaled integer byte offset",
+          "function=pointer_arithmetic",
+          "block=entry",
+          "instruction_index=2",
+          "instruction_kind=BinaryInst",
+          "owner=ptr %result.ptr",
+      });
+}
+
 int rejects_prepared_scalar_compare_publication_missing_home() {
   constexpr const char* diagnostic =
       "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands";
@@ -21718,6 +21850,7 @@ int main() {
   status |= rejects_prepared_scalar_fp_binary_fail_closed_shapes();
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
+  status |= rejects_prepared_pointer_arithmetic_with_precise_diagnostic();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();

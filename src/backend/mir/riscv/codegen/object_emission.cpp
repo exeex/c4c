@@ -9073,6 +9073,107 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
+  const auto pointer_arithmetic_diagnostic =
+      [&](const bir::BinaryInst& binary) -> std::optional<std::string> {
+    const auto same_named_value = [](const bir::Value& lhs,
+                                     const bir::Value& rhs) {
+      return lhs.kind == bir::Value::Kind::Named &&
+             rhs.kind == bir::Value::Kind::Named &&
+             lhs.name == rhs.name &&
+             lhs.type == rhs.type;
+    };
+    const auto value_is_loaded_pointer = [&](const bir::Value& value) {
+      if (value.type != bir::TypeKind::Ptr) {
+        return false;
+      }
+      for (std::size_t index = 0; index < instruction_index &&
+                                  index < block.insts.size();
+           ++index) {
+        const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[index]);
+        if (load != nullptr && same_named_value(load->result, value)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const auto value_is_scaled_integer_offset = [&](const bir::Value& value) {
+      if (value.type == bir::TypeKind::Ptr) {
+        return false;
+      }
+      if (value.kind == bir::Value::Kind::Immediate) {
+        return true;
+      }
+      for (std::size_t index = 0; index < instruction_index &&
+                                  index < block.insts.size();
+           ++index) {
+        const auto* producer =
+            std::get_if<bir::BinaryInst>(&block.insts[index]);
+        if (producer != nullptr &&
+            producer->opcode == bir::BinaryOpcode::Mul &&
+            same_named_value(producer->result, value)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const bool opcode_is_pointer_arithmetic =
+        binary.opcode == bir::BinaryOpcode::Add ||
+        binary.opcode == bir::BinaryOpcode::Sub;
+    const bool lhs_is_pointer_offset =
+        value_is_loaded_pointer(binary.lhs) &&
+        value_is_scaled_integer_offset(binary.rhs);
+    const bool rhs_is_pointer_offset =
+        binary.opcode == bir::BinaryOpcode::Add &&
+        value_is_loaded_pointer(binary.rhs) &&
+        value_is_scaled_integer_offset(binary.lhs);
+    if (!opcode_is_pointer_arithmetic ||
+        binary.result.type != bir::TypeKind::Ptr ||
+        (!lhs_is_pointer_offset && !rhs_is_pointer_offset)) {
+      return std::nullopt;
+    }
+    if (fragment_for_prepared_pointer_result_frame_address_materialization(
+            stack_layout,
+            names,
+            &lookups,
+            prepared_block_label,
+            instruction_index,
+            binary,
+            stack_frame_bytes)
+            .has_value() ||
+        fragment_for_prepared_frame_address_materialization(stack_layout,
+                                                            names,
+                                                            &lookups,
+                                                            prepared_block_label,
+                                                            instruction_index,
+                                                            binary,
+                                                            stack_frame_bytes)
+            .has_value() ||
+        fragment_for_prepared_binary(stack_layout,
+                                     names,
+                                     &lookups,
+                                     binary,
+                                     stack_frame_bytes)
+            .has_value()) {
+      return std::nullopt;
+    }
+    std::ostringstream out;
+    out << "unsupported_pointer_arithmetic: RV64 object route requires prepared pointer arithmetic lowering for loaded pointer base plus scaled integer byte offset"
+        << "; function=" << rv64_prepared_function_name(names, function_name)
+        << "; block=" << rv64_prepared_block_label(names, prepared_block_label)
+        << "; block_index=" << block_index
+        << "; instruction_index=" << instruction_index
+        << "; instruction_kind=BinaryInst"
+        << "; owner=" << bir::render_type(binary.result.type);
+    if (binary.result.kind == bir::Value::Kind::Named &&
+        !binary.result.name.empty()) {
+      out << " " << binary.result.name;
+    } else if (binary.result.kind == bir::Value::Kind::Immediate) {
+      out << " immediate";
+    }
+    return out.str();
+  };
+
   const auto local_memory_diagnostic =
       [&](const std::optional<std::size_t>& size_bytes,
           const prepare::PreparedMemoryAccess* access,
@@ -9194,6 +9295,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
         rv64_floating_type(cast->result.type)) {
       return std::string{
           "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts, I32/I64-to-F32/F64 integer-to-floating casts, and FPR-register-source F32/F64-to-I32/I64 floating-to-integer casts"};
+    }
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    if (auto diagnostic = pointer_arithmetic_diagnostic(*binary)) {
+      return diagnostic;
     }
   }
   if (const auto* call = std::get_if<bir::CallInst>(&inst);
