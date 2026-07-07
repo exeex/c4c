@@ -1,6 +1,6 @@
 # Target ABI Contract And Value Consumption Research
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
 Parent: `ideas/open/584_rv64_stack_destination_move_bundle_authority_contract.md`
 Owning Layer: Target ABI policy, BIR call ABI facts, prepared/prealloc value
@@ -212,6 +212,16 @@ It must not replace any required answer file.
   discussion-required architecture work.
 - No implementation files, test expectations, unsupported markers, or runtime
   comparison behavior are changed.
+
+## Closure Note
+
+Closed after completing the required research set in
+`docs/target_abi_contract_research/`: six numbered answer files plus
+`index.md`. The index preserves the durable synthesis and separates remaining
+work into documentation follow-up, narrow implementation ideas, and
+discussion-required architecture decisions. No implementation files, test
+expectations, unsupported markers, runtime comparison behavior, or lifecycle
+history were changed as part of the research output.
 
 ## Reviewer Reject Signals
 
