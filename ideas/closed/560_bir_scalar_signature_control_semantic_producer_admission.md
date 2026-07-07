@@ -1,6 +1,6 @@
 # BIR Scalar Control Flow Semantic Producer Admission
 
-Status: Open
+Status: Closed
 Activation Priority: Active after split from the combined scalar/signature/control lane.
 Type: Producer implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
@@ -76,9 +76,18 @@ the remaining failures now belong to downstream owner boundaries:
 - Scalar/local-memory follow-up work is tracked by
   `ideas/open/564_bir_scalar_local_memory_semantic_admission_followup.md`.
 
-Close was rejected for this lifecycle pass because `test_after.log` was absent
-while the delegation prohibited touching test logs, so the plan-owner close
-gate could not run a matching regression guard.
+The final refresh confirmed that no sampled scalar-control-flow representative
+still fails at the original BIR semantic producer boundary. `src/20000314-3.c`
+/ `attr_eq` now lowers through BIR, prepared BIR, and MIR; its remaining
+`unsupported_terminator_fragment` is downstream RV64 object lowering, not this
+idea's BIR producer scope. The nearby representatives `src/20030408-1.c`,
+`src/20000622-1.c`, and `src/20000819-1.c` pass the direct RV64 object runner.
+
+Close gate: backend regression guard compared `test_before.log` and
+`test_after.log` for `ctest --test-dir build -j --output-on-failure -R
+'^backend_'`. Both logs passed 346/346 backend tests; the guard passed in
+non-decreasing mode because the supervisor had already rolled the previous
+after-log forward into `test_before.log`.
 
 ## Reviewer Reject Signals
 
