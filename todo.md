@@ -1,55 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/584_rv64_stack_destination_move_bundle_authority_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Consume Authority In RV64
+Current Step ID: 5
+Current Step Title: Rerun The 579 Representative Route
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Consume Authority In RV64 completed.
+Step 5: Rerun The 579 Representative Route completed for the representative
+test `llvm_gcc_c_torture_src_20000605_1_c`
+(`tests/c/external/gcc_torture/src/20000605-1.c`).
 
 Changed files:
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `src/backend/prealloc/prepared_object_traversal.cpp`
-- `src/backend/prealloc/prepared_object_traversal.hpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 - `todo.md`
 - `test_after.log`
 
-Implemented:
-- Taught RV64 prepared move-bundle emission to fail closed for register fan-in
-  into one stack destination unless the bundle carries
-  `StackDestinationRegisterFanIn` authority.
-- Allowed RV64 register-to-stack and stack-to-stack prepared moves to emit under
-  `StackDestinationRegisterFanIn` only when the individual move carries the
-  same authority as the bundle.
-- Added a prepared consumer diagnostic category for contradictory
-  `StackDestinationRegisterFanIn` bundle/move facts.
-- Added RV64 coverage for missing, unknown, unsupported, contradictory, and
-  matching stack-destination fan-in authority, including positive emission after
-  producer publication.
+Result:
+- The representative route passed.
+- `producer_authority_missing_for_register_fan_in_stack_destination` does not
+  appear in `test_after.log`.
+- Because the representative passed without that diagnostic, it advanced past
+  the old stack-destination fan-in blocker.
 
 ## Suggested Next
 
-Delegate the next plan step or plan-owner review if Step 4 completes the current
-runbook slice.
+Supervisor owns the next routing decision. If Step 5 exhausts the runbook,
+delegate plan-owner review/closure decision next.
 
 ## Watchouts
 
-- The shared prepared-object traversal contract still classifies the legacy
-  select-materialized stack-destination shape as available; RV64 now performs
-  its own fail-closed check before materialization so generic traversal tests do
-  not need to change.
-- The RV64 positive path does not rediscover producer select legality; it only
-  requires matching `StackDestinationRegisterFanIn` facts on the bundle and
-  moves, then relies on ordinary RV64 move materialization support.
+- This packet did not touch implementation files or tests; it only reran the
+  delegated representative route and recorded the result.
+- No current executor blocker remains for this representative test.
 
 ## Proof
 
 Ran exactly:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_20000605_1_c$'; } > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the proof output; CTest reports
-`Total Test time (real) =   1.98 sec`.
+`100% tests passed, 0 tests failed out of 1` and
+`Total Test time (real) =   0.10 sec`.
