@@ -312,6 +312,96 @@ bool has_select_publication_pointer_stack_source_register_policy(
          intent.source_stack_size_bytes == std::optional<std::size_t>{8};
 }
 
+bool rv64_select_publication_floating_register_type(bir::TypeKind type) {
+  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64;
+}
+
+std::optional<std::uint32_t> rv64_fpr_register_number(std::string_view name) {
+  if (name == "f0" || name == "ft0") return 0;
+  if (name == "f1" || name == "ft1") return 1;
+  if (name == "f2" || name == "ft2") return 2;
+  if (name == "f3" || name == "ft3") return 3;
+  if (name == "f4" || name == "ft4") return 4;
+  if (name == "f5" || name == "ft5") return 5;
+  if (name == "f6" || name == "ft6") return 6;
+  if (name == "f7" || name == "ft7") return 7;
+  if (name == "f8" || name == "fs0") return 8;
+  if (name == "f9" || name == "fs1") return 9;
+  if (name == "f10" || name == "fa0") return 10;
+  if (name == "f11" || name == "fa1") return 11;
+  if (name == "f12" || name == "fa2") return 12;
+  if (name == "f13" || name == "fa3") return 13;
+  if (name == "f14" || name == "fa4") return 14;
+  if (name == "f15" || name == "fa5") return 15;
+  if (name == "f16" || name == "fa6") return 16;
+  if (name == "f17" || name == "fa7") return 17;
+  if (name == "f18" || name == "fs2") return 18;
+  if (name == "f19" || name == "fs3") return 19;
+  if (name == "f20" || name == "fs4") return 20;
+  if (name == "f21" || name == "fs5") return 21;
+  if (name == "f22" || name == "fs6") return 22;
+  if (name == "f23" || name == "fs7") return 23;
+  if (name == "f24" || name == "fs8") return 24;
+  if (name == "f25" || name == "fs9") return 25;
+  if (name == "f26" || name == "fs10") return 26;
+  if (name == "f27" || name == "fs11") return 27;
+  if (name == "f28" || name == "ft8") return 28;
+  if (name == "f29" || name == "ft9") return 29;
+  if (name == "f30" || name == "ft10") return 30;
+  if (name == "f31" || name == "ft11") return 31;
+  return std::nullopt;
+}
+
+std::optional<std::uint32_t> rv64_fpr_register_number_for_home(
+    const prepare::PreparedValueHome* home) {
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::Register) {
+    return std::nullopt;
+  }
+  if (!home->target_register_identity.has_value()) {
+    return home->register_name.has_value()
+               ? rv64_fpr_register_number(*home->register_name)
+               : std::nullopt;
+  }
+  const auto& identity = *home->target_register_identity;
+  if (identity.target_arch != c4c::TargetArch::Riscv64 ||
+      identity.bank != prepare::PreparedRegisterBank::Fpr ||
+      identity.register_class != prepare::PreparedRegisterClass::Float ||
+      identity.physical_index > 31) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(identity.physical_index);
+}
+
+bool prepared_select_publication_fpr_to_fpr_is_admitted(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.publication == nullptr ||
+      intent.publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      intent.source_type != intent.destination_type ||
+      !rv64_select_publication_floating_register_type(intent.source_type) ||
+      intent.source_register.empty() ||
+      intent.source_immediate_i32.has_value() ||
+      intent.source_stack_slot_id.has_value() ||
+      intent.source_stack_offset_bytes.has_value() ||
+      intent.source_memory_base_value_id.has_value() ||
+      !intent.source_memory_base_register.empty() ||
+      intent.source_memory_byte_offset.has_value() ||
+      intent.source_pointer_base_value_id.has_value() ||
+      !intent.source_pointer_base_register.empty() ||
+      intent.source_pointer_byte_delta.has_value() ||
+      intent.destination_register.empty() ||
+      intent.destination_stack_slot_id.has_value() ||
+      intent.destination_stack_offset_bytes.has_value()) {
+    return false;
+  }
+  return rv64_fpr_register_number_for_home(intent.publication->source_home)
+             .has_value() &&
+         rv64_fpr_register_number_for_home(intent.publication->destination_home)
+             .has_value();
+}
+
 bool is_supported_direct_register_to_stack_publication_size(
     std::optional<std::size_t> size_bytes) {
   return size_bytes == std::optional<std::size_t>{1} ||
@@ -726,7 +816,14 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
         return intent;
       }
       intent.destination_register = *destination_home.register_name;
-      if (intent.destination_register != intent.source_register) {
+      if (prepared_select_publication_fpr_to_fpr_is_admitted(intent)) {
+        if (intent.destination_register != intent.source_register) {
+          intent.instruction_text =
+              std::string(intent.source_type == bir::TypeKind::F32 ? "fmv.s "
+                                                                    : "fmv.d ") +
+              intent.destination_register + ", " + intent.source_register;
+        }
+      } else if (intent.destination_register != intent.source_register) {
         intent.instruction_text =
             "mv " + intent.destination_register + ", " + intent.source_register;
       }
@@ -848,6 +945,10 @@ bool prepared_select_publication_move_is_rv64_object_admitted(
       intent.source_memory_byte_offset.has_value() ||
       intent.source_pointer_byte_delta.has_value()) {
     return false;
+  }
+
+  if (prepared_select_publication_fpr_to_fpr_is_admitted(intent)) {
+    return true;
   }
 
   const auto destination =
@@ -1021,6 +1122,9 @@ std::string rv64_select_publication_move_rejection_reason(
   }
   if (intent.source_pointer_byte_delta.has_value()) {
     return "unsupported_source_pointer_byte_delta";
+  }
+  if (prepared_select_publication_fpr_to_fpr_is_admitted(intent)) {
+    return "available";
   }
   if (!rv64_prepared_register_number(intent.destination_register).has_value()) {
     return "invalid_destination_register";

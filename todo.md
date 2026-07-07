@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/563_rv64_object_lowering_control_flow_fragments.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Prepared Terminator Object Lowering
+Current Step ID: 3
+Current Step Title: Repair Prepared Move-Bundle And Select Publication Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the prepared terminator object-lowering shape exposed by the
-register-condition representatives. RV64 object emission now lowers a prepared
-named GPR truth-value condition as `bne condition, zero, true` followed by a
-local jump to the false successor, while missing homes, stack homes, and
-floating condition values remain fail-closed with the existing
-`unsupported_terminator_fragment` diagnostic.
+Step 3 repaired the prepared move-bundle/select-publication object-lowering
+shape exposed by `src/980604-1.c`. RV64 object emission now admits FPR-to-FPR
+select-publication moves, lowers FPR out-of-SSA phi moves, and materializes the
+edge-preserved floating zero-compare condition from prepared branch-condition
+facts when raw successor BIR is not instruction-bearing in the object route.
+Malformed or ambiguous bundles still fail closed with the existing
+`unsupported_move_bundle_target_shape` diagnostic.
 
 ## Suggested Next
 
-Delegate Step 3 from `plan.md`: inspect the `src/980604-1.c`
-prepared move-bundle/select-publication target shape and repair the semantic
-RV64 move or admission path without weakening ambiguous or unsupported bundle
-rejections.
+Delegate Step 4 from `plan.md`: repair plain BIR `SelectInst` RV64 object
+lowering for the next `src/980604-1.c` / `src/pr39501.c` blocker without
+weakening select-carrier alias or join-transfer contracts.
 
 ## Watchouts
 
@@ -33,8 +33,8 @@ rejections.
 - Clearing fused compare `branch_conditions` on the focused fixture is now a
   supported unfused register-condition branch shape, not a malformed prepared
   fact. Malformed condition coverage should mutate the condition home or type.
-- The Step 2 repair only covers already-homed scalar/pointer GPR condition
-  values; it does not repair move bundles, select publication, or plain
+- The Step 3 repair only covers select-publication/FPR move-bundle emission
+  and edge-preserved floating zero compares; it does not repair plain
   `SelectInst` object lowering.
 
 ## Proof
@@ -42,10 +42,11 @@ rejections.
 Ran:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 
-Result: passed after the Step 2 repair. Proof log: `test_after.log`.
+Result: passed after the Step 3 repair. Proof log: `test_after.log`.
 
 Supervisor follow-up:
-`ctest --test-dir build -j --output-on-failure -R 'llvm_gcc_c_torture_src_(20000314_3|930614_1|pr35456)_c'`
+`build/c4cll -I /workspaces/c4c --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/980604-1.c -o /tmp/980604-1.o`
 
-Result: passed; the Step 2 terminator representatives now advance beyond the
-previous `unsupported_terminator_fragment` blocker.
+Result: advanced beyond the previous
+`unsupported_move_bundle_target_shape` blocker and now stops at the Step 4
+`unsupported_instruction_fragment` / `SelectInst` object-lowering boundary.

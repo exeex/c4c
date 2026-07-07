@@ -2,6 +2,7 @@
 #include "src/backend/mir/riscv/codegen/emit.hpp"
 #include "src/backend/mir/riscv/codegen/object_emission.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_call_emit.hpp"
+#include "src/backend/mir/riscv/codegen/prepared_edge_publication_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_emit_context.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_frame_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_module_emit.hpp"
@@ -18666,6 +18667,109 @@ int publishes_select_publication_stack_home_move_intent_fields() {
   if (stack_destination_text == nullptr ||
       !contains_u32(stack_destination_text->bytes, 0x00611223)) {
     return fail("expected i16 stack-destination select-publication to emit sh t1, 4(sp)");
+  }
+
+  auto fpr_publication =
+      make_prepared_join_transfer_select_with_published_copies_module();
+  const auto fpr_function_name =
+      fpr_publication.names.function_names.find("main");
+  const auto fpr_true_predecessor =
+      fpr_publication.names.block_labels.find("pred.true");
+  const auto fpr_false_predecessor =
+      fpr_publication.names.block_labels.find("pred.false");
+  const auto fpr_join_label = fpr_publication.names.block_labels.find("join");
+  const auto fpr_fallback_name =
+      fpr_publication.names.value_names.find("%fallback");
+  const auto fpr_result_name =
+      fpr_publication.names.value_names.find("%selected");
+  auto& fpr_function = fpr_publication.module.functions.front();
+  fpr_function.return_type = bir::TypeKind::F64;
+  fpr_function.return_size_bytes = 8;
+  fpr_function.return_align_bytes = 8;
+  auto& fpr_join = fpr_function.blocks.at(3);
+  auto* fpr_select = std::get_if<bir::SelectInst>(&fpr_join.insts.front());
+  if (fpr_select == nullptr) {
+    return fail("expected prepared FPR select fixture");
+  }
+  fpr_select->result = bir::Value::named(bir::TypeKind::F64, "%selected");
+  fpr_select->true_value = bir::Value::named(bir::TypeKind::F64, "%fallback");
+  fpr_select->false_value = bir::Value::named(bir::TypeKind::F64, "%fallback");
+  fpr_join.terminator.value =
+      bir::Value::named(bir::TypeKind::F64, "%selected");
+  auto& fpr_join_transfer =
+      fpr_publication.control_flow.functions.front().join_transfers.front();
+  fpr_join_transfer.result =
+      bir::Value::named(bir::TypeKind::F64, "%selected");
+  for (auto& incoming : fpr_join_transfer.incomings) {
+    incoming.value = bir::Value::named(bir::TypeKind::F64, "%fallback");
+  }
+  for (auto& edge_transfer : fpr_join_transfer.edge_transfers) {
+    edge_transfer.incoming_value =
+        bir::Value::named(bir::TypeKind::F64, "%fallback");
+    edge_transfer.destination_value =
+        bir::Value::named(bir::TypeKind::F64, "%selected");
+  }
+  auto& fpr_true_parallel_copy =
+      fpr_publication.control_flow.functions.front().parallel_copy_bundles.at(0);
+  auto& fpr_false_parallel_copy =
+      fpr_publication.control_flow.functions.front().parallel_copy_bundles.at(1);
+  for (auto* bundle : {&fpr_true_parallel_copy, &fpr_false_parallel_copy}) {
+    bundle->moves.front().source_value =
+        bir::Value::named(bir::TypeKind::F64, "%fallback");
+    bundle->moves.front().destination_value =
+        bir::Value::named(bir::TypeKind::F64, "%selected");
+  }
+  auto& fpr_homes = fpr_publication.value_locations.functions.front().value_homes;
+  fpr_homes.at(1) = make_fpr_home(fpr_function_name,
+                                  fpr_fallback_name,
+                                  2,
+                                  "ft0",
+                                  0);
+  fpr_homes.at(1).size_bytes = std::size_t{8};
+  fpr_homes.at(1).align_bytes = std::size_t{8};
+  fpr_homes.at(1).target_register_identity.reset();
+  fpr_homes.at(2) = make_fpr_home(fpr_function_name,
+                                  fpr_result_name,
+                                  3,
+                                  "fa0",
+                                  10);
+  fpr_homes.at(2).size_bytes = std::size_t{8};
+  fpr_homes.at(2).align_bytes = std::size_t{8};
+  fpr_homes.at(2).target_register_identity.reset();
+  for (auto& bundle : fpr_publication.value_locations.functions.front().move_bundles) {
+    bundle.moves.front().from_value_id = 2;
+    bundle.moves.front().to_value_id = 3;
+    bundle.moves.front().source_immediate_i32.reset();
+  }
+  auto fpr_lookups = prepare::make_prepared_function_lookups(
+      fpr_publication,
+      fpr_publication.control_flow.functions.front());
+  const auto fpr_intent = rv64::consume_edge_publication_move_intent(
+      &fpr_lookups,
+      fpr_false_predecessor,
+      fpr_join_label,
+      prepare::PreparedValueId{3});
+  if (fpr_intent.status != rv64::EdgePublicationMoveIntentStatus::Available ||
+      fpr_intent.source_value_id !=
+          std::optional<prepare::PreparedValueId>{2} ||
+      fpr_intent.source_type != bir::TypeKind::F64 ||
+      fpr_intent.destination_type != bir::TypeKind::F64 ||
+      fpr_intent.source_register != "ft0" ||
+      fpr_intent.destination_register != "fa0" ||
+      fpr_intent.instruction_text != "fmv.d fa0, ft0" ||
+      !rv64::prepared_select_publication_move_is_rv64_object_admitted(
+          fpr_intent) ||
+      !rv64::prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+          fpr_publication.names,
+          &fpr_lookups,
+          fpr_false_parallel_copy,
+          nullptr) ||
+      !rv64::prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+          fpr_publication.names,
+          &fpr_lookups,
+          fpr_true_parallel_copy,
+          nullptr)) {
+    return fail("expected F64 FPR select-publication register move to be admitted");
   }
 
   auto byte_stack_destination = stack_destination;

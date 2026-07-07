@@ -788,6 +788,42 @@ std::optional<std::uint32_t> gpr_register_number_for_home(
   return rv64_prepared_gpr_register_number_for_home(home);
 }
 
+std::optional<std::uint32_t> rv64_fpr_register_number(std::string_view name) {
+  if (name == "f0" || name == "ft0") return 0;
+  if (name == "f1" || name == "ft1") return 1;
+  if (name == "f2" || name == "ft2") return 2;
+  if (name == "f3" || name == "ft3") return 3;
+  if (name == "f4" || name == "ft4") return 4;
+  if (name == "f5" || name == "ft5") return 5;
+  if (name == "f6" || name == "ft6") return 6;
+  if (name == "f7" || name == "ft7") return 7;
+  if (name == "f8" || name == "fs0") return 8;
+  if (name == "f9" || name == "fs1") return 9;
+  if (name == "f10" || name == "fa0") return 10;
+  if (name == "f11" || name == "fa1") return 11;
+  if (name == "f12" || name == "fa2") return 12;
+  if (name == "f13" || name == "fa3") return 13;
+  if (name == "f14" || name == "fa4") return 14;
+  if (name == "f15" || name == "fa5") return 15;
+  if (name == "f16" || name == "fa6") return 16;
+  if (name == "f17" || name == "fa7") return 17;
+  if (name == "f18" || name == "fs2") return 18;
+  if (name == "f19" || name == "fs3") return 19;
+  if (name == "f20" || name == "fs4") return 20;
+  if (name == "f21" || name == "fs5") return 21;
+  if (name == "f22" || name == "fs6") return 22;
+  if (name == "f23" || name == "fs7") return 23;
+  if (name == "f24" || name == "fs8") return 24;
+  if (name == "f25" || name == "fs9") return 25;
+  if (name == "f26" || name == "fs10") return 26;
+  if (name == "f27" || name == "fs11") return 27;
+  if (name == "f28" || name == "ft8") return 28;
+  if (name == "f29" || name == "ft9") return 29;
+  if (name == "f30" || name == "ft10") return 30;
+  if (name == "f31" || name == "ft11") return 31;
+  return std::nullopt;
+}
+
 void append_rv64_move(RiscvEncodedFragment& fragment,
                       std::uint32_t destination,
                       std::uint32_t source);
@@ -1761,6 +1797,27 @@ const c4c::backend::bir::Block* find_prepared_bir_block_by_prepared_label(
     const c4c::backend::bir::Function& function,
     c4c::BlockLabelId block_label);
 
+const c4c::backend::bir::BinaryInst* find_prepared_binary_producer_in_block(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::Value& value);
+
+const c4c::backend::bir::BinaryInst*
+find_prepared_fp_zero_compare_consumer_in_block(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block& block,
+    c4c::backend::bir::TypeKind source_type);
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::BinaryInst& binary);
+
+std::optional<std::uint32_t> rv64_fp_compare_funct7(
+    c4c::backend::bir::TypeKind type);
+
+bool is_rv64_zero_floating_immediate(const c4c::backend::bir::Value& value);
+
 const c4c::backend::prepare::PreparedParallelCopyBundle*
 find_prepared_parallel_copy_bundle_for_edge(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -1869,6 +1926,60 @@ bool is_scalar_integer_immediate(const bir::Value& value) {
     default:
       return false;
   }
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_edge_preserved_fp_zero_compare(
+    const c4c::backend::bir::BinaryInst& binary,
+    std::uint32_t source_fpr,
+    std::uint32_t destination_gpr) {
+  namespace bir = c4c::backend::bir;
+
+  if (binary.result.type != bir::TypeKind::I32 ||
+      binary.operand_type != binary.lhs.type ||
+      binary.operand_type != binary.rhs.type ||
+      (binary.opcode != bir::BinaryOpcode::Eq &&
+       binary.opcode != bir::BinaryOpcode::Ne)) {
+    return std::nullopt;
+  }
+  const auto funct7 = rv64_fp_compare_funct7(binary.operand_type);
+  if (!funct7.has_value()) {
+    return std::nullopt;
+  }
+
+  const bool lhs_is_zero = is_rv64_zero_floating_immediate(binary.lhs);
+  const bool rhs_is_zero = is_rv64_zero_floating_immediate(binary.rhs);
+  if (lhs_is_zero == rhs_is_zero) {
+    return std::nullopt;
+  }
+
+  constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
+  const auto scratch_it =
+      std::find_if(scratch_fpr_candidates.begin(),
+                   scratch_fpr_candidates.end(),
+                   [&](std::uint32_t candidate) {
+                     return candidate != source_fpr;
+                   });
+  if (scratch_it == scratch_fpr_candidates.end()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_gpr_to_fpr_move(fragment,
+                                  *scratch_it,
+                                  0,
+                                  binary.operand_type)) {
+    return std::nullopt;
+  }
+  const std::uint32_t lhs = lhs_is_zero ? *scratch_it : source_fpr;
+  const std::uint32_t rhs = rhs_is_zero ? *scratch_it : source_fpr;
+  append_le32(fragment.bytes,
+              encode_r_type(0x53, destination_gpr, 2, lhs, rhs, *funct7));
+  if (binary.opcode == bir::BinaryOpcode::Ne) {
+    append_le32(fragment.bytes,
+                encode_i_type(0x13, destination_gpr, 4, destination_gpr, 1));
+  }
+  return fragment;
 }
 
 std::optional<RiscvEncodedFragment>
@@ -2016,16 +2127,28 @@ fragment_for_prepared_out_of_ssa_moves(
       return std::nullopt;
     }
     const auto destination = gpr_register_number_for_home(*destination_home);
-    if (!destination.has_value()) {
+    std::optional<std::uint32_t> fpr_destination;
+    if (!destination.has_value() &&
+        move.destination_register_placement.has_value() &&
+        move.destination_register_placement->bank ==
+            prepare::PreparedRegisterBank::Fpr &&
+        move.destination_register_placement->contiguous_width == 1 &&
+        destination_home->register_name.has_value()) {
+      fpr_destination = rv64_fpr_register_number(*destination_home->register_name);
+    }
+    if (!destination.has_value() && !fpr_destination.has_value()) {
       return std::nullopt;
     }
     if (phi_join_immediate_move) {
+      if (!destination.has_value()) {
+        return std::nullopt;
+      }
       append_rv64_load_immediate(fragment,
                                  *destination,
                                  *move.source_immediate_i32);
       continue;
     }
-    if (phi_join_move) {
+    if (phi_join_move && destination.has_value()) {
       auto producer_fragment =
           fragment_for_prepared_block_entry_select_edge_source_producer(
               stack_layout,
@@ -2052,6 +2175,19 @@ fragment_for_prepared_out_of_ssa_moves(
     if (source_home == nullptr) {
       return std::nullopt;
     }
+    if (fpr_destination.has_value()) {
+      const auto source =
+          source_home->register_name.has_value()
+              ? rv64_fpr_register_number(*source_home->register_name)
+              : fpr_register_number_for_home(*source_home);
+      const auto type =
+          prepared_bir_value_type_for_name(names, function, source_home->value_name);
+      if (!source.has_value() || !type.has_value() ||
+          !append_rv64_fpr_move(fragment, *fpr_destination, *source, *type)) {
+        return std::nullopt;
+      }
+      continue;
+    }
     if (phi_join_move &&
         source_home->kind ==
             prepare::PreparedValueHomeKind::RematerializableImmediate) {
@@ -2066,6 +2202,125 @@ fragment_for_prepared_out_of_ssa_moves(
       }
       append_rv64_load_immediate(fragment, *destination, fact->signed_value);
       continue;
+    }
+    if (preservation_move) {
+      const auto source_fpr =
+          source_home->register_name.has_value()
+              ? rv64_fpr_register_number(*source_home->register_name)
+              : fpr_register_number_for_home(*source_home);
+      const auto source_type =
+          prepared_bir_value_type_for_name(names, function, source_home->value_name);
+      const auto destination_type =
+          prepared_bir_value_type_for_name(names,
+                                           function,
+                                           destination_home->value_name);
+      if (source_fpr.has_value() && source_type.has_value() &&
+          destination_type == c4c::backend::bir::TypeKind::I32 &&
+          (*source_type == c4c::backend::bir::TypeKind::F32 ||
+           *source_type == c4c::backend::bir::TypeKind::F64) &&
+          move_bundle.source_parallel_copy_successor_label.has_value()) {
+        const auto* successor_block = find_prepared_bir_block_by_prepared_label(
+            names, function, *move_bundle.source_parallel_copy_successor_label);
+        if ((successor_block == nullptr || successor_block->insts.empty()) &&
+            move_bundle.block_index < function.blocks.size()) {
+          const auto& predecessor_block =
+              function.blocks.at(move_bundle.block_index);
+          if (predecessor_block.terminator.kind ==
+                  c4c::backend::bir::TerminatorKind::Branch &&
+              !predecessor_block.terminator.target_label.empty()) {
+            const auto successor_it =
+                std::find_if(function.blocks.begin(),
+                             function.blocks.end(),
+                             [&](const c4c::backend::bir::Block& block) {
+                               return block.label ==
+                                      predecessor_block.terminator.target_label;
+                             });
+            if (successor_it != function.blocks.end()) {
+              successor_block = &*successor_it;
+            }
+          }
+        }
+        const auto* binary =
+            successor_block == nullptr
+                ? nullptr
+                : find_prepared_fp_zero_compare_consumer_in_block(
+                      names,
+                      *successor_block,
+                      *source_type);
+        if (binary == nullptr) {
+          for (const auto& block : function.blocks) {
+            const auto* candidate =
+                find_prepared_fp_zero_compare_consumer_in_block(names,
+                                                                block,
+                                                                *source_type);
+            if (candidate == nullptr) {
+              continue;
+            }
+            if (binary != nullptr) {
+              binary = nullptr;
+              break;
+            }
+            binary = candidate;
+          }
+        }
+        std::optional<c4c::backend::bir::BinaryInst> branch_condition_binary;
+        if (binary == nullptr) {
+          const c4c::backend::prepare::PreparedBranchCondition* selected = nullptr;
+          for (const auto& branch_condition : control_flow.branch_conditions) {
+            if (branch_condition.kind !=
+                    c4c::backend::prepare::PreparedBranchConditionKind::
+                        FusedCompare ||
+                !branch_condition.predicate.has_value() ||
+                !branch_condition.compare_type.has_value() ||
+                !branch_condition.lhs.has_value() ||
+                !branch_condition.rhs.has_value() ||
+                *branch_condition.compare_type != *source_type ||
+                branch_condition.condition_value.type !=
+                    c4c::backend::bir::TypeKind::I32 ||
+                (*branch_condition.predicate !=
+                     c4c::backend::bir::BinaryOpcode::Eq &&
+                 *branch_condition.predicate !=
+                     c4c::backend::bir::BinaryOpcode::Ne)) {
+              continue;
+            }
+            const bool lhs_is_zero =
+                is_rv64_zero_floating_immediate(*branch_condition.lhs);
+            const bool rhs_is_zero =
+                is_rv64_zero_floating_immediate(*branch_condition.rhs);
+            if (lhs_is_zero == rhs_is_zero) {
+              continue;
+            }
+            if (selected != nullptr) {
+              selected = nullptr;
+              break;
+            }
+            selected = &branch_condition;
+          }
+          if (selected != nullptr) {
+            branch_condition_binary = c4c::backend::bir::BinaryInst{
+                .opcode = *selected->predicate,
+                .result = selected->condition_value,
+                .operand_type = *selected->compare_type,
+                .lhs = *selected->lhs,
+                .rhs = *selected->rhs,
+            };
+            binary = &*branch_condition_binary;
+          }
+        }
+        if (binary != nullptr &&
+            binary->result.type == *destination_type) {
+          auto compare_fragment =
+              fragment_for_prepared_edge_preserved_fp_zero_compare(
+                  *binary,
+                  *source_fpr,
+                  *destination);
+          if (!compare_fragment.has_value()) {
+            return std::nullopt;
+          }
+          append_fragment(fragment, std::move(*compare_fragment));
+          continue;
+        }
+      }
     }
     const auto source = gpr_register_number_for_home(*source_home);
     if (!source.has_value()) {
@@ -5238,11 +5493,21 @@ std::optional<std::uint32_t> rv64_fpr_compare_operand_register(
       reg.has_value()) {
     return reg;
   }
-  if (!is_rv64_zero_floating_immediate(value) || !scratch_gpr.has_value()) {
+  if (const auto* home = prepared_value_home_for(names, lookups, value);
+      home != nullptr && home->register_name.has_value()) {
+    if (const auto reg = rv64_fpr_register_number(*home->register_name);
+        reg.has_value()) {
+      return reg;
+    }
+  }
+  if (!is_rv64_zero_floating_immediate(value)) {
     return std::nullopt;
   }
-  append_rv64_load_immediate(fragment, *scratch_gpr, 0);
-  if (!append_rv64_gpr_to_fpr_move(fragment, scratch_fpr, *scratch_gpr, value.type)) {
+  const std::uint32_t zero_source = scratch_gpr.value_or(0);
+  if (scratch_gpr.has_value()) {
+    append_rv64_load_immediate(fragment, *scratch_gpr, 0);
+  }
+  if (!append_rv64_gpr_to_fpr_move(fragment, scratch_fpr, zero_source, value.type)) {
     return std::nullopt;
   }
   return scratch_fpr;
@@ -5276,9 +5541,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication
   const auto scratch_gpr =
       needs_zero_materialization ? rv64_unoccupied_temporary_gpr(lookups)
                                  : std::optional<std::uint32_t>{};
-  if (needs_zero_materialization && !scratch_gpr.has_value()) {
-    return std::nullopt;
-  }
   const auto lhs_home_reg = fpr_register_number_for_value(names, lookups, binary.lhs);
   const auto rhs_home_reg = fpr_register_number_for_value(names, lookups, binary.rhs);
   constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
@@ -5912,8 +6174,12 @@ std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
         << rv64_prepared_move_destination_kind_name(move.destination_kind);
     out << move_prefix << ".destination_storage="
         << rv64_prepared_move_storage_kind_name(move.destination_storage_kind);
+    out << move_prefix << ".destination_width="
+        << move.destination_contiguous_width;
     out << move_prefix << ".op_kind="
         << rv64_prepared_move_op_kind_name(move.op_kind);
+    out << move_prefix << ".authority="
+        << prepare::prepared_move_authority_kind_name(move.authority_kind);
     out << move_prefix << ".reason="
         << (move.reason.empty() ? "<none>" : move.reason);
     if (move.source_immediate_i32.has_value()) {
@@ -6583,8 +6849,13 @@ const c4c::backend::bir::Block* find_prepared_bir_block_by_prepared_label(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function,
     c4c::BlockLabelId block_label) {
+  if (block_label == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
   const auto matches_label = [&](const c4c::backend::bir::Block& block) {
-    if (block.label_id == block_label) {
+    if (block_label != c4c::kInvalidBlockLabel &&
+        block.label_id != c4c::kInvalidBlockLabel &&
+        block.label_id == block_label) {
       return true;
     }
     return names.block_labels.find(block.label) == block_label;
@@ -6610,6 +6881,36 @@ const c4c::backend::bir::BinaryInst* find_prepared_binary_producer_in_block(
     }
   }
   return nullptr;
+}
+
+const c4c::backend::bir::BinaryInst*
+find_prepared_fp_zero_compare_consumer_in_block(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block& block,
+    c4c::backend::bir::TypeKind source_type) {
+  const c4c::backend::bir::BinaryInst* match = nullptr;
+  for (const auto& inst : block.insts) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    if (binary == nullptr ||
+        binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+        binary->operand_type != source_type ||
+        binary->lhs.type != source_type ||
+        binary->rhs.type != source_type ||
+        (binary->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+         binary->opcode != c4c::backend::bir::BinaryOpcode::Ne)) {
+      continue;
+    }
+    const bool lhs_is_zero = is_rv64_zero_floating_immediate(binary->lhs);
+    const bool rhs_is_zero = is_rv64_zero_floating_immediate(binary->rhs);
+    if (lhs_is_zero == rhs_is_zero) {
+      continue;
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = binary;
+  }
+  return match;
 }
 
 const c4c::backend::prepare::PreparedParallelCopyBundle*
