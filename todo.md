@@ -1,39 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/579_rv64_prepared_stack_destination_move_bundle_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Or Narrow The Stack-Destination Authority Path
+Current Step ID: 4
+Current Step Title: Prove The Representative Route
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 focused backend coverage in
-`tests/backend/mir/backend_riscv_object_emission_test.cpp`.
+Completed Step 3 classifier-side narrowing for the prepared stack-destination
+authority path.
 
-Added
-`rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle`,
-which builds a non-select `BeforeInstruction` binary-compare fixture with:
+`prepared_move_bundle_has_ambiguous_multi_source_stack_destination` now treats
+the ambiguous non-parallel multi-source rejection as a normal value-to-stack
+move authority check: both candidate moves must be ordinary `Move` records,
+target value destinations, publish stack-slot destination storage, have no
+cycle-temp or immediate source, and carry no independent move authority. The
+valid supported register-to-stack behavior remains accepted, and the Step 2
+binary/compare two-register-source fixture still rejects with
+`AmbiguousNonParallelMultiSourceStackDestination`.
 
-- two distinct register source homes
-- both moves targeting the same stack-homed compare result
-- `authority=none`
-- no prepared parallel-copy bundle
-
-The test verifies the shape remains fail-closed with
-`AmbiguousNonParallelMultiSourceStackDestination` and preserves the shared
-diagnostic:
-
-```text
-prepared move-bundle classifier rejected ambiguous non-parallel multi-source stack-destination authority
-```
+Added a metadata-mismatch guard to
+`rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle` so
+same-destination multi-source records that do not actually publish stack-slot
+destination storage fall through to the existing generic move-bundle shape
+diagnostic instead of being mislabeled as the stack-destination authority
+ambiguity.
 
 ## Suggested Next
 
-Step 3 should decide and implement the repair surface without weakening the new
-fail-closed test: either stop producer-side publication of binary/compare
-multi-source writes to one stack result slot, or improve the diagnostic path
-around the existing classifier rejection.
+Step 4 should run the representative-route handoff: verify the original
+binary/compare route that motivated the ambiguity now fails closed with the
+classifier-owned diagnostic, while keeping nearby valid stack-destination move
+bundle materialization accepted.
 
 ## Watchouts
 
@@ -44,12 +43,11 @@ around the existing classifier rejection.
   valid ordered stack-destination move sequence.
 - Valid stack-destination multi-source materialization should stay tied to
   select or parallel-copy authority, not filename/function/value-name matching.
-- Step 3 implementation/diagnostic surface is split between the classifier in
-  `src/backend/prealloc/prepared_object_traversal.cpp` and RV64 diagnostic /
-  materialization handling in
-  `src/backend/mir/riscv/codegen/object_emission.cpp`; if the desired repair is
-  producer-side, the prepared move-bundle producer for binary/compare
-  consumers must stop publishing multi-source writes to one stack result slot.
+- The Step 3 implementation deliberately did not rewrite producer-side
+  publication. It narrowed classifier ownership so malformed non-stack
+  destination records keep their existing RV64 shape diagnostics, while true
+  non-parallel multi-register-source stack-destination bundles remain
+  classifier rejections.
 
 ## Proof
 

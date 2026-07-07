@@ -242,7 +242,11 @@ prepared_move_bundle_has_ambiguous_multi_source_stack_destination(
     const auto& lhs = move_bundle.moves[lhs_index];
     if (lhs.authority_kind != PreparedMoveAuthorityKind::None ||
         lhs.source_parallel_copy_step_index.has_value() ||
-        lhs.destination_kind != PreparedMoveDestinationKind::Value) {
+        lhs.destination_kind != PreparedMoveDestinationKind::Value ||
+        lhs.destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+        lhs.op_kind != PreparedMoveResolutionOpKind::Move ||
+        lhs.uses_cycle_temp_source ||
+        lhs.source_immediate_i32.has_value()) {
       continue;
     }
     const auto* lhs_source_home =
@@ -261,7 +265,11 @@ prepared_move_bundle_has_ambiguous_multi_source_stack_destination(
       const auto& rhs = move_bundle.moves[rhs_index];
       if (rhs.authority_kind != PreparedMoveAuthorityKind::None ||
           rhs.source_parallel_copy_step_index.has_value() ||
-          rhs.destination_kind != PreparedMoveDestinationKind::Value) {
+          rhs.destination_kind != PreparedMoveDestinationKind::Value ||
+          rhs.destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+          rhs.op_kind != PreparedMoveResolutionOpKind::Move ||
+          rhs.uses_cycle_temp_source ||
+          rhs.source_immediate_i32.has_value()) {
         continue;
       }
       const auto* rhs_source_home = prepared_object_value_home_for_id(

@@ -14868,6 +14868,36 @@ int rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle() 
     return fail("ambiguous non-parallel multi-source stack-destination move bundle should reject");
   }
 
+  prepared =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  prepared.module.functions[0].blocks[0].insts[0] = bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "%trunc"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+  };
+  prepared.value_locations.functions[0].value_homes.push_back(
+      rv64_gpr_home(4, function_name, rhs_name, "s2", 18));
+  prepared.value_locations.functions[0].move_bundles[0].moves.push_back(
+      prepare::PreparedMoveResolution{
+          .from_value_id = 4,
+          .to_value_id = 2,
+          .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_contiguous_width = 1,
+          .block_index = 0,
+          .instruction_index = 0,
+          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+          .reason = "consumer_register_to_stack",
+      });
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+      0) {
+    return fail("metadata-mismatched multi-source bundle should stay on generic shape diagnostic");
+  }
+
   return 0;
 }
 
