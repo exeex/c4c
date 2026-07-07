@@ -2317,6 +2317,9 @@ plan_pending_prepared_store_global_publications(
 
 void populate_store_source_publication_plans(PreparedBirModule& prepared);
 
+void populate_stack_destination_register_fan_in_move_authority(
+    PreparedBirModule& prepared);
+
 [[nodiscard]] PreparedFixedFormalStoreSourcePublication
 plan_prepared_fixed_formal_store_source_publication(
     const PreparedFormalPublicationInputs& formal_inputs,

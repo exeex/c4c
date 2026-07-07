@@ -16000,6 +16000,102 @@ int rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle() 
   return 0;
 }
 
+int publishes_legal_select_stack_destination_register_fan_in_authority() {
+  auto prepared =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto selected_name = prepared.names.value_names.find("%cmp");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto stack_source_name =
+      prepared.names.value_names.intern("%stack.source");
+
+  auto& inst = prepared.module.functions[0].blocks[0].insts[0];
+  inst = bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .false_value = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+  };
+
+  auto& locations = prepared.value_locations.functions[0];
+  locations.value_homes.push_back(
+      rv64_gpr_home(4, function_name, rhs_name, "s2", 18));
+  locations.value_homes.push_back(
+      rv64_stack_slot_home(5,
+                           function_name,
+                           stack_source_name,
+                           prepare::PreparedFrameSlotId{13},
+                           8));
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{13},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  auto& bundle = locations.move_bundles[0];
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 4,
+      .to_value_id = 2,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_contiguous_width = 1,
+      .block_index = 0,
+      .instruction_index = 0,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "consumer_register_to_stack",
+  });
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 5,
+      .to_value_id = 2,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_contiguous_width = 1,
+      .block_index = 0,
+      .instruction_index = 0,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "consumer_stack_to_stack",
+  });
+
+  auto unsupported_producer = prepared;
+  unsupported_producer.module.functions[0].blocks[0].insts[0] = bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+  };
+  prepare::populate_stack_destination_register_fan_in_move_authority(
+      unsupported_producer);
+  if (unsupported_producer.value_locations.functions[0]
+          .move_bundles[0]
+          .authority_kind != prepare::PreparedMoveAuthorityKind::None) {
+    return fail("non-select stack-destination fan-in should not publish authority");
+  }
+
+  prepare::populate_stack_destination_register_fan_in_move_authority(prepared);
+  const auto& published_bundle =
+      prepared.value_locations.functions[0].move_bundles[0];
+  if (published_bundle.authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      published_bundle.moves.size() != 3 ||
+      published_bundle.moves[0].authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      published_bundle.moves[1].authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      published_bundle.moves[2].authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      locations.value_homes[1].value_name != selected_name) {
+    return fail("legal select stack-destination fan-in did not publish authority");
+  }
+
+  return 0;
+}
+
 int builds_prepared_stack_to_stack_before_instruction_move_bundle_object() {
   const auto prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
@@ -23321,6 +23417,7 @@ int main() {
   status |= rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes();
   status |=
       rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle();
+  status |= publishes_legal_select_stack_destination_register_fan_in_authority();
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
   status |= builds_prepared_mixed_stack_destination_move_bundle_object();
   status |=

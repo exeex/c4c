@@ -4101,6 +4101,20 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] bir::Block* prepared_bir_block_by_label(
+    bir::Function& function,
+    BlockLabelId block_label) {
+  if (block_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (auto& block : function.blocks) {
+    if (block.label_id == block_label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::optional<ValueNameId> prepared_named_value_id(
     const PreparedNameTables& names,
     const bir::Value& value) {
@@ -4125,6 +4139,133 @@ namespace {
     return std::nullopt;
   }
   return it->second;
+}
+
+[[nodiscard]] const PreparedValueHome* prepared_value_home_for_id(
+    const PreparedValueHomeLookups* lookups,
+    PreparedValueId value_id) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  const auto it = lookups->homes_by_id.find(value_id);
+  return it == lookups->homes_by_id.end() ? nullptr : it->second;
+}
+
+[[nodiscard]] PreparedValueLocationFunction* mutable_prepared_value_locations(
+    PreparedBirModule& prepared,
+    FunctionNameId function_name) {
+  for (auto& value_locations : prepared.value_locations.functions) {
+    if (value_locations.function_name == function_name) {
+      return &value_locations;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_stack_homes_same_destination(
+    const PreparedValueHome& lhs,
+    const PreparedValueHome& rhs) {
+  if (lhs.kind != PreparedValueHomeKind::StackSlot ||
+      rhs.kind != PreparedValueHomeKind::StackSlot) {
+    return false;
+  }
+  if (lhs.slot_id.has_value() && rhs.slot_id.has_value() &&
+      lhs.slot_id == rhs.slot_id) {
+    return true;
+  }
+  return lhs.offset_bytes.has_value() && rhs.offset_bytes.has_value() &&
+         lhs.offset_bytes == rhs.offset_bytes;
+}
+
+[[nodiscard]] bool prepared_select_materialization_producer_matches_bundle(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId bundle_block_label,
+    const bir::SelectInst& select,
+    const PreparedMoveBundle& bundle) {
+  const auto result_name = prepared_named_value_id(names, select.result);
+  if (!result_name.has_value() || source_producers == nullptr ||
+      bundle_block_label == kInvalidBlockLabel) {
+    return false;
+  }
+  const auto* producer =
+      find_indexed_prepared_edge_publication_source_producer(source_producers,
+                                                            *result_name);
+  return producer != nullptr &&
+         producer->kind ==
+             PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
+         producer->select == &select &&
+         producer->block_label == bundle_block_label &&
+         producer->instruction_index == bundle.instruction_index;
+}
+
+[[nodiscard]] bool
+prepared_move_bundle_is_legal_select_stack_destination_register_fan_in(
+    const PreparedNameTables& names,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId bundle_block_label,
+    const bir::SelectInst& select,
+    const PreparedMoveBundle& bundle) {
+  if (bundle.phase != PreparedMovePhase::BeforeInstruction ||
+      bundle.authority_kind != PreparedMoveAuthorityKind::None ||
+      bundle.moves.size() < 3 ||
+      !prepared_select_materialization_producer_matches_bundle(
+          names, source_producers, bundle_block_label, select, bundle)) {
+    return false;
+  }
+
+  const auto result_name = prepared_named_value_id(names, select.result);
+  const auto result_value_id =
+      result_name.has_value()
+          ? prepared_value_id_for_name(value_home_lookups, *result_name)
+          : std::nullopt;
+  if (!result_value_id.has_value()) {
+    return false;
+  }
+
+  const PreparedValueHome* destination_home = nullptr;
+  std::size_t register_source_count = 0;
+  bool has_stack_source = false;
+  for (const auto& move : bundle.moves) {
+    if (move.authority_kind != PreparedMoveAuthorityKind::None ||
+        move.source_parallel_copy_step_index.has_value() ||
+        move.destination_kind != PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+        move.op_kind != PreparedMoveResolutionOpKind::Move ||
+        move.uses_cycle_temp_source ||
+        move.source_immediate_i32.has_value() ||
+        move.block_index != bundle.block_index ||
+        move.instruction_index != bundle.instruction_index ||
+        move.to_value_id != *result_value_id) {
+      return false;
+    }
+
+    const auto* source_home =
+        prepared_value_home_for_id(value_home_lookups, move.from_value_id);
+    const auto* move_destination_home =
+        prepared_value_home_for_id(value_home_lookups, move.to_value_id);
+    if (source_home == nullptr || move_destination_home == nullptr ||
+        move_destination_home->kind != PreparedValueHomeKind::StackSlot) {
+      return false;
+    }
+    if (destination_home == nullptr) {
+      destination_home = move_destination_home;
+    } else if (!prepared_stack_homes_same_destination(*destination_home,
+                                                      *move_destination_home)) {
+      return false;
+    }
+
+    if (source_home->kind == PreparedValueHomeKind::Register) {
+      ++register_source_count;
+    } else if (source_home->kind == PreparedValueHomeKind::StackSlot) {
+      has_stack_source = true;
+    } else {
+      return false;
+    }
+  }
+
+  return register_source_count >= 2 && has_stack_source;
 }
 
 [[nodiscard]] bool prepared_select_uses_value_as_payload(
@@ -5951,6 +6092,58 @@ void populate_local_array_scalar_local_loads(PreparedBirModule& prepared) {
               PreparedBirCoordinateConfusion;
         }
         function.local_array_scalar_local_loads.push_back(std::move(record));
+      }
+    }
+  }
+}
+
+void populate_stack_destination_register_fan_in_move_authority(
+    PreparedBirModule& prepared) {
+  for (const auto& control_flow : prepared.control_flow.functions) {
+    auto* bir_function =
+        prepared_bir_function_by_name(prepared, control_flow.function_name);
+    if (bir_function == nullptr) {
+      continue;
+    }
+    auto* value_locations =
+        mutable_prepared_value_locations(prepared, control_flow.function_name);
+    if (value_locations == nullptr) {
+      continue;
+    }
+
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(value_locations);
+    const auto source_producers =
+        make_prepared_edge_publication_source_producer_lookups(prepared,
+                                                               control_flow);
+    for (auto& bundle : value_locations->move_bundles) {
+      const auto bundle_block_label =
+          prepared_block_label_for_bundle(control_flow, bundle);
+      auto* block = bundle_block_label.has_value()
+                        ? prepared_bir_block_by_label(*bir_function,
+                                                      *bundle_block_label)
+                        : nullptr;
+      if (block == nullptr || bundle.instruction_index >= block->insts.size()) {
+        continue;
+      }
+      const auto* select =
+          std::get_if<bir::SelectInst>(&block->insts[bundle.instruction_index]);
+      if (select == nullptr ||
+          !prepared_move_bundle_is_legal_select_stack_destination_register_fan_in(
+              prepared.names,
+              &value_home_lookups,
+              &source_producers,
+              bundle_block_label.value_or(kInvalidBlockLabel),
+              *select,
+              bundle)) {
+        continue;
+      }
+
+      bundle.authority_kind =
+          PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+      for (auto& move : bundle.moves) {
+        move.authority_kind =
+            PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
       }
     }
   }

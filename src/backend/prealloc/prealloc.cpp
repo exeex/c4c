@@ -47,6 +47,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_dynamic_stack_plan(prepared_);
   populate_call_plans(prepared_);
   populate_store_source_publication_plans(prepared_);
+  populate_stack_destination_register_fan_in_move_authority(prepared_);
   populate_select_carrier_alias_identity(prepared_);
   populate_local_array_selected_proof_edge_paths(prepared_);
   populate_local_array_endpoint_bridges(prepared_);
