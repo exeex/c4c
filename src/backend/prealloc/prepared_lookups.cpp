@@ -41,8 +41,33 @@ namespace {
       return authority.reference.preservation != nullptr;
     case PreparedValueFreshnessSourceKind::MoveBundleSource:
       return authority.reference.move_bundle != nullptr && authority.reference.move != nullptr;
+    case PreparedValueFreshnessSourceKind::DirectEdgePublication:
+      return authority.reference.edge_publication != nullptr &&
+             authority.reference.move != nullptr;
     case PreparedValueFreshnessSourceKind::Unknown:
       return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_value_freshness_authority_matches_use_contract(
+    const PreparedValueFreshnessAuthority& authority) {
+  switch (authority.use_kind) {
+    case PreparedValueFreshnessUseKind::DirectEdgePublicationSource:
+      return authority.source_kind ==
+                 PreparedValueFreshnessSourceKind::DirectEdgePublication &&
+             authority.proof_kind ==
+                 PreparedValueFreshnessProofKind::DirectEdgePublicationMove &&
+             authority.rank ==
+                 PreparedValueFreshnessSourceRank::DirectEdgePublication;
+    case PreparedValueFreshnessUseKind::Unknown:
+      return false;
+    case PreparedValueFreshnessUseKind::CallArgumentSource:
+    case PreparedValueFreshnessUseKind::MoveBundleSource:
+    case PreparedValueFreshnessUseKind::ProducerPublicationOperand:
+    case PreparedValueFreshnessUseKind::AbiFormalHome:
+      return authority.source_kind !=
+             PreparedValueFreshnessSourceKind::DirectEdgePublication;
   }
   return false;
 }
@@ -53,6 +78,7 @@ namespace {
          authority.source_kind != PreparedValueFreshnessSourceKind::Unknown &&
          authority.proof_kind != PreparedValueFreshnessProofKind::Unknown &&
          authority.rank != PreparedValueFreshnessSourceRank::None &&
+         prepared_value_freshness_authority_matches_use_contract(authority) &&
          prepared_value_freshness_source_reference_available(authority);
 }
 

@@ -79,15 +79,29 @@ int verify_prepared_compatibility_status_names() {
   if (prepare::prepared_value_freshness_use_kind_name(
           prepare::PreparedValueFreshnessUseKind::CallArgumentSource) !=
           "call_argument_source" ||
+      prepare::prepared_value_freshness_use_kind_name(
+          prepare::PreparedValueFreshnessUseKind::
+              DirectEdgePublicationSource) !=
+          "direct_edge_publication_source" ||
       prepare::prepared_value_freshness_source_kind_name(
           prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization) !=
           "producer_rematerialization" ||
+      prepare::prepared_value_freshness_source_kind_name(
+          prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication) !=
+          "direct_edge_publication" ||
       prepare::prepared_value_freshness_proof_kind_name(
           prepare::PreparedValueFreshnessProofKind::CallBoundaryPreservation) !=
           "call_boundary_preservation" ||
+      prepare::prepared_value_freshness_proof_kind_name(
+          prepare::PreparedValueFreshnessProofKind::
+              DirectEdgePublicationMove) !=
+          "direct_edge_publication_move" ||
       prepare::prepared_value_freshness_source_rank_name(
           prepare::PreparedValueFreshnessSourceRank::ExplicitPublication) !=
           "explicit_publication" ||
+      prepare::prepared_value_freshness_source_rank_name(
+          prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication) !=
+          "direct_edge_publication" ||
       prepare::prepared_value_freshness_query_status_name(
           prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate) !=
           "ambiguous_candidate") {
@@ -130,6 +144,20 @@ int verify_prepared_value_freshness_authority_lookup() {
       .block_index = 2,
       .instruction_index = 4,
       .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+  };
+  prepare::PreparedEdgePublication edge_publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = c4c::BlockLabelId{31},
+      .successor_label = c4c::BlockLabelId{37},
+      .destination_value_id = home.value_id,
+      .destination_value_name = home.value_name,
+      .source_value_id = home.value_id,
+      .source_value_name = home.value_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_home = &home,
+      .source_home_kind = home.kind,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .move = &publication_move,
   };
 
   const prepare::PreparedValueFreshnessAuthority stale_preservation{
@@ -247,6 +275,115 @@ int verify_prepared_value_freshness_authority_lookup() {
   if (prepare::find_prepared_value_freshness_authority(unknown_use).status !=
       prepare::PreparedValueFreshnessQueryStatus::UnknownUse) {
     return fail("freshness query should fail closed for unknown use kind");
+  }
+
+  const prepare::PreparedValueFreshnessAuthority direct_edge_publication{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .source_kind =
+          prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication,
+      .proof_kind =
+          prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove,
+      .rank = prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication,
+      .reference = prepare::PreparedValueFreshnessSourceReference{
+          .edge_publication = &edge_publication,
+          .move = &publication_move,
+          .block_index = std::size_t{2},
+          .instruction_index = std::size_t{4},
+      },
+  };
+  const prepare::PreparedValueFreshnessQuery direct_edge_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .block_index = std::size_t{2},
+      .instruction_index = std::size_t{4},
+      .candidates = {direct_edge_publication},
+  };
+  const auto direct_edge_selected =
+      prepare::find_prepared_value_freshness_authority(direct_edge_query);
+  if (!prepare::prepared_value_freshness_query_selected(direct_edge_selected) ||
+      direct_edge_selected.authority == nullptr ||
+      direct_edge_selected.authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication ||
+      direct_edge_selected.authority->reference.edge_publication !=
+          &edge_publication ||
+      direct_edge_selected.authority->reference.move != &publication_move) {
+    return fail("direct edge-publication source authority should select its edge move proof");
+  }
+
+  prepare::PreparedValueFreshnessAuthority destination_only =
+      direct_edge_publication;
+  destination_only.source_kind =
+      prepare::PreparedValueFreshnessSourceKind::DirectHome;
+  destination_only.proof_kind =
+      prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering;
+  destination_only.rank = prepare::PreparedValueFreshnessSourceRank::DirectHome;
+  destination_only.reference = prepare::PreparedValueFreshnessSourceReference{
+      .home = &home,
+      .block_index = std::size_t{2},
+      .instruction_index = std::size_t{4},
+  };
+  const prepare::PreparedValueFreshnessQuery destination_only_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .candidates = {destination_only},
+  };
+  if (prepare::find_prepared_value_freshness_authority(destination_only_query)
+          .status !=
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("direct edge-publication source freshness should reject destination-only authority");
+  }
+
+  prepare::PreparedValueFreshnessAuthority missing_edge_publication =
+      direct_edge_publication;
+  missing_edge_publication.reference.edge_publication = nullptr;
+  const prepare::PreparedValueFreshnessQuery missing_edge_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .candidates = {missing_edge_publication},
+  };
+  if (prepare::find_prepared_value_freshness_authority(missing_edge_query)
+          .status !=
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("direct edge-publication source freshness should require the edge publication");
+  }
+
+  prepare::PreparedValueFreshnessAuthority missing_edge_move =
+      direct_edge_publication;
+  missing_edge_move.reference.move = nullptr;
+  const prepare::PreparedValueFreshnessQuery missing_edge_move_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .candidates = {missing_edge_move},
+  };
+  if (prepare::find_prepared_value_freshness_authority(missing_edge_move_query)
+          .status !=
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("direct edge-publication source freshness should require the edge move");
+  }
+
+  auto wrong_use = direct_edge_publication;
+  wrong_use.use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource;
+  const prepare::PreparedValueFreshnessQuery wrong_use_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .candidates = {wrong_use},
+  };
+  if (prepare::find_prepared_value_freshness_authority(wrong_use_query).status !=
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
+    return fail("direct edge-publication source freshness should ignore wrong-use candidates");
   }
 
   return 0;

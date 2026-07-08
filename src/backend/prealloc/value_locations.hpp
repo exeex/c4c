@@ -67,6 +67,7 @@ enum class PreparedMovePhase {
 
 struct PreparedBlockEntryPublication;
 struct PreparedCallPreservedValue;
+struct PreparedEdgePublication;
 struct PreparedMoveBundle;
 struct PreparedMoveResolution;
 struct PreparedValueHome;
@@ -77,6 +78,7 @@ enum class PreparedValueFreshnessUseKind {
   MoveBundleSource,
   ProducerPublicationOperand,
   AbiFormalHome,
+  DirectEdgePublicationSource,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_use_kind_name(
@@ -92,6 +94,8 @@ enum class PreparedValueFreshnessUseKind {
       return "producer_publication_operand";
     case PreparedValueFreshnessUseKind::AbiFormalHome:
       return "abi_formal_home";
+    case PreparedValueFreshnessUseKind::DirectEdgePublicationSource:
+      return "direct_edge_publication_source";
   }
   return "unknown";
 }
@@ -104,6 +108,7 @@ enum class PreparedValueFreshnessSourceKind {
   PriorPreservation,
   MoveBundleSource,
   AbiFormalHome,
+  DirectEdgePublication,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_source_kind_name(
@@ -123,6 +128,8 @@ enum class PreparedValueFreshnessSourceKind {
       return "move_bundle_source";
     case PreparedValueFreshnessSourceKind::AbiFormalHome:
       return "abi_formal_home";
+    case PreparedValueFreshnessSourceKind::DirectEdgePublication:
+      return "direct_edge_publication";
   }
   return "unknown";
 }
@@ -135,6 +142,7 @@ enum class PreparedValueFreshnessProofKind {
   AbiFormalEntry,
   CallBoundaryPreservation,
   MoveBundleAuthority,
+  DirectEdgePublicationMove,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_proof_kind_name(
@@ -154,6 +162,8 @@ enum class PreparedValueFreshnessProofKind {
       return "call_boundary_preservation";
     case PreparedValueFreshnessProofKind::MoveBundleAuthority:
       return "move_bundle_authority";
+    case PreparedValueFreshnessProofKind::DirectEdgePublicationMove:
+      return "direct_edge_publication_move";
   }
   return "unknown";
 }
@@ -165,6 +175,7 @@ enum class PreparedValueFreshnessSourceRank {
   DirectHome = 30,
   MoveBundleSource = 40,
   ExplicitPublication = 50,
+  DirectEdgePublication = 55,
   ProducerRematerialization = 60,
 };
 
@@ -183,6 +194,8 @@ enum class PreparedValueFreshnessSourceRank {
       return "move_bundle_source";
     case PreparedValueFreshnessSourceRank::ExplicitPublication:
       return "explicit_publication";
+    case PreparedValueFreshnessSourceRank::DirectEdgePublication:
+      return "direct_edge_publication";
     case PreparedValueFreshnessSourceRank::ProducerRematerialization:
       return "producer_rematerialization";
   }
@@ -220,6 +233,7 @@ enum class PreparedValueFreshnessQueryStatus {
 struct PreparedValueFreshnessSourceReference {
   const PreparedValueHome* home = nullptr;
   const PreparedBlockEntryPublication* publication = nullptr;
+  const PreparedEdgePublication* edge_publication = nullptr;
   const PreparedCallPreservedValue* preservation = nullptr;
   const PreparedMoveBundle* move_bundle = nullptr;
   const PreparedMoveResolution* move = nullptr;
