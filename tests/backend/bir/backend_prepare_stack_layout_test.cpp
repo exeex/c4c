@@ -7207,8 +7207,135 @@ int check_branch_stack_load_authority_contract() {
   if (!prepare::prepared_branch_stack_load_authority_available(
           accepted_pointer) ||
       accepted_pointer.role != prepare::PreparedBranchStackLoadRole::Lhs ||
-      accepted_pointer.value_type != bir::TypeKind::Ptr) {
+      accepted_pointer.value_type != bir::TypeKind::Ptr ||
+      !accepted_pointer.stack_slot_fresh_at_branch ||
+      accepted_pointer.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !accepted_pointer.source_freshness_authority.has_value() ||
+      accepted_pointer.source_freshness_authority->value_id !=
+          lhs_home.value_id ||
+      accepted_pointer.source_freshness_authority->value_name != lhs_name ||
+      accepted_pointer.source_freshness_authority->use_kind !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      accepted_pointer.source_freshness_authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot ||
+      accepted_pointer.source_freshness_authority->proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering ||
+      accepted_pointer.source_freshness_authority->rank !=
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot ||
+      accepted_pointer.source_freshness_authority->reference.home !=
+          &lhs_home ||
+      accepted_pointer.source_freshness_authority->reference.block_index !=
+          branch_block_index ||
+      accepted_pointer.source_freshness_authority->reference.instruction_index !=
+          branch_terminator_instruction_index) {
     return fail("expected proven pointer branch stack-load authority");
+  }
+
+  const auto plan_lhs_stack_load =
+      [&](const std::vector<prepare::PreparedValueFreshnessAuthority>* authorities,
+          std::optional<std::size_t> terminator_instruction_index) {
+        return prepare::plan_prepared_branch_stack_load_authority({
+            .names = &names,
+            .branch_condition = &branch_condition,
+            .terminator = &terminator,
+            .role = prepare::PreparedBranchStackLoadRole::Lhs,
+            .value_home = &lhs_home,
+            .frame_slot = &lhs_frame_slot,
+            .stack_object = &lhs_object,
+            .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+            .pointer_status =
+                prepare::PreparedBranchStackLoadPointerStatus::Proven,
+            .branch_block_index = branch_block_index,
+            .branch_terminator_instruction_index =
+                terminator_instruction_index,
+            .stack_slot_clobber_safe_at_branch = true,
+            .source_freshness_authorities = authorities,
+        });
+      };
+
+  const auto missing_lhs_source_freshness =
+      plan_lhs_stack_load(nullptr, branch_terminator_instruction_index);
+  if (missing_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      missing_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected lhs stack load without producer freshness to stay fail-closed");
+  }
+
+  auto ambiguous_lhs_freshness_authorities = lhs_freshness_authorities;
+  ambiguous_lhs_freshness_authorities.push_back(
+      lhs_freshness_authorities.front());
+  const auto ambiguous_lhs_source_freshness = plan_lhs_stack_load(
+      &ambiguous_lhs_freshness_authorities,
+      branch_terminator_instruction_index);
+  if (ambiguous_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              AmbiguousSourceFreshnessAuthority ||
+      ambiguous_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected ambiguous lhs branch stack-load freshness to stay fail-closed");
+  }
+
+  const auto stale_lhs_source_freshness =
+      plan_lhs_stack_load(&lhs_freshness_authorities,
+                          stale_branch_terminator_instruction_index);
+  if (stale_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      stale_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected stale lhs branch terminator freshness point to stay fail-closed");
+  }
+
+  auto wrong_value_lhs_freshness_authorities = lhs_freshness_authorities;
+  wrong_value_lhs_freshness_authorities.front().value_name = other_name;
+  const auto wrong_value_lhs_source_freshness = plan_lhs_stack_load(
+      &wrong_value_lhs_freshness_authorities,
+      branch_terminator_instruction_index);
+  if (wrong_value_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      wrong_value_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected wrong-value lhs branch stack-load freshness to be ignored");
+  }
+
+  auto wrong_use_lhs_freshness_authorities = lhs_freshness_authorities;
+  wrong_use_lhs_freshness_authorities.front().use_kind =
+      prepare::PreparedValueFreshnessUseKind::ProducerPublicationOperand;
+  const auto wrong_use_lhs_source_freshness = plan_lhs_stack_load(
+      &wrong_use_lhs_freshness_authorities,
+      branch_terminator_instruction_index);
+  if (wrong_use_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      wrong_use_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected wrong-use lhs branch stack-load freshness to be ignored");
+  }
+
+  const auto future_lhs_source_freshness =
+      plan_lhs_stack_load(&lhs_freshness_authorities,
+                          future_branch_terminator_instruction_index);
+  if (future_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      future_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected future lhs branch terminator freshness point to stay fail-closed");
+  }
+
+  auto stack_home_only_lhs_freshness_authorities = lhs_freshness_authorities;
+  stack_home_only_lhs_freshness_authorities.front().source_kind =
+      prepare::PreparedValueFreshnessSourceKind::DirectHome;
+  stack_home_only_lhs_freshness_authorities.front().proof_kind =
+      prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering;
+  stack_home_only_lhs_freshness_authorities.front().rank =
+      prepare::PreparedValueFreshnessSourceRank::DirectHome;
+  const auto stack_home_only_lhs_source_freshness = plan_lhs_stack_load(
+      &stack_home_only_lhs_freshness_authorities,
+      branch_terminator_instruction_index);
+  if (stack_home_only_lhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              InvalidSourceFreshnessAuthority ||
+      stack_home_only_lhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected stack-home-only lhs branch stack-load authority to stay fail-closed");
   }
 
   const prepare::PreparedValueHome rhs_register_home{

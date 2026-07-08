@@ -1,39 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/592_typed_aggregate_branch_stack_source_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate One Blocked Branch Stack-Load Consumer
+Current Step ID: 4
+Current Step Title: Prove Accepted And Fail-Closed Cases
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by migrating only the pointer
-`PreparedBranchStackLoadRole::Lhs` collector route from inventory-only
-`policy=none` to `LoadFromStackSlot` when the shared branch stack-slot
-freshness candidate is selected.
+Completed `plan.md` Step 4 by adding focused proof for the migrated pointer
+`PreparedBranchStackLoadRole::Lhs` branch stack-load route.
 
-The collector now proves the narrow pointer `Lhs` contract from the fused
-pointer compare itself, requires the branch stack-slot freshness candidate
-published at the exact branch terminator point, and requires a conservative
-clobber-safety proof: no intervening instructions before the branch terminator
-for the migrated `Lhs` route. Without those facts, the existing planner fails
-closed as `missing_source_freshness_authority`,
-`missing_stack_clobber_safety`, or `pointer_status_unknown`.
+The branch stack-load contract test now requires the accepted `Lhs` route to
+select an explicit producer-published `BranchStackSlot` freshness authority
+for `BranchStackLoadSource` at the exact branch terminator point. The selected
+authority must match the `Lhs` stack home, value id/name, branch block index,
+terminator instruction index, `BranchTerminatorOrdering` proof, and
+`BranchStackSlot` rank before the route becomes available.
 
-Focused coverage now expects the collected pointer `Lhs` row to be
-`status=available`, `policy=load_from_stack_slot`,
-`pointer_status=proven`, and `source_freshness_status=selected`. The same
-fixture adds a stack-backed pointer `Rhs` row and verifies it still remains
-`policy=none`, `status=missing_policy`, and inventory-only despite having a
-freshness candidate.
+The same focused test now covers fail-closed `Lhs` cases for missing,
+ambiguous, stale, wrong-value, wrong-use, future-point, and stack-home-only
+authority. Existing `Rhs` inventory-only behavior remains blocked/out of
+scope, and no expectation, unsupported-marker, allowlist, target emission, or
+source-idea changes were made.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 4 by adding focused accepted and fail-closed proof
-around the migrated `Lhs` route, especially explicit collector fixtures for
-missing, ambiguous, stale, wrong-value, wrong-use, future-point, and
-stack-home-only authority.
+Proceed to `plan.md` Step 5 with closure inventory: summarize the audited
+producer rule, migrated `Lhs` consumer, covered fail-closed cases, and the
+deliberately blocked `Rhs`, aggregate-adjacent, select/edge, target-emission,
+RV64, AArch64, and x86 work.
 
 ## Watchouts
 
