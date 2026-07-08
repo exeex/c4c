@@ -9509,6 +9509,38 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_integer_branch(
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_floating_branch(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    std::string true_label,
+    std::string false_label) {
+  if (branch_condition.kind !=
+          c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.predicate.has_value() ||
+      !branch_condition.compare_type.has_value() ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value() ||
+      !rv64_fp_compare_funct7(*branch_condition.compare_type).has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_fp_compare_to_register(fragment,
+                                         names,
+                                         lookups,
+                                         *branch_condition.predicate,
+                                         *branch_condition.compare_type,
+                                         *branch_condition.lhs,
+                                         *branch_condition.rhs,
+                                         28)) {
+    return std::nullopt;
+  }
+  append_rv64_local_branch(fragment, 1, 28, 0, std::move(true_label));
+  append_rv64_local_jump(fragment, std::move(false_label));
+  return fragment;
+}
+
 struct Rv64SelectedBranchStackLoadSourceFreshnessStatus {
   bool freshness_required = false;
   bool available = true;
@@ -9985,6 +10017,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                                                            false_asm_label,
                                                            stack_frame_bytes)) {
           return fused_integer_branch;
+        }
+        if (auto fused_floating_branch =
+                fragment_for_prepared_fused_floating_branch(names,
+                                                            lookups,
+                                                            *branch_condition,
+                                                            true_asm_label,
+                                                            false_asm_label)) {
+          return fused_floating_branch;
         }
         return fragment_for_prepared_compare_branch(prepared.stack_layout,
                                                     names,

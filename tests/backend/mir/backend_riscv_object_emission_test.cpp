@@ -710,22 +710,64 @@ prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
                   .kind = prepare::PreparedValueHomeKind::Register,
                   .register_name = std::string{"t2"},
               },
-              prepare::PreparedValueHome{
-                  .value_id = 2,
-                  .function_name = function_name,
-                  .value_name = lhs_name,
-                  .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"t0"},
-              },
-              prepare::PreparedValueHome{
-                  .value_id = 3,
-                  .function_name = function_name,
-                  .value_name = rhs_name,
-                  .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"t1"},
-              },
           },
   });
+  auto& homes = prepared.value_locations.functions.back().value_homes;
+  if (compare_type == bir::TypeKind::F32 || compare_type == bir::TypeKind::F64) {
+    auto lhs_home = prepare::PreparedValueHome{
+        .value_id = 2,
+        .function_name = function_name,
+        .value_name = lhs_name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = std::string{"fa0"},
+        .target_register_identity =
+            prepare::PreparedTargetRegisterIdentity{
+                .target_arch = c4c::TargetArch::Riscv64,
+                .bank = prepare::PreparedRegisterBank::Fpr,
+                .register_class = prepare::PreparedRegisterClass::Float,
+                .physical_index = 10,
+            },
+    };
+    auto rhs_home = prepare::PreparedValueHome{
+        .value_id = 3,
+        .function_name = function_name,
+        .value_name = rhs_name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = std::string{"fa1"},
+        .target_register_identity =
+            prepare::PreparedTargetRegisterIdentity{
+                .target_arch = c4c::TargetArch::Riscv64,
+                .bank = prepare::PreparedRegisterBank::Fpr,
+                .register_class = prepare::PreparedRegisterClass::Float,
+                .physical_index = 11,
+            },
+    };
+    const std::size_t size_bytes = compare_type == bir::TypeKind::F32 ? 4 : 8;
+    lhs_home.size_bytes = size_bytes;
+    lhs_home.align_bytes = size_bytes;
+    rhs_home.size_bytes = size_bytes;
+    rhs_home.align_bytes = size_bytes;
+    homes.push_back(std::move(lhs_home));
+    if (!rhs_override.has_value() ||
+        rhs_override->kind != bir::Value::Kind::Immediate) {
+      homes.push_back(std::move(rhs_home));
+    }
+  } else {
+    homes.push_back(prepare::PreparedValueHome{
+        .value_id = 2,
+        .function_name = function_name,
+        .value_name = lhs_name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = std::string{"t0"},
+    });
+    homes.push_back(prepare::PreparedValueHome{
+        .value_id = 3,
+        .function_name = function_name,
+        .value_name = rhs_name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = std::string{"t1"},
+    });
+  }
 
   return prepared;
 }
@@ -12770,6 +12812,52 @@ int builds_prepared_fused_ugt_i64_compare_branch_object() {
   return 0;
 }
 
+int builds_prepared_fused_slt_f64_compare_branch_object() {
+  const auto prepared =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Slt,
+                                                bir::TypeKind::F64);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared fused slt f64 compare branch RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label = object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected fused f64 compare branch object symbols and text");
+  }
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      function->value != 0 || function->size_bytes != 28 ||
+      true_label->value != 12 || false_label->value != 20) {
+    return fail("expected fused f64 compare branch object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xa2b51e53 ||
+      read_u32(text->bytes, 4) != 0x000e1063 ||
+      read_u32(text->bytes, 8) != 0x0000006f ||
+      read_u32(text->bytes, 12) != 0x00100513 ||
+      read_u32(text->bytes, 16) != 0x00008067 ||
+      read_u32(text->bytes, 20) != 0x00000513 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected f64 branch to lower as flt.d plus bne predicate");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 4 ||
+      module->relocations[0].type != R_RISCV_BRANCH ||
+      module->relocations[0].symbol != true_label->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 8 ||
+      module->relocations[1].type != R_RISCV_JAL ||
+      module->relocations[1].symbol != false_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected fused f64 compare branch local relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_fused_ne_ptr_null_compare_branch_object() {
   const auto prepared = make_prepared_fused_compare_branch_module(
       bir::BinaryOpcode::Ne,
@@ -13545,6 +13633,17 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
       missing_lhs_home.value_locations.functions.front().value_homes;
   missing_lhs_homes.erase(missing_lhs_homes.begin() + 1);
   if (expect_prepared_rejection_diagnostic(missing_lhs_home, diagnostic) != 0) {
+    return 1;
+  }
+
+  auto missing_floating_lhs_home =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Slt,
+                                                bir::TypeKind::F64);
+  auto& missing_floating_lhs_homes =
+      missing_floating_lhs_home.value_locations.functions.front().value_homes;
+  missing_floating_lhs_homes.erase(missing_floating_lhs_homes.begin() + 1);
+  if (expect_prepared_rejection_diagnostic(missing_floating_lhs_home,
+                                           diagnostic) != 0) {
     return 1;
   }
 
@@ -24710,6 +24809,7 @@ int main() {
   status |= builds_prepared_fused_sgt_i32_compare_branch_object();
   status |= builds_prepared_fused_sle_i32_compare_branch_object();
   status |= builds_prepared_fused_ugt_i64_compare_branch_object();
+  status |= builds_prepared_fused_slt_f64_compare_branch_object();
   status |= builds_prepared_fused_ne_ptr_null_compare_branch_object();
   status |= builds_prepared_fused_ne_ptr_register_compare_branch_object();
   status |= builds_prepared_fused_eq_ptr_register_compare_branch_object();
