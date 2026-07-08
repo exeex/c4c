@@ -120,19 +120,33 @@ Primary targets:
 - existing prepared global load/store lookup and publication helpers.
 
 Actions:
+- Before editing code, capture the exact `PreparedAddress` / `PreparedMemoryAccess`
+  predicate inputs that make
+  `prepared_global_symbol_memory_has_publication_authority()` fail for at
+  least two supported prepared global memory rows.
 - Trace global load/store lanes from BIR values through prepared address and
   memory-access facts.
 - Add or repair authority publication for supported global-symbol memory
-  accesses with correct symbol identity, offset, size, alignment, and use.
+  accesses only when the captured evidence shows a missing prepared fact within
+  this plan's ownership: symbol identity, base-plus-offset eligibility, offset,
+  size, alignment, object extent, requested range, range verdict, or layout
+  authority.
 - Keep access-width legality and final instruction emission out of scope.
 - Preserve fail-closed diagnostics for ambiguous symbols, missing identity,
   unsupported widths, missing initializer/layout facts, and policy-sensitive
   cases.
+- If the predicate inputs already show complete prepared authority but the row
+  still stops at an RV64 object-route diagnostic, stop and return the evidence
+  for lifecycle routing instead of editing RV64 consumer/emission code.
+- Reject helper-only publication changes that leave the same rows at the exact
+  `requires supported prepared global memory facts` diagnostic.
 
 Completion check:
-- Prepared global memory facts are available for supported rows that previously
-  stopped with missing prepared global memory facts, and unsupported-width rows
-  remain target-consumer failures.
+- At least one supported prepared global memory-facts row moves past the exact
+  `requires supported prepared global memory facts` stop for a semantic
+  prepared-authority reason, nearby same-family rows are checked for the same
+  reason, and unsupported-width/global-emission rows remain target-consumer
+  failures for `609`.
 
 ### Step 3: Complete direct global-symbol base-plus-offset authority
 

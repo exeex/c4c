@@ -11,6 +11,12 @@ Current Step Title: Publish prepared global memory facts
 - Completed Step 1 from `plan.md`: inventoried the prepared/global authority
   blockers in the current RV64 gcc-torture backend artifacts and selected the
   first narrow implementation target.
+- Lifecycle reassessment kept Step 2 active after a rejected implementation
+  attempt. The rejected attempt added prepared aggregate byte-storage authority
+  publication in `src/backend/prealloc/stack_layout/coordinator.cpp`, built
+  cleanly, but the supervisor-selected allowlist stayed `0/7` with unchanged
+  diagnostics. Treat that result as evidence that a helper-only publication
+  patch is not acceptable progress for this step.
 - Lifecycle review reordered `plan.md` so the inventory-recommended prepared
   global memory facts packet is now Step 2, ahead of selected object-data
   authority.
@@ -83,18 +89,29 @@ Current Step Title: Publish prepared global memory facts
 
 ## Suggested Next
 
-- Implement the first narrow Step 2 packet: repair prepared publication for
-  supported `LoadGlobalInst` / `StoreGlobalInst` global-symbol memory accesses
-  so `prepared_global_symbol_memory_has_publication_authority()` succeeds for
-  semantically known direct global-symbol base-plus-offset accesses, proving
-  with `src/strlen-7.c`, at least one neighboring prepared global memory-facts
-  row, and one direct base-plus-offset row such as `src/pr79737-2.c`.
+- Execute a narrowed Step 2 packet in two gates:
+  1. Evidence gate: before editing code, capture the predicate inputs for
+     `prepared_global_symbol_memory_has_publication_authority()` on
+     `src/strlen-7.c` plus at least one neighboring supported prepared global
+     memory-facts row such as `src/20000703-1.c`,
+     `src/20041218-1.c`, or `src/pr58662.c`. Name the first missing field
+     among base kind, symbol name, base-plus-offset eligibility, size,
+     alignment, provenance base identity, layout authority, object extent,
+     requested range, and range verdict.
+  2. Implementation gate: edit only the prepared fact producer that owns that
+     missing field, then prove the exact diagnostic moves for at least one
+     supported prepared global memory-facts row. If the predicate inputs already
+     look complete or the proof remains at the exact same diagnostic, stop and
+     return the evidence instead of touching RV64 consumer/emission code.
 
 ## Watchouts
 
 - Keep RV64 global symbol emission and access-width lowering out of scope.
 - Do not change expectations, unsupported markers, allowlists, timeouts,
   runtime behavior, accounting, or testcase-specific matching.
+- Do not repeat a generic aggregate byte-storage publication helper patch
+  unless the evidence gate proves that specific missing field is the first
+  blocker and the proof shows row diagnostic movement.
 - Preserve RV64/global consumer rows for `ideas/open/609_rv64_global_data_consumer.md`.
 - The bucket map records `17` global-symbol emission rows, while the current
   log inventory finds `18`; keep that discrepancy in the 609 handoff lane.
