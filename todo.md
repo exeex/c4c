@@ -1,17 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/602_bir_local_memory_load_semantics.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Same-Family Breadth
+Current Step ID: 5
+Current Step Title: Update Evidence and Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4: proved same-family breadth for the current BIR local-memory
-load repair without code changes. The restored full RV64 gcc_torture
-backend-object scan is current at `total=1467 passed=473 failed=994`, matching
-`1467` per-case logs and `994` failed-list rows under `build/agent_state/`.
+Completed Step 5: updated the final proof summary and handoff for the current
+BIR local-memory load semantics slice. No implementation files, tests,
+expectations, unsupported markers, allowlists, runtime/accounting behavior,
+`plan.md`, source ideas, or docs handoff files were changed.
+
+Final proof summary:
+
+- The current restored full RV64 gcc_torture backend-object scan is
+  `473/1467` passing with `994` failures.
+- The current scan has `1467` per-case logs and `994` failed-list rows under
+  `build/agent_state/`.
+- The local-memory load semantic family is now `73` remaining stops, down from
+  the Step 2 baseline of `82` rows at `470/1467`.
+- The slice moved multiple rows past the old BIR load producer stop without
+  weakening adjacent guard ownership.
 
 Delegated load-family proof rows:
 
@@ -51,12 +62,20 @@ Guard rows retained non-load ownership:
 - `src/20000706-1.c` stayed at `unsupported_move_bundle_target_shape` /
   stack-offset publication rejection.
 
+Downstream handoff owners exposed by the cleared rows:
+
+- `src/20000706-4.c` now reaches `[RV64_BACKEND_RUNTIME_MISMATCH]` with
+  `c4c_exit=Segmentation fault`; this is runtime mismatch ownership, not BIR
+  load producer ownership.
+- `src/20010129-1.c` now reaches prepared/RV64 `unsupported_call_abi`; this is
+  ABI/RV64 ownership, not BIR load producer ownership.
+
 ## Suggested Next
 
-Proceed to Step 5 evidence/handoff. Record the final row set, the current
-`473/1467` full-scan state, the remaining `73` load-family stops, and the
-downstream handoff owners exposed by `src/20000706-4.c` and
-`src/20010129-1.c` without editing other open ideas.
+Ask the supervisor and plan-owner to decide closure readiness for this active
+plan. The local BIR load semantics slice has final evidence and handoff notes,
+but closure remains a lifecycle decision because `73` load-family stops and
+downstream runtime/ABI owners remain.
 
 ## Watchouts
 
@@ -68,6 +87,11 @@ downstream handoff owners exposed by `src/20000706-4.c` and
   downstream of semantic BIR production and outside this packet.
 - The remaining selected load rows still need later load producer work for
   aggregate/member, va_arg/byval, or complex pointer shapes.
+- Remaining limitations include the `73` current load-family stops and the
+  inability to reconstruct exact identities for every unnamed row in the
+  `82 -> 73` movement from overwritten mutable pre-repair logs.
+- This packet does not claim ownership of runtime mismatch, ABI/RV64, store,
+  GEP, alloca, prepared authority, timeout, accounting, or expectation policy.
 - Do not weaken store/GEP/alloca/prepared/RV64 guard ownership to make the
   12-row total pass count improve.
 - Do not overclaim the unnamed `82 -> 73` bucket movement as exact per-row
@@ -76,7 +100,8 @@ downstream handoff owners exposed by `src/20000706-4.c` and
 
 ## Proof
 
-Step 4 evidence proof over existing restored full-scan artifacts:
+Step 5 reused the Step 4 evidence proof over existing restored full-scan
+artifacts:
 
 ```sh
 find build/rv64_gcc_c_torture_backend -maxdepth 2 -name case.log | wc -l
@@ -87,16 +112,16 @@ rg -l 'load local-memory semantic family' \
   build/rv64_gcc_c_torture_backend/*/case.log | wc -l
 ```
 
-Observed:
+Final observed state:
 
 - `1467` per-case logs.
 - Summary counts: `pass 473`, `fail 994`.
 - Failed-list rows: `994`.
 - Current `load local-memory semantic family` logs: `73`.
 
-Supervisor-selected proof command run after this `todo.md` update and saved in
+Supervisor-selected Step 5 proof command run after this `todo.md` update and saved in
 `test_after.log`:
 
 ```sh
-rg 'Step 4|same-family breadth|473|994|20000706-4|20010129-1|guard rows|full RV64 gcc_torture|load-family' todo.md
+rg 'Step 5|final proof summary|473/1467|994|73|20000706-4|20010129-1|remaining limitations|Suggested Next|close' todo.md
 ```
