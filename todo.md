@@ -8,54 +8,72 @@ Current Step Title: Broaden Within ABI Consumer Authority
 
 ## Just Finished
 
-Completed the Step 3 residual refresh after the producer gaps were split to
-ideas 624, 625, and 626. No implementation files were touched.
+Completed the Step 4 residual refresh for adjacent ABI consumer authority after
+Step 2 and Step 3 exhaustion. No implementation files were touched.
 
-Fresh `build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...`
-probes classify the current Step 3 residuals as follows:
+Fresh focused probes ran
+`build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...` over the
+current ABI-adjacent case set selected from the RV64 torture backend logs. The
+current focused classification is:
 
-- Prepared return rows `src/20001130-2.c` and `src/20080719-1.c` still stop at
-  `unsupported_move_bundle_target_shape` on `phase=before_return`,
-  `destination_kind=function_return_abi`, `destination_storage=register`,
-  `reason=return_stack_to_register`, with `source_home_kind=stack_slot` and
-  `destination_home_kind=stack_slot`. This remains missing prepared return
-  destination-home authority, not RV64 consumer breadth.
-- The current backend bucket has `12` `unsupported_stack_frame` rows:
-  `src/20021113-1.c`, `src/20190820-1.c`, `src/920721-2.c`,
-  `src/20020314-1.c`, `src/pr36321.c`, `src/pr43220.c`, `src/alloca-1.c`,
-  `src/20040223-1.c`, `src/strcpy-2.c`, `src/vla-dealloc-1.c`,
-  `src/920929-1.c`, and `src/20040811-1.c`.
-- Focused prepared dumps for those frame rows show the active rejecting
-  functions are dynamic/fixed-frame rows with `has_dynamic_stack=yes` or
-  unsupported FPR/dynamic-frame save shapes. Their callee-saved rows name
-  registers such as `s1`, `s2`, `fs1`, or `fs2`, but the dynamic-frame save
-  rows do not publish concrete `slot_placement` offsets/sizes. These rows stay
-  under idea 626 or later FPR/frame work; deriving save slots in RV64 object
-  emission would be producer-authority inference.
-- Excluded producer-gap rows remain out of scope: `src/20000808-1.c` is idea
-  624 outgoing-stack destination offsets, and `src/20020529-1.c` is idea 625
-  stack-slot preservation source publication.
-
-Step 2 positives were preserved in the refresh probes:
-
-- `src/20000603-1.c` remains past `unsupported_call_abi`, now stopping at
-  `unsupported_terminator_fragment`.
-- `src/20021219-1.c` remains past `unsupported_call_abi`, now stopping at
+- `47` rows still stop at `unsupported_call_abi`.
+- `12` rows still stop at `unsupported_stack_frame`: `src/20020314-1.c`,
+  `src/20021113-1.c`, `src/20040223-1.c`, `src/20040811-1.c`,
+  `src/20190820-1.c`, `src/920721-2.c`, `src/920929-1.c`,
+  `src/alloca-1.c`, `src/pr36321.c`, `src/pr43220.c`, `src/strcpy-2.c`, and
+  `src/vla-dealloc-1.c`.
+- `36` probed move-bundle target rows are not Step 4 ABI consumer work. The
+  two return-ABI rows, `src/20001130-2.c` and `src/20080719-1.c`, still stop at
+  `reason=return_stack_to_register` with `destination_kind=function_return_abi`,
+  `destination_storage=register`, `source_home_kind=stack_slot`, and
+  `destination_home_kind=stack_slot`; these remain missing prepared return
+  destination-home authority.
+- `src/20021219-1.c` remains past `unsupported_call_abi` and now stops at
   `malformed_prepared_join_transfer_carrier`.
 - `src/pr77767.c` still compiles through the focused RV64 object probe.
 
-Conclusion: after excluding ideas 624, 625, and 626, there is no remaining
-complete-authority Step 3 stack-frame or prepared-return consumer family
-suitable for RV64 implementation in idea 613.
+Prepared callsite dumps for the `unsupported_call_abi` rows show real Step 4
+breadth with complete published consumer facts:
+
+- Scalar GPR calls with prepared stack-slot argument sources and argument
+  registers, for example `src/20001017-2.c` publishes
+  `arg3 bank=gpr from=frame_slot:stack+24 to=a3`, `src/20001101.c` publishes
+  `arg1 bank=gpr from=frame_slot:stack+40 to=a1` plus
+  `result bank=gpr from=register:a0 to=register:t0`, and
+  `src/20030715-1.c` publishes `arg1 bank=gpr from=frame_slot:stack+48 to=a1`
+  plus a concrete stack-slot result destination.
+- Scalar GPR result transport has breadth: the focused dump found `28`
+  `result bank=gpr from=register:a0 to=register:t0` rows and multiple concrete
+  `register:a0` to `stack_slot:stack+...` result destinations.
+- Aggregate-address stack/frame call rows remain visible, including
+  `931004-*`/`931031-1.c`, but those are not the first Step 4 packet because
+  they overlap outgoing aggregate transport and producer gaps already split to
+  idea 624.
+
+Conclusion: Step 4 has adjacent ordinary ABI consumer breadth. The next
+implementation packet should target complete-fact scalar GPR call argument and
+result transport, not producer-authority or policy rows.
 
 ## Suggested Next
 
-Advance idea 613 out of Step 3. The next coherent packet is a Step 4 residual
-refresh for adjacent ABI consumer authority, or Step 5 close-readiness
-classification if the supervisor prefers to split remaining non-consumer
-owners before more ABI work. Do not select a Step 3 implementation packet until
-prepared return destination-home authority or dynamic-frame save-slot placement
-facts are published upstream.
+Implement the Step 4 scalar GPR same-module call/result consumer packet in RV64
+object emission. The packet should consume only explicit prepared callsite
+facts for:
+
+- GPR argument transport from `register:*`, `frame_slot:stack+...`, and simple
+  immediate sources to `a0`-`a7`.
+- GPR result transport from `register:a0` to a prepared destination register or
+  prepared destination stack slot.
+- Concrete preservation rows already published by prepared callsite summaries.
+
+Representative positives: `src/20001017-2.c`, `src/20001101.c`,
+`src/20010118-1.c`, `src/20030715-1.c`, and `src/20040625-1.c`.
+Representative guards: `src/20000808-1.c` for idea 624 outgoing-stack
+destination offsets, `src/20020529-1.c` for idea 625 stack-slot preservation
+source publication, `src/20040811-1.c`/`src/pr43220.c` for idea 626 frame
+save-slot placement, `src/20001130-2.c`/`src/20080719-1.c` for prepared return
+destination-home authority, and `src/20021219-1.c` for downstream
+join-transfer carrier authority.
 
 ## Watchouts
 
@@ -65,11 +83,12 @@ facts are published upstream.
   idea 626; do not infer save slots in RV64 object emission.
 - Do not infer return destination home authority for `src/20001130-2.c` or
   `src/20080719-1.c`; their before-return rows remain producer-authority gaps.
-- Do not expand the next frame packet into FPR save/restore, generic
-  move-bundle authority production, local/global producer repair,
-  runtime/library/variadic policy, or named-case-only frame handling.
-- Preserve Step 2 positive guards: `src/20000603-1.c`, `src/20021219-1.c`,
-  and `src/pr77767.c`.
+- Do not fold aggregate-address outgoing stack transport, FPR call/result
+  policy, generic move-bundle authority production, local/global producer
+  repair, runtime/library/variadic policy, or named-case-only call handling
+  into the scalar GPR Step 4 packet.
+- Preserve Step 2 positive/downstream guards: `src/20000603-1.c`,
+  `src/20021219-1.c`, and `src/pr77767.c`.
 - `src/20020314-1.c` remains a compatibility watchout with FPR-heavy
   frame/call details; do not fold FPR dynamic-frame handling into the first GPR
   dynamic-frame packet.
