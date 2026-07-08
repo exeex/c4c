@@ -1,6 +1,6 @@
 # BIR Local-Memory Store Semantics
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -42,6 +42,27 @@ block prepared and RV64 stages before any target lowering decision is valid.
 - Load, GEP, alloca, and prepared authority failures are not reclassified as
   stores solely to make the proof pass.
 - The proof includes more than one store-shaped row from the current scan.
+
+## Closure Summary
+
+Closed after the Step 10 lifecycle review. Accepted implementation under this
+idea repaired BIR local-memory store production for full-width `f128` local
+literal source values, loaded global pointer-field authority, dynamic local
+pointer-array stores, dynamic local aggregate-array element copies, and
+single-lane SSA vector stores into local vector lane slots.
+
+Refreshed evidence showed the source acceptance criteria satisfied: multiple
+store-shaped rows progressed beyond the old local-memory store producer stop,
+guard owners preserved their boundaries, and no broad remaining multi-row
+in-scope local-memory store producer subfamily was visible after adjacent owner
+families were separated.
+
+Known leftover: `src/931102-2.c` remains a singleton in-scope local
+union/overlap store limitation. Adjacent follow-up work remains outside this
+idea, including pointer/address authority, function-label/local pointer-array
+authority, downstream scalar/local-memory classification, global-data routes,
+and aggregate/static global store handoff under
+`ideas/open/619_bir_aggregate_global_store_handoff.md`.
 
 ## Reviewer Reject Signals
 
