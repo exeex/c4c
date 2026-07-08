@@ -2152,6 +2152,17 @@ fragment_for_prepared_out_of_ssa_moves(
                                  *move.source_immediate_i32);
       continue;
     }
+    const auto* source_home =
+        prepared_value_home_for_id(lookups, move.from_value_id);
+    if (phi_join_move && destination.has_value() && source_home != nullptr &&
+        source_home->kind == prepare::PreparedValueHomeKind::Register) {
+      const auto source = gpr_register_number_for_home(*source_home);
+      if (!source.has_value()) {
+        return std::nullopt;
+      }
+      append_rv64_move(fragment, *destination, *source);
+      continue;
+    }
     if (phi_join_move && destination.has_value()) {
       auto producer_fragment =
           fragment_for_prepared_block_entry_select_edge_source_producer(
@@ -2174,8 +2185,6 @@ fragment_for_prepared_out_of_ssa_moves(
         continue;
       }
     }
-    const auto* source_home =
-        prepared_value_home_for_id(lookups, move.from_value_id);
     if (source_home == nullptr) {
       return std::nullopt;
     }
