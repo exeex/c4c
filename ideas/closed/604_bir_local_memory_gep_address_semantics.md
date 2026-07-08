@@ -1,6 +1,6 @@
 # BIR Local-Memory GEP And Address Semantics
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -48,6 +48,35 @@ address authority model into target-local inference.
   classified with that owner.
 - The route reuses the established pointer/address model instead of inventing
   a testcase-local exception.
+
+## Closure Summary
+
+Closed as acceptance-satisfied for the ordinary local-memory GEP/address
+producer route.
+
+The completed implementation repaired BIR local-memory GEP/address production
+in `src/backend/bir/lir_to_bir/memory/addressing.cpp` and
+`src/backend/bir/lir_to_bir/memory/local_gep.cpp` by publishing
+address/provenance facts for ordinary local-object GEP shapes before
+prepared/RV64 handoff. It reused the established pointer/address authority
+model from ideas `597`, `599`, and `600` instead of reconstructing target-side
+frame addresses or matching testcase names.
+
+Accepted proof:
+- `src/pr24851.c` and `src/930614-2.c` now succeed through semantic BIR.
+- `src/pr80421.c` progressed beyond the old GEP producer stop to downstream
+  `load local-memory semantic family` ownership.
+- The delegated 16-test RV64 gcc_torture subset passed `16/16`.
+- The refreshed 62-row Step 4 classification recorded `21/62` semantic BIR
+  successes, `2/62` downstream load-local stops, `5/62` runtime/intrinsic
+  owner stops, and `34/62` remaining GEP-family stops concentrated in
+  guard/prerequisite groups.
+
+Remaining rows that still report `gep local-memory semantic family` are not
+part of this closed direct-local route without a new lifecycle decision. They
+remain separated by owner: pointer/formal provenance, global/static object
+GEP, aggregate/member/flexible/alias handling, runtime/string support, and
+variadic handling.
 
 ## Reviewer Reject Signals
 
