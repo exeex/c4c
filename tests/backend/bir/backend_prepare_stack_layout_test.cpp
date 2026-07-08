@@ -7329,8 +7329,11 @@ int check_branch_stack_load_authority_contract() {
       .value_id = 4,
       .function_name = prepared_function_name,
       .value_name = prepared_rhs_name,
-      .kind = prepare::PreparedValueHomeKind::Register,
-      .register_name = std::string{"a4"},
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{12},
+      .offset_bytes = std::size_t{72},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
   });
   prepared.value_locations.functions.push_back(std::move(prepared_locations));
   prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
@@ -7346,6 +7349,15 @@ int check_branch_stack_load_authority_contract() {
       .object_id = 10,
       .function_name = prepared_function_name,
       .value_name = prepared_lhs_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 12,
+      .function_name = prepared_function_name,
+      .value_name = prepared_rhs_name,
       .source_kind = "regalloc.spill_slot",
       .type = bir::TypeKind::Ptr,
       .size_bytes = 8,
@@ -7367,14 +7379,23 @@ int check_branch_stack_load_authority_contract() {
       .size_bytes = 8,
       .align_bytes = 8,
   });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{12},
+      .object_id = 12,
+      .function_name = prepared_function_name,
+      .offset_bytes = 72,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
 
   const auto records =
       prepare::collect_prepared_branch_stack_load_authorities(prepared);
-  if (records.records.size() != 2) {
-    return fail("expected stack-home branch collector to emit condition and lhs rows");
+  if (records.records.size() != 3) {
+    return fail("expected stack-home branch collector to emit condition, lhs, and rhs rows");
   }
   const auto* condition_record = &records.records[0];
   const auto* lhs_record = &records.records[1];
+  const auto* rhs_record = &records.records[2];
   if (condition_record->role !=
           prepare::PreparedBranchStackLoadRole::Condition ||
       condition_record->authority.status !=
@@ -7402,15 +7423,21 @@ int check_branch_stack_load_authority_contract() {
   }
   if (lhs_record->role != prepare::PreparedBranchStackLoadRole::Lhs ||
       lhs_record->authority.status !=
-          prepare::PreparedBranchStackLoadAuthorityStatus::MissingPolicy ||
+          prepare::PreparedBranchStackLoadAuthorityStatus::Available ||
+      lhs_record->authority.policy !=
+          prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot ||
       lhs_record->authority.pointer_status !=
-          prepare::PreparedBranchStackLoadPointerStatus::Unknown ||
+          prepare::PreparedBranchStackLoadPointerStatus::Proven ||
       lhs_record->authority.value_id != 6 ||
       lhs_record->authority.slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{
               prepare::PreparedFrameSlotId{10}} ||
       lhs_record->authority.stack_object_id !=
           std::optional<prepare::PreparedObjectId>{10} ||
+      !lhs_record->authority.stack_slot_fresh_at_branch ||
+      lhs_record->authority.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !lhs_record->authority.source_freshness_authority.has_value() ||
       lhs_record->authority.source_freshness_authorities.size() != 1 ||
       lhs_record->authority.source_freshness_authorities.front().value_id != 6 ||
       lhs_record->authority.source_freshness_authorities.front().value_name !=
@@ -7427,7 +7454,26 @@ int check_branch_stack_load_authority_contract() {
               .reference.block_index != std::optional<std::size_t>{0} ||
       lhs_record->authority.source_freshness_authorities.front()
               .reference.instruction_index != std::optional<std::size_t>{0}) {
-    return fail("expected collected branch lhs stack-load row to preserve pointer boundary");
+    return fail("expected collected branch lhs stack-load row to require selected pointer freshness");
+  }
+  if (rhs_record->role != prepare::PreparedBranchStackLoadRole::Rhs ||
+      rhs_record->authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::MissingPolicy ||
+      rhs_record->authority.policy !=
+          prepare::PreparedBranchStackLoadPolicy::None ||
+      rhs_record->authority.pointer_status !=
+          prepare::PreparedBranchStackLoadPointerStatus::Unknown ||
+      rhs_record->authority.value_id != 4 ||
+      rhs_record->authority.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{12}} ||
+      rhs_record->authority.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{12} ||
+      rhs_record->authority.source_freshness_authorities.size() != 1 ||
+      rhs_record->authority.source_freshness_authorities.front().value_id != 4 ||
+      rhs_record->authority.source_freshness_authorities.front().value_name !=
+          prepared_rhs_name) {
+    return fail("expected collected branch rhs stack-load row to remain inventory-only");
   }
 
   const std::string dump = prepare::print(prepared);
@@ -7456,13 +7502,32 @@ int check_branch_stack_load_authority_contract() {
   }
   if (dump.find("branch_stack_load_authority "
                 "function=branch_stack_load_collector block=entry "
-                "role=lhs value=%lhs value_id=6 policy=none "
-                "pointer_status=unknown status=missing_policy "
-                "source_freshness_status=no_candidate "
-                "source_freshness_candidates=1 slot=#10 "
+                "role=lhs value=%lhs value_id=6 "
+                "policy=load_from_stack_slot "
+                "pointer_status=proven status=available "
+                "source_freshness_status=selected "
+                "source_freshness_candidates=1 "
+                "source_freshness_authority=branch_stack_slot "
+                "source_freshness_value=%lhs "
+                "source_freshness_value_id=6 "
+                "source_freshness_use=branch_stack_load_source "
+                "source_freshness_proof=branch_terminator_ordering "
+                "source_freshness_rank=branch_stack_slot "
+                "source_freshness_ref_block=0 "
+                "source_freshness_ref_inst=0 slot=#10 "
                 "object=#10 stack_offset=80 size=8 align=8") ==
       std::string::npos) {
     return fail("expected prepared dump to expose lhs stack-load row");
+  }
+  if (dump.find("branch_stack_load_authority "
+                "function=branch_stack_load_collector block=entry "
+                "role=rhs value=%rhs value_id=4 policy=none "
+                "pointer_status=unknown status=missing_policy "
+                "source_freshness_status=no_candidate "
+                "source_freshness_candidates=1 slot=#12 "
+                "object=#12 stack_offset=72 size=8 align=8") ==
+      std::string::npos) {
+    return fail("expected prepared dump to keep rhs stack-load row blocked");
   }
 
   return 0;

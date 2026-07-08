@@ -2614,6 +2614,67 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bool prepared_branch_stack_load_lhs_pointer_is_proven(
+    const PreparedBranchCondition& branch_condition,
+    const bir::Value* branch_value,
+    PreparedBranchStackLoadRole role) {
+  return role == PreparedBranchStackLoadRole::Lhs &&
+         branch_condition.kind == PreparedBranchConditionKind::FusedCompare &&
+         branch_condition.can_fuse_with_branch &&
+         branch_condition.compare_type == bir::TypeKind::Ptr &&
+         branch_condition.lhs.has_value() &&
+         branch_value != nullptr &&
+         branch_value->kind == bir::Value::Kind::Named &&
+         branch_value->type == bir::TypeKind::Ptr &&
+         branch_condition.lhs->kind == bir::Value::Kind::Named &&
+         branch_condition.lhs->name == branch_value->name &&
+         branch_condition.lhs->type == branch_value->type;
+}
+
+[[nodiscard]] PreparedBranchStackLoadPolicy
+prepared_collected_branch_stack_load_policy(
+    PreparedBranchStackLoadRole role,
+    bool lhs_pointer_proven) {
+  if (role == PreparedBranchStackLoadRole::Condition ||
+      (role == PreparedBranchStackLoadRole::Lhs && lhs_pointer_proven)) {
+    return PreparedBranchStackLoadPolicy::LoadFromStackSlot;
+  }
+  return PreparedBranchStackLoadPolicy::None;
+}
+
+[[nodiscard]] PreparedBranchStackLoadPointerStatus
+prepared_collected_branch_stack_load_pointer_status(
+    const bir::Value* branch_value,
+    bool lhs_pointer_proven) {
+  if (branch_value != nullptr && branch_value->type != bir::TypeKind::Ptr) {
+    return PreparedBranchStackLoadPointerStatus::NotPointer;
+  }
+  return lhs_pointer_proven ? PreparedBranchStackLoadPointerStatus::Proven
+                            : PreparedBranchStackLoadPointerStatus::Unknown;
+}
+
+[[nodiscard]] bool branch_stack_load_has_no_intervening_instructions(
+    const bir::Block* block,
+    std::optional<std::size_t> branch_terminator_instruction_index) {
+  return block != nullptr &&
+         branch_terminator_instruction_index.has_value() &&
+         *branch_terminator_instruction_index == 0U;
+}
+
+[[nodiscard]] bool prepared_collected_branch_stack_load_clobber_safe(
+    PreparedBranchStackLoadRole role,
+    bool lhs_pointer_proven,
+    const bir::Block* block,
+    std::optional<std::size_t> branch_terminator_instruction_index) {
+  if (role == PreparedBranchStackLoadRole::Condition) {
+    return true;
+  }
+  return role == PreparedBranchStackLoadRole::Lhs &&
+         lhs_pointer_proven &&
+         branch_stack_load_has_no_intervening_instructions(
+             block, branch_terminator_instruction_index);
+}
+
 void select_branch_stack_load_source_freshness_authority(
     PreparedBranchStackLoadAuthority& authority,
     const std::vector<PreparedValueFreshnessAuthority>* candidates) {
@@ -2952,6 +3013,7 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
     FunctionNameId function_name,
     const PreparedBranchCondition& branch_condition,
     const bir::Terminator* terminator,
+    const bir::Block* block,
     std::optional<std::size_t> branch_block_index,
     std::optional<std::size_t> branch_terminator_instruction_index,
     PreparedBranchStackLoadRole role,
@@ -2983,6 +3045,9 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
       freshness.has_value()) {
     source_freshness_authorities.push_back(*freshness);
   }
+  const bool lhs_pointer_proven =
+      prepared_branch_stack_load_lhs_pointer_is_proven(
+          branch_condition, branch_value, role);
   PreparedBranchStackLoadAuthorityRecord record{
       .function_name = function_name,
       .block_label = branch_condition.block_label,
@@ -2995,18 +3060,20 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
           .value_home = value_home,
           .frame_slot = frame_slot,
           .stack_object = stack_object,
-          .policy = role == PreparedBranchStackLoadRole::Condition
-                        ? PreparedBranchStackLoadPolicy::LoadFromStackSlot
-                        : PreparedBranchStackLoadPolicy::None,
+          .policy = prepared_collected_branch_stack_load_policy(
+              role, lhs_pointer_proven),
           .pointer_status =
-              branch_value != nullptr && branch_value->type != bir::TypeKind::Ptr
-                  ? PreparedBranchStackLoadPointerStatus::NotPointer
-                  : PreparedBranchStackLoadPointerStatus::Unknown,
+              prepared_collected_branch_stack_load_pointer_status(
+                  branch_value, lhs_pointer_proven),
           .branch_block_index = branch_block_index,
           .branch_terminator_instruction_index =
               branch_terminator_instruction_index,
           .stack_slot_clobber_safe_at_branch =
-              role == PreparedBranchStackLoadRole::Condition,
+              prepared_collected_branch_stack_load_clobber_safe(
+                  role,
+                  lhs_pointer_proven,
+                  block,
+                  branch_terminator_instruction_index),
           .source_freshness_authorities =
               source_freshness_authorities.empty()
                   ? nullptr
@@ -3023,6 +3090,7 @@ void collect_branch_stack_load_authority_for_role(
     FunctionNameId function_name,
     const PreparedBranchCondition& branch_condition,
     const bir::Terminator* terminator,
+    const bir::Block* block,
     std::optional<std::size_t> branch_block_index,
     std::optional<std::size_t> branch_terminator_instruction_index,
     PreparedBranchStackLoadRole role,
@@ -3045,6 +3113,7 @@ void collect_branch_stack_load_authority_for_role(
       function_name,
       branch_condition,
       terminator,
+      block,
       branch_block_index,
       branch_terminator_instruction_index,
       role,
@@ -3092,6 +3161,7 @@ collect_prepared_branch_stack_load_authorities(
           function_cf.function_name,
           branch_condition,
           terminator,
+          block,
           branch_block_index,
           branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Condition,
@@ -3103,6 +3173,7 @@ collect_prepared_branch_stack_load_authorities(
           function_cf.function_name,
           branch_condition,
           terminator,
+          block,
           branch_block_index,
           branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Lhs,
@@ -3114,6 +3185,7 @@ collect_prepared_branch_stack_load_authorities(
           function_cf.function_name,
           branch_condition,
           terminator,
+          block,
           branch_block_index,
           branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Rhs,
