@@ -1972,6 +1972,25 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     if (!dynamic_aggregate.has_value()) {
       return fail_gep();
     }
+    if (const auto base_slot_it = dynamic_aggregate->leaf_slots.find(0);
+        base_slot_it != dynamic_aggregate->leaf_slots.end()) {
+      if (!publish_dynamic_pointer_value_address(
+              gep.result.str(),
+              bir::Value::named(bir::TypeKind::Ptr, base_slot_it->second),
+              dynamic_aggregate->index,
+              dynamic_aggregate->byte_offset,
+              dynamic_aggregate->element_stride_bytes,
+              local_slot_access_provenance(
+                  base_slot_it->second,
+                  0,
+                  dynamic_aggregate->element_stride_bytes,
+                  dynamic_aggregate->element_count *
+                      dynamic_aggregate->element_stride_bytes),
+              dynamic_aggregate->element_type_text,
+              aggregate_it->second.storage_type_text)) {
+        return fail_gep();
+      }
+    }
     const auto element_layout =
         lookup_addressing_layout(dynamic_aggregate->element_type_text,
                                  type_decls,
@@ -2563,12 +2582,41 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     dynamic_global_scalar_arrays[gep.result.str()] = std::move(access);
     return true;
   } else if (const auto handled_dynamic_local_aggregate_gep =
-                 try_lower_dynamic_local_aggregate_gep_projection(gep,
-                                                                  dynamic_local_aggregate_arrays,
-                                                                  value_aliases,
-                                                                  type_decls,
-                                                                  &structured_layouts_,
-                                                                  &dynamic_local_pointer_arrays);
+                 [&]() -> std::optional<bool> {
+                   if (pointer_value_addresses.find(gep.ptr.str()) !=
+                       pointer_value_addresses.end()) {
+                     return std::nullopt;
+                   }
+                   const auto dynamic_aggregate_it =
+                       dynamic_local_aggregate_arrays.find(gep.ptr.str());
+                   if (dynamic_aggregate_it != dynamic_local_aggregate_arrays.end()) {
+                     const auto& access = dynamic_aggregate_it->second;
+                     if (const auto base_slot_it = access.leaf_slots.find(0);
+                         base_slot_it != access.leaf_slots.end() &&
+                         publish_dynamic_pointer_value_address(
+                             gep.ptr.str(),
+                             bir::Value::named(bir::TypeKind::Ptr, base_slot_it->second),
+                             access.index,
+                             access.byte_offset,
+                             access.element_stride_bytes,
+                             local_slot_access_provenance(
+                                 base_slot_it->second,
+                                 0,
+                                 access.element_stride_bytes,
+                                 access.element_count * access.element_stride_bytes),
+                             access.element_type_text,
+                             access.element_type_text)) {
+                       return std::nullopt;
+                     }
+                   }
+                   return try_lower_dynamic_local_aggregate_gep_projection(
+                       gep,
+                       dynamic_local_aggregate_arrays,
+                       value_aliases,
+                       type_decls,
+                       &structured_layouts_,
+                       &dynamic_local_pointer_arrays);
+                 }();
              handled_dynamic_local_aggregate_gep.has_value()) {
     if (!*handled_dynamic_local_aggregate_gep) {
       return fail_gep();

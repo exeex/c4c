@@ -1414,7 +1414,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
   }
 
   const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
-  if (!index_value.has_value() || array_base_it->second.base_index != 0) {
+  if (!index_value.has_value()) {
     return false;
   }
   if (array_base_it->second.element_slots.empty()) {
@@ -1453,6 +1453,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
   if (element_size == 0) {
     return false;
   }
+  if (array_base_it->second.base_index >= array_base_it->second.element_slots.size()) {
+    return false;
+  }
 
   std::optional<std::string> element_type_text;
   switch (slot_type_it->second) {
@@ -1474,7 +1477,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
 
   DynamicLocalAggregateArrayAccess access{
       .element_type_text = *element_type_text,
-      .byte_offset = 0,
+      .byte_offset = array_base_it->second.base_index * element_size,
       .element_count = array_base_it->second.element_slots.size(),
       .element_stride_bytes = element_size,
       .index = *index_value,
