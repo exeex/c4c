@@ -1440,6 +1440,10 @@ struct PreparedSelectCarrierAliasAuthority {
   std::size_t carrier_alias_candidate_count = 0;
   std::vector<PreparedSelectCarrierAlias> carrier_aliases;
   bool source_use_closure_proven = false;
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
 };
 
 struct PreparedSelectCarrierAliasAuthorityRecord {
@@ -2357,6 +2361,11 @@ plan_prepared_select_carrier_alias_authority(
 [[nodiscard]] PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared);
+
+[[nodiscard]] bool prepared_select_carrier_alias_source_freshness_available(
+    FunctionNameId function_name,
+    const PreparedSelectCarrierAliasAuthorityRecords* carrier_alias_authorities,
+    const PreparedEdgePublication& publication);
 
 [[nodiscard]] PreparedSelectCarrierAliasAuthorityEvidence
 collect_prepared_select_carrier_alias_authority_evidence(

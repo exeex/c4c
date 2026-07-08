@@ -4937,6 +4937,49 @@ prepared_move_bundle_is_legal_select_stack_destination_register_fan_in(
   return true;
 }
 
+void populate_select_carrier_alias_source_freshness(
+    PreparedSelectCarrierAliasAuthority& authority) {
+  authority.source_freshness_authorities.clear();
+  authority.source_freshness_status = PreparedValueFreshnessQueryStatus::NoCandidate;
+  authority.source_freshness_authority = std::nullopt;
+
+  if (authority.status != PreparedSelectCarrierAliasAuthorityStatus::Available ||
+      !authority.source_value_id.has_value() ||
+      authority.source_value_name == kInvalidValueName ||
+      !authority.source_producer_block_label.has_value() ||
+      !authority.source_producer_instruction_index.has_value()) {
+    return;
+  }
+
+  authority.source_freshness_authorities.push_back(
+      PreparedValueFreshnessAuthority{
+          .value_id = *authority.source_value_id,
+          .value_name = authority.source_value_name,
+          .use_kind = PreparedValueFreshnessUseKind::SelectCarrierAliasSource,
+          .source_kind = PreparedValueFreshnessSourceKind::SelectCarrierAlias,
+          .proof_kind =
+              PreparedValueFreshnessProofKind::SelectCarrierAliasAuthority,
+          .rank = PreparedValueFreshnessSourceRank::SelectCarrierAlias,
+          .reference =
+              PreparedValueFreshnessSourceReference{
+                  .block_label = authority.source_producer_block_label,
+                  .instruction_index =
+                      authority.source_producer_instruction_index,
+              },
+      });
+  const PreparedValueFreshnessQuery query{
+      .value_id = *authority.source_value_id,
+      .value_name = authority.source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::SelectCarrierAliasSource,
+      .candidates = authority.source_freshness_authorities,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  authority.source_freshness_status = selected.status;
+  if (prepared_value_freshness_query_selected(selected)) {
+    authority.source_freshness_authority = *selected.authority;
+  }
+}
+
 }  // namespace
 
 PreparedSelectCarrierAliasAuthority plan_prepared_select_carrier_alias_authority(
@@ -5072,12 +5115,76 @@ PreparedSelectCarrierAliasAuthority plan_prepared_select_carrier_alias_authority
 
   authority.source_use_closure_proven = true;
   authority.status = PreparedSelectCarrierAliasAuthorityStatus::Available;
+  populate_select_carrier_alias_source_freshness(authority);
   return authority;
 }
 
 bool prepared_select_carrier_alias_authority_available(
     const PreparedSelectCarrierAliasAuthority& authority) {
   return authority.status == PreparedSelectCarrierAliasAuthorityStatus::Available;
+}
+
+namespace {
+
+[[nodiscard]] bool prepared_select_carrier_alias_source_freshness_matches(
+    const PreparedSelectCarrierAliasAuthority& authority,
+    const PreparedEdgePublication& publication) {
+  if (!prepared_select_carrier_alias_authority_available(authority) ||
+      !authority.source_use_closure_proven ||
+      authority.carrier_aliases.empty() ||
+      !publication.source_value_id.has_value() ||
+      !publication.source_producer_block_label.has_value() ||
+      !publication.source_producer_instruction_index.has_value() ||
+      authority.predecessor_label != publication.predecessor_label ||
+      authority.successor_label != publication.successor_label ||
+      authority.destination_value_id != publication.destination_value_id ||
+      authority.destination_value_name != publication.destination_value_name ||
+      authority.source_value_id != publication.source_value_id ||
+      authority.source_value_name != publication.source_value_name ||
+      authority.source_producer_kind != publication.source_producer_kind ||
+      authority.source_producer_block_label !=
+          publication.source_producer_block_label ||
+      authority.source_producer_instruction_index !=
+          publication.source_producer_instruction_index ||
+      authority.source_freshness_status !=
+          PreparedValueFreshnessQueryStatus::Selected ||
+      !authority.source_freshness_authority.has_value()) {
+    return false;
+  }
+
+  const auto& freshness = *authority.source_freshness_authority;
+  return freshness.value_id == *publication.source_value_id &&
+         freshness.value_name == publication.source_value_name &&
+         freshness.use_kind ==
+             PreparedValueFreshnessUseKind::SelectCarrierAliasSource &&
+         freshness.source_kind ==
+             PreparedValueFreshnessSourceKind::SelectCarrierAlias &&
+         freshness.proof_kind ==
+             PreparedValueFreshnessProofKind::SelectCarrierAliasAuthority &&
+         freshness.rank == PreparedValueFreshnessSourceRank::SelectCarrierAlias &&
+         freshness.reference.block_label ==
+             publication.source_producer_block_label &&
+         freshness.reference.instruction_index ==
+             publication.source_producer_instruction_index;
+}
+
+}  // namespace
+
+bool prepared_select_carrier_alias_source_freshness_available(
+    FunctionNameId function_name,
+    const PreparedSelectCarrierAliasAuthorityRecords* carrier_alias_authorities,
+    const PreparedEdgePublication& publication) {
+  if (carrier_alias_authorities == nullptr) {
+    return false;
+  }
+  for (const auto& record : carrier_alias_authorities->records) {
+    if (record.function_name == function_name &&
+        prepared_select_carrier_alias_source_freshness_matches(record.authority,
+                                                               publication)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {

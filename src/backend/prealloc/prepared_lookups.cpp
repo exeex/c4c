@@ -48,6 +48,9 @@ namespace {
       return authority.reference.home != nullptr &&
              authority.reference.block_index.has_value() &&
              authority.reference.instruction_index.has_value();
+    case PreparedValueFreshnessSourceKind::SelectCarrierAlias:
+      return authority.reference.block_label.has_value() &&
+             authority.reference.instruction_index.has_value();
     case PreparedValueFreshnessSourceKind::Unknown:
       return false;
   }
@@ -70,6 +73,12 @@ namespace {
              authority.proof_kind ==
                  PreparedValueFreshnessProofKind::BranchTerminatorOrdering &&
              authority.rank == PreparedValueFreshnessSourceRank::BranchStackSlot;
+    case PreparedValueFreshnessUseKind::SelectCarrierAliasSource:
+      return authority.source_kind ==
+                 PreparedValueFreshnessSourceKind::SelectCarrierAlias &&
+             authority.proof_kind ==
+                 PreparedValueFreshnessProofKind::SelectCarrierAliasAuthority &&
+             authority.rank == PreparedValueFreshnessSourceRank::SelectCarrierAlias;
     case PreparedValueFreshnessUseKind::Unknown:
       return false;
     case PreparedValueFreshnessUseKind::CallArgumentSource:
@@ -79,7 +88,9 @@ namespace {
       return authority.source_kind !=
                  PreparedValueFreshnessSourceKind::DirectEdgePublication &&
              authority.source_kind !=
-                 PreparedValueFreshnessSourceKind::BranchStackSlot;
+                 PreparedValueFreshnessSourceKind::BranchStackSlot &&
+             authority.source_kind !=
+                 PreparedValueFreshnessSourceKind::SelectCarrierAlias;
   }
   return false;
 }

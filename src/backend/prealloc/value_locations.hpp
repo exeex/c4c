@@ -80,6 +80,7 @@ enum class PreparedValueFreshnessUseKind {
   AbiFormalHome,
   DirectEdgePublicationSource,
   BranchStackLoadSource,
+  SelectCarrierAliasSource,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_use_kind_name(
@@ -99,6 +100,8 @@ enum class PreparedValueFreshnessUseKind {
       return "direct_edge_publication_source";
     case PreparedValueFreshnessUseKind::BranchStackLoadSource:
       return "branch_stack_load_source";
+    case PreparedValueFreshnessUseKind::SelectCarrierAliasSource:
+      return "select_carrier_alias_source";
   }
   return "unknown";
 }
@@ -113,6 +116,7 @@ enum class PreparedValueFreshnessSourceKind {
   AbiFormalHome,
   DirectEdgePublication,
   BranchStackSlot,
+  SelectCarrierAlias,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_source_kind_name(
@@ -136,6 +140,8 @@ enum class PreparedValueFreshnessSourceKind {
       return "direct_edge_publication";
     case PreparedValueFreshnessSourceKind::BranchStackSlot:
       return "branch_stack_slot";
+    case PreparedValueFreshnessSourceKind::SelectCarrierAlias:
+      return "select_carrier_alias";
   }
   return "unknown";
 }
@@ -150,6 +156,7 @@ enum class PreparedValueFreshnessProofKind {
   MoveBundleAuthority,
   DirectEdgePublicationMove,
   BranchTerminatorOrdering,
+  SelectCarrierAliasAuthority,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_proof_kind_name(
@@ -173,6 +180,8 @@ enum class PreparedValueFreshnessProofKind {
       return "direct_edge_publication_move";
     case PreparedValueFreshnessProofKind::BranchTerminatorOrdering:
       return "branch_terminator_ordering";
+    case PreparedValueFreshnessProofKind::SelectCarrierAliasAuthority:
+      return "select_carrier_alias_authority";
   }
   return "unknown";
 }
@@ -185,6 +194,7 @@ enum class PreparedValueFreshnessSourceRank {
   MoveBundleSource = 40,
   ExplicitPublication = 50,
   DirectEdgePublication = 55,
+  SelectCarrierAlias = 57,
   ProducerRematerialization = 60,
   BranchStackSlot = 65,
 };
@@ -206,6 +216,8 @@ enum class PreparedValueFreshnessSourceRank {
       return "explicit_publication";
     case PreparedValueFreshnessSourceRank::DirectEdgePublication:
       return "direct_edge_publication";
+    case PreparedValueFreshnessSourceRank::SelectCarrierAlias:
+      return "select_carrier_alias";
     case PreparedValueFreshnessSourceRank::ProducerRematerialization:
       return "producer_rematerialization";
     case PreparedValueFreshnessSourceRank::BranchStackSlot:
