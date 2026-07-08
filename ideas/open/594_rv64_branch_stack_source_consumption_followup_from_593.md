@@ -6,7 +6,7 @@ Parent: `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
 Related:
 - `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
 - `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
-- `ideas/open/596_pointer_rhs_branch_stack_source_policy_publication.md`
+- `ideas/closed/596_pointer_rhs_branch_stack_source_policy_publication.md`
 - `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
 - `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
 - `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
@@ -23,21 +23,19 @@ This idea is intentionally a handoff slot. It should not guess the remaining
 consumer family before 593 closes. Its first execution step is to use the 593
 closure inventory as the source of truth.
 
-## Lifecycle Blocker
+## Reactivation Handoff
 
-The active 594 runbook was deactivated after Step 1 confirmed that the 593
-closure-note blocker still exists: pointer `Rhs` is still collected as
-producer-side inventory only, with `policy=none`,
-`pointer_status=unknown`, and `status=missing_policy`. No selected
+Idea 596 cleared the producer-side blocker that previously deactivated this
+idea. Pointer `Rhs` branch stack-load uses now have selected shared producer
+authority for the same prepared source value, exact branch block, and
+terminator instruction index.
+
+The RV64 consumer migration should consume selected
 `PreparedValueFreshnessUseKind::BranchStackLoadSource` /
-`PreparedValueFreshnessSourceKind::BranchStackSlot` authority is available for
-RV64 to consume.
-
-Do not reactivate 594 or proceed to RV64 consumer migration until the producer
-side supplies selected `Rhs` branch stack-load authority for the same prepared
-source value, exact branch block, and terminator instruction index. The
-producer-side repair is tracked separately in
-`ideas/open/596_pointer_rhs_branch_stack_source_policy_publication.md`.
+`PreparedValueFreshnessSourceKind::BranchStackSlot` authority with
+`PreparedValueFreshnessProofKind::BranchTerminatorOrdering` and
+`PreparedValueFreshnessSourceRank::BranchStackSlot`. The 596 closure note is
+the durable handoff record for this reactivation path.
 
 ## Why This Exists
 

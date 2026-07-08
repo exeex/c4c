@@ -1,6 +1,6 @@
 # Pointer Rhs Branch Stack-Source Policy Publication
 
-Status: Open
+Status: Closed
 Type: Producer-side follow-up implementation idea
 Parent: `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
 Related:
@@ -71,6 +71,40 @@ manufacturing a target-local RV64 fallback.
   and the rejected invalid routes.
 - The closure note states that idea 594 may be reactivated for RV64 consumer
   migration, or explains the remaining producer-side blocker.
+
+## Closure Note
+
+Closed after the producer-side pointer `Rhs` policy gap was repaired in the
+shared prepared/prealloc branch stack-load producer path.
+
+Valid pointer `Rhs` branch stack-load uses now publish selected
+`PreparedValueFreshnessUseKind::BranchStackLoadSource` /
+`PreparedValueFreshnessSourceKind::BranchStackSlot` authority for the same
+prepared source value, exact branch block, exact terminator instruction index,
+`PreparedValueFreshnessProofKind::BranchTerminatorOrdering`, and
+`PreparedValueFreshnessSourceRank::BranchStackSlot`. Valid collected `Rhs`
+rows report `policy=LoadFromStackSlot`, `pointer_status=proven`, selected
+source freshness, and `stack_slot_fresh_at_branch`.
+
+Accepted proof covered direct planning and collected prepared-dump publication
+for valid pointer `Rhs` authority. Rejected proof covered missing, ambiguous,
+stale, wrong-value, wrong-use, future-point, and stack-home-only freshness
+authority, plus the existing role-independent structural fail-closed cases for
+unsupported homes, home/value mismatch, frame-slot mismatch, stack-object
+mismatch, missing clobber safety, and unknown pointer status.
+
+No producer-side blocker remains for
+`ideas/open/594_rv64_branch_stack_source_consumption_followup_from_593.md`.
+That idea may be reactivated for RV64 pointer `Rhs` consumer migration. The
+consumer must require the selected shared producer authority named above and
+must not infer freshness from stack homes, frame slots, aggregate lanes,
+clobber facts, register facts, operand shape, or testcase shape.
+
+Close-time guard used existing canonical backend logs:
+`test_before.log` and `test_after.log` both reported 346/346 passing backend
+tests, and the regression guard passed in documented non-decreasing mode for
+this lifecycle-only close. The supervisor also reported a hook-managed
+full-suite baseline after code commits accepted at 3375/3375.
 
 ## Reviewer Reject Signals
 
