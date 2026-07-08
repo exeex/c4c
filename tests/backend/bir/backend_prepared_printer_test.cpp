@@ -505,6 +505,191 @@ find_block_entry_publication_printer_row_agreement(
       prepare::PreparedValueId{42});
 }
 
+prepare::PreparedBirModule prepared_current_block_join_source_printer_row_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+
+  const auto function_name =
+      prepared.names.function_names.intern("current_join_dump_contract");
+  const auto predecessor_label = prepared.names.block_labels.intern("pred");
+  const auto successor_label = prepared.names.block_labels.intern("join");
+  const auto source_name = prepared.names.value_names.intern("%incoming");
+  const auto operand_name = prepared.names.value_names.intern("%operand");
+  const auto destination_name = prepared.names.value_names.intern("%selected");
+  const auto immediate_destination_name =
+      prepared.names.value_names.intern("%imm_selected");
+
+  const prepare::PreparedValueId source_id{51};
+  const prepare::PreparedValueId operand_id{52};
+  const prepare::PreparedValueId destination_id{53};
+  const prepare::PreparedValueId immediate_destination_id{54};
+
+  bir::Function function;
+  function.name = "current_join_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block join;
+  join.label = "join";
+  join.label_id = successor_label;
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "pred",
+              .value = bir::Value::named(bir::TypeKind::I32, "%incoming"),
+              .label_id = predecessor_label,
+          },
+      },
+  });
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%imm_selected"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "pred",
+              .value = bir::Value::immediate_i32(7),
+              .label_id = predecessor_label,
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%incoming"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%operand"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  function.blocks.push_back(std::move(join));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .join_transfers = {
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%incoming"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%selected"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::immediate_i32(7),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%imm_selected"),
+                  },
+              },
+          },
+      },
+      .parallel_copy_bundles = {
+          prepare::PreparedParallelCopyBundle{
+              .predecessor_label = predecessor_label,
+              .successor_label = successor_label,
+              .steps = {
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 1,
+                  },
+              },
+          },
+      },
+  });
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = source_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x10"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = destination_id,
+              .function_name = function_name,
+              .value_name = destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x12"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = immediate_destination_id,
+              .function_name = function_name,
+              .value_name = immediate_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x13"},
+          },
+      },
+      .move_bundles = {
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind =
+                  prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 2,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = predecessor_label,
+              .source_parallel_copy_successor_label = successor_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = source_id,
+                      .to_value_id = destination_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x12"},
+                      .block_index = 2,
+                      .instruction_index = 0,
+                      .source_parallel_copy_step_index = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .to_value_id = immediate_destination_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x13"},
+                      .block_index = 2,
+                      .instruction_index = 0,
+                      .source_parallel_copy_step_index = std::size_t{1},
+                      .source_immediate_i32 = std::int64_t{7},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+              },
+          },
+      },
+  });
+  prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
+      .function_name = function_name,
+      .values = {
+          prepare::PreparedRegallocValue{
+              .value_id = operand_id,
+              .function_name = function_name,
+              .value_name = operand_name,
+              .type = bir::TypeKind::I32,
+          },
+      },
+  });
+
+  return prepared;
+}
+
 prepare::PreparedBirModule legalize_critical_edge_parallel_copy_module() {
   bir::Module module;
 
@@ -6431,6 +6616,43 @@ int main() {
   if (!expect_contains(duplicate_block_entry_publication_dump,
                        block_entry_publication_row,
                        "duplicate fallback block-entry publication row text")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto current_join_source_prepared =
+      prepared_current_block_join_source_printer_row_module();
+  const std::string current_join_source_dump =
+      prepare::print(current_join_source_prepared);
+  if (!expect_contains(current_join_source_dump,
+                       "--- prepared-current-block-join-parallel-copy-sources ---",
+                       "current-block join parallel-copy source section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          current_join_source_dump,
+          "current_block_join_parallel_copy_source "
+          "function=current_join_dump_contract predecessor=pred successor=join "
+          "destination=%selected destination_value_id=53 source=%incoming "
+          "source_value_id=51 status=available "
+          "source_freshness_status=selected source_freshness_candidates=1 "
+          "source_freshness_authority=direct_edge_publication "
+          "source_freshness_value=%incoming source_freshness_value_id=51 "
+          "source_freshness_use=direct_edge_publication_source "
+          "source_freshness_proof=direct_edge_publication_move "
+          "source_freshness_rank=direct_edge_publication "
+          "source_freshness_ref_block=2 source_freshness_ref_inst=0",
+          "current-block join direct-edge freshness authority row")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          current_join_source_dump,
+          "current_block_join_parallel_copy_source "
+          "function=current_join_dump_contract predecessor=pred successor=join "
+          "destination=%imm_selected destination_value_id=54 source=<none> "
+          "status=available source_freshness_status=no_candidate "
+          "source_freshness_candidates=0 source_home=none destination_home=register "
+          "destination_storage=register immediate_source=yes",
+          "current-block join immediate source freshness row")) {
     return EXIT_FAILURE;
   }
 

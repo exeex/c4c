@@ -84,6 +84,7 @@ std::string print(const PreparedBirModule& module) {
   append_store_source_publications(out, module);
   append_call_argument_value_publications(out, module);
   append_select_chain_materializations(out, module);
+  append_current_block_join_parallel_copy_sources(out, module);
   append_select_carrier_alias_authorities(out, module);
   append_dependency_operand_authorities(out, module);
   append_branch_stack_load_authorities(out, module);

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::prepare {
 
@@ -111,6 +112,18 @@ const char* yes_no(bool value) {
   return value ? "yes" : "no";
 }
 
+std::string_view move_storage_kind_name(PreparedMoveStorageKind kind) {
+  switch (kind) {
+    case PreparedMoveStorageKind::None:
+      return "none";
+    case PreparedMoveStorageKind::Register:
+      return "register";
+    case PreparedMoveStorageKind::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
 void append_optional_index(std::ostringstream& out,
                            std::string_view label,
                            std::optional<std::size_t> value) {
@@ -193,6 +206,88 @@ void append_dependency_operand_source_freshness(
       << prepared_value_freshness_proof_kind_name(freshness.proof_kind)
       << " source_freshness_rank="
       << prepared_value_freshness_source_rank_name(freshness.rank);
+}
+
+void append_source_freshness(
+    std::ostringstream& out,
+    const PreparedBirModule& module,
+    PreparedValueFreshnessQueryStatus status,
+    const std::vector<PreparedValueFreshnessAuthority>& candidates,
+    const std::optional<PreparedValueFreshnessAuthority>& authority) {
+  out << " source_freshness_status="
+      << prepared_value_freshness_query_status_name(status)
+      << " source_freshness_candidates=" << candidates.size();
+  if (!authority.has_value()) {
+    return;
+  }
+
+  const auto& freshness = *authority;
+  out << " source_freshness_authority="
+      << prepared_value_freshness_source_kind_name(freshness.source_kind)
+      << " source_freshness_value="
+      << maybe_value_name(module.names, freshness.value_name)
+      << " source_freshness_value_id=" << freshness.value_id
+      << " source_freshness_use="
+      << prepared_value_freshness_use_kind_name(freshness.use_kind)
+      << " source_freshness_proof="
+      << prepared_value_freshness_proof_kind_name(freshness.proof_kind)
+      << " source_freshness_rank="
+      << prepared_value_freshness_source_rank_name(freshness.rank);
+  append_optional_index(out, "source_freshness_ref_block",
+                        freshness.reference.block_index);
+  append_optional_index(out, "source_freshness_ref_inst",
+                        freshness.reference.instruction_index);
+}
+
+[[nodiscard]] const PreparedRegallocFunction* find_regalloc_function(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  for (const auto& function_regalloc : module.regalloc.functions) {
+    if (function_regalloc.function_name == function_name) {
+      return &function_regalloc;
+    }
+  }
+  return nullptr;
+}
+
+void append_current_block_join_parallel_copy_source_row(
+    std::ostringstream& out,
+    const PreparedBirModule& module,
+    FunctionNameId function_name,
+    const PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
+  out << "  current_block_join_parallel_copy_source function="
+      << maybe_function_name(module.names, function_name)
+      << " predecessor=" << maybe_block_label(module.names, fact.predecessor_label)
+      << " successor=" << maybe_block_label(module.names, fact.successor_label)
+      << " destination=" << maybe_value_name(module.names,
+                                             fact.destination_value_name)
+      << " destination_value_id=" << fact.destination_value_id
+      << " source=" << maybe_value_name(module.names, fact.source_value_name);
+  if (fact.source_value_id.has_value()) {
+    out << " source_value_id=" << *fact.source_value_id;
+  }
+  out << " status=" << prepared_edge_copy_source_facts_status_name(fact.status);
+  append_source_freshness(out,
+                          module,
+                          fact.source_freshness_status,
+                          fact.source_freshness_authorities,
+                          fact.source_freshness_authority);
+  out << " source_home=" << prepared_value_home_kind_name(fact.source_home_kind)
+      << " destination_home="
+      << prepared_value_home_kind_name(fact.destination_home_kind)
+      << " destination_storage="
+      << move_storage_kind_name(fact.destination_storage_kind)
+      << " immediate_source=" << yes_no(fact.immediate_source)
+      << " incoming_expression="
+      << yes_no(fact.source_is_incoming_expression)
+      << " source_value_identity=" << yes_no(fact.source_is_source_value)
+      << " route5_status="
+      << bir::route5_publication_status_name(fact.route5_join_source_status)
+      << " route5_agrees=" << yes_no(fact.route5_join_source_agrees);
+  if (fact.destination_register_name.has_value()) {
+    out << " destination_reg=" << *fact.destination_register_name;
+  }
+  out << "\n";
 }
 
 }  // namespace
@@ -287,6 +382,62 @@ void append_select_chain_materializations(std::ostringstream& out,
       }
     }
   }
+}
+
+void append_current_block_join_parallel_copy_sources(std::ostringstream& out,
+                                                     const PreparedBirModule& module) {
+  std::ostringstream rows;
+  for (const auto& function_locations : module.value_locations.functions) {
+    const auto* function_cf =
+        find_prepared_control_flow_function(module.control_flow,
+                                            function_locations.function_name);
+    if (function_cf == nullptr) {
+      continue;
+    }
+    const auto* bir_function =
+        find_bir_function(module, function_locations.function_name);
+    if (bir_function == nullptr) {
+      continue;
+    }
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(&function_locations);
+    const auto edge_publications =
+        make_prepared_edge_publication_lookups(module.names,
+                                               *function_cf,
+                                               &function_locations,
+                                               &value_home_lookups);
+    const auto* function_regalloc =
+        find_regalloc_function(module, function_locations.function_name);
+    for (const auto& block : bir_function->blocks) {
+      const auto successor_label =
+          block.label_id == kInvalidBlockLabel
+              ? module.names.block_labels.find(block.label)
+              : block.label_id;
+      if (successor_label == kInvalidBlockLabel) {
+        continue;
+      }
+      const auto facts =
+          prepare_current_block_join_parallel_copy_source_facts(
+              PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+                  .names = &module.names,
+                  .regalloc = function_regalloc,
+                  .value_locations = &function_locations,
+                  .edge_publications = &edge_publications,
+                  .block = &block,
+                  .successor_label = successor_label,
+              });
+      for (const auto& fact : facts.facts) {
+        append_current_block_join_parallel_copy_source_row(
+            rows, module, function_locations.function_name, fact);
+      }
+    }
+  }
+  const std::string body = rows.str();
+  if (body.empty()) {
+    return;
+  }
+  out << "--- prepared-current-block-join-parallel-copy-sources ---\n";
+  out << body;
 }
 
 void append_select_carrier_alias_authorities(std::ostringstream& out,
