@@ -1,9 +1,14 @@
 # Uniform Target Register Identity Policy
 
-Status: Open
+Status: Closed
 Type: Narrow implementation idea
 Parent: `ideas/closed/585_target_abi_contract_and_value_consumption_research.md`
 Owning Layer: Prepared target register profile and ABI physical identity publication
+
+Closure Note: Completed by the active runbook. Shared ABI physical identity
+publication now covers supported RV64, AArch64, and x86 argument/result
+placements through `target_register_profile`, with focused backend coverage and
+documented fail-closed/identity-less placement shapes.
 
 ## Goal
 
