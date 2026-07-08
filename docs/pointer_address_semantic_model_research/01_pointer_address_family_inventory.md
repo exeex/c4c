@@ -1,35 +1,75 @@
 # 01. Pointer/Address Family Inventory
 
-Status: Step 1 skeleton
+Status: Step 2 inventory
 
-## Assigned Purpose
+## Scope
 
-Inventory prepared pointer/address families and their current producers,
-evidence sources, and consumers.
+This file inventories current pointer/address fact families that need later
+semantic classification. The roles below are preliminary: Step 3 must decide
+which facts authorize a use and which facts only support, prove, diagnose, or
+feed a target.
 
-## Required Coverage For Step 2
+Role names used here:
 
-- Pointer arithmetic materialization.
-- Semantic relocation or global address materialization.
-- Local stack or frame-slot addressing.
-- Local-array address derivation.
-- Branch pointer operands.
-- Target-local operand shape.
-- MIR or target consumers that currently depend on these facts.
+- semantic authority
+- verifier/support fact
+- target-consume fact
+- route proof
+- diagnostic-only artifact
+- unresolved pending later classification
 
-## Required Output Shape
-
-For each surveyed family, record:
+## Inventory Matrix
 
 | Family | Current producer or evidence source | Current consumer | Preliminary role | Notes |
 | --- | --- | --- | --- | --- |
-| TBD | TBD | TBD | TBD | TBD |
+| Pointer base plus offset value homes | `PreparedValueHomeKind::PointerBasePlusOffset`, `PreparedValueHome::pointer_base_value_name`, `pointer_base_symbol_name`, and `pointer_byte_delta` in `src/backend/prealloc/value_locations.hpp:19` and `:292`; normalized as `PreparedPointerBasePlusOffsetFact` by `as_pointer_base_plus_offset_fact(...)` in `src/backend/prealloc/value_locations.hpp:320`. | AArch64 decoded operand resolution rejects computed/pointer-base-plus-offset homes in `make_decoded_operand(...)` (`src/backend/mir/aarch64/codegen/operands.cpp:151`); RV64 select-publication and local-memory consumers inspect byte-delta/stack/register shape before emission (`src/backend/mir/riscv/codegen/prepared_edge_publication_emit.cpp:978`, `:1028`; `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:232`). | unresolved pending later classification | The fact has pointer identity plus a delta, but current consumers mostly treat it as a materialization shape or reject it. Step 3 must decide when the base pointer freshness, the delta, and the target-encodable offset jointly authorize a use. |
+| BIR pointer arithmetic materialization for frame addresses | `append_binary_frame_slot_result_materialization(...)` recognizes `ptr +/- immediate` and publishes `PreparedAddressMaterializationKind::FrameSlot` with a frame-slot id and byte offset (`src/backend/prealloc/stack_layout/coordinator.cpp:1377`). It is fed by BIR `BinaryInst` pointer operands and `GlobalAddressMaterializationPolicy`/`MemoryAddress` data in `src/backend/bir/bir.hpp:639` and `:801`. | AArch64 address materialization lowering maps the prepared frame-slot materialization into `AddressMaterializationRecord` (`src/backend/mir/aarch64/codegen/globals.cpp:435`, `:565`); RV64 global/local memory paths search indexed materializations (`src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp:762`; `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:500`); x86 local-slot short-circuit paths render prepared frame-slot operands (`src/backend/mir/x86/module/module.cpp:4330`). | verifier/support fact | The materialization proves a frame-slot address shape and byte offset. It is not sufficient by itself to prove the pointed-to value is fresh. |
+| Semantic relocation and global address materialization | `append_direct_global_address_materialization(...)` publishes `DirectGlobal`, `GotGlobal`, or `TlsGlobal` records from pointer-typed BIR values with structured `LinkNameId` and explicit policy checks (`src/backend/prealloc/stack_layout/coordinator.cpp:1445`). `PreparedAddressMaterialization` carries symbol, policy, TLS, result, and offset fields (`src/backend/prealloc/addressing.hpp:323`). | AArch64 validates identity and policy before building address records (`src/backend/mir/aarch64/codegen/globals.cpp:456`, `:565`, `:1073`); RV64 converts direct globals and string constants into PC-relative object fixup targets (`src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp:578`, `:623`, `:740`); x86 same-module global memory emission requires prepared global memory access (`src/backend/mir/x86/module/module.cpp:6024`). | target-consume fact | Relocation/materialization facts tell targets how to materialize a symbol address or fixup. They also supply support evidence for symbol identity, but relocation shape must not become pointer freshness authority. |
+| Global symbol memory accesses | `build_direct_symbol_backed_access(...)` publishes `PreparedMemoryAccess` for `LoadGlobalInst` and `StoreGlobalInst` when the BIR address is symbol-backed and not pointer-value indirect (`src/backend/prealloc/stack_layout/coordinator.cpp:941`, `:989`). `prepared_global_symbol_memory_has_publication_authority(...)` validates symbol identity, layout authority, extent, and range (`src/backend/prealloc/addressing.hpp:169`). | AArch64 `make_memory_record_from_prepared_access(...)` converts symbol-backed accesses into target memory operands (`src/backend/mir/aarch64/codegen/memory.cpp:834`); RV64 `prepared_global_access_is_supported(...)` checks symbol, offset, policy, size, volatility, and range before load/store emission (`src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp:673`); x86 `render_prepared_same_module_global_memory_operand(...)` requires prepared global access before emitting memory text (`src/backend/mir/x86/module/module.cpp:6024`). | verifier/support fact and target-consume fact | This is stronger than raw global spelling because it carries identity, size, range, and policy. Step 3 still needs to decide whether it authorizes semantic pointer freshness or only validates memory access and target lowering. |
+| Local stack or frame-slot addressing | `build_direct_frame_slot_access(...)` publishes `PreparedMemoryAccess` with `PreparedAddressBaseKind::FrameSlot`, frame-slot id, byte offset, size, alignment, and provenance for `LoadLocalInst`/`StoreLocalInst` (`src/backend/prealloc/stack_layout/coordinator.cpp:589`, `:653`). `PreparedAddress` defines the frame-slot address fields (`src/backend/prealloc/addressing.hpp:88`). | AArch64 frame-slot helpers and memory records consume the access (`src/backend/mir/aarch64/codegen/frame_slot_address.cpp:77`; `src/backend/mir/aarch64/codegen/memory.cpp:834`); RV64 local memory accepts simple frame-slot accesses (`src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:19`); x86 renders frame-slot operands and verifies load/store identity (`src/backend/mir/x86/module/module.cpp:4330`, `:4506`). | verifier/support fact and target-consume fact | Frame-slot existence, offsets, and layout are required for target memory operands. They do not by themselves prove the value stored in that slot is current for a branch, call, or publication use. |
+| Pointer-value indirect memory accesses | `build_pointer_indirect_address(...)` and `build_pointer_indirect_access(...)` publish `PreparedAddressBaseKind::PointerValue` access records keyed by a named pointer value and offset (`src/backend/prealloc/stack_layout/coordinator.cpp:1037`, `:1060`, `:1126`). `prepared_pointer_value_memory_has_proven_authority(...)` checks base identity, layout authority, extent, and in-bounds range (`src/backend/prealloc/addressing.hpp:109`). | AArch64 memory records preserve `PointerValue` base metadata (`src/backend/mir/aarch64/codegen/memory.cpp:875`); RV64 has scalar pointer-value load/store consumers that require pointer-value base, size, alignment, nonnegative offset, and encodable offset (`src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:232`, `:269`, `:306`); publication planning checks source-memory facts for edge publication (`src/backend/prealloc/publication_plans.cpp:228`, `:1313`). | unresolved pending later classification | This is the closest current fact to semantic pointer/address authority for indirect memory, but consumers still mix provenance/range evidence with target legality. Step 3 must separate base pointer freshness from address legality and target offset shape. |
+| Local-array source object and address derivation | `lower_local_memory_alloca_inst(...)` publishes local-array source objects from alloca-derived local slots (`src/backend/bir/lir_to_bir/memory/local_slots.cpp:810`, `:842`). `publish_local_array_path_record(...)` publishes derivation and element-path records with LIR producer coordinate metadata (`src/backend/bir/lir_to_bir/memory/local_gep.cpp:137`); local GEP lowering publishes constant and dynamic element paths (`src/backend/bir/lir_to_bir/memory/local_gep.cpp:1113`, `:1175`, `:1398`, `:1434`). | Prealloc local-array phases populate selected proof paths, interval effects, range proofs, proof facts, checker inputs, local-address provenances, semantic GEPs, and scalar-local-load records (`src/backend/prealloc/prealloc.cpp:52`; `src/backend/prealloc/publication_plans.cpp:5766`, `:6243`, `:6481`, `:6571`). | route proof and verifier/support fact | These records are route-native proof artifacts for local-array derivation and range checking. They are not target operands, but later semantic classification may promote a subset to semantic authority for local-array address derivation. |
+| Local-array semantic GEP availability | `evaluate_local_array_local_address_provenance(...)` requires source object, derivation, element path, producer coordinate, a single dynamic index, range proof, scalar element shape, and in-bounds range (`src/backend/bir/bir_local_array_semantic_gep.hpp:2453`). `evaluate_local_array_semantic_gep(...)` rechecks the provenance and yields `LocalArraySemanticGepRecord` availability (`src/backend/bir/bir_local_array_semantic_gep.hpp:2575`). | `populate_local_array_semantic_geps(...)` and `populate_local_array_scalar_local_loads(...)` materialize these records into the prepared module for diagnostics/proof consumers (`src/backend/prealloc/publication_plans.cpp:6481`, `:6571`); scalar load status is represented by `LocalArrayScalarLocalLoadRecord` (`src/backend/bir/bir.hpp:782`). | semantic authority candidate and route proof | This family is explicitly semantic in name and validates source, derivation, coordinate, and range. Step 3 should decide whether `Available` is the authority for local-array address derivation or whether it remains a proof fact consumed by another authority. |
+| Global static semantic GEP | `evaluate_global_static_semantic_gep(...)` checks global identity, layout, derived pointer identity, constant/dynamic range authority, in-bounds verdict, non-pointer element boundary, and LIR coordinate availability (`src/backend/bir/bir_local_array_semantic_gep.hpp:2863`). | `populate_local_array_semantic_geps(...)` also builds global static semantic GEP records from prepared global derivation evidence (`src/backend/prealloc/publication_plans.cpp:6515`). Downstream target consumers still primarily use `PreparedAddressMaterialization` and `PreparedMemoryAccess`, not this record directly. | semantic authority candidate and unresolved pending later classification | The record looks like semantic address authority for selected global GEP derivations, but current target lowering still depends on prepared materialization/access facts. Step 3 must classify whether this is authority, proof, or deferred evidence. |
+| Branch pointer stack-source operands | Shared-prealloc builds `PreparedBranchStackLoadAuthority` records from branch conditions, value homes, frame slots, stack objects, pointer proof status, and selected `BranchStackSlot` freshness (`src/backend/prealloc/publication_plans.cpp:2863`, `:3021`, `:3136`). Freshness vocabulary lives in `PreparedValueFreshnessUseKind::BranchStackLoadSource`, `PreparedValueFreshnessSourceKind::BranchStackSlot`, `PreparedValueFreshnessProofKind::BranchTerminatorOrdering`, and `PreparedValueFreshnessSourceRank::BranchStackSlot` (`src/backend/prealloc/value_locations.hpp:75`, `:106`, `:143`, `:180`). | RV64 fused pointer branch emission requires selected freshness for both operands before publication/emission (`src/backend/mir/riscv/codegen/object_emission.cpp:9435`, `:9737`, `:9876`); unsupported diagnostics report missing branch stack-load source freshness (`src/backend/mir/riscv/codegen/object_emission.cpp:9937`). Closed ideas 592, 593, 594, and 596 are historical evidence for this narrow path. | semantic authority for this narrow use | This is the clearest selected freshness authority currently surveyed, but only for branch stack-load sources at the exact branch terminator use. It must not be generalized to other pointer/address families. |
+| Target-local operand shape | AArch64 `ResolvedOperand` and `OperandAuthority` classify final MIR operands as register, frame slot, immediate, symbol, label, etc. (`src/backend/mir/aarch64/codegen/operands.hpp:15`; `src/backend/mir/aarch64/codegen/operands.cpp:88`). AArch64 `AddressMaterializationRecord`, `MemoryOperand`, and instruction records carry selected target-ready shape (`src/backend/mir/aarch64/codegen/instruction.hpp:1318`, `:1571`, `:1646`). x86 has final operand text in `x86::prepared::Operand` (`src/backend/mir/x86/prepared/prepared.hpp:148`). RV64 still has local target operand/value forms such as `riscv::codegen::Operand` (`src/backend/mir/riscv/codegen/riscv_codegen.hpp:389`). | Target printers, emitters, and object writers consume these final shapes after prepared/prealloc facts have already selected or validated the route (`src/backend/mir/aarch64/codegen/machine_printer.cpp:294`; `src/backend/mir/x86/module/module.cpp:4330`; `src/backend/mir/riscv/codegen/prepared_function_emit.cpp:1`). | target-consume fact and diagnostic-only artifact | Target operand shape is necessary for emission and diagnostics, but it must not authorize pointer freshness or semantic address validity on its own. |
 
-Use the preliminary role values from the active plan: semantic authority,
-verifier/support fact, target-consume fact, route proof, diagnostic-only
-artifact, or unresolved pending later classification.
+## Cross-Cutting Prepared And MIR Consumer Surfaces
 
-## Step 1 Boundary
+- `PreparedBirModule` aggregates the current prepared facts: BIR, target
+  profile, name/control-flow tables, value locations, stack layout, addressing,
+  regalloc, frame/dynamic-stack/call/publication/storage/object-data plans, and
+  diagnostics (`src/backend/prealloc/module.hpp:30`). It is not one semantic
+  authority by itself.
+- `PreparedFunctionLookups` groups per-function lookup caches for call plans,
+  address materializations, memory accesses, move bundles, value homes, edge
+  publications, source producers, and branch stack-load authorities
+  (`src/backend/prealloc/prepared_lookups.hpp:13`).
+- AArch64 creates per-function lookup caches before lowering (`src/backend/mir/aarch64/codegen/traversal.cpp:98`).
+- x86 stores optional `PreparedFunctionLookups` in `ConsumedPlans` and exposes
+  `shared_function_lookups()` (`src/backend/mir/x86/x86.hpp:14`).
+- RV64 prepared emission receives prepared modules/lookups through prepared
+  function and object-emission paths (`src/backend/mir/riscv/codegen/prepared_function_emit.cpp:1`;
+  `src/backend/mir/riscv/codegen/object_emission.cpp:9435`).
 
-This skeleton confirms the answer shape only. It intentionally does not
-perform the Step 2 inventory.
+## Preliminary Classification Notes For Step 3
+
+- Selected branch stack-source freshness is already a semantic authority for a
+  narrow use: branch stack-load source consumption at the exact branch
+  terminator.
+- Local-array semantic GEP and global static semantic GEP records are semantic
+  authority candidates because they validate source identity, derivation,
+  coordinate, range proof, and bounds, but current consumers still need a
+  final classification against memory access/materialization facts.
+- `PreparedMemoryAccess` is mixed. It can be support evidence for identity,
+  layout, range, volatility, address space, and target legality; it also feeds
+  target memory operands. It should not automatically authorize freshness of
+  the value currently available at that address.
+- `PreparedAddressMaterialization` is primarily a target-consume fact. It
+  selects relocation/materialization shape and validates symbol or frame-slot
+  identity, but it is not sufficient to prove pointer freshness.
+- Frame-slot and stack-home facts are support/target-consume facts unless a
+  separate freshness authority names the exact value, use, proof, and rank.
+- Target operand records and final operand text are target-consume or
+  diagnostic-only artifacts. They must not be used as semantic authority for
+  pointer/address validity.

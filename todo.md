@@ -1,53 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/597_pointer_address_semantic_model_research.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Confirm Evidence Inputs And Research Output Shape
+Current Step ID: 2
+Current Step Title: Inventory Pointer/Address Families And Consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1: Confirm Evidence Inputs And Research Output
-Shape.
+Completed `plan.md` Step 2: Inventory Pointer/Address Families And Consumers.
 
-Evidence paths used:
+Filled
+`docs/pointer_address_semantic_model_research/01_pointer_address_family_inventory.md`
+with the surveyed prepared pointer/address families and concrete producer,
+evidence, MIR, and target consumer references. Covered pointer base-plus-offset
+homes, frame-slot pointer arithmetic materialization, semantic/global
+relocation materialization, global memory access facts, local frame-slot
+addressing, pointer-value indirect memory access, local-array and global
+semantic GEP records, branch pointer stack-source operands, and target-local
+operand shape.
 
-- `ideas/open/597_pointer_address_semantic_model_research.md`
-- `ideas/open/591_prepared_mir_view_contract_research.md`
-- `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
-- `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
-- `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
-- `ideas/closed/590_branch_stack_load_freshness_contract.md`
-- `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
-- `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
-- `ideas/closed/594_rv64_branch_stack_source_consumption_followup_from_593.md`
-- `ideas/closed/596_pointer_rhs_branch_stack_source_policy_publication.md`
-- `docs/target_abi_contract_research/index.md`
-- `docs/target_abi_contract_research/04_current_prepared_value_consumption_model.md`
-- `docs/target_abi_contract_research/05_prior_preservation_freshness_and_stale_home_risk.md`
-- `docs/prepared_fact_contracts/README.md`
-- `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`
-
-Missing evidence:
-
-- No required delegated evidence was missing.
-- `docs/prepared_mir_view_contract_research/` is not present; that is
-  non-blocking because idea 591 is downstream context, not an input research
-  package for this route.
-
-Final research file list:
-
-- `docs/pointer_address_semantic_model_research/index.md`
-- `docs/pointer_address_semantic_model_research/01_pointer_address_family_inventory.md`
-- `docs/pointer_address_semantic_model_research/02_semantic_authority_and_fact_classes.md`
-- `docs/pointer_address_semantic_model_research/03_fail_closed_rules.md`
-- `docs/pointer_address_semantic_model_research/04_closed_evidence_and_mir_boundary.md`
-- `docs/pointer_address_semantic_model_research/05_followup_recommendations.md`
+Each surveyed family now has a preliminary role: semantic authority where the
+current selected branch stack-source use is already narrow and explicit,
+semantic authority candidate for local/global semantic GEP records,
+verifier/support fact, target-consume fact, route proof, diagnostic-only
+artifact, or unresolved pending Step 3 classification.
 
 ## Suggested Next
 
-Step 2: Inventory Pointer/Address Families And Consumers.
+Step 3: Classify Semantic Authority And Fact Roles.
 
 ## Watchouts
 
@@ -58,6 +39,12 @@ Step 2: Inventory Pointer/Address Families And Consumers.
   semantic model, not as the owner of unresolved pointer/address semantics.
 - Treat ideas 592, 593, 594, and 596 as narrow branch pointer stack-source
   evidence, not global pointer/address semantic closure.
+- Step 3 should be careful not to promote `PreparedMemoryAccess`,
+  `PreparedAddressMaterialization`, frame-slot existence, or target operand
+  shape into freshness authority without a use-specific authority rule.
+- Local-array/global semantic GEP records are candidates for authority, but the
+  current target paths still consume prepared memory/access or materialization
+  facts separately.
 
 ## Proof
 
