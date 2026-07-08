@@ -1435,6 +1435,136 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   return lookups;
 }
 
+[[nodiscard]] const bir::Function* find_prepared_bir_function(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name) {
+  const std::string_view name = prepared_function_name(prepared.names, function_name);
+  if (name.empty()) {
+    return nullptr;
+  }
+  for (const auto& function : prepared.module.functions) {
+    if (function.name == name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::Block* find_prepared_bir_block(
+    const PreparedBirModule& prepared,
+    const bir::Function& function,
+    BlockLabelId block_label) {
+  const std::string_view label = prepared_block_label(prepared.names, block_label);
+  if (label.empty()) {
+    return nullptr;
+  }
+  for (const auto& block : function.blocks) {
+    const std::string_view structured_label =
+        prepared.module.names.block_labels.spelling(block.label_id);
+    if ((!structured_label.empty() && structured_label == label) ||
+        block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_access_symbol_matches(
+    const PreparedBirModule& prepared,
+    const PreparedMemoryAccess& access,
+    std::string_view fallback_symbol,
+    LinkNameId link_name_id) {
+  if (access.address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !access.address.symbol_name.has_value()) {
+    return false;
+  }
+  const std::string_view symbol =
+      prepared_link_name(prepared.names, *access.address.symbol_name);
+  if (symbol.empty()) {
+    return false;
+  }
+  if (link_name_id != kInvalidLinkName) {
+    const std::string_view semantic_symbol =
+        prepared.module.names.link_names.spelling(link_name_id);
+    if (!semantic_symbol.empty()) {
+      return symbol == semantic_symbol;
+    }
+  }
+  return symbol == fallback_symbol;
+}
+
+[[nodiscard]] bool prepared_memory_access_matches_current_instruction(
+    const PreparedBirModule& prepared,
+    const PreparedMemoryAccess& access,
+    const bir::Inst& inst) {
+  if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    return access.result_value_name ==
+               prepared_existing_value_name_id(prepared.names, load->result) &&
+           !access.stored_value_name.has_value() &&
+           prepared_access_symbol_matches(
+               prepared, access, load->global_name, load->global_name_id);
+  }
+  if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst)) {
+    const auto stored_value_name =
+        prepared_existing_value_name_id(prepared.names, store->value);
+    return !access.result_value_name.has_value() &&
+           access.stored_value_name == stored_value_name &&
+           prepared_access_symbol_matches(
+               prepared, access, store->global_name, store->global_name_id);
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<std::size_t> remapped_memory_access_instruction_index(
+    const PreparedBirModule& prepared,
+    const bir::Block& block,
+    const PreparedMemoryAccess& access) {
+  std::optional<std::size_t> matched_index;
+  for (std::size_t index = 0; index < block.insts.size(); ++index) {
+    if (!prepared_memory_access_matches_current_instruction(
+            prepared, access, block.insts[index])) {
+      continue;
+    }
+    if (matched_index.has_value()) {
+      return std::nullopt;
+    }
+    matched_index = index;
+  }
+  return matched_index;
+}
+
+void repair_prepared_memory_access_position_lookups(
+    const PreparedBirModule& prepared,
+    const PreparedAddressingFunction* addressing,
+    PreparedMemoryAccessLookups& lookups) {
+  const auto* function =
+      find_prepared_bir_function(prepared, addressing != nullptr
+                                               ? addressing->function_name
+                                               : kInvalidFunctionName);
+  if (addressing == nullptr || function == nullptr) {
+    return;
+  }
+  lookups.accesses_by_position.clear();
+  lookups.accesses_by_position.reserve(addressing->accesses.size());
+  for (const auto& access : addressing->accesses) {
+    if (access.block_label == kInvalidBlockLabel) {
+      continue;
+    }
+    std::size_t position_index = access.inst_index;
+    if (const auto* block =
+            find_prepared_bir_block(prepared, *function, access.block_label)) {
+      if (auto remapped =
+              remapped_memory_access_instruction_index(prepared, *block, access);
+          remapped.has_value()) {
+        position_index = *remapped;
+      }
+    }
+    lookups.accesses_by_position.emplace(
+        prepared_memory_access_position_key(access.block_label, position_index),
+        &access);
+  }
+}
+
 [[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations) {
   PreparedMoveBundleLookups lookups;
@@ -1712,6 +1842,8 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   auto value_home_lookups = make_prepared_value_home_lookups(value_locations);
   auto memory_access_lookups =
       make_prepared_memory_access_lookups(addressing, &value_home_lookups);
+  repair_prepared_memory_access_position_lookups(
+      prepared, addressing, memory_access_lookups);
   auto move_bundle_lookups = make_prepared_move_bundle_lookups(prepared, function);
   auto source_producer_lookups =
       make_prepared_edge_publication_source_producer_lookups(prepared, function);

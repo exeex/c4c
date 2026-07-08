@@ -848,6 +848,16 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   return prepared;
 }
 
+[[nodiscard]] std::int64_t prepared_global_instruction_fallback_byte_offset(
+    const std::optional<bir::MemoryAddress>& address,
+    std::size_t instruction_byte_offset) {
+  if (address.has_value() &&
+      address->byte_offset == static_cast<std::int64_t>(instruction_byte_offset)) {
+    return 0;
+  }
+  return static_cast<std::int64_t>(instruction_byte_offset);
+}
+
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
     const bir::Module& module,
@@ -968,7 +978,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       inst.address,
       inst.global_name,
       inst.global_name_id,
-      static_cast<std::int64_t>(inst.byte_offset),
+      prepared_global_instruction_fallback_byte_offset(inst.address, inst.byte_offset),
       size_bytes,
       align_bytes);
   if (!address.has_value()) {
@@ -1016,7 +1026,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       inst.address,
       inst.global_name,
       inst.global_name_id,
-      static_cast<std::int64_t>(inst.byte_offset),
+      prepared_global_instruction_fallback_byte_offset(inst.address, inst.byte_offset),
       size_bytes,
       align_bytes);
   if (!address.has_value()) {
