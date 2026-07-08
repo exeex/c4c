@@ -2,10 +2,13 @@
 #include "src/backend/prealloc/call_plans.hpp"
 #include "src/backend/prealloc/prepared_contract_verifier.hpp"
 #include "src/backend/prealloc/regalloc/call_return_abi.hpp"
+#include "src/backend/prealloc/target_register_profile.hpp"
 #include "src/backend/prealloc/variadic.hpp"
+#include "src/target_profile.hpp"
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -28,6 +31,94 @@ prepare::PreparedRegisterPlacement sample_gpr_placement() {
       .slot_index = 2,
       .contiguous_width = 1,
   };
+}
+
+c4c::TargetProfile target_profile(c4c::TargetArch arch) {
+  c4c::TargetProfile profile;
+  profile.arch = arch;
+  profile.has_float_arg_registers = true;
+  profile.has_float_return_registers = true;
+  switch (arch) {
+    case c4c::TargetArch::X86_64:
+      profile.backend_abi = c4c::BackendAbiKind::SysV_X86_64;
+      break;
+    case c4c::TargetArch::Aarch64:
+      profile.backend_abi = c4c::BackendAbiKind::Aapcs64;
+      break;
+    case c4c::TargetArch::Riscv64:
+      profile.backend_abi = c4c::BackendAbiKind::RiscvLp64D;
+      break;
+    case c4c::TargetArch::I686:
+      profile.backend_abi = c4c::BackendAbiKind::SysV_I686;
+      break;
+    case c4c::TargetArch::Unknown:
+      profile.backend_abi = c4c::BackendAbiKind::Unknown;
+      break;
+  }
+  return profile;
+}
+
+bir::CallArgAbiInfo integer_register_arg_abi() {
+  return bir::CallArgAbiInfo{
+      .type = bir::TypeKind::I64,
+      .primary_class = bir::AbiValueClass::Integer,
+      .passed_in_register = true,
+  };
+}
+
+bir::CallResultAbiInfo integer_register_result_abi() {
+  return bir::CallResultAbiInfo{
+      .type = bir::TypeKind::I64,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+}
+
+bool expect_identity(const std::optional<prepare::PreparedTargetRegisterIdentity>& actual,
+                     c4c::TargetArch target_arch,
+                     prepare::PreparedRegisterBank bank,
+                     prepare::PreparedRegisterClass reg_class,
+                     std::size_t physical_index,
+                     std::string_view message) {
+  const prepare::PreparedTargetRegisterIdentity expected{
+      .target_arch = target_arch,
+      .bank = bank,
+      .register_class = reg_class,
+      .physical_index = physical_index,
+  };
+  return expect(actual.has_value() && *actual == expected, message);
+}
+
+bool expect_no_identity(
+    const std::optional<prepare::PreparedTargetRegisterIdentity>& actual,
+    std::string_view message) {
+  return expect(!actual.has_value(), message);
+}
+
+std::optional<prepare::PreparedTargetRegisterIdentity> arg_identity(
+    const c4c::TargetProfile& profile,
+    const bir::CallArgAbiInfo& abi,
+    std::size_t arg_index,
+    std::size_t contiguous_width = 1) {
+  const auto placement = prepare::call_arg_destination_register_placement(
+      profile, abi, arg_index, contiguous_width);
+  if (!placement.has_value()) {
+    return std::nullopt;
+  }
+  return prepare::target_register_identity_for_abi_register_placement(profile,
+                                                                      *placement);
+}
+
+std::optional<prepare::PreparedTargetRegisterIdentity> result_identity(
+    const c4c::TargetProfile& profile,
+    const bir::CallResultAbiInfo& abi,
+    std::size_t contiguous_width = 1) {
+  const auto placement = prepare::call_result_destination_register_placement(
+      profile, abi, contiguous_width);
+  if (!placement.has_value()) {
+    return std::nullopt;
+  }
+  return prepare::target_register_identity_for_abi_register_placement(profile,
+                                                                      *placement);
 }
 
 prepare::PreparedCallPlan sample_call_plan() {
@@ -76,6 +167,171 @@ prepare::PreparedCallPlan sample_call_plan() {
           .source_register_placement = placement,
       },
   };
+}
+
+prepare::PreparedAbiBinding binding_for(const prepare::PreparedMoveResolution& move);
+
+int verify_stable_abi_target_register_identity_publication() {
+  const auto integer_arg = integer_register_arg_abi();
+  const auto integer_result = integer_register_result_abi();
+  const auto rv64 = target_profile(c4c::TargetArch::Riscv64);
+  const auto aarch64 = target_profile(c4c::TargetArch::Aarch64);
+  const auto x86 = target_profile(c4c::TargetArch::X86_64);
+
+  const auto rv64_arg_identity = arg_identity(rv64, integer_arg, 1);
+  const auto rv64_result_identity = result_identity(rv64, integer_result);
+  const auto aarch64_arg_identity = arg_identity(aarch64, integer_arg, 2);
+  const auto aarch64_result_identity = result_identity(aarch64, integer_result);
+  const auto x86_arg_identity = arg_identity(x86, integer_arg, 0);
+  const auto x86_second_arg_identity = arg_identity(x86, integer_arg, 1);
+  const auto x86_result_identity = result_identity(x86, integer_result);
+
+  bir::CallArgAbiInfo x86_vector_arg{
+      .type = bir::TypeKind::F128,
+      .primary_class = bir::AbiValueClass::Sse,
+      .passed_in_register = true,
+  };
+  const auto x86_vector_identity = arg_identity(x86, x86_vector_arg, 0);
+  const auto aarch64_wide_identity = arg_identity(aarch64, integer_arg, 0, 2);
+  const auto i686_identity =
+      arg_identity(target_profile(c4c::TargetArch::I686), integer_arg, 0);
+
+  if (!expect_identity(rv64_arg_identity,
+                       c4c::TargetArch::Riscv64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       11,
+                       "RV64 argument identity should publish a1 physical index") ||
+      !expect_identity(rv64_result_identity,
+                       c4c::TargetArch::Riscv64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       10,
+                       "RV64 result identity should publish a0 physical index") ||
+      !expect_identity(aarch64_arg_identity,
+                       c4c::TargetArch::Aarch64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       2,
+                       "AArch64 argument identity should publish x2 physical index") ||
+      !expect_identity(aarch64_result_identity,
+                       c4c::TargetArch::Aarch64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       0,
+                       "AArch64 result identity should publish x0 physical index") ||
+      !expect_identity(x86_arg_identity,
+                       c4c::TargetArch::X86_64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       7,
+                       "x86-64 first argument identity should publish rdi physical index") ||
+      !expect_identity(x86_second_arg_identity,
+                       c4c::TargetArch::X86_64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       6,
+                       "x86-64 second argument identity should publish rsi physical index") ||
+      !expect_identity(x86_result_identity,
+                       c4c::TargetArch::X86_64,
+                       prepare::PreparedRegisterBank::Gpr,
+                       prepare::PreparedRegisterClass::General,
+                       0,
+                       "x86-64 result identity should publish rax physical index") ||
+      !expect_no_identity(x86_vector_identity,
+                          "x86 vector ABI placement should remain identity-less") ||
+      !expect_no_identity(aarch64_wide_identity,
+                          "AArch64 multi-register ABI placement should fail closed") ||
+      !expect_no_identity(i686_identity,
+                          "unsupported I686 ABI placement should fail closed")) {
+    return 1;
+  }
+
+  prepare::PreparedCallPlan call_plan{
+      .block_index = 1,
+      .instruction_index = 4,
+      .arguments =
+          {
+              prepare::PreparedCallArgumentPlan{
+                  .instruction_index = 4,
+                  .arg_index = 0,
+                  .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .source_value_id = 30,
+                  .destination_register_name = "rdi",
+                  .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                  .destination_register_placement =
+                      prepare::call_arg_destination_register_placement(x86,
+                                                                       integer_arg,
+                                                                       0),
+                  .destination_target_register_identity = x86_arg_identity,
+              },
+          },
+      .result =
+          prepare::PreparedCallResultPlan{
+              .instruction_index = 4,
+              .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_value_id = 40,
+              .source_register_name = "rax",
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = "rax",
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_register_placement =
+                  prepare::call_result_destination_register_placement(x86,
+                                                                      integer_result),
+              .source_target_register_identity = x86_result_identity,
+              .destination_target_register_identity = x86_result_identity,
+          },
+  };
+  const prepare::PreparedMoveResolution argument_move{
+      .from_value_id = 30,
+      .to_value_id = 30,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_abi_index = 0,
+      .destination_register_name = "rdi",
+      .destination_register_placement =
+          call_plan.arguments.front().destination_register_placement,
+      .destination_target_register_identity = x86_arg_identity,
+  };
+  const prepare::PreparedMoveResolution result_move{
+      .from_value_id = 0,
+      .to_value_id = 40,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = "rax",
+      .destination_register_placement = call_plan.result->source_register_placement,
+      .destination_target_register_identity = x86_result_identity,
+  };
+  const prepare::PreparedMoveBundle before_call_bundle{
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 1,
+      .instruction_index = 4,
+      .moves = {argument_move},
+      .abi_bindings = {binding_for(argument_move)},
+  };
+  const prepare::PreparedMoveBundle after_call_bundle{
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 1,
+      .instruction_index = 4,
+      .moves = {result_move},
+      .abi_bindings = {binding_for(result_move)},
+  };
+  const auto effects = prepare::plan_prepared_call_boundary_effects(
+      call_plan, &before_call_bundle, &after_call_bundle);
+  if (!expect(effects.size() == 2,
+              "prepared boundary effects should publish argument and result moves") ||
+      !expect(effects[0].destination.target_register_identity == x86_arg_identity,
+              "prepared argument effect should carry x86 ABI target identity") ||
+      !expect(effects[1].source.target_register_identity == x86_result_identity,
+              "prepared result effect source should carry x86 ABI target identity") ||
+      !expect(effects[1].destination.target_register_identity ==
+                  x86_result_identity,
+              "prepared result effect destination should carry home target identity")) {
+    return 1;
+  }
+
+  return 0;
 }
 
 prepare::PreparedAbiBinding binding_for(const prepare::PreparedMoveResolution& move) {
@@ -638,6 +894,10 @@ int verify_direct_bir_function_return_move_repair_is_explicit_fallback() {
 }  // namespace
 
 int main() {
+  if (const int rc = verify_stable_abi_target_register_identity_publication();
+      rc != 0) {
+    return rc;
+  }
   if (const int rc = verify_argument_classification(); rc != 0) {
     return rc;
   }

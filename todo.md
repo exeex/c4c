@@ -1,58 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/586_uniform_target_register_identity_policy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Adapt Consumers Without Broad Lowering Rewrites
+Current Step ID: 4
+Current Step Title: Add Focused Identity Publication Tests
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md` adapted narrow prepared/prealloc ABI consumers to carry
-shared target register identity without broad lowering rewrites.
+Step 4 from `plan.md` added focused identity publication tests for stable ABI
+argument/result placements across RV64, AArch64, and x86.
 
-Implementation notes:
-- Changed files: `src/backend/prealloc/regalloc.hpp`,
-  `src/backend/prealloc/regalloc/move_records.hpp`,
-  `src/backend/prealloc/regalloc/move_records.cpp`,
-  `src/backend/prealloc/regalloc/call_moves.cpp`,
-  `src/backend/prealloc/regalloc.cpp`, `src/backend/prealloc/calls.hpp`,
-  and `src/backend/prealloc/call_plans.cpp`.
-- `PreparedMoveResolution` and `PreparedAbiBinding` now optionally publish
-  destination `PreparedTargetRegisterIdentity` alongside existing ABI register
-  placement/name facts.
-- ABI call argument, call result, and function return move-resolution paths
-  populate identity through
-  `target_register_identity_for_abi_register_placement(...)` when the ABI
-  placement has a stable shared identity.
-- Prepared call argument/result plans and call-boundary effect endpoints carry
-  those optional identities forward from ABI bindings, value homes, or the
-  shared helper fallback.
-- Existing target lowering and final register rendering still consume prepared
-  placements/spellings where they need target operands; this packet did not
-  rewrite AArch64, x86, or RV64 call lowering.
-- Identity-less/fail-closed shapes remain `std::nullopt`: stack ABI
-  destinations, missing placement, non-ABI placement pools, multi-register or
-  contiguous ABI placements, x86 vector ABI placements, AArch64 `x8` sret
-  without shared placement policy, and any unsupported target/ABI shape rejected
-  by the shared helper.
+Test notes:
+- Changed file: `tests/backend/bir/backend_prealloc_call_boundary_classification_test.cpp`.
+- Added direct `PreparedTargetRegisterIdentity` assertions through
+  `call_arg_destination_register_placement(...)`,
+  `call_result_destination_register_placement(...)`, and
+  `target_register_identity_for_abi_register_placement(...)`.
+- Covered RV64 `a1`/`a0`, AArch64 `x2`/`x0`, and x86-64
+  `rdi`/`rsi`/`rax` physical identities.
+- Added prepared call-boundary effect assertions that argument/result endpoints
+  carry the published optional target identities forward.
+- Covered fail-closed or identity-less shapes for x86 vector ABI placement,
+  AArch64 contiguous-width ABI placement, and unsupported I686 ABI placement.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: add focused identity publication tests for RV64,
-AArch64, and x86 stable ABI argument/result placements, including at least one
-fail-closed unsupported or identity-less shape if practical.
+Execute Step 5 from `plan.md`: validate the slice and inventory remaining
+unsupported or intentionally identity-less ABI placement shapes for lifecycle
+review.
 
 ## Watchouts
 
-- Step 4 should assert `PreparedTargetRegisterIdentity` facts directly rather
-  than only register spelling or placement text.
 - Keep target-lowering/rendering paths placement-based unless a consumer
   genuinely needs physical identity; final instruction operands still require
   target register representations.
-- AArch64 `x8` sret, x86 vector ABI placements, stack destinations, and
-  multi-register/contiguous ABI shapes should remain identity-less/fail-closed
-  unless a later plan explicitly changes shared placement policy.
+- This packet intentionally did not edit implementation files or expectation
+  contracts.
+- RV64 contiguous-width ABI placement still follows the existing RV64 identity
+  helper behavior; Step 5 should inventory that separately from the tested
+  AArch64/x86 fail-closed shapes.
 
 ## Proof
 
