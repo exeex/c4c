@@ -1,6 +1,6 @@
 # RV64 Move-Bundle Target Materialization
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -46,6 +46,23 @@ already available.
 - Rows lacking source, stack slot, branch operand, or destination authority
   remain rejected with accurate diagnostics.
 - The proof demonstrates target consumption rather than producer repair.
+
+## Closure Note
+
+Closed on 2026-07-08 after RV64 object emission consumed explicit prepared
+source and destination homes for authorized
+`block_entry/out_of_ssa_parallel_copy/phi_join_register_to_register`
+move-bundle rows. Focused movement included `src/20000314-1.c`,
+`src/20040309-1.c`, `src/pr63641.c`, and the representative
+`src/20020206-2.c` compiling through RV64 object emission, with the Step 3
+probe summary recording 41 compile-through rows.
+
+Remaining `src/pr71631.c` repeated stack-destination behavior is not counted
+as supported by this idea. It requires explicit destination fan-in/order
+authority and is tracked separately in
+`ideas/open/622_repeated_stack_destination_fan_in_order_authority.md`.
+Rows that only rerouted to downstream owners were route-separation evidence,
+not target-support proof.
 
 ## Reviewer Reject Signals
 
