@@ -68,6 +68,43 @@ std::optional<bir::Value> make_canonical_select_i128_immediate(
   };
 }
 
+std::optional<bir::Value> lower_f128_literal(
+    const c4c::codegen::lir::LirOperand& operand) {
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
+      operand.kind() != c4c::codegen::lir::LirOperandKind::SpecialToken &&
+      operand.kind() != c4c::codegen::lir::LirOperandKind::RawText) {
+    return std::nullopt;
+  }
+
+  std::string_view text = operand.str();
+  if (text.size() >= 3 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X') &&
+      (text[2] == 'L' || text[2] == 'l')) {
+    text.remove_prefix(3);
+  } else if (text.size() >= 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+    text.remove_prefix(2);
+  } else {
+    return std::nullopt;
+  }
+
+  if (text.size() != 32) {
+    return std::nullopt;
+  }
+
+  std::uint64_t high_bits = 0;
+  std::uint64_t low_bits = 0;
+  const auto* begin = text.data();
+  const auto* middle = begin + 16;
+  const auto* end = begin + text.size();
+  const auto high_result = std::from_chars(begin, middle, high_bits, 16);
+  const auto low_result = std::from_chars(middle, end, low_bits, 16);
+  if (high_result.ec != std::errc() || high_result.ptr != middle ||
+      low_result.ec != std::errc() || low_result.ptr != end) {
+    return std::nullopt;
+  }
+
+  return bir::Value::immediate_f128_bits(low_bits, high_bits);
+}
+
 }  // namespace
 
 std::optional<unsigned> BirFunctionLowerer::integer_type_bit_width(bir::TypeKind type) {
@@ -429,6 +466,9 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
   };
   if (expected_type == bir::TypeKind::F32 || expected_type == bir::TypeKind::F64) {
     return try_parse_fp_literal(expected_type);
+  }
+  if (expected_type == bir::TypeKind::F128) {
+    return lower_f128_literal(operand);
   }
 
   if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
