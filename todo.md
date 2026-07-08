@@ -8,33 +8,41 @@ Current Step Title: Build the Failure Bucket Map
 
 ## Just Finished
 
-Completed Step 1: Establish the Evidence Baseline by documenting the current
-RV64 gcc_torture backend scan evidence in
-`docs/rv64_gcc_torture_1000_pass_recovery/current_scan_summary.md`, including
-the scan command, artifact paths, `1467` total rows, `470` passed rows, `997`
-failed rows, `0 missing` rows, freshness context, and the historical-only
-relationship to the older `349/1467` baseline.
+Completed Step 2: Build the Failure Bucket Map by classifying the current
+`997` RV64 gcc_torture backend failures by first owner and capability family in
+`docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`. The map
+accounts for all current failures, separates BIR semantic producer,
+prepared/prealloc authority, RV64/MIR consumer, runtime, unsupported, ABI,
+architecture, and policy lanes, calls out recent-architecture-close buckets
+from ideas `587` through `600`, and names architecture weak points needing
+research or discussion before implementation.
 
 ## Suggested Next
 
-Begin Step 2 in `plan.md`: classify the `997` current failures by first owner
-and capability family in
-`docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`.
+Begin Step 3 in `plan.md`: draft the high-yield follow-up plan in
+`docs/rv64_gcc_torture_1000_pass_recovery/high_yield_followup_plan.md`,
+ranking which classified families should generate follow-up ideas, be deferred,
+or be quarantined.
 
 ## Watchouts
 
 - This umbrella is triage and follow-up generation only; do not edit
   implementation, harness, expectation, unsupported-marker, allowlist,
   runtime, timeout, or accounting behavior.
-- Use the July 8 mutable summary and failed list as the current `470/1467`
-  baseline; no newer scan artifact was found that supersedes it.
-- The pointer file still names an older July 3 `438/1467` timestamped log, and
-  the `349/1467` post-contract baseline is historical only.
+- The largest first-owner buckets are BIR semantic producer (`311`), RV64/MIR
+  consumer (`252`), prepared/prealloc authority (`146`), runtime (`72`),
+  ABI/RV64 consumer (`60`), prepared/RV64 authority (`48`), and combined global
+  data (`70` across prepared/global authority and RV64/global consumer).
+- The `125` non-parallel multi-source stack-destination rows are high-count but
+  should be treated as a destination fan-in architecture question, not as a
+  simple extension of source-freshness authority.
+- Runtime abort/segfault rows reached object emission, but exit symptoms alone
+  do not identify first implementation owner.
 
 ## Proof
 
 Delegated proof passed and was saved to `test_after.log`:
 
 ```sh
-test -f docs/rv64_gcc_torture_1000_pass_recovery/current_scan_summary.md && rg '1467|470|997|0 missing|349/1467|scripts/check_progress_rv64_gcc_c_torture_backend.sh' docs/rv64_gcc_torture_1000_pass_recovery/current_scan_summary.md
+test -f docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md && rg '997|first owner|BIR|prepared|RV64|runtime|unsupported|ABI|architecture' docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md
 ```
