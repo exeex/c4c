@@ -1,6 +1,6 @@
 # Destination Fan-In Authority Research
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -98,6 +98,14 @@ Required files:
   rule or records why implementation must remain blocked.
 - No implementation, expectation, unsupported-marker, allowlist, runtime,
   timeout, accounting, or active lifecycle files are changed.
+
+## Completion Notes
+
+Closed on 2026-07-08 after the documentation package was completed under
+`docs/destination_fan_in_authority/` with exactly the required index and three
+answer files. The package selects explicit rejection until prepared/prealloc
+producer authority publishes exactly one destination authority contract;
+implementation remains blocked for this family until that follow-up idea exists.
 
 ## Reviewer Reject Signals
 
