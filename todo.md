@@ -8,11 +8,12 @@ Current Step Title: Add Supported Frame Or Return Handling
 
 ## Just Finished
 
-Completed Step 3, "Add Supported Frame Or Return Handling", as a blocker
-classification packet after inspecting the selected supported prepared
-stack-frame rows. No implementation files, focused backend tests, plan files,
-idea files, expectations, unsupported markers, allowlists, or timeout/accounting
-files were changed.
+Completed the Step 3 lifecycle handoff for the selected supported prepared
+stack-frame rows. The missing dynamic-frame callee-saved GPR save-slot
+placement authority is now split to
+`ideas/open/626_prepared_dynamic_frame_callee_saved_slot_placement.md`, while
+idea 613 remains active for ABI/RV64 consumer work that already has complete
+prepared frame or return facts.
 
 Focused `build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...`
 probes for `src/20040811-1.c`, `src/pr43220.c`, and `src/vla-dealloc-1.c`
@@ -49,23 +50,25 @@ two distinct blockers, both real prepared-authority gaps for this packet:
   size, register order, or testcase shape would violate the packet boundary.
 
 Because the selected rows lack explicit prepared callee-saved save-slot
-placements, this packet did not add RV64 lowering. The correct next move is a
-producer-authority split or plan-owner rewrite for prepared dynamic-frame
-save-slot publication before the RV64 object consumer can lower these rows
-semantically.
+placements, they are no longer Step 3 implementation positives for idea 613.
+The correct next move inside idea 613 is a focused residual refresh for stack
+frame or prepared return rows that already publish complete authority.
 
 ## Suggested Next
 
-Split the missing prepared dynamic-frame callee-saved save-slot authority into
-a producer-owned follow-up, then refresh Step 3 residuals. The follow-up should
-publish explicit save-slot placements for dynamic/fixed-frame callee-saved GPR
-rows before RV64 object emission consumes `has_dynamic_stack=yes` /
-`fixed_slots_use_fp=yes` frame plans.
+Refresh Step 3 residuals for complete prepared frame/return facts. Keep
+`src/20040811-1.c`, `src/pr43220.c`, and `src/vla-dealloc-1.c` under idea 626
+unless their prepared dumps now publish explicit callee-saved GPR save-slot
+placements. If no complete-authority Step 3 breadth remains, advance to Step 4
+for adjacent ABI consumer authority or Step 5 close-readiness classification,
+backed by the backend subset proof command.
 
 ## Watchouts
 
 - Keep `src/20000808-1.c` under idea 624 and `src/20020529-1.c` under idea
   625; do not reclassify missing prepared authority as RV64 consumer progress.
+- Keep dynamic/fixed frame callee-saved save-slot placement production under
+  idea 626; do not infer save slots in RV64 object emission.
 - Do not infer return destination home authority for `src/20001130-2.c` or
   `src/20080719-1.c`; their before-return rows remain producer-authority gaps.
 - Do not expand the next frame packet into FPR save/restore, generic
