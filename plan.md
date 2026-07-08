@@ -114,6 +114,16 @@ Completion check:
 Goal: make supported global load/store memory accesses carry prepared facts
 that RV64 can consume later without reconstructing address provenance.
 
+Route status: parked after evidence-gated executor review. Captured predicate
+inputs for `src/strlen-7.c` and `src/20000703-1.c` showed the first visible
+missing field was `layout_authority=unknown`; a narrow prepared producer
+experiment could publish `ByteStorageAggregate` in prepared dumps, but the
+exact allowlist proof stayed at `0/7` with unchanged
+`requires supported prepared global memory facts` diagnostics. Do not repeat
+that helper-only publication route unless a future 608-owned packet can name a
+different prepared fact and prove diagnostic movement without touching RV64
+consumer/emission code.
+
 Primary targets:
 - `src/backend/prealloc/addressing.hpp`
 - `src/backend/prealloc/stack_layout/coordinator.cpp`
@@ -142,11 +152,12 @@ Actions:
   `requires supported prepared global memory facts` diagnostic.
 
 Completion check:
-- At least one supported prepared global memory-facts row moves past the exact
-  `requires supported prepared global memory facts` stop for a semantic
-  prepared-authority reason, nearby same-family rows are checked for the same
-  reason, and unsupported-width/global-emission rows remain target-consumer
-  failures for `609`.
+- This step remains blocked unless at least one supported prepared global
+  memory-facts row moves past the exact `requires supported prepared global
+  memory facts` stop for a semantic prepared-authority reason. If the row
+  remains at the same object-route diagnostic after prepared facts are
+  complete, preserve the evidence as a handoff note and keep the RV64 consumer
+  work for `609`.
 
 ### Step 3: Complete direct global-symbol base-plus-offset authority
 
