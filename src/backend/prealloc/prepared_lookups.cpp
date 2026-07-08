@@ -31,7 +31,8 @@ namespace {
     case PreparedValueFreshnessSourceKind::AbiFormalHome:
       return authority.reference.home != nullptr;
     case PreparedValueFreshnessSourceKind::ProducerRematerialization:
-      return authority.reference.block_index.has_value() &&
+      return (authority.reference.block_index.has_value() ||
+              authority.reference.block_label.has_value()) &&
              authority.reference.instruction_index.has_value();
     case PreparedValueFreshnessSourceKind::ExplicitPublication:
       return authority.reference.publication != nullptr ||

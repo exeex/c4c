@@ -140,6 +140,19 @@ void append_store_source_publication_row(
   append_optional_index(out,
                         "source_producer_inst",
                         plan.source_producer_instruction_index);
+  out << " source_freshness_status="
+      << prepared_value_freshness_query_status_name(plan.source_freshness_status);
+  if (plan.source_freshness_authority.has_value()) {
+    const auto& authority = *plan.source_freshness_authority;
+    out << " source_freshness_authority="
+        << prepared_value_freshness_source_kind_name(authority.source_kind)
+        << " source_freshness_use="
+        << prepared_value_freshness_use_kind_name(authority.use_kind)
+        << " source_freshness_proof="
+        << prepared_value_freshness_proof_kind_name(authority.proof_kind)
+        << " source_freshness_rank="
+        << prepared_value_freshness_source_rank_name(authority.rank);
+  }
   out << " source_load_local=" << yes_no(plan.source_load_local != nullptr)
       << " source_load_global=" << yes_no(plan.source_load_global != nullptr)
       << " source_cast=" << yes_no(plan.source_cast != nullptr)

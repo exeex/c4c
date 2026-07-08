@@ -129,6 +129,42 @@ namespace {
          produced_value->type == inputs.source_value->type;
 }
 
+void publish_store_source_producer_freshness_authority(
+    PreparedStoreSourcePublicationPlan& plan) {
+  if (plan.status != PreparedStoreSourcePublicationStatus::Available ||
+      plan.source_value_id == PreparedValueId{0} ||
+      plan.source_value_name == kInvalidValueName ||
+      plan.source_producer_kind == PreparedEdgePublicationSourceProducerKind::Unknown ||
+      !plan.source_producer_instruction_index.has_value()) {
+    return;
+  }
+
+  plan.source_freshness_authorities.push_back(PreparedValueFreshnessAuthority{
+      .value_id = plan.source_value_id,
+      .value_name = plan.source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::ProducerPublicationOperand,
+      .source_kind = PreparedValueFreshnessSourceKind::ProducerRematerialization,
+      .proof_kind = PreparedValueFreshnessProofKind::SameBlockBeforeUse,
+      .rank = PreparedValueFreshnessSourceRank::ProducerRematerialization,
+      .reference =
+          PreparedValueFreshnessSourceReference{
+              .block_label = plan.source_producer_block_label,
+              .instruction_index = *plan.source_producer_instruction_index,
+          },
+  });
+  const PreparedValueFreshnessQuery query{
+      .value_id = plan.source_value_id,
+      .value_name = plan.source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::ProducerPublicationOperand,
+      .candidates = plan.source_freshness_authorities,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  plan.source_freshness_status = selected.status;
+  if (prepared_value_freshness_query_selected(selected)) {
+    plan.source_freshness_authority = *selected.authority;
+  }
+}
+
 [[nodiscard]] bool prepared_source_producer_matches_store_value(
     const PreparedEdgePublicationSourceProducer& producer,
     const bir::Value& value,
@@ -6426,6 +6462,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
     plan.pointer_base_stack_offset_bytes = inputs.pointer_base_home->offset_bytes;
   }
 
+  publish_store_source_producer_freshness_authority(plan);
   return plan;
 }
 

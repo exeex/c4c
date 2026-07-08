@@ -223,6 +223,7 @@ struct PreparedValueFreshnessSourceReference {
   const PreparedCallPreservedValue* preservation = nullptr;
   const PreparedMoveBundle* move_bundle = nullptr;
   const PreparedMoveResolution* move = nullptr;
+  std::optional<BlockLabelId> block_label;
   std::optional<std::size_t> block_index;
   std::optional<std::size_t> instruction_index;
   std::optional<std::size_t> abi_index;

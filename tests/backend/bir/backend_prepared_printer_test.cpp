@@ -7623,6 +7623,11 @@ int main() {
                        "block=entry inst=4 source=derived.seed status=available "
                        "intent=store_local_publication source_producer=binary "
                        "source_producer_block=entry source_producer_inst=3 "
+                       "source_freshness_status=selected "
+                       "source_freshness_authority=producer_rematerialization "
+                       "source_freshness_use=producer_publication_operand "
+                       "source_freshness_proof=same_block_before_use "
+                       "source_freshness_rank=producer_rematerialization "
                        "source_load_local=no source_load_global=no source_cast=no "
                        "source_binary=yes source_select=no direct_global_select_chain=no "
                        "direct_global_root_is_select=no",
@@ -7666,6 +7671,11 @@ int main() {
                        "block=entry inst=2 source=selected.arg status=available "
                        "intent=store_local_publication source_producer=select_materialization "
                        "source_producer_block=entry source_producer_inst=1 "
+                       "source_freshness_status=selected "
+                       "source_freshness_authority=producer_rematerialization "
+                       "source_freshness_use=producer_publication_operand "
+                       "source_freshness_proof=same_block_before_use "
+                       "source_freshness_rank=producer_rematerialization "
                        "source_load_local=no source_load_global=no source_cast=no "
                        "source_binary=no source_select=yes direct_global_select_chain=yes "
                        "direct_global_root_is_select=yes direct_global_root_inst=1",

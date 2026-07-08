@@ -1956,6 +1956,10 @@ struct PreparedStoreSourcePublicationPlan {
   const bir::CastInst* source_cast = nullptr;
   const bir::BinaryInst* source_binary = nullptr;
   const bir::SelectInst* source_select = nullptr;
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
 
   std::optional<bir::Value> recovered_source_value;
   std::optional<std::size_t> recovered_source_instruction_index;

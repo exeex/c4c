@@ -1,43 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/587_prepared_value_freshness_authority_mvp.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish And Consume Move-Bundle Source Freshness
+Current Step ID: 5
+Current Step Title: Add Producer/Publication Operand Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 corrected the reviewed move-bundle source-freshness drift. The shared
-move-bundle consumer no longer manufactures selected freshness from the
-consumed `PreparedMoveBundle`/`PreparedMoveResolution` alone. Default
-classification builds source-freshness candidates only from complete
-source-side value-home facts supplied through `PreparedValueHomeLookups`, and
-explicit candidate classification rejects `MoveBundleSource` candidates whose
-only proof is the consumed move bundle.
+Step 5 added producer/publication operand freshness coverage for the existing
+store-source publication route. `PreparedStoreSourcePublicationPlan` now
+publishes `ProducerPublicationOperand` freshness candidates from already
+validated same-block source-producer facts and selects them through
+`find_prepared_value_freshness_authority`.
 
-Focused shared and RV64 coverage now proves that a destination-valid move
-bundle with `from_value_id` but no independent source freshness fails closed,
-while the same shape is accepted when a complete direct source home is visible.
-Injected missing, invalid, ambiguous, and wrong-kind candidate coverage remains
-as helper/query coverage.
+Prepared dumps now expose the selected freshness status and authority on
+store-source publication rows. Focused printer coverage proves selected
+`producer_rematerialization` authority for the binary store-local publication
+route and for the select-materialization direct-global publication route.
 
 ## Suggested Next
 
-Proceed to Step 5: wire the next MVP prepared object or publication consumer
-through the shared freshness query, preserving fail-closed behavior for
-unknown, incomplete, ambiguous, or stale authority.
+Proceed to Step 6: inventory AArch64, x86, RV64, and nearby shared-prealloc
+consumers that remain unwired, wiring only a narrow path if the MVP authority
+already proves freshness without new semantic producer analysis.
 
 ## Watchouts
 
 - Do not claim progress through expectation rewrites, unsupported-marker edits,
   allowlist changes, or named-testcase shortcuts.
-- Do not reintroduce source freshness derived only from raw `from_value_id`,
-  destination bundle validity, or the consumed move-bundle record.
-- The representative RV64 object route already passes
-  `lookups.value_homes` into the shared move-bundle classifier; incomplete
-  source homes can now fail with shared
-  `MissingMoveBundleSourceFreshness` before RV64-local shape diagnostics.
+- Store-source publication freshness is currently wired only for validated
+  same-block source producers on available store-source publication plans.
+- Nearby unwired operand families for closure inventory: edge-publication move
+  consumers, dependency operand authorities, select-carrier alias authorities,
+  branch stack-load authorities, typed stack-source publications, recovered
+  narrow store-source publication helpers, and pending store-global publication
+  runs.
 - Producer rematerialization and explicit publication rank above older
   PriorPreservation through the shared query; target consumers should follow
   the selected authority rather than reimplementing rank ordering.
