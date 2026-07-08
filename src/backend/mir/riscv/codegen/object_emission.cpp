@@ -1114,6 +1114,39 @@ std::optional<std::uint32_t> rv64_unoccupied_temporary_gpr(
   return std::nullopt;
 }
 
+std::optional<std::uint32_t> rv64_unoccupied_temporary_gpr_avoiding(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::uint32_t reserved_register) {
+  const auto candidate = rv64_unoccupied_temporary_gpr(lookups);
+  if (candidate.has_value() && *candidate != reserved_register) {
+    return candidate;
+  }
+  constexpr std::array<std::uint32_t, 3> candidates = {6, 7, 28};  // t1, t2, t3
+  for (const auto fallback : candidates) {
+    if (fallback == reserved_register) {
+      continue;
+    }
+    bool occupied = false;
+    if (lookups != nullptr) {
+      for (const auto& home_entry : lookups->value_homes.homes_by_id) {
+        const auto* home = home_entry.second;
+        if (home == nullptr) {
+          continue;
+        }
+        const auto home_register = gpr_register_number_for_home(*home);
+        if (home_register.has_value() && *home_register == fallback) {
+          occupied = true;
+          break;
+        }
+      }
+    }
+    if (!occupied) {
+      return fallback;
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
@@ -5313,6 +5346,165 @@ fragment_for_prepared_pointer_result_frame_address_materialization(
           result_register,
           *destination_stack_offset,
           8)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
+std::optional<unsigned> rv64_narrow_integer_bit_width(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I8:
+      return 8;
+    case c4c::backend::bir::TypeKind::I16:
+      return 16;
+    default:
+      return std::nullopt;
+  }
+}
+
+void append_rv64_zero_extend_narrow_gpr(RiscvEncodedFragment& fragment,
+                                        std::uint32_t destination,
+                                        std::uint32_t source,
+                                        unsigned bit_width) {
+  const auto shift = static_cast<std::int32_t>(64 - bit_width);
+  append_le32(fragment.bytes,
+              encode_i_type(0x13, destination, 1, source, shift));
+  append_le32(fragment.bytes,
+              encode_i_type(0x13, destination, 5, destination, shift));
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_narrow_bitfield_binary(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::BinaryInst& binary,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+
+  const auto bit_width = rv64_narrow_integer_bit_width(binary.result.type);
+  if (!bit_width.has_value() ||
+      binary.operand_type != binary.result.type ||
+      binary.lhs.type != binary.result.type ||
+      (binary.opcode != bir::BinaryOpcode::LShr &&
+       binary.opcode != bir::BinaryOpcode::Shl &&
+       binary.opcode != bir::BinaryOpcode::And &&
+       binary.opcode != bir::BinaryOpcode::Or)) {
+    return std::nullopt;
+  }
+  if ((binary.opcode == bir::BinaryOpcode::And ||
+       binary.opcode == bir::BinaryOpcode::Or) &&
+      binary.rhs.type != binary.result.type) {
+    return std::nullopt;
+  }
+
+  const auto result_size_bytes =
+      rv64_scalar_memory_size_for_type(binary.result.type);
+  if (!result_size_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto* destination_home =
+      prepared_value_home_for(names, lookups, binary.result);
+  const auto destination =
+      destination_home == nullptr
+          ? std::nullopt
+          : gpr_register_number_for_home(*destination_home);
+  const auto destination_stack_offset =
+      destination_home == nullptr
+          ? std::nullopt
+          : prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                     *destination_home,
+                                                     stack_frame_bytes,
+                                                     *result_size_bytes);
+  if (!destination.has_value() && !destination_stack_offset.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratch =
+      destination.has_value() ? destination : rv64_unoccupied_temporary_gpr(lookups);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          *scratch,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          binary.lhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_rv64_zero_extend_narrow_gpr(fragment, *scratch, *scratch, *bit_width);
+  if (binary.opcode == bir::BinaryOpcode::LShr ||
+      binary.opcode == bir::BinaryOpcode::Shl) {
+    const auto shift = integer_immediate_for_value(names, lookups, binary.rhs);
+    if (!shift.has_value() || *shift < 0 ||
+        *shift >= static_cast<std::int64_t>(*bit_width)) {
+      return std::nullopt;
+    }
+    append_le32(fragment.bytes,
+                encode_i_type(0x13,
+                              *scratch,
+                              binary.opcode == bir::BinaryOpcode::LShr ? 5 : 1,
+                              *scratch,
+                              static_cast<std::int32_t>(*shift)));
+    append_rv64_zero_extend_narrow_gpr(fragment, *scratch, *scratch, *bit_width);
+    if (destination_stack_offset.has_value() &&
+        !append_rv64_store_register_to_stack_offset(fragment,
+                                                   *scratch,
+                                                   *destination_stack_offset,
+                                                   *result_size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
+
+  const std::uint32_t funct3 =
+      binary.opcode == bir::BinaryOpcode::And ? 7U : 6U;
+  const auto rhs_immediate = integer_immediate_for_value(names, lookups, binary.rhs);
+  if (rhs_immediate.has_value() &&
+      fits_signed_12_bit_immediate(*rhs_immediate)) {
+    append_le32(fragment.bytes,
+                encode_i_type(0x13,
+                              *scratch,
+                              funct3,
+                              *scratch,
+                              static_cast<std::int32_t>(*rhs_immediate)));
+    append_rv64_zero_extend_narrow_gpr(fragment, *scratch, *scratch, *bit_width);
+    if (destination_stack_offset.has_value() &&
+        !append_rv64_store_register_to_stack_offset(fragment,
+                                                   *scratch,
+                                                   *destination_stack_offset,
+                                                   *result_size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
+  const auto rhs_scratch =
+      rv64_unoccupied_temporary_gpr_avoiding(lookups, *scratch);
+  if (!rhs_scratch.has_value() ||
+      !append_rv64_move_value_to_register(fragment,
+                                          *rhs_scratch,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          binary.rhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_rv64_zero_extend_narrow_gpr(fragment,
+                                     *rhs_scratch,
+                                     *rhs_scratch,
+                                     *bit_width);
+  append_le32(fragment.bytes,
+              encode_r_type(0x33, *scratch, funct3, *scratch, *rhs_scratch, 0));
+  append_rv64_zero_extend_narrow_gpr(fragment, *scratch, *scratch, *bit_width);
+  if (destination_stack_offset.has_value() &&
+      !append_rv64_store_register_to_stack_offset(fragment,
+                                                 *scratch,
+                                                 *destination_stack_offset,
+                                                 *result_size_bytes)) {
     return std::nullopt;
   }
   return fragment;
@@ -10268,6 +10460,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
             fragment.has_value()) {
           return fragment;
         }
+      }
+      if (auto fragment =
+              fragment_for_prepared_narrow_bitfield_binary(prepared.stack_layout,
+                                                           prepared.names,
+                                                           &lookups,
+                                                           *binary,
+                                                           stack_frame_bytes);
+          fragment.has_value()) {
+        return fragment;
       }
       auto fragment = fragment_for_prepared_binary(prepared.stack_layout,
                                                    prepared.names,

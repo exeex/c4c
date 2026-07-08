@@ -7817,6 +7817,68 @@ prepare::PreparedBirModule make_prepared_scalar_binary_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_narrow_bitfield_binary_module(
+    bir::BinaryOpcode opcode,
+    bir::TypeKind type,
+    bir::Value rhs) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%bf.unit");
+  const auto result_name = prepared.names.value_names.intern("%bf.result");
+  const auto rhs_name = rhs.kind == bir::Value::Kind::Named
+                            ? prepared.names.value_names.intern(rhs.name)
+                            : c4c::kInvalidValueName;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = opcode,
+                  .result = bir::Value::named(type, "%bf.result"),
+                  .operand_type = type,
+                  .lhs = bir::Value::named(type, "%bf.unit"),
+                  .rhs = std::move(rhs),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(type, "%bf.result");
+
+  const std::size_t size_bytes = type == bir::TypeKind::I8 ? 1 : 2;
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = type,
+      .return_size_bytes = size_bytes,
+      .return_align_bytes = size_bytes,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  auto homes = std::vector<prepare::PreparedValueHome>{
+      rv64_gpr_home(1, function_name, lhs_name, "t0", 5),
+      rv64_gpr_home(2, function_name, result_name, "s2", 18),
+  };
+  if (rhs_name != c4c::kInvalidValueName) {
+    homes.push_back(rv64_gpr_home(3, function_name, rhs_name, "s1", 9));
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = std::move(homes),
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
     bir::BinaryOpcode pointer_opcode = bir::BinaryOpcode::Add) {
   prepare::PreparedBirModule prepared;
@@ -18303,6 +18365,376 @@ int reports_generic_fallback_context_for_prepared_traversal_instruction() {
       });
 }
 
+bool rv64_i_type_matches(std::uint32_t word,
+                         unsigned rd,
+                         unsigned funct3,
+                         unsigned rs1,
+                         std::int32_t imm) {
+  return (word & 0x7fU) == 0x13U && riscv_rd(word) == rd &&
+         ((word >> 12) & 0x7U) == funct3 && riscv_rs1(word) == rs1 &&
+         riscv_i_imm(word) == imm;
+}
+
+bool rv64_r_type_matches(std::uint32_t word,
+                         unsigned rd,
+                         unsigned funct3,
+                         unsigned rs1,
+                         unsigned rs2) {
+  return (word & 0x7fU) == 0x33U && riscv_rd(word) == rd &&
+         ((word >> 12) & 0x7U) == funct3 && riscv_rs1(word) == rs1 &&
+         riscv_rs2(word) == rs2;
+}
+
+int builds_prepared_narrow_bitfield_lshr_immediate_objects() {
+  struct Case {
+    bir::TypeKind type;
+    bir::Value rhs;
+    std::int32_t zext_shift;
+    std::int32_t value_shift;
+    const char* name;
+  };
+  const Case cases[] = {
+      {bir::TypeKind::I8, bir::Value::immediate_i8(4), 56, 4, "i8"},
+      {bir::TypeKind::I16, bir::Value::immediate_i16(5), 48, 5, "i16"},
+  };
+  for (const auto& test_case : cases) {
+    const auto prepared = make_prepared_narrow_bitfield_binary_module(
+        bir::BinaryOpcode::LShr, test_case.type, test_case.rhs);
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      const auto result =
+          rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+      return fail(std::string{"expected prepared narrow bitfield lshr "} +
+                  test_case.name + " object to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    const auto* main_symbol = object::find_symbol(*module, "main");
+    if (text == nullptr || main_symbol == nullptr || text->bytes.size() < 32) {
+      return fail(std::string{"expected prepared narrow bitfield lshr "} +
+                  test_case.name + " object text/main");
+    }
+    if (!is_rv64_mv(read_u32(text->bytes, 0), 18, 5) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 4),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 8),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 12),
+                             18,
+                             5,
+                             18,
+                             test_case.value_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 16),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 20),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !is_rv64_mv(read_u32(text->bytes, 24), 10, 18) ||
+        read_u32(text->bytes, 28) != 0x00008067) {
+      return fail(std::string{"expected prepared narrow bitfield lshr "} +
+                  test_case.name + " zero-extend/shift/return sequence");
+    }
+    if (!module->relocations.empty()) {
+      return fail(std::string{"expected narrow bitfield lshr "} +
+                  test_case.name + " object to need no relocations");
+    }
+  }
+
+  auto stack_result = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::LShr, bir::TypeKind::I16, bir::Value::immediate_i32(5));
+  const auto function_name = stack_result.names.function_names.find("main");
+  const auto result_name = stack_result.names.value_names.find("%bf.result");
+  stack_result.value_locations.functions[0].value_homes[1] =
+      rv64_i16_stack_slot_home(2,
+                               function_name,
+                               result_name,
+                               prepare::PreparedFrameSlotId{44},
+                               0);
+  stack_result.stack_layout.frame_size_bytes = 8;
+  stack_result.stack_layout.frame_alignment_bytes = 8;
+  stack_result.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{44},
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 2,
+      .align_bytes = 2,
+  });
+  const auto stack_module =
+      rv64::build_rv64_prepared_text_object_module(stack_result);
+  if (!stack_module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(
+            stack_result);
+    return fail("expected prepared narrow bitfield lshr stack result object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* stack_text = object::find_section(*stack_module, ".text");
+  if (stack_text == nullptr || stack_text->bytes.empty()) {
+    return fail("expected prepared narrow bitfield lshr stack result object text");
+  }
+  bool found_halfword_store = false;
+  for (std::size_t offset = 0; offset + 4 <= stack_text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(stack_text->bytes, offset);
+    if ((word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == 1U &&
+        riscv_rs1(word) == 2U) {
+      found_halfword_store = true;
+      break;
+    }
+  }
+  if (!found_halfword_store) {
+    return fail("expected prepared narrow bitfield lshr stack result to publish a halfword store");
+  }
+  if (!stack_module->relocations.empty()) {
+    return fail("expected narrow bitfield lshr stack result object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_narrow_bitfield_shl_immediate_objects() {
+  struct Case {
+    bir::TypeKind type;
+    bir::Value rhs;
+    std::int32_t zext_shift;
+    std::int32_t value_shift;
+    const char* name;
+  };
+  const Case cases[] = {
+      {bir::TypeKind::I8, bir::Value::immediate_i32(5), 56, 5, "i8"},
+      {bir::TypeKind::I16, bir::Value::immediate_i32(5), 48, 5, "i16"},
+  };
+  for (const auto& test_case : cases) {
+    const auto prepared = make_prepared_narrow_bitfield_binary_module(
+        bir::BinaryOpcode::Shl, test_case.type, test_case.rhs);
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      const auto result =
+          rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+      return fail(std::string{"expected prepared narrow bitfield shl "} +
+                  test_case.name + " object to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    const auto* main_symbol = object::find_symbol(*module, "main");
+    if (text == nullptr || main_symbol == nullptr || text->bytes.size() < 32) {
+      return fail(std::string{"expected prepared narrow bitfield shl "} +
+                  test_case.name + " object text/main");
+    }
+    if (!is_rv64_mv(read_u32(text->bytes, 0), 18, 5) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 4),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 8),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 12),
+                             18,
+                             1,
+                             18,
+                             test_case.value_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 16),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 20),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !is_rv64_mv(read_u32(text->bytes, 24), 10, 18) ||
+        read_u32(text->bytes, 28) != 0x00008067) {
+      return fail(std::string{"expected prepared narrow bitfield shl "} +
+                  test_case.name + " zero-extend/shift/return sequence");
+    }
+    if (!module->relocations.empty()) {
+      return fail(std::string{"expected narrow bitfield shl "} +
+                  test_case.name + " object to need no relocations");
+    }
+  }
+  return 0;
+}
+
+int builds_prepared_narrow_bitfield_and_clear_objects() {
+  struct Case {
+    bir::TypeKind type;
+    bir::Value rhs;
+    std::int32_t zext_shift;
+    const char* name;
+  };
+  const Case cases[] = {
+      {bir::TypeKind::I8, bir::Value::immediate_i8(-8), 56, "i8"},
+      {bir::TypeKind::I16, bir::Value::immediate_i16(-8), 48, "i16"},
+  };
+  for (const auto& test_case : cases) {
+    const auto prepared = make_prepared_narrow_bitfield_binary_module(
+        bir::BinaryOpcode::And, test_case.type, test_case.rhs);
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      const auto result =
+          rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+      return fail(std::string{"expected prepared narrow bitfield and "} +
+                  test_case.name + " object to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    const auto* main_symbol = object::find_symbol(*module, "main");
+    if (text == nullptr || main_symbol == nullptr || text->bytes.size() < 32) {
+      return fail(std::string{"expected prepared narrow bitfield and "} +
+                  test_case.name + " object text/main");
+    }
+    if (!is_rv64_mv(read_u32(text->bytes, 0), 18, 5) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 4),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 8),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 12), 18, 7, 18, -8) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 16),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 20),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !is_rv64_mv(read_u32(text->bytes, 24), 10, 18) ||
+        read_u32(text->bytes, 28) != 0x00008067) {
+      return fail(std::string{"expected prepared narrow bitfield and "} +
+                  test_case.name + " zero-extend/clear/return sequence");
+    }
+    if (!module->relocations.empty()) {
+      return fail(std::string{"expected narrow bitfield and "} +
+                  test_case.name + " object to need no relocations");
+    }
+  }
+  return 0;
+}
+
+int builds_prepared_narrow_bitfield_or_recombine_objects() {
+  const auto prepared = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::Or,
+      bir::TypeKind::I16,
+      bir::Value::named(bir::TypeKind::I16, "%bf.value"));
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared narrow bitfield or recombine object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr || text->bytes.size() < 44) {
+    return fail("expected prepared narrow bitfield or recombine object text/main");
+  }
+  if (!is_rv64_mv(read_u32(text->bytes, 0), 18, 5) ||
+      !rv64_i_type_matches(read_u32(text->bytes, 4), 18, 1, 18, 48) ||
+      !rv64_i_type_matches(read_u32(text->bytes, 8), 18, 5, 18, 48) ||
+      !is_rv64_mv(read_u32(text->bytes, 12), 6, 9) ||
+      !rv64_i_type_matches(read_u32(text->bytes, 16), 6, 1, 6, 48) ||
+      !rv64_i_type_matches(read_u32(text->bytes, 20), 6, 5, 6, 48) ||
+      !rv64_r_type_matches(read_u32(text->bytes, 24), 18, 6, 18, 6) ||
+      !rv64_i_type_matches(read_u32(text->bytes, 28), 18, 1, 18, 48) ||
+      !rv64_i_type_matches(read_u32(text->bytes, 32), 18, 5, 18, 48) ||
+      !is_rv64_mv(read_u32(text->bytes, 36), 10, 18) ||
+      read_u32(text->bytes, 40) != 0x00008067) {
+    return fail("expected prepared narrow bitfield or recombine lowering sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected narrow bitfield or recombine object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_narrow_bitfield_binary_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+
+  auto pointer_result = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::LShr, bir::TypeKind::I8, bir::Value::immediate_i8(4));
+  auto* binary = std::get_if<bir::BinaryInst>(
+      &pointer_result.module.functions[0].blocks[0].insts[0]);
+  if (binary == nullptr) {
+    return fail("expected narrow bitfield fixture to contain BinaryInst");
+  }
+  binary->result = bir::Value::named(bir::TypeKind::Ptr, "%bf.result");
+  binary->operand_type = bir::TypeKind::Ptr;
+  binary->lhs = bir::Value::named(bir::TypeKind::Ptr, "%bf.unit");
+  if (expect_prepared_rejection_diagnostic(pointer_result, diagnostic) != 0) {
+    return 1;
+  }
+
+  auto mismatched_lshr_rhs = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::LShr,
+      bir::TypeKind::I8,
+      bir::Value::named(bir::TypeKind::I8, "%bf.shift"));
+  binary = std::get_if<bir::BinaryInst>(
+      &mismatched_lshr_rhs.module.functions[0].blocks[0].insts[0]);
+  if (binary == nullptr) {
+    return fail("expected narrow bitfield fixture to contain BinaryInst");
+  }
+  binary->rhs = bir::Value::named(bir::TypeKind::I32, "%bf.shift");
+  if (expect_prepared_rejection_diagnostic(mismatched_lshr_rhs, diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  auto mismatched_and_rhs = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::And,
+      bir::TypeKind::I8,
+      bir::Value::named(bir::TypeKind::I8, "%bf.mask"));
+  binary = std::get_if<bir::BinaryInst>(
+      &mismatched_and_rhs.module.functions[0].blocks[0].insts[0]);
+  if (binary == nullptr) {
+    return fail("expected narrow bitfield fixture to contain BinaryInst");
+  }
+  binary->rhs = bir::Value::named(bir::TypeKind::I32, "%bf.mask");
+  if (expect_prepared_rejection_diagnostic(mismatched_and_rhs, diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  auto mismatched_or_rhs = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::Or,
+      bir::TypeKind::I16,
+      bir::Value::named(bir::TypeKind::I16, "%bf.value"));
+  binary = std::get_if<bir::BinaryInst>(
+      &mismatched_or_rhs.module.functions[0].blocks[0].insts[0]);
+  if (binary == nullptr) {
+    return fail("expected narrow bitfield fixture to contain BinaryInst");
+  }
+  binary->rhs = bir::Value::named(bir::TypeKind::I32, "%bf.value");
+  if (expect_prepared_rejection_diagnostic(mismatched_or_rhs, diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_scalar_divrem_object() {
   struct Case {
     bir::BinaryOpcode opcode;
@@ -24950,6 +25382,11 @@ int main() {
   status |= builds_prepared_scalar_ashr_i64_immediate_object();
   status |= rejects_prepared_scalar_ashr_invalid_immediate_object();
   status |= reports_generic_fallback_context_for_prepared_traversal_instruction();
+  status |= builds_prepared_narrow_bitfield_lshr_immediate_objects();
+  status |= builds_prepared_narrow_bitfield_shl_immediate_objects();
+  status |= builds_prepared_narrow_bitfield_and_clear_objects();
+  status |= builds_prepared_narrow_bitfield_or_recombine_objects();
+  status |= rejects_prepared_narrow_bitfield_binary_fail_closed_shapes();
   status |= builds_prepared_scalar_divrem_object();
   status |= builds_prepared_scalar_f64_binary_object();
   status |= builds_prepared_scalar_f32_binary_object();
