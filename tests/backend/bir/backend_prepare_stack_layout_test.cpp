@@ -6710,6 +6710,28 @@ int check_branch_stack_load_authority_contract() {
       accepted_condition.stack_align_bytes != condition_home.align_bytes) {
     return fail("expected explicit branch stack-load authority for scalar condition");
   }
+  if (!accepted_condition.source_freshness_authority.has_value() ||
+      accepted_condition.source_freshness_authorities.size() != 1 ||
+      accepted_condition.source_freshness_authority->value_id !=
+          condition_home.value_id ||
+      accepted_condition.source_freshness_authority->value_name !=
+          condition_name ||
+      accepted_condition.source_freshness_authority->use_kind !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      accepted_condition.source_freshness_authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot ||
+      accepted_condition.source_freshness_authority->proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering ||
+      accepted_condition.source_freshness_authority->rank !=
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot ||
+      accepted_condition.source_freshness_authority->reference.home !=
+          &condition_home ||
+      accepted_condition.source_freshness_authority->reference.block_index !=
+          branch_block_index ||
+      accepted_condition.source_freshness_authority->reference.instruction_index !=
+          branch_terminator_instruction_index) {
+    return fail("expected scalar condition branch freshness to select the branch terminator stack slot source");
+  }
 
   const auto missing_policy =
       prepare::plan_prepared_branch_stack_load_authority({
@@ -7335,7 +7357,17 @@ int check_branch_stack_load_authority_contract() {
                 "function=branch_stack_load_collector block=entry "
                 "role=condition value=%cmp value_id=7 "
                 "policy=load_from_stack_slot "
-                "pointer_status=not_pointer status=available slot=#11 "
+                "pointer_status=not_pointer status=available "
+                "source_freshness_status=selected "
+                "source_freshness_candidates=1 "
+                "source_freshness_authority=branch_stack_slot "
+                "source_freshness_value=%cmp "
+                "source_freshness_value_id=7 "
+                "source_freshness_use=branch_stack_load_source "
+                "source_freshness_proof=branch_terminator_ordering "
+                "source_freshness_rank=branch_stack_slot "
+                "source_freshness_ref_block=0 "
+                "source_freshness_ref_inst=0 slot=#11 "
                 "object=#11 stack_offset=88 size=4 align=4") ==
       std::string::npos) {
     return fail("expected prepared dump to expose condition stack-load row");
@@ -7343,7 +7375,9 @@ int check_branch_stack_load_authority_contract() {
   if (dump.find("branch_stack_load_authority "
                 "function=branch_stack_load_collector block=entry "
                 "role=lhs value=%lhs value_id=6 policy=none "
-                "pointer_status=unknown status=missing_policy slot=#10 "
+                "pointer_status=unknown status=missing_policy "
+                "source_freshness_status=no_candidate "
+                "source_freshness_candidates=0 slot=#10 "
                 "object=#10 stack_offset=80 size=8 align=8") ==
       std::string::npos) {
     return fail("expected prepared dump to expose lhs stack-load row");

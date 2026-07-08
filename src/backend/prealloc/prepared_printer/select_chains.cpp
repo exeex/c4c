@@ -586,6 +586,11 @@ void append_branch_stack_load_authorities(std::ostringstream& out,
                authority.pointer_status)
         << " status="
         << prepared_branch_stack_load_authority_status_name(authority.status);
+    append_source_freshness(out,
+                            module,
+                            authority.source_freshness_status,
+                            authority.source_freshness_authorities,
+                            authority.source_freshness_authority);
     if (authority.slot_id.has_value()) {
       out << " slot=#" << *authority.slot_id;
     }
