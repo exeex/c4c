@@ -1,6 +1,6 @@
 # RV64 gcc_torture 1000-Pass Recovery Umbrella
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and follow-up idea generator
 Parent: `ideas/closed/420_rv64_gcc_torture_post_contract_umbrella.md`
 Handoff Directory: `docs/rv64_gcc_torture_1000_pass_recovery/`
@@ -21,6 +21,74 @@ Related:
 - `ideas/closed/600_pointer_value_memory_use_freshness_authority.md`
 - `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
 - `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+
+## Closure Note
+
+Closed on 2026-07-08 after completing the umbrella handoff and follow-up idea
+generation. The authoritative scan evidence used for closure is
+`scripts/check_progress_rv64_gcc_c_torture_backend.sh` at `1467` total,
+`470` passed, `997` failed, and `0` missing. No newer scan superseded the
+`470/1467` result during this umbrella.
+
+The remaining failures were bucketed by first owner and capability family in
+`docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`, using the
+summary TSV, failed-case list, per-case logs, first stopping diagnostics,
+object/runtime status, and source-case families. The high-yield route was then
+ranked in `high_yield_followup_plan.md` and sequenced in
+`dependency_order_to_1000.md`.
+
+The generated dependency-ordered follow-up queue is:
+
+1. `ideas/open/602_bir_local_memory_load_semantics.md`
+2. `ideas/open/603_bir_local_memory_store_semantics.md`
+3. `ideas/open/604_bir_local_memory_gep_address_semantics.md`
+4. `ideas/open/605_bir_local_memory_alloca_and_scalar_semantics.md`
+5. `ideas/open/606_bir_global_initializer_bootstrap.md`
+6. `ideas/open/607_destination_fan_in_authority_research.md`
+7. `ideas/open/608_prepared_global_data_authority.md`
+8. `ideas/open/609_rv64_global_data_consumer.md`
+9. `ideas/open/610_rv64_move_bundle_target_materialization.md`
+10. `ideas/open/611_rv64_terminator_fragment_lowering.md`
+11. `ideas/open/612_rv64_instruction_fragment_consumers.md`
+12. `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+13. `ideas/open/614_rv64_pointer_local_memory_consumption.md`
+14. `ideas/open/615_branch_stack_source_residual_audit.md`
+15. `ideas/open/616_select_publication_source_wiring.md`
+16. `ideas/open/617_scalar_compare_publication.md`
+17. `ideas/open/618_runtime_mismatch_ownership_investigation.md`
+
+The expected high-yield path to `1000+` starts with BIR local-memory producer
+repairs (`602` through `605`), then global initializer and global-data
+authority/consumer work (`606` through `609`), followed by RV64/MIR consumer
+fragments, ABI/stack-frame lowering, and residual publication/consumer fixes.
+The queue is ordered producer-before-consumer so RV64 target work does not
+bypass missing shared semantic authority.
+
+The closure handoff explicitly names architecture weak points that should not
+be forced into implementation without a clearer contract: destination fan-in
+authority (`607`), runtime mismatch ownership (`618`), prepared/global data
+authority boundaries, local-memory producer versus RV64 consumer ownership,
+ABI/stack-frame ownership, and residual branch/select/scalar publication
+boundaries. `607` and `618` are research or ownership-mapping gates before
+implementation.
+
+Deferred or quarantined families include F128 and floating tails, string and
+library calls, builtin/policy-heavy fragments, inline asm, environment-
+dependent runtime behavior, timeout-only rows, and low-breadth miscellaneous
+fragments. They are outside the first `1000+` route because the current
+evidence makes local-memory, global-data, RV64/MIR fragment, ABI, and
+ownership-mapping work higher leverage.
+
+Historical `349/1467`, `425/1467`, and `438/1467` counts remain movement
+markers only. Follow-up work should use the current `470/1467`, `997` failed,
+`0` missing evidence until a newer scan explicitly supersedes it.
+
+The recommended next lifecycle activation after this umbrella is
+`ideas/open/602_bir_local_memory_load_semantics.md`. If the supervisor wants to
+reduce architecture risk before implementation,
+`ideas/open/607_destination_fan_in_authority_research.md` is the early research
+gate, but it should not be treated as a replacement for the producer-first
+`602` route.
 
 ## Goal
 
