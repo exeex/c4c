@@ -1,6 +1,6 @@
 # Pointer Base Plus Offset Selected Authority
 
-Status: Open
+Status: Closed
 Type: Architecture contract and narrow implementation
 Parent: `ideas/closed/597_pointer_address_semantic_model_research.md`
 Related:
@@ -99,3 +99,67 @@ The closure note must answer:
 5. Which stale, wrong-value, wrong-delta, wrong-use, range-only, and
    target-shape-only cases fail closed?
 6. Which adjacent pointer/address families remain separate follow-ups?
+
+## Closure Notes
+
+Closed after the active runbook completed all five steps and the Step 5
+closure inventory answered every source-idea closure-note requirement.
+
+Audited consumers:
+shared prealloc producer/support surfaces around
+`PreparedValueHomeKind::PointerBasePlusOffset`,
+`PreparedPointerBasePlusOffsetFact`, `as_pointer_base_plus_offset_fact(...)`,
+`prepared_contract_verifier.*`, `decoded_home_storage.*`,
+`prepared_lookups.cpp`, `publication_plans.*`, prepared printer surfaces,
+formal/storage/call planning, and object traversal classification. Narrow
+target consumers were audited in RV64 edge publication/scalar/frame/object
+emission paths, AArch64 operand/memory/call paths, and x86 module lowering
+rejection paths.
+
+Selected authority dimensions:
+accepting a computed pointer use requires the exact computed result value
+id/name, source home kind `PointerBasePlusOffset`, base pointer value name,
+optional base symbol when present, byte delta, use kind, proof kind, source
+kind, rank, and store-source publication program point/reference. Home shape,
+byte delta, placement, range/encodability, target operand shape,
+diagnostics/dumps, and available store-source support facts remain
+insufficient.
+
+Freshness vocabulary:
+no existing call, move, producer, edge, branch, select-carrier, alias, or
+pointer-value memory-use freshness kind was reused. The route added
+`PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource`,
+`PreparedValueFreshnessSourceKind::PointerBasePlusOffset`,
+`PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority`, and
+`PreparedValueFreshnessSourceRank::PointerBasePlusOffset`.
+
+Representative consumer migrated:
+shared `PreparedStoreSourcePublicationPlan` /
+`plan_prepared_store_source_publication(...)` for a
+`PointerBasePlusOffset` source home, consumed target-side by AArch64
+`plan_pointer_base_plus_offset_store_local_publication(...)` /
+`lower_pointer_base_plus_offset_store_local_publication(...)`.
+
+Fail-closed proof:
+`backend_store_source_publication_plan_test` proves the good plan selects
+`PointerBasePlusOffsetSource` authority and
+`prepared_pointer_base_plus_offset_source_freshness_available(...)` rejects
+missing/no-candidate, ambiguous, stale/wrong-program-point, wrong-base,
+wrong-result/wrong-value, wrong-delta, wrong-use, wrong source/proof/rank,
+support-only, range-only, and target-shape-only evidence while store-source
+support facts can remain otherwise available.
+
+Separate follow-ups:
+pointer-value indirect memory-use freshness remains in idea 600. Semantic GEP
+target consumption, relocation/materialization semantics, broad
+RV64/AArch64/x86 target migration, AArch64 generic operand/call migration,
+x86 lowering/rejection migration, and RV64 edge/scalar/frame/object migration
+remain separate initiatives.
+
+Close validation:
+the plan-owner close gate used existing matching canonical backend logs and
+ran
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`;
+the guard passed with 346/346 before and 346/346 after. The hook full-suite
+baseline after Step 4 was also accepted by the supervisor with 3375/3375
+before and after.
