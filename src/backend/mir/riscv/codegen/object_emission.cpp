@@ -12164,12 +12164,11 @@ std::optional<std::string> rv64_prepared_object_data_admission_diagnostic(
       object_data.has_unsupported_marker || object_data.unsupported_but_coherent) {
     return "RV64 object route cannot emit unsupported-marker selected object-data";
   }
-  if (object_data.requires_relocation || object_data.has_relocation) {
-    return "RV64 object route cannot emit prepared relocation object data without relocation records";
-  }
-
   switch (object_data.section_kind) {
     case prepare::PreparedObjectDataSectionKind::Bss:
+      if (object_data.requires_relocation || object_data.has_relocation) {
+        return "RV64 object route cannot emit prepared relocations in bss object data";
+      }
       if (!object_data.requires_zero_fill || !object_data.has_zero_fill ||
           object_data.zero_fill_byte_count != object_data.object_size_bytes ||
           object_data.has_emitted_bytes || !object_data.emitted_bytes.empty()) {
@@ -12178,6 +12177,26 @@ std::optional<std::string> rv64_prepared_object_data_admission_diagnostic(
       return std::nullopt;
     case prepare::PreparedObjectDataSectionKind::ReadOnlyData:
     case prepare::PreparedObjectDataSectionKind::Data:
+      if (object_data.requires_relocation || object_data.has_relocation) {
+        if (!object_data.requires_relocation || !object_data.has_relocation ||
+            object_data.relocation_slots.empty()) {
+          return "RV64 object route missing prepared relocation records for object data";
+        }
+        if (object_data.requires_emitted_bytes) {
+          if (!object_data.has_emitted_bytes ||
+              object_data.emitted_bytes.size() != object_data.object_size_bytes) {
+            return "RV64 object route missing emitted-byte authority for prepared relocation object data";
+          }
+        } else if (object_data.has_emitted_bytes ||
+                   !object_data.emitted_bytes.empty()) {
+          return "RV64 object route has conflicting emitted-byte authority for prepared relocation object data";
+        }
+        if (object_data.requires_zero_fill || object_data.has_zero_fill ||
+            object_data.zero_fill_byte_count != 0) {
+          return "RV64 object route has conflicting zero-fill authority for prepared relocation object data";
+        }
+        return std::nullopt;
+      }
       if (!object_data.requires_emitted_bytes || !object_data.has_emitted_bytes ||
           object_data.emitted_bytes.size() != object_data.object_size_bytes ||
           object_data.has_zero_fill || object_data.zero_fill_byte_count != 0) {
@@ -12208,6 +12227,40 @@ object::SymbolBinding rv64_prepared_object_data_symbol_binding(
                                    : object::SymbolBinding::Local;
 }
 
+std::optional<std::string> attach_rv64_prepared_object_data_relocations(
+    object::ObjectModule& object_module,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    object::SectionId section,
+    std::uint64_t object_offset,
+    const prepare::PreparedGlobalObjectData& object_data) {
+  for (const auto& slot : object_data.relocation_slots) {
+    if (slot.size_bytes != 8) {
+      return "RV64 object route cannot emit prepared object-data relocation width " +
+             std::to_string(slot.size_bytes);
+    }
+    if (slot.target == c4c::kInvalidLinkName ||
+        slot.byte_offset > object_data.object_size_bytes ||
+        slot.size_bytes > object_data.object_size_bytes - slot.byte_offset) {
+      return "RV64 object route cannot emit invalid prepared object-data relocation slot";
+    }
+    const auto target_label = rv64_prepared_link_name_label(prepared, slot.target);
+    if (target_label.empty()) {
+      return "RV64 object route cannot emit unnamed prepared object-data relocation target";
+    }
+    const auto target_symbol = rv64_find_or_declare_relocation_symbol(
+        object_module,
+        target_label,
+        rv64_prepared_link_symbol_kind(prepared, slot.target));
+    object::attach_relocation(object_module,
+                              section,
+                              object_offset + slot.byte_offset,
+                              kRiscvReloc64,
+                              target_symbol,
+                              0);
+  }
+  return std::nullopt;
+}
+
 const prepare::PreparedGlobalObjectData*
 rv64_find_prepared_global_object_data_for_global(
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -12233,6 +12286,25 @@ bool rv64_has_concrete_prepared_object_data_for_label(
         !object_data.has_unsupported_marker &&
         !object_data.unsupported_but_coherent &&
         rv64_prepared_object_data_has_emission_identity(object_data)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool rv64_is_prepared_string_constant_object_symbol(
+    const c4c::backend::bir::Module& module,
+    std::string_view label,
+    std::uint64_t size_bytes) {
+  for (const auto& constant : module.string_constants) {
+    if (rv64_prepared_object_text_label(module, constant) != label) {
+      continue;
+    }
+    const auto emitted_size =
+        constant.bytes.empty() || constant.bytes.back() != 0
+            ? constant.bytes.size() + 1
+            : constant.bytes.size();
+    if (emitted_size == size_bytes) {
       return true;
     }
   }
@@ -12367,6 +12439,13 @@ std::optional<std::string> append_rv64_prepared_data_objects(
           existing->size_bytes == object_data->object_size_bytes) {
         continue;
       }
+      if (existing->binding == object::SymbolBinding::Local &&
+          existing->kind == object::SymbolKind::Object &&
+          existing->size_bytes == object_data->object_size_bytes &&
+          rv64_is_prepared_string_constant_object_symbol(
+              prepared.module, label, object_data->object_size_bytes)) {
+        continue;
+      }
       if (existing->binding != binding ||
           existing->kind != object::SymbolKind::Object) {
         return "unsupported_global_data: RV64 object route cannot emit duplicate prepared global symbol '" +
@@ -12383,6 +12462,16 @@ std::optional<std::string> append_rv64_prepared_data_objects(
     if (selected_zero_fill) {
       offset = object::reserve_section_bytes(*section,
                                              object_data->object_size_bytes);
+    } else if (object_data->requires_relocation || object_data->has_relocation) {
+      offset = object_data->emitted_bytes.empty()
+                   ? object::reserve_section_bytes(*section,
+                                                   object_data->object_size_bytes)
+                   : object::append_section_bytes(*section,
+                                                  object_data->emitted_bytes);
+      if (auto diagnostic = attach_rv64_prepared_object_data_relocations(
+              object_module, prepared, section->id, offset, *object_data)) {
+        return "unsupported_global_data: " + *diagnostic;
+      }
     } else if (symbol_pointer_label.has_value()) {
       std::vector<std::uint8_t> bytes;
       append_le64(bytes, 0);

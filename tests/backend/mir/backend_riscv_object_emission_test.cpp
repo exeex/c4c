@@ -22785,10 +22785,47 @@ int publishes_relocation_only_pointer_object_data_facts() {
       object_data->unsupported_but_coherent) {
     return fail("expected relocation-only prepared object-data authority");
   }
-  return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_global_data: RV64 object route cannot emit prepared "
-      "relocation object data without relocation records");
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit relocation-only object data");
+  }
+  const auto* data = object::find_section(*module, ".data");
+  const auto* object_symbol = object::find_symbol(*module, "cursor");
+  const auto* target_symbol = object::find_symbol(*module, "target_object");
+  if (data == nullptr || !data->writable || data->executable ||
+      data->align_bytes != 8 || !data->bytes.empty() ||
+      data->size_bytes != 8) {
+    return fail("expected relocation-only pointer object to reserve writable data");
+  }
+  if (object_symbol == nullptr ||
+      object_symbol->binding != object::SymbolBinding::Global ||
+      object_symbol->kind != object::SymbolKind::Object ||
+      object_symbol->section != std::optional<object::SectionId>{data->id} ||
+      object_symbol->value != 0 || object_symbol->size_bytes != 8) {
+    return fail("expected relocation-only pointer object symbol in data");
+  }
+  if (target_symbol == nullptr || target_symbol->section.has_value()) {
+    return fail("expected relocation-only pointer target to be undefined symbol");
+  }
+  const auto matching_relocation_count =
+      std::count_if(module->relocations.begin(),
+                    module->relocations.end(),
+                    [&](const object::RelocationRecord& relocation) {
+                      return relocation.section == data->id &&
+                             relocation.offset == 0 &&
+                             relocation.type == R_RISCV_64 &&
+                             relocation.symbol == target_symbol->id &&
+                             relocation.addend == 0;
+                    });
+  if (matching_relocation_count != 1) {
+    return fail("expected relocation-only pointer object R_RISCV_64 record");
+  }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object(prepared);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize relocation-only object data");
+  }
+  return 0;
 }
 
 int publishes_mixed_bytes_and_relocation_object_data_facts() {
@@ -22854,10 +22891,50 @@ int publishes_mixed_bytes_and_relocation_object_data_facts() {
       object_data->unsupported_but_coherent) {
     return fail("expected mixed prepared object-data authority");
   }
-  return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_global_data: RV64 object route cannot emit prepared "
-      "relocation object data without relocation records");
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit mixed relocation object data");
+  }
+  const auto* data = object::find_section(*module, ".data");
+  const auto* object_symbol = object::find_symbol(*module, "mixed_object");
+  const auto* target_symbol = object::find_symbol(*module, ".str0");
+  const std::vector<std::uint8_t> expected_bytes = {
+      static_cast<std::uint8_t>('4'), 0, 0, 0, 0, 0, 0, 0,
+      0,                          0, 0, 0, 0, 0, 0, 0};
+  if (data == nullptr || !data->writable || data->executable ||
+      data->align_bytes != 8 || data->bytes != expected_bytes ||
+      data->size_bytes != expected_bytes.size()) {
+    return fail("expected mixed object-data bytes in writable data");
+  }
+  if (object_symbol == nullptr ||
+      object_symbol->binding != object::SymbolBinding::Global ||
+      object_symbol->kind != object::SymbolKind::Object ||
+      object_symbol->section != std::optional<object::SectionId>{data->id} ||
+      object_symbol->value != 0 || object_symbol->size_bytes != 16) {
+    return fail("expected mixed relocation object symbol in data");
+  }
+  if (target_symbol == nullptr || target_symbol->section.has_value()) {
+    return fail("expected mixed relocation target to be undefined symbol");
+  }
+  const auto matching_relocation_count =
+      std::count_if(module->relocations.begin(),
+                    module->relocations.end(),
+                    [&](const object::RelocationRecord& relocation) {
+                      return relocation.section == data->id &&
+                             relocation.offset == 8 &&
+                             relocation.type == R_RISCV_64 &&
+                             relocation.symbol == target_symbol->id &&
+                             relocation.addend == 0;
+                    });
+  if (matching_relocation_count != 1) {
+    return fail("expected mixed object-data R_RISCV_64 record at prepared offset");
+  }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object(prepared);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize mixed relocation object data");
+  }
+  return 0;
 }
 
 int rejects_unsupported_selected_global_object_data_shapes() {
