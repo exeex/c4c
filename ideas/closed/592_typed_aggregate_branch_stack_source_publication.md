@@ -1,6 +1,6 @@
 # Typed/Aggregate Branch Stack-Source Publication
 
-Status: Open
+Status: Closed
 Type: Architecture contract and narrow producer migration
 Parent: `ideas/closed/590_branch_stack_load_freshness_contract.md`
 Related:
@@ -89,3 +89,41 @@ invent freshness at the consumer or rely on structural stack-home completion.
   branch stack-source publication contract is explicit and proven.
 - Reject retaining the exact idea-590 blocked state for pointer `Lhs`/`Rhs`
   behind a new abstraction name.
+
+## Closure Notes
+
+Closed after the active runbook completed Step 5 closure inventory.
+
+Completed:
+- Audited branch stack-load producer paths through
+  `collect_prepared_branch_stack_load_authorities`,
+  `collect_branch_stack_load_authority_for_role`,
+  `make_branch_stack_load_authority_record`, and
+  `plan_prepared_branch_stack_load_authority`.
+- Defined producer publication through
+  `PreparedBranchStackSourceFreshnessPublicationInputs` and
+  `publish_prepared_branch_stack_source_freshness_candidate`, requiring the
+  matching source value, `BranchStackLoadSource` use, `BranchStackSlot`
+  source, `BranchTerminatorOrdering` proof, `BranchStackSlot` rank, stack-slot
+  home, and exact branch block plus terminator instruction point.
+- Migrated pointer `PreparedBranchStackLoadRole::Lhs` from inventory-only
+  `policy=none` to selected `LoadFromStackSlot` authority gated by explicit
+  producer-published branch stack-slot freshness.
+- Preserved fail-closed behavior for missing, ambiguous, stale, wrong-value,
+  wrong-use, future-point, and stack-home-only authority.
+
+Deliberately left for follow-up ideas:
+- Pointer `Rhs`, aggregate-adjacent consumers, select consumers,
+  edge-publication consumers, RV64/AArch64/x86 target consumption or emission,
+  and target-local branch freshness inference remain out of scope.
+- Existing follow-ups
+  `ideas/open/593_rv64_branch_stack_source_freshness_consumption.md` and
+  `ideas/open/594_rv64_branch_stack_source_consumption_followup_from_593.md`
+  cover the RV64 consume-side queue after this producer contract.
+
+Closure validation:
+- Backend regression guard used canonical `test_before.log` and
+  `test_after.log`; both logs report 346/346 passing backend tests, and
+  non-decreasing regression comparison passed with no new failures.
+- Supervisor-provided validation context recorded hook-managed full-suite
+  baselines accepted at 3375/3375 after the code commits.
