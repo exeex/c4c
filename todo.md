@@ -45,10 +45,24 @@ Guard probes stayed on their prior owners:
 
 ## Suggested Next
 
-Next packet should either broaden Step 2 within ordinary same-module call
-authority to the `src/20000808-1.c` byval/outgoing-stack aggregate argument
-shape, or first run a focused residual scan if the supervisor wants a narrower
-same-authority call-result family before that larger aggregate-stack transport.
+Reviewer split verdict recorded in
+`review/613_step2_byval_outgoing_stack_slice_review.md`: the
+`src/20000808-1.c` byval/outgoing-stack aggregate argument shape is blocked by
+missing prepared destination stack offsets, which is producer authority outside
+idea 613.
+
+The producer gap is split to
+`ideas/open/624_prepared_outgoing_stack_argument_destination_offsets.md`.
+
+Continue idea 613 under Step 2 only with ordinary same-module call/result
+consumer rows whose prepared call/result facts already include the needed
+stack/register boundary authority. Before the next code packet, run a focused
+residual scan to select either:
+
+- another Step 2 ordinary call/result consumer family with complete prepared
+  facts, or
+- a no-breadth handoff to Step 3 stack-frame/return handling if no such Step 2
+  family remains.
 
 ## Watchouts
 
@@ -60,8 +74,9 @@ same-authority call-result family before that larger aggregate-stack transport.
 - `src/20000603-1.c` now stops at terminator lowering; do not claim it as fully
   backend-supported from this packet.
 - `src/20000808-1.c` is still ordinary same-module call ABI, but its
-  aggregate-address stack-copy plus outgoing stack-slot argument shape is wider
-  than this duplicate-materialization slice.
+  aggregate-address stack-copy plus outgoing stack-slot argument shape lacks
+  prepared destination stack offsets. Treat that as split producer work under
+  idea 624, not as immediate 613 consumer scope.
 
 ## Proof
 
