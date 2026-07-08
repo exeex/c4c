@@ -704,6 +704,17 @@
     },
     {
       "path": "src/backend/bir/lir_to_bir/lowering.hpp",
+      "symbol": "PendingScalarPhiProducerMap",
+      "pattern": "string-keyed-alias",
+      "owner": "backend-bir",
+      "domain": "current declaration-level string authority inventory",
+      "category": "route-local-identity",
+      "reason": "Current declaration-level string-keyed route-local table scoped to one lowering or analysis route; it must not become cross-route semantic authority.",
+      "removal_condition": "Remove or reclassify when the route has typed ids for this local identity.",
+      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/bir/lir_to_bir/lowering.hpp:512."
+    },
+    {
+      "path": "src/backend/bir/lir_to_bir/lowering.hpp",
       "symbol": "AggregateParamMap",
       "pattern": "string-keyed-alias",
       "owner": "backend-bir",
@@ -945,6 +956,17 @@
       "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/bir/lir_to_bir/memory/memory_types.hpp:185."
     },
     {
+      "path": "src/backend/bir/lir_to_bir/lowering.hpp",
+      "symbol": "BirFunctionLowerer::loaded_local_integer_pointer_values_",
+      "pattern": "string-keyed-container",
+      "owner": "backend-bir",
+      "domain": "current declaration-level string authority inventory",
+      "category": "route-local-identity",
+      "reason": "Current declaration-level string-keyed route-local table scoped to one lowering or analysis route; it must not become cross-route semantic authority.",
+      "removal_condition": "Remove or reclassify when the route has typed ids for this local identity.",
+      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/bir/lir_to_bir/lowering.hpp:1519."
+    },
+    {
       "path": "src/backend/mir/aarch64/codegen/emit.cpp",
       "symbol": "GenSlotMap::alloca_data",
       "pattern": "string-keyed-container",
@@ -1141,6 +1163,17 @@
       "reason": "Current declaration-level string-keyed route-local table scoped to one lowering or analysis route; it must not become cross-route semantic authority.",
       "removal_condition": "Remove or reclassify when the route has typed ids for this local identity.",
       "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/prealloc/stack_layout/alloca_coalescing.cpp:14."
+    },
+    {
+      "path": "src/backend/prealloc/stack_layout/alloca_coalescing.cpp",
+      "symbol": "SlotTypeMap",
+      "pattern": "string-keyed-alias",
+      "owner": "backend-prealloc",
+      "domain": "current declaration-level string authority inventory",
+      "category": "route-local-identity",
+      "reason": "Current declaration-level string-keyed route-local table scoped to one lowering or analysis route; it must not become cross-route semantic authority.",
+      "removal_condition": "Remove or reclassify when the route has typed ids for this local identity.",
+      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/prealloc/stack_layout/alloca_coalescing.cpp:16."
     },
     {
       "path": "src/backend/prealloc/stack_layout/alloca_coalescing.cpp",
