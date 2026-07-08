@@ -244,6 +244,13 @@ Completion check:
 Goal: demonstrate that this plan improved prepared/global authority without
 absorbing the later RV64/global consumer idea.
 
+Route status: complete. The handoff proof recorded accepted selected
+object-data movement for `src/921110-1.c`, parked Step 2 and Step 3 as
+non-moving evidence, and preserved RV64 relocation/global consumer work for
+`609`. This does not close the source idea because remaining selected
+object-data rows still need prepared mixed emitted-bytes plus relocation-slot
+authority before they can be marked coherent.
+
 Primary targets:
 - selected global object-data rows
 - selected prepared global memory facts rows
@@ -270,3 +277,35 @@ Completion check:
   `todo.md`, the remaining prepared stops are named precisely, and `609`
   remains the follow-up owner for RV64 global emission, relocation-record
   consumption, or access-width consumption.
+
+### Step 6: Represent mixed object-data bytes plus relocation slots
+
+Goal: make mixed aggregate object data publish prepared authority only when
+ordinary emitted bytes and relocation slots are both represented coherently.
+
+Primary targets:
+- `src/backend/prealloc/object_data.cpp`
+- `src/backend/prealloc/object_data.hpp`
+- `src/backend/prealloc/prepared_contract_verifier.cpp`
+- `src/backend/prealloc/prepared_contract_verifier.hpp`
+
+Actions:
+- Start from `src/20010924-1.c` and at least one neighboring selected
+  object-data row that still stops at the prepared contract diagnostic.
+- Capture the current `PreparedGlobalObjectData` facts before editing, with
+  emphasis on emitted byte spans, relocation slots, zero-fill, symbol identity,
+  extent, alignment, and unsupported-marker state.
+- Add or repair prepared object-data representation only for facts that are
+  present in BIR initializer/global layout evidence.
+- Preserve fail-closed diagnostics when a mixed aggregate cannot yet represent
+  both emitted bytes and relocation slots safely.
+- Keep RV64 byte emission, relocation-record emission, symbol materialization,
+  and access-width policy out of scope; those remain `609` consumer work once
+  prepared facts are coherent.
+
+Completion check:
+- At least one mixed selected object-data row moves past the prepared selected
+  object-data contract stop for a semantic prepared-authority reason, or the
+  executor returns evidence showing the remaining stop is not representable in
+  current prepared facts without a separate source idea. Nearby rows either
+  move for the same reason or retain precise fail-closed diagnostics.

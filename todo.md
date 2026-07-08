@@ -1,31 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/608_prepared_global_data_authority.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Prove prepared authority handoff and preserve the split
+Current Step ID: 6
+Current Step Title: Represent mixed object-data bytes plus relocation slots
 
 # Current Packet
 
 ## Just Finished
 
-- Completed Step 5 handoff proof for the accepted Step 4 movement.
-- Step 4 is accepted as complete enough to advance: relocation-only one-slot
-  pointer object data published prepared relocation-required/relocation-present
-  authority and moved `src/921110-1.c` past the prepared selected object-data
-  contract stop.
-- `src/20010924-1.c`, `src/pr61517.c`, `src/pr57877.c`, and
-  `src/pr57860.c` remain precise fail-closed prepared contract stops. The
-  mixed aggregate case is parked until prepared emitted bytes plus relocation
-  slots can be represented safely.
-- Remaining RV64 relocation-record consumption belongs to
-  `ideas/open/609_rv64_global_data_consumer.md`, not this plan.
+- Lifecycle review kept `608` active after Step 5 instead of closing it.
+- Step 5 is accepted as a handoff proof: `src/921110-1.c` moved past the
+  prepared selected object-data contract stop to the `609` RV64
+  relocation-record consumer diagnostic, while Step 2 and Step 3 remain parked
+  as non-moving evidence.
+- The source idea is still open because mixed selected object-data rows remain
+  precise prepared contract stops until ordinary emitted bytes plus relocation
+  slots can be represented coherently in prepared facts.
 
 ## Suggested Next
 
-- Supervisor should ask plan-owner whether to close, retire, or replace this
-  runbook. The active runbook has now recorded Step 2/3 blocked evidence and
-  Step 4 prepared-authority movement, while the remaining broad row movement is
-  either fail-closed prepared mixed object data or `609` consumer work.
+- Execute Step 6 evidence-first for mixed selected object-data authority.
+- Capture current prepared object-data facts for `src/20010924-1.c` plus at
+  least one neighboring selected object-data row that still stops at the
+  prepared contract diagnostic.
+- Edit only prepared object-data production or prepared contract verification
+  if evidence shows a missing 608-owned representation for emitted bytes plus
+  relocation slots. Stop and return evidence if the remaining issue requires
+  RV64 byte emission, relocation records, symbol materialization, or a separate
+  prepared-fact design idea.
 
 ## Watchouts
 
@@ -59,14 +61,13 @@ Current Step Title: Prove prepared authority handoff and preserve the split
   relocation object data without relocation records`. That is outside this
   executor packet and should stay with
   `ideas/open/609_rv64_global_data_consumer.md`.
-- Do not mark mixed aggregate object data coherent until both ordinary emitted
-  bytes and relocation slots can be represented as prepared facts.
-- Step 5 is a proof and handoff packet unless evidence reveals a small
-  608-owned prepared-authority gap that can move a row without touching RV64
-  consumer/emission policy.
 - Parked Step 2 and Step 3 evidence should stay as route notes: helper-only
   `ByteStorageAggregate` publication changed prepared dumps but did not move
   the exact prepared-memory or direct base-plus-offset diagnostics.
+- Do not mark mixed aggregate object data coherent unless both ordinary
+  emitted bytes and relocation slots are represented as prepared facts.
+- Do not move RV64 relocation-record production or byte emission into this
+  plan.
 
 ## Proof
 
@@ -84,3 +85,4 @@ Current Step Title: Prove prepared authority handoff and preserve the split
     object data without relocation records`, owned by `609`.
   - `src/20010924-1.c`, `src/pr61517.c`, `src/pr57877.c`,
     `src/pr57860.c`: precise prepared selected object-data contract stops.
+- Lifecycle validation for advancing to Step 6 is `git diff --check`.
