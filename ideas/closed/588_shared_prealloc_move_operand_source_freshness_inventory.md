@@ -1,6 +1,6 @@
 # Shared Prealloc Move/Operand Source Freshness Inventory
 
-Status: Open
+Status: Closed
 Type: Architecture consumer migration and inventory
 Parent: `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
 Related:
@@ -9,6 +9,101 @@ Related:
 - `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
 Owning Layer: shared prepared/prealloc move and operand source consumers,
 freshness authority publication/query, and closure inventory
+
+## Closure Note
+
+Closed after migrating the shared-prealloc dependency operand
+`LoadFromStackSlot` route to the prepared value freshness authority query and
+recording the remaining shared-prealloc consumer map.
+
+Audited consumers:
+
+- Prepared object move-bundle source consumer:
+  `classify_prepared_object_move_bundle_consumer` already uses
+  `PreparedValueFreshnessUseKind::MoveBundleSource` through
+  `find_prepared_value_freshness_authority`.
+- Store-source / edge producer-publication operand:
+  `publish_store_source_producer_freshness_authority` already uses
+  `PreparedValueFreshnessUseKind::ProducerPublicationOperand` from same-block
+  source producer metadata.
+- Dependency operand authorities:
+  `plan_prepared_dependency_operand_authority` was selected and migrated.
+- Branch stack-load authorities:
+  `plan_prepared_branch_stack_load_authority` remains unwired.
+- Edge-publication move consumers remain partly protected by move-bundle source
+  freshness and publication status, but direct edge-publication move
+  consumption remains unwired.
+- Typed stack-source / aggregate stack-source publications remain structural
+  authority paths without a shared freshness producer.
+- Select-carrier / select-alias authority remains adjacent but unwired.
+
+Migrated consumers:
+
+- Dependency operand `LoadFromStackSlot` now publishes and queries shared
+  freshness authority before accepting the dependency stack source.
+- It accepts `PreparedValueFreshnessUseKind::ProducerPublicationOperand` with
+  `PreparedValueFreshnessSourceKind::DirectHome`, the expected dependency
+  value, selected proof/rank, and the dependency-home source reference.
+
+Fail-closed behavior:
+
+- Missing or absent candidates fail as no selected source freshness.
+- Invalid candidates, ambiguous candidates, wrong-value or destination-only
+  candidates, wrong-use candidates, stale source references, and wrong proof
+  kinds all fail closed before source acceptance.
+- Existing stack object, stack freshness, clobber-safety, payload
+  completeness, storage-class, stack-slot, register-bank, and publication
+  position checks remain in place.
+- Prepared dump rows expose `source_freshness_status`,
+  `source_freshness_candidates`, and selected authority fields when present,
+  while routes without stack freshness remain distinguishable as
+  `source_freshness_status=no_candidate`.
+
+Unwired or deferred families:
+
+- Move-bundle source consumer: already protected by idea 587; retained as a
+  regression anchor.
+- Store-source producer-publication operand: already protected by idea 587;
+  retained as a prepared-printer regression anchor.
+- Branch stack-load authority: deferred until a branch condition/lhs/rhs
+  branch-point freshness use-kind contract exists.
+- Direct edge-publication move consumers: blocked on contract design for
+  whether publication source freshness, move source freshness, or destination
+  bundle authority owns the use.
+- Typed stack-source / aggregate stack-source publications: blocked on missing
+  shared freshness producer/publication facts for concrete stack-source copies.
+- Select-carrier / select-alias authority: blocked on contract design;
+  existing alias closure evidence is not itself freshness proof.
+
+No new architecture gap outside the families already described by ideas 585,
+586, and 587 was exposed. The implementation did not expose a new RV64,
+AArch64, or x86 target-specific tail; target-specific backend consumers remain
+intentionally deferred unless a later idea routes them through shared
+prepared/prealloc authority.
+
+Proof:
+
+- `backend_prepare_stack_layout` covers the migrated dependency operand
+  acceptance and fail-closed cases.
+- `backend_prepared_printer` covers selected authority dump visibility and the
+  no-candidate dump route.
+- `backend_prepared_lookup_helper` rechecks the idea 587 shared lookup
+  semantics.
+- `backend_prepared_object_consumer_contract` rechecks the idea 587
+  move-bundle source consumer anchor.
+- Close-scope command:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepared_printer|backend_prepared_lookup_helper|backend_prepared_object_consumer_contract)$'`.
+- Regression guard compared canonical `test_before.log` and `test_after.log`
+  for that same four-test scope. Strict mode reported no new failures but
+  rejected equal pass count; non-decreasing mode passed with 4/4 before and
+  4/4 after.
+
+Concrete follow-up ideas to open next, if prioritized:
+
+- Branch stack-load freshness contract and migration.
+- Direct edge-publication move freshness ownership contract.
+- Typed and aggregate stack-source freshness producer/publication facts.
+- Select-carrier/select-alias freshness-vs-alias contract.
 
 ## Goal
 
