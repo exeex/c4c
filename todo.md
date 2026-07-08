@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/608_prepared_global_data_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish supported prepared global memory facts
+Current Step ID: 3
+Current Step Title: Publish direct global-symbol base-plus-offset authority
 
 # Current Packet
 
@@ -54,8 +54,10 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-- Result: passed, 346 backend tests, 0 failures. Log path:
-  `test_after.log`.
+- Result: passed, 346 backend tests, 0 failures. The supervisor accepted this
+  Step 2 proof and rolled the canonical backend baseline forward to
+  `test_before.log`; no separate after-log artifact is required for the next
+  packet after that handoff.
 - Focused representative sanity checks:
   `src/strlen-7.c`, `src/20000703-1.c`, and `src/pr58662.c` compile to RV64
   objects; `src/20041218-1.c` progresses to
