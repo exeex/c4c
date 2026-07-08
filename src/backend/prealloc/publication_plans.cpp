@@ -2614,29 +2614,38 @@ namespace {
   return false;
 }
 
-[[nodiscard]] bool prepared_branch_stack_load_lhs_pointer_is_proven(
+[[nodiscard]] bool prepared_branch_stack_load_pointer_operand_is_proven(
     const PreparedBranchCondition& branch_condition,
     const bir::Value* branch_value,
     PreparedBranchStackLoadRole role) {
-  return role == PreparedBranchStackLoadRole::Lhs &&
-         branch_condition.kind == PreparedBranchConditionKind::FusedCompare &&
+  if (role != PreparedBranchStackLoadRole::Lhs &&
+      role != PreparedBranchStackLoadRole::Rhs) {
+    return false;
+  }
+  const auto* operand =
+      role == PreparedBranchStackLoadRole::Lhs
+          ? (branch_condition.lhs.has_value() ? &*branch_condition.lhs : nullptr)
+          : (branch_condition.rhs.has_value() ? &*branch_condition.rhs : nullptr);
+  return branch_condition.kind == PreparedBranchConditionKind::FusedCompare &&
          branch_condition.can_fuse_with_branch &&
          branch_condition.compare_type == bir::TypeKind::Ptr &&
-         branch_condition.lhs.has_value() &&
+         operand != nullptr &&
          branch_value != nullptr &&
          branch_value->kind == bir::Value::Kind::Named &&
          branch_value->type == bir::TypeKind::Ptr &&
-         branch_condition.lhs->kind == bir::Value::Kind::Named &&
-         branch_condition.lhs->name == branch_value->name &&
-         branch_condition.lhs->type == branch_value->type;
+         operand->kind == bir::Value::Kind::Named &&
+         operand->name == branch_value->name &&
+         operand->type == branch_value->type;
 }
 
 [[nodiscard]] PreparedBranchStackLoadPolicy
 prepared_collected_branch_stack_load_policy(
     PreparedBranchStackLoadRole role,
-    bool lhs_pointer_proven) {
+    bool pointer_operand_proven) {
   if (role == PreparedBranchStackLoadRole::Condition ||
-      (role == PreparedBranchStackLoadRole::Lhs && lhs_pointer_proven)) {
+      ((role == PreparedBranchStackLoadRole::Lhs ||
+        role == PreparedBranchStackLoadRole::Rhs) &&
+       pointer_operand_proven)) {
     return PreparedBranchStackLoadPolicy::LoadFromStackSlot;
   }
   return PreparedBranchStackLoadPolicy::None;
@@ -2645,12 +2654,12 @@ prepared_collected_branch_stack_load_policy(
 [[nodiscard]] PreparedBranchStackLoadPointerStatus
 prepared_collected_branch_stack_load_pointer_status(
     const bir::Value* branch_value,
-    bool lhs_pointer_proven) {
+    bool pointer_operand_proven) {
   if (branch_value != nullptr && branch_value->type != bir::TypeKind::Ptr) {
     return PreparedBranchStackLoadPointerStatus::NotPointer;
   }
-  return lhs_pointer_proven ? PreparedBranchStackLoadPointerStatus::Proven
-                            : PreparedBranchStackLoadPointerStatus::Unknown;
+  return pointer_operand_proven ? PreparedBranchStackLoadPointerStatus::Proven
+                                : PreparedBranchStackLoadPointerStatus::Unknown;
 }
 
 [[nodiscard]] bool branch_stack_load_has_no_intervening_instructions(
@@ -2663,14 +2672,15 @@ prepared_collected_branch_stack_load_pointer_status(
 
 [[nodiscard]] bool prepared_collected_branch_stack_load_clobber_safe(
     PreparedBranchStackLoadRole role,
-    bool lhs_pointer_proven,
+    bool pointer_operand_proven,
     const bir::Block* block,
     std::optional<std::size_t> branch_terminator_instruction_index) {
   if (role == PreparedBranchStackLoadRole::Condition) {
     return true;
   }
-  return role == PreparedBranchStackLoadRole::Lhs &&
-         lhs_pointer_proven &&
+  return (role == PreparedBranchStackLoadRole::Lhs ||
+          role == PreparedBranchStackLoadRole::Rhs) &&
+         pointer_operand_proven &&
          branch_stack_load_has_no_intervening_instructions(
              block, branch_terminator_instruction_index);
 }
@@ -3045,8 +3055,8 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
       freshness.has_value()) {
     source_freshness_authorities.push_back(*freshness);
   }
-  const bool lhs_pointer_proven =
-      prepared_branch_stack_load_lhs_pointer_is_proven(
+  const bool pointer_operand_proven =
+      prepared_branch_stack_load_pointer_operand_is_proven(
           branch_condition, branch_value, role);
   PreparedBranchStackLoadAuthorityRecord record{
       .function_name = function_name,
@@ -3061,17 +3071,17 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
           .frame_slot = frame_slot,
           .stack_object = stack_object,
           .policy = prepared_collected_branch_stack_load_policy(
-              role, lhs_pointer_proven),
+              role, pointer_operand_proven),
           .pointer_status =
               prepared_collected_branch_stack_load_pointer_status(
-                  branch_value, lhs_pointer_proven),
+                  branch_value, pointer_operand_proven),
           .branch_block_index = branch_block_index,
           .branch_terminator_instruction_index =
               branch_terminator_instruction_index,
           .stack_slot_clobber_safe_at_branch =
               prepared_collected_branch_stack_load_clobber_safe(
                   role,
-                  lhs_pointer_proven,
+                  pointer_operand_proven,
                   block,
                   branch_terminator_instruction_index),
           .source_freshness_authorities =
