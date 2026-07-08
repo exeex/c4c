@@ -5386,7 +5386,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_narrow_bitfield_binary
   if (!bit_width.has_value() ||
       binary.operand_type != binary.result.type ||
       binary.lhs.type != binary.result.type ||
-      (binary.opcode != bir::BinaryOpcode::LShr &&
+      (binary.opcode != bir::BinaryOpcode::Add &&
+       binary.opcode != bir::BinaryOpcode::LShr &&
        binary.opcode != bir::BinaryOpcode::Shl &&
        binary.opcode != bir::BinaryOpcode::And &&
        binary.opcode != bir::BinaryOpcode::Or)) {
@@ -5436,6 +5437,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_narrow_bitfield_binary
     return std::nullopt;
   }
   append_rv64_zero_extend_narrow_gpr(fragment, *scratch, *scratch, *bit_width);
+  if (binary.opcode == bir::BinaryOpcode::Add) {
+    const auto rhs_immediate = integer_immediate_for_value(names, lookups, binary.rhs);
+    if (!rhs_immediate.has_value() ||
+        (*rhs_immediate != 1 && *rhs_immediate != -1) ||
+        binary.rhs.type != binary.result.type) {
+      return std::nullopt;
+    }
+    append_le32(fragment.bytes,
+                encode_i_type(0x13,
+                              *scratch,
+                              0,
+                              *scratch,
+                              static_cast<std::int32_t>(*rhs_immediate)));
+    append_rv64_zero_extend_narrow_gpr(fragment, *scratch, *scratch, *bit_width);
+    if (destination_stack_offset.has_value() &&
+        !append_rv64_store_register_to_stack_offset(fragment,
+                                                   *scratch,
+                                                   *destination_stack_offset,
+                                                   *result_size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
   if (binary.opcode == bir::BinaryOpcode::LShr ||
       binary.opcode == bir::BinaryOpcode::Shl) {
     const auto shift = integer_immediate_for_value(names, lookups, binary.rhs);

@@ -18570,6 +18570,126 @@ int builds_prepared_narrow_bitfield_shl_immediate_objects() {
   return 0;
 }
 
+int builds_prepared_narrow_add_immediate_objects() {
+  struct Case {
+    bir::TypeKind type;
+    bir::Value rhs;
+    std::int32_t zext_shift;
+    std::int32_t immediate;
+    const char* name;
+  };
+  const Case cases[] = {
+      {bir::TypeKind::I8, bir::Value::immediate_i8(1), 56, 1, "i8_plus_1"},
+      {bir::TypeKind::I8, bir::Value::immediate_i8(-1), 56, -1, "i8_minus_1"},
+      {bir::TypeKind::I16, bir::Value::immediate_i16(1), 48, 1, "i16_plus_1"},
+      {bir::TypeKind::I16, bir::Value::immediate_i16(-1), 48, -1, "i16_minus_1"},
+  };
+  for (const auto& test_case : cases) {
+    const auto prepared = make_prepared_narrow_bitfield_binary_module(
+        bir::BinaryOpcode::Add, test_case.type, test_case.rhs);
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      const auto result =
+          rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+      return fail(std::string{"expected prepared narrow add-immediate "} +
+                  test_case.name + " object to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    const auto* main_symbol = object::find_symbol(*module, "main");
+    if (text == nullptr || main_symbol == nullptr || text->bytes.size() < 32) {
+      return fail(std::string{"expected prepared narrow add-immediate "} +
+                  test_case.name + " object text/main");
+    }
+    if (!is_rv64_mv(read_u32(text->bytes, 0), 18, 5) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 4),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 8),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 12),
+                             18,
+                             0,
+                             18,
+                             test_case.immediate) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 16),
+                             18,
+                             1,
+                             18,
+                             test_case.zext_shift) ||
+        !rv64_i_type_matches(read_u32(text->bytes, 20),
+                             18,
+                             5,
+                             18,
+                             test_case.zext_shift) ||
+        !is_rv64_mv(read_u32(text->bytes, 24), 10, 18) ||
+        read_u32(text->bytes, 28) != 0x00008067) {
+      return fail(std::string{"expected prepared narrow add-immediate "} +
+                  test_case.name + " wraparound/return sequence");
+    }
+    if (!module->relocations.empty()) {
+      return fail(std::string{"expected narrow add-immediate "} +
+                  test_case.name + " object to need no relocations");
+    }
+  }
+
+  auto stack_result = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::Add, bir::TypeKind::I16, bir::Value::immediate_i16(-1));
+  const auto function_name = stack_result.names.function_names.find("main");
+  const auto result_name = stack_result.names.value_names.find("%bf.result");
+  stack_result.value_locations.functions[0].value_homes[1] =
+      rv64_sized_stack_slot_home(2,
+                                 function_name,
+                                 result_name,
+                                 prepare::PreparedFrameSlotId{45},
+                                 0,
+                                 2);
+  stack_result.stack_layout.frame_size_bytes = 8;
+  stack_result.stack_layout.frame_alignment_bytes = 8;
+  stack_result.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{45},
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 2,
+      .align_bytes = 2,
+  });
+  const auto stack_module =
+      rv64::build_rv64_prepared_text_object_module(stack_result);
+  if (!stack_module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(
+            stack_result);
+    return fail("expected prepared narrow add-immediate stack result object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* stack_text = object::find_section(*stack_module, ".text");
+  if (stack_text == nullptr || stack_text->bytes.empty()) {
+    return fail("expected prepared narrow add-immediate stack result object text");
+  }
+  bool found_halfword_store = false;
+  for (std::size_t offset = 0; offset + 4 <= stack_text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(stack_text->bytes, offset);
+    if ((word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == 1U &&
+        riscv_rs1(word) == 2U) {
+      found_halfword_store = true;
+      break;
+    }
+  }
+  if (!found_halfword_store) {
+    return fail("expected prepared narrow add-immediate stack result to publish a halfword store");
+  }
+  if (!stack_module->relocations.empty()) {
+    return fail("expected narrow add-immediate stack result object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_narrow_bitfield_and_clear_objects() {
   struct Case {
     bir::TypeKind type;
@@ -18730,6 +18850,19 @@ int rejects_prepared_narrow_bitfield_binary_fail_closed_shapes() {
   if (expect_prepared_rejection_diagnostic(mismatched_or_rhs, diagnostic) !=
       0) {
     return 1;
+  }
+
+  auto add_by_two = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::Add, bir::TypeKind::I8, bir::Value::immediate_i8(2));
+  if (expect_prepared_rejection_diagnostic(add_by_two, diagnostic) != 0) {
+    return fail("narrow add by non-adjacent immediate should reject");
+  }
+
+  auto mismatched_add_rhs = make_prepared_narrow_bitfield_binary_module(
+      bir::BinaryOpcode::Add, bir::TypeKind::I16, bir::Value::immediate_i32(1));
+  if (expect_prepared_rejection_diagnostic(mismatched_add_rhs, diagnostic) !=
+      0) {
+    return fail("narrow add mismatched immediate type should reject");
   }
 
   return 0;
@@ -25384,6 +25517,7 @@ int main() {
   status |= reports_generic_fallback_context_for_prepared_traversal_instruction();
   status |= builds_prepared_narrow_bitfield_lshr_immediate_objects();
   status |= builds_prepared_narrow_bitfield_shl_immediate_objects();
+  status |= builds_prepared_narrow_add_immediate_objects();
   status |= builds_prepared_narrow_bitfield_and_clear_objects();
   status |= builds_prepared_narrow_bitfield_or_recombine_objects();
   status |= rejects_prepared_narrow_bitfield_binary_fail_closed_shapes();
