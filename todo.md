@@ -8,68 +8,59 @@ Current Step Title: Add Supported Frame Or Return Handling
 
 ## Just Finished
 
-Completed Step 3, "Add Supported Frame Or Return Handling", refresh and
-classification only. No implementation files, plan files, idea files,
-expectations, unsupported markers, allowlists, or timeout/accounting files were
-touched.
+Completed Step 3, "Add Supported Frame Or Return Handling", as a blocker
+classification packet after inspecting the selected supported prepared
+stack-frame rows. No implementation files, focused backend tests, plan files,
+idea files, expectations, unsupported markers, allowlists, or timeout/accounting
+files were changed.
 
-Current focused `build/c4cll --codegen obj --target riscv64-linux-gnu` probes
-confirm the accepted Step 2 positives remain guard-stable:
+Focused `build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...`
+probes for `src/20040811-1.c`, `src/pr43220.c`, and `src/vla-dealloc-1.c`
+still stop at:
 
-- `src/20000603-1.c` remains past `unsupported_call_abi` and now stops at
-  downstream `unsupported_terminator_fragment`.
-- `src/20021219-1.c` remains past `unsupported_call_abi` and now stops at
-  downstream `malformed_prepared_join_transfer_carrier`.
-- `src/pr77767.c` still compiles through RV64 object codegen.
+`unsupported_stack_frame: RV64 object route requires a supported prepared stack frame`
 
-Refreshed Step 3 stack-frame residuals from the prior `unsupported_stack_frame`
-bucket expose a real consumer packet with same-family breadth and explicit
-prepared facts:
+Prepared dumps confirm these rows publish frame size/alignment and dynamic-stack
+operation metadata, but not enough concrete frame-save authority for the RV64
+object-route stack-frame consumer:
 
-- Supported stack-frame consumer candidates with complete prepared frame facts:
-  `src/20020314-1.c`, `src/20021113-1.c`, `src/20040223-1.c`,
-  `src/20040811-1.c`, `src/920721-2.c`, `src/920929-1.c`,
-  `src/alloca-1.c`, `src/pr36321.c`, `src/pr43220.c`, `src/strcpy-2.c`,
-  and `src/vla-dealloc-1.c` still stop first at
-  `unsupported_stack_frame: RV64 object route requires a supported prepared
-  stack frame`.
-- Representative prepared dumps show explicit frame sizes/alignments, dynamic
-  stack metadata when present, and concrete callee-saved GPR slots or
-  preservation facts. Examples: `src/20040811-1.c`, `src/pr43220.c`, and
-  `src/vla-dealloc-1.c` publish `frame_size=24/40/24`,
-  `frame_alignment=8`, `has_dynamic_stack=yes`, `requires_stack_save_restore=yes`,
-  and `gpr:s1`/`gpr:s2` preservation facts.
-- Some old frame-bucket rows are no longer Step 3 frame candidates:
-  `src/20000603-1.c` is now a terminator guard; `src/20030209-1.c`,
-  `src/20040313-1.c`, and `src/20040805-1.c` now stop at ambiguous
-  non-parallel stack-destination move-bundle authority; others stop at compare
-  publication, call ABI, global data, instruction fragments, or terminate
-  successfully.
+- `src/20040811-1.c`: `frame_size=24`, `frame_alignment=8`,
+  `has_dynamic_stack=yes`, `fixed_slots_use_fp=yes`,
+  `requires_stack_save_restore=yes`, with `stack_save`, `dynamic_alloca`, and
+  `stack_restore` operations.
+- `src/pr43220.c`: `frame_size=40`, `frame_alignment=8`,
+  `has_dynamic_stack=yes`, `fixed_slots_use_fp=yes`,
+  `requires_stack_save_restore=yes`, with two `dynamic_alloca` operations and a
+  `stack_restore`.
+- `src/vla-dealloc-1.c`: `frame_size=24`, `frame_alignment=8`,
+  `has_dynamic_stack=yes`, `fixed_slots_use_fp=yes`,
+  `requires_stack_save_restore=yes`, with one `dynamic_alloca` and multiple
+  `stack_restore` operations.
 
-The prepared return rows do not expose a complete-authority RV64 return
-consumer packet in this refresh:
+The attempted admission analysis showed the current RV64 frame validator has
+two distinct blockers, both real prepared-authority gaps for this packet:
 
-- `src/20001130-2.c` and `src/20080719-1.c` still stop at
-  `unsupported_move_bundle_target_shape` for before-return
-  `return_stack_to_register` moves.
-- Their diagnostics report `destination_kind=function_return_abi` and
-  `destination_storage=register`, but also `destination_home_kind=stack_slot`;
-  current docs classify that as `prepared_return_abi_destination_home_authority`.
-  Treat this as a missing prepared authority gap, not RV64 consumer progress.
+- Dynamic/fixed frame rows set `has_dynamic_stack=yes` and
+  `uses_frame_pointer_for_fixed_slots=yes`, while the object route currently
+  only validates fixed `sp`-relative prepared frames.
+- Their `saved_register` rows name callee-saved GPRs such as `s1` and `s2`,
+  but do not publish concrete `slot_placement` save-slot offsets/sizes for the
+  function prologue/epilogue. Inferring those save locations from final frame
+  size, register order, or testcase shape would violate the packet boundary.
 
-Other refreshed residuals remain outside this Step 3 consumer packet: local and
-global producers, runtime/library/variadic policy, FPR-heavy frame details,
-generic move-bundle authority production, and unrelated instruction or
-terminator owners.
+Because the selected rows lack explicit prepared callee-saved save-slot
+placements, this packet did not add RV64 lowering. The correct next move is a
+producer-authority split or plan-owner rewrite for prepared dynamic-frame
+save-slot publication before the RV64 object consumer can lower these rows
+semantically.
 
 ## Suggested Next
 
-Implement a Step 3 supported prepared stack-frame consumer packet for the
-complete-facts GPR dynamic/fixed frame family. Use `src/20040811-1.c`,
-`src/pr43220.c`, and `src/vla-dealloc-1.c` as representative positives because
-they share explicit frame size/alignment, stack-save/restore metadata, and
-callee-saved GPR preservation facts. Keep `src/20020314-1.c` as a compatibility
-watchout because it includes FPR callee-saved details and dynamic stack facts.
+Split the missing prepared dynamic-frame callee-saved save-slot authority into
+a producer-owned follow-up, then refresh Step 3 residuals. The follow-up should
+publish explicit save-slot placements for dynamic/fixed-frame callee-saved GPR
+rows before RV64 object emission consumes `has_dynamic_stack=yes` /
+`fixed_slots_use_fp=yes` frame plans.
 
 ## Watchouts
 
@@ -82,6 +73,9 @@ watchout because it includes FPR callee-saved details and dynamic stack facts.
   runtime/library/variadic policy, or named-case-only frame handling.
 - Preserve Step 2 positive guards: `src/20000603-1.c`, `src/20021219-1.c`,
   and `src/pr77767.c`.
+- `src/20020314-1.c` remains a compatibility watchout with FPR-heavy
+  frame/call details; do not fold FPR dynamic-frame handling into the first GPR
+  dynamic-frame packet.
 
 ## Proof
 
@@ -89,5 +83,5 @@ Ran exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: passed, `346/346` backend tests; `test_after.log` is the preserved
-proof log.
+Result: passed, `346/346` backend tests; `test_after.log` reports
+`100% tests passed, 0 tests failed out of 346` and is the preserved proof log.
