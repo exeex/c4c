@@ -3126,9 +3126,20 @@ std::optional<Rv64NormalizedBranchPredicate> normalize_rv64_branch_predicate(
         .rhs = rhs,
     };
   }
+  const auto is_rv64_gpr_integer = [](c4c::backend::bir::TypeKind type) {
+    switch (type) {
+      case c4c::backend::bir::TypeKind::I1:
+      case c4c::backend::bir::TypeKind::I8:
+      case c4c::backend::bir::TypeKind::I16:
+      case c4c::backend::bir::TypeKind::I32:
+      case c4c::backend::bir::TypeKind::I64:
+        return true;
+      default:
+        return false;
+    }
+  };
   const bool matching_scalar_integer_operands =
-      lhs.type == rhs.type &&
-      lhs.type == c4c::backend::bir::TypeKind::I32;
+      lhs.type == rhs.type && is_rv64_gpr_integer(lhs.type);
   if (matching_scalar_integer_operands) {
     switch (opcode) {
       case c4c::backend::bir::BinaryOpcode::Sgt:
@@ -9441,6 +9452,63 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_register_condition_bra
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_integer_branch(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::backend::bir::BinaryOpcode opcode,
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    std::string true_label,
+    std::string false_label,
+    std::size_t stack_frame_bytes) {
+  const auto is_rv64_gpr_integer = [](c4c::backend::bir::TypeKind type) {
+    switch (type) {
+      case c4c::backend::bir::TypeKind::I1:
+      case c4c::backend::bir::TypeKind::I8:
+      case c4c::backend::bir::TypeKind::I16:
+      case c4c::backend::bir::TypeKind::I32:
+      case c4c::backend::bir::TypeKind::I64:
+        return true;
+      default:
+        return false;
+    }
+  };
+  if (lhs.type != rhs.type || !is_rv64_gpr_integer(lhs.type)) {
+    return std::nullopt;
+  }
+
+  const auto normalized = normalize_rv64_branch_predicate(opcode, lhs, rhs);
+  if (!normalized.has_value()) {
+    return std::nullopt;
+  }
+  const auto funct3 = rv64_branch_funct3(normalized->opcode);
+  if (!funct3.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          28,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          normalized->lhs,
+                                          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register(fragment,
+                                          29,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          normalized->rhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_rv64_local_branch(fragment, *funct3, 28, 29, std::move(true_label));
+  append_rv64_local_jump(fragment, std::move(false_label));
+  return fragment;
+}
+
 struct Rv64SelectedBranchStackLoadSourceFreshnessStatus {
   bool freshness_required = false;
   bool available = true;
@@ -9905,6 +9973,18 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                                                             true_asm_label,
                                                             false_asm_label,
                                                             stack_frame_bytes);
+        }
+        if (auto fused_integer_branch =
+                fragment_for_prepared_fused_integer_branch(prepared.stack_layout,
+                                                           names,
+                                                           lookups,
+                                                           *branch_condition->predicate,
+                                                           *branch_condition->lhs,
+                                                           *branch_condition->rhs,
+                                                           true_asm_label,
+                                                           false_asm_label,
+                                                           stack_frame_bytes)) {
+          return fused_integer_branch;
         }
         return fragment_for_prepared_compare_branch(prepared.stack_layout,
                                                     names,
