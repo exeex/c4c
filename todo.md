@@ -1,89 +1,105 @@
 Status: Active
 Source Idea Path: ideas/open/600_pointer_value_memory_use_freshness_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Pointer-Value Memory Producers And Consumers
+Current Step ID: 2
+Current Step Title: Define Pointer-Value Memory Freshness Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 from `plan.md`: audited pointer-value memory producers,
-shared prepared/prealloc support facts, diagnostics/printer carriers, and the
-narrow RV64/AArch64 target consumers.
+Completed Step 2 from `plan.md`: defined the selected pointer-value memory-use
+freshness authority contract for shared `PreparedMemoryAccess` records whose
+address has `PreparedAddressBaseKind::PointerValue`, initially consumed by
+AArch64 prepared memory operand formation.
 
-Producer surfaces audited:
+Authority vocabulary decision:
 
-- BIR/lowering producers in `lir_to_bir` create
-  `MemoryAddress::BaseKind::PointerValue` from pointer provenance,
-  dynamic pointer-value array materialization, intrinsics, local-slot pointer
-  aliases, aggregate/calling/module paths, and address/provenance helpers.
-- `stack_layout/coordinator.cpp` maps those BIR addresses into
-  `PreparedAddressBaseKind::PointerValue` with `pointer_value_name`,
-  byte offset, size/alignment, `can_use_base_plus_offset`, and memory
-  provenance.
-- `addressing.hpp` exposes
-  `prepared_pointer_value_memory_has_proven_authority(...)`, which is an
-  address-legality/range/layout helper, not selected pointer freshness.
+- Add distinct route-specific vocabulary; do not reuse call argument,
+  move-bundle, producer-publication, direct-edge-publication, branch-stack,
+  select-carrier, pointer-base-plus-offset, loaded-value, or store-source
+  freshness.
+- Required names for Step 3:
+  `PreparedValueFreshnessUseKind::PointerValueMemoryUse`,
+  `PreparedValueFreshnessSourceKind::PointerValueMemoryAccess`,
+  `PreparedValueFreshnessProofKind::PointerValueMemoryAuthority`, and
+  `PreparedValueFreshnessSourceRank::PointerValueMemory`.
+- The authority value is the pointer value used as the memory address base, not
+  the loaded value and not the stored source value.
 
-Shared prepared/prealloc support surfaces audited:
+Selected-authority dimensions:
 
-- `prepared_lookups.cpp` copies pointer-value memory facts into edge
-  publication records and treats `pointer_value_name` as a complete address
-  base identity.
-- `publication_plans.cpp/.hpp` carries source/destination pointer-value memory
-  facts for edge/store-source plans, including store-local destination support,
-  but those facts are not the pointer-value memory-use freshness owner.
-- Prepared printer surfaces print pointer-value address facts, range verdicts,
-  layout authority, offsets, and atomic pointer operands as diagnostics/dumps.
-- Regalloc/liveness/pointer-carrier surfaces track pointer memory base values,
-  dense-value liveness, and `PreparedPointerValueAccess` carrier state as
-  placement/carry support only.
+- Pointer identity: match the exact prepared pointer value id/name resolved
+  from `PreparedMemoryAccess::address.pointer_value_name`; missing id/name is
+  no authority.
+- Memory use: match the exact access mode derived from the access record
+  (`result_value_name` for load, `stored_value_name` for store). A load
+  authority cannot authorize a store use and a store authority cannot authorize
+  a load use.
+- Program point: match the exact `function_name`, `block_label`, and
+  `inst_index` of the `PreparedMemoryAccess`; stale or wrong-block/wrong-index
+  evidence must not select.
+- Offset/range coordinate: the access byte offset, size, alignment,
+  `can_use_base_plus_offset`, requested range, and range verdict are required
+  support dimensions for the candidate, but they are not the selected
+  freshness value by themselves.
+- Provenance/layout support: provenance base identity, object extent,
+  layout authority, address space, and volatility must match the access being
+  authorized. They support the memory-use authority and remain insufficient
+  alone.
+- Target shape: target offset encodability, target memory operand kind,
+  register/storage placement, and final target operand formation are rejected
+  as authority; targets may only consume the shared selected result.
 
-Consumer surfaces audited:
+Facts insufficient by themselves:
 
-- Proposed representative route for Step 2/3: shared `PreparedMemoryAccess`
-  records for `PreparedAddressBaseKind::PointerValue` load/store memory uses,
-  with the initial target-side consumer limited to AArch64 prepared memory
-  operand formation (`prepared_memory_operand_from_access(...)` /
-  `make_prepared_pointer_value_base_register(...)`) consuming the shared
-  selected result.
-- RV64 `prepared_local_memory_emit.cpp` pointer-value load/store helpers and
-  edge-publication source-memory uses are target-consume-only/deferred for this
-  runbook.
-- AArch64 dispatch, memory-store retargeting, intrinsic, inline-asm, call,
-  atomic, and operand paths consume pointer-value address facts or target
-  operand shape; only the prepared memory operand route is a representative
-  candidate.
-- Broad RV64/AArch64 target migration remains out of scope.
+- `PreparedAddressBaseKind::PointerValue`, pointer value name/id, object
+  extent, range proof, layout authority, local layout, target offset
+  encodability, target memory operand shape, diagnostics, prepared dumps, edge
+  publication source-memory facts, store-source destination facts, and
+  `prepared_pointer_value_memory_has_proven_authority(...)`.
+
+Fail-closed contract:
+
+- Missing/no-candidate authority: query status `NoCandidate` and a
+  route-specific missing pointer-value memory freshness diagnostic/status.
+- Ambiguous authority: query status `AmbiguousCandidate` and an ambiguous
+  pointer-value memory freshness diagnostic/status.
+- Stale/wrong program point: no selected authority when function, block label,
+  or instruction index differs.
+- Wrong pointer: no selected authority when pointer value id/name differs from
+  the access base pointer.
+- Wrong load/store use: no selected authority when the candidate mode differs
+  from the access mode.
+- Wrong vocabulary, missing reference, or wrong source/proof/rank:
+  `InvalidCandidate`.
+- Range-only, layout-only, target-shape-only, and support-only routes:
+  `NoCandidate`; these facts can explain address legality but cannot authorize
+  pointer freshness.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: define the selected pointer-value memory-use
-freshness contract for the shared `PreparedMemoryAccess` pointer-value route,
-including use/source/proof/rank vocabulary and exact query dimensions for
-pointer value identity, load/store use, program point, offset/range support,
-provenance/layout support, and target-shape rejection.
+Execute Step 3 from `plan.md`: add the distinct pointer-value memory-use
+freshness vocabulary and a narrow shared helper, likely
+`prepared_pointer_value_memory_freshness_available(...)`, adjacent to
+`PreparedMemoryAccess`/prepared lookup support. Publish/query the selected
+authority from existing prepared access facts, then have the representative
+AArch64 prepared memory operand route consume that shared selected result.
 
 ## Watchouts
 
-- Keep pointer base plus offset selected authority closed under idea 599.
-- Do not treat `prepared_pointer_value_memory_has_proven_authority(...)`,
-  object extent, offset/range proof, local layout, target offset encodability,
-  target memory operand shape, diagnostics, dumps, or final assembly as
-  selected pointer-value freshness.
-- Loaded-value freshness, store-source freshness, semantic GEP target
-  consumption, global symbol memory freshness, and broad target migration are
-  separate routes.
-- The representative migration should use a shared prepared/prealloc freshness
-  helper; AArch64/RV64 target code should consume that result rather than own
-  pointer-value freshness semantics.
-- Step 2 should not reuse pointer-arithmetic, move-bundle, edge-publication,
-  branch, select-carrier, loaded-value, or store-source freshness vocabulary
-  unless it can prove the exact pointer-value memory-use boundary is already
-  owned.
+- Step 3 may need to add a minimal `PreparedMemoryAccess` reference or
+  route-specific freshness wrapper because `PreparedValueFreshnessAuthority`
+  currently has value/use/program-point fields but no explicit memory-access
+  mode, offset/range, or provenance coordinate.
+- Keep loaded-value freshness, store-source freshness, pointer arithmetic,
+  semantic GEP target consumption, global symbol memory freshness, and broad
+  RV64/AArch64/x86 target migration out of this route.
+- Do not make AArch64 target operand shape the semantic owner. The target route
+  should reject or decline when the shared selected pointer-value memory-use
+  authority is absent.
 
 ## Proof
 
-Audit-only/todo-only packet. Build/tests were not run and `test_after.log` was
-not updated. Proof command: `git diff --check` passed.
+Contract-only/todo-only packet. Build/tests were not run and `test_after.log`
+was not updated. Proof command: `git diff --check` passed.
