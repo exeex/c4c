@@ -1,6 +1,6 @@
 # RV64 Instruction Fragment Consumers
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -44,6 +44,22 @@ but the route must start with sub-bucketing rather than one mixed shortcut.
   if the current diagnostics are too mixed.
 - Implemented sub-families progress across multiple rows.
 - Non-implemented fragments keep accurate unsupported or owner diagnostics.
+
+## Closure Summary
+
+Closed after the active runbook completed the binary/pointer instruction
+fragment consumer route and Step 4 reclassified the remaining residuals.
+The implemented route progressed selected pointer `BinaryInst` consumers while
+preserving fail-closed ownership for missing producer/prepared authority,
+local-memory, branch, select, move-bundle, global, ABI/call, runtime, inline
+asm, terminator, and singleton scalar narrow-integer rows.
+
+Residual cast rows were not absorbed into this closed route. They are preserved
+as separate durable follow-up scope in
+`ideas/open/623_rv64_cast_instruction_fragment_consumers.md`.
+
+Close-time regression guard used the accepted backend baseline in
+`test_before.log` and a fresh matching backend `test_after.log`.
 
 ## Reviewer Reject Signals
 
