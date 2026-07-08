@@ -1,77 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/595_prepared_value_architecture_followup_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Create The Follow-Up Backlog And Source Ideas
+Current Step ID: 6
+Current Step Title: Order Dependencies And Recommend The Next Activation
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 from `plan.md`: created the follow-up backlog and generated only the
-narrow source ideas justified by Step 3/4 evidence.
+Step 6 from `plan.md`: filled
+`docs/prepared_value_architecture_followup_umbrella/04_dependency_and_priority_order.md`
+with the ordered activation handoff.
 
-Generated:
+Ordered follow-up work by first owning layer and dependency pressure:
 
-- `ideas/open/597_pointer_address_semantic_model_research.md`: pointer/address
-  semantic-model research owned by the pointer/address semantic model layer.
-- `ideas/open/598_select_carrier_alias_freshness_contract.md`:
-  select-carrier alias freshness-vs-alias contract owned by shared-prealloc
-  consumer authority.
+- Next activation: `ideas/open/597_pointer_address_semantic_model_research.md`,
+  because pointer/address semantic authority is upstream of MIR-view exposure
+  and target-consumer routes.
+- Second narrow runnable route:
+  `ideas/open/598_select_carrier_alias_freshness_contract.md`, because it is
+  a separate shared-prealloc consumer authority contract ready after ideas
+  587, 588, and 589.
+- Existing `ideas/open/591_prepared_mir_view_contract_research.md` can run
+  early only for dependency inventory and view-boundary work that does not
+  settle pointer/address semantics; final pointer/address required-fact
+  claims should wait for 597.
 
-Deferred:
+Recorded wait gates for deferred prepared-publication residue, call-boundary
+post-call publication/rematerialization, standalone diagnostic/reviewer
+policy, and AArch64/x86 or other target consume-side migrations.
 
-- Broad prepared publication remaining-family backlog, except for the narrow
-  select-carrier alias split above.
-- Aggregate-adjacent branch stack-source consumers, scalar-condition-register
-  branch shapes, string assembly emission, broad target emission tails,
-  destination fan-in, and predecessor-edge consumed suppression until a first
-  owner and proof surface are isolated.
-- Call-boundary post-call publication/rematerialization until a concrete
-  stale-home or missing-publication call path is named.
-- Standalone diagnostic/reviewer policy until evidence identifies a non-MIR
-  verifier or reviewer boundary outside idea 591.
-- AArch64/x86 or other target consume-side migrations until shared authority
-  and MIR-facing contract prerequisites identify a concrete target consumer.
-
-Mapped to existing idea:
-
-- Prepared MIR view integration and Prepared MIR diagnostic/proof taxonomy
-  remain covered by `ideas/open/591_prepared_mir_view_contract_research.md`;
-  no 591 amendment was made.
-
-Declined:
-
-- Duplicate RV64 fused pointer branch stack-source `Lhs`/`Rhs` follow-ups,
-  because ideas 592, 593, 594, and closed 596 already cover that narrow queue.
+Added reviewer reject signals for dependency-order drift, including using 591
+to hide unresolved pointer/address semantics, expanding 598 into mixed-owner
+families, reopening closed 592/593/594/596 branch-stack work, or claiming
+progress through expectations, unsupported markers, allowlists, diagnostics,
+target-local shape, alias-only facts, or destination-only legality.
 
 Changed files:
 
-- `docs/prepared_value_architecture_followup_umbrella/03_followup_idea_backlog.md`
-- `ideas/open/597_pointer_address_semantic_model_research.md`
-- `ideas/open/598_select_carrier_alias_freshness_contract.md`
+- `docs/prepared_value_architecture_followup_umbrella/04_dependency_and_priority_order.md`
 - `todo.md`
 
 ## Suggested Next
 
-Execute Step 6 from `plan.md`: Order Dependencies And Recommend The Next
-Activation.
+Execute Step 7 from `plan.md`: Final Consistency Review.
 
 ## Watchouts
 
-- Step 6 should order generated ideas 597 and 598 against idea 591 and the
-  deferred families without reopening a broad mixed-owner publication
-  umbrella.
-- Keep idea 591 unchanged unless a later plan-owner lifecycle step decides a
-  specific source-intent amendment is required.
-- The deferred target-consumer and call-boundary families need concrete shared
-  authority, first owner, and proof surface before they become source ideas.
-- Do not treat diagnostic/proof artifacts, target operand shape, stack-home
-  completeness, alias facts, or destination legality as semantic source
-  freshness.
+- Step 7 should verify `index.md` links all four numbered docs and summarizes
+  the final classifications plus generated ideas 597 and 598.
+- Step 7 should check that idea 591 remains unchanged and is not duplicated by
+  the umbrella handoff.
+- The immediate lifecycle recommendation is 597, not 591, when the next route
+  needs pointer/address semantic authority.
+- `test_after.log` remains intentionally stale from earlier code packets
+  because this docs/todo-only packet was delegated with `git diff --check`
+  only.
 
 ## Proof
 
-Docs/idea/todo-only packet; no build or test required. Validation command:
-`git diff --check` passed with no output. `test_after.log` was not updated for
+Docs/todo-only packet; no build or test required. Validation command:
+`git diff --check` passed with no output. `test_after.log` is not updated for
 this packet.
