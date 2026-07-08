@@ -8,25 +8,52 @@ Current Step Title: Refresh prepared/global authority inventory
 
 ## Just Finished
 
-- Activated Step 1 (`Refresh prepared/global authority inventory`) from
+- Completed Step 1 (`Refresh prepared/global authority inventory`) from
   `plan.md`.
+- Wrote the selected prepared/global authority allowlist to
+  `build/agent_state/608_step1_prepared_global_authority.allowlist` and the
+  classification inventory to
+  `build/agent_state/608_step1_prepared_global_authority_inventory.md`.
+- Current producer-owned residuals are split into selected object-data
+  authority (12 rows), prepared global memory facts (12 rows), and direct
+  global-symbol base-plus-offset authority (11 rows). RV64 global symbol
+  emission (17 rows), supported-width policy/consumer rows (13 rows), and
+  idea `609` link/runtime/relocation residuals remain outside this producer
+  packet.
+- Selected the prepared global memory fact family as the first implementation
+  family for Step 2, with `src/strlen-7.c`, `src/20000703-1.c`,
+  `src/20041218-1.c`, and `src/pr58662.c` as the initial representatives.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor to refresh the prepared/global authority
-allowlist, classify current residual ownership, and choose the first
-implementation family for Step 2.
+Delegate Step 2 (`Publish supported prepared global memory facts`) to publish
+supported prepared global memory access facts from proven producer inputs.
+Suggested proof command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
 
 ## Watchouts
 
 - Keep this route in prepared/global authority. Do not fold RV64 global symbol
   emission, relocation-record emission, or access-width lowering into this
   plan.
-- Prior lifecycle notes say mixed object data was split out from `608`; Step 1
-  should verify current residual ownership before editing code.
+- The selected object-data family is still visible in current logs, but Step 2
+  should not repair object-data publication unless the supervisor deliberately
+  changes the packet.
+- Direct global-symbol base-plus-offset rows have a distinct missing-authority
+  diagnostic and should stay reserved for Step 3.
 - Do not change expectations, unsupported markers, allowlists, timeout or
   accounting files as progress.
 
 ## Proof
 
-- Lifecycle activation only; no build or test proof was run.
+- Ran the delegated proof command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+- Result: passed, 346 backend tests, 0 failures. Log path:
+  `test_after.log`.
