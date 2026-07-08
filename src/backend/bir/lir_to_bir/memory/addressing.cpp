@@ -2825,6 +2825,24 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
               if (element_layout.kind == AggregateTypeLayout::Kind::Array) {
                 const auto array_element_layout = lookup_addressing_layout(
                     element_layout.element_type_text, type_decls, &structured_layouts_);
+                if ((array_element_layout.kind == AggregateTypeLayout::Kind::Struct ||
+                     array_element_layout.kind == AggregateTypeLayout::Kind::Array) &&
+                    array_element_layout.size_bytes != 0 &&
+                    addressed_ptr_it->second.provenance.base_identity.kind ==
+                        bir::MemoryProvenanceBaseIdentityKind::LocalSlot) {
+                  if (!publish_dynamic_pointer_value_address(
+                          gep.result.str(),
+                          addressed_ptr_it->second.base_value,
+                          *lowered_index,
+                          addressed_ptr_it->second.byte_offset,
+                          array_element_layout.size_bytes,
+                          addressed_ptr_it->second.provenance,
+                          element_layout.element_type_text,
+                          addressed_ptr_it->second.storage_type_text)) {
+                    return fail_gep();
+                  }
+                  return true;
+                }
                 if (array_element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
                     array_element_layout.scalar_type != bir::TypeKind::Void &&
                     array_element_layout.size_bytes != 0) {

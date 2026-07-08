@@ -8,32 +8,30 @@ Current Step Title: Repair Local-Memory GEP Address Production
 
 ## Just Finished
 
-Partially completed Step 3 from `plan.md`: repaired direct local-object GEP/address production for two selected representative shapes and preserved the delegated guard subset.
+Completed the remaining Step 3 subcase from `plan.md`: repaired nested multidimensional dynamic local aggregate GEP production for the selected `x[i][k][j][l]` shape without adding a row-specific shortcut.
 
 Implementation:
-- `src/backend/bir/lir_to_bir/memory/local_gep.cpp`: dynamic GEP from a derived local scalar-array base now keeps the static local base index as a byte offset instead of rejecting all nonzero bases. This covers derived in-object bases such as `c + 390` and in-object negative subscripts from a known local array element base.
-- `src/backend/bir/lir_to_bir/memory/addressing.cpp`: dynamic local aggregate GEP production now publishes explicit pointer-address facts from the local object/slot provenance before prepared/RV64 consumption, and nested dynamic aggregate GEP dispatch lets an existing explicit pointer-address fact take the relative-GEP path instead of forcing the aggregate side table first.
+- `src/backend/bir/lir_to_bir/memory/addressing.cpp`: when a local-slot-backed pointer-address fact names an array whose elements are aggregate types, a dynamic GEP now publishes the next aggregate pointer-address fact by scaling the lowered index by the aggregate element size and preserving the established local-slot provenance.
+- This combines successive dynamic local aggregate indices through BIR pointer-address facts, so the chain can progress from `x[i]` to `x[i][k]` to `x[i][k][j]` before the existing scalar dynamic store/load handling owns `x[i][k][j][l]`.
 
 Representative movement:
-- `src/pr24851.c`: `--dump-bir --target riscv64-linux-gnu` now succeeds; the local array base `&a[1]` plus `&q[-1]` shape is no longer stopped at the old GEP producer boundary.
-- `src/pr80421.c`: the selected row now moves past the old GEP producer boundary and stops later in `load local-memory semantic family`, which is a downstream local-memory consumer boundary rather than the Step 3 GEP producer stop.
-- `src/930614-2.c`: still stops in `gep local-memory semantic family` on the nested multidimensional dynamic aggregate shape. The remaining shape is `x[i][k][j][l]`, specifically the second dynamic aggregate projection after the first dynamic local aggregate address is produced.
+- `src/930614-2.c`: `--dump-bir --target riscv64-linux-gnu` now succeeds through semantic BIR for the nested multidimensional dynamic local aggregate shape.
+- `src/pr24851.c`: remains successful through semantic BIR from the accepted direct local-object repair.
+- `src/pr80421.c`: remains past the GEP producer boundary and at its downstream `load local-memory semantic family` owner.
 
 Guard result:
 - The delegated pointer/formal, global/static, runtime/string, aggregate/member/flexible/alias, variadic, and pointer local-memory consumer guard rows stayed green under the selected CTest subset.
 
 ## Suggested Next
 
-Continue Step 3 with the remaining nested multidimensional dynamic aggregate producer model for `src/930614-2.c`.
-
-This slice is acceptance-ready as a partial semantic Step 3 repair because more than one selected direct local-object GEP row progressed beyond the old producer stop and the delegated guard subset stayed green. The next subcase should combine multiple loop-carried local aggregate indices into one local address/provenance fact without a testcase-shaped shortcut.
+Move to Step 4 breadth proof for the local-memory GEP/address family using the supervisor-selected broader same-family subset.
 
 ## Watchouts
 
 - Keep BIR local-memory GEP/address production separate from RV64 frame-slot consumption and target-side pointer authority.
 - Do not broaden unsupported pointer arithmetic policy under this idea.
-- The remaining `930614-2.c` shape needs a general way to combine multiple loop-carried local aggregate indices into one local address/provenance fact. Avoid a row-specific shortcut.
 - `src/pr80421.c` is no longer a GEP producer stop; its current `load local-memory semantic family` stop should not be folded back into this GEP producer packet without supervisor approval.
+- The new aggregate-array continuation is intentionally constrained to local-slot-backed pointer-address provenance; pointer/formal, global/static, and broad runtime pointer arithmetic remain outside this Step 3 repair.
 
 ## Proof
 
@@ -45,9 +43,9 @@ cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -
 
 Result: build passed; CTest passed `16/16`; proof log is `test_after.log`.
 
+Additional local observation before the delegated proof:
+- Fresh BIR dump for `src/930614-2.c` succeeded and shows successive dynamic pointer-address adds for the nested `i`, `k`, `j`, and `l` projections.
+
 Supervisor follow-up verification:
-- Fresh BIR dump for `src/pr24851.c` succeeded.
-- Fresh BIR dump for `src/pr80421.c` moved to `load local-memory semantic family`.
-- Fresh BIR dump for `src/930614-2.c` still reports `gep local-memory semantic family`.
 - Added `backend_lir_to_bir_notes` to the focused CTest subset; result passed `17/17`.
 - Broader backend bucket passed: `ctest --test-dir build -j --output-on-failure -R '^backend_'` reported `346/346` passing.
