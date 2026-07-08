@@ -164,6 +164,18 @@ Completion check:
 Goal: publish direct global-symbol base-plus-offset authority for rows where
 symbol identity and byte offset are semantically known.
 
+Route status: parked after evidence-gated executor review. Captured prepared
+inputs for `src/pr79737-2.c` and neighboring `src/pr82387.c` showed direct
+global-symbol accesses already had constant offsets, nonzero size/alignment,
+`base_plus_offset=yes`, and proven ranges; the first visible missing field was
+`layout_authority=unknown`. A narrow prepared producer experiment could publish
+`ByteStorageAggregate` for the aggregate/bitfield accesses, but the exact
+allowlist proof stayed at `0/5` with unchanged `requires prepared direct
+global-symbol base-plus-offset memory addressing` diagnostics. Do not repeat
+that helper-only publication route unless a future 608-owned packet can name a
+different prepared fact and prove diagnostic movement without touching RV64
+consumer/emission code.
+
 Primary targets:
 - `src/backend/prealloc/addressing.hpp`
 - `src/backend/prealloc/stack_layout/coordinator.cpp`
@@ -178,11 +190,20 @@ Actions:
 - Keep GOT/TLS, target relocation emission, and RV64 materialization policy out
   of this step unless they already exist as prepared facts that must be
   preserved.
+- If captured predicate inputs already show complete direct global-symbol
+  base-plus-offset authority but the row still stops at an RV64 object-route
+  diagnostic, stop and return the evidence for lifecycle routing instead of
+  editing RV64 consumer/emission code.
+- Reject helper-only layout-authority publication changes that leave the same
+  rows at the exact `requires prepared direct global-symbol base-plus-offset
+  memory addressing` diagnostic.
 
 Completion check:
-- Direct global-symbol base-plus-offset rows progress when the prepared fact is
-  semantically available, and rows with ambiguous or missing authority still
-  fail before RV64 emission.
+- This step remains blocked unless at least one direct global-symbol
+  base-plus-offset row moves past the exact direct base-plus-offset diagnostic
+  for a semantic prepared-authority reason. If the row remains at the same
+  object-route diagnostic after prepared facts are complete, preserve the
+  evidence as a handoff note and keep the RV64 consumer work for `609`.
 
 ### Step 4: Complete selected global object-data authority
 
