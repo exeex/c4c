@@ -8,24 +8,23 @@ Current Step Title: Updated Closure Readiness
 
 ## Just Finished
 
-Completed Step 9 breadth reproving after the Step 8 aggregate/vector local-store repair.
+Completed Step 10 updated closure readiness for `ideas/open/603_bir_local_memory_store_semantics.md`.
 
-Step 5 checkpoint baseline:
-- `6/46` full-row BIR successes: `src/20010605-2.c`, `src/20020413-1.c`, `src/20040208-1.c`, `src/930526-1.c`, `src/ieee/inf-1.c`, and `src/strct-pack-2.c`.
-- `40/46` remaining visible store-family stops.
+Accepted implementation surface under this runbook:
+- Full-width `f128` local literal source values now lower into BIR scalar values instead of stopping at the store source-value boundary.
+- Loaded global pointer fields now retain enough pointer-address authority for local store production when no stronger provenance fact exists.
+- Dynamic local pointer-array stores now lower selected element updates while preserving unselected local values.
+- Dynamic local aggregate-array element copies now lower from aggregate source aliases into local aggregate destinations.
+- Single-lane SSA vector stores into local vector lane slots now lower as local store facts.
 
-Current focused `--dump-bir --target riscv64-linux-gnu` refresh over the same 46 visible store rows:
-- `7/46` full-row BIR successes: the six Step 5 successes plus `src/990525-1.c`.
-- `2/46` rows progressed beyond the old store local-memory producer stop to a later `scalar/local-memory semantic family` boundary: `src/pr71626-1.c` and `src/pr71626-2.c`.
-- `37/46` rows still report `store local-memory semantic family`.
+Source-idea acceptance status:
+- Satisfied under the refreshed evidence. Same-family local-memory store rows progressed beyond the old BIR store producer stop, proof covered more than one store-shaped row, and non-store guard owners preserved their established ownership.
+- Step 9 refreshed the 46 visible store-row set from the Step 5 checkpoint of `6/46` full-row BIR successes and `40/46` remaining store-family stops to `7/46` full-row BIR successes, `2/46` rows progressed beyond the old store producer to downstream `scalar/local-memory semantic family`, and `37/46` rows still reporting the store local-memory family.
+- The same-family movement is semantic, not testcase-shaped: `src/990525-1.c` now completes BIR after local aggregate-array element copy repair, and `src/pr71626-1.c` plus `src/pr71626-2.c` moved beyond the local vector store producer into a downstream boundary.
 
-Same-family movement from Step 8:
-- Repaired one full-row store producer: `src/990525-1.c`, by-value aggregate source copied into a local aggregate array element.
-- Moved both vector representatives out of the store producer family: `src/pr71626-1.c` and `src/pr71626-2.c`; their remaining first failure is no longer a store local-memory producer fact.
-- No broad remaining multi-row in-scope local-memory store producer subfamily is visible after excluding adjacent owners.
-
-Remaining local-memory store limitation:
+Remaining local-memory store limitation after adjacent-owner separation:
 - `src/931102-2.c` remains the only clearly in-scope local store limitation from the refreshed set, failing in `f` on the local union/overlap store shape.
+- This is a real remaining local-memory store limitation, but it is a singleton and does not justify another broad producer packet under the current runbook without fresh evidence of a shared subfamily.
 
 Guard-owner preservation:
 - Pointer/address-authority rows remain store-family owned by adjacent address authority: `src/20030913-1.c`, `src/930719-1.c`, `src/alias-1.c`, `src/alias-access-path-1.c`, `src/pr15262-2.c`, `src/pr36343.c`, `src/pr36765.c`, `src/pr58277-1.c`, `src/pr60072.c`, `src/pr69691.c`, and `src/pr79043.c`.
@@ -38,12 +37,13 @@ Downstream handoffs:
 
 ## Suggested Next
 
-Execute Step 10 updated closure readiness.
+Recommend closing idea 603 as acceptance-satisfied under the refreshed evidence.
 
-Recommendation for Step 10:
-- No runbook refinement is needed before Step 10.
-- Decide whether to park idea 603 with only the singleton `src/931102-2.c` local union/overlap store limitation remaining, or delegate one narrow singleton repair packet before parking.
-- Keep the larger remaining visible population routed to pointer/address authority, function-label/local pointer-array, aggregate/global handoff idea 619, downstream scalar/local-memory classification, or existing global-data owners.
+Rationale:
+- The runbook accepted generic local-memory store producer repairs across multiple source-value and destination shapes.
+- No broad remaining multi-row in-scope local-memory store producer subfamily is visible after excluding adjacent owners.
+- Continuing here would either chase a singleton local union/overlap case or widen into pointer/address authority, function-label/local pointer-array, aggregate/global handoff, downstream scalar/local-memory classification, or global-data ownership.
+- Idea 619 remains the correct separate lifecycle route for aggregate/static global store handoff; do not switch to it before closing or otherwise resolving the active 603 lifecycle state.
 
 ## Watchouts
 
@@ -56,7 +56,9 @@ Recommendation for Step 10:
 
 ## Proof
 
-Delegated Step 9 proof passed; it was produced as `test_after.log` during the run and accepted/rolled forward to `test_before.log`:
+Evidence-only Step 10 packet; no build was required and no code changed.
+
+Step 9 proof already passed, was produced as `test_after.log` during that run, and was accepted/rolled forward to `test_before.log`:
 
 ```sh
 cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|llvm_gcc_c_torture_src_(20041124_1|20030717_1|20180921_1|20000722_1|20000603_1|pr38533|20010924_1|20020118_1)_c|llvm_gcc_c_torture_src_20010605_2_c|llvm_gcc_c_torture_src_20020413_1_c|llvm_gcc_c_torture_src_20030913_1_c|llvm_gcc_c_torture_src_20040208_1_c|llvm_gcc_c_torture_src_20040707_1_c|llvm_gcc_c_torture_src_20131127_1_c|llvm_gcc_c_torture_src_920501_5_c|llvm_gcc_c_torture_src_930126_1_c|llvm_gcc_c_torture_src_930526_1_c|llvm_gcc_c_torture_src_930719_1_c|llvm_gcc_c_torture_src_931102_2_c|llvm_gcc_c_torture_src_981130_1_c|llvm_gcc_c_torture_src_990208_1_c|llvm_gcc_c_torture_src_990525_1_c|llvm_gcc_c_torture_src_991118_1_c|llvm_gcc_c_torture_src_alias_1_c|llvm_gcc_c_torture_src_alias_access_path_1_c|llvm_gcc_c_torture_src_compndlit_1_c|llvm_gcc_c_torture_src_ieee_inf_1_c|llvm_gcc_c_torture_src_lto_tbaa_1_c|llvm_gcc_c_torture_src_pr15262_2_c|llvm_gcc_c_torture_src_pr22141_1_c|llvm_gcc_c_torture_src_pr22141_2_c|llvm_gcc_c_torture_src_pr36343_c|llvm_gcc_c_torture_src_pr36765_c|llvm_gcc_c_torture_src_pr39120_c|llvm_gcc_c_torture_src_pr44164_c|llvm_gcc_c_torture_src_pr52979_1_c|llvm_gcc_c_torture_src_pr52979_2_c|llvm_gcc_c_torture_src_pr57344_1_c|llvm_gcc_c_torture_src_pr57344_2_c|llvm_gcc_c_torture_src_pr57344_3_c|llvm_gcc_c_torture_src_pr57344_4_c|llvm_gcc_c_torture_src_pr58277_1_c|llvm_gcc_c_torture_src_pr58365_c|llvm_gcc_c_torture_src_pr60072_c|llvm_gcc_c_torture_src_pr69691_c|llvm_gcc_c_torture_src_pr70127_c|llvm_gcc_c_torture_src_pr71626_1_c|llvm_gcc_c_torture_src_pr71626_2_c|llvm_gcc_c_torture_src_pr78170_c|llvm_gcc_c_torture_src_pr79043_c|llvm_gcc_c_torture_src_pr79737_1_c|llvm_gcc_c_torture_src_pr82388_c|llvm_gcc_c_torture_src_strct_pack_2_c|llvm_gcc_c_torture_src_struct_cpy_1_c)$' >> test_after.log 2>&1
