@@ -1,80 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/598_select_carrier_alias_freshness_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate One Representative Consumer
+Current Step ID: 4
+Current Step Title: Prove Fail-Closed Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: migrated the representative select-carrier
-alias source consumer to require selected source freshness.
+Completed Step 4 from `plan.md`: added focused fail-closed proof for the
+select-carrier alias source freshness contract.
 
-Implemented boundary:
+Test coverage added in `check_select_carrier_alias_authority_contract()`:
 
-- Added narrow freshness vocabulary:
-  `PreparedValueFreshnessUseKind::SelectCarrierAliasSource`,
-  `PreparedValueFreshnessSourceKind::SelectCarrierAlias`,
-  `PreparedValueFreshnessProofKind::SelectCarrierAliasAuthority`, and
-  `PreparedValueFreshnessSourceRank::SelectCarrierAlias`.
-- Extended the shared freshness lookup contract so only that use/source/proof
-  and rank combination can select for the select-carrier alias source use.
-  `MoveBundleSource` and `DirectEdgePublicationSource` remain separate owners.
-- `plan_prepared_select_carrier_alias_authority(...)` now publishes and
-  selects a source freshness authority only after the alias authority reaches
-  `available`, with the queried source value id/name and scalar reference to
-  the source producer block/inst.
-- Added
-  `prepared_select_carrier_alias_source_freshness_available(...)` in shared
-  prealloc. It accepts only when the selected freshness authority matches the
-  exact function, edge, destination, source value, source producer kind,
-  source producer block/inst, proof, source kind, rank, and alias closure
-  required by the Step 2 contract.
-- The RV64 helper
-  `prepared_select_edge_binary_source_has_carrier_alias_authority(...)` now
-  delegates source acceptance to the shared-prealloc freshness check instead of
-  accepting alias support facts directly. RV64 remains consume-only.
+- Accepted carrier-alias authority now asserts selected
+  `SelectCarrierAliasSource` freshness with exact source value id/name,
+  `SelectCarrierAlias` source kind, `SelectCarrierAliasAuthority` proof,
+  `SelectCarrierAlias` rank, and source producer block/inst reference.
+- `prepared_select_carrier_alias_source_freshness_available(...)` is asserted
+  to accept the good authority record and publication.
+- Alias-only authority is proven insufficient by clearing selected freshness
+  while leaving the alias authority otherwise available.
+- Fail-closed copies reject ambiguous freshness, stale/wrong reference, wrong
+  value, wrong use, wrong source kind, wrong proof kind, and wrong rank.
+- Existing rejected source-use closure and prepared dump assertions remain in
+  place for unavailable carrier-alias evidence.
 
 Files changed:
 
-- `src/backend/prealloc/value_locations.hpp`
-- `src/backend/prealloc/prepared_lookups.cpp`
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/mir/riscv/codegen/prepared_edge_publication_emit.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
 - `todo.md`
 
 ## Suggested Next
 
-Step 4: Prove Fail-Closed Behavior.
+Step 5: Handoff And Broader Validation.
 
 ## Watchouts
 
 - Do not claim progress through expectation rewrites, unsupported-marker
   edits, allowlist changes, diagnostics-only changes, or target-local shape
   checks.
-- Step 4 should add focused tests or dump assertions that distinguish selected
-  `SelectCarrierAliasSource` freshness from alias-only authority, destination
-  legality, complete homes, target shape, structural join-transfer evidence,
-  and wrong-use freshness candidates.
-- Current code publishes select-carrier alias freshness from the existing
-  available shared alias authority. Tests should still prove the consumer fails
-  closed if the selected freshness field is missing, invalid, ambiguous, stale,
-  wrong-value, or wrong-use.
-- The target helper name still mentions carrier alias authority for call-site
-  stability, but the semantic decision now lives in shared prealloc via
-  `prepared_select_carrier_alias_source_freshness_available(...)`.
+- Prepared dumps still expose carrier-alias authority status, candidates,
+  aliases, and source-use closure, but do not print the selected
+  `SelectCarrierAliasSource` freshness fields. Adding dump output was left out
+  of this test-only packet to avoid broadening production output.
+- Step 5 should record that direct contract tests, not dump assertions, prove
+  missing, ambiguous, stale/wrong-reference, wrong-value, wrong-use,
+  wrong-source, wrong-proof, wrong-rank, and alias-only fail-closed behavior.
 - Keep destination fan-in, predecessor-edge suppression, pointer/address
   follow-ups, target migration, and Prepared MIR view design separate.
 
 ## Proof
 
-Ran `git diff --check`; passed.
+Ran focused precheck:
+`cmake --build --preset default --target backend_prepare_stack_layout_test && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$'`;
+passed.
 
 Ran
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`;
-passed on rerun with 346/346 backend tests passing. The first attempt was
-interrupted by `cc1plus` being killed while compiling an AArch64 test object;
-the exact same command was rerun and completed successfully. Proof log:
-`test_after.log`.
+passed with 346/346 backend tests passing. Proof log: `test_after.log`.
+
+Ran `git diff --check`; passed.

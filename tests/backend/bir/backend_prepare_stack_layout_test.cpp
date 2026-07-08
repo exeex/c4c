@@ -10250,6 +10250,138 @@ int check_select_carrier_alias_authority_contract() {
           std::optional<prepare::PreparedValueId>{21}) {
     return fail("expected duplicate carrier aliases to publish authority");
   }
+  if (accepted.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !accepted.source_freshness_authority.has_value() ||
+      accepted.source_freshness_authorities.size() != 1) {
+    return fail("expected carrier alias authority to select source freshness");
+  }
+  const auto& accepted_freshness = *accepted.source_freshness_authority;
+  if (accepted_freshness.value_id != 10 ||
+      accepted_freshness.value_name != source_name ||
+      accepted_freshness.use_kind !=
+          prepare::PreparedValueFreshnessUseKind::SelectCarrierAliasSource ||
+      accepted_freshness.source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::SelectCarrierAlias ||
+      accepted_freshness.proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::SelectCarrierAliasAuthority ||
+      accepted_freshness.rank !=
+          prepare::PreparedValueFreshnessSourceRank::SelectCarrierAlias ||
+      accepted_freshness.reference.block_label !=
+          std::optional<c4c::BlockLabelId>{join_label} ||
+      accepted_freshness.reference.instruction_index !=
+          std::optional<std::size_t>{0}) {
+    return fail("expected carrier alias source freshness to reference exact source producer");
+  }
+  const prepare::PreparedSelectCarrierAliasAuthorityRecords accepted_records{
+      .records =
+          {
+              prepare::PreparedSelectCarrierAliasAuthorityRecord{
+                  .function_name = function_name,
+                  .authority = accepted,
+              },
+          },
+  };
+  if (!prepare::prepared_select_carrier_alias_source_freshness_available(
+          function_name,
+          &accepted_records,
+          publication)) {
+    return fail("expected selected carrier alias source freshness to authorize source");
+  }
+
+  auto expect_rejected_freshness =
+      [&](prepare::PreparedSelectCarrierAliasAuthority authority,
+          const char* message) {
+        const prepare::PreparedSelectCarrierAliasAuthorityRecords records{
+            .records =
+                {
+                    prepare::PreparedSelectCarrierAliasAuthorityRecord{
+                        .function_name = function_name,
+                        .authority = std::move(authority),
+                    },
+                },
+        };
+        if (prepare::prepared_select_carrier_alias_source_freshness_available(
+                function_name,
+                &records,
+                publication)) {
+          return fail(message);
+        }
+        return 0;
+      };
+
+  auto alias_only_authority = accepted;
+  alias_only_authority.source_freshness_authorities.clear();
+  alias_only_authority.source_freshness_authority.reset();
+  alias_only_authority.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+  if (expect_rejected_freshness(
+          alias_only_authority,
+          "expected alias-only authority without freshness to fail closed") != 0) {
+    return 1;
+  }
+
+  auto ambiguous_freshness_authority = accepted;
+  ambiguous_freshness_authority.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
+  if (expect_rejected_freshness(
+          ambiguous_freshness_authority,
+          "expected ambiguous carrier alias source freshness to fail closed") != 0) {
+    return 1;
+  }
+
+  auto stale_freshness_authority = accepted;
+  stale_freshness_authority.source_freshness_authority->reference.instruction_index =
+      std::size_t{9};
+  if (expect_rejected_freshness(
+          stale_freshness_authority,
+          "expected stale carrier alias source freshness reference to fail closed") != 0) {
+    return 1;
+  }
+
+  auto wrong_value_freshness_authority = accepted;
+  wrong_value_freshness_authority.source_freshness_authority->value_id = 99;
+  if (expect_rejected_freshness(
+          wrong_value_freshness_authority,
+          "expected wrong-value carrier alias source freshness to fail closed") != 0) {
+    return 1;
+  }
+
+  auto wrong_use_freshness_authority = accepted;
+  wrong_use_freshness_authority.source_freshness_authority->use_kind =
+      prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource;
+  if (expect_rejected_freshness(
+          wrong_use_freshness_authority,
+          "expected wrong-use carrier alias source freshness to fail closed") != 0) {
+    return 1;
+  }
+
+  auto wrong_source_freshness_authority = accepted;
+  wrong_source_freshness_authority.source_freshness_authority->source_kind =
+      prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication;
+  if (expect_rejected_freshness(
+          wrong_source_freshness_authority,
+          "expected wrong-source carrier alias freshness to fail closed") != 0) {
+    return 1;
+  }
+
+  auto wrong_proof_freshness_authority = accepted;
+  wrong_proof_freshness_authority.source_freshness_authority->proof_kind =
+      prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove;
+  if (expect_rejected_freshness(
+          wrong_proof_freshness_authority,
+          "expected wrong-proof carrier alias freshness to fail closed") != 0) {
+    return 1;
+  }
+
+  auto wrong_rank_freshness_authority = accepted;
+  wrong_rank_freshness_authority.source_freshness_authority->rank =
+      prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication;
+  if (expect_rejected_freshness(
+          wrong_rank_freshness_authority,
+          "expected wrong-rank carrier alias freshness to fail closed") != 0) {
+    return 1;
+  }
 
   auto missing_source_publication = publication;
   missing_source_publication.source_binary = nullptr;
