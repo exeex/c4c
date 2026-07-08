@@ -1,52 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/589_direct_edge_publication_move_freshness_ownership.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Wire The Selected Consumer To The Freshness Query
+Current Step ID: 5
+Current Step Title: Strengthen Observability And Closure Inventory
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 published direct edge-publication source freshness from
-`prepare_block_entry_parallel_copy_edge_source_facts` without changing consumer
-failure behavior. `PreparedEdgeCopySourceFacts` now carries freshness
-candidate/status/selection fields, and the block-entry parallel-copy route
-builds a selected `DirectEdgePublicationSource` authority only after the
-existing exact publication, exact move, and source-value checks succeed.
+Step 4 wired `prepare_current_block_join_parallel_copy_source_facts` to require
+the selected `DirectEdgePublicationSource` freshness authority before accepting
+named direct edge-publication sources from
+`prepare_block_entry_parallel_copy_edge_source_facts`.
 
-The published authority uses source `DirectEdgePublication`, proof
-`DirectEdgePublicationMove`, rank `DirectEdgePublication`, and references both
-the exact `PreparedEdgePublication` and exact `PreparedMoveResolution`. Focused
-backend helper tests prove the selected authority is visible for the valid
-named direct route while route-agnostic, immediate-source, and missing-source
-facts do not fabricate freshness. Existing missing publication, ambiguous
-publication, edge mismatch, unsupported move, publication/move mismatch, and
-source-fact statuses remain preserved.
+`PreparedCurrentBlockJoinParallelCopySourceFact` now carries the source
+freshness candidates/status/selection, and named direct sources fail closed
+through missing, invalid, or ambiguous source-freshness statuses unless the
+selected authority has the exact source value id/name, use kind, source kind,
+proof kind, rank, edge publication, and move identity. Immediate edge sources
+remain authority-free. Focused backend helper tests cover accepted explicit
+freshness plus missing/no-candidate, invalid, ambiguous, wrong-value,
+wrong-use, and destination-only rejection, while preserving existing missing
+publication, ambiguous publication, edge mismatch, unsupported move,
+publication/move mismatch, and source-fact checks.
 
 ## Suggested Next
 
-Start Step 4 by wiring the direct edge-publication consumer to read the
-published `DirectEdgePublicationSource` freshness authority and map missing,
-ambiguous, or invalid source freshness to the Step 4 consumer status without
-weakening the existing publication/move/source-fact checks.
+Start Step 5 by strengthening observability and closure inventory for the
+direct edge-publication freshness route, including any printer/status exposure
+or inventory checks needed before lifecycle closure.
 
 ## Watchouts
 
-- Destination-only authority remains insufficient because direct homes and
-  destination bundle legality prove placement/availability, not that the
-  selected edge-publication source is fresh for the exact predecessor-successor
-  move.
-- Consumer wiring should use the selected authority already stored on
-  `PreparedEdgeCopySourceFacts`; do not recreate freshness from destination
-  homes or route-agnostic edge facts.
-- Missing freshness is still not enforced by this Step 3 packet. Step 4 should
-  add that mapping at the consumer boundary while preserving all pre-existing
-  fail-closed statuses.
+- Step 4 intentionally gates only named direct edge-publication sources;
+  immediate edge sources still do not publish or require freshness authority.
+- Destination-only freshness remains invalid for this route; do not replace
+  the exact `DirectEdgePublication` publication/move authority with home-based
+  placement evidence.
+- The new edge-copy source freshness statuses currently map to generic missing
+  BIR edge-publication source status in helper expectations; Step 5 should
+  decide whether additional observability needs a more specific external
+  status/printer surface.
 
 ## Proof
 
-Delegated proof passed on rerun after an initial unrelated `cc1plus` kill while
-compiling `backend_aarch64_instruction_dispatch_test`:
+Delegated proof passed on rerun:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
 Proof log: `test_after.log`.

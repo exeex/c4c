@@ -1552,6 +1552,58 @@ prepare_block_entry_parallel_copy_edge_source_facts(
   return facts;
 }
 
+[[nodiscard]] PreparedEdgeCopySourceFactsStatus
+prepared_direct_edge_publication_source_freshness_status(
+    const PreparedEdgeCopySourceFacts& facts) {
+  if (facts.status != PreparedEdgeCopySourceFactsStatus::Available) {
+    return facts.status;
+  }
+  if (facts.source_value_kind != bir::Value::Kind::Named) {
+    return PreparedEdgeCopySourceFactsStatus::Available;
+  }
+  if (!facts.source_value_id.has_value() ||
+      *facts.source_value_id == PreparedValueId{0} ||
+      facts.source_value_name == kInvalidValueName) {
+    return PreparedEdgeCopySourceFactsStatus::MissingSourceValue;
+  }
+  switch (facts.source_freshness_status) {
+    case PreparedValueFreshnessQueryStatus::Selected:
+      break;
+    case PreparedValueFreshnessQueryStatus::NoCandidate:
+    case PreparedValueFreshnessQueryStatus::MissingValue:
+      return PreparedEdgeCopySourceFactsStatus::
+          MissingSourceFreshnessAuthority;
+    case PreparedValueFreshnessQueryStatus::AmbiguousCandidate:
+      return PreparedEdgeCopySourceFactsStatus::
+          AmbiguousSourceFreshnessAuthority;
+    case PreparedValueFreshnessQueryStatus::UnknownUse:
+    case PreparedValueFreshnessQueryStatus::InvalidCandidate:
+      return PreparedEdgeCopySourceFactsStatus::
+          InvalidSourceFreshnessAuthority;
+  }
+  if (!facts.source_freshness_authority.has_value() ||
+      facts.publication == nullptr ||
+      facts.move == nullptr) {
+    return PreparedEdgeCopySourceFactsStatus::InvalidSourceFreshnessAuthority;
+  }
+  const auto& freshness = *facts.source_freshness_authority;
+  if (freshness.value_id != *facts.source_value_id ||
+      freshness.value_name != facts.source_value_name ||
+      freshness.use_kind !=
+          PreparedValueFreshnessUseKind::DirectEdgePublicationSource ||
+      freshness.source_kind !=
+          PreparedValueFreshnessSourceKind::DirectEdgePublication ||
+      freshness.proof_kind !=
+          PreparedValueFreshnessProofKind::DirectEdgePublicationMove ||
+      freshness.rank !=
+          PreparedValueFreshnessSourceRank::DirectEdgePublication ||
+      freshness.reference.edge_publication != facts.publication ||
+      freshness.reference.move != facts.move) {
+    return PreparedEdgeCopySourceFactsStatus::InvalidSourceFreshnessAuthority;
+  }
+  return PreparedEdgeCopySourceFactsStatus::Available;
+}
+
 [[nodiscard]] bool route5_join_source_record_agrees_with_prepared_fact(
     const PreparedNameTables& names,
     const PreparedCurrentBlockJoinParallelCopySourceFact& fact,
@@ -1757,6 +1809,11 @@ prepare_current_block_join_parallel_copy_source_facts(
       fact.destination_home = source_facts.destination_home;
       fact.source_home_kind = source_facts.source_home_kind;
       fact.destination_home_kind = source_facts.destination_home_kind;
+      fact.source_freshness_authorities =
+          source_facts.source_freshness_authorities;
+      fact.source_freshness_status = source_facts.source_freshness_status;
+      fact.source_freshness_authority =
+          source_facts.source_freshness_authority;
       fact.destination_value_name = source_facts.destination_value_name;
       fact.destination_storage_kind = source_facts.destination_storage_kind;
       fact.destination_register_name = move.destination_register_name;
@@ -1782,6 +1839,9 @@ prepare_current_block_join_parallel_copy_source_facts(
           fact.source_value_name = fact.source_home->value_name;
         }
       }
+
+      fact.status =
+          prepared_direct_edge_publication_source_freshness_status(source_facts);
 
       if (fact.status == PreparedEdgeCopySourceFactsStatus::Available) {
         if (!move.source_immediate_i32.has_value()) {

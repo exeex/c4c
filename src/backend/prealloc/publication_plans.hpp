@@ -105,6 +105,9 @@ enum class PreparedEdgeCopySourceFactsStatus {
   MissingSourceProducer,
   MissingSourceMemoryAccess,
   IncompleteSourceMemoryAccess,
+  MissingSourceFreshnessAuthority,
+  InvalidSourceFreshnessAuthority,
+  AmbiguousSourceFreshnessAuthority,
 };
 
 enum class PreparedCurrentBlockJoinParallelCopySourceStatus {
@@ -153,6 +156,12 @@ enum class PreparedCurrentBlockJoinParallelCopySourceStatus {
       return "missing_source_memory_access";
     case PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
       return "incomplete_source_memory_access";
+    case PreparedEdgeCopySourceFactsStatus::MissingSourceFreshnessAuthority:
+      return "missing_source_freshness_authority";
+    case PreparedEdgeCopySourceFactsStatus::InvalidSourceFreshnessAuthority:
+      return "invalid_source_freshness_authority";
+    case PreparedEdgeCopySourceFactsStatus::AmbiguousSourceFreshnessAuthority:
+      return "ambiguous_source_freshness_authority";
   }
   return "unknown";
 }
@@ -1585,6 +1594,10 @@ struct PreparedCurrentBlockJoinParallelCopySourceFact {
   const PreparedValueHome* destination_home = nullptr;
   PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
   PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<std::string> destination_register_name;
   const bir::Route5CurrentBlockJoinSourceRecord* route5_join_source = nullptr;
@@ -1784,6 +1797,10 @@ prepare_block_entry_parallel_copy_edge_source_facts(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
     const PreparedMoveResolution& move);
+
+[[nodiscard]] PreparedEdgeCopySourceFactsStatus
+prepared_direct_edge_publication_source_freshness_status(
+    const PreparedEdgeCopySourceFacts& facts);
 
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(

@@ -57,7 +57,19 @@ int verify_prepared_compatibility_status_names() {
   }
   if (prepare::prepared_edge_copy_source_facts_status_name(
           prepare::PreparedEdgeCopySourceFactsStatus::PublicationUnavailable) !=
-      "publication_unavailable") {
+          "publication_unavailable" ||
+      prepare::prepared_edge_copy_source_facts_status_name(
+          prepare::PreparedEdgeCopySourceFactsStatus::
+              MissingSourceFreshnessAuthority) !=
+          "missing_source_freshness_authority" ||
+      prepare::prepared_edge_copy_source_facts_status_name(
+          prepare::PreparedEdgeCopySourceFactsStatus::
+              InvalidSourceFreshnessAuthority) !=
+          "invalid_source_freshness_authority" ||
+      prepare::prepared_edge_copy_source_facts_status_name(
+          prepare::PreparedEdgeCopySourceFactsStatus::
+              AmbiguousSourceFreshnessAuthority) !=
+          "ambiguous_source_freshness_authority") {
     return fail("prepared edge-copy publication-unavailable status name should remain stable");
   }
   if (prepare::prepared_typed_stack_source_publication_status_name(
@@ -1616,6 +1628,12 @@ expected_bir_edge_status(prepare::PreparedEdgeCopySourceFactsStatus status) {
     case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceHome:
     case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess:
     case prepare::PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
+    case prepare::PreparedEdgeCopySourceFactsStatus::
+        MissingSourceFreshnessAuthority:
+    case prepare::PreparedEdgeCopySourceFactsStatus::
+        InvalidSourceFreshnessAuthority:
+    case prepare::PreparedEdgeCopySourceFactsStatus::
+        AmbiguousSourceFreshnessAuthority:
       return mir::BirCfgEdgePublicationSourceStatus::MissingPublication;
   }
   return mir::BirCfgEdgePublicationSourceStatus::MissingPublication;
@@ -4280,6 +4298,80 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
           &locations.move_bundles.front().moves[0]) {
     return fail("direct edge source freshness should reference the exact publication and move");
   }
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          direct_named_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::Available) {
+    return fail("direct edge source freshness should authorize the exact named source");
+  }
+  auto no_candidate_facts = direct_named_facts;
+  no_candidate_facts.source_freshness_authorities.clear();
+  no_candidate_facts.source_freshness_authority.reset();
+  no_candidate_facts.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          no_candidate_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::
+          MissingSourceFreshnessAuthority) {
+    return fail("direct edge source freshness should reject missing authorities");
+  }
+  auto invalid_facts = direct_named_facts;
+  invalid_facts.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate;
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          invalid_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::
+          InvalidSourceFreshnessAuthority) {
+    return fail("direct edge source freshness should reject invalid authorities");
+  }
+  auto ambiguous_facts = direct_named_facts;
+  ambiguous_facts.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          ambiguous_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::
+          AmbiguousSourceFreshnessAuthority) {
+    return fail("direct edge source freshness should reject ambiguous authorities");
+  }
+  auto wrong_value_facts = direct_named_facts;
+  wrong_value_facts.source_freshness_authority->value_id =
+      prepare::PreparedValueId{9999};
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          wrong_value_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::
+          InvalidSourceFreshnessAuthority) {
+    return fail("direct edge source freshness should reject wrong-value authority");
+  }
+  auto wrong_use_facts = direct_named_facts;
+  wrong_use_facts.source_freshness_authority->use_kind =
+      prepare::PreparedValueFreshnessUseKind::ProducerPublicationOperand;
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          wrong_use_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::
+          InvalidSourceFreshnessAuthority) {
+    return fail("direct edge source freshness should reject wrong-use authority");
+  }
+  auto destination_only_facts = direct_named_facts;
+  destination_only_facts.source_freshness_authority =
+      prepare::PreparedValueFreshnessAuthority{
+          .value_id = source_id,
+          .value_name = source_name,
+          .use_kind =
+              prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+          .source_kind = prepare::PreparedValueFreshnessSourceKind::DirectHome,
+          .proof_kind =
+              prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering,
+          .rank = prepare::PreparedValueFreshnessSourceRank::DirectHome,
+          .reference =
+              prepare::PreparedValueFreshnessSourceReference{
+                  .home = direct_named_facts.destination_home,
+              },
+      };
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          destination_only_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::
+          InvalidSourceFreshnessAuthority) {
+    return fail("direct edge source freshness should reject destination-only authority");
+  }
   const auto immediate_facts = prepare::prepare_block_entry_parallel_copy_edge_source_facts(
       &lookups,
       predecessor_label,
@@ -4298,6 +4390,11 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
       immediate_facts.source_freshness_authority.has_value() ||
       !immediate_facts.source_freshness_authorities.empty()) {
     return fail("direct edge source freshness should not fabricate authority for immediate sources");
+  }
+  if (prepare::prepared_direct_edge_publication_source_freshness_status(
+          immediate_facts) !=
+      prepare::PreparedEdgeCopySourceFactsStatus::Available) {
+    return fail("direct edge source freshness should not require authority for immediate sources");
   }
   const auto missing_home_facts = prepare::prepare_edge_copy_source_facts(
       &lookups, predecessor_label, successor_label, missing_destination_id);
@@ -4688,6 +4785,45 @@ int verify_current_block_join_parallel_copy_source_query() {
           prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
       query.facts.size() != 4) {
     return fail("current-block join query should expose all matching bundle facts");
+  }
+  if (query.facts[0].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      query.facts[0].source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !query.facts[0].source_freshness_authority.has_value() ||
+      query.facts[0].source_freshness_authority->value_id != incoming_id ||
+      query.facts[0].source_freshness_authority->value_name != incoming_name ||
+      query.facts[0].source_freshness_authority->use_kind !=
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource ||
+      query.facts[0].source_freshness_authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication ||
+      query.facts[0].source_freshness_authority->proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove ||
+      query.facts[0].source_freshness_authority->rank !=
+          prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication ||
+      query.facts[0].source_freshness_authority->reference.edge_publication !=
+          query.facts[0].publication ||
+      query.facts[0].source_freshness_authority->reference.move !=
+          query.facts[0].move) {
+    return fail("current-block join query should require selected direct-edge source freshness");
+  }
+  if (query.facts[1].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      query.facts[1].source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      query.facts[1].source_freshness_authority.has_value() ||
+      !query.facts[1].source_freshness_authorities.empty()) {
+    return fail("current-block join query should not require freshness for immediate sources");
+  }
+  if (query.facts[2].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      query.facts[2].source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !query.facts[2].source_freshness_authority.has_value() ||
+      query.facts[2].source_freshness_authority->value_id != stack_source_id ||
+      query.facts[2].source_freshness_authority->value_name !=
+          stack_source_name) {
+    return fail("current-block join query should require freshness for stack named sources too");
   }
   if (!prepared_and_bir_current_block_join_source_identity_match(names, query,
                                                                 bir_query)) {
