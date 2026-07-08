@@ -1,6 +1,6 @@
 # Prepared Value Architecture Follow-Up Umbrella
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and follow-up idea generator
 Parent: `none`
 Handoff Directory: `docs/prepared_value_architecture_followup_umbrella/`
@@ -217,3 +217,83 @@ The closure note must state:
   authority without a fail-closed verifier or reviewer boundary.
 - Reject retaining the same stale-home, stack-home-only, or target-local
   inference failure mode behind a new abstraction name.
+
+## Closure Note
+
+Closed on 2026-07-08 after completing the active runbook in `plan.md` and
+`todo.md`.
+
+Evidence used:
+
+- `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
+- `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
+- `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
+- `ideas/closed/590_branch_stack_load_freshness_contract.md`
+- `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
+- `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
+- `ideas/closed/594_rv64_branch_stack_source_consumption_followup_from_593.md`
+- `ideas/closed/596_pointer_rhs_branch_stack_source_policy_publication.md`
+- `ideas/open/591_prepared_mir_view_contract_research.md`
+- active lifecycle files `plan.md` and `todo.md`
+
+Generated handoff docs:
+
+- `docs/prepared_value_architecture_followup_umbrella/index.md`
+- `docs/prepared_value_architecture_followup_umbrella/01_six_point_reassessment.md`
+- `docs/prepared_value_architecture_followup_umbrella/02_current_open_queue_mapping.md`
+- `docs/prepared_value_architecture_followup_umbrella/03_followup_idea_backlog.md`
+- `docs/prepared_value_architecture_followup_umbrella/04_dependency_and_priority_order.md`
+
+Final six-direction classification:
+
+- Prepared publication model completeness is partially addressed by the closed
+  freshness/publication chain. Remaining work must split by first owner.
+- Move-bundle authority design is closed for representative move-bundle and
+  direct edge-publication ownership. Select/alias authority remains separate.
+- Value-home, preservation, and rematerialization priority is closed for the
+  MVP priority rule and wired uses. Broad stale-home consumer tails are
+  deferred until a concrete owner and proof surface exist.
+- Pointer/address arithmetic and local-memory boundaries are not globally
+  closed. Branch pointer stack-source freshness is only a narrow closed subset.
+- Call-boundary and post-call value publication is partially addressed by
+  idea 587. Broader post-call/rematerialization tails are deferred.
+- Diagnostic narrowing versus real capability closure remains a policy risk
+  covered first by idea 591's Prepared MIR diagnostic/proof taxonomy; no
+  standalone diagnostics idea is ready.
+
+Existing open coverage:
+
+- `ideas/open/591_prepared_mir_view_contract_research.md` already covers
+  Prepared MIR dependency inventory, core/feature view design,
+  diagnostic/proof taxonomy, old/new BIR equivalence, and MIR consumer
+  migration planning. It should remain unchanged for now and later consume the
+  pointer/address semantic-model result from idea 597.
+
+Generated follow-up ideas, in dependency order:
+
+1. `ideas/open/597_pointer_address_semantic_model_research.md`
+2. `ideas/open/598_select_carrier_alias_freshness_contract.md`
+
+Deferred or declined families:
+
+- Deferred prepared-publication residue covering aggregate-adjacent branch
+  sources, scalar-condition-register branch shapes, string assembly, broad
+  target tails, destination fan-in, and predecessor-edge suppression until
+  each has a single first owner and proof surface.
+- Deferred call-boundary post-call publication/rematerialization until a
+  concrete stale-home or missing-publication call path is named beyond the
+  closed 587 call-argument route and 591's call feature-view research.
+- Deferred standalone diagnostics/reviewer policy because idea 591 already
+  owns the Prepared MIR diagnostic/proof taxonomy and no separate non-MIR
+  fail-closed boundary is concrete.
+- Deferred AArch64/x86 and other target consume-side migrations until shared
+  authority and MIR-facing contracts identify a concrete target consumer.
+- Declined duplicate RV64 pointer branch stack-source follow-ups because ideas
+  592, 593, 594, and 596 already cover the narrow RV64 fused pointer branch
+  `Lhs` and `Rhs` publication/consumption queue.
+
+Next activation recommendation:
+
+Activate `ideas/open/597_pointer_address_semantic_model_research.md` next. It
+is the first owner for unresolved pointer/address semantic authority and is
+upstream of Prepared MIR view exposure and target consumer routes.
