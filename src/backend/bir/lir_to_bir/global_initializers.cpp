@@ -217,6 +217,35 @@ std::optional<GlobalAddress> parse_global_address_initializer(
 
 namespace {
 
+std::optional<std::uint64_t> parse_inttoptr_initializer(std::string_view text) {
+  constexpr std::string_view kPrefix = "inttoptr (i64 ";
+  constexpr std::string_view kSuffix = " to ptr)";
+
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.size() <= kPrefix.size() + kSuffix.size() ||
+      trimmed.substr(0, kPrefix.size()) != kPrefix ||
+      trimmed.substr(trimmed.size() - kSuffix.size()) != kSuffix) {
+    return std::nullopt;
+  }
+
+  const auto value_text =
+      c4c::codegen::lir::trim_lir_arg_text(
+          trimmed.substr(kPrefix.size(), trimmed.size() - kPrefix.size() - kSuffix.size()));
+  std::uint64_t value = 0;
+  const auto* begin = value_text.data();
+  const auto* end = value_text.data() + value_text.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc() || result.ptr != end) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+bool is_decimal_fp_zero(std::string_view text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  return trimmed == "0.0" || trimmed == "+0.0";
+}
+
 std::optional<std::string_view> peel_integer_array_layer(std::string_view text) {
   if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
     return std::nullopt;
@@ -383,6 +412,18 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
     };
   }
 
+  if (type == bir::TypeKind::Ptr) {
+    if (const auto inttoptr_value = parse_inttoptr_initializer(trimmed);
+        inttoptr_value.has_value()) {
+      return bir::Value{
+          .kind = bir::Value::Kind::Immediate,
+          .type = bir::TypeKind::Ptr,
+          .immediate = static_cast<std::int64_t>(*inttoptr_value),
+          .immediate_bits = *inttoptr_value,
+      };
+    }
+  }
+
   if (type == bir::TypeKind::I1) {
     if (trimmed == "true") {
       return bir::Value::immediate_i1(true);
@@ -393,6 +434,10 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
   }
 
   if (type == bir::TypeKind::F32 || type == bir::TypeKind::F64) {
+    if (is_decimal_fp_zero(trimmed)) {
+      return type == bir::TypeKind::F64 ? bir::Value::immediate_f64_bits(0u)
+                                        : bir::Value::immediate_f32_bits(0u);
+    }
     if (trimmed.size() < 3 || trimmed[0] != '0' || (trimmed[1] != 'x' && trimmed[1] != 'X')) {
       return std::nullopt;
     }

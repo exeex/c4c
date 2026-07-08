@@ -160,6 +160,17 @@ BackendAggregateLayoutLookup lookup_structured_global_layout_result(
   return lookup;
 }
 
+bool requires_structured_global_type_ref(const c4c::codegen::lir::LirGlobal& global) {
+  if (!global.llvm_type_ref.has_value()) {
+    return false;
+  }
+  if (global.llvm_type_ref->has_struct_name_id()) {
+    return true;
+  }
+  const auto trimmed_type = c4c::codegen::lir::trim_lir_arg_text(global.llvm_type);
+  return !trimmed_type.empty() && trimmed_type.front() == '%';
+}
+
 }  // namespace
 
 bool is_known_function_link_name_id(LinkNameId link_name_id,
@@ -454,8 +465,10 @@ std::optional<bir::Global> lower_minimal_global_impl(
     return lowered;
   }
 
+  const bool use_structured_global_type_ref =
+      requires_structured_global_type_ref(global) && structured_layouts != nullptr;
   const auto layout_lookup =
-      global.llvm_type_ref.has_value() && structured_layouts != nullptr
+      use_structured_global_type_ref
           ? lookup_structured_global_layout_result(*global.llvm_type_ref,
                                                    type_decls,
                                                    *structured_layouts)
@@ -482,7 +495,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
     std::unordered_map<std::size_t, GlobalAddress> pointer_offsets;
     std::unordered_map<std::size_t, std::size_t> pointer_value_indices;
     const auto initializer_elements =
-        global.llvm_type_ref.has_value() && structured_layouts != nullptr
+        use_structured_global_type_ref
             ? lower_aggregate_initializer_for_type_ref(
                   global.init_text,
                   *global.llvm_type_ref,
