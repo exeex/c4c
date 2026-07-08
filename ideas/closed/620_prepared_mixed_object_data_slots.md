@@ -1,6 +1,6 @@
 # Prepared Mixed Object Data Slots
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/608_prepared_global_data_authority.md`
 Related:
@@ -71,3 +71,18 @@ prove mixed emitted bytes plus relocation slots safely.
   accounting, or diagnostic wording changes claimed as capability progress.
 - Reject broad rewrites of BIR initializer bootstrap or RV64 object emission
   outside the prepared object-data fact boundary.
+
+## Completion Note
+
+Closed after the prepared object-data route gained explicit relocation slots
+and mixed byte-plus-relocation producer population. Step 3 moved
+`src/20010924-1.c` from the prepared selected object-data contract
+`unsupported_but_coherent` stop to the later RV64 relocation-record diagnostic:
+`RV64 object route cannot emit prepared relocation object data without
+relocation records`.
+
+Neighboring mixed rows `src/pr61517.c`, `src/pr57877.c`, `src/pr57860.c`, and
+`src/20030224-2.c` remained fail-closed at the prepared selected object-data
+contract stop. Remaining RV64 relocation-record, object emission, symbol
+materialization, and access-width work is handed off to
+`ideas/open/609_rv64_global_data_consumer.md`.
