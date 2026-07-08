@@ -1,34 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/597_pointer_address_semantic_model_research.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Inventory Pointer/Address Families And Consumers
+Current Step ID: 3
+Current Step Title: Classify Semantic Authority And Fact Roles
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2: Inventory Pointer/Address Families And Consumers.
+Completed `plan.md` Step 3: Classify Semantic Authority And Fact Roles.
 
 Filled
-`docs/pointer_address_semantic_model_research/01_pointer_address_family_inventory.md`
-with the surveyed prepared pointer/address families and concrete producer,
-evidence, MIR, and target consumer references. Covered pointer base-plus-offset
-homes, frame-slot pointer arithmetic materialization, semantic/global
-relocation materialization, global memory access facts, local frame-slot
-addressing, pointer-value indirect memory access, local-array and global
-semantic GEP records, branch pointer stack-source operands, and target-local
-operand shape.
+`docs/pointer_address_semantic_model_research/02_semantic_authority_and_fact_classes.md`
+with authority decisions for every Step 2 inventoried family. The document
+separates semantic authority from verifier/support facts, target-consume
+facts, route proofs, and diagnostic-only artifacts, and explicitly classifies
+stack-home completeness, local-memory layout, target operand shape, and
+relocation materialization as insufficient authority by themselves.
 
-Each surveyed family now has a preliminary role: semantic authority where the
-current selected branch stack-source use is already narrow and explicit,
-semantic authority candidate for local/global semantic GEP records,
-verifier/support fact, target-consume fact, route proof, diagnostic-only
-artifact, or unresolved pending Step 3 classification.
+Decisions recorded: branch pointer stack-source operands are semantic
+freshness authority only for the exact selected branch stack-load source use;
+local-array and global static semantic GEP `Available` records are semantic
+address-derivation authority; global symbol memory access authority is limited
+to exact symbol-backed memory access/range use; frame-slot addressing,
+frame/global address materialization, relocation materialization, raw
+local-array derivation records, and target-local operand shape are support,
+target-consume, route-proof, or diagnostic facts. Pointer base-plus-offset
+homes and pointer-value indirect memory accesses remain deferred pending a
+first owner and proof surface for use-specific pointer freshness.
 
 ## Suggested Next
 
-Step 3: Classify Semantic Authority And Fact Roles.
+Step 4: Define Fail-Closed Rules.
 
 ## Watchouts
 
@@ -39,12 +42,13 @@ Step 3: Classify Semantic Authority And Fact Roles.
   semantic model, not as the owner of unresolved pointer/address semantics.
 - Treat ideas 592, 593, 594, and 596 as narrow branch pointer stack-source
   evidence, not global pointer/address semantic closure.
-- Step 3 should be careful not to promote `PreparedMemoryAccess`,
-  `PreparedAddressMaterialization`, frame-slot existence, or target operand
-  shape into freshness authority without a use-specific authority rule.
-- Local-array/global semantic GEP records are candidates for authority, but the
-  current target paths still consume prepared memory/access or materialization
-  facts separately.
+- Step 4 should define fail-closed behavior for support-only evidence:
+  stack-home-only, local-layout-only, relocation-only, target-shape-only,
+  range-only, stale-base, wrong-use, and diagnostic-only routes.
+- Deferred families should remain deferred unless Step 4 can name a first
+  owner and proof surface. Do not let pointer base-plus-offset homes or
+  pointer-value memory range helpers become pointer freshness authority without
+  a selected use-specific authority.
 
 ## Proof
 
