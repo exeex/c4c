@@ -8506,6 +8506,12 @@ int check_dependency_operand_authority_contract() {
       prepare::PreparedDependencyOperandAuthorityStatus::MissingStackFreshness) {
     return fail("expected stack load without freshness to stay fail-closed");
   }
+  if (!missing_freshness.source_freshness_authorities.empty() ||
+      missing_freshness.source_freshness_authority.has_value() ||
+      missing_freshness.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
+    return fail("missing dependency stack freshness must not publish authority");
+  }
 
   const auto missing_clobber_safety =
       prepare::plan_prepared_dependency_operand_authority({
@@ -8524,6 +8530,13 @@ int check_dependency_operand_authority_contract() {
       prepare::PreparedDependencyOperandAuthorityStatus::
           MissingStackClobberSafety) {
     return fail("expected stack load without clobber safety to stay fail-closed");
+  }
+  if (!missing_clobber_safety.source_freshness_authorities.empty() ||
+      missing_clobber_safety.source_freshness_authority.has_value() ||
+      missing_clobber_safety.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
+    return fail(
+        "missing dependency stack clobber safety must not publish authority");
   }
 
   const auto accepted_load =
@@ -8545,6 +8558,44 @@ int check_dependency_operand_authority_contract() {
           prepare::PreparedDependencyOperandMaterializationPolicy::
               LoadFromStackSlot) {
     return fail("expected explicit stack-load dependency operand authority");
+  }
+  if (accepted_load.source_freshness_authorities.size() != 1 ||
+      accepted_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !accepted_load.source_freshness_authority.has_value()) {
+    return fail("expected stack-load dependency operand freshness authority");
+  }
+  const auto& stack_source_freshness =
+      *accepted_load.source_freshness_authority;
+  if (stack_source_freshness.value_id != dependency_home.value_id ||
+      stack_source_freshness.value_name != dep_name ||
+      stack_source_freshness.use_kind !=
+          prepare::PreparedValueFreshnessUseKind::ProducerPublicationOperand ||
+      stack_source_freshness.source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::DirectHome ||
+      stack_source_freshness.proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering ||
+      stack_source_freshness.rank !=
+          prepare::PreparedValueFreshnessSourceRank::DirectHome ||
+      stack_source_freshness.reference.home != &dependency_home) {
+    return fail(
+        "stack-load dependency freshness authority should reference the "
+        "dependency home");
+  }
+  const prepare::PreparedValueFreshnessQuery stack_source_query{
+      .value_id = dependency_home.value_id,
+      .value_name = dep_name,
+      .use_kind =
+          prepare::PreparedValueFreshnessUseKind::ProducerPublicationOperand,
+      .candidates = accepted_load.source_freshness_authorities,
+  };
+  const auto stack_source_selected =
+      prepare::find_prepared_value_freshness_authority(stack_source_query);
+  if (!prepare::prepared_value_freshness_query_selected(
+          stack_source_selected) ||
+      stack_source_selected.authority == nullptr ||
+      stack_source_selected.authority->reference.home != &dependency_home) {
+    return fail("shared freshness lookup should select dependency stack source authority");
   }
 
   auto mismatched_home = dependency_home;

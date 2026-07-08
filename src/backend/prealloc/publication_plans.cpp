@@ -3521,6 +3521,43 @@ namespace {
           cast.operand.type == bir::TypeKind::I64);
 }
 
+void publish_dependency_operand_stack_source_freshness_authority(
+    PreparedDependencyOperandAuthority& authority) {
+  if (authority.policy !=
+          PreparedDependencyOperandMaterializationPolicy::LoadFromStackSlot ||
+      authority.dependency_home == nullptr ||
+      authority.dependency_value_id == PreparedValueId{0} ||
+      authority.dependency_value_name == kInvalidValueName ||
+      authority.dependency_home->kind != PreparedValueHomeKind::StackSlot) {
+    return;
+  }
+
+  authority.source_freshness_authorities.push_back(
+      PreparedValueFreshnessAuthority{
+          .value_id = authority.dependency_value_id,
+          .value_name = authority.dependency_value_name,
+          .use_kind = PreparedValueFreshnessUseKind::ProducerPublicationOperand,
+          .source_kind = PreparedValueFreshnessSourceKind::DirectHome,
+          .proof_kind = PreparedValueFreshnessProofKind::DominanceOrOrdering,
+          .rank = PreparedValueFreshnessSourceRank::DirectHome,
+          .reference =
+              PreparedValueFreshnessSourceReference{
+                  .home = authority.dependency_home,
+              },
+      });
+  const PreparedValueFreshnessQuery query{
+      .value_id = authority.dependency_value_id,
+      .value_name = authority.dependency_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::ProducerPublicationOperand,
+      .candidates = authority.source_freshness_authorities,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  authority.source_freshness_status = selected.status;
+  if (prepared_value_freshness_query_selected(selected)) {
+    authority.source_freshness_authority = *selected.authority;
+  }
+}
+
 }  // namespace
 
 PreparedDependencyOperandAuthority plan_prepared_dependency_operand_authority(
@@ -3648,6 +3685,7 @@ PreparedDependencyOperandAuthority plan_prepared_dependency_operand_authority(
             PreparedDependencyOperandAuthorityStatus::MissingStackClobberSafety;
         return authority;
       }
+      publish_dependency_operand_stack_source_freshness_authority(authority);
       break;
     case PreparedDependencyOperandMaterializationPolicy::
         RematerializeCastFromSource:

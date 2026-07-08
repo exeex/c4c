@@ -1,16 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/588_shared_prealloc_move_operand_source_freshness_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Shared-Prealloc Freshness Consumers
+Current Step ID: 2
+Current Step Title: Publish Freshness For The Selected Shared Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audit completed for shared-prealloc freshness consumers.
+Step 2 published shared source freshness authority for the selected dependency
+operand `LoadFromStackSlot` route.
 
-Audited consumers and current freshness state:
+`PreparedDependencyOperandAuthority` now records source freshness candidates,
+query status, and a selected authority. `plan_prepared_dependency_operand_authority`
+publishes a direct-home source freshness candidate for the dependency stack home
+only after the existing `stack_slot_fresh_at_edge` and
+`stack_slot_clobber_safe_at_edge` checks have both succeeded. Missing freshness
+or missing clobber-safety facts still produce no authority and remain
+fail-closed.
+
+The stack-layout contract now proves the selected candidate is visible through
+`find_prepared_value_freshness_authority`, references the dependency home rather
+than destination publication state, and is absent for incomplete stack-source
+facts.
+
+## Suggested Next
+
+Start Step 3 for the selected dependency operand `LoadFromStackSlot` subset:
+wire consumer acceptance to query the published source freshness candidate
+instead of relying on destination-only authority or the local freshness boolean
+alone.
+
+## Watchouts
+
+- Do not claim progress through expectation rewrites, unsupported-marker edits,
+  allowlist changes, named-testcase shortcuts, or target-local ordering tweaks.
+- The Step 2 candidate intentionally reuses the existing
+  `ProducerPublicationOperand` freshness use kind and `DirectHome` source kind
+  because this packet did not own `value_locations.hpp`. Step 3 should decide
+  whether that vocabulary is sufficiently precise before making the consumer
+  accept via the shared query.
+- The collector still records the dump fixture stack-load route as
+  `missing_stack_freshness`; it has no separate dependency stack-source
+  producer/publication fact yet. Do not manufacture freshness from a prepared
+  home alone.
+- Consumer wiring must reject missing, invalid, ambiguous, stale, wrong-use, or
+  destination-only source authority.
+- Branch stack-load remains deferred; it needs its own branch-point use-kind
+  contract.
+
+## Proof
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepared_printer|backend_prepared_lookup_helper)$'`
+passed on rerun. The first build attempt hit a transient `cc1plus` killed
+signal while compiling unrelated `backend_aarch64_instruction_dispatch_test`
+object code; the rerun completed successfully. Canonical proof log:
+`test_after.log`.
+
+Todo-only repair proof: no build required for restoring the Step 1 closure
+inventory in this file.
+
+# Closure Inventory
+
+## Step 1 Audited Consumers
 
 - Prepared object move-bundle source consumer:
   `classify_prepared_object_move_bundle_consumer` in
@@ -24,23 +76,23 @@ Audited consumers and current freshness state:
 - Store-source / edge producer publication operand:
   `publish_store_source_producer_freshness_authority` in
   `src/backend/prealloc/publication_plans.cpp` already publishes and queries
-  `PreparedValueFreshnessUseKind::ProducerPublicationOperand` from
-  same-block source producer metadata. Prepared printer coverage already
-  asserts `source_freshness_status=selected`.
+  `PreparedValueFreshnessUseKind::ProducerPublicationOperand` from same-block
+  source producer metadata. Prepared printer coverage already asserts
+  `source_freshness_status=selected`.
 - Dependency operand authorities:
-  `plan_prepared_dependency_operand_authority` has the closest unwired
-  `missing_stack_freshness` vocabulary. The `LoadFromStackSlot` policy accepts
-  only when `stack_slot_fresh_at_edge` and clobber safety are true, while the
-  collector currently records both a cast-rematerialization candidate and a
-  stack-load candidate but does not publish/query shared freshness authority.
-  Tests and dumps already cover the stack-load route failing closed with
-  `missing_stack_freshness`.
+  `plan_prepared_dependency_operand_authority` has the closest migrated
+  `missing_stack_freshness` vocabulary. Step 2 now publishes source freshness
+  for explicit `LoadFromStackSlot` planner inputs only after existing stack
+  freshness and clobber-safety facts are both present. The collector still
+  records the dump fixture stack-load route as `missing_stack_freshness`
+  because it has no separate dependency stack-source producer/publication fact
+  yet.
 - Branch stack-load authorities:
   `plan_prepared_branch_stack_load_authority` also has
   `missing_stack_freshness`, but the collector currently records branch
   condition/lhs/rhs stack homes with `PreparedBranchStackLoadPolicy::None` and
   local pointer-status checks. It needs a branch-use freshness contract before
-  migration, so it is not the smallest first slice.
+  migration.
 - Edge-publication move consumers:
   edge publication lookups and move-bundle traversal already provide partial
   protection through move-bundle source freshness and publication status, but
@@ -55,21 +107,19 @@ Audited consumers and current freshness state:
   freshness producer for the source stack slot.
 - Select-carrier / select-alias authority:
   `plan_prepared_select_carrier_alias_authority` proves source-use closure for
-  select-materialized binary edge publications and has printer coverage, but
-  it lacks a freshness use-kind contract distinguishing alias closure from
-  source freshness.
+  select-materialized binary edge publications and has printer coverage, but it
+  lacks a freshness use-kind contract distinguishing alias closure from source
+  freshness.
 
-Selected migration subset:
+## Selected Migration Subset
 
-- Migrate dependency operand `LoadFromStackSlot` source freshness first. It is
-  the smallest useful shared-prealloc subset because it already has
-  `missing_stack_freshness`, a narrow source value (`dependency_home` /
-  dependency operand), a concrete publication context, and focused
-  stack-layout plus prepared-printer anchors. The next implementation packet
-  should publish/query freshness for the dependency operand stack source
-  rather than toggling the existing local `stack_slot_fresh_at_edge` boolean.
+- Dependency operand `LoadFromStackSlot` source freshness remains the selected
+  migration subset. It is the smallest useful shared-prealloc subset because it
+  has `missing_stack_freshness`, a narrow source value (`dependency_home` /
+  dependency operand), a concrete publication context, and focused stack-layout
+  plus prepared-printer anchors.
 
-Deferred or blocked families:
+## Deferred Or Blocked Families
 
 - Move-bundle source consumer: already protected by the idea 587 shared query;
   keep it as a regression anchor, not a migration target.
@@ -86,33 +136,3 @@ Deferred or blocked families:
   copies; current authority is structural, not freshness authority.
 - Select-carrier / select-alias authority: blocked on contract design; alias
   closure evidence is adjacent but is not itself freshness proof.
-
-## Suggested Next
-
-Start Step 2 for the selected dependency operand `LoadFromStackSlot` subset:
-publish a shared freshness authority candidate from existing dependency
-operand stack-source semantics, preserving `missing_stack_freshness` when no
-valid producer/publication fact exists.
-
-## Watchouts
-
-- Do not claim progress through expectation rewrites, unsupported-marker edits,
-  allowlist changes, named-testcase shortcuts, or target-local ordering tweaks.
-- Publish freshness authority only from existing semantic prepared facts.
-- Preserve or strengthen fail-closed behavior for missing, ambiguous, invalid,
-  stale, wrong-use, or destination-only source authority.
-- Dependency operand migration must not treat the destination edge publication
-  or binary source producer as proof that the dependency stack slot is fresh.
-  It needs an explicit source-side freshness candidate for the dependency
-  value/use.
-- If no existing dependency operand stack-source semantic fact can publish that
-  candidate, stop and report a missing producer/publication fact instead of
-  manufacturing freshness from the prepared home alone.
-- Branch stack-load looks similar but is broader because branch condition/lhs/rhs
-  roles need a branch-point use-kind contract.
-
-## Proof
-
-No build required by packet. Proof was read-only inspection with `rg`,
-targeted source/test reads, and AST caller checks via `c4c-clang-tool-ccdb`;
-no `test_after.log` was generated for this audit-only packet.

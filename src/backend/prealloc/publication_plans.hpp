@@ -1136,6 +1136,10 @@ struct PreparedDependencyOperandAuthority {
   ValueNameId cast_source_value_name = kInvalidValueName;
   c4c::backend::bir::TypeKind cast_source_type =
       c4c::backend::bir::TypeKind::Void;
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
 };
 
 struct PreparedDependencyOperandAuthorityRecord {
