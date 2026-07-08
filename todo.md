@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/590_branch_stack_load_freshness_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Branch-Point Freshness Ownership
+Current Step ID: 3
+Current Step Title: Wire Freshness Authority Into One Route
 
 # Current Packet
 
