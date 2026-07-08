@@ -123,6 +123,65 @@ Actions:
 Completion check:
 - `todo.md` contains final evidence, remaining limitations, and a clear closure-readiness recommendation.
 
+### Step 6: Classify the Remaining Store Subfamily
+
+Goal: identify the next common producer limitation inside the remaining visible local-memory store stops without broadening into adjacent owners.
+
+Actions:
+- Start from the Step 5 evidence: `6/46` full-row BIR dump successes and `40/46` remaining visible rows still reporting the store local-memory semantic family.
+- Sample the remaining store-family rows with focused HIR and BIR dumps.
+- Group failures by first missing store fact, source-value shape, destination/address authority, and aggregate/global-data handoff risk.
+- Keep `src/pr39120.c` separate unless the focused failing function proves it is still a local-memory store producer problem rather than the later aggregate-to-global boundary.
+- Record the selected next producer subfamily, representative rows, guard rows, and exact supervisor proof command in `todo.md`.
+
+Completion check:
+- `todo.md` names the next local-memory store producer subfamily, at least two representative rows, excluded adjacent-owner rows, guard rows, and the delegated proof command.
+
+### Step 7: Repair the Next Store Producer Subfamily
+
+Goal: implement one generic BIR local-memory store producer repair for the Step 6 subfamily.
+
+Primary target:
+- BIR local-memory store producer code, especially `src/backend/bir/lir_to_bir/memory/` and scalar value lowering only when Step 6 proves the missing fact is a store source-value issue.
+
+Actions:
+- Implement the minimal semantic producer change for the selected subfamily.
+- Preserve the Step 3 repairs for `f128` local immediates, loaded global pointer-field authority, and dynamic local pointer-array stores.
+- Preserve diagnostics for unsupported aggregate/global-data, GEP, alloca, ABI, runtime, RV64 consumer, expectation, and allowlist cases.
+- Build and run the supervisor-delegated narrow proof.
+
+Completion check:
+- Build passes.
+- More than one Step 6 representative row progresses beyond the old local-memory store producer stop or reaches a defensible downstream owner.
+- Guard rows keep their established non-store ownership.
+
+### Step 8: Reprove Store-Family Breadth After the Follow-Up Repair
+
+Goal: prove whether the Step 7 repair generalizes across the remaining visible store-family rows.
+
+Actions:
+- Run the selected narrow proof again if Step 7 changed after first proof.
+- Run the broader same-family RV64 gcc_torture backend-object subset requested by the supervisor.
+- Re-run focused BIR dump classification for the visible store-family rows when the supervisor asks for same-family movement evidence.
+- Compare against the Step 5 checkpoint of `6/46` full-row BIR dump successes and `40/46` remaining visible store-family stops.
+- Record progressed rows, remaining store-family limitations, stale-artifact caveats, guard-owner preservation, and downstream handoffs in `todo.md`.
+
+Completion check:
+- `todo.md` summarizes same-family movement after Step 7, remaining local-memory store limitations, guard-owner preservation, and whether another runbook refinement is needed.
+
+### Step 9: Updated Closure Readiness
+
+Goal: decide whether idea 603 is now closure-ready or still needs another local-memory store producer packet.
+
+Actions:
+- Summarize all implementation surfaces accepted under this runbook.
+- Separate remaining local-memory store limitations from adjacent owner families.
+- State whether the source idea acceptance criteria are satisfied.
+- Recommend close only if source-idea completion is defensible under refreshed evidence; otherwise recommend the next local-memory store producer substep or lifecycle split.
+
+Completion check:
+- `todo.md` contains updated final evidence, remaining limitations, and a clear close-or-continue recommendation.
+
 ## Acceptance Gate
 
 This plan is complete only when same-family local-memory store rows progress beyond the current BIR producer stop, non-store guard owners are preserved, and proof includes more than one store-shaped row from the current scan.
