@@ -1,30 +1,31 @@
-# Prepared Global Data Authority Runbook
+# Prepared Global Memory Residual Runbook
 
 Status: Active
 Source Idea: ideas/open/608_prepared_global_data_authority.md
 Activated from: ideas/open/608_prepared_global_data_authority.md
+Supersedes: exhausted `Prepared Global Data Authority Runbook` after Step 5
 
 ## Purpose
 
-Complete prepared/global authority for supported global object data, prepared
-global memory facts, and direct global-symbol base-plus-offset addressing
-before any later RV64 consumer route relies on those facts.
+Continue idea `608` after the first runbook moved the broad prepared/global
+authority families but found remaining prepared global-memory fact residuals.
 
 ## Goal
 
-Move multiple prepared/global authority rows past their current producer-side
-stops while RV64/global emission, access lowering, link behavior, runtime
-behavior, and unsupported policy remain outside this plan.
+Repair or precisely classify the narrower prepared global-memory authority
+residual represented by `src/pr36034-1.c` and `src/pr91137.c`.
 
 ## Core Rule
 
-Publish only prepared/global facts that the producer layer can prove. Do not
-repair prepared authority by reconstructing object bytes, relocation targets,
-memory extents, or base-plus-offset identity inside RV64 target code.
+Publish prepared global-memory facts only from producer-side facts that prove
+global object identity, offset, width, and extent. Do not repair this residual
+by changing RV64 emission, test expectations, unsupported policy, allowlists,
+timeouts, or accounting.
 
 ## Read First
 
 - ideas/open/608_prepared_global_data_authority.md
+- todo.md
 - docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md
 - docs/rv64_gcc_torture_1000_pass_recovery/high_yield_followup_plan.md
 - docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md
@@ -33,171 +34,122 @@ memory extents, or base-plus-offset identity inside RV64 target code.
 
 ## Current Targets
 
-- Prepared global memory fact rows, including representative rows such as
-  `src/strlen-7.c`.
-- Direct global-symbol base-plus-offset authority rows, including
-  representative rows such as `src/pr79737-2.c`.
-- Any remaining selected global object-data contract rows that still fail in
-  prepared/global authority after the mixed object-data slot route and RV64
-  global consumer route have moved their owned work.
+- `src/pr36034-1.c`
+- `src/pr91137.c`
+- Prepared/prealloc global-memory fact publication and verification code that
+  owns their first remaining prepared/global authority stop.
 
 ## Non-Goals
 
-- RV64 global symbol emission, relocation-record emission, or global
-  load/store access-width lowering.
-- BIR global initializer bootstrap, local-memory producer repairs, ABI,
+- Reopening selected object-data authority; the prior Step 4 classified those
+  rows as fail-closed `unsupported_but_coherent` or `missing_object_label`.
+- Direct global-symbol base-plus-offset authority; the prior Step 3 verified
+  that route already publishes its prepared authority.
+- Prepared move-bundle authority for `src/990326-1.c`, `src/20060930-2.c`, or
+  `src/pr64756.c`.
+- Same-module call ABI for `src/20041218-1.c`.
+- RV64 global symbol emission, relocation records, global load/store lowering,
   runtime/link behavior, expectations, unsupported markers, allowlists,
   timeouts, or accounting.
-- Testcase-shaped fixes for a single representative row.
-- Helper-only refactors that leave the same prepared/global authority stop.
 
 ## Working Model
 
-The global-data bucket is split by first owner. Prepared/global authority must
-publish coherent facts before RV64 consumes globals. Prior lifecycle work moved
-relocation-only and mixed object-data slot authority far enough for the RV64
-consumer route to run, and idea `609` has now closed its consumer side. This
-runbook reopens the producer side of idea `608` and starts by refreshing which
-authority rows still belong here.
+The completed runbook moved representative prepared global-memory rows such as
+`src/strlen-7.c`, `src/20000703-1.c`, `src/pr58662.c`, `src/20140212-1.c`,
+`src/20190228-1.c`, `src/pr57861.c`, and `src/pr58431.c` through the previous
+authority stop. It also verified that direct global-symbol base-plus-offset
+authority already publishes for representatives such as `src/pr79737-2.c`,
+`src/pr82387.c`, `src/pr68624.c`, and `src/pr57568.c`.
+
+The remaining in-scope evidence is therefore narrow: `src/pr36034-1.c` and
+`src/pr91137.c` still represent prepared global-memory facts, not selected
+object-data authority and not lifecycle close readiness.
 
 ## Execution Rules
 
-- Start with an inventory packet before editing implementation code.
-- Keep selected object-data, prepared global memory facts, and direct
-  global-symbol base-plus-offset authority as separate packets unless the
-  inventory proves one shared producer helper owns them.
-- Preserve fail-closed diagnostics for missing initializer facts, unsupported
-  sections, ambiguous object identity, unknown extents, unsupported widths, and
-  unresolved direct base-plus-offset authority.
-- Do not change tests, expectations, unsupported markers, external allowlists,
-  timeout/accounting files, or RV64 target code as a substitute for prepared
-  authority.
-- Prove code slices with a focused build and the supervisor-selected backend
-  or RV64 gcc-torture subset. Escalate to broader validation when a slice
-  changes shared prepared-contract verification or object-data publication.
+- Start by re-reading the current diagnostics for both residual cases before
+  editing implementation code.
+- Keep the packet semantic: either publish a general producer-side prepared
+  global-memory fact rule, or prove the residual belongs to a different
+  explicit owner.
+- Preserve fail-closed diagnostics for missing initializer facts, ambiguous
+  object identity, unknown extents, unsupported widths, non-global storage,
+  and unsupported sections.
+- Do not add testcase-name checks or case-shaped shortcuts for `pr36034-1.c`
+  or `pr91137.c`.
+- Prove code slices with the supervisor-selected command. The current expected
+  narrow proof is:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
 
 ## Ordered Steps
 
-### Step 1: Refresh prepared/global authority inventory
+### Step 1: Refresh residual diagnostics
 
-Goal: identify the current residual rows whose first owner is still
-prepared/global authority after the closed mixed object-data and RV64 consumer
-work.
+Goal: identify the exact current prepared/global authority stop for
+`src/pr36034-1.c` and `src/pr91137.c`.
 
 Primary targets:
-- `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
-- prepared dumps or diagnostics for global memory facts and direct
-  global-symbol base-plus-offset addressing
+- current backend case logs or prepared dumps for both residual cases
+- prepared global-memory fact publication code
 - `src/backend/prealloc/prepared_contract_verifier.cpp`
-- `src/backend/prealloc/object_data.hpp`
 
 Actions:
-- Build or refresh an allowlist of prepared/global authority representatives
-  from the selected object-data, prepared global memory fact, and direct
-  global-symbol base-plus-offset families.
-- Record each row's current first diagnostic and the producer facts it lacks.
-- Separate rows now owned by RV64 consumer, link/runtime, ABI, or unsupported
-  policy from rows still owned by prepared/global authority.
-- Select the first implementation packet from the largest confirmed
-  prepared/global authority family.
+- Re-run or inspect the current diagnostics for both residual cases.
+- Record the missing producer fact for each case: object identity, offset,
+  width, extent, initializer fact, section support, or another concrete
+  prepared-memory prerequisite.
+- Confirm they are still not selected object-data residuals and not RV64
+  consumer failures.
+- Choose the first implementation packet only after both cases have an owner
+  and missing-fact classification.
 
 Completion check:
-- `todo.md` records the selected allowlist, residual owner split, first
-  implementation family, and exact proof command for Step 2.
+- `todo.md` records both residual diagnostics, the confirmed first owner, the
+  chosen implementation packet, and the exact proof command for Step 2.
 
-### Step 2: Publish supported prepared global memory facts
+### Step 2: Repair the shared prepared global-memory fact rule
 
-Goal: produce supported prepared global memory facts when BIR/global
-initializer or symbol facts already prove object identity, extent, and access
-requirements.
+Goal: publish the missing supported prepared global-memory fact only when the
+producer layer proves the required identity, offset, width, and extent.
 
 Primary targets:
 - prepared/prealloc global-memory fact publication code identified in Step 1
-- `src/backend/prealloc/prepared_contract_verifier.cpp`
-- focused prepared or backend tests that already cover global memory facts
+- prepared contract verification for global-memory facts
+- focused backend rows for `src/pr36034-1.c` and `src/pr91137.c`
 
 Actions:
-- Follow existing prepared-fact structures instead of inventing a target-local
-  global model.
-- Publish facts only for supported object identity, offset, width, and extent
-  combinations.
-- Preserve diagnostics for missing initializer facts, unsupported access
-  widths, ambiguous identity, unknown extents, and non-global storage.
-- Keep RV64 load/store lowering out of this packet.
+- Implement the smallest general rule that covers the confirmed residual
+  family.
+- Reuse existing prepared-fact structures and verifier expectations.
+- Preserve unsupported or ambiguous cases as explicit fail-closed diagnostics.
+- Keep RV64 lowering and object emission out of the patch.
 
 Completion check:
-- Multiple prepared global memory fact rows progress beyond the prior prepared
-  authority stop, while unsupported-width and missing-authority rows remain
-  accurately rejected.
+- At least one residual case moves beyond the prior prepared global-memory
+  authority stop, or both are proven to belong to a named downstream owner
+  without weakening contracts.
 
-### Step 3: Publish direct global-symbol base-plus-offset authority
+### Step 3: Prove residual handoff and close readiness
 
-Goal: represent direct global-symbol base-plus-offset memory addressing in the
-prepared layer when source identity and offset are authoritative.
-
-Primary targets:
-- prepared/prealloc memory operand publication code identified in Step 1
-- prepared contract verification for direct global-symbol base-plus-offset
-  facts
-- focused tests or RV64 gcc-torture rows such as `src/pr79737-2.c`
-
-Actions:
-- Publish direct global-symbol base-plus-offset facts from proven producer
-  inputs only.
-- Preserve fail-closed behavior for ambiguous symbols, missing base identity,
-  unsupported offsets, unknown extents, and rows that require BIR producer
-  repair first.
-- Do not lower RV64 addressing or infer symbol identity from final object
-  emission.
-
-Completion check:
-- Multiple direct global-symbol base-plus-offset rows move to the next
-  downstream owner or pass the prepared authority stop, with missing-authority
-  guard rows still rejected.
-
-### Step 4: Recheck selected object-data authority residuals
-
-Goal: confirm whether selected global object-data contract work remains in
-idea `608` after prior relocation-only, mixed-slot, and RV64 consumer work.
+Goal: validate the narrowed residual route and decide whether idea `608` can
+enter close review or needs another lifecycle split.
 
 Primary targets:
-- selected object-data publication and verification helpers
-- object-data prepared dumps from the Step 1 allowlist
-- guard rows from the prior mixed object-data and RV64 consumer routes
-
-Actions:
-- Re-run the selected object-data residuals from Step 1.
-- If residuals still fail in prepared/global authority, repair only the
-  missing producer-side fact representation.
-- If residuals now belong to RV64, link/runtime, ABI, or unsupported policy,
-  record that owner split in `todo.md` instead of changing implementation.
-- Keep relocation-record emission and global symbol emission out of this plan.
-
-Completion check:
-- Remaining selected object-data authority rows are either repaired at the
-  prepared layer or documented as no longer owned by idea `608`.
-
-### Step 5: Prove prepared/global handoff and close readiness
-
-Goal: validate the prepared/global authority boundary and record whether the
-source idea is ready for lifecycle close review.
-
-Primary targets:
-- supervisor-selected prepared/global authority allowlist
-- focused prepared/backend tests touched by the implementation packets
+- residual proof rows for `src/pr36034-1.c` and `src/pr91137.c`
+- focused backend subset selected by the supervisor
 - `todo.md`
 
 Actions:
-- Re-run the focused build and selected proof subset after implementation.
-- Record rows that moved through prepared/global authority and their next
-  owner.
-- Record residual rows that still belong to BIR initializer bootstrap,
-  RV64/global consumer, link/runtime, ABI, unsupported policy, or a new
-  lifecycle idea.
-- Return to the supervisor for review, broader validation, or lifecycle
-  routing.
+- Re-run the focused build and selected proof subset after the implementation
+  packet.
+- Record movement for both residual cases and their next owner, if any.
+- Confirm no selected object-data, direct base-plus-offset, move-bundle, ABI,
+  RV64 consumer, or unsupported-policy work was absorbed into this runbook.
+- State in `todo.md` whether idea `608` is ready for close review.
 
 Completion check:
-- `todo.md` contains the movement summary, residual owner split, proof
-  command, and whether `ideas/open/608_prepared_global_data_authority.md` is
-  ready for close review or should remain open with a narrower follow-up.
+- `todo.md` contains the residual movement summary, proof command, proof
+  result, remaining owner split if any, and close-readiness recommendation.
