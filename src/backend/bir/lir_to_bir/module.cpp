@@ -28,6 +28,7 @@ using lir_to_bir_detail::resolve_known_global_address;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::resolve_pointer_initializer_offsets;
 using lir_to_bir_detail::TypeDeclMap;
+using lir_to_bir_detail::type_size_bytes;
 
 constexpr std::string_view kModuleCapabilityBucketSummary =
     "currently admitted capability buckets covering function-signature, "
@@ -818,10 +819,17 @@ void apply_resolved_pointer_initializer_value_ids(bir::Module* module,
     if (info_it == global_types.end() || info_it->second.pointer_initializer_offsets.empty()) {
       continue;
     }
+    global.initializer_relocation_slots.clear();
     for (const auto& [byte_offset, address] : info_it->second.pointer_initializer_offsets) {
       if (address.link_name_id == c4c::kInvalidLinkName) {
         continue;
       }
+      global.initializer_relocation_slots.push_back(
+          bir::GlobalInitializerRelocationSlot{
+              .byte_offset = byte_offset,
+              .size_bytes = type_size_bytes(bir::TypeKind::Ptr),
+              .target = address.link_name_id,
+          });
       const auto value_index_it =
           info_it->second.pointer_initializer_value_indices.find(byte_offset);
       if (value_index_it == info_it->second.pointer_initializer_value_indices.end() ||
@@ -1827,6 +1835,11 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
           "bootstrap lir_to_bir only supports byte-addressable string-pool constants right now");
       return std::nullopt;
     }
+    if (lowered_global->link_name_id == kInvalidLinkName) {
+      lowered_global->link_name_id =
+          module.names.link_names.intern(lowered_global->name);
+    }
+    info.link_name_id = lowered_global->link_name_id;
     global_types.emplace(lowered_global->name, info);
     module.globals.push_back(std::move(*lowered_global));
   }

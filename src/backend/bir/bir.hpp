@@ -655,6 +655,12 @@ enum class GlobalAddressMaterializationPolicy {
   return "unknown";
 }
 
+struct GlobalInitializerRelocationSlot {
+  std::size_t byte_offset = 0;
+  std::size_t size_bytes = 0;
+  LinkNameId target = kInvalidLinkName;
+};
+
 struct Global {
   std::string name;
   LinkNameId link_name_id = kInvalidLinkName;
@@ -677,6 +683,7 @@ struct Global {
   // keep the id invalid.
   LinkNameId initializer_symbol_name_id = kInvalidLinkName;
   std::vector<Value> initializer_elements;
+  std::vector<GlobalInitializerRelocationSlot> initializer_relocation_slots;
   GlobalAddressMaterializationPolicy address_materialization_policy =
       GlobalAddressMaterializationPolicy::Unspecified;
 };

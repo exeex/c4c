@@ -175,6 +175,136 @@ void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
          is_link_symbol_pointer_initializer(global.initializer_elements.front());
 }
 
+[[nodiscard]] bool range_overlaps(std::size_t lhs_offset,
+                                  std::size_t lhs_size,
+                                  std::size_t rhs_offset,
+                                  std::size_t rhs_size) {
+  return lhs_offset < rhs_offset + rhs_size && rhs_offset < lhs_offset + lhs_size;
+}
+
+[[nodiscard]] bool overlaps_relocation_slot(
+    const std::vector<PreparedObjectDataRelocationSlot>& slots,
+    std::size_t byte_offset,
+    std::size_t size_bytes) {
+  return std::any_of(slots.begin(), slots.end(), [&](const auto& slot) {
+    return range_overlaps(byte_offset, size_bytes, slot.byte_offset, slot.size_bytes);
+  });
+}
+
+[[nodiscard]] std::optional<std::vector<PreparedObjectDataRelocationSlot>>
+prepared_relocation_slots(const bir::Global& global) {
+  if (global.initializer_relocation_slots.empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<PreparedObjectDataRelocationSlot> slots;
+  slots.reserve(global.initializer_relocation_slots.size());
+  for (const auto& slot : global.initializer_relocation_slots) {
+    if (slot.target == kInvalidLinkName || slot.size_bytes == 0 ||
+        slot.byte_offset > global.size_bytes ||
+        slot.size_bytes > global.size_bytes - slot.byte_offset) {
+      return std::nullopt;
+    }
+    slots.push_back(PreparedObjectDataRelocationSlot{
+        .byte_offset = slot.byte_offset,
+        .size_bytes = slot.size_bytes,
+        .target = slot.target,
+    });
+  }
+  std::sort(slots.begin(), slots.end(), [](const auto& lhs, const auto& rhs) {
+    if (lhs.byte_offset != rhs.byte_offset) {
+      return lhs.byte_offset < rhs.byte_offset;
+    }
+    return lhs.size_bytes < rhs.size_bytes;
+  });
+  for (std::size_t i = 1; i < slots.size(); ++i) {
+    if (range_overlaps(slots[i - 1].byte_offset,
+                       slots[i - 1].size_bytes,
+                       slots[i].byte_offset,
+                       slots[i].size_bytes)) {
+      return std::nullopt;
+    }
+  }
+  return slots;
+}
+
+[[nodiscard]] std::optional<PreparedGlobalObjectData>
+mixed_relocation_global_object_data(const PreparedBirModule& prepared,
+                                    const bir::Global& global) {
+  if (global.is_extern || global.is_thread_local ||
+      global.link_name_id == kInvalidLinkName || global.size_bytes == 0 ||
+      global.align_bytes == 0 || global.initializer.has_value() ||
+      global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != kInvalidLinkName ||
+      global.initializer_elements.empty() ||
+      global.address_materialization_policy ==
+          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+    return std::nullopt;
+  }
+
+  auto slots = prepared_relocation_slots(global);
+  if (!slots.has_value() || slots->empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::uint8_t> bytes(global.size_bytes, 0);
+  std::size_t cursor = 0;
+  std::size_t slot_index = 0;
+  for (const auto& element : global.initializer_elements) {
+    if (element.kind == bir::Value::Kind::Immediate) {
+      auto element_bytes = immediate_value_bytes(element);
+      if (!element_bytes.has_value() || cursor > global.size_bytes ||
+          element_bytes->size() > global.size_bytes - cursor ||
+          overlaps_relocation_slot(*slots, cursor, element_bytes->size())) {
+        return std::nullopt;
+      }
+      std::copy(element_bytes->begin(), element_bytes->end(), bytes.begin() + cursor);
+      cursor += element_bytes->size();
+      continue;
+    }
+
+    if (!is_link_symbol_pointer_initializer(element) || slot_index >= slots->size()) {
+      return std::nullopt;
+    }
+    const auto& slot = (*slots)[slot_index];
+    if (slot.byte_offset < cursor ||
+        slot.target != element.pointer_symbol_link_name_id) {
+      return std::nullopt;
+    }
+    cursor = slot.byte_offset + slot.size_bytes;
+    ++slot_index;
+  }
+  if (slot_index != slots->size()) {
+    return std::nullopt;
+  }
+
+  std::string label{prepared.names.link_names.spelling(global.link_name_id)};
+  if (label.empty()) {
+    label =
+        std::string{prepared.module.names.link_names.spelling(global.link_name_id)};
+  }
+
+  return PreparedGlobalObjectData{
+      .object_label = global.link_name_id,
+      .object_label_text = std::move(label),
+      .section_kind = global.is_constant ? PreparedObjectDataSectionKind::ReadOnlyData
+                                         : PreparedObjectDataSectionKind::Data,
+      .object_byte_offset = 0,
+      .object_size_bytes = global.size_bytes,
+      .align_bytes = global.align_bytes,
+      .emitted_bytes = std::move(bytes),
+      .relocation_slots = std::move(*slots),
+      .public_symbol = true,
+      .has_object_label = true,
+      .has_publication_identity = true,
+      .has_object_byte_range = true,
+      .requires_emitted_bytes = true,
+      .has_emitted_bytes = true,
+      .requires_relocation = true,
+      .has_relocation = true,
+  };
+}
+
 [[nodiscard]] PreparedGlobalObjectData unsupported_global_object_data(
     const PreparedBirModule& prepared,
     const bir::Global& global) {
@@ -277,6 +407,11 @@ void populate_prepared_object_data_plans(PreparedBirModule& prepared) {
     }
 
     if (!bytes.has_value()) {
+      if (auto mixed_data = mixed_relocation_global_object_data(prepared, global);
+          mixed_data.has_value()) {
+        prepared.object_data.globals.push_back(std::move(*mixed_data));
+        continue;
+      }
       if (has_relocation_only_initializer(global)) {
         prepared.object_data.globals.push_back(
             relocation_global_object_data(prepared, global));

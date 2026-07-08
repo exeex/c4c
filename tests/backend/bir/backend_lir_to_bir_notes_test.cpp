@@ -890,6 +890,8 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
 
   bool saw_good_string_arg = false;
   bool saw_bad_string_arg = false;
+  const auto good_string_id = result.module->names.link_names.intern(".str.good");
+  const auto bad_string_id = result.module->names.link_names.intern(".str.bad");
   for (const auto& block : lowered_user->blocks) {
     for (const auto& inst : block.insts) {
       const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
@@ -898,10 +900,12 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
       }
       saw_good_string_arg =
           saw_good_string_arg ||
-          call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str.good");
+          call->args.front() ==
+              c4c::backend::bir::Value::named_symbol_pointer("@.str.good", good_string_id);
       saw_bad_string_arg =
           saw_bad_string_arg ||
-          call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str.bad");
+          call->args.front() ==
+              c4c::backend::bir::Value::named_symbol_pointer("@.str.bad", bad_string_id);
     }
   }
   if (!saw_good_string_arg) {
@@ -2228,6 +2232,13 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
           aggregate_callee_id) {
     return fail("aggregate pointer initializer element values should carry function LinkNameId");
   }
+  if (lowered_aggregate_slot->initializer_relocation_slots.size() != 1 ||
+      lowered_aggregate_slot->initializer_relocation_slots.front().byte_offset != 0 ||
+      lowered_aggregate_slot->initializer_relocation_slots.front().size_bytes != 8 ||
+      lowered_aggregate_slot->initializer_relocation_slots.front().target !=
+          aggregate_callee_id) {
+    return fail("aggregate function pointer initializer should publish relocation slot authority");
+  }
   if (lowered_aggregate_slot->initializer_elements.front() ==
       c4c::backend::bir::Value::named(TypeKind::Ptr, "@drifted_aggregate_callee_display")) {
     return fail("aggregate function pointer initializer value must not be raw display spelling only");
@@ -2278,6 +2289,13 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
       lowered_aggregate_global_slot->initializer_elements.front().pointer_symbol_link_name_id !=
           aggregate_target_id) {
     return fail("aggregate pointer initializer element values should carry global LinkNameId");
+  }
+  if (lowered_aggregate_global_slot->initializer_relocation_slots.size() != 1 ||
+      lowered_aggregate_global_slot->initializer_relocation_slots.front().byte_offset != 0 ||
+      lowered_aggregate_global_slot->initializer_relocation_slots.front().size_bytes != 8 ||
+      lowered_aggregate_global_slot->initializer_relocation_slots.front().target !=
+          aggregate_target_id) {
+    return fail("aggregate global pointer initializer should publish relocation slot authority");
   }
   if (lowered_aggregate_global_slot->initializer_elements.front() ==
       c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_aggregate_target")) {
@@ -3354,9 +3372,16 @@ int expect_admitted_aggregate_pointer_field_global() {
       global->initializer_elements.size() != 9) {
     return fail("aggregate pointer-field globals should lower into byte-addressable aggregate storage");
   }
+  const auto string_link_name_id = result.module->names.link_names.intern(".str0");
   if (global->initializer_elements.front() !=
-      c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str0")) {
-    return fail("aggregate pointer-field globals should preserve the pointed-to string symbol");
+      c4c::backend::bir::Value::named_symbol_pointer("@.str0", string_link_name_id)) {
+    return fail("aggregate pointer-field globals should preserve the pointed-to string symbol identity");
+  }
+  if (global->initializer_relocation_slots.size() != 1 ||
+      global->initializer_relocation_slots.front().byte_offset != 0 ||
+      global->initializer_relocation_slots.front().size_bytes != 8 ||
+      global->initializer_relocation_slots.front().target != string_link_name_id) {
+    return fail("aggregate pointer-field globals should publish string relocation slot authority");
   }
   if (global->initializer_elements[1] != c4c::backend::bir::Value::immediate_i8(99)) {
     return fail("aggregate pointer-field globals should preserve the explicit byte payload");

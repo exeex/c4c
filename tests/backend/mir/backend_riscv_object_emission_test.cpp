@@ -22791,6 +22791,75 @@ int publishes_relocation_only_pointer_object_data_facts() {
       "relocation object data without relocation records");
 }
 
+int publishes_mixed_bytes_and_relocation_object_data_facts() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto object_link_name =
+      prepared.module.names.link_names.intern("mixed_object");
+  const auto target_link_name =
+      prepared.module.names.link_names.intern(".str0");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "mixed_object",
+      .link_name_id = object_link_name,
+      .type = bir::TypeKind::I8,
+      .size_bytes = 16,
+      .align_bytes = 8,
+      .initializer_elements =
+          {
+              bir::Value::immediate_i8('4'),
+              bir::Value::named_symbol_pointer("@.str0", target_link_name),
+          },
+      .initializer_relocation_slots =
+          {
+              bir::GlobalInitializerRelocationSlot{
+                  .byte_offset = 8,
+                  .size_bytes = 8,
+                  .target = target_link_name,
+              },
+          },
+  });
+  publish_prepared_object_data(prepared);
+
+  const auto* object_data = prepare::find_prepared_global_object_data(
+      prepared.object_data, object_link_name);
+  if (object_data == nullptr) {
+    return fail("expected mixed bytes and relocation object-data facts");
+  }
+  if (object_data->object_label != object_link_name ||
+      object_data->object_label_text != "mixed_object" ||
+      object_data->section_kind != prepare::PreparedObjectDataSectionKind::Data ||
+      object_data->object_byte_offset != 0 ||
+      object_data->object_size_bytes != 16 ||
+      object_data->align_bytes != 8 ||
+      object_data->emitted_bytes.size() != 16 ||
+      object_data->emitted_bytes[0] != static_cast<std::uint8_t>('4') ||
+      !std::all_of(object_data->emitted_bytes.begin() + 1,
+                   object_data->emitted_bytes.end(),
+                   [](std::uint8_t byte) { return byte == 0; }) ||
+      object_data->relocation_slots.size() != 1 ||
+      object_data->relocation_slots.front().byte_offset != 8 ||
+      object_data->relocation_slots.front().size_bytes != 8 ||
+      object_data->relocation_slots.front().target != target_link_name ||
+      object_data->zero_fill_byte_count != 0 ||
+      !object_data->has_object_label ||
+      !object_data->has_publication_identity ||
+      !object_data->has_object_byte_range ||
+      !object_data->requires_emitted_bytes ||
+      !object_data->has_emitted_bytes ||
+      object_data->requires_zero_fill ||
+      object_data->has_zero_fill ||
+      !object_data->requires_relocation ||
+      !object_data->has_relocation ||
+      object_data->requires_unsupported_marker ||
+      object_data->has_unsupported_marker ||
+      object_data->unsupported_but_coherent) {
+    return fail("expected mixed prepared object-data authority");
+  }
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_global_data: RV64 object route cannot emit prepared "
+      "relocation object data without relocation records");
+}
+
 int rejects_unsupported_selected_global_object_data_shapes() {
   {
     auto prepared = make_prepared_direct_call_module();
@@ -24494,6 +24563,7 @@ int main() {
   status |= emits_prepared_selected_zero_pointer_global_bss_storage();
   status |= publishes_implicit_const_pointer_array_zero_fill_object_data_facts();
   status |= publishes_relocation_only_pointer_object_data_facts();
+  status |= publishes_mixed_bytes_and_relocation_object_data_facts();
   status |= rejects_unsupported_selected_global_object_data_shapes();
   status |= emits_prepared_writable_i32_global_object_storage();
   status |= emits_prepared_global_object_storage_from_prepared_record_authority();
