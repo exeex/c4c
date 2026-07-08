@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/613_abi_call_result_stack_frame_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Broaden Within ABI Consumer Authority
+Current Step ID: 5
+Current Step Title: Residual Split Or Close-Readiness Classification
 
 # Current Packet
 
