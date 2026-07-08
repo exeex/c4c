@@ -63,6 +63,10 @@ enum class PreparedObjectMoveBundleConsumerStatus {
   MismatchedParallelCopyExecutionSite,
   MismatchedParallelCopyMoveBundle,
   UnsupportedParallelCopyMoveBundleAuthority,
+  MissingMoveBundleSourceFreshness,
+  InvalidMoveBundleSourceFreshness,
+  AmbiguousMoveBundleSourceFreshness,
+  UnsupportedMoveBundleSourceFreshness,
   AmbiguousNonParallelMultiSourceStackDestination,
   UnsupportedNonParallelMultiSourceStackDestinationAuthority,
   MismatchedStackDestinationRegisterFanInMoveAuthority,
@@ -111,6 +115,10 @@ enum class PreparedObjectConsumerDiagnosticCategory {
   MismatchedParallelCopyExecutionSite,
   MismatchedParallelCopyMoveBundle,
   UnsupportedParallelCopyMoveBundleAuthority,
+  MissingMoveBundleSourceFreshness,
+  InvalidMoveBundleSourceFreshness,
+  AmbiguousMoveBundleSourceFreshness,
+  UnsupportedMoveBundleSourceFreshness,
   AmbiguousNonParallelMultiSourceStackDestination,
   UnsupportedNonParallelMultiSourceStackDestinationAuthority,
   MismatchedStackDestinationRegisterFanInMoveAuthority,
@@ -231,6 +239,15 @@ prepared_object_move_bundle_consumer_status_name(
     case PreparedObjectMoveBundleConsumerStatus::
         UnsupportedParallelCopyMoveBundleAuthority:
       return "unsupported_parallel_copy_move_bundle_authority";
+    case PreparedObjectMoveBundleConsumerStatus::MissingMoveBundleSourceFreshness:
+      return "missing_move_bundle_source_freshness";
+    case PreparedObjectMoveBundleConsumerStatus::InvalidMoveBundleSourceFreshness:
+      return "invalid_move_bundle_source_freshness";
+    case PreparedObjectMoveBundleConsumerStatus::AmbiguousMoveBundleSourceFreshness:
+      return "ambiguous_move_bundle_source_freshness";
+    case PreparedObjectMoveBundleConsumerStatus::
+        UnsupportedMoveBundleSourceFreshness:
+      return "unsupported_move_bundle_source_freshness";
     case PreparedObjectMoveBundleConsumerStatus::
         AmbiguousNonParallelMultiSourceStackDestination:
       return "ambiguous_non_parallel_multi_source_stack_destination";
@@ -340,6 +357,16 @@ prepared_object_consumer_diagnostic_category_name(
     case PreparedObjectConsumerDiagnosticCategory::
         UnsupportedParallelCopyMoveBundleAuthority:
       return "unsupported_parallel_copy_move_bundle_authority";
+    case PreparedObjectConsumerDiagnosticCategory::MissingMoveBundleSourceFreshness:
+      return "missing_move_bundle_source_freshness";
+    case PreparedObjectConsumerDiagnosticCategory::InvalidMoveBundleSourceFreshness:
+      return "invalid_move_bundle_source_freshness";
+    case PreparedObjectConsumerDiagnosticCategory::
+        AmbiguousMoveBundleSourceFreshness:
+      return "ambiguous_move_bundle_source_freshness";
+    case PreparedObjectConsumerDiagnosticCategory::
+        UnsupportedMoveBundleSourceFreshness:
+      return "unsupported_move_bundle_source_freshness";
     case PreparedObjectConsumerDiagnosticCategory::
         AmbiguousNonParallelMultiSourceStackDestination:
       return "ambiguous_non_parallel_multi_source_stack_destination";
@@ -436,6 +463,8 @@ struct PreparedObjectValueHomeConsumerClassification {
 struct PreparedObjectMoveBundleConsumerQuery {
   const PreparedObjectTraversalEvent* event = nullptr;
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  const std::vector<PreparedValueFreshnessAuthority>*
+      move_source_freshness_authorities = nullptr;
 };
 
 struct PreparedObjectMoveBundleConsumerClassification {
@@ -451,6 +480,10 @@ struct PreparedObjectMoveBundleConsumerClassification {
   std::size_t instruction_index = 0;
   std::optional<BlockLabelId> prepared_block_label;
   std::size_t move_count = 0;
+  PreparedValueId source_freshness_value_id = 0;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
   PreparedObjectTraversalEvent::MoveBundleLookupEvidence
       move_bundle_lookup_evidence;
 };

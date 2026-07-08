@@ -398,7 +398,16 @@ int expect_prepared_consumer_rejection_diagnostic(
     return fail("expected prepared RV64 object path to reject");
   }
   if (result.prepared_consumer_category != expected_category) {
-    return fail("expected shared prepared-consumer diagnostic category");
+    return fail(
+        "expected shared prepared-consumer diagnostic category `" +
+        std::string(prepare::prepared_object_consumer_diagnostic_category_name(
+            expected_category)) +
+        "`, got `" +
+        (result.prepared_consumer_category.has_value()
+             ? std::string(prepare::prepared_object_consumer_diagnostic_category_name(
+                   *result.prepared_consumer_category))
+             : std::string("none")) +
+        "` with diagnostic `" + result.diagnostic + "`");
   }
   if (result.diagnostic != expected_diagnostic) {
     return fail("expected prepared-consumer diagnostic `" +
@@ -21799,7 +21808,11 @@ int rejects_prepared_direct_global_return_authority_fail_closed_shapes() {
   prepared.value_locations.functions[0].value_homes[0].kind =
       prepare::PreparedValueHomeKind::StackSlot;
   prepared.value_locations.functions[0].value_homes[0].register_name = std::nullopt;
-  if (expect_prepared_rejection_diagnostic(prepared, move_diagnostic) != 0) {
+  if (expect_prepared_consumer_rejection_diagnostic(
+          prepared,
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              MissingMoveBundleSourceFreshness,
+          "prepared move-bundle source is missing freshness authority") != 0) {
     return 1;
   }
 

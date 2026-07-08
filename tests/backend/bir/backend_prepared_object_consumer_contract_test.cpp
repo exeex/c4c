@@ -98,6 +98,49 @@ prepare::PreparedValueHome value_home(Fixture& fixture,
   };
 }
 
+std::vector<prepare::PreparedValueFreshnessAuthority>
+move_bundle_source_home_authorities(
+    const prepare::PreparedMoveBundle& move_bundle,
+    const prepare::PreparedValueHomeLookups& lookups) {
+  std::vector<prepare::PreparedValueFreshnessAuthority> authorities;
+  authorities.reserve(move_bundle.moves.size());
+  for (const auto& move : move_bundle.moves) {
+    const auto home_it = lookups.homes_by_id.find(move.from_value_id);
+    if (home_it == lookups.homes_by_id.end() || home_it->second == nullptr) {
+      continue;
+    }
+    authorities.push_back(prepare::PreparedValueFreshnessAuthority{
+        .value_id = move.from_value_id,
+        .value_name = home_it->second->value_name,
+        .use_kind = prepare::PreparedValueFreshnessUseKind::MoveBundleSource,
+        .source_kind = prepare::PreparedValueFreshnessSourceKind::DirectHome,
+        .proof_kind = prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering,
+        .rank = prepare::PreparedValueFreshnessSourceRank::DirectHome,
+        .reference =
+            prepare::PreparedValueFreshnessSourceReference{
+                .home = home_it->second,
+                .move_bundle = &move_bundle,
+                .move = &move,
+                .block_index = move_bundle.block_index,
+                .instruction_index = move_bundle.instruction_index,
+            },
+    });
+  }
+  return authorities;
+}
+
+void add_base_move_source_homes(Fixture& fixture) {
+  auto block_entry_source =
+      value_home(fixture, "%entry.source", 101, prepare::PreparedValueHomeKind::Register);
+  block_entry_source.register_name = "t0";
+  fixture.locations.value_homes.push_back(std::move(block_entry_source));
+
+  auto pre_terminator_source =
+      value_home(fixture, "%term.source", 202, prepare::PreparedValueHomeKind::Register);
+  pre_terminator_source.register_name = "t1";
+  fixture.locations.value_homes.push_back(std::move(pre_terminator_source));
+}
+
 Fixture make_fixture() {
   Fixture fixture;
   fixture.control_flow = prepare::PreparedControlFlowFunction{
@@ -388,6 +431,14 @@ int verify_move_bundle_consumer_status_names() {
                      "mismatched_parallel_copy_execution_site" &&
                  prepare::prepared_object_move_bundle_consumer_status_name(
                      prepare::PreparedObjectMoveBundleConsumerStatus::
+                         MissingMoveBundleSourceFreshness) ==
+                     "missing_move_bundle_source_freshness" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         AmbiguousMoveBundleSourceFreshness) ==
+                     "ambiguous_move_bundle_source_freshness" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
                          AmbiguousNonParallelMultiSourceStackDestination) ==
                      "ambiguous_non_parallel_multi_source_stack_destination",
              "prepared object move-bundle consumer status names should remain stable")
@@ -462,6 +513,10 @@ int verify_consumer_diagnostic_category_names() {
                      prepare::PreparedObjectConsumerDiagnosticCategory::
                          UnsupportedParallelCopyExecutionSite) ==
                      "unsupported_parallel_copy_execution_site" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         MissingMoveBundleSourceFreshness) ==
+                     "missing_move_bundle_source_freshness" &&
                  prepare::prepared_object_consumer_diagnostic_category_name(
                      prepare::PreparedObjectConsumerDiagnosticCategory::
                          AmbiguousNonParallelMultiSourceStackDestination) ==
@@ -703,6 +758,7 @@ int verify_ambiguous_and_unsupported_select_carrier_classification() {
 
 int verify_move_bundle_consumer_available_classification() {
   auto fixture = make_fixture();
+  add_base_move_source_homes(fixture);
   fixture.locations.move_bundles.push_back(prepare::PreparedMoveBundle{
       .function_name = fixture.function_name,
       .phase = prepare::PreparedMovePhase::BeforeReturn,
@@ -718,9 +774,15 @@ int verify_move_bundle_consumer_available_classification() {
           .authority_kind = prepare::PreparedMoveAuthorityKind::None,
       }},
   });
+  auto before_return_source =
+      value_home(fixture, "%return.source", 801, prepare::PreparedValueHomeKind::Register);
+  before_return_source.register_name = "t2";
+  fixture.locations.value_homes.push_back(std::move(before_return_source));
 
   const auto traversal = prepare::make_prepared_object_function_traversal(
       fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
   const auto* block_entry = find_event(
       traversal, prepare::PreparedObjectTraversalEventKind::BlockEntryCopies, 1);
   const auto* predecessor_terminator = find_event(
@@ -734,16 +796,34 @@ int verify_move_bundle_consumer_available_classification() {
   }
 
   const auto block_entry_classification =
-      prepare::classify_prepared_object_move_bundle_consumer(*block_entry);
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = block_entry,
+              .value_home_lookups = &lookups,
+          });
   const auto predecessor_terminator_classification =
       prepare::classify_prepared_object_move_bundle_consumer(
-          *predecessor_terminator);
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = predecessor_terminator,
+              .value_home_lookups = &lookups,
+          });
   const auto before_return_classification =
-      prepare::classify_prepared_object_move_bundle_consumer(*before_return);
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = before_return,
+              .value_home_lookups = &lookups,
+          });
   if (!expect(block_entry_classification.status ==
                   prepare::PreparedObjectMoveBundleConsumerStatus::Available &&
               block_entry_classification.move_bundle ==
                   &fixture.locations.move_bundles[0] &&
+              block_entry_classification.source_freshness_status ==
+                  prepare::PreparedValueFreshnessQueryStatus::Selected &&
+              block_entry_classification.source_freshness_authority.has_value() &&
+              block_entry_classification.source_freshness_authority->source_kind ==
+                  prepare::PreparedValueFreshnessSourceKind::DirectHome &&
+              block_entry_classification.source_freshness_authority->reference.home !=
+                  nullptr &&
               block_entry_classification.parallel_copy_bundle ==
                   &fixture.control_flow.parallel_copy_bundles[0] &&
               block_entry_classification.phase ==
@@ -767,6 +847,127 @@ int verify_move_bundle_consumer_available_classification() {
               before_return_classification.phase ==
                   prepare::PreparedMovePhase::BeforeReturn,
               "ordinary before-return move bundle should classify as available")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_move_bundle_consumer_source_freshness_authority() {
+  auto fixture = make_fixture();
+  add_base_move_source_homes(fixture);
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* block_entry = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::BlockEntryCopies, 1);
+  if (!expect(block_entry != nullptr && block_entry->move_bundle != nullptr,
+              "move-bundle source freshness test should find a copy event")) {
+    return 1;
+  }
+
+  const auto production_missing =
+      prepare::classify_prepared_object_move_bundle_consumer(*block_entry);
+  if (!expect(production_missing.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      MissingMoveBundleSourceFreshness,
+              "default production classifier should not manufacture source freshness")) {
+    return 1;
+  }
+
+  const std::vector<prepare::PreparedValueFreshnessAuthority> no_authorities;
+  const auto missing =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = block_entry,
+              .move_source_freshness_authorities = &no_authorities,
+          });
+  const auto missing_diagnostic =
+      prepare::diagnose_prepared_object_consumer(missing);
+  if (!expect(missing.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      MissingMoveBundleSourceFreshness,
+              "well-formed destination move bundle should fail closed without source freshness") ||
+      !expect(missing.source_freshness_status ==
+                  prepare::PreparedValueFreshnessQueryStatus::NoCandidate,
+              "missing source freshness should preserve query status") ||
+      !expect(missing_diagnostic.has_value() &&
+                  missing_diagnostic->category ==
+                      prepare::PreparedObjectConsumerDiagnosticCategory::
+                          MissingMoveBundleSourceFreshness,
+              "missing source freshness should produce a diagnostic category")) {
+    return 1;
+  }
+
+  const auto lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  auto authorities =
+      move_bundle_source_home_authorities(*block_entry->move_bundle, lookups);
+  const auto accepted =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = block_entry,
+              .move_source_freshness_authorities = &authorities,
+          });
+  if (!expect(accepted.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available,
+              "selected move-bundle source freshness should keep the consumer available") ||
+      !expect(accepted.source_freshness_status ==
+                  prepare::PreparedValueFreshnessQueryStatus::Selected,
+              "accepted move-bundle source should query shared freshness") ||
+      !expect(accepted.source_freshness_authority.has_value() &&
+                  accepted.source_freshness_authority->reference.home != nullptr &&
+                  accepted.source_freshness_authority->reference.move ==
+                      authorities.front().reference.move,
+              "accepted move-bundle source should expose the selected authority")) {
+    return 1;
+  }
+
+  auto invalid = authorities;
+  invalid.front().proof_kind = prepare::PreparedValueFreshnessProofKind::Unknown;
+  const auto invalid_classification =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = block_entry,
+              .move_source_freshness_authorities = &invalid,
+          });
+  if (!expect(invalid_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      InvalidMoveBundleSourceFreshness,
+              "incomplete move-source freshness authority should fail closed")) {
+    return 1;
+  }
+
+  auto ambiguous = authorities;
+  ambiguous.push_back(ambiguous.front());
+  const auto ambiguous_classification =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = block_entry,
+              .move_source_freshness_authorities = &ambiguous,
+          });
+  if (!expect(ambiguous_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      AmbiguousMoveBundleSourceFreshness,
+              "ambiguous equal-rank move-source freshness should fail closed")) {
+    return 1;
+  }
+
+  auto unsupported = authorities;
+  unsupported.front().source_kind =
+      prepare::PreparedValueFreshnessSourceKind::MoveBundleSource;
+  unsupported.front().proof_kind =
+      prepare::PreparedValueFreshnessProofKind::MoveBundleAuthority;
+  unsupported.front().reference.home = nullptr;
+  const auto unsupported_classification =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = block_entry,
+              .move_source_freshness_authorities = &unsupported,
+          });
+  if (!expect(unsupported_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      UnsupportedMoveBundleSourceFreshness,
+              "wrong-kind selected source freshness should fail closed")) {
     return 1;
   }
 
@@ -1679,6 +1880,11 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_move_bundle_consumer_available_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_move_bundle_consumer_source_freshness_authority();
       result != 0) {
     return EXIT_FAILURE;
   }
