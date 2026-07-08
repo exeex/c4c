@@ -417,6 +417,53 @@ void publish_integer_array_global_layout_authority(PreparedAddress& address,
   provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ByteStorageAggregate;
 }
 
+[[nodiscard]] bool byte_storage_global_layout_authority_available(
+    const bir::Global& global) {
+  return !global.has_scalar_layout_authority &&
+         !global.has_integer_array_layout_authority && !global.is_extern &&
+         !global.is_thread_local && global.link_name_id != kInvalidLinkName &&
+         global.type == bir::TypeKind::I8 && global.size_bytes > 0 &&
+         global.align_bytes > 0;
+}
+
+void publish_byte_storage_global_layout_authority(PreparedAddress& address,
+                                                  const bir::Global& global) {
+  if (!byte_storage_global_layout_authority_available(global) ||
+      address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !address.symbol_name.has_value() ||
+      !address.can_use_base_plus_offset ||
+      address.size_bytes == 0 ||
+      address.align_bytes == 0 ||
+      address.align_bytes > address.size_bytes ||
+      address.byte_offset < 0) {
+    return;
+  }
+
+  auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol ||
+      provenance.base_identity.link_name_id != global.link_name_id ||
+      provenance.object_extent.completeness !=
+          bir::MemoryObjectExtentCompleteness::Complete ||
+      !provenance.object_extent.size_known ||
+      provenance.object_extent.size_bytes != global.size_bytes ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds ||
+      provenance.layout_authority != bir::MemoryLayoutAuthorityKind::Unknown) {
+    return;
+  }
+
+  const auto& range = provenance.requested_range;
+  if (!range.available || range.overflowed || !range.end_available ||
+      range.begin != address.byte_offset ||
+      range.size_bytes != address.size_bytes ||
+      range.end < range.begin ||
+      static_cast<std::size_t>(range.end) > global.size_bytes) {
+    return;
+  }
+
+  provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ByteStorageAggregate;
+}
+
 [[nodiscard]] std::optional<TextId> resolve_prepared_text_id(
     PreparedNameTables& names,
     const bir::Module& module,
@@ -764,6 +811,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     };
     publish_scalar_global_layout_authority(prepared, *resolved_global->global);
     publish_integer_array_global_layout_authority(prepared, *resolved_global->global);
+    publish_byte_storage_global_layout_authority(prepared, *resolved_global->global);
     return prepared;
   }
 
@@ -844,6 +892,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   if (resolved_base_global != nullptr) {
     publish_scalar_global_layout_authority(prepared, *resolved_base_global);
     publish_integer_array_global_layout_authority(prepared, *resolved_base_global);
+    publish_byte_storage_global_layout_authority(prepared, *resolved_base_global);
   }
   return prepared;
 }
