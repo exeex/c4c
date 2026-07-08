@@ -1,68 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/600_pointer_value_memory_use_freshness_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate One Representative Consumer
+Current Step ID: 4
+Current Step Title: Prove Fail-Closed Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Implemented Step 3 from `plan.md`: added narrow pointer-value memory-use
-freshness vocabulary and a shared route helper, then made the AArch64 prepared
-load/store instruction-record path query that helper before resolving a
-pointer-value base register.
+Implemented Step 4 from `plan.md`: added focused AArch64 memory operand
+contract coverage proving the migrated pointer-value memory-use freshness route
+accepts only explicit selected authority and fails closed for support-only or
+wrong-authority evidence.
 
 Files changed:
 
-- `src/backend/prealloc/value_locations.hpp`
-- `src/backend/prealloc/prepared_lookups.cpp`
-- `src/backend/prealloc/pointer_value_memory_freshness.hpp`
-- `src/backend/mir/aarch64/codegen/instruction.hpp`
-- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `tests/backend/mir/backend_aarch64_memory_operand_contract_test.cpp`
 - `todo.md`
 
-Key semantic boundary:
+Covered cases:
 
-- New vocabulary: `PointerValueMemoryUse`,
-  `PointerValueMemoryAccess`, `PointerValueMemoryAuthority`, and
-  `PointerValueMemory`.
-- The selected authority value is the pointer address base id/name, not the
-  loaded result and not the stored source value.
-- The shared helper matches pointer id/name, load/store mode, function/block
-  instruction point, byte offset, size/alignment, address space, volatility,
-  provenance base facts, layout/range support, and source/proof/rank.
-- The helper treats `PreparedValueId{0}` as a valid prepared value id when the
-  optional pointer home is present; this keeps sret pointer-value destination
-  stores under the same pointer-value memory-use contract.
-- `prepared_pointer_value_memory_has_proven_authority(...)`, range/layout
-  proof, local layout, target operand shape, edge source-memory facts, and
-  store-source destination facts remain support only; they are not accepted by
-  the helper without selected pointer-value memory freshness.
-- The representative AArch64 path consumes the shared helper before
-  pointer-value base register resolution; target operand shape does not own
-  the semantic freshness decision.
+- Exact selected pointer-value memory freshness is accepted.
+- Missing/no candidate and ambiguous candidates fail closed.
+- Missing pointer identity, stale function/block/instruction point, wrong
+  pointer id/name, and wrong load/store use fail closed.
+- Wrong use/source/proof/rank vocabulary fails closed.
+- Offset/range, provenance identity, layout authority, and target memory
+  operand shape mutations fail closed.
+- Complete address support facts from
+  `prepared_pointer_value_memory_has_proven_authority(...)` remain insufficient
+  without selected pointer-value memory freshness.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: prove the migrated route fails closed without
-selected pointer-value memory-use freshness and does not accept range, layout,
-target-shape, or support-only evidence as freshness authority.
+Execute Step 5 from `plan.md`: record the closure inventory and follow-up
+decision without broadening into adjacent freshness families or target
+migrations.
 
 ## Watchouts
 
-- `SretParameter` provenance and prepared value id `0` are included under the
-  same pointer-value memory-use rule when the prepared access names the pointer
-  value and the selected authority matches the exact store use.
+- Step 4 proves the shared helper and AArch64/prepared contract surface; it
+  does not add final assembly expectation checks or route allowlist changes.
 - Do not broaden this packet into loaded-value freshness, store-source
   freshness, pointer arithmetic, semantic GEP target consumption, global symbol
   memory freshness, or broad target migration.
 
 ## Proof
 
-`git diff --check` passed.
+Focused proof passed:
+`ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_memory_operand_contract$'`
 
 Required proof command was run and wrote `test_after.log`:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64|mir|bir|.*memory|.*freshness|.*prepared|.*contract)') > test_after.log 2>&1`
 
-Result: build completed; CTest passed 346/346.
+Result: build completed; CTest passed 85/85.
+
+`git diff --check` passed.
