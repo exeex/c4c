@@ -137,39 +137,60 @@ Actions:
 Completion check:
 - `todo.md` names the next local-memory store producer subfamily, at least two representative rows, excluded adjacent-owner rows, guard rows, and the delegated proof command.
 
-### Step 7: Repair the Next Store Producer Subfamily
+### Step 7: Reclassify Remaining In-Scope Store Ownership
 
-Goal: implement one generic BIR local-memory store producer repair for the Step 6 subfamily.
-
-Primary target:
-- BIR local-memory store producer code, especially `src/backend/bir/lir_to_bir/memory/` and scalar value lowering only when Step 6 proves the missing fact is a store source-value issue.
+Goal: repair the Step 6 route classification after local aggregate subobject stores proved already supported for local-only probes.
 
 Actions:
-- Implement the minimal semantic producer change for the selected subfamily.
+- Treat aggregate value copy/store to global or static storage as adjacent global-data handoff work, not as a Step 7 implementation target for this runbook.
+- Record `ideas/open/619_bir_aggregate_global_store_handoff.md` as the durable follow-up for `u = v`, `x = <clit>`, `s[1] = t`, `x = foo(&i)`, and similar aggregate/static global handoff shapes.
+- Reclassify the remaining visible store-family rows into:
+  - in-scope ordinary local-frame store producer limitations, if any remain;
+  - pointer/address-authority rows that belong to a separate address route;
+  - function-label/local pointer-array rows that need separate source or destination authority;
+  - aggregate/global-data handoff rows covered by idea 619 or existing global-data ideas;
+  - non-store guard owners.
+- Select the next implementation packet only if at least two rows share a first missing local-memory store producer fact that is still inside idea 603.
+- Record the classification, representative rows, excluded rows, and exact proof command in `todo.md`.
+
+Completion check:
+- `todo.md` no longer asks executor to repair already-supported local aggregate subobject stores.
+- `todo.md` either names a defensible next in-scope local-memory store producer subfamily for Step 8, or recommends parking idea 603 without closure because the remaining visible stops are adjacent owner families.
+
+### Step 8: Repair the Next In-Scope Store Producer Subfamily
+
+Goal: implement one generic BIR local-memory store producer repair only if Step 7 identifies an in-scope subfamily.
+
+Primary target:
+- BIR local-memory store producer code, especially `src/backend/bir/lir_to_bir/memory/` and scalar value lowering only when Step 7 proves the missing fact is a store source-value issue.
+
+Actions:
+- Implement the minimal semantic producer change for the selected in-scope subfamily.
 - Preserve the Step 3 repairs for `f128` local immediates, loaded global pointer-field authority, and dynamic local pointer-array stores.
 - Preserve diagnostics for unsupported aggregate/global-data, GEP, alloca, ABI, runtime, RV64 consumer, expectation, and allowlist cases.
+- Do not implement aggregate/static global handoff shapes under this idea; use idea 619 for that work.
 - Build and run the supervisor-delegated narrow proof.
 
 Completion check:
 - Build passes.
-- More than one Step 6 representative row progresses beyond the old local-memory store producer stop or reaches a defensible downstream owner.
+- More than one Step 7 representative row progresses beyond the old local-memory store producer stop or reaches a defensible downstream owner.
 - Guard rows keep their established non-store ownership.
 
-### Step 8: Reprove Store-Family Breadth After the Follow-Up Repair
+### Step 9: Reprove Store-Family Breadth After Any Follow-Up Repair
 
-Goal: prove whether the Step 7 repair generalizes across the remaining visible store-family rows.
+Goal: prove whether any Step 8 repair generalizes across the remaining visible store-family rows.
 
 Actions:
-- Run the selected narrow proof again if Step 7 changed after first proof.
+- Run the selected narrow proof again if Step 8 changed after first proof.
 - Run the broader same-family RV64 gcc_torture backend-object subset requested by the supervisor.
 - Re-run focused BIR dump classification for the visible store-family rows when the supervisor asks for same-family movement evidence.
 - Compare against the Step 5 checkpoint of `6/46` full-row BIR dump successes and `40/46` remaining visible store-family stops.
 - Record progressed rows, remaining store-family limitations, stale-artifact caveats, guard-owner preservation, and downstream handoffs in `todo.md`.
 
 Completion check:
-- `todo.md` summarizes same-family movement after Step 7, remaining local-memory store limitations, guard-owner preservation, and whether another runbook refinement is needed.
+- `todo.md` summarizes same-family movement after Step 8, remaining local-memory store limitations, guard-owner preservation, and whether another runbook refinement is needed.
 
-### Step 9: Updated Closure Readiness
+### Step 10: Updated Closure Readiness
 
 Goal: decide whether idea 603 is now closure-ready or still needs another local-memory store producer packet.
 
@@ -177,7 +198,7 @@ Actions:
 - Summarize all implementation surfaces accepted under this runbook.
 - Separate remaining local-memory store limitations from adjacent owner families.
 - State whether the source idea acceptance criteria are satisfied.
-- Recommend close only if source-idea completion is defensible under refreshed evidence; otherwise recommend the next local-memory store producer substep or lifecycle split.
+- Recommend close only if source-idea completion is defensible under refreshed evidence; otherwise recommend the next local-memory store producer substep, parking this idea, or switching to a separate lifecycle idea such as 619.
 
 Completion check:
 - `todo.md` contains updated final evidence, remaining limitations, and a clear close-or-continue recommendation.
