@@ -2,9 +2,9 @@
 
 Status: Open
 Type: Architecture contract and narrow implementation
-Parent: `ideas/open/597_pointer_address_semantic_model_research.md`
+Parent: `ideas/closed/597_pointer_address_semantic_model_research.md`
 Related:
-- `ideas/open/597_pointer_address_semantic_model_research.md`
+- `ideas/closed/597_pointer_address_semantic_model_research.md`
 - `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
 - `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
 Owning Layer: shared prepared/prealloc pointer-arithmetic authority
