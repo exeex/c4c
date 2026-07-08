@@ -1013,6 +1013,10 @@ enum class PreparedDependencyOperandAuthorityStatus {
   StackObjectMismatch,
   MissingStackFreshness,
   MissingStackClobberSafety,
+  MissingSourceFreshnessAuthority,
+  InvalidSourceFreshnessAuthority,
+  AmbiguousSourceFreshnessAuthority,
+  UnsupportedSourceFreshnessAuthority,
   MissingCastProducer,
   UnsupportedCastProducer,
   CastResultMismatch,
@@ -1056,6 +1060,14 @@ prepared_dependency_operand_authority_status_name(
       return "missing_stack_freshness";
     case PreparedDependencyOperandAuthorityStatus::MissingStackClobberSafety:
       return "missing_stack_clobber_safety";
+    case PreparedDependencyOperandAuthorityStatus::MissingSourceFreshnessAuthority:
+      return "missing_source_freshness_authority";
+    case PreparedDependencyOperandAuthorityStatus::InvalidSourceFreshnessAuthority:
+      return "invalid_source_freshness_authority";
+    case PreparedDependencyOperandAuthorityStatus::AmbiguousSourceFreshnessAuthority:
+      return "ambiguous_source_freshness_authority";
+    case PreparedDependencyOperandAuthorityStatus::UnsupportedSourceFreshnessAuthority:
+      return "unsupported_source_freshness_authority";
     case PreparedDependencyOperandAuthorityStatus::MissingCastProducer:
       return "missing_cast_producer";
     case PreparedDependencyOperandAuthorityStatus::UnsupportedCastProducer:
@@ -1107,6 +1119,8 @@ struct PreparedDependencyOperandAuthorityInputs {
       PreparedDependencyOperandMaterializationPolicy::None;
   bool stack_slot_fresh_at_edge = false;
   bool stack_slot_clobber_safe_at_edge = false;
+  const std::vector<PreparedValueFreshnessAuthority>* source_freshness_authorities =
+      nullptr;
 };
 
 struct PreparedDependencyOperandAuthority {

@@ -1,64 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/588_shared_prealloc_move_operand_source_freshness_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish Freshness For The Selected Shared Consumer
+Current Step ID: 3
+Current Step Title: Wire The Selected Consumer To The Freshness Query
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 published shared source freshness authority for the selected dependency
-operand `LoadFromStackSlot` route.
+Step 3 wired the selected dependency operand `LoadFromStackSlot` consumer to
+the shared source-freshness query.
 
-`PreparedDependencyOperandAuthority` now records source freshness candidates,
-query status, and a selected authority. `plan_prepared_dependency_operand_authority`
-publishes a direct-home source freshness candidate for the dependency stack home
-only after the existing `stack_slot_fresh_at_edge` and
-`stack_slot_clobber_safe_at_edge` checks have both succeeded. Missing freshness
-or missing clobber-safety facts still produce no authority and remain
-fail-closed.
+`plan_prepared_dependency_operand_authority` still preserves stack object,
+stack-slot freshness, and clobber-safety validation before considering shared
+freshness authority. After those checks pass, `LoadFromStackSlot` now accepts
+only a selected `ProducerPublicationOperand` / `DirectHome` /
+`DominanceOrOrdering` / `DirectHome` authority that names the dependency value
+and references the dependency home.
 
-The stack-layout contract now proves the selected candidate is visible through
-`find_prepared_value_freshness_authority`, references the dependency home rather
-than destination publication state, and is absent for incomplete stack-source
-facts.
+The stack-layout contract now proves accepted explicit authority and rejects
+missing/no-candidate, invalid, ambiguous, wrong-value/destination-only,
+wrong-use, stale-reference, and wrong-proof source freshness candidates with
+specific fail-closed dependency operand statuses or query statuses.
 
 ## Suggested Next
 
-Start Step 3 for the selected dependency operand `LoadFromStackSlot` subset:
-wire consumer acceptance to query the published source freshness candidate
-instead of relying on destination-only authority or the local freshness boolean
-alone.
+Start Step 4 for the selected dependency operand route: make the migrated
+freshness status/debug surface easier to inspect in prepared dumps without
+changing the authority contract or broadening the migration subset.
 
 ## Watchouts
 
 - Do not claim progress through expectation rewrites, unsupported-marker edits,
   allowlist changes, named-testcase shortcuts, or target-local ordering tweaks.
-- The Step 2 candidate intentionally reuses the existing
-  `ProducerPublicationOperand` freshness use kind and `DirectHome` source kind
-  because this packet did not own `value_locations.hpp`. Step 3 should decide
-  whether that vocabulary is sufficiently precise before making the consumer
-  accept via the shared query.
+- Step 3 kept the Step 2 vocabulary:
+  `ProducerPublicationOperand` freshness use kind and `DirectHome` source kind.
+  The route is now gated by selected authority shape instead of adding a new
+  value-location vocabulary item.
 - The collector still records the dump fixture stack-load route as
   `missing_stack_freshness`; it has no separate dependency stack-source
   producer/publication fact yet. Do not manufacture freshness from a prepared
   home alone.
-- Consumer wiring must reject missing, invalid, ambiguous, stale, wrong-use, or
-  destination-only source authority.
+- The new optional candidate input is for explicit shared-freshness candidates
+  and focused contract tests; production default publication remains the
+  dependency stack-home candidate created from existing semantic facts.
 - Branch stack-load remains deferred; it needs its own branch-point use-kind
   contract.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepared_printer|backend_prepared_lookup_helper)$'`
-passed on rerun. The first build attempt hit a transient `cc1plus` killed
-signal while compiling unrelated `backend_aarch64_instruction_dispatch_test`
-object code; the rerun completed successfully. Canonical proof log:
-`test_after.log`.
-
-Todo-only repair proof: no build required for restoring the Step 1 closure
-inventory in this file.
+passed on rerun. The first attempt hit a transient `cc1plus` killed signal
+while compiling unrelated `backend_aarch64_instruction_dispatch_test` object
+code; the rerun completed successfully. Canonical proof log: `test_after.log`.
 
 # Closure Inventory
 

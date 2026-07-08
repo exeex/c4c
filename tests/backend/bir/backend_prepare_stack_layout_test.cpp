@@ -8598,8 +8598,125 @@ int check_dependency_operand_authority_contract() {
     return fail("shared freshness lookup should select dependency stack source authority");
   }
 
+  const auto plan_stack_load_with_candidates =
+      [&](const std::vector<prepare::PreparedValueFreshnessAuthority>&
+              candidates) {
+        return prepare::plan_prepared_dependency_operand_authority({
+            .names = &names,
+            .publication = &publication,
+            .dependency_operand = &dependency,
+            .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+            .dependency_home = &dependency_home,
+            .dependency_stack_object = &dependency_object,
+            .policy =
+                prepare::PreparedDependencyOperandMaterializationPolicy::
+                    LoadFromStackSlot,
+            .stack_slot_fresh_at_edge = true,
+            .stack_slot_clobber_safe_at_edge = true,
+            .source_freshness_authorities = &candidates,
+        });
+      };
+
+  const std::vector<prepare::PreparedValueFreshnessAuthority> no_candidates;
+  const auto no_candidate_load = plan_stack_load_with_candidates(no_candidates);
+  if (no_candidate_load.status != prepare::PreparedDependencyOperandAuthorityStatus::
+                                      MissingSourceFreshnessAuthority ||
+      no_candidate_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      no_candidate_load.source_freshness_authority.has_value()) {
+    return fail("stack-load dependency source must reject missing freshness authority");
+  }
+
+  auto invalid_candidate = stack_source_freshness;
+  invalid_candidate.proof_kind = prepare::PreparedValueFreshnessProofKind::Unknown;
+  const std::vector<prepare::PreparedValueFreshnessAuthority> invalid_candidates{
+      invalid_candidate};
+  const auto invalid_load = plan_stack_load_with_candidates(invalid_candidates);
+  if (invalid_load.status != prepare::PreparedDependencyOperandAuthorityStatus::
+                                 InvalidSourceFreshnessAuthority ||
+      invalid_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate ||
+      invalid_load.source_freshness_authority.has_value()) {
+    return fail("stack-load dependency source must reject invalid freshness authority");
+  }
+
+  const std::vector<prepare::PreparedValueFreshnessAuthority> ambiguous_candidates{
+      stack_source_freshness, stack_source_freshness};
+  const auto ambiguous_load =
+      plan_stack_load_with_candidates(ambiguous_candidates);
+  if (ambiguous_load.status != prepare::PreparedDependencyOperandAuthorityStatus::
+                                   AmbiguousSourceFreshnessAuthority ||
+      ambiguous_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate ||
+      ambiguous_load.source_freshness_authority.has_value()) {
+    return fail(
+        "stack-load dependency source must reject ambiguous freshness authority");
+  }
+
+  auto wrong_value_candidate = stack_source_freshness;
+  wrong_value_candidate.value_id = accepted_load.destination_value_id;
+  wrong_value_candidate.value_name = accepted_load.destination_value_name;
+  const std::vector<prepare::PreparedValueFreshnessAuthority> wrong_value_candidates{
+      wrong_value_candidate};
+  const auto wrong_value_load =
+      plan_stack_load_with_candidates(wrong_value_candidates);
+  if (wrong_value_load.status != prepare::PreparedDependencyOperandAuthorityStatus::
+                                   MissingSourceFreshnessAuthority ||
+      wrong_value_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      wrong_value_load.source_freshness_authority.has_value()) {
+    return fail(
+        "stack-load dependency source must reject destination-only freshness");
+  }
+
+  auto wrong_use_candidate = stack_source_freshness;
+  wrong_use_candidate.use_kind =
+      prepare::PreparedValueFreshnessUseKind::CallArgumentSource;
+  const std::vector<prepare::PreparedValueFreshnessAuthority> wrong_use_candidates{
+      wrong_use_candidate};
+  const auto wrong_use_load = plan_stack_load_with_candidates(wrong_use_candidates);
+  if (wrong_use_load.status != prepare::PreparedDependencyOperandAuthorityStatus::
+                                 MissingSourceFreshnessAuthority ||
+      wrong_use_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      wrong_use_load.source_freshness_authority.has_value()) {
+    return fail("stack-load dependency source must reject wrong-use freshness");
+  }
+
   auto mismatched_home = dependency_home;
   mismatched_home.value_name = lhs_name;
+  auto stale_reference_candidate = stack_source_freshness;
+  stale_reference_candidate.reference.home = &mismatched_home;
+  const std::vector<prepare::PreparedValueFreshnessAuthority>
+      stale_reference_candidates{stale_reference_candidate};
+  const auto stale_reference_load =
+      plan_stack_load_with_candidates(stale_reference_candidates);
+  if (stale_reference_load.status !=
+          prepare::PreparedDependencyOperandAuthorityStatus::
+              UnsupportedSourceFreshnessAuthority ||
+      stale_reference_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !stale_reference_load.source_freshness_authority.has_value()) {
+    return fail(
+        "stack-load dependency source must reject stale freshness reference");
+  }
+
+  auto wrong_proof_candidate = stack_source_freshness;
+  wrong_proof_candidate.proof_kind =
+      prepare::PreparedValueFreshnessProofKind::SameBlockBeforeUse;
+  const std::vector<prepare::PreparedValueFreshnessAuthority> wrong_proof_candidates{
+      wrong_proof_candidate};
+  const auto wrong_proof_load =
+      plan_stack_load_with_candidates(wrong_proof_candidates);
+  if (wrong_proof_load.status != prepare::PreparedDependencyOperandAuthorityStatus::
+                                   UnsupportedSourceFreshnessAuthority ||
+      wrong_proof_load.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !wrong_proof_load.source_freshness_authority.has_value()) {
+    return fail(
+        "stack-load dependency source must reject wrong freshness proof");
+  }
+
   const auto home_mismatch =
       prepare::plan_prepared_dependency_operand_authority({
           .names = &names,

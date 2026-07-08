@@ -3521,8 +3521,9 @@ namespace {
           cast.operand.type == bir::TypeKind::I64);
 }
 
-void publish_dependency_operand_stack_source_freshness_authority(
-    PreparedDependencyOperandAuthority& authority) {
+void select_dependency_operand_stack_source_freshness_authority(
+    PreparedDependencyOperandAuthority& authority,
+    const std::vector<PreparedValueFreshnessAuthority>* candidates) {
   if (authority.policy !=
           PreparedDependencyOperandMaterializationPolicy::LoadFromStackSlot ||
       authority.dependency_home == nullptr ||
@@ -3532,19 +3533,23 @@ void publish_dependency_operand_stack_source_freshness_authority(
     return;
   }
 
-  authority.source_freshness_authorities.push_back(
-      PreparedValueFreshnessAuthority{
-          .value_id = authority.dependency_value_id,
-          .value_name = authority.dependency_value_name,
-          .use_kind = PreparedValueFreshnessUseKind::ProducerPublicationOperand,
-          .source_kind = PreparedValueFreshnessSourceKind::DirectHome,
-          .proof_kind = PreparedValueFreshnessProofKind::DominanceOrOrdering,
-          .rank = PreparedValueFreshnessSourceRank::DirectHome,
-          .reference =
-              PreparedValueFreshnessSourceReference{
-                  .home = authority.dependency_home,
-              },
-      });
+  if (candidates != nullptr) {
+    authority.source_freshness_authorities = *candidates;
+  } else {
+    authority.source_freshness_authorities.push_back(
+        PreparedValueFreshnessAuthority{
+            .value_id = authority.dependency_value_id,
+            .value_name = authority.dependency_value_name,
+            .use_kind = PreparedValueFreshnessUseKind::ProducerPublicationOperand,
+            .source_kind = PreparedValueFreshnessSourceKind::DirectHome,
+            .proof_kind = PreparedValueFreshnessProofKind::DominanceOrOrdering,
+            .rank = PreparedValueFreshnessSourceRank::DirectHome,
+            .reference =
+                PreparedValueFreshnessSourceReference{
+                    .home = authority.dependency_home,
+                },
+        });
+  }
   const PreparedValueFreshnessQuery query{
       .value_id = authority.dependency_value_id,
       .value_name = authority.dependency_value_name,
@@ -3556,6 +3561,45 @@ void publish_dependency_operand_stack_source_freshness_authority(
   if (prepared_value_freshness_query_selected(selected)) {
     authority.source_freshness_authority = *selected.authority;
   }
+}
+
+[[nodiscard]] bool selected_dependency_operand_stack_source_freshness_matches(
+    const PreparedDependencyOperandAuthority& authority) {
+  if (!authority.source_freshness_authority.has_value() ||
+      authority.dependency_home == nullptr) {
+    return false;
+  }
+  const auto& freshness = *authority.source_freshness_authority;
+  return freshness.value_id == authority.dependency_value_id &&
+         freshness.value_name == authority.dependency_value_name &&
+         freshness.use_kind ==
+             PreparedValueFreshnessUseKind::ProducerPublicationOperand &&
+         freshness.source_kind == PreparedValueFreshnessSourceKind::DirectHome &&
+         freshness.proof_kind ==
+             PreparedValueFreshnessProofKind::DominanceOrOrdering &&
+         freshness.rank == PreparedValueFreshnessSourceRank::DirectHome &&
+         freshness.reference.home == authority.dependency_home;
+}
+
+[[nodiscard]] PreparedDependencyOperandAuthorityStatus
+status_for_dependency_operand_source_freshness(
+    PreparedValueFreshnessQueryStatus status) {
+  switch (status) {
+    case PreparedValueFreshnessQueryStatus::Selected:
+      return PreparedDependencyOperandAuthorityStatus::Available;
+    case PreparedValueFreshnessQueryStatus::NoCandidate:
+      return PreparedDependencyOperandAuthorityStatus::
+          MissingSourceFreshnessAuthority;
+    case PreparedValueFreshnessQueryStatus::AmbiguousCandidate:
+      return PreparedDependencyOperandAuthorityStatus::
+          AmbiguousSourceFreshnessAuthority;
+    case PreparedValueFreshnessQueryStatus::UnknownUse:
+    case PreparedValueFreshnessQueryStatus::MissingValue:
+    case PreparedValueFreshnessQueryStatus::InvalidCandidate:
+      return PreparedDependencyOperandAuthorityStatus::
+          InvalidSourceFreshnessAuthority;
+  }
+  return PreparedDependencyOperandAuthorityStatus::InvalidSourceFreshnessAuthority;
 }
 
 }  // namespace
@@ -3685,7 +3729,18 @@ PreparedDependencyOperandAuthority plan_prepared_dependency_operand_authority(
             PreparedDependencyOperandAuthorityStatus::MissingStackClobberSafety;
         return authority;
       }
-      publish_dependency_operand_stack_source_freshness_authority(authority);
+      select_dependency_operand_stack_source_freshness_authority(
+          authority, inputs.source_freshness_authorities);
+      authority.status = status_for_dependency_operand_source_freshness(
+          authority.source_freshness_status);
+      if (authority.status != PreparedDependencyOperandAuthorityStatus::Available) {
+        return authority;
+      }
+      if (!selected_dependency_operand_stack_source_freshness_matches(authority)) {
+        authority.status = PreparedDependencyOperandAuthorityStatus::
+            UnsupportedSourceFreshnessAuthority;
+        return authority;
+      }
       break;
     case PreparedDependencyOperandMaterializationPolicy::
         RematerializeCastFromSource:
