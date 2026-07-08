@@ -8,53 +8,46 @@ Current Step Title: Wire Freshness Authority Into One Route
 
 ## Just Finished
 
-Completed Step 2, "Define Branch-Point Freshness Ownership", from `plan.md`.
+Completed Step 3, "Wire Freshness Authority Into One Route", from `plan.md`.
 
-Encoded the ownership rule for branch stack-load source freshness:
+Wired the selected scalar `Condition` branch stack-load collector route through
+`BranchStackLoadSource` freshness selection. The collector now synthesizes a
+branch-stack-slot freshness candidate at the exact BIR branch terminator point
+(`block_index` plus `block.insts.size()`), queries it before accepting
+`LoadFromStackSlot`, and sets `stack_slot_fresh_at_branch` only after the
+selected authority matches the branch source value/home/use/source/proof/rank
+and terminator point.
 
-- Narrow use kind: `PreparedValueFreshnessUseKind::BranchStackLoadSource`.
-- Accepted source kind: `PreparedValueFreshnessSourceKind::BranchStackSlot`
-  only.
-- Required proof/rank tuple:
-  `PreparedValueFreshnessProofKind::BranchTerminatorOrdering` plus
-  `PreparedValueFreshnessSourceRank::BranchStackSlot`.
-- Ordering point: the freshness authority must carry the exact branch
-  terminator `block_index` and `instruction_index` requested by the query.
-- API surface: `prepared_branch_stack_load_freshness_use_kind` maps
-  `Condition`, `Lhs`, and `Rhs` to the branch-specific freshness use, and
-  `PreparedBranchStackLoadAuthorityInputs::stack_slot_fresh_at_branch`
-  documents that stack-home structure alone is not freshness authority.
-
-The shared freshness lookup now rejects branch stack-slot authority for
-non-branch uses, rejects destination-only/direct-home authority for branch
-stack loads, rejects wrong proof/rank/source tuples, and ignores stale or
-wrong-use candidates. Collector acceptance is intentionally unchanged:
-collector rows still call `plan_prepared_branch_stack_load_authority` with
-`policy=none` and remain inventory-only until Step 3 wiring.
+The route fails closed for no candidate, invalid source/proof/rank, ambiguous
+candidates, wrong value, wrong use, wrong stack home, stale terminator point,
+future terminator point, and stack-home-only authority. Pointer `Lhs`/`Rhs`
+collector rows remain inventory-only with `policy=none`; frame-slot source
+facts, target emission, typed/aggregate producer facts, expectations,
+unsupported markers, allowlists, and runtime output were not changed.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: wire the selected scalar `Condition`
-branch-stack-load collector row to query `BranchStackLoadSource` freshness at
-the branch terminator point and require selected authority before setting
-`LoadFromStackSlot`/`stack_slot_fresh_at_branch` for that route.
+Execute Step 4 from `plan.md`: add focused proof or prepared dump visibility
+for the migrated scalar `Condition` route, including accepted explicit
+freshness, missing/invalid freshness, and a stack-home-only rejection, while
+keeping existing 587, 588, and closed-589 freshness tests green.
 
 ## Watchouts
 
-- Step 3 should wire only the selected scalar `Condition` collector route; do
-  not migrate pointer `Lhs`/`Rhs`, frame-slot source facts, target emission, or
-  typed/aggregate producer facts in the same packet.
-- Structural facts remain necessary but insufficient: stack home, frame slot,
-  stack object, branch payload, and clobber safety must not imply freshness
-  without a selected `BranchStackLoadSource` authority.
-- Keep expectation files, unsupported markers, allowlists, and runtime-output
-  contracts unchanged.
-- `clang-format` was not available in this environment; edits were manually
-  checked and compiled.
+- Prepared printer implementation was not in the Step 3 owned file set, so
+  source-freshness candidate details are recorded on the authority object but
+  the existing branch-stack-load printer row still shows only role/value/policy/
+  pointer/status/slot/object/offset/size/align.
+- Step 4 should decide whether printer-source ownership is needed for expanded
+  source-freshness visibility; do not edit printer implementation without that
+  ownership.
+- The first exact proof attempt hit an unrelated parallel `cc1plus` OOM while
+  compiling `backend_aarch64_instruction_dispatch_test.cpp.o`; a serial build
+  completed the object, then the exact proof command passed.
 
 ## Proof
 
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-passed on rerun after a serial `cmake --build --preset default -j1` completed
-objects that the first exact build attempt lost to `cc1plus` OOM kills. Proof
-log: `test_after.log`.
+passed after a serial `cmake --build --preset default -j1` recovered from the
+first exact build attempt's unrelated `cc1plus` OOM kill. Proof log:
+`test_after.log`.

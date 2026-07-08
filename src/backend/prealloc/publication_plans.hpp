@@ -473,6 +473,10 @@ enum class PreparedBranchStackLoadAuthorityStatus {
   StackObjectMismatch,
   MissingPolicy,
   MissingStackFreshness,
+  MissingSourceFreshnessAuthority,
+  InvalidSourceFreshnessAuthority,
+  AmbiguousSourceFreshnessAuthority,
+  UnsupportedSourceFreshnessAuthority,
   MissingStackClobberSafety,
   PointerStatusUnknown,
 };
@@ -519,6 +523,14 @@ prepared_branch_stack_load_authority_status_name(
       return "missing_policy";
     case PreparedBranchStackLoadAuthorityStatus::MissingStackFreshness:
       return "missing_stack_freshness";
+    case PreparedBranchStackLoadAuthorityStatus::MissingSourceFreshnessAuthority:
+      return "missing_source_freshness_authority";
+    case PreparedBranchStackLoadAuthorityStatus::InvalidSourceFreshnessAuthority:
+      return "invalid_source_freshness_authority";
+    case PreparedBranchStackLoadAuthorityStatus::AmbiguousSourceFreshnessAuthority:
+      return "ambiguous_source_freshness_authority";
+    case PreparedBranchStackLoadAuthorityStatus::UnsupportedSourceFreshnessAuthority:
+      return "unsupported_source_freshness_authority";
     case PreparedBranchStackLoadAuthorityStatus::MissingStackClobberSafety:
       return "missing_stack_clobber_safety";
     case PreparedBranchStackLoadAuthorityStatus::PointerStatusUnknown:
@@ -538,10 +550,14 @@ struct PreparedBranchStackLoadAuthorityInputs {
   PreparedBranchStackLoadPolicy policy = PreparedBranchStackLoadPolicy::None;
   PreparedBranchStackLoadPointerStatus pointer_status =
       PreparedBranchStackLoadPointerStatus::Unknown;
+  std::optional<std::size_t> branch_block_index;
+  std::optional<std::size_t> branch_terminator_instruction_index;
   // Backed by BranchStackLoadSource/BranchStackSlot freshness proven at the
   // branch terminator ordering point; stack-home structure alone is not enough.
   bool stack_slot_fresh_at_branch = false;
   bool stack_slot_clobber_safe_at_branch = false;
+  const std::vector<PreparedValueFreshnessAuthority>* source_freshness_authorities =
+      nullptr;
 };
 
 struct PreparedBranchStackLoadAuthority {
@@ -565,6 +581,13 @@ struct PreparedBranchStackLoadAuthority {
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::size_t> stack_size_bytes;
   std::optional<std::size_t> stack_align_bytes;
+  std::optional<std::size_t> branch_block_index;
+  std::optional<std::size_t> branch_terminator_instruction_index;
+  bool stack_slot_fresh_at_branch = false;
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
 };
 
 struct PreparedBranchStackLoadAuthorityRecord {

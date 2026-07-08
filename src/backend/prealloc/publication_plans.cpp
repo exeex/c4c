@@ -2598,6 +2598,81 @@ namespace {
   return pointer_status == PreparedBranchStackLoadPointerStatus::Proven;
 }
 
+void select_branch_stack_load_source_freshness_authority(
+    PreparedBranchStackLoadAuthority& authority,
+    const std::vector<PreparedValueFreshnessAuthority>* candidates) {
+  if (authority.policy != PreparedBranchStackLoadPolicy::LoadFromStackSlot ||
+      authority.value_home == nullptr ||
+      authority.value_id == PreparedValueId{0} ||
+      authority.value_name == kInvalidValueName ||
+      authority.value_home->kind != PreparedValueHomeKind::StackSlot ||
+      !authority.branch_block_index.has_value() ||
+      !authority.branch_terminator_instruction_index.has_value()) {
+    return;
+  }
+
+  if (candidates != nullptr) {
+    authority.source_freshness_authorities = *candidates;
+  }
+  const PreparedValueFreshnessQuery query{
+      .value_id = authority.value_id,
+      .value_name = authority.value_name,
+      .use_kind = PreparedValueFreshnessUseKind::BranchStackLoadSource,
+      .block_index = authority.branch_block_index,
+      .instruction_index = authority.branch_terminator_instruction_index,
+      .candidates = authority.source_freshness_authorities,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  authority.source_freshness_status = selected.status;
+  if (prepared_value_freshness_query_selected(selected)) {
+    authority.source_freshness_authority = *selected.authority;
+  }
+}
+
+[[nodiscard]] bool selected_branch_stack_load_source_freshness_matches(
+    const PreparedBranchStackLoadAuthority& authority) {
+  if (!authority.source_freshness_authority.has_value() ||
+      authority.value_home == nullptr ||
+      !authority.branch_block_index.has_value() ||
+      !authority.branch_terminator_instruction_index.has_value()) {
+    return false;
+  }
+  const auto& freshness = *authority.source_freshness_authority;
+  return freshness.value_id == authority.value_id &&
+         freshness.value_name == authority.value_name &&
+         freshness.use_kind ==
+             PreparedValueFreshnessUseKind::BranchStackLoadSource &&
+         freshness.source_kind == PreparedValueFreshnessSourceKind::BranchStackSlot &&
+         freshness.proof_kind ==
+             PreparedValueFreshnessProofKind::BranchTerminatorOrdering &&
+         freshness.rank == PreparedValueFreshnessSourceRank::BranchStackSlot &&
+         freshness.reference.home == authority.value_home &&
+         freshness.reference.block_index == authority.branch_block_index &&
+         freshness.reference.instruction_index ==
+             authority.branch_terminator_instruction_index;
+}
+
+[[nodiscard]] PreparedBranchStackLoadAuthorityStatus
+status_for_branch_stack_load_source_freshness(
+    PreparedValueFreshnessQueryStatus status) {
+  switch (status) {
+    case PreparedValueFreshnessQueryStatus::Selected:
+      return PreparedBranchStackLoadAuthorityStatus::Available;
+    case PreparedValueFreshnessQueryStatus::NoCandidate:
+    case PreparedValueFreshnessQueryStatus::MissingValue:
+      return PreparedBranchStackLoadAuthorityStatus::
+          MissingSourceFreshnessAuthority;
+    case PreparedValueFreshnessQueryStatus::AmbiguousCandidate:
+      return PreparedBranchStackLoadAuthorityStatus::
+          AmbiguousSourceFreshnessAuthority;
+    case PreparedValueFreshnessQueryStatus::UnknownUse:
+    case PreparedValueFreshnessQueryStatus::InvalidCandidate:
+      return PreparedBranchStackLoadAuthorityStatus::
+          InvalidSourceFreshnessAuthority;
+  }
+  return PreparedBranchStackLoadAuthorityStatus::InvalidSourceFreshnessAuthority;
+}
+
 }  // namespace
 
 PreparedBranchStackLoadAuthority plan_prepared_branch_stack_load_authority(
@@ -2611,6 +2686,9 @@ PreparedBranchStackLoadAuthority plan_prepared_branch_stack_load_authority(
       .value_home = inputs.value_home,
       .frame_slot = inputs.frame_slot,
       .stack_object = inputs.stack_object,
+      .branch_block_index = inputs.branch_block_index,
+      .branch_terminator_instruction_index =
+          inputs.branch_terminator_instruction_index,
   };
 
   if (inputs.names == nullptr) {
@@ -2727,11 +2805,19 @@ PreparedBranchStackLoadAuthority plan_prepared_branch_stack_load_authority(
     authority.status = PreparedBranchStackLoadAuthorityStatus::MissingPolicy;
     return authority;
   }
-  if (!inputs.stack_slot_fresh_at_branch) {
-    authority.status =
-        PreparedBranchStackLoadAuthorityStatus::MissingStackFreshness;
+  select_branch_stack_load_source_freshness_authority(
+      authority, inputs.source_freshness_authorities);
+  authority.status = status_for_branch_stack_load_source_freshness(
+      authority.source_freshness_status);
+  if (authority.status != PreparedBranchStackLoadAuthorityStatus::Available) {
     return authority;
   }
+  if (!selected_branch_stack_load_source_freshness_matches(authority)) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::
+        UnsupportedSourceFreshnessAuthority;
+    return authority;
+  }
+  authority.stack_slot_fresh_at_branch = true;
   if (!inputs.stack_slot_clobber_safe_at_branch) {
     authority.status =
         PreparedBranchStackLoadAuthorityStatus::MissingStackClobberSafety;
@@ -2809,6 +2895,8 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
     FunctionNameId function_name,
     const PreparedBranchCondition& branch_condition,
     const bir::Terminator* terminator,
+    std::optional<std::size_t> branch_block_index,
+    std::optional<std::size_t> branch_terminator_instruction_index,
     PreparedBranchStackLoadRole role,
     const PreparedValueLocationFunction* value_locations,
     const PreparedValueHomeLookups* value_home_lookups) {
@@ -2824,6 +2912,27 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
       branch_stack_load_frame_slot_for_home(prepared.stack_layout, value_home);
   const auto* stack_object =
       prepared_stack_object_for_frame_slot(prepared.stack_layout, frame_slot);
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  if (role == PreparedBranchStackLoadRole::Condition &&
+      value_home != nullptr && value_home->value_id != PreparedValueId{0} &&
+      value_home->value_name != kInvalidValueName &&
+      branch_block_index.has_value() &&
+      branch_terminator_instruction_index.has_value()) {
+    source_freshness_authorities.push_back(PreparedValueFreshnessAuthority{
+        .value_id = value_home->value_id,
+        .value_name = value_home->value_name,
+        .use_kind = PreparedValueFreshnessUseKind::BranchStackLoadSource,
+        .source_kind = PreparedValueFreshnessSourceKind::BranchStackSlot,
+        .proof_kind = PreparedValueFreshnessProofKind::BranchTerminatorOrdering,
+        .rank = PreparedValueFreshnessSourceRank::BranchStackSlot,
+        .reference =
+            PreparedValueFreshnessSourceReference{
+                .home = value_home,
+                .block_index = branch_block_index,
+                .instruction_index = branch_terminator_instruction_index,
+            },
+    });
+  }
   PreparedBranchStackLoadAuthorityRecord record{
       .function_name = function_name,
       .block_label = branch_condition.block_label,
@@ -2836,11 +2945,22 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
           .value_home = value_home,
           .frame_slot = frame_slot,
           .stack_object = stack_object,
-          .policy = PreparedBranchStackLoadPolicy::None,
+          .policy = role == PreparedBranchStackLoadRole::Condition
+                        ? PreparedBranchStackLoadPolicy::LoadFromStackSlot
+                        : PreparedBranchStackLoadPolicy::None,
           .pointer_status =
               branch_value != nullptr && branch_value->type != bir::TypeKind::Ptr
                   ? PreparedBranchStackLoadPointerStatus::NotPointer
                   : PreparedBranchStackLoadPointerStatus::Unknown,
+          .branch_block_index = branch_block_index,
+          .branch_terminator_instruction_index =
+              branch_terminator_instruction_index,
+          .stack_slot_clobber_safe_at_branch =
+              role == PreparedBranchStackLoadRole::Condition,
+          .source_freshness_authorities =
+              source_freshness_authorities.empty()
+                  ? nullptr
+                  : &source_freshness_authorities,
       }),
   };
   clear_temporary_branch_stack_load_pointers(record.authority);
@@ -2853,6 +2973,8 @@ void collect_branch_stack_load_authority_for_role(
     FunctionNameId function_name,
     const PreparedBranchCondition& branch_condition,
     const bir::Terminator* terminator,
+    std::optional<std::size_t> branch_block_index,
+    std::optional<std::size_t> branch_terminator_instruction_index,
     PreparedBranchStackLoadRole role,
     const PreparedValueLocationFunction* value_locations,
     const PreparedValueHomeLookups* value_home_lookups) {
@@ -2873,6 +2995,8 @@ void collect_branch_stack_load_authority_for_role(
       function_name,
       branch_condition,
       terminator,
+      branch_block_index,
+      branch_terminator_instruction_index,
       role,
       value_locations,
       value_home_lookups));
@@ -2899,12 +3023,27 @@ collect_prepared_branch_stack_load_authorities(
                                                      branch_condition.block_label)
               : nullptr;
       const auto* terminator = block != nullptr ? &block->terminator : nullptr;
+      std::optional<std::size_t> branch_block_index;
+      std::optional<std::size_t> branch_terminator_instruction_index;
+      if (bir_function != nullptr && block != nullptr) {
+        for (std::size_t block_index = 0;
+             block_index < bir_function->blocks.size();
+             ++block_index) {
+          if (&bir_function->blocks[block_index] == block) {
+            branch_block_index = block_index;
+            branch_terminator_instruction_index = block->insts.size();
+            break;
+          }
+        }
+      }
       collect_branch_stack_load_authority_for_role(
           records,
           prepared,
           function_cf.function_name,
           branch_condition,
           terminator,
+          branch_block_index,
+          branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Condition,
           value_locations,
           &value_home_lookups);
@@ -2914,6 +3053,8 @@ collect_prepared_branch_stack_load_authorities(
           function_cf.function_name,
           branch_condition,
           terminator,
+          branch_block_index,
+          branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Lhs,
           value_locations,
           &value_home_lookups);
@@ -2923,6 +3064,8 @@ collect_prepared_branch_stack_load_authorities(
           function_cf.function_name,
           branch_condition,
           terminator,
+          branch_block_index,
+          branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Rhs,
           value_locations,
           &value_home_lookups);
