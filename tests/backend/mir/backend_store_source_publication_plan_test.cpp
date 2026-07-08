@@ -1398,6 +1398,204 @@ int records_global_pending_publication_flags() {
   return 0;
 }
 
+int requires_pointer_base_plus_offset_source_freshness() {
+  const auto source_name = c4c::ValueNameId{811};
+  const auto base_name = c4c::ValueNameId{812};
+  const auto block_label = c4c::BlockLabelId{23};
+  const auto instruction_index = std::size_t{9};
+  const auto source = bir::Value::named(bir::TypeKind::I64, "%pointer_source");
+  auto access = frame_slot_store_access(source_name, 14, 24);
+  access.block_label = block_label;
+  access.inst_index = instruction_index;
+  auto home = source_home(prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+                          prepare::PreparedValueId{37},
+                          source_name);
+  home.pointer_base_value_name = base_name;
+  home.pointer_base_symbol_name = c4c::LinkNameId{91};
+  home.pointer_byte_delta = -16;
+  home.register_name = "x19";
+  home.offset_bytes = 128;
+  home.size_bytes = 8;
+  home.align_bytes = 8;
+
+  const auto plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source,
+      .destination_access = &access,
+      .source_home = &home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .publication_block_label = block_label,
+      .publication_instruction_index = instruction_index,
+  });
+
+  if (!prepare::prepared_store_source_publication_available(plan) ||
+      !prepare::prepared_pointer_base_plus_offset_source_freshness_available(plan)) {
+    return fail("expected selected pointer-base-plus-offset source freshness");
+  }
+  if (plan.pointer_base_plus_offset_source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      plan.pointer_base_plus_offset_source_freshness_authorities.size() !=
+          std::size_t{1} ||
+      !plan.pointer_base_plus_offset_source_freshness_authority.has_value()) {
+    return fail("expected exactly one selected pointer-base-plus-offset freshness authority");
+  }
+  const auto& freshness =
+      *plan.pointer_base_plus_offset_source_freshness_authority;
+  if (freshness.value_id != home.value_id ||
+      freshness.value_name != source_name ||
+      freshness.use_kind !=
+          prepare::PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource ||
+      freshness.source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::PointerBasePlusOffset ||
+      freshness.proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority ||
+      freshness.rank !=
+          prepare::PreparedValueFreshnessSourceRank::PointerBasePlusOffset ||
+      freshness.reference.home != &home ||
+      freshness.reference.block_label !=
+          std::optional<c4c::BlockLabelId>{block_label} ||
+      freshness.reference.instruction_index !=
+          std::optional<std::size_t>{instruction_index} ||
+      plan.source_pointer_base_value_name !=
+          std::optional<c4c::ValueNameId>{base_name} ||
+      plan.source_pointer_base_symbol_name !=
+          std::optional<c4c::LinkNameId>{91} ||
+      plan.source_pointer_byte_delta != std::optional<std::int64_t>{-16}) {
+    return fail("expected exact selected pointer-base-plus-offset freshness fields");
+  }
+
+  const auto expect_unavailable =
+      [&](const prepare::PreparedStoreSourcePublicationPlan& candidate,
+          const char* label) {
+        if (!prepare::prepared_store_source_publication_available(candidate)) {
+          std::cerr << label << "\n";
+          return fail("expected store-source support facts to remain available");
+        }
+        if (prepare::prepared_pointer_base_plus_offset_source_freshness_available(
+                candidate)) {
+          std::cerr << label << "\n";
+          return fail("expected pointer-base-plus-offset freshness to fail closed");
+        }
+        return 0;
+      };
+
+  auto missing = plan;
+  missing.pointer_base_plus_offset_source_freshness_authorities.clear();
+  missing.pointer_base_plus_offset_source_freshness_authority.reset();
+  missing.pointer_base_plus_offset_source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+  if (const int rc = expect_unavailable(missing, "missing freshness");
+      rc != 0) {
+    return rc;
+  }
+
+  auto ambiguous = plan;
+  ambiguous.pointer_base_plus_offset_source_freshness_authorities.push_back(
+      ambiguous.pointer_base_plus_offset_source_freshness_authorities.front());
+  ambiguous.pointer_base_plus_offset_source_freshness_authority.reset();
+  ambiguous.pointer_base_plus_offset_source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
+  if (const int rc = expect_unavailable(ambiguous, "ambiguous freshness");
+      rc != 0) {
+    return rc;
+  }
+
+  auto stale_reference = plan;
+  stale_reference.publication_instruction_index = instruction_index + 1;
+  if (const int rc =
+          expect_unavailable(stale_reference, "stale publication point");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_base = plan;
+  wrong_base.source_pointer_base_value_name = c4c::ValueNameId{999};
+  if (const int rc = expect_unavailable(wrong_base, "wrong base");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_result = plan;
+  ++wrong_result.pointer_base_plus_offset_source_freshness_authority->value_id;
+  if (const int rc = expect_unavailable(wrong_result, "wrong result");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_delta = plan;
+  wrong_delta.source_pointer_byte_delta = std::int64_t{-8};
+  if (const int rc = expect_unavailable(wrong_delta, "wrong delta");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_use = plan;
+  wrong_use.pointer_base_plus_offset_source_freshness_authority->use_kind =
+      prepare::PreparedValueFreshnessUseKind::ProducerPublicationOperand;
+  if (const int rc = expect_unavailable(wrong_use, "wrong use");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_source = plan;
+  wrong_source.pointer_base_plus_offset_source_freshness_authority->source_kind =
+      prepare::PreparedValueFreshnessSourceKind::DirectHome;
+  if (const int rc = expect_unavailable(wrong_source, "wrong source kind");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_proof = plan;
+  wrong_proof.pointer_base_plus_offset_source_freshness_authority->proof_kind =
+      prepare::PreparedValueFreshnessProofKind::SameBlockBeforeUse;
+  if (const int rc = expect_unavailable(wrong_proof, "wrong proof kind");
+      rc != 0) {
+    return rc;
+  }
+
+  auto wrong_rank = plan;
+  wrong_rank.pointer_base_plus_offset_source_freshness_authority->rank =
+      prepare::PreparedValueFreshnessSourceRank::DirectHome;
+  if (const int rc = expect_unavailable(wrong_rank, "wrong rank");
+      rc != 0) {
+    return rc;
+  }
+
+  const auto support_only = prepare::plan_prepared_store_source_publication({
+      .source_value = &source,
+      .destination_access = &access,
+      .source_home = &home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+  });
+  if (support_only.pointer_base_plus_offset_source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      support_only.pointer_base_plus_offset_source_freshness_authority.has_value()) {
+    return fail("expected support-only pointer-base-plus-offset plan to have no freshness");
+  }
+  if (const int rc = expect_unavailable(support_only, "support-only facts");
+      rc != 0) {
+    return rc;
+  }
+
+  auto target_shape_only = support_only;
+  target_shape_only.source_slot_id = prepare::PreparedFrameSlotId{33};
+  target_shape_only.source_stack_offset_bytes = std::size_t{256};
+  target_shape_only.source_size_bytes = std::size_t{8};
+  target_shape_only.source_align_bytes = std::size_t{8};
+  if (const int rc =
+          expect_unavailable(target_shape_only, "target-shape-only facts");
+      rc != 0) {
+    return rc;
+  }
+
+  auto range_only = support_only;
+  range_only.source_pointer_byte_delta = std::int64_t{12};
+  if (const int rc = expect_unavailable(range_only, "range-only facts");
+      rc != 0) {
+    return rc;
+  }
+  return 0;
+}
+
 int plans_pending_global_publication_candidates_from_prepared_state() {
   const auto selected_name = c4c::ValueNameId{701};
   const auto tail_name = c4c::ValueNameId{702};
@@ -1744,6 +1942,9 @@ int main() {
     return rc;
   }
   if (int rc = records_global_pending_publication_flags(); rc != 0) {
+    return rc;
+  }
+  if (int rc = requires_pointer_base_plus_offset_source_freshness(); rc != 0) {
     return rc;
   }
   if (int rc = plans_pending_global_publication_candidates_from_prepared_state();
