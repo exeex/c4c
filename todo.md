@@ -1,70 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/594_rv64_branch_stack_source_consumption_followup_from_593.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate The Rhs Consumer
+Current Step ID: 3
+Current Step Title: Prove Accepted And Rejected Rhs Cases
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 implementation for the selected RV64 pointer `Rhs`
-consumer route in `src/backend/mir/riscv/codegen/object_emission.cpp`.
+Completed `plan.md` Step 3 proof coverage for the selected RV64 pointer `Rhs`
+branch stack-source consumer route in
+`tests/backend/mir/backend_riscv_object_emission_test.cpp`.
 
-The RV64 fused pointer branch stack-load freshness query is now role-parametric
-for `PreparedBranchStackLoadRole::Lhs` and `PreparedBranchStackLoadRole::Rhs`.
-The new `Rhs` wrapper requires the same prepared value id/name as `rhs_home`,
-the exact branch block index, exact terminator instruction index,
-`BranchStackLoadSource`, `BranchStackSlot`, `BranchTerminatorOrdering`,
-`BranchStackSlot` rank, the same home pointer, and the same branch instruction
-point before reporting selected freshness available.
+Added a stack-homed pointer `%rhs` fused-branch fixture that keeps `%lhs` in a
+GPR and publishes a real RV64 frame slot for `%rhs`. The accepted object test
+now proves the prepared RV64 emitter builds only when selected shared
+`BranchStackLoadSource` / `BranchStackSlot` freshness is present, loads `%rhs`
+from its selected stack slot into the branch scratch register, and emits the
+branch using that loaded RHS operand.
 
-`fragment_for_prepared_fused_pointer_branch()` now runs the `Rhs` selected
-shared freshness gate immediately after the existing `Lhs` gate and before
-planning or emitting the RV64 fused pointer branch. A stack-homed pointer
-`Rhs` can therefore no longer reach `append_rv64_move_value_to_register()`
-from stack-source evidence unless selected shared freshness matches the exact
-branch use.
+Added RHS-specific authority diagnostics mirroring the existing LHS coverage.
+The rejected cases cover missing source freshness, ambiguous source freshness,
+invalid source freshness, stale branch use, future branch use, wrong value
+authority, wrong use authority, stack-home-only authority, and a distinct
+missing-frame-slot/layout authority failure. The source-freshness cases require
+`unsupported_branch_stack_load_source_freshness` with `role=rhs`; the layout
+case remains `unsupported_branch_stack_load_authority`, so freshness failure
+does not collapse into stack-home or layout evidence.
 
-The publication allowance is symmetric for `Rhs` stack-slot operands after the
-freshness gate passes. Layout, stack-home, register, and publication status are
-still only support facts: missing selected shared freshness returns before the
-layout/publication allowance, and unsupported layout or operand-home failures
-remain separate.
-
-The unsupported terminator diagnostic path now checks `Rhs` after `Lhs` and
-reports `unsupported_branch_stack_load_source_freshness` / `role=rhs` for
-missing, invalid, ambiguous, or unsupported selected source freshness while
-preserving the distinct `unsupported_branch_stack_load_authority` path for
-layout/authority failures such as missing frame slots.
+No production implementation edits were needed for Step 3, and no expectations,
+unsupported markers, allowlists, or runtime-output contracts were weakened.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3 by adding focused RV64 object-emission proof for the
-accepted stack-homed pointer `Rhs` route and rejected missing/ambiguous/stale/
-wrong-value/wrong-use/future-point/stack-home-only authority cases, mirroring
-the existing Lhs-focused object-emission coverage without expectation or
-unsupported-marker rewrites.
+Execute `plan.md` Step 4 by validating the freshness queue coverage requested
+by the supervisor across the 587 through 596 chain and deciding whether this
+Step 3 object-emission proof is sufficient or should be paired with additional
+focused freshness/producer subsets.
 
 ## Watchouts
 
-- Do not add an RV64 fallback if selected shared producer authority is missing.
-- Do not infer freshness from stack homes, frame slots, aggregate lanes,
-  clobber facts, register facts, operand shape, or testcase shape.
-- Keep pointer `Rhs` consumer migration separate from 591 Prepared MIR view
-  research and 595 umbrella triage.
-- Keep layout, stack home, and clobber checks as support facts only. Adjacent
-  fail-closed cases to prove in Step 3: missing selected freshness,
-  ambiguous selected freshness, invalid/stale/wrong-value/wrong-use/future-point
-  freshness, stack-home-only freshness, missing frame slot/layout, stack object
-  mismatch, home/value mismatch, missing clobber safety, unsupported operand
-  shape, and unknown pointer status.
-- Step 2 added the consumer gate and diagnostics, but did not add or rewrite
-  tests. Step 3 should pin accepted/rejected `Rhs` behavior directly.
-- Existing focused RV64 test surface for the migrated Lhs route is
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp` lines 739-774 and
-  12631-13020; Step 3 should add the analogous `Rhs` object/proof coverage
-  without weakening expectations.
+- Step 3 only added object-emission tests; it did not broaden into producer,
+  Prepared MIR view, or runtime expectation work.
+- The RHS rejected cases mutate prepared lookup authority records after shared
+  collection, so they prove the RV64 consumer requires selected shared
+  freshness for the exact branch use rather than inferring from stack-home or
+  operand shape.
+- If Step 4 expands validation, keep proof commands supervisor-selected and
+  preserve `test_after.log` as the canonical executor log.
 
 ## Proof
 
