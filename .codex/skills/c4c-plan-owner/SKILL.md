@@ -19,7 +19,8 @@ does not perform implementation work.
 4. If the task will create or rewrite `plan.md`, also load and follow
    `idea-to-runbook-plan`.
 5. If the task will create a new file under `ideas/open/`, use the source idea
-   creation format below.
+   creation format below. For research or umbrella ideas, also load the
+   matching template reference named there.
 6. Read only the lifecycle files needed for the assigned operation.
 7. If the supervisor provides a reviewer report path under `review/`, read that
    report before rewriting `plan.md` or `todo.md`.
@@ -85,6 +86,21 @@ signals concrete and tied to the idea's domain. Include reject signals for:
 Do not leave the section generic. A reviewer should be able to read it and
 know which concrete diffs, tests, logs, or route choices must block acceptance
 for this idea.
+
+### Specialized Idea Types
+
+Keep this section as routing guidance only; load the detailed template only
+when that idea type is requested or clearly fits the task.
+
+- Research idea: read
+  [`references/research-idea-template.md`](/workspaces/c4c/.codex/skills/c4c-plan-owner/references/research-idea-template.md).
+  Use when the source idea should produce architecture or evidence documents,
+  typically under a new `docs/<topic>/` directory, without implementation
+  changes.
+- Umbrella idea: read
+  [`references/umbrella-idea-template.md`](/workspaces/c4c/.codex/skills/c4c-plan-owner/references/umbrella-idea-template.md).
+  Use when the source idea should not directly implement a fix, but should
+  classify evidence and generate ordered follow-up ideas under `ideas/open/`.
 
 ## Responsibilities
 
