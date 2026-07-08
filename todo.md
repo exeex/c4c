@@ -8,60 +8,54 @@ Current Step Title: Add Supported Frame Or Return Handling
 
 ## Just Finished
 
-Completed the Step 3 lifecycle handoff for the selected supported prepared
-stack-frame rows. The missing dynamic-frame callee-saved GPR save-slot
-placement authority is now split to
-`ideas/open/626_prepared_dynamic_frame_callee_saved_slot_placement.md`, while
-idea 613 remains active for ABI/RV64 consumer work that already has complete
-prepared frame or return facts.
+Completed the Step 3 residual refresh after the producer gaps were split to
+ideas 624, 625, and 626. No implementation files were touched.
 
-Focused `build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...`
-probes for `src/20040811-1.c`, `src/pr43220.c`, and `src/vla-dealloc-1.c`
-still stop at:
+Fresh `build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...`
+probes classify the current Step 3 residuals as follows:
 
-`unsupported_stack_frame: RV64 object route requires a supported prepared stack frame`
+- Prepared return rows `src/20001130-2.c` and `src/20080719-1.c` still stop at
+  `unsupported_move_bundle_target_shape` on `phase=before_return`,
+  `destination_kind=function_return_abi`, `destination_storage=register`,
+  `reason=return_stack_to_register`, with `source_home_kind=stack_slot` and
+  `destination_home_kind=stack_slot`. This remains missing prepared return
+  destination-home authority, not RV64 consumer breadth.
+- The current backend bucket has `12` `unsupported_stack_frame` rows:
+  `src/20021113-1.c`, `src/20190820-1.c`, `src/920721-2.c`,
+  `src/20020314-1.c`, `src/pr36321.c`, `src/pr43220.c`, `src/alloca-1.c`,
+  `src/20040223-1.c`, `src/strcpy-2.c`, `src/vla-dealloc-1.c`,
+  `src/920929-1.c`, and `src/20040811-1.c`.
+- Focused prepared dumps for those frame rows show the active rejecting
+  functions are dynamic/fixed-frame rows with `has_dynamic_stack=yes` or
+  unsupported FPR/dynamic-frame save shapes. Their callee-saved rows name
+  registers such as `s1`, `s2`, `fs1`, or `fs2`, but the dynamic-frame save
+  rows do not publish concrete `slot_placement` offsets/sizes. These rows stay
+  under idea 626 or later FPR/frame work; deriving save slots in RV64 object
+  emission would be producer-authority inference.
+- Excluded producer-gap rows remain out of scope: `src/20000808-1.c` is idea
+  624 outgoing-stack destination offsets, and `src/20020529-1.c` is idea 625
+  stack-slot preservation source publication.
 
-Prepared dumps confirm these rows publish frame size/alignment and dynamic-stack
-operation metadata, but not enough concrete frame-save authority for the RV64
-object-route stack-frame consumer:
+Step 2 positives were preserved in the refresh probes:
 
-- `src/20040811-1.c`: `frame_size=24`, `frame_alignment=8`,
-  `has_dynamic_stack=yes`, `fixed_slots_use_fp=yes`,
-  `requires_stack_save_restore=yes`, with `stack_save`, `dynamic_alloca`, and
-  `stack_restore` operations.
-- `src/pr43220.c`: `frame_size=40`, `frame_alignment=8`,
-  `has_dynamic_stack=yes`, `fixed_slots_use_fp=yes`,
-  `requires_stack_save_restore=yes`, with two `dynamic_alloca` operations and a
-  `stack_restore`.
-- `src/vla-dealloc-1.c`: `frame_size=24`, `frame_alignment=8`,
-  `has_dynamic_stack=yes`, `fixed_slots_use_fp=yes`,
-  `requires_stack_save_restore=yes`, with one `dynamic_alloca` and multiple
-  `stack_restore` operations.
+- `src/20000603-1.c` remains past `unsupported_call_abi`, now stopping at
+  `unsupported_terminator_fragment`.
+- `src/20021219-1.c` remains past `unsupported_call_abi`, now stopping at
+  `malformed_prepared_join_transfer_carrier`.
+- `src/pr77767.c` still compiles through the focused RV64 object probe.
 
-The attempted admission analysis showed the current RV64 frame validator has
-two distinct blockers, both real prepared-authority gaps for this packet:
-
-- Dynamic/fixed frame rows set `has_dynamic_stack=yes` and
-  `uses_frame_pointer_for_fixed_slots=yes`, while the object route currently
-  only validates fixed `sp`-relative prepared frames.
-- Their `saved_register` rows name callee-saved GPRs such as `s1` and `s2`,
-  but do not publish concrete `slot_placement` save-slot offsets/sizes for the
-  function prologue/epilogue. Inferring those save locations from final frame
-  size, register order, or testcase shape would violate the packet boundary.
-
-Because the selected rows lack explicit prepared callee-saved save-slot
-placements, they are no longer Step 3 implementation positives for idea 613.
-The correct next move inside idea 613 is a focused residual refresh for stack
-frame or prepared return rows that already publish complete authority.
+Conclusion: after excluding ideas 624, 625, and 626, there is no remaining
+complete-authority Step 3 stack-frame or prepared-return consumer family
+suitable for RV64 implementation in idea 613.
 
 ## Suggested Next
 
-Refresh Step 3 residuals for complete prepared frame/return facts. Keep
-`src/20040811-1.c`, `src/pr43220.c`, and `src/vla-dealloc-1.c` under idea 626
-unless their prepared dumps now publish explicit callee-saved GPR save-slot
-placements. If no complete-authority Step 3 breadth remains, advance to Step 4
-for adjacent ABI consumer authority or Step 5 close-readiness classification,
-backed by the backend subset proof command.
+Advance idea 613 out of Step 3. The next coherent packet is a Step 4 residual
+refresh for adjacent ABI consumer authority, or Step 5 close-readiness
+classification if the supervisor prefers to split remaining non-consumer
+owners before more ABI work. Do not select a Step 3 implementation packet until
+prepared return destination-home authority or dynamic-frame save-slot placement
+facts are published upstream.
 
 ## Watchouts
 
