@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Establish the Evidence Baseline
+Current Step ID: 2
+Current Step Title: Build the Failure Bucket Map
 
 # Current Packet
 
