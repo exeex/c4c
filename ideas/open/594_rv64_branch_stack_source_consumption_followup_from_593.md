@@ -2,10 +2,10 @@
 
 Status: Open
 Type: Conditional follow-up implementation idea
-Parent: `ideas/open/593_rv64_branch_stack_source_freshness_consumption.md`
+Parent: `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
 Related:
-- `ideas/open/592_typed_aggregate_branch_stack_source_publication.md`
-- `ideas/open/593_rv64_branch_stack_source_freshness_consumption.md`
+- `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
+- `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
 - `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
 - `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
 - `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`

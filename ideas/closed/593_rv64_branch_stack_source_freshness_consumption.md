@@ -1,14 +1,14 @@
 # RV64 Branch Stack-Source Freshness Consumption
 
-Status: Open
+Status: Closed
 Type: Target-consumer migration after shared producer authority
-Parent: `ideas/open/592_typed_aggregate_branch_stack_source_publication.md`
+Parent: `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
 Related:
 - `ideas/closed/587_prepared_value_freshness_authority_mvp.md`
 - `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
 - `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
 - `ideas/closed/590_branch_stack_load_freshness_contract.md`
-- `ideas/open/592_typed_aggregate_branch_stack_source_publication.md`
+- `ideas/closed/592_typed_aggregate_branch_stack_source_publication.md`
 Owning Layer: RV64 MIR branch/stack-source consumers using shared prepared
 freshness authority
 
@@ -130,6 +130,55 @@ The closure note must answer:
    Prepared MIR view contract line to treat it as a required backend input?
 7. What exact RV64 consume-side gap should 594 take over next?
 8. Which `ideas/open/594_*.md` file was created, or why is no 594 needed?
+
+## Closure Note
+
+Closed after the active runbook migrated the prepared RV64 object-emission
+fused pointer conditional branch path for a stack-slot `Lhs` operand. The
+migrated route requires selected shared
+`PreparedValueFreshnessUseKind::BranchStackLoadSource` / `BranchStackSlot`
+authority for the same prepared source value, exact branch block, and
+terminator instruction index before emitting the stack load into the RV64
+`Lhs` scratch register and branching.
+
+Remaining unwired branch stack-source shapes are deferred rather than hidden:
+pointer `Rhs` remains unwired because the producer/collector records it as
+inventory-only with `policy=none` / `status=missing_policy`;
+aggregate-adjacent branch stack-source consumers and scalar-condition-register
+branch shapes were not selected for the narrow 593 migration; string assembly
+emission and other target emission paths remain outside this slice. The `Rhs`
+gap is a producer/consumer handoff, not permission for RV64 to manufacture a
+target-local fallback.
+
+No selected RV64 path in this 593 slice may rely on stack-home-only,
+frame-slot-only, aggregate-lane-only, clobber-only, register-only, or
+operand-shape-only evidence as freshness. The migrated `Lhs` route fails
+closed unless selected shared authority matches the exact branch use; layout
+and clobber facts remain support facts, not freshness.
+
+The work exposed a missing shared producer fact for pointer `Rhs`. That gap
+must return to the 592 family before RV64 consumes it if the producer policy
+is still missing. AArch64 and x86 remain intentionally deferred under this
+RV64-only idea.
+
+RV64 behavior is stable enough for the later Prepared MIR view line to require
+selected shared branch stack-source authority for the migrated `Lhs` backend
+input, but not for treating every RV64 branch stack-source shape as fully
+wired until the `Rhs` producer/consumer handoff is resolved.
+
+The exact follow-up is
+`ideas/open/594_rv64_branch_stack_source_consumption_followup_from_593.md`.
+It should take over the pointer `Rhs` branch stack-source consume-side gap,
+starting by checking whether the missing `Rhs` producer/collector policy has
+been supplied by the 592 family. If not, 594 should block on producer repair
+instead of adding an RV64 fallback.
+
+Validation accepted for closure: Step 4 backend proof passed 346/346 using
+the supervisor-selected backend subset; regression guards passed; hook-managed
+full-suite baselines after the code commits were accepted at 3375/3375. The
+close-time lifecycle guard reused canonical `test_before.log` and
+`test_after.log`, both 346/346, and passed the non-decreasing regression check
+for this lifecycle-only close.
 
 ## Reviewer Reject Signals
 
