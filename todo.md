@@ -1,47 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/597_pointer_address_semantic_model_research.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Finalize Recommendations And Index
+Current Step ID: 7
+Current Step Title: Validate Research-Only Scope
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 6: Finalize Recommendations And Index.
+Completed `plan.md` Step 7: Validate Research-Only Scope.
 
-Filled
-`docs/pointer_address_semantic_model_research/05_followup_recommendations.md`
-with the final implementation handoff. Opened two narrow later ideas:
-`ideas/open/599_pointer_base_plus_offset_selected_authority.md` for shared
-prepared/prealloc pointer-arithmetic selected authority, and
-`ideas/open/600_pointer_value_memory_use_freshness_authority.md` for shared
-prepared/prealloc pointer-value memory-use freshness authority. Each idea
-records first owner, prerequisites, proof surface, and reviewer reject
-signals.
+Ran `git diff --check`; it passed with no output. Inspected the current
+worktree diff with `git diff --name-status HEAD`; only `todo.md` is currently
+dirty.
 
-Deferred local-array and global static semantic GEP target consumption until
-idea 591 settles `PreparedMirView` shape and target migration proof. Also
-deferred loaded-value/store-source freshness and aggregate-adjacent or
-non-branch pointer/address consumers whose first owner or proof surface is not
-settled.
+Inspected the active idea work since activation commit `3f1956f25` with
+`git diff --name-status 3f1956f25..HEAD`. The changed committed scope is
+limited to the research docs under
+`docs/pointer_address_semantic_model_research/`, generated follow-up ideas
+`ideas/open/599_pointer_base_plus_offset_selected_authority.md` and
+`ideas/open/600_pointer_value_memory_use_freshness_authority.md`, and
+`todo.md`.
 
-Refreshed `docs/pointer_address_semantic_model_research/index.md` to link all
-numbered files and summarize the semantic model, fact classes, fail-closed
-rules, closed-evidence boundaries, follow-up/deferred outcomes, and impact on
-idea 591.
+Confirmed no implementation, test, expectation, unsupported-marker, allowlist,
+runtime, harness, or unrelated lifecycle files changed in the active idea
+scope.
 
 ## Suggested Next
 
-Step 7: Validate Research-Only Scope.
+Supervisor should route plan-owner close evaluation for
+`ideas/open/597_pointer_address_semantic_model_research.md`.
 
 ## Watchouts
 
-- This is a research route; do not edit implementation files, tests,
+- This remains a research route; do not edit implementation files, tests,
   expectations, unsupported markers, allowlists, runtime behavior, or harness
-  behavior.
-- Step 7 should inspect `git diff --name-only HEAD` and confirm changes remain
-  limited to research docs, opened `ideas/open/*.md` handoffs, and `todo.md`.
+  behavior during close evaluation.
+- The Step 7 file-scope check allowed the supervisor-approved generated
+  follow-up ideas 599 and 600 in addition to research docs, plan lifecycle
+  files, and `todo.md`.
 - Do not reopen the closed RV64 fused pointer branch stack-slot `Lhs`/`Rhs`
   queue or claim it proves global pointer/address semantic closure.
 - Preserve deferred status for semantic GEP target consumption until idea 591
@@ -52,6 +49,12 @@ Step 7: Validate Research-Only Scope.
 
 ## Proof
 
-Docs/idea/todo-only packet. Validation command:
-`git diff --check` passed with no output. `test_after.log` was not updated for
-this research packet.
+Docs/todo-only validation packet; no build or test required.
+
+- `git diff --check`: passed with no output.
+- `git diff --name-status HEAD`: current worktree dirty scope is only
+  `todo.md`.
+- `git diff --name-status 3f1956f25..HEAD`: active idea committed scope is
+  limited to research docs, generated ideas 599/600, and `todo.md`.
+
+`test_after.log` was not updated for this research-only validation packet.
