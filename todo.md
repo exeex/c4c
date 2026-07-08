@@ -1,72 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/610_rv64_move_bundle_target_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Broaden Same-Family Coverage
+Current Step ID: 4
+Current Step Title: Tighten Diagnostics And Regression Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 diagnostic refresh after the Step 2 direct
-register-to-register consumer rule. I re-probed the 106 current
-`build/rv64_gcc_c_torture_backend/*/case.log` rows that still named
-`unsupported_move_bundle_target_shape` and wrote focused direct object evidence
-under `build/agent_state/610_step3_move_bundle_residual_probe/`.
+Completed `plan.md` Step 4 diagnostic/regression-boundary review for the
+remaining idea 610 move-bundle residuals. No code, expectation,
+unsupported-marker, allowlist, timeout/accounting, runtime, prepared/prealloc,
+destination fan-in, ABI, terminator, or global-data files were changed.
 
-Fresh direct object movement:
-- 41 of the 106 stale log-listed rows now compile to RV64 objects, including
-  the Step 2 representatives `src/20000314-1.c`, `src/20040309-1.c`,
-  `src/pr63641.c`, and the larger mixed evidence case `src/20020206-2.c`.
-- 34 rows now fail at downstream non-target-shape owners instead of
-  `unsupported_move_bundle_target_shape`: 10 destination fan-in classifier
-  rejects, 8 instruction fragments, 3 local-memory accesses, 2 terminator
-  fragments, 2 scalar-compare publications, 1 call ABI, 1 inline asm, and 7
-  other downstream diagnostics.
-- 31 rows still report `unsupported_move_bundle_target_shape`.
+The fresh Step 3 direct object evidence under
+`build/agent_state/610_step3_move_bundle_residual_probe/summary.tsv` is
+reviewably distinguished:
+- 41 rows compile to RV64 objects.
+- 1 remaining same-family RV64 consumer row is `src/pr71631.c`: an
+  `out_of_ssa_parallel_copy` mixed multi-move target shape with complete
+  published homes, but it includes repeated stack destinations and must remain
+  fail-closed until destination fan-in/order authority exists.
+- 10 rows reroute to the narrowed destination fan-in classifier
+  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`
+  with `diagnostic_owner=rv64_prepared_move_bundle_consumer`.
+- 13 rows are select-publication rows with explicit
+  `select_publication_rejection_reason`: 7 unsupported stack-offset sources,
+  4 unsupported source homes, and 2 unsupported immediate ranges.
+- 2 rows are before-return ABI move-bundle rows (`src/20001130-2.c`,
+  `src/20080719-1.c`), and 1 row is a separate call ABI failure
+  (`src/20000808-1.c`).
+- 14 rows are generic before-instruction stack-destination move shapes outside
+  the out-of-SSA route: 12 multi-source stack-destination rows plus
+  `src/920411-1.c` and `src/990829-1.c`.
+- 5 rows are evidence gaps or malformed select-carrier facts:
+  `src/pr47337.c` still reports the generic target-shape message without enough
+  ownership facts, while `src/20080506-1.c`, `src/pr49186.c`,
+  `src/pr68249.c`, and `src/pr78856.c` now report malformed/missing select
+  materialization edge facts.
+- 19 rows reroute to downstream non-move-bundle owners such as unsupported
+  instruction fragments, local memory, terminators, scalar-compare
+  publication, and inline asm.
 
-The 31 remaining target-shape rows split as follows:
-- 13 select-publication rows, not this packet: 7
-  `select_publication_rejection_reason=unsupported_source_stack_offset`
-  (`src/20000706-1.c`, `src/20000706-2.c`, `src/20000717-5.c`,
-  `src/20071213-1.c`, `src/20120427-1.c`, `src/20120427-2.c`,
-  `src/991216-1.c`), 4
-  `select_publication_rejection_reason=intent_status_unsupported_source_home`
-  (`src/pr45034.c`, `src/pr53160.c`, `src/pr58726.c`, `src/pr59221.c`), and 2
-  `select_publication_rejection_reason=unsupported_source_immediate_i32_range`
-  (`src/pr29695-1.c`, `src/pr29695-2.c`).
-- 12 before-instruction stack-destination multi-source rows with
-  `authority=none`, `move_count=3`, register-to-stack plus stack-to-stack
-  moves, and the same destination value; these belong with destination fan-in
-  or before-instruction generic stack destination policy, not Step 3 direct
-  out-of-SSA materialization.
-- 2 before-return ABI rows (`src/20001130-2.c`, `src/20080719-1.c`), outside
-  this plan's Step 3 route.
-- 2 before-instruction generic stack-destination rows (`src/920411-1.c`,
-  `src/990829-1.c`), outside the out-of-SSA parallel-copy same-family route.
-- 1 evidence-gap row (`src/pr47337.c`) whose diagnostic still lacks the
-  published coordinate and move facts needed for safe ownership.
-- 1 same-family `out_of_ssa_parallel_copy` mixed multi-move row,
-  `src/pr71631.c`, with `move_count=10`, complete published prepared homes for
-  register-to-register, register-to-stack, and rematerializable-immediate to
-  register moves. It is the only remaining non-select out-of-SSA target-shape
-  row, but it also includes repeated stack destinations, so the next code
-  packet must keep destination fan-in fail-closed.
+Focused negative coverage already exists for the current boundaries:
+`rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes`,
+`rejects_prepared_out_of_ssa_edge_preservation_stack_fail_closed_shapes`,
+`rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes`,
+`rejects_prepared_out_of_ssa_phi_join_immediate_materialization_fail_closed_shapes`,
+`reports_prepared_move_bundle_coordinate_diagnostic`,
+`reports_prepared_select_publication_move_bundle_fragment_diagnostic`,
+`rejects_ambiguous_non_parallel_multi_source_stack_destination_move_bundle`,
+`rejects_prepared_before_return_stack_to_register_abi_move_fail_closed_shapes`,
+and `rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes`.
 
 ## Suggested Next
 
-Continue with `plan.md` Step 3 by implementing a narrow same-family
-multi-move consumer for `out_of_ssa_parallel_copy` bundles only when all
-scheduled moves have complete prepared homes and the bundle has no repeated
-destination/fan-in. The exact rule should broaden the existing direct
-register-to-register consumer to acyclic multi-move bundles containing only
-direct `register -> register`, direct `register -> stack_slot`, and
-`rematerializable_immediate -> register` scalar moves, preserving fail-closed
-diagnostics for repeated stack destinations.
+Move to `plan.md` Step 5 close-readiness review. Recommended decision:
+continue or split, not close, unless the supervisor accepts leaving the single
+same-family `src/pr71631.c` repeated-destination `out_of_ssa_parallel_copy`
+consumer residual blocked outside idea 610. If continuing within idea 610, the
+next narrow packet should be diagnostic/design-first for repeated destination
+authority; do not force `src/pr71631.c` through without explicit fan-in/order
+authority.
 
-Use `src/pr71631.c` only as audit evidence for the mixed multi-move shape; do
-not force it to pass if its repeated stack destinations remain unresolved.
-Exact proof command:
+Exact proof command remains:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
@@ -74,37 +71,27 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 ## Watchouts
 
-- Do not infer missing prepared authority from an encodable RV64 move; continue
-  consuming only prepared move-bundle facts.
-- Keep destination fan-in policy out of this plan. `src/960209-1.c` and the 10
-  fresh `unsupported_prepared_move_bundle_classification` reroutes are
-  explicitly in the non-parallel multi-source stack-destination family, and
-  the 12 remaining before-instruction target-shape rows have the same
-  stack-destination/fan-in character.
-- Do not touch expectations, unsupported markers, allowlists, timeout files,
-  runtime accounting, or unrelated implementation surfaces.
-- Keep select-publication immediate materialization, before-return ABI moves,
-  before-instruction generic moves, unresolved stack destinations, and
-  evidence-gap rows out of this direct register-to-register rule.
-- The current fresh evidence has no clean remaining single-move
-  `phi_join_register_to_register` row. If the next implementation cannot
-  distinguish safe acyclic multi-move bundles from repeated-destination
-  bundles without guessing, stop and report that missing authority instead of
-  adding testcase-shaped handling.
-- The CTest backend subset is the canonical proof log, but focused direct
-  `c4cll --codegen obj --target riscv64-linux-gnu` probes were needed to
-  observe row movement because the existing per-case logs were not the
-  acceptance artifact for this packet.
+- Do not infer destination ordering or mutual exclusion from an encodable RV64
+  move sequence. `src/pr71631.c` remains the live same-family audit row, but
+  its repeated stack destinations are unresolved.
+- The current diagnostics are reviewable enough to avoid a Step 4 code edit:
+  select-publication, destination fan-in, ABI/before-return, generic
+  before-instruction, malformed select-carrier/evidence-gap, and downstream
+  non-move-bundle rows are distinguishable.
+- `src/pr47337.c` is the only residual still lacking good ownership facts under
+  the generic target-shape diagnostic; treat it as an evidence gap, not proof
+  that a new RV64 materialization rule is safe.
+- No test expectation, unsupported marker, allowlist, timeout/accounting, or
+  runtime changes were made or needed for this packet.
 
 ## Proof
 
-Proof command run for this diagnostic packet:
+Proof command run for this Step 4 diagnostic-boundary packet:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
 Result: passed. Backend subset used: `^backend_`. Log path:
-`test_after.log`. The proof is sufficient for this Step 3 diagnostic slice.
-Focused direct object probe evidence lives under
-`build/agent_state/610_step3_move_bundle_residual_probe/`.
+`test_after.log`. The proof is sufficient for this Step 4 diagnostic-boundary
+slice.
