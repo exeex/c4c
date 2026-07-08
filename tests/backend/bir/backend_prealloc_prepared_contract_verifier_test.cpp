@@ -49,6 +49,14 @@ prepare::PreparedSelectedObjectDataContractFacts coherent_object_data() {
       .object_size_bytes = 16,
       .emitted_byte_count = 8,
       .zero_fill_byte_count = 8,
+      .relocation_slots =
+          {
+              prepare::PreparedObjectDataRelocationSlot{
+                  .byte_offset = 8,
+                  .size_bytes = 8,
+                  .target = c4c::LinkNameId{7},
+              },
+          },
       .has_object_label = true,
       .has_publication_identity = true,
       .requires_emitted_bytes = true,
@@ -1458,6 +1466,26 @@ int verify_selected_object_data_contract_reports() {
   const auto missing_report =
       prepare::verify_prepared_selected_object_data_contract(missing);
 
+  auto missing_slot = coherent_object_data();
+  missing_slot.relocation_slots.clear();
+  const auto missing_slot_report =
+      prepare::verify_prepared_selected_object_data_contract(missing_slot);
+
+  auto targetless_slot = coherent_object_data();
+  targetless_slot.relocation_slots.front().target = c4c::kInvalidLinkName;
+  const auto targetless_slot_report =
+      prepare::verify_prepared_selected_object_data_contract(targetless_slot);
+
+  auto overlapping_slot = coherent_object_data();
+  overlapping_slot.relocation_slots.push_back(
+      prepare::PreparedObjectDataRelocationSlot{
+          .byte_offset = 12,
+          .size_bytes = 4,
+          .target = c4c::LinkNameId{9},
+      });
+  const auto overlapping_slot_report =
+      prepare::verify_prepared_selected_object_data_contract(overlapping_slot);
+
   auto incoherent = coherent_object_data();
   incoherent.conflicting_zero_fill = true;
   const auto incoherent_report =
@@ -1482,7 +1510,19 @@ int verify_selected_object_data_contract_reports() {
               "missing relocation should classify as producer missing") ||
       !expect(missing_report.fact_family ==
                   prepare::PreparedContractFactFamily::ObjectRelocation,
-              "missing relocation should identify object relocation family") ||
+                  "missing relocation should identify object relocation family") ||
+      !expect(missing_slot_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing relocation slot should classify as producer missing") ||
+      !expect(missing_slot_report.fact_family ==
+                  prepare::PreparedContractFactFamily::ObjectRelocation,
+              "missing relocation slot should identify object relocation family") ||
+      !expect(targetless_slot_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "targetless relocation slot should classify as producer incoherent") ||
+      !expect(overlapping_slot_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "overlapping relocation slots should classify as producer incoherent") ||
       !expect(incoherent_report.owner_class ==
                   prepare::PreparedContractOwnerClass::ProducerIncoherent,
               "conflicting zero-fill should classify as producer incoherent") ||

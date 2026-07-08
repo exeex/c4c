@@ -134,6 +134,7 @@ owner_for_raw_call_argument_abi_coherence_status(
     case PreparedSelectedObjectDataContractStatus::MissingEmittedBytes:
     case PreparedSelectedObjectDataContractStatus::MissingZeroFill:
     case PreparedSelectedObjectDataContractStatus::MissingRelocation:
+    case PreparedSelectedObjectDataContractStatus::MissingRelocationSlot:
     case PreparedSelectedObjectDataContractStatus::MissingObjectByteRange:
     case PreparedSelectedObjectDataContractStatus::MissingUnsupportedObjectDataMarker:
       return PreparedContractOwnerClass::ProducerMissing;
@@ -142,6 +143,7 @@ owner_for_raw_call_argument_abi_coherence_status(
     case PreparedSelectedObjectDataContractStatus::ConflictingEmittedBytes:
     case PreparedSelectedObjectDataContractStatus::ConflictingZeroFill:
     case PreparedSelectedObjectDataContractStatus::ConflictingRelocation:
+    case PreparedSelectedObjectDataContractStatus::ConflictingRelocationSlot:
     case PreparedSelectedObjectDataContractStatus::ConflictingObjectByteRange:
     case PreparedSelectedObjectDataContractStatus::
         ConflictingUnsupportedObjectDataMarker:
@@ -337,6 +339,8 @@ owner_for_call_argument_binary_producer_materialization_status(
       return PreparedContractFactFamily::ObjectZeroFill;
     case PreparedSelectedObjectDataContractStatus::MissingRelocation:
     case PreparedSelectedObjectDataContractStatus::ConflictingRelocation:
+    case PreparedSelectedObjectDataContractStatus::MissingRelocationSlot:
+    case PreparedSelectedObjectDataContractStatus::ConflictingRelocationSlot:
       return PreparedContractFactFamily::ObjectRelocation;
     case PreparedSelectedObjectDataContractStatus::MissingObjectByteRange:
     case PreparedSelectedObjectDataContractStatus::ConflictingObjectByteRange:
@@ -571,6 +575,30 @@ owner_for_call_argument_binary_producer_materialization_status(
   out << " emitted_byte_count=" << facts.emitted_byte_count;
   out << " zero_fill_byte_count=" << facts.zero_fill_byte_count;
   return out.str();
+}
+
+[[nodiscard]] bool relocation_slots_have_conflict(
+    const PreparedSelectedObjectDataContractFacts& facts) {
+  for (std::size_t index = 0; index < facts.relocation_slots.size(); ++index) {
+    const auto& slot = facts.relocation_slots[index];
+    if (slot.target == kInvalidLinkName || slot.size_bytes == 0 ||
+        slot.byte_offset >= facts.object_size_bytes ||
+        slot.size_bytes > facts.object_size_bytes - slot.byte_offset) {
+      return true;
+    }
+    for (std::size_t other_index = index + 1;
+         other_index < facts.relocation_slots.size();
+         ++other_index) {
+      const auto& other = facts.relocation_slots[other_index];
+      const auto slot_end = slot.byte_offset + slot.size_bytes;
+      const auto other_end = other.byte_offset + other.size_bytes;
+      if (slot.byte_offset == other.byte_offset ||
+          (slot.byte_offset < other_end && other.byte_offset < slot_end)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] bool frame_slot_address_selection_has_cross_route_payload(
@@ -1024,6 +1052,9 @@ classify_prepared_selected_object_data_contract(
   if (facts.requires_relocation && !facts.has_relocation) {
     return PreparedSelectedObjectDataContractStatus::MissingRelocation;
   }
+  if (facts.requires_relocation && facts.relocation_slots.empty()) {
+    return PreparedSelectedObjectDataContractStatus::MissingRelocationSlot;
+  }
   if (!facts.has_object_byte_range || facts.object_size_bytes == 0) {
     return PreparedSelectedObjectDataContractStatus::MissingObjectByteRange;
   }
@@ -1046,6 +1077,10 @@ classify_prepared_selected_object_data_contract(
   }
   if (facts.conflicting_relocation) {
     return PreparedSelectedObjectDataContractStatus::ConflictingRelocation;
+  }
+  if (facts.conflicting_relocation_slot ||
+      relocation_slots_have_conflict(facts)) {
+    return PreparedSelectedObjectDataContractStatus::ConflictingRelocationSlot;
   }
   if (facts.conflicting_object_byte_range) {
     return PreparedSelectedObjectDataContractStatus::ConflictingObjectByteRange;

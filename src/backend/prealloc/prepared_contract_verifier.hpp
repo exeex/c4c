@@ -5,6 +5,7 @@
 #include "calls.hpp"
 #include "decoded_home_storage.hpp"
 #include "frame.hpp"
+#include "object_data.hpp"
 #include "variadic.hpp"
 
 #include <cstddef>
@@ -225,6 +226,7 @@ enum class PreparedSelectedObjectDataContractStatus {
   MissingEmittedBytes,
   MissingZeroFill,
   MissingRelocation,
+  MissingRelocationSlot,
   MissingObjectByteRange,
   MissingUnsupportedObjectDataMarker,
   ConflictingObjectLabel,
@@ -232,6 +234,7 @@ enum class PreparedSelectedObjectDataContractStatus {
   ConflictingEmittedBytes,
   ConflictingZeroFill,
   ConflictingRelocation,
+  ConflictingRelocationSlot,
   ConflictingObjectByteRange,
   ConflictingUnsupportedObjectDataMarker,
   UnsupportedButCoherent,
@@ -254,6 +257,8 @@ prepared_selected_object_data_contract_status_name(
       return "missing_zero_fill";
     case PreparedSelectedObjectDataContractStatus::MissingRelocation:
       return "missing_relocation";
+    case PreparedSelectedObjectDataContractStatus::MissingRelocationSlot:
+      return "missing_relocation_slot";
     case PreparedSelectedObjectDataContractStatus::MissingObjectByteRange:
       return "missing_object_byte_range";
     case PreparedSelectedObjectDataContractStatus::MissingUnsupportedObjectDataMarker:
@@ -268,6 +273,8 @@ prepared_selected_object_data_contract_status_name(
       return "conflicting_zero_fill";
     case PreparedSelectedObjectDataContractStatus::ConflictingRelocation:
       return "conflicting_relocation";
+    case PreparedSelectedObjectDataContractStatus::ConflictingRelocationSlot:
+      return "conflicting_relocation_slot";
     case PreparedSelectedObjectDataContractStatus::ConflictingObjectByteRange:
       return "conflicting_object_byte_range";
     case PreparedSelectedObjectDataContractStatus::
@@ -583,6 +590,7 @@ struct PreparedSelectedObjectDataContractFacts {
   std::size_t object_size_bytes = 0;
   std::size_t emitted_byte_count = 0;
   std::size_t zero_fill_byte_count = 0;
+  std::vector<PreparedObjectDataRelocationSlot> relocation_slots;
   bool has_object_label = false;
   bool has_publication_identity = false;
   bool requires_emitted_bytes = false;
@@ -599,6 +607,7 @@ struct PreparedSelectedObjectDataContractFacts {
   bool conflicting_emitted_bytes = false;
   bool conflicting_zero_fill = false;
   bool conflicting_relocation = false;
+  bool conflicting_relocation_slot = false;
   bool conflicting_object_byte_range = false;
   bool conflicting_unsupported_marker = false;
   bool unsupported_but_coherent = false;

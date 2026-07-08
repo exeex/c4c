@@ -20,6 +20,12 @@ enum class PreparedObjectDataSectionKind {
   Bss,
 };
 
+struct PreparedObjectDataRelocationSlot {
+  std::size_t byte_offset = 0;
+  std::size_t size_bytes = 0;
+  LinkNameId target = kInvalidLinkName;
+};
+
 struct PreparedGlobalObjectData {
   std::optional<LinkNameId> object_label;
   std::string object_label_text;
@@ -28,6 +34,7 @@ struct PreparedGlobalObjectData {
   std::size_t object_size_bytes = 0;
   std::size_t align_bytes = 0;
   std::vector<std::uint8_t> emitted_bytes;
+  std::vector<PreparedObjectDataRelocationSlot> relocation_slots;
   std::size_t zero_fill_byte_count = 0;
   bool public_symbol = true;
   bool has_object_label = false;

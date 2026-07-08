@@ -11979,6 +11979,7 @@ rv64_selected_object_data_contract_facts(
       .object_size_bytes = object_data->object_size_bytes,
       .emitted_byte_count = object_data->emitted_bytes.size(),
       .zero_fill_byte_count = object_data->zero_fill_byte_count,
+      .relocation_slots = object_data->relocation_slots,
       .has_object_label = object_data->has_object_label,
       .has_publication_identity = object_data->has_publication_identity,
       .requires_emitted_bytes = object_data->requires_emitted_bytes,

@@ -218,6 +218,16 @@ void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
       .object_byte_offset = 0,
       .object_size_bytes = global.size_bytes,
       .align_bytes = global.align_bytes,
+      .relocation_slots =
+          {PreparedObjectDataRelocationSlot{
+              .byte_offset = 0,
+              .size_bytes = global.size_bytes,
+              .target =
+                  global.initializer_elements.empty()
+                      ? kInvalidLinkName
+                      : global.initializer_elements.front()
+                            .pointer_symbol_link_name_id,
+          }},
       .public_symbol = true,
       .has_object_label = true,
       .has_publication_identity = true,
