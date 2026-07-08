@@ -1,6 +1,6 @@
 # Prepared Global Data Authority
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -61,11 +61,24 @@ RV64/global consumer rows are activated.
 - `608` published accepted selected object-data authority for relocation-only
   pointer object data and moved `src/921110-1.c` from the prepared object-data
   contract stop to the RV64 relocation-record consumer stop.
-- Prepared global memory facts and direct global-symbol base-plus-offset routes
-  are parked as non-moving evidence: helper-only layout publication changed
-  prepared dumps but retained the exact authority diagnostics.
+- `608` published prepared global-memory fact authority for representative
+  global rows, including the residual `src/pr36034-1.c` and `src/pr91137.c`
+  byte-storage aggregate cases. Their prepared rows now carry global identity,
+  offset, width, extent, layout authority, and supported direct base-plus-offset
+  addressing evidence.
+- Direct global-symbol base-plus-offset authority was verified for
+  representatives including `src/pr79737-2.c`, `src/pr82387.c`,
+  `src/pr68624.c`, and `src/pr57568.c`.
 - Mixed object data with ordinary emitted bytes plus relocation slots is split
-  to `ideas/open/620_prepared_mixed_object_data_slots.md`. `608` remains open
-  until that prepared-fact representation can provide coherent emitted-byte
-  spans plus relocation slot offsets and target identity without routing RV64
-  relocation-record emission into this idea.
+  to `ideas/closed/620_prepared_mixed_object_data_slots.md`.
+- Remaining direct object-route failures for `src/pr36034-1.c` and
+  `src/pr91137.c` are downstream RV64 prepared-global consumer/value-location
+  handling, not producer authority, and are split to
+  `ideas/open/621_rv64_prepared_global_value_location_consumer.md`.
+
+## Completion Notes
+
+Closed after the residual runbook proved the narrowed producer-authority route.
+The close evidence included accepted byte-storage global layout authority,
+backend subset proof, and a full-suite baseline at commit `cd470040e`
+(`Publish byte-storage global layout authority`) with all tests passing.
