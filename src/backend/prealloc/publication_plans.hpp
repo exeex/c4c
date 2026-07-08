@@ -1563,6 +1563,10 @@ struct PreparedEdgeCopySourceFacts {
   bir::MemoryDynamicArrayRangeVerdict source_memory_dynamic_array_verdict =
       bir::MemoryDynamicArrayRangeVerdict::Unknown;
   bool source_memory_requires_address_materialization = false;
+  std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
 };
 
 struct PreparedCurrentBlockJoinParallelCopySourceFact {

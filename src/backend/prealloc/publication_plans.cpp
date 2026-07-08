@@ -1242,6 +1242,47 @@ void copy_prepared_edge_copy_source_fact_fields(
       publication.source_memory_requires_address_materialization;
 }
 
+void publish_direct_edge_publication_source_freshness_authority(
+    PreparedEdgeCopySourceFacts& facts) {
+  if (facts.status != PreparedEdgeCopySourceFactsStatus::Available ||
+      facts.publication == nullptr ||
+      facts.move == nullptr ||
+      !facts.source_value_id.has_value() ||
+      *facts.source_value_id == PreparedValueId{0} ||
+      facts.source_value_name == kInvalidValueName) {
+    return;
+  }
+
+  facts.source_freshness_authorities.push_back(PreparedValueFreshnessAuthority{
+      .value_id = *facts.source_value_id,
+      .value_name = facts.source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .source_kind = PreparedValueFreshnessSourceKind::DirectEdgePublication,
+      .proof_kind = PreparedValueFreshnessProofKind::DirectEdgePublicationMove,
+      .rank = PreparedValueFreshnessSourceRank::DirectEdgePublication,
+      .reference =
+          PreparedValueFreshnessSourceReference{
+              .edge_publication = facts.publication,
+              .move = facts.move,
+              .block_index = facts.move->block_index,
+              .instruction_index = facts.move->instruction_index,
+          },
+  });
+  const PreparedValueFreshnessQuery query{
+      .value_id = *facts.source_value_id,
+      .value_name = facts.source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::DirectEdgePublicationSource,
+      .block_index = facts.move->block_index,
+      .instruction_index = facts.move->instruction_index,
+      .candidates = facts.source_freshness_authorities,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  facts.source_freshness_status = selected.status;
+  if (prepared_value_freshness_query_selected(selected)) {
+    facts.source_freshness_authority = *selected.authority;
+  }
+}
+
 [[nodiscard]] PreparedEdgeCopySourceFactsStatus
 validate_prepared_edge_copy_publication_source_facts(
     const PreparedEdgePublication& publication) {
@@ -1505,7 +1546,9 @@ prepare_block_entry_parallel_copy_edge_source_facts(
   if (!facts.source_value_id.has_value() ||
       *facts.source_value_id != move.from_value_id) {
     facts.status = PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch;
+    return facts;
   }
+  publish_direct_edge_publication_source_freshness_authority(facts);
   return facts;
 }
 

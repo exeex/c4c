@@ -8,30 +8,28 @@ Current Step Title: Publish Or Locate Freshness For The Selected Route
 
 ## Just Finished
 
-Step 2 encoded the direct edge-publication source ownership rule in shared
-freshness vocabulary without wiring the consumer. Added
-`PreparedValueFreshnessUseKind::DirectEdgePublicationSource`,
-`PreparedValueFreshnessSourceKind::DirectEdgePublication`,
-`PreparedValueFreshnessProofKind::DirectEdgePublicationMove`, and
-`PreparedValueFreshnessSourceRank::DirectEdgePublication`, plus an explicit
-`edge_publication` freshness reference. The shared lookup now treats that use
-kind as valid only when the authority uses the direct-edge source/proof/rank
-tuple and carries both the prepared edge publication and exact move reference.
+Step 3 published direct edge-publication source freshness from
+`prepare_block_entry_parallel_copy_edge_source_facts` without changing consumer
+failure behavior. `PreparedEdgeCopySourceFacts` now carries freshness
+candidate/status/selection fields, and the block-entry parallel-copy route
+builds a selected `DirectEdgePublicationSource` authority only after the
+existing exact publication, exact move, and source-value checks succeed.
 
-Focused lookup tests assert the stable names, valid direct edge-publication
-selection, and fail-closed behavior for missing edge publication, missing move,
-wrong use, and destination-only/direct-home authority. This intentionally does
-not change `prepare_block_entry_parallel_copy_edge_source_facts` or any backend
-target emission behavior yet.
+The published authority uses source `DirectEdgePublication`, proof
+`DirectEdgePublicationMove`, rank `DirectEdgePublication`, and references both
+the exact `PreparedEdgePublication` and exact `PreparedMoveResolution`. Focused
+backend helper tests prove the selected authority is visible for the valid
+named direct route while route-agnostic, immediate-source, and missing-source
+facts do not fabricate freshness. Existing missing publication, ambiguous
+publication, edge mismatch, unsupported move, publication/move mismatch, and
+source-fact statuses remain preserved.
 
 ## Suggested Next
 
-Start Step 3 by publishing/querying
-`DirectEdgePublicationSource` freshness for
-`prepare_block_entry_parallel_copy_edge_source_facts`. The source authority
-should be the direct edge-publication row plus the matching block-entry
-parallel-copy `PreparedMoveResolution`; the proof should be
-`DirectEdgePublicationMove`; the rank should be `DirectEdgePublication`.
+Start Step 4 by wiring the direct edge-publication consumer to read the
+published `DirectEdgePublicationSource` freshness authority and map missing,
+ambiguous, or invalid source freshness to the Step 4 consumer status without
+weakening the existing publication/move/source-fact checks.
 
 ## Watchouts
 
@@ -39,12 +37,12 @@ parallel-copy `PreparedMoveResolution`; the proof should be
   destination bundle legality prove placement/availability, not that the
   selected edge-publication source is fresh for the exact predecessor-successor
   move.
-- Step 3 should preserve existing fail-closed statuses for missing publication,
-  ambiguous publication, edge mismatch, unsupported move, publication/move
-  mismatch, and missing source facts, then add freshness failure mapping without
-  weakening those checks.
-- Keep consumer behavior unchanged until Step 3; this packet only established
-  the shared ownership vocabulary and selector contract.
+- Consumer wiring should use the selected authority already stored on
+  `PreparedEdgeCopySourceFacts`; do not recreate freshness from destination
+  homes or route-agnostic edge facts.
+- Missing freshness is still not enforced by this Step 3 packet. Step 4 should
+  add that mapping at the consumer boundary while preserving all pre-existing
+  fail-closed statuses.
 
 ## Proof
 

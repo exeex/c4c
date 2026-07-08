@@ -4240,6 +4240,46 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
           prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable) {
     return fail("edge source fact query should expose complete named source facts");
   }
+  if (named_facts.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      named_facts.source_freshness_authority.has_value() ||
+      !named_facts.source_freshness_authorities.empty()) {
+    return fail("route-agnostic edge source facts should not fabricate direct-edge freshness");
+  }
+  const auto direct_named_facts =
+      prepare::prepare_block_entry_parallel_copy_edge_source_facts(
+          &lookups,
+          predecessor_label,
+          successor_label,
+          locations.move_bundles.front().moves[0]);
+  if (direct_named_facts.status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      direct_named_facts.publication != named ||
+      direct_named_facts.move != &locations.move_bundles.front().moves[0] ||
+      direct_named_facts.source_value_id != source_id ||
+      direct_named_facts.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      !direct_named_facts.source_freshness_authority.has_value() ||
+      direct_named_facts.source_freshness_authorities.size() != std::size_t{1}) {
+    return fail("direct edge source facts should publish selected source freshness");
+  }
+  const auto& direct_named_authority =
+      *direct_named_facts.source_freshness_authority;
+  if (direct_named_authority.value_id != source_id ||
+      direct_named_authority.value_name != source_name ||
+      direct_named_authority.use_kind !=
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource ||
+      direct_named_authority.source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication ||
+      direct_named_authority.proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove ||
+      direct_named_authority.rank !=
+          prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication ||
+      direct_named_authority.reference.edge_publication != named ||
+      direct_named_authority.reference.move !=
+          &locations.move_bundles.front().moves[0]) {
+    return fail("direct edge source freshness should reference the exact publication and move");
+  }
   const auto immediate_facts = prepare::prepare_block_entry_parallel_copy_edge_source_facts(
       &lookups,
       predecessor_label,
@@ -4253,6 +4293,12 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
       immediate_facts.move != &locations.move_bundles.front().moves[1]) {
     return fail("edge source fact query should expose complete immediate move facts");
   }
+  if (immediate_facts.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      immediate_facts.source_freshness_authority.has_value() ||
+      !immediate_facts.source_freshness_authorities.empty()) {
+    return fail("direct edge source freshness should not fabricate authority for immediate sources");
+  }
   const auto missing_home_facts = prepare::prepare_edge_copy_source_facts(
       &lookups, predecessor_label, successor_label, missing_destination_id);
   if (missing_home_facts.status !=
@@ -4260,6 +4306,12 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
       missing_home_facts.publication != missing ||
       missing_home_facts.source_value_name != missing_source_name) {
     return fail("edge source fact query should fail closed for missing source values");
+  }
+  if (missing_home_facts.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
+      missing_home_facts.source_freshness_authority.has_value() ||
+      !missing_home_facts.source_freshness_authorities.empty()) {
+    return fail("missing edge source facts should not publish source freshness");
   }
   auto facts_mismatched_edge_move = locations.move_bundles.front().moves[0];
   facts_mismatched_edge_move.source_parallel_copy_successor_label = predecessor_label;
