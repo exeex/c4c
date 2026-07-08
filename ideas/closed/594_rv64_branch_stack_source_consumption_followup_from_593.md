@@ -1,6 +1,6 @@
 # RV64 Branch Stack-Source Consumption Followup From 593
 
-Status: Open
+Status: Closed
 Type: Conditional follow-up implementation idea
 Parent: `ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md`
 Related:
@@ -12,6 +12,63 @@ Related:
 - `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
 - `ideas/closed/590_branch_stack_load_freshness_contract.md`
 Owning Layer: RV64 MIR branch/stack-source consumers remaining after 593
+
+## Closure Note (2026-07-08)
+
+Close accepted. The active runbook completed the pointer `Rhs` branch
+stack-source consume-side gap left by
+`ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md` after
+`ideas/closed/596_pointer_rhs_branch_stack_source_policy_publication.md`
+cleared the producer-side blocker.
+
+Step 5 closure inventory answers:
+
+1. The implemented 593 closure-note gap was the pointer `Rhs` branch
+   stack-source consumer. Idea 593 migrated the prepared RV64 object-emission
+   fused pointer conditional branch path for stack-slot `Lhs` and left pointer
+   `Rhs` unwired because producer rows were still inventory-only with
+   `policy=none` / `status=missing_policy`.
+2. The migrated RV64 consumer path was the prepared RV64 object-emission fused
+   pointer conditional branch route in
+   `src/backend/mir/riscv/codegen/object_emission.cpp`. The route now queries
+   selected branch stack-load source freshness for `Rhs` and requires that
+   authority before emitting a stack-homed pointer `Rhs`.
+3. Pointer `Lhs` and pointer `Rhs` fused pointer branch stack-slot consumers
+   are now wired to selected shared authority. Aggregate-adjacent branch
+   stack-source consumers, scalar-condition-register branch shapes, string
+   assembly emission, and other target emission paths remain outside this
+   narrow 593/594 pointer consumer queue and should continue through the 595
+   umbrella classification and 591 Prepared MIR view contract line rather than
+   silently expanding this idea.
+4. No selected RV64 path from this slice may rely on stack-home-only,
+   frame-slot-only, aggregate-lane-only, clobber-only, register-only, or
+   operand-shape-only evidence as freshness. The migrated `Rhs` route requires
+   selected `PreparedValueFreshnessUseKind::BranchStackLoadSource` /
+   `PreparedValueFreshnessSourceKind::BranchStackSlot` authority for the same
+   prepared source value, `PreparedBranchStackLoadRole::Rhs`, exact branch
+   block, exact terminator instruction index,
+   `PreparedValueFreshnessProofKind::BranchTerminatorOrdering`, and
+   `PreparedValueFreshnessSourceRank::BranchStackSlot`.
+5. The work did not expose another missing shared producer fact. The previous
+   pointer `Rhs` producer blocker was handled by idea 596, and this consumer
+   route consumes that shared selected authority instead of adding an RV64
+   target-local fallback.
+6. No additional numbered RV64 consume-side follow-up is required from this
+   slice. Existing
+   `ideas/open/595_prepared_value_architecture_followup_umbrella.md` remains
+   the right place to classify any broader prepared-value or target-consumption
+   families after the 592/593/594 queue.
+7. The RV64 branch stack-source consume side is stable enough for the 591
+   Prepared MIR view contract line to continue for pointer fused-branch
+   stack-source inputs. The contract can treat selected shared branch
+   stack-source freshness, not stack homes or target-local structural facts, as
+   the required authority for the migrated RV64 pointer `Lhs` and `Rhs` paths.
+
+Close-time regression guard used the existing canonical backend logs:
+`test_before.log` and `test_after.log` both reported 346 passed, 0 failed, 346
+total. The strict monotonic mode reported equal pass count, so this
+lifecycle-only close used the guard's non-decreasing mode, which passed with no
+new failing tests.
 
 ## Goal
 
