@@ -23,6 +23,9 @@ constexpr std::array<const char*, 8> kRiscvGeneralAbiRegisters = {
 constexpr std::array<const char*, 8> kRiscvFloatAbiRegisters = {
     "fa0", "fa1", "fa2", "fa3", "fa4", "fa5", "fa6", "fa7",
 };
+constexpr std::array<std::size_t, 6> kX86GeneralAbiPhysicalIndexes = {
+    7, 6, 2, 1, 8, 9,
+};
 
 template <std::size_t N>
 [[nodiscard]] std::optional<std::string> indexed_register_name(
@@ -107,6 +110,90 @@ template <std::size_t N>
       return PreparedRegisterClass::None;
   }
   return PreparedRegisterClass::None;
+}
+
+[[nodiscard]] bool is_general_physical_bank(PreparedRegisterBank bank) {
+  return bank == PreparedRegisterBank::Gpr ||
+         bank == PreparedRegisterBank::AggregateAddress;
+}
+
+[[nodiscard]] PreparedTargetRegisterIdentity target_register_identity(
+    c4c::TargetArch target_arch,
+    PreparedRegisterBank bank,
+    PreparedRegisterClass reg_class,
+    std::size_t physical_index) {
+  return PreparedTargetRegisterIdentity{
+      .target_arch = target_arch,
+      .bank = bank,
+      .register_class = reg_class,
+      .physical_index = physical_index,
+  };
+}
+
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity> aarch64_abi_register_identity(
+    const PreparedRegisterPlacement& placement) {
+  if (placement.contiguous_width != 1 || placement.slot_index >= 8) {
+    return std::nullopt;
+  }
+  if (is_general_physical_bank(placement.bank)) {
+    return target_register_identity(c4c::TargetArch::Aarch64,
+                                    PreparedRegisterBank::Gpr,
+                                    PreparedRegisterClass::General,
+                                    placement.slot_index);
+  }
+  if (placement.bank == PreparedRegisterBank::Fpr ||
+      placement.bank == PreparedRegisterBank::Vreg) {
+    return target_register_identity(c4c::TargetArch::Aarch64,
+                                    placement.bank,
+                                    register_class_from_bank(placement.bank),
+                                    placement.slot_index);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity> x86_64_abi_register_identity(
+    const PreparedRegisterPlacement& placement) {
+  if (placement.contiguous_width != 1) {
+    return std::nullopt;
+  }
+  if (placement.pool == PreparedRegisterSlotPool::CallArgument) {
+    if (is_general_physical_bank(placement.bank)) {
+      if (placement.slot_index >= kX86GeneralAbiPhysicalIndexes.size()) {
+        return std::nullopt;
+      }
+      return target_register_identity(c4c::TargetArch::X86_64,
+                                      PreparedRegisterBank::Gpr,
+                                      PreparedRegisterClass::General,
+                                      kX86GeneralAbiPhysicalIndexes[placement.slot_index]);
+    }
+    if (placement.bank == PreparedRegisterBank::Fpr && placement.slot_index < 8) {
+      return target_register_identity(c4c::TargetArch::X86_64,
+                                      PreparedRegisterBank::Fpr,
+                                      PreparedRegisterClass::Float,
+                                      placement.slot_index);
+    }
+    return std::nullopt;
+  }
+
+  if (placement.pool == PreparedRegisterSlotPool::CallResult) {
+    if (placement.slot_index != 0) {
+      return std::nullopt;
+    }
+    if (is_general_physical_bank(placement.bank)) {
+      return target_register_identity(c4c::TargetArch::X86_64,
+                                      PreparedRegisterBank::Gpr,
+                                      PreparedRegisterClass::General,
+                                      0);
+    }
+    if (placement.bank == PreparedRegisterBank::Fpr) {
+      return target_register_identity(c4c::TargetArch::X86_64,
+                                      PreparedRegisterBank::Fpr,
+                                      PreparedRegisterClass::Float,
+                                      0);
+    }
+  }
+
+  return std::nullopt;
 }
 
 [[nodiscard]] PreparedRegisterBank register_bank_from_arg_abi(const bir::CallArgAbiInfo& abi) {
@@ -594,6 +681,10 @@ std::optional<PreparedTargetRegisterIdentity> target_register_identity_for_abi_r
   }
 
   switch (target_profile.arch) {
+    case c4c::TargetArch::X86_64:
+      return x86_64_abi_register_identity(placement);
+    case c4c::TargetArch::Aarch64:
+      return aarch64_abi_register_identity(placement);
     case c4c::TargetArch::Riscv64: {
       if (placement.bank != PreparedRegisterBank::Gpr &&
           placement.bank != PreparedRegisterBank::Fpr) {
