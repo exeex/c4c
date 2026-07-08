@@ -211,6 +211,15 @@ Goal: make selected global object-data rows publish coherent authority for
 label, identity, extent, alignment, emitted bytes, zero-fill, relocation, and
 unsupported-marker state.
 
+Route status: accepted relocation-only pointer object-data progress. The
+`src/921110-1.c` row moved past the prepared selected object-data contract stop
+to the RV64 relocation-record consumer diagnostic after one-slot pointer object
+data began publishing relocation-required/relocation-present authority.
+Neighboring mixed or aggregate rows remain fail-closed at the prepared contract
+stop unless prepared emitted bytes plus relocation slots can be represented
+safely. Do not route the remaining relocation-record consumer work into this
+plan.
+
 Primary targets:
 - `src/backend/prealloc/object_data.cpp`
 - `src/backend/prealloc/object_data.hpp`
@@ -244,6 +253,12 @@ Primary targets:
 Actions:
 - Run the supervisor-selected narrow RV64 gcc-torture proof after each code
   packet.
+- Re-run the selected object-data proof around the Step 4 relocation-only row
+  and record the diagnostic movement from prepared contract stop to RV64
+  relocation-record consumer stop.
+- Include the parked Step 2 and Step 3 evidence showing that helper-only
+  `ByteStorageAggregate` publication did not move the exact prepared-memory or
+  direct base-plus-offset diagnostics.
 - Confirm proof covers more than one prepared authority family where possible.
 - Confirm global symbol emission and global access-width rows remain classified
   as RV64/global consumer work unless missing prepared authority was the real
@@ -251,6 +266,7 @@ Actions:
 - Update `todo.md` with proof commands, results, and remaining handoff notes.
 
 Completion check:
-- Multiple prepared/global authority rows have advanced, proof output is
-  recorded in `todo.md`, and `609` remains the follow-up owner for RV64 global
-  emission or access-width consumption.
+- Prepared/global authority movement and parked evidence are recorded in
+  `todo.md`, the remaining prepared stops are named precisely, and `609`
+  remains the follow-up owner for RV64 global emission, relocation-record
+  consumption, or access-width consumption.

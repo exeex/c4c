@@ -1,33 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/608_prepared_global_data_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Complete selected global object-data authority
+Current Step ID: 5
+Current Step Title: Prove prepared authority handoff and preserve the split
 
 # Current Packet
 
 ## Just Finished
 
-- Completed Step 4's evidence-gated selected object-data packet for
-  relocation-only pointer object data.
-- Evidence captured for representative `src/20010924-1.c` and neighboring
-  `src/pr61517.c` showed all rows initially stopped at the prepared selected
-  object-data contract with `status=unsupported_but_coherent`.
-- `src/20010924-1.c` is a mixed aggregate initializer with ordinary bytes plus
-  pointer/string payload; it remains fail-closed at the prepared object-data
-  contract because this packet did not have a complete emitted-byte plus
-  relocation payload model for mixed aggregates.
-- `src/921110-1.c` advanced past the prepared contract stop after
-  `PreparedGlobalObjectData` began publishing
-  relocation-required/relocation-present authority for one-slot pointer object
-  data. Neighboring rows `src/pr61517.c`, `src/pr57877.c`, and
-  `src/pr57860.c` remain fail-closed at the prepared contract stop.
+- Step 4 is accepted as complete enough to advance: relocation-only one-slot
+  pointer object data published prepared relocation-required/relocation-present
+  authority and moved `src/921110-1.c` past the prepared selected object-data
+  contract stop.
+- `src/20010924-1.c`, `src/pr61517.c`, `src/pr57877.c`, and
+  `src/pr57860.c` remain precise fail-closed prepared contract stops. The
+  mixed aggregate case is parked until prepared emitted bytes plus relocation
+  slots can be represented safely.
+- Remaining RV64 relocation-record consumption belongs to
+  `ideas/open/609_rv64_global_data_consumer.md`, not this plan.
 
 ## Suggested Next
 
-- Supervisor should decide whether Step 4 is complete enough to move to Step 5
-  handoff proof, or whether a separate prepared mixed-aggregate object-data
-  packet is needed for `src/20010924-1.c`.
+- Execute Step 5 handoff proof. Re-run the selected object-data allowlist and
+  record the Step 4 diagnostic movement plus the still-parked prepared stops.
+- Include the Step 2 and Step 3 parked evidence in the handoff summary: both
+  generic prepared global memory and direct base-plus-offset helper-only
+  `ByteStorageAggregate` publication experiments changed prepared dumps but did
+  not move the exact object-route diagnostics.
+- Recommended proof command:
+  `{ cmake --build --preset default && ALLOWLIST=build/agent_state/608_step4_selected_object_data.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh; } > test_after.log 2>&1`
 
 ## Watchouts
 
@@ -63,10 +64,13 @@ Current Step Title: Complete selected global object-data authority
   `ideas/open/609_rv64_global_data_consumer.md`.
 - Do not mark mixed aggregate object data coherent until both ordinary emitted
   bytes and relocation slots can be represented as prepared facts.
+- Step 5 is a proof and handoff packet unless evidence reveals a small
+  608-owned prepared-authority gap that can move a row without touching RV64
+  consumer/emission policy.
 
 ## Proof
 
-- Ran exact delegated proof:
+- Latest accepted Step 4 proof:
   `{ cmake --build --preset default && ALLOWLIST=build/agent_state/608_step4_selected_object_data.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh; } > test_after.log 2>&1`
 - Result: build succeeded; allowlist still failed overall with `0/5` passed and
   `5/5` failed.
