@@ -893,7 +893,9 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     const auto vector_type = parse_local_vector_type(store.type_str.str());
     if (vector_type.has_value()) {
       if (store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-          store.val.str() != "zeroinitializer") {
+          (store.val.str() != "zeroinitializer" &&
+           (store.val.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+            vector_type->first != 1))) {
         return false;
       }
       const auto local_array_it = local_array_slots_.find(store.ptr.str());
@@ -907,6 +909,13 @@ bool BirFunctionLowerer::lower_memory_store_inst(
       if (!lane_zero.has_value() || lane_size == 0) {
         return false;
       }
+      std::optional<bir::Value> single_lane_value;
+      if (store.val.str() != "zeroinitializer") {
+        single_lane_value = lower_value(store.val, vector_type->second, value_aliases_);
+        if (!single_lane_value.has_value()) {
+          return false;
+        }
+      }
       clear_local_scalar_slot_values();
       for (std::size_t lane_index = 0; lane_index < vector_type->first; ++lane_index) {
         const auto& lane_slot = local_array_it->second.element_slots[lane_index];
@@ -917,7 +926,7 @@ bool BirFunctionLowerer::lower_memory_store_inst(
         }
         lowered_insts->push_back(bir::StoreLocalInst{
             .slot_name = lane_slot,
-            .value = *lane_zero,
+            .value = single_lane_value.value_or(*lane_zero),
             .address = direct_scalar_local_slot_address(lane_slot, vector_type->second),
         });
       }
@@ -939,6 +948,94 @@ bool BirFunctionLowerer::lower_memory_store_inst(
       return false;
     }
 
+    const auto append_dynamic_local_aggregate_copy =
+        [&](const LocalAggregateSlots& source_slots,
+            const DynamicLocalAggregateArrayAccess& access,
+            std::string_view temp_prefix) -> bool {
+      const auto source_layout =
+          lower_byval_aggregate_layout(source_slots.type_text,
+                                       type_decls_,
+                                       &structured_layouts_);
+      const auto element_layout =
+          lower_byval_aggregate_layout(access.element_type_text,
+                                       type_decls_,
+                                       &structured_layouts_);
+      if (!source_layout.has_value() || !element_layout.has_value() ||
+          source_layout->size_bytes != element_layout->size_bytes ||
+          aggregate_layout->size_bytes != element_layout->size_bytes ||
+          access.element_count == 0 || access.element_stride_bytes < element_layout->size_bytes) {
+        return false;
+      }
+
+      const auto source_leaves = collect_sorted_leaf_slots(source_slots);
+      if (source_leaves.empty()) {
+        return false;
+      }
+
+      for (const auto& [byte_offset, source_slot_name] : source_leaves) {
+        const auto source_slot_type_it = local_slot_types_.find(source_slot_name);
+        if (source_slot_type_it == local_slot_types_.end()) {
+          return false;
+        }
+        const std::string source_temp_name =
+            std::string(temp_prefix) + ".src." + std::to_string(byte_offset);
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(source_slot_type_it->second, source_temp_name),
+            .slot_name = source_slot_name,
+        });
+
+        for (std::size_t element_index = 0; element_index < access.element_count;
+             ++element_index) {
+          const auto target_offset =
+              access.byte_offset + element_index * access.element_stride_bytes + byte_offset;
+          const auto target_slot_it = access.leaf_slots.find(target_offset);
+          if (target_slot_it == access.leaf_slots.end()) {
+            return false;
+          }
+          const auto target_slot_type_it = local_slot_types_.find(target_slot_it->second);
+          if (target_slot_type_it == local_slot_types_.end() ||
+              target_slot_type_it->second != source_slot_type_it->second) {
+            return false;
+          }
+
+          bir::Value stored_value =
+              bir::Value::named(source_slot_type_it->second, source_temp_name);
+          if (access.element_count > 1) {
+            const auto compare_rhs = make_index_immediate(access.index.type, element_index);
+            if (!compare_rhs.has_value()) {
+              return false;
+            }
+            const std::string old_value_name =
+                std::string(temp_prefix) + ".old." + std::to_string(element_index) + "." +
+                std::to_string(byte_offset);
+            lowered_insts->push_back(bir::LoadLocalInst{
+                .result = bir::Value::named(source_slot_type_it->second, old_value_name),
+                .slot_name = target_slot_it->second,
+            });
+            const std::string select_name =
+                std::string(temp_prefix) + ".store." + std::to_string(element_index) + "." +
+                std::to_string(byte_offset);
+            lowered_insts->push_back(bir::SelectInst{
+                .predicate = bir::BinaryOpcode::Eq,
+                .result = bir::Value::named(source_slot_type_it->second, select_name),
+                .compare_type = access.index.type,
+                .lhs = access.index,
+                .rhs = *compare_rhs,
+                .true_value = stored_value,
+                .false_value = bir::Value::named(source_slot_type_it->second, old_value_name),
+            });
+            stored_value = bir::Value::named(source_slot_type_it->second, select_name);
+          }
+
+          lowered_insts->push_back(bir::StoreLocalInst{
+              .slot_name = target_slot_it->second,
+              .value = stored_value,
+          });
+        }
+      }
+      return true;
+    };
+
     const auto target_aggregate_it = local_aggregate_slots_.find(store.ptr.str());
     const auto source_param_it = aggregate_params_.find(store.val.str());
     if (target_aggregate_it == local_aggregate_slots_.end()) {
@@ -947,6 +1044,16 @@ bool BirFunctionLowerer::lower_memory_store_inst(
           source_alias_it == aggregate_value_aliases_.end()
               ? local_aggregate_slots_.end()
               : local_aggregate_slots_.find(source_alias_it->second);
+      if (source_aggregate_it != local_aggregate_slots_.end()) {
+        const auto dynamic_target_it = dynamic_local_aggregate_arrays_.find(store.ptr.str());
+        if (dynamic_target_it != dynamic_local_aggregate_arrays_.end()) {
+          clear_local_scalar_slot_values();
+          return append_dynamic_local_aggregate_copy(
+              source_aggregate_it->second,
+              dynamic_target_it->second,
+              store.ptr.str() + ".dynamic.aggregate.copy");
+        }
+      }
       const auto addressed_target_it = pointer_value_addresses_.find(store.ptr.str());
       if (source_aggregate_it == local_aggregate_slots_.end() ||
           addressed_target_it == pointer_value_addresses_.end()) {

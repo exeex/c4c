@@ -1,60 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/603_bir_local_memory_store_semantics.md
 Source Plan Path: plan.md
-Current Step ID: 8
-Current Step Title: Repair the Next In-Scope Store Producer Subfamily
+Current Step ID: 9
+Current Step Title: Reprove Store-Family Breadth After Any Follow-Up Repair
 
 # Current Packet
 
 ## Just Finished
 
-Completed revised Step 7 evidence classification after aggregate/static global handoff was split to idea 619.
+Completed Step 8 implementation for aggregate/vector typed stores into local frame aggregate destinations.
 
-Fresh transient `--dump-bir --target riscv64-linux-gnu` probes over the `46` artifact-derived store-family rows found:
-- `6` current BIR successes/progressed rows: `src/20010605-2.c`, `src/20020413-1.c`, `src/20040208-1.c`, `src/930526-1.c`, `src/ieee/inf-1.c`, and `src/strct-pack-2.c`.
-- `40` rows still report `store local-memory semantic family`.
+Implementation surface:
+- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
+- Added semantic vector store support for a single-lane SSA vector value into local vector lane slots, while preserving existing zero-initializer vector stores.
+- Added dynamic local aggregate array element copy support for aggregate source aliases. The repair copies each scalar aggregate leaf into the selected local aggregate array element, using the existing dynamic index to preserve unselected elements.
 
-Remaining row classification:
-- In-scope idea 603 subfamily: aggregate/vector typed stores into local frame aggregate destinations. Representatives: `src/990525-1.c` stores a by-value `struct blah` argument into local `struct blah buf[1]`; `src/pr71626-1.c` and `src/pr71626-2.c` store a `<1 x i64>` function result into a local vector slot. These are local-frame store producer gaps, not aggregate/global handoffs.
-- In-scope singleton/watchout: `src/931102-2.c` still fails on a local union/nested struct scalar field store (`reg.b.l = x`). It is local-memory owned, but it is not enough by itself to drive the next implementation packet.
-- Pointer/address-authority rows: `src/20030913-1.c`, `src/930719-1.c`, `src/alias-1.c`, `src/alias-access-path-1.c`, `src/pr15262-2.c`, `src/pr36343.c`, `src/pr36765.c`, `src/pr58277-1.c`, `src/pr60072.c`, `src/pr69691.c`, and `src/pr79043.c`.
-- Function-label/local pointer-array rows: `src/920501-5.c` and `src/990208-1.c`. `src/pr71626-1.c` and `src/pr71626-2.c` contain a function-label value source in `foo`, but that local vector construction already dumps BIR in isolation; the current full-row stop is the local vector aggregate store in `main`.
-- Aggregate/static global handoff rows for idea 619 or existing global-data routes: `src/20040707-1.c`, `src/20131127-1.c`, `src/930126-1.c`, `src/981130-1.c`, `src/991118-1.c`, `src/compndlit-1.c`, `src/lto-tbaa-1.c`, `src/pr22141-1.c`, `src/pr22141-2.c`, `src/pr39120.c`, `src/pr44164.c`, `src/pr52979-1.c`, `src/pr52979-2.c`, `src/pr57344-1.c`, `src/pr57344-2.c`, `src/pr57344-3.c`, `src/pr57344-4.c`, `src/pr58365.c`, `src/pr70127.c`, `src/pr78170.c`, `src/pr79737-1.c`, `src/pr82388.c`, and `src/struct-cpy-1.c`.
-- Non-store guard owners for any next proof: load `src/20041124-1.c`, alloca `src/20180921-1.c`, prepared/global data `src/20010924-1.c`, RV64/global data `src/20020118-1.c`, plus the six current BIR-success store rows listed above.
+Progressed rows:
+- `src/990525-1.c` now dumps BIR. The old `die` store local-memory producer stop is repaired for by-value aggregate source copied into `struct blah buf[1]`.
+- `src/pr71626-1.c` progressed beyond the old store local-memory producer stop and now reaches a later `scalar/local-memory semantic family` boundary.
+- `src/pr71626-2.c` progressed beyond the old store local-memory producer stop and now reaches the same later `scalar/local-memory semantic family` boundary.
+
+Preserved guards:
+- Current BIR-success store rows in the proof subset stayed green: `src/20010605-2.c`, `src/20020413-1.c`, and `src/strct-pack-2.c`.
+- Pointer/address guard `src/20030913-1.c`, function-label/local-array guards `src/920501-5.c` and `src/990208-1.c`, aggregate/global handoff guards `src/pr22141-1.c`, `src/pr57344-1.c`, and `src/pr39120.c`, and non-store guards `src/20041124-1.c`, `src/20180921-1.c`, `src/20010924-1.c`, and `src/20020118-1.c` stayed on their expected test outcomes.
 
 ## Suggested Next
 
-Execute Step 8 for the aggregate/vector typed local-store subfamily.
+Run a short Step 9 evidence pass over the remaining visible store-family rows after this repair.
 
-Suggested implementation target:
-- Add generic BIR local-memory store producer support for aggregate/vector typed stores into local frame aggregate destinations.
-- Primary representatives: `src/990525-1.c`, `src/pr71626-1.c`, and `src/pr71626-2.c`.
-- Treat `src/931102-2.c` as a local union/overlap watchout, not the acceptance driver.
-- Do not implement aggregate/static global handoff rows under idea 603; keep those routed to idea 619 or existing global-data ideas.
-
-Proposed supervisor proof command:
-
-```sh
-cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|llvm_gcc_c_torture_src_(990525_1|pr71626_1|pr71626_2|931102_2|20010605_2|20020413_1|strct_pack_2|20030913_1|920501_5|990208_1|pr22141_1|pr57344_1|pr39120|20041124_1|20180921_1|20010924_1|20020118_1)_c)$' >> test_after.log 2>&1
-```
+Recommended decision point:
+- If only the singleton local union/overlap row `src/931102-2.c` remains in-scope for idea 603, either delegate a narrow singleton repair packet or park idea 603 and route the larger remaining population to pointer/address authority, function-label/local pointer-array, aggregate/global handoff idea 619, or existing global-data owners.
+- Keep `src/pr71626-1.c` and `src/pr71626-2.c` out of the next local-store packet unless the later scalar/local-memory boundary is proven to be another local-memory store producer issue.
 
 ## Watchouts
 
-- Keep the Step 8 repair scoped to local-frame aggregate/vector typed stores. It should not lower `u = v`, `s[1] = t`, `x = foo(&i)`, `x = <clit>`, or static/global aggregate stores.
-- Preserve the earlier evidence that nested local scalar field stores and packed/bitfield local scalar field stores already lower in local-only probes.
-- Pointer/address rows remain adjacent unless a Step 8 code path handles them without guessing authority.
-- Function-label/local pointer-array rows remain adjacent; do not treat `920501-5.c` or `990208-1.c` as proof for aggregate/vector typed local stores.
+- The dynamic aggregate copy path is intentionally local-frame only. It does not implement aggregate/static global handoff rows such as `u = v`, `s[1] = t`, `x = foo(&i)`, or `x = <clit>`.
+- The vector store repair is deliberately limited to single-lane SSA vector stores into local vector slots. Multi-lane non-zero vector stores still need a lane-source fact before they should be accepted.
+- `src/931102-2.c` still fails in `store local-memory semantic family` and remains the local union/overlap watchout.
+- Pointer/address rows remain adjacent unless a later packet proves a store producer failure without guessing address authority.
+- Function-label/local pointer-array rows remain adjacent; the `pr71626` rows no longer stop at the local vector store producer.
 - `src/pr39120.c` remains an aggregate/global handoff guard after the earlier `bar` pointer-store boundary moved.
 - Treat stale backend case logs under `build/rv64_gcc_c_torture_backend/` as historical evidence unless the supervisor refreshes the RV64 backend-object scan.
 - Do not change expectations, unsupported markers, allowlists, runtime, timeout, accounting behavior, RV64 lowering, or adjacent owner routes.
 
 ## Proof
 
-Evidence-only classification; no build or CTest proof was required or run.
+Delegated Step 8 proof was produced as `test_after.log`, accepted, and rolled forward to current `test_before.log`:
 
-Transient probes used:
-- Fresh `build/c4cll --dump-bir --target riscv64-linux-gnu <row>` probes across the `46` artifact-derived store-family rows.
-- Focused `build/c4cll --dump-hir --target riscv64-linux-gnu <row>` probes to inspect failing functions and store shapes.
-- Focused local probes for `struct` field stores, packed/bitfield stores, local union subfield stores, local aggregate array stores from by-value parameters, local vector function-label construction, and aggregate/global handoff.
+```sh
+cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|llvm_gcc_c_torture_src_(990525_1|pr71626_1|pr71626_2|931102_2|20010605_2|20020413_1|strct_pack_2|20030913_1|920501_5|990208_1|pr22141_1|pr57344_1|pr39120|20041124_1|20180921_1|20010924_1|20020118_1)_c)$' >> test_after.log 2>&1
+```
 
-No root-level logs were written.
+Result:
+- Build passed.
+- `ctest` subset passed: `18/18` tests.
+- Focused post-build probes confirmed `src/990525-1.c` dumps BIR, while `src/pr71626-1.c` and `src/pr71626-2.c` progress from `store local-memory semantic family` to a later `scalar/local-memory semantic family` boundary.
+
+Supervisor-side broader backend validation also passed:
+
+```sh
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+Result: `346/346` tests passed.
+
+Current rolled-forward proof log path: `test_before.log`.
