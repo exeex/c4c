@@ -4001,10 +4001,23 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   }
 
   const auto offset = static_cast<std::size_t>(materialization_byte_offset);
+  const bool local_pointer_base_plus_offset =
+      local_route.has_value() &&
+      local_route->source_home_kind ==
+          prepare::PreparedValueHomeKind::PointerBasePlusOffset;
+  if (local_pointer_base_plus_offset &&
+      (!local_route->source_base_value_id.has_value() ||
+       offset < slot_it->offset_bytes ||
+       local_route->source_pointer_byte_delta < 0 ||
+       static_cast<std::size_t>(local_route->source_pointer_byte_delta) !=
+           offset - slot_it->offset_bytes)) {
+    return std::nullopt;
+  }
   if ((source_stack_offset_bytes.has_value() &&
        *source_stack_offset_bytes != offset) ||
-      offset < slot_it->offset_bytes ||
-      offset > slot_it->offset_bytes + slot_it->size_bytes ||
+      (!local_pointer_base_plus_offset &&
+       (offset < slot_it->offset_bytes ||
+        offset > slot_it->offset_bytes + slot_it->size_bytes)) ||
       offset > stack_frame_bytes ||
       !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
     return std::nullopt;

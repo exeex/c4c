@@ -21787,6 +21787,118 @@ int builds_prepared_frame_slot_address_arg_call_object() {
   return 0;
 }
 
+prepare::PreparedBirModule make_prepared_pointer_base_plus_offset_arg_call_module() {
+  auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  auto& main = prepared.module.functions[1];
+  auto& call = std::get<bir::CallInst>(main.blocks[0].insts[0]);
+  call.args.resize(1);
+  call.arg_types.resize(1);
+  auto& callee = prepared.module.functions[0];
+  callee.params.resize(1);
+
+  auto& call_plan = prepared.call_plans.functions[0].calls[0];
+  call_plan.arguments.resize(1);
+  call_plan.preserved_values.clear();
+  auto& argument = call_plan.arguments[0];
+  argument.source_encoding = prepare::PreparedStorageEncodingKind::ComputedAddress;
+  argument.source_value_id = prepare::PreparedValueId{14};
+  argument.source_base_value_id = prepare::PreparedValueId{13};
+  argument.source_pointer_byte_delta = std::int64_t{5};
+  argument.source_slot_id = prepare::PreparedFrameSlotId{7};
+  argument.source_stack_offset_bytes = std::size_t{29};
+  argument.source_register_name = std::string{"t0"};
+  argument.source_register_bank = prepare::PreparedRegisterBank::Gpr;
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization,
+          .source_value_id = prepare::PreparedValueId{14},
+          .source_value_name = prepared.names.value_names.find("%lv.x"),
+          .source_home_kind =
+              prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+          .source_slot_id = prepare::PreparedFrameSlotId{7},
+          .source_stack_offset_bytes = std::size_t{29},
+          .source_size_bytes = std::size_t{8},
+          .source_align_bytes = std::size_t{8},
+          .source_base_value_id = prepare::PreparedValueId{13},
+          .source_pointer_byte_delta = std::int64_t{5},
+          .address_materialization_block_label =
+              prepared.names.block_labels.find("entry"),
+          .address_materialization_inst_index = std::size_t{0},
+          .address_materialization_frame_slot_id = prepare::PreparedFrameSlotId{7},
+          .address_materialization_byte_offset = std::int64_t{29},
+      };
+
+  prepared.addressing.functions[0].address_materializations = {
+      prepare::PreparedAddressMaterialization{
+          .function_name = prepared.names.function_names.find("main"),
+          .block_label = prepared.names.block_labels.find("entry"),
+          .inst_index = 0,
+          .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+          .result_value_name = prepared.names.value_names.find("%lv.x"),
+          .result_value_id = prepare::PreparedValueId{14},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .frame_slot_id = prepare::PreparedFrameSlotId{7},
+          .byte_offset = 29,
+      },
+  };
+  prepared.stack_layout.frame_slots[0].offset_bytes = 24;
+  prepared.stack_layout.frame_slots[0].size_bytes = 2;
+  prepared.stack_layout.frame_slots[0].align_bytes = 1;
+  prepared.call_argument_value_publications.facts.clear();
+  prepared.store_source_publications.records.clear();
+  return prepared;
+}
+
+int builds_prepared_pointer_base_plus_offset_arg_call_object() {
+  const auto prepared = make_prepared_pointer_base_plus_offset_arg_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared pointer-base-plus-offset arg call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* sink = object::find_symbol(*module, "sink");
+  const auto* main = object::find_symbol(*module, "main");
+  if (text == nullptr || sink == nullptr || main == nullptr) {
+    return fail("expected pointer-base-plus-offset arg call object to publish text/functions");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != sink->id ||
+      module->relocations[0].offset < main->value + 4) {
+    return fail("expected pointer-base-plus-offset same-module call relocation");
+  }
+  if (read_u32(text->bytes, module->relocations[0].offset - 4) != 0x01d10513) {
+    return fail("expected prepared pointer-base-plus-offset arg to materialize explicit frame offset 29");
+  }
+  return 0;
+}
+
+int rejects_prepared_pointer_base_plus_offset_arg_call_fail_closed_shapes() {
+  auto prepared = make_prepared_pointer_base_plus_offset_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_pointer_byte_delta = std::int64_t{4};
+  if (expect_prepared_rejection_diagnostic(
+          prepared, kUnsupportedSameModuleCallAbiDiagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_base_plus_offset_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_base_value_id = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(
+          prepared, kUnsupportedSameModuleCallAbiDiagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_frame_slot_address_arg_call_load_local_payload_object() {
   const auto prepared =
       make_prepared_frame_slot_address_arg_call_load_local_payload_module();
@@ -26043,6 +26155,8 @@ int main() {
       builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
   status |= builds_prepared_frame_slot_address_arg_call_object();
+  status |= builds_prepared_pointer_base_plus_offset_arg_call_object();
+  status |= rejects_prepared_pointer_base_plus_offset_arg_call_fail_closed_shapes();
   status |= builds_prepared_frame_slot_address_arg_call_load_local_payload_object();
   status |= records_prepared_frame_slot_address_arg_missing_publication_need();
   status |= emits_prepared_frame_slot_address_arg_call_from_selected_storage_facts();
