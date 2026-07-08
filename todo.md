@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/590_branch_stack_load_freshness_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Focused Proof
+Current Step ID: 5
+Current Step Title: Closure Inventory and Follow-Up Decision
 
 # Current Packet
 
