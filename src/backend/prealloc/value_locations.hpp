@@ -65,6 +65,203 @@ enum class PreparedMovePhase {
   return "unknown";
 }
 
+struct PreparedBlockEntryPublication;
+struct PreparedCallPreservedValue;
+struct PreparedMoveBundle;
+struct PreparedMoveResolution;
+struct PreparedValueHome;
+
+enum class PreparedValueFreshnessUseKind {
+  Unknown,
+  CallArgumentSource,
+  MoveBundleSource,
+  ProducerPublicationOperand,
+  AbiFormalHome,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_freshness_use_kind_name(
+    PreparedValueFreshnessUseKind kind) {
+  switch (kind) {
+    case PreparedValueFreshnessUseKind::Unknown:
+      return "unknown";
+    case PreparedValueFreshnessUseKind::CallArgumentSource:
+      return "call_argument_source";
+    case PreparedValueFreshnessUseKind::MoveBundleSource:
+      return "move_bundle_source";
+    case PreparedValueFreshnessUseKind::ProducerPublicationOperand:
+      return "producer_publication_operand";
+    case PreparedValueFreshnessUseKind::AbiFormalHome:
+      return "abi_formal_home";
+  }
+  return "unknown";
+}
+
+enum class PreparedValueFreshnessSourceKind {
+  Unknown,
+  DirectHome,
+  ProducerRematerialization,
+  ExplicitPublication,
+  PriorPreservation,
+  MoveBundleSource,
+  AbiFormalHome,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_freshness_source_kind_name(
+    PreparedValueFreshnessSourceKind kind) {
+  switch (kind) {
+    case PreparedValueFreshnessSourceKind::Unknown:
+      return "unknown";
+    case PreparedValueFreshnessSourceKind::DirectHome:
+      return "direct_home";
+    case PreparedValueFreshnessSourceKind::ProducerRematerialization:
+      return "producer_rematerialization";
+    case PreparedValueFreshnessSourceKind::ExplicitPublication:
+      return "explicit_publication";
+    case PreparedValueFreshnessSourceKind::PriorPreservation:
+      return "prior_preservation";
+    case PreparedValueFreshnessSourceKind::MoveBundleSource:
+      return "move_bundle_source";
+    case PreparedValueFreshnessSourceKind::AbiFormalHome:
+      return "abi_formal_home";
+  }
+  return "unknown";
+}
+
+enum class PreparedValueFreshnessProofKind {
+  Unknown,
+  SameBlockBeforeUse,
+  DominanceOrOrdering,
+  ExplicitPublication,
+  AbiFormalEntry,
+  CallBoundaryPreservation,
+  MoveBundleAuthority,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_freshness_proof_kind_name(
+    PreparedValueFreshnessProofKind kind) {
+  switch (kind) {
+    case PreparedValueFreshnessProofKind::Unknown:
+      return "unknown";
+    case PreparedValueFreshnessProofKind::SameBlockBeforeUse:
+      return "same_block_before_use";
+    case PreparedValueFreshnessProofKind::DominanceOrOrdering:
+      return "dominance_or_ordering";
+    case PreparedValueFreshnessProofKind::ExplicitPublication:
+      return "explicit_publication";
+    case PreparedValueFreshnessProofKind::AbiFormalEntry:
+      return "abi_formal_entry";
+    case PreparedValueFreshnessProofKind::CallBoundaryPreservation:
+      return "call_boundary_preservation";
+    case PreparedValueFreshnessProofKind::MoveBundleAuthority:
+      return "move_bundle_authority";
+  }
+  return "unknown";
+}
+
+enum class PreparedValueFreshnessSourceRank {
+  None = 0,
+  PriorPreservation = 10,
+  AbiFormalHome = 20,
+  DirectHome = 30,
+  MoveBundleSource = 40,
+  ExplicitPublication = 50,
+  ProducerRematerialization = 60,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_freshness_source_rank_name(
+    PreparedValueFreshnessSourceRank rank) {
+  switch (rank) {
+    case PreparedValueFreshnessSourceRank::None:
+      return "none";
+    case PreparedValueFreshnessSourceRank::PriorPreservation:
+      return "prior_preservation";
+    case PreparedValueFreshnessSourceRank::AbiFormalHome:
+      return "abi_formal_home";
+    case PreparedValueFreshnessSourceRank::DirectHome:
+      return "direct_home";
+    case PreparedValueFreshnessSourceRank::MoveBundleSource:
+      return "move_bundle_source";
+    case PreparedValueFreshnessSourceRank::ExplicitPublication:
+      return "explicit_publication";
+    case PreparedValueFreshnessSourceRank::ProducerRematerialization:
+      return "producer_rematerialization";
+  }
+  return "unknown";
+}
+
+enum class PreparedValueFreshnessQueryStatus {
+  Selected,
+  UnknownUse,
+  MissingValue,
+  NoCandidate,
+  InvalidCandidate,
+  AmbiguousCandidate,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_freshness_query_status_name(
+    PreparedValueFreshnessQueryStatus status) {
+  switch (status) {
+    case PreparedValueFreshnessQueryStatus::Selected:
+      return "selected";
+    case PreparedValueFreshnessQueryStatus::UnknownUse:
+      return "unknown_use";
+    case PreparedValueFreshnessQueryStatus::MissingValue:
+      return "missing_value";
+    case PreparedValueFreshnessQueryStatus::NoCandidate:
+      return "no_candidate";
+    case PreparedValueFreshnessQueryStatus::InvalidCandidate:
+      return "invalid_candidate";
+    case PreparedValueFreshnessQueryStatus::AmbiguousCandidate:
+      return "ambiguous_candidate";
+  }
+  return "unknown";
+}
+
+struct PreparedValueFreshnessSourceReference {
+  const PreparedValueHome* home = nullptr;
+  const PreparedBlockEntryPublication* publication = nullptr;
+  const PreparedCallPreservedValue* preservation = nullptr;
+  const PreparedMoveBundle* move_bundle = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  std::optional<std::size_t> block_index;
+  std::optional<std::size_t> instruction_index;
+  std::optional<std::size_t> abi_index;
+};
+
+struct PreparedValueFreshnessAuthority {
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedValueFreshnessUseKind use_kind = PreparedValueFreshnessUseKind::Unknown;
+  PreparedValueFreshnessSourceKind source_kind =
+      PreparedValueFreshnessSourceKind::Unknown;
+  PreparedValueFreshnessProofKind proof_kind = PreparedValueFreshnessProofKind::Unknown;
+  PreparedValueFreshnessSourceRank rank = PreparedValueFreshnessSourceRank::None;
+  PreparedValueFreshnessSourceReference reference;
+};
+
+struct PreparedValueFreshnessQuery {
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedValueFreshnessUseKind use_kind = PreparedValueFreshnessUseKind::Unknown;
+  std::optional<std::size_t> block_index;
+  std::optional<std::size_t> instruction_index;
+  std::vector<PreparedValueFreshnessAuthority> candidates;
+};
+
+struct PreparedValueFreshnessQueryResult {
+  PreparedValueFreshnessQueryStatus status = PreparedValueFreshnessQueryStatus::NoCandidate;
+  const PreparedValueFreshnessAuthority* authority = nullptr;
+};
+
+[[nodiscard]] constexpr bool prepared_value_freshness_query_selected(
+    const PreparedValueFreshnessQueryResult& result) {
+  return result.status == PreparedValueFreshnessQueryStatus::Selected &&
+         result.authority != nullptr;
+}
+
+[[nodiscard]] PreparedValueFreshnessQueryResult find_prepared_value_freshness_authority(
+    const PreparedValueFreshnessQuery& query);
+
 struct PreparedValueHome {
   PreparedValueId value_id = 0;
   FunctionNameId function_name = kInvalidFunctionName;

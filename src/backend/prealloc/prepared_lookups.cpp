@@ -24,6 +24,98 @@ PreparedMoveBundleLookups::~PreparedMoveBundleLookups() = default;
 
 namespace {
 
+[[nodiscard]] bool prepared_value_freshness_source_reference_available(
+    const PreparedValueFreshnessAuthority& authority) {
+  switch (authority.source_kind) {
+    case PreparedValueFreshnessSourceKind::DirectHome:
+    case PreparedValueFreshnessSourceKind::AbiFormalHome:
+      return authority.reference.home != nullptr;
+    case PreparedValueFreshnessSourceKind::ProducerRematerialization:
+      return authority.reference.block_index.has_value() &&
+             authority.reference.instruction_index.has_value();
+    case PreparedValueFreshnessSourceKind::ExplicitPublication:
+      return authority.reference.publication != nullptr ||
+             (authority.reference.move_bundle != nullptr && authority.reference.move != nullptr);
+    case PreparedValueFreshnessSourceKind::PriorPreservation:
+      return authority.reference.preservation != nullptr;
+    case PreparedValueFreshnessSourceKind::MoveBundleSource:
+      return authority.reference.move_bundle != nullptr && authority.reference.move != nullptr;
+    case PreparedValueFreshnessSourceKind::Unknown:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_value_freshness_authority_available(
+    const PreparedValueFreshnessAuthority& authority) {
+  return authority.use_kind != PreparedValueFreshnessUseKind::Unknown &&
+         authority.source_kind != PreparedValueFreshnessSourceKind::Unknown &&
+         authority.proof_kind != PreparedValueFreshnessProofKind::Unknown &&
+         authority.rank != PreparedValueFreshnessSourceRank::None &&
+         prepared_value_freshness_source_reference_available(authority);
+}
+
+[[nodiscard]] bool prepared_value_freshness_candidate_matches_query(
+    const PreparedValueFreshnessQuery& query,
+    const PreparedValueFreshnessAuthority& authority) {
+  if (authority.use_kind != query.use_kind || authority.value_id != query.value_id) {
+    return false;
+  }
+  return query.value_name == kInvalidValueName || authority.value_name == query.value_name;
+}
+
+}  // namespace
+
+[[nodiscard]] PreparedValueFreshnessQueryResult find_prepared_value_freshness_authority(
+    const PreparedValueFreshnessQuery& query) {
+  if (query.use_kind == PreparedValueFreshnessUseKind::Unknown) {
+    return PreparedValueFreshnessQueryResult{
+        .status = PreparedValueFreshnessQueryStatus::UnknownUse,
+    };
+  }
+
+  const PreparedValueFreshnessAuthority* selected = nullptr;
+  bool saw_matching_candidate = false;
+  bool saw_invalid_candidate = false;
+  for (const auto& candidate : query.candidates) {
+    if (!prepared_value_freshness_candidate_matches_query(query, candidate)) {
+      continue;
+    }
+    saw_matching_candidate = true;
+    if (!prepared_value_freshness_authority_available(candidate)) {
+      saw_invalid_candidate = true;
+      continue;
+    }
+    if (selected == nullptr) {
+      selected = &candidate;
+      continue;
+    }
+    if (candidate.rank == selected->rank) {
+      return PreparedValueFreshnessQueryResult{
+          .status = PreparedValueFreshnessQueryStatus::AmbiguousCandidate,
+          .authority = selected,
+      };
+    }
+    if (static_cast<int>(selected->rank) < static_cast<int>(candidate.rank)) {
+      selected = &candidate;
+    }
+  }
+
+  if (selected != nullptr) {
+    return PreparedValueFreshnessQueryResult{
+        .status = PreparedValueFreshnessQueryStatus::Selected,
+        .authority = selected,
+    };
+  }
+  return PreparedValueFreshnessQueryResult{
+      .status = saw_matching_candidate || saw_invalid_candidate
+                    ? PreparedValueFreshnessQueryStatus::InvalidCandidate
+                    : PreparedValueFreshnessQueryStatus::NoCandidate,
+  };
+}
+
+namespace {
+
 [[nodiscard]] std::optional<std::size_t> prepared_block_index_by_label(
     const PreparedControlFlowFunction& function,
     BlockLabelId label) {

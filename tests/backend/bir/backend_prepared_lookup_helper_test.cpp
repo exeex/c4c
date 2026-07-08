@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -75,6 +76,179 @@ int verify_prepared_compatibility_status_names() {
               PublicationUnavailable) != "publication_unavailable") {
     return fail("prepared current-block-entry publication-unavailable status name should remain stable");
   }
+  if (prepare::prepared_value_freshness_use_kind_name(
+          prepare::PreparedValueFreshnessUseKind::CallArgumentSource) !=
+          "call_argument_source" ||
+      prepare::prepared_value_freshness_source_kind_name(
+          prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization) !=
+          "producer_rematerialization" ||
+      prepare::prepared_value_freshness_proof_kind_name(
+          prepare::PreparedValueFreshnessProofKind::CallBoundaryPreservation) !=
+          "call_boundary_preservation" ||
+      prepare::prepared_value_freshness_source_rank_name(
+          prepare::PreparedValueFreshnessSourceRank::ExplicitPublication) !=
+          "explicit_publication" ||
+      prepare::prepared_value_freshness_query_status_name(
+          prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate) !=
+          "ambiguous_candidate") {
+    return fail("prepared freshness authority names should remain stable");
+  }
+  return 0;
+}
+
+int verify_prepared_value_freshness_authority_lookup() {
+  prepare::PreparedValueHome home{
+      .value_id = prepare::PreparedValueId{11},
+      .function_name = c4c::FunctionNameId{3},
+      .value_name = c4c::ValueNameId{5},
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"x10"},
+  };
+  prepare::PreparedCallPreservedValue preserved{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .route = prepare::PreparedCallPreservationRoute::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{7},
+      .stack_offset_bytes = std::size_t{32},
+      .stack_size_bytes = std::size_t{8},
+      .stack_align_bytes = std::size_t{8},
+  };
+  prepare::PreparedMoveBundle bundle{
+      .function_name = home.function_name,
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .block_index = 2,
+      .instruction_index = 4,
+  };
+  prepare::PreparedMoveResolution publication_move{
+      .from_value_id = home.value_id,
+      .to_value_id = home.value_id,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_abi_index = std::size_t{0},
+      .destination_register_name = std::string{"x10"},
+      .block_index = 2,
+      .instruction_index = 4,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+  };
+
+  const prepare::PreparedValueFreshnessAuthority stale_preservation{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind = prepare::PreparedValueFreshnessSourceKind::PriorPreservation,
+      .proof_kind = prepare::PreparedValueFreshnessProofKind::CallBoundaryPreservation,
+      .rank = prepare::PreparedValueFreshnessSourceRank::PriorPreservation,
+      .reference = prepare::PreparedValueFreshnessSourceReference{
+          .preservation = &preserved,
+          .block_index = std::size_t{0},
+          .instruction_index = std::size_t{1},
+      },
+  };
+  const prepare::PreparedValueFreshnessAuthority explicit_publication{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind = prepare::PreparedValueFreshnessSourceKind::ExplicitPublication,
+      .proof_kind = prepare::PreparedValueFreshnessProofKind::ExplicitPublication,
+      .rank = prepare::PreparedValueFreshnessSourceRank::ExplicitPublication,
+      .reference = prepare::PreparedValueFreshnessSourceReference{
+          .move_bundle = &bundle,
+          .move = &publication_move,
+          .block_index = std::size_t{2},
+          .instruction_index = std::size_t{4},
+          .abi_index = std::size_t{0},
+      },
+  };
+  const prepare::PreparedValueFreshnessAuthority producer{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind =
+          prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization,
+      .proof_kind = prepare::PreparedValueFreshnessProofKind::SameBlockBeforeUse,
+      .rank = prepare::PreparedValueFreshnessSourceRank::ProducerRematerialization,
+      .reference = prepare::PreparedValueFreshnessSourceReference{
+          .block_index = std::size_t{2},
+          .instruction_index = std::size_t{3},
+      },
+  };
+  const prepare::PreparedValueFreshnessQuery query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .block_index = std::size_t{2},
+      .instruction_index = std::size_t{4},
+      .candidates = {stale_preservation, explicit_publication, producer},
+  };
+  const auto selected = prepare::find_prepared_value_freshness_authority(query);
+  if (!prepare::prepared_value_freshness_query_selected(selected) ||
+      selected.authority == nullptr ||
+      selected.authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization) {
+    return fail("freshness query should select highest-rank valid authority");
+  }
+
+  const prepare::PreparedValueFreshnessQuery publication_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .candidates = {stale_preservation, explicit_publication},
+  };
+  const auto publication_selected =
+      prepare::find_prepared_value_freshness_authority(publication_query);
+  if (!prepare::prepared_value_freshness_query_selected(publication_selected) ||
+      publication_selected.authority == nullptr ||
+      publication_selected.authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::ExplicitPublication) {
+    return fail("freshness query should rank explicit publication over prior preservation");
+  }
+
+  const prepare::PreparedValueFreshnessQuery absent_query{
+      .value_id = prepare::PreparedValueId{99},
+      .value_name = c4c::ValueNameId{101},
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .candidates = {stale_preservation, explicit_publication},
+  };
+  if (prepare::find_prepared_value_freshness_authority(absent_query).status !=
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
+    return fail("freshness query should fail closed when no candidate matches");
+  }
+
+  prepare::PreparedValueFreshnessAuthority invalid = stale_preservation;
+  invalid.proof_kind = prepare::PreparedValueFreshnessProofKind::Unknown;
+  const prepare::PreparedValueFreshnessQuery invalid_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .candidates = {invalid},
+  };
+  if (prepare::find_prepared_value_freshness_authority(invalid_query).status !=
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("freshness query should fail closed for invalid matching candidates");
+  }
+
+  const prepare::PreparedValueFreshnessQuery ambiguous_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .candidates = {explicit_publication, explicit_publication},
+  };
+  if (prepare::find_prepared_value_freshness_authority(ambiguous_query).status !=
+      prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate) {
+    return fail("freshness query should fail closed for equal-rank candidates");
+  }
+
+  const prepare::PreparedValueFreshnessQuery unknown_use{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .candidates = {stale_preservation},
+  };
+  if (prepare::find_prepared_value_freshness_authority(unknown_use).status !=
+      prepare::PreparedValueFreshnessQueryStatus::UnknownUse) {
+    return fail("freshness query should fail closed for unknown use kind");
+  }
+
   return 0;
 }
 
@@ -14196,6 +14370,10 @@ int verify_bir_return_chain_schema_and_index_lookup() {
 
 int main() {
   if (const int result = verify_prepared_compatibility_status_names();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_prepared_value_freshness_authority_lookup();
       result != 0) {
     return result;
   }

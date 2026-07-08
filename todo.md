@@ -8,13 +8,17 @@ Current Step Title: Define Freshness Authority Model And Query Skeleton
 
 ## Just Finished
 
-Lifecycle activation only. No executor packet has completed yet.
+Step 1 - Define Freshness Authority Model And Query Skeleton: added shared
+prepared value freshness vocabulary, source references, ranked authority
+candidates, a fail-closed query result/status surface, and a deterministic
+selection helper. Added focused lookup-helper coverage for stable dump names,
+producer/publication precedence over prior preservation, no-candidate,
+invalid-candidate, ambiguous equal-rank, and unknown-use fail-closed statuses.
 
 ## Suggested Next
 
-Start Step 1 from plan.md: inspect prepared/prealloc enum, lookup, query, and
-printer conventions, then add the minimal freshness authority model and
-fail-closed query skeleton.
+Start Step 2 from plan.md: publish call-argument freshness candidates from the
+existing prepared call-plan facts without moving target backend consumers yet.
 
 ## Watchouts
 
@@ -22,11 +26,19 @@ fail-closed query skeleton.
   allowlist changes, or named-testcase shortcuts.
 - Keep producer rematerialization and explicit publication higher precedence
   than older PriorPreservation only when they are valid for the same value/use.
-- Preserve existing fail-closed behavior until the freshness verifier covers
-  the same malformed or unknown-authority shape.
+- The Step 1 query currently consumes explicit candidate facts only; Step 2
+  should publish those candidates from call-plan/publication/preservation
+  evidence before any consumer migration.
+- Equal-rank matching authorities intentionally fail closed as
+  `ambiguous_candidate`.
 - Track closure-inventory notes here as consumers are wired or deliberately
   deferred.
 
 ## Proof
 
-Not run. Activation is lifecycle-only and made no implementation changes.
+Passed on rerun: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+
+The first run of the same command failed before tests because `cc1plus` was
+killed while compiling `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`,
+outside the owned files. The rerun completed successfully and `test_after.log`
+contains the passing proof.
