@@ -560,6 +560,19 @@ struct PreparedBranchStackLoadAuthorityInputs {
       nullptr;
 };
 
+struct PreparedBranchStackSourceFreshnessPublicationInputs {
+  const PreparedNameTables* names = nullptr;
+  PreparedBranchStackLoadRole role = PreparedBranchStackLoadRole::Condition;
+  const bir::Value* branch_value = nullptr;
+  const PreparedValueHome* value_home = nullptr;
+  std::optional<std::size_t> branch_block_index;
+  std::optional<std::size_t> branch_terminator_instruction_index;
+};
+
+[[nodiscard]] std::optional<PreparedValueFreshnessAuthority>
+publish_prepared_branch_stack_source_freshness_candidate(
+    const PreparedBranchStackSourceFreshnessPublicationInputs& inputs);
+
 struct PreparedBranchStackLoadAuthority {
   PreparedBranchStackLoadAuthorityStatus status =
       PreparedBranchStackLoadAuthorityStatus::MissingBranchCondition;

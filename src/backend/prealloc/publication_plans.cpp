@@ -2598,6 +2598,22 @@ namespace {
   return pointer_status == PreparedBranchStackLoadPointerStatus::Proven;
 }
 
+[[nodiscard]] bool prepared_branch_stack_source_role_can_publish_freshness(
+    PreparedBranchStackLoadRole role,
+    bir::TypeKind value_type) {
+  switch (role) {
+    case PreparedBranchStackLoadRole::Condition:
+      return true;
+    case PreparedBranchStackLoadRole::Lhs:
+    case PreparedBranchStackLoadRole::Rhs:
+      return value_type == bir::TypeKind::Ptr ||
+             value_type == bir::TypeKind::I128 ||
+             value_type == bir::TypeKind::F128 ||
+             bir::is_vrm_register_type(value_type);
+  }
+  return false;
+}
+
 void select_branch_stack_load_source_freshness_authority(
     PreparedBranchStackLoadAuthority& authority,
     const std::vector<PreparedValueFreshnessAuthority>* candidates) {
@@ -2674,6 +2690,43 @@ status_for_branch_stack_load_source_freshness(
 }
 
 }  // namespace
+
+std::optional<PreparedValueFreshnessAuthority>
+publish_prepared_branch_stack_source_freshness_candidate(
+    const PreparedBranchStackSourceFreshnessPublicationInputs& inputs) {
+  if (inputs.names == nullptr ||
+      inputs.branch_value == nullptr ||
+      inputs.value_home == nullptr ||
+      inputs.value_home->kind != PreparedValueHomeKind::StackSlot ||
+      inputs.value_home->value_id == PreparedValueId{0} ||
+      inputs.value_home->value_name == kInvalidValueName ||
+      !inputs.branch_block_index.has_value() ||
+      !inputs.branch_terminator_instruction_index.has_value() ||
+      !prepared_home_names_value(*inputs.names,
+                                 *inputs.value_home,
+                                 *inputs.branch_value) ||
+      !prepared_branch_stack_source_role_can_publish_freshness(
+          inputs.role, inputs.branch_value->type)) {
+    return std::nullopt;
+  }
+
+  return PreparedValueFreshnessAuthority{
+      .value_id = inputs.value_home->value_id,
+      .value_name = inputs.value_home->value_name,
+      .use_kind =
+          prepared_branch_stack_load_freshness_use_kind(inputs.role),
+      .source_kind = PreparedValueFreshnessSourceKind::BranchStackSlot,
+      .proof_kind = PreparedValueFreshnessProofKind::BranchTerminatorOrdering,
+      .rank = PreparedValueFreshnessSourceRank::BranchStackSlot,
+      .reference =
+          PreparedValueFreshnessSourceReference{
+              .home = inputs.value_home,
+              .block_index = inputs.branch_block_index,
+              .instruction_index =
+                  inputs.branch_terminator_instruction_index,
+          },
+  };
+}
 
 PreparedBranchStackLoadAuthority plan_prepared_branch_stack_load_authority(
     const PreparedBranchStackLoadAuthorityInputs& inputs) {
@@ -2800,6 +2853,10 @@ PreparedBranchStackLoadAuthority plan_prepared_branch_stack_load_authority(
     authority.status = PreparedBranchStackLoadAuthorityStatus::StackObjectMismatch;
     return authority;
   }
+  if (inputs.source_freshness_authorities != nullptr) {
+    authority.source_freshness_authorities =
+        *inputs.source_freshness_authorities;
+  }
 
   if (inputs.policy == PreparedBranchStackLoadPolicy::None) {
     authority.status = PreparedBranchStackLoadAuthorityStatus::MissingPolicy;
@@ -2913,25 +2970,18 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
   const auto* stack_object =
       prepared_stack_object_for_frame_slot(prepared.stack_layout, frame_slot);
   std::vector<PreparedValueFreshnessAuthority> source_freshness_authorities;
-  if (role == PreparedBranchStackLoadRole::Condition &&
-      value_home != nullptr && value_home->value_id != PreparedValueId{0} &&
-      value_home->value_name != kInvalidValueName &&
-      branch_block_index.has_value() &&
-      branch_terminator_instruction_index.has_value()) {
-    source_freshness_authorities.push_back(PreparedValueFreshnessAuthority{
-        .value_id = value_home->value_id,
-        .value_name = value_home->value_name,
-        .use_kind = PreparedValueFreshnessUseKind::BranchStackLoadSource,
-        .source_kind = PreparedValueFreshnessSourceKind::BranchStackSlot,
-        .proof_kind = PreparedValueFreshnessProofKind::BranchTerminatorOrdering,
-        .rank = PreparedValueFreshnessSourceRank::BranchStackSlot,
-        .reference =
-            PreparedValueFreshnessSourceReference{
-                .home = value_home,
-                .block_index = branch_block_index,
-                .instruction_index = branch_terminator_instruction_index,
-            },
-    });
+  if (const auto freshness =
+          publish_prepared_branch_stack_source_freshness_candidate({
+              .names = &prepared.names,
+              .role = role,
+              .branch_value = branch_value,
+              .value_home = value_home,
+              .branch_block_index = branch_block_index,
+              .branch_terminator_instruction_index =
+                  branch_terminator_instruction_index,
+          });
+      freshness.has_value()) {
+    source_freshness_authorities.push_back(*freshness);
   }
   PreparedBranchStackLoadAuthorityRecord record{
       .function_name = function_name,

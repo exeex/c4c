@@ -1,84 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/592_typed_aggregate_branch_stack_source_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Typed And Aggregate Branch Stack-Source Producers
+Current Step ID: 2
+Current Step Title: Define The Producer Publication Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 audit for typed and aggregate branch stack-source
-producer paths.
+Completed `plan.md` Step 2 by defining the producer-publication contract for
+branch stack-source freshness.
 
-Producer paths found:
-- Branch stack-load inventory is collected by
-  `collect_prepared_branch_stack_load_authorities` ->
-  `collect_branch_stack_load_authority_for_role` ->
-  `make_branch_stack_load_authority_record` ->
-  `plan_prepared_branch_stack_load_authority`.
-- Role values come from `branch_stack_load_value_for_role` for
-  `Condition`, `Lhs`, and `Rhs`.
-- Current branch freshness publication is condition-only inside
-  `make_branch_stack_load_authority_record`: when the condition has a stack
-  home and exact branch block/terminator indices, it creates one
-  `PreparedValueFreshnessAuthority` for `BranchStackLoadSource` /
-  `BranchStackSlot` / `BranchTerminatorOrdering` /
-  `BranchStackSlot`.
-- `Lhs` and `Rhs` rows reach the same inventory collector when they are named
-  stack-slot homes, but their current collection policy is `policy=none`, no
-  source freshness candidates are published, pointer status remains unknown for
-  pointer operands, and clobber safety is not granted.
-- Structural producer inventory also exists through
-  `collect_prepared_frame_slot_source_facts` ->
-  `collect_frame_slot_source_fact_for_role` ->
-  `make_frame_slot_source_fact_record` ->
-  `plan_prepared_frame_slot_source_fact`, plus aggregate-adjacent
-  `prepare_aggregate_stack_source_authority`. These expose concrete stack
-  homes, frame slots, stack objects, materialization/path/clobber facts, and
-  aggregate source/destination lane facts, but they do not publish branch
-  freshness today.
+Added `PreparedBranchStackSourceFreshnessPublicationInputs` and
+`publish_prepared_branch_stack_source_freshness_candidate` in shared prealloc.
+The helper publishes only an explicit freshness candidate matching the branch
+source value id/name, `BranchStackLoadSource`, `BranchStackSlot`,
+`BranchTerminatorOrdering`, `BranchStackSlot` rank, the stack-slot home, and
+the exact branch block plus terminator instruction point.
 
-Narrowest blocked consumer candidate:
-- Pointer `PreparedBranchStackLoadRole::Lhs` is the best first migration
-  candidate. Existing coverage already shows a named pointer `Lhs` stack-home
-  row with value id, slot id, stack object, exact branch block/index context,
-  and dump visibility, while preserving the boundary as `policy=none`,
-  `source_freshness_candidates=0`, `source_freshness_status=no_candidate`, and
-  `pointer_status=unknown`.
+Wired `collect_prepared_branch_stack_load_authorities` through the helper so
+the existing condition route still gets the same selected candidate, and the
+pointer `Lhs` candidate now carries one explicit branch stack-slot freshness
+candidate while remaining `policy=none`, `status=missing_policy`, and
+`pointer_status=unknown`. This defines the producer contract without migrating
+the consumer availability decision.
 
-Allowed freshness facts for Step 2:
-- Only an explicit `PreparedValueFreshnessAuthority` matching the consumer
-  value id/name, `PreparedValueFreshnessUseKind::BranchStackLoadSource`,
-  `PreparedValueFreshnessSourceKind::BranchStackSlot`,
-  `PreparedValueFreshnessProofKind::BranchTerminatorOrdering`,
-  `PreparedValueFreshnessSourceRank::BranchStackSlot`, and a
-  `PreparedValueFreshnessSourceReference` whose home pointer and block/index
-  equal the exact branch terminator point may publish branch freshness.
-
-Forbidden structural facts:
-- Stack homes, frame slots, stack objects, aggregate stack-source authority,
-  aggregate lane/destination mapping, materialization events, path coverage,
-  same-slot write classification, and call/publication/move/parallel-copy
-  clobber-safety are context only. None may create
-  `BranchStackLoadSource` freshness by themselves.
+Focused coverage now checks that pointer `Lhs` can publish the exact freshness
+tuple and that register structural facts, wrong-value stack facts, and missing
+branch-point references cannot create branch stack-slot freshness authority.
 
 ## Suggested Next
 
-Start `plan.md` Step 2 by adding the smallest shared-prealloc producer helper
-or data path that can publish the allowed branch stack-slot freshness tuple for
-the pointer `Lhs` candidate, while keeping structural source facts separate
-from freshness authority.
+Proceed to `plan.md` Step 3 by migrating the pointer
+`PreparedBranchStackLoadRole::Lhs` consumer from inventory-only `policy=none`
+to selected shared freshness authority, requiring the candidate published by
+Step 2 plus pointer proof and clobber safety before it can become available.
 
 ## Watchouts
 
-- Step 2 should not simply flip `Lhs` to `LoadFromStackSlot`; it must first
-  publish an explicit branch-point freshness candidate and still require
-  selected shared freshness, pointer proof, and clobber safety.
+- Step 2 intentionally does not flip `Lhs` to `LoadFromStackSlot`; the row now
+  exposes `source_freshness_candidates=1` but still fails closed at
+  `MissingPolicy`.
 - The current frame-slot source-fact collector treats pointer values and
-  select-materialization results as unsupported boundaries. If Step 2 needs
-  pointer `Lhs`, it must define a typed producer rule rather than reuse that
-  unsupported structural row as authority.
+  select-materialization results as unsupported boundaries; do not reuse those
+  unsupported structural rows as Step 3 authority.
 - Aggregate-adjacent authority currently exposes concrete source facts but
   reports missing aggregate copy authority; treat those facts as inputs to a
   future producer rule, not as direct branch freshness.
@@ -92,4 +57,13 @@ from freshness authority.
 
 ## Proof
 
-Audit-only packet. No build/tests run, and no proof log was created.
+Ran the delegated proof command:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1
+```
+
+Result: passed on rerun, with `test_after.log` reporting 346 passed, 0 failed.
+The first attempt hit an external compile resource failure (`cc1plus` killed
+while compiling an AArch64 test object); rerunning the exact command completed
+successfully and overwrote `test_after.log` with the green proof.

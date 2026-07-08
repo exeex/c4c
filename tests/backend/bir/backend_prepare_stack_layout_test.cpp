@@ -6672,6 +6672,72 @@ int check_branch_stack_load_authority_contract() {
           make_branch_stack_freshness(lhs_home),
       };
 
+  const auto published_lhs_freshness =
+      prepare::publish_prepared_branch_stack_source_freshness_candidate({
+          .names = &names,
+          .role = prepare::PreparedBranchStackLoadRole::Lhs,
+          .branch_value = &*branch_condition.lhs,
+          .value_home = &lhs_home,
+          .branch_block_index = branch_block_index,
+          .branch_terminator_instruction_index =
+              branch_terminator_instruction_index,
+      });
+  if (!published_lhs_freshness.has_value() ||
+      published_lhs_freshness->value_id != lhs_home.value_id ||
+      published_lhs_freshness->value_name != lhs_name ||
+      published_lhs_freshness->use_kind !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      published_lhs_freshness->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot ||
+      published_lhs_freshness->proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering ||
+      published_lhs_freshness->rank !=
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot ||
+      published_lhs_freshness->reference.home != &lhs_home ||
+      published_lhs_freshness->reference.block_index != branch_block_index ||
+      published_lhs_freshness->reference.instruction_index !=
+          branch_terminator_instruction_index) {
+    return fail("expected pointer lhs producer to publish exact branch stack-slot freshness");
+  }
+  auto register_lhs_home = lhs_home;
+  register_lhs_home.kind = prepare::PreparedValueHomeKind::Register;
+  register_lhs_home.slot_id = std::nullopt;
+  register_lhs_home.register_name = std::string{"a3"};
+  if (prepare::publish_prepared_branch_stack_source_freshness_candidate({
+          .names = &names,
+          .role = prepare::PreparedBranchStackLoadRole::Lhs,
+          .branch_value = &*branch_condition.lhs,
+          .value_home = &register_lhs_home,
+          .branch_block_index = branch_block_index,
+          .branch_terminator_instruction_index =
+              branch_terminator_instruction_index,
+      }).has_value()) {
+    return fail("expected register structural facts to stay unable to publish branch stack-slot freshness");
+  }
+  auto wrong_value_home = lhs_home;
+  wrong_value_home.value_name = other_name;
+  if (prepare::publish_prepared_branch_stack_source_freshness_candidate({
+          .names = &names,
+          .role = prepare::PreparedBranchStackLoadRole::Lhs,
+          .branch_value = &*branch_condition.lhs,
+          .value_home = &wrong_value_home,
+          .branch_block_index = branch_block_index,
+          .branch_terminator_instruction_index =
+              branch_terminator_instruction_index,
+      }).has_value()) {
+    return fail("expected wrong-value structural facts to stay unable to publish branch stack-slot freshness");
+  }
+  if (prepare::publish_prepared_branch_stack_source_freshness_candidate({
+          .names = &names,
+          .role = prepare::PreparedBranchStackLoadRole::Lhs,
+          .branch_value = &*branch_condition.lhs,
+          .value_home = &lhs_home,
+          .branch_terminator_instruction_index =
+              branch_terminator_instruction_index,
+      }).has_value()) {
+    return fail("expected branch stack-slot freshness publication to require exact branch block");
+  }
+
   const auto accepted_condition =
       prepare::plan_prepared_branch_stack_load_authority({
           .names = &names,
@@ -7344,7 +7410,23 @@ int check_branch_stack_load_authority_contract() {
           std::optional<prepare::PreparedFrameSlotId>{
               prepare::PreparedFrameSlotId{10}} ||
       lhs_record->authority.stack_object_id !=
-          std::optional<prepare::PreparedObjectId>{10}) {
+          std::optional<prepare::PreparedObjectId>{10} ||
+      lhs_record->authority.source_freshness_authorities.size() != 1 ||
+      lhs_record->authority.source_freshness_authorities.front().value_id != 6 ||
+      lhs_record->authority.source_freshness_authorities.front().value_name !=
+          prepared_lhs_name ||
+      lhs_record->authority.source_freshness_authorities.front().use_kind !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      lhs_record->authority.source_freshness_authorities.front().source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot ||
+      lhs_record->authority.source_freshness_authorities.front().proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering ||
+      lhs_record->authority.source_freshness_authorities.front().rank !=
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot ||
+      lhs_record->authority.source_freshness_authorities.front()
+              .reference.block_index != std::optional<std::size_t>{0} ||
+      lhs_record->authority.source_freshness_authorities.front()
+              .reference.instruction_index != std::optional<std::size_t>{0}) {
     return fail("expected collected branch lhs stack-load row to preserve pointer boundary");
   }
 
@@ -7377,7 +7459,7 @@ int check_branch_stack_load_authority_contract() {
                 "role=lhs value=%lhs value_id=6 policy=none "
                 "pointer_status=unknown status=missing_policy "
                 "source_freshness_status=no_candidate "
-                "source_freshness_candidates=0 slot=#10 "
+                "source_freshness_candidates=1 slot=#10 "
                 "object=#10 stack_offset=80 size=8 align=8") ==
       std::string::npos) {
     return fail("expected prepared dump to expose lhs stack-load row");
