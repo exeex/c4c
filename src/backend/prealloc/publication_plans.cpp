@@ -165,6 +165,59 @@ void publish_store_source_producer_freshness_authority(
   }
 }
 
+void publish_pointer_base_plus_offset_source_freshness_authority(
+    PreparedStoreSourcePublicationPlan& plan) {
+  plan.pointer_base_plus_offset_source_freshness_authorities.clear();
+  plan.pointer_base_plus_offset_source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  plan.pointer_base_plus_offset_source_freshness_authority = std::nullopt;
+
+  if (plan.status != PreparedStoreSourcePublicationStatus::Available ||
+      plan.intent != PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+      plan.source_home == nullptr ||
+      plan.source_home_kind != PreparedValueHomeKind::PointerBasePlusOffset ||
+      plan.source_value_id == PreparedValueId{0} ||
+      plan.source_value_name == kInvalidValueName ||
+      !plan.publication_block_label.has_value() ||
+      !plan.publication_instruction_index.has_value()) {
+    return;
+  }
+  const auto pointer_fact = as_pointer_base_plus_offset_fact(*plan.source_home);
+  if (!pointer_fact.has_value()) {
+    return;
+  }
+
+  plan.pointer_base_plus_offset_source_freshness_authorities.push_back(
+      PreparedValueFreshnessAuthority{
+          .value_id = plan.source_value_id,
+          .value_name = plan.source_value_name,
+          .use_kind = PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource,
+          .source_kind = PreparedValueFreshnessSourceKind::PointerBasePlusOffset,
+          .proof_kind =
+              PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority,
+          .rank = PreparedValueFreshnessSourceRank::PointerBasePlusOffset,
+          .reference =
+              PreparedValueFreshnessSourceReference{
+                  .home = plan.source_home,
+                  .block_label = plan.publication_block_label,
+                  .instruction_index = *plan.publication_instruction_index,
+              },
+      });
+  const PreparedValueFreshnessQuery query{
+      .value_id = plan.source_value_id,
+      .value_name = plan.source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource,
+      .block_label = plan.publication_block_label,
+      .instruction_index = plan.publication_instruction_index,
+      .candidates = plan.pointer_base_plus_offset_source_freshness_authorities,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  plan.pointer_base_plus_offset_source_freshness_status = selected.status;
+  if (prepared_value_freshness_query_selected(selected)) {
+    plan.pointer_base_plus_offset_source_freshness_authority = *selected.authority;
+  }
+}
+
 [[nodiscard]] bool prepared_source_producer_matches_store_value(
     const PreparedEdgePublicationSourceProducer& producer,
     const bir::Value& value,
@@ -2039,6 +2092,50 @@ PreparedScalarPublicationPlan plan_prepared_scalar_publication(
 bool prepared_store_source_publication_available(
     const PreparedStoreSourcePublicationPlan& plan) {
   return plan.status == PreparedStoreSourcePublicationStatus::Available;
+}
+
+bool prepared_pointer_base_plus_offset_source_freshness_available(
+    const PreparedStoreSourcePublicationPlan& plan) {
+  if (plan.pointer_base_plus_offset_source_freshness_status !=
+          PreparedValueFreshnessQueryStatus::Selected ||
+      !plan.pointer_base_plus_offset_source_freshness_authority.has_value() ||
+      plan.source_home == nullptr ||
+      plan.source_home_kind != PreparedValueHomeKind::PointerBasePlusOffset) {
+    return false;
+  }
+  const auto pointer_fact = as_pointer_base_plus_offset_fact(*plan.source_home);
+  if (!pointer_fact.has_value()) {
+    return false;
+  }
+  const auto& freshness =
+      *plan.pointer_base_plus_offset_source_freshness_authority;
+  if (freshness.value_id != plan.source_value_id ||
+      freshness.value_name != plan.source_value_name ||
+      freshness.use_kind !=
+          PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource ||
+      freshness.source_kind !=
+          PreparedValueFreshnessSourceKind::PointerBasePlusOffset ||
+      freshness.proof_kind !=
+          PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority ||
+      freshness.rank != PreparedValueFreshnessSourceRank::PointerBasePlusOffset ||
+      freshness.reference.home != plan.source_home ||
+      freshness.reference.block_label != plan.publication_block_label ||
+      freshness.reference.instruction_index != plan.publication_instruction_index) {
+    return false;
+  }
+  const auto* home = freshness.reference.home;
+  return home != nullptr &&
+         home->kind == PreparedValueHomeKind::PointerBasePlusOffset &&
+         home->value_id == plan.source_value_id &&
+         home->value_name == plan.source_value_name &&
+         home->pointer_base_value_name == plan.source_pointer_base_value_name &&
+         home->pointer_base_symbol_name == plan.source_pointer_base_symbol_name &&
+         home->pointer_byte_delta == plan.source_pointer_byte_delta &&
+         home->pointer_base_value_name == std::optional<ValueNameId>{
+                                             pointer_fact->base_value_name} &&
+         home->pointer_base_symbol_name == pointer_fact->base_symbol_name &&
+         home->pointer_byte_delta == std::optional<std::int64_t>{
+                                       pointer_fact->byte_delta};
 }
 
 PreparedMaterializationPointAuthority
@@ -6949,6 +7046,8 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
       .stack_homes_only = inputs.stack_homes_only,
       .pointer_store_writeback = inputs.pointer_store_writeback,
       .duplicate_publication = inputs.duplicate_publication,
+      .publication_block_label = inputs.publication_block_label,
+      .publication_instruction_index = inputs.publication_instruction_index,
   };
 
   if (inputs.source_value == nullptr) {
@@ -7041,6 +7140,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   }
 
   publish_store_source_producer_freshness_authority(plan);
+  publish_pointer_base_plus_offset_source_freshness_authority(plan);
   return plan;
 }
 
@@ -7069,6 +7169,8 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_global_publication(
       .pending_publication = pending_publication,
       .stack_homes_only = stack_homes_only,
       .duplicate_publication = duplicate_publication,
+      .publication_block_label = block_label,
+      .publication_instruction_index = instruction_index,
   });
   publish_store_global_immediate_source_if_authorized(plan);
   return plan;
@@ -7123,6 +7225,8 @@ plan_pending_prepared_store_global_publications(
         .stack_homes_only = true,
         .duplicate_publication = plan.duplicate_publication,
         .source_producer = source_producer,
+        .publication_block_label = block_label,
+        .publication_instruction_index = index,
     });
     if (plan.source_value_name != kInvalidValueName) {
       const auto [_, inserted] = published_source_names.insert(plan.source_value_name);
@@ -7256,6 +7360,7 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
             .stack_homes_only = store_global != nullptr,
             .duplicate_publication = duplicate_publication,
             .source_producer = source_producer,
+            .publication_block_label = block_label,
             .publication_instruction_index = inst_index,
         });
         if (store_global != nullptr) {

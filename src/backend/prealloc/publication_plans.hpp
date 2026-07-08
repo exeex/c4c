@@ -2052,6 +2052,12 @@ struct PreparedStoreSourcePublicationPlan {
   PreparedValueFreshnessQueryStatus source_freshness_status =
       PreparedValueFreshnessQueryStatus::NoCandidate;
   std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
+  std::vector<PreparedValueFreshnessAuthority>
+      pointer_base_plus_offset_source_freshness_authorities;
+  PreparedValueFreshnessQueryStatus pointer_base_plus_offset_source_freshness_status =
+      PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::optional<PreparedValueFreshnessAuthority>
+      pointer_base_plus_offset_source_freshness_authority;
 
   std::optional<bir::Value> recovered_source_value;
   std::optional<std::size_t> recovered_source_instruction_index;
@@ -2064,6 +2070,8 @@ struct PreparedStoreSourcePublicationPlan {
   bool stack_homes_only = false;
   bool pointer_store_writeback = false;
   bool duplicate_publication = false;
+  std::optional<BlockLabelId> publication_block_label;
+  std::optional<std::size_t> publication_instruction_index;
 
   const PreparedValueHome* pointer_base_home = nullptr;
   PreparedValueHomeKind pointer_base_home_kind = PreparedValueHomeKind::None;
@@ -2101,6 +2109,7 @@ struct PreparedStoreSourcePublicationInputs {
   bool pointer_store_writeback = false;
   bool duplicate_publication = false;
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
+  std::optional<BlockLabelId> publication_block_label;
   std::optional<std::size_t> publication_instruction_index;
 };
 
@@ -2259,6 +2268,10 @@ struct PreparedCallArgumentValuePublicationPlans {
 };
 
 [[nodiscard]] bool prepared_store_source_publication_available(
+    const PreparedStoreSourcePublicationPlan& plan);
+
+[[nodiscard]] bool
+prepared_pointer_base_plus_offset_source_freshness_available(
     const PreparedStoreSourcePublicationPlan& plan);
 
 [[nodiscard]] bool prepared_store_global_publication_has_authority(

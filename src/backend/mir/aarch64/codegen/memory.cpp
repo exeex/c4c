@@ -3980,6 +3980,12 @@ plan_pointer_base_plus_offset_store_local_publication(
       .destination_stack_object = destination_object,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = prepared_store_source_producer(context, store.value),
+      .publication_block_label =
+          context.control_flow_block != nullptr
+              ? std::optional<c4c::BlockLabelId>{
+                    context.control_flow_block->block_label}
+              : std::nullopt,
+      .publication_instruction_index = instruction_index,
   });
 }
 
@@ -4793,6 +4799,8 @@ lower_pointer_base_plus_offset_store_local_publication(
       plan_pointer_base_plus_offset_store_local_publication(
           context, *store, instruction_index, value_name);
   if (!prepare::prepared_store_source_publication_available(store_source_plan) ||
+      !prepare::prepared_pointer_base_plus_offset_source_freshness_available(
+          store_source_plan) ||
       store_source_plan.destination_base_kind !=
           prepare::PreparedAddressBaseKind::FrameSlot ||
       !store_source_plan.destination_can_use_base_plus_offset ||
