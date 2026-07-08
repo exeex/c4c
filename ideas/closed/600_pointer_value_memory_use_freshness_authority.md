@@ -1,6 +1,6 @@
 # Pointer-Value Memory-Use Freshness Authority
 
-Status: Open
+Status: Closed
 Type: Architecture contract and narrow implementation
 Parent: `ideas/closed/597_pointer_address_semantic_model_research.md`
 Related:
@@ -104,3 +104,70 @@ The closure note must answer:
    target-shape-only cases fail closed?
 6. Which adjacent loaded-value, store-source, pointer arithmetic, or semantic
    GEP questions remain separate follow-ups?
+
+## Closure Note
+
+Closed after the active runbook completed the audit, selected-authority
+contract, one representative consumer migration, fail-closed proof, and
+closure inventory.
+
+Audited producers and consumers:
+
+- Producers: BIR/lowering publication of pointer-value memory addresses,
+  `PreparedMemoryAccess` records with `PreparedAddressBaseKind::PointerValue`,
+  pointer-value provenance/base identity, prepared access lookup, generic
+  selected-freshness lookup vocabulary, and support checks around
+  `prepared_pointer_value_memory_has_proven_authority(...)`.
+- Consumers: AArch64 prepared memory operand formation for pointer-value
+  loads/stores, RV64 pointer-value memory emission enough to classify it as a
+  deferred target migration, and adjacent stack/layout/publication surfaces
+  only enough to separate address legality from pointer freshness.
+
+Selected authority dimensions:
+
+- Authority is selected by `PreparedValueFreshnessUseKind::PointerValueMemoryUse`,
+  `PreparedValueFreshnessSourceKind::PointerValueMemoryAccess`,
+  `PreparedValueFreshnessProofKind::PointerValueMemoryAuthority`, and
+  `PreparedValueFreshnessSourceRank::PointerValueMemory`.
+- It names the exact pointer value id/name used as the memory address base,
+  the load/store memory-use mode, function/block/instruction program point,
+  offset/range coordinate, provenance/base identity, layout authority, target
+  memory operand shape, and required support facts.
+- Loaded value ids, store source ids, pointer arithmetic results, semantic GEP
+  targets, and global symbol identities do not substitute for this authority.
+
+Required but insufficient support facts:
+
+- Pointer address base kind, pointer value id/name presence, object extent,
+  offset/range proof, provenance identity, layout authority/local layout,
+  target offset encodability, final target memory operand shape, diagnostics,
+  and prepared dumps are route support where applicable, but do not prove
+  pointer-value freshness alone.
+
+Representative consumer migrated:
+
+- AArch64 prepared pointer-value memory operand formation now requires selected
+  pointer-value memory freshness before accepting the pointer value as current
+  for the representative prepared load/store memory use.
+
+Fail-closed coverage:
+
+- Missing/no candidate, ambiguous authority, stale function/block/instruction
+  point, wrong pointer id/name, missing pointer identity, wrong load/store use,
+  wrong use/source/proof/rank vocabulary, range/offset-only, provenance-only,
+  layout-only, support-only, and target-shape-only cases fail closed.
+
+Separate follow-ups:
+
+- Loaded-value freshness, store-source freshness, pointer arithmetic selected
+  authority, semantic GEP target consumption, global symbol memory freshness,
+  RV64/x86/string or broad target migration, MIR view design, ABI lowering,
+  and final assembly expectation coverage remain separate initiatives.
+
+Close proof:
+
+- Step 3 backend subset passed 346/346.
+- Step 4 focused contract proof passed.
+- Step 4 broad selected regex passed 85/85.
+- Full-suite baseline guard accepted 3375/3375 before and after with no new
+  failures.
