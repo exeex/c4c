@@ -1,15 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/587_prepared_value_freshness_authority_mvp.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: AArch64 And Unwired Consumer Inventory
+Current Step ID: 7
+Current Step Title: Acceptance Validation And Closure Inventory
 
 # Current Packet
 
 ## Just Finished
 
-Step 6 completed the consumer inventory for the prepared value freshness MVP.
-No implementation files were edited.
+Step 7 completed acceptance validation and assembled the closure inventory for
+the prepared value freshness MVP.
+
+Implemented source kinds:
+
+- `DirectHome` for call arguments and move-bundle source authority when a
+  complete source-side prepared home is visible.
+- `ProducerRematerialization` for call arguments and the selected
+  store-source publication operand route.
+- `ExplicitPublication` for call-argument publication moves.
+- `PriorPreservation` for unique complete call-boundary preservation.
+- `MoveBundleSource` remains a vocabulary/source-kind entry, but the accepted
+  shared move-bundle consumer deliberately rejects candidates whose only proof
+  is the consumed move bundle itself.
+
+Supported use kinds:
+
+- `CallArgumentSource`
+- `MoveBundleSource`
+- `ProducerPublicationOperand`
+
+Acceptance evidence:
+
+- Producer rematerialization or explicit publication outranks
+  PriorPreservation through the shared query. Evidence:
+  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` and
+  `tests/backend/bir/backend_prepared_printer_test.cpp`.
+- PriorPreservation remains accepted when uniquely complete and valid.
+  Evidence: `tests/backend/bir/backend_prepared_printer_test.cpp` and
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
+- Move-bundle sources without independent source freshness fail closed instead
+  of being accepted because the destination bundle is well formed. Evidence:
+  `tests/backend/bir/backend_prepared_object_consumer_contract_test.cpp` and
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
+- One RV64 consumer consults the shared query before trusting a stale-home
+  prone call argument. Evidence:
+  `src/backend/mir/riscv/codegen/prepared_call_emit.cpp` and
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
+- Producer/publication operand coverage exists for validated same-block
+  store-source publication producers. Evidence:
+  `src/backend/prealloc/publication_plans.cpp` and
+  `tests/backend/bir/backend_prepared_printer_test.cpp`.
 
 Wired consumers:
 
@@ -117,9 +157,8 @@ Unwired or deferred nearby consumers:
 
 ## Suggested Next
 
-Proceed to Step 7: run the supervisor-selected acceptance validation and
-prepare the closure inventory. The closure note should reuse this inventory,
-then add the final source-kind/use-kind summary and any follow-up idea names
+Ask the plan owner to decide whether the active runbook and source idea can be
+closed. The closure note should reuse this inventory and name follow-up ideas
 for AArch64 freshness migration, RV64 stack/byval freshness, x86 Route6
 freshness integration, and broader shared-prealloc operand authority.
 
@@ -136,8 +175,24 @@ freshness integration, and broader shared-prealloc operand authority.
   route claimed for the MVP.
 - Equal-rank matching authorities intentionally fail closed as
   `ambiguous_candidate`.
+- A full-suite hook-produced baseline candidate repeatedly failed the unrelated
+  `string_authority_guard` workflow; it was rejected each time. Backend
+  acceptance proof is green and monotonic for the chosen MVP scope.
 
 ## Proof
 
-No validation was required or run for this todo-only inventory packet. No
-`test_after.log` was created because no implementation files were edited.
+Command:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
+```
+
+Result: passed, `100% tests passed, 0 tests failed out of 346`.
+
+Regression guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed with `passed=346 failed=0 total=346` before and after.
