@@ -1,311 +1,183 @@
-# Prepared Global Data Authority Runbook
+# Prepared Mixed Object Data Slots Runbook
 
 Status: Active
-Source Idea: ideas/open/608_prepared_global_data_authority.md
-Activated from: ideas/open/608_prepared_global_data_authority.md
+Source Idea: ideas/open/620_prepared_mixed_object_data_slots.md
+Activated from: ideas/open/620_prepared_mixed_object_data_slots.md
 
 ## Purpose
 
-Complete prepared/global authority for selected object data, prepared global
-memory facts, and direct global-symbol base-plus-offset addressing before any
-RV64 global emission work consumes those facts.
+Split the mixed object-data representation gap out of `608` and make prepared
+facts capable of carrying ordinary bytes plus relocation slots before RV64
+global emission consumes them.
 
 ## Goal
 
-Move multiple prepared/global authority rows past the current prepared stop
-while keeping RV64/global consumer rows fail-closed for the later `609` idea.
+Move at least one mixed selected object-data row past the prepared contract
+stop for a semantic prepared-fact reason, while preserving RV64 relocation and
+object-emission work for `609`.
 
 ## Core Rule
 
-Publish prepared authority facts first. Do not repair this idea by emitting
-RV64 globals, widening RV64 access support, changing expectations, or matching
-representative testcase names.
+Represent mixed object data in prepared facts first. Do not repair this idea by
+emitting RV64 relocation records, reconstructing bytes in target code, changing
+expectations, or matching representative testcase names.
 
 ## Read First
 
+- ideas/open/620_prepared_mixed_object_data_slots.md
 - ideas/open/608_prepared_global_data_authority.md
-- docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md
-- docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md
-- docs/rv64_gcc_torture_post_contract/infrastructure_bucket_evidence.md
-- src/backend/prealloc/object_data.cpp
+- ideas/open/609_rv64_global_data_consumer.md
 - src/backend/prealloc/object_data.hpp
+- src/backend/prealloc/object_data.cpp
 - src/backend/prealloc/prepared_contract_verifier.cpp
 - src/backend/prealloc/prepared_contract_verifier.hpp
-- src/backend/prealloc/addressing.hpp
-- src/backend/prealloc/stack_layout/coordinator.cpp
+- docs/prepared_fact_contracts/storage_initializer_contract_plan.md
 
 ## Current Targets
 
-- Selected global object-data contract rows: `17`, representative
-  `src/20010924-1.c`.
-- Prepared global memory facts rows: `12`, representative `src/strlen-7.c`.
-- Direct global-symbol base-plus-offset rows: `11`, representative
-  `src/pr79737-2.c`.
-- Handoff facts that later RV64/global consumer work in `609` can rely on.
+- Mixed selected global object-data row: `src/20010924-1.c`.
+- Neighboring selected object-data rows: `src/pr61517.c`,
+  `src/pr57877.c`, `src/pr57860.c`, and `src/20030224-2.c`.
+- Prepared object-data records that need ordinary emitted bytes plus relocation
+  slot offsets and target identity.
 
 ## Non-Goals
 
-- RV64 global symbol emission.
-- RV64 global access-width lowering or widening.
-- BIR global initializer bootstrap work.
-- Local memory, ABI, runtime/link, timeout, allowlist, accounting, or
-  unsupported-marker policy changes.
-- Expectation rewrites or testcase-specific matching.
+- RV64 relocation-record emission or object byte emission.
+- RV64 global symbol materialization, access-width support, or section output.
+- Prepared global memory facts and direct global-symbol base-plus-offset
+  authority parked by `608`.
+- BIR initializer bootstrap, unsupported-marker policy changes, expectations,
+  allowlists, timeouts, runtime/link behavior, or accounting.
 
 ## Working Model
 
-The global-data bucket is intentionally split across two owners. This runbook
-owns the `40` prepared/global authority rows: selected object-data contract,
-prepared global memory facts, and direct global-symbol base-plus-offset
-authority. RV64 diagnostics such as `cannot emit prepared global symbol` or
-access-width support remain target-consumer failures for `609` unless the row
-first needs missing prepared facts from this plan.
-
-Prepared object-data and memory authority should be expressed in existing
-prepared facts, contract verification, and addressing/publication helpers.
-Target code may be inspected for diagnostics, but it should not become the
-place where missing prepared facts are reconstructed.
+`PreparedGlobalObjectData` currently records whole-object bytes, zero-fill,
+and relocation presence as booleans. That is enough for simple byte-only,
+zero-fill, and relocation-only rows, but not for mixed aggregate data where
+ordinary bytes and pointer relocation slots coexist. This runbook owns the
+prepared representation and producer/contract verifier needed to describe that
+mixed object safely. Once a record is coherent, RV64 may still fail later on
+relocation-record or byte emission; that remains `609` consumer work.
 
 ## Execution Rules
 
-- Start every code packet from current failing diagnostics and nearby same
-  family rows, not from one representative testcase alone.
-- Prefer semantic prepared/global facts over special cases for individual C
-  torture files.
-- Preserve fail-closed behavior when object data, symbol identity, extent,
-  alignment, initializer bytes, zero-fill, relocation, or base-plus-offset
-  evidence is missing or contradictory.
-- Keep `todo.md` as the mutable executor state. Do not rewrite this runbook
-  for routine packet progress.
-- For code-changing steps, prove with a fresh build or compile proof plus the
-  supervisor-selected narrow RV64 gcc-torture subset.
-- Escalate to broader validation when one packet touches shared prepared
-  contract or addressing helpers used outside global data.
+- Start every code packet from captured prepared facts and current diagnostics,
+  not from one representative testcase alone.
+- Keep schema additions explicit: relocation slots must carry byte offset,
+  size when known, and target identity.
+- Preserve fail-closed diagnostics for missing symbols, missing offsets,
+  overlapping bytes and relocation slots, unknown extent, contradictory
+  initializer evidence, unsupported markers, and unresolved target identity.
+- Do not move object emission or relocation-record production into RV64 target
+  code as a substitute for prepared facts.
+- Prove code changes with a fresh build plus the supervisor-selected narrow
+  RV64 gcc-torture allowlist.
+- Escalate to broader validation if the schema or verifier change affects
+  byte-only, zero-fill, or relocation-only object-data rows outside the narrow
+  mixed set.
 
 ## Ordered Steps
 
-### Step 1: Inventory prepared/global authority blockers
+### Step 1: Inventory mixed object-data fact gap
 
-Goal: identify which current rows are missing prepared authority facts and
-which rows are already prepared but blocked only by later RV64 consumption.
+Goal: capture the exact prepared facts and diagnostics for the mixed row and
+neighboring selected object-data rows before changing schema or producer code.
 
 Primary targets:
-- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
 - `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
-- diagnostics from `src/backend/prealloc/prepared_contract_verifier.cpp`
-- diagnostics in `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `src/backend/prealloc/object_data.hpp`
+- `src/backend/prealloc/object_data.cpp`
+- `src/backend/prealloc/prepared_contract_verifier.cpp`
 
 Actions:
-- Inspect the current selected object-data, prepared global memory, and direct
-  global-symbol base-plus-offset diagnostics.
-- Pick a narrow representative set that covers at least two prepared authority
-  families when possible.
-- Record in `todo.md` which rows are authority-owned and which must stay
-  RV64/global consumer failures for `609`.
-- Identify the existing prepared facts and helpers that should own each
-  missing fact before implementation.
+- Inspect `src/20010924-1.c` and at least two neighboring selected object-data
+  rows from the current allowlist.
+- Record current `PreparedGlobalObjectData` fields for object label, size,
+  alignment, emitted bytes, zero fill, relocation booleans, unsupported marker,
+  and contract status.
+- Identify where BIR initializer evidence contains ordinary bytes and pointer
+  relocation entries, including expected slot offsets and target symbols.
+- Decide whether the first implementation packet should add schema, producer
+  population, verifier checks, or a smaller prerequisite.
+- Keep all evidence in `todo.md`; do not edit code in this inventory packet.
 
 Completion check:
-- `todo.md` names the exact Step 1 evidence set, candidate rows, and first
-  implementation target without broadening into RV64 emission.
+- `todo.md` names the first missing prepared fact, the representative rows,
+  and the exact proof command for the implementation packet.
 
-### Step 2: Publish prepared global memory facts
+### Step 2: Add explicit relocation-slot prepared facts
 
-Goal: make supported global load/store memory accesses carry prepared facts
-that RV64 can consume later without reconstructing address provenance.
-
-Route status: parked after evidence-gated executor review. Captured predicate
-inputs for `src/strlen-7.c` and `src/20000703-1.c` showed the first visible
-missing field was `layout_authority=unknown`; a narrow prepared producer
-experiment could publish `ByteStorageAggregate` in prepared dumps, but the
-exact allowlist proof stayed at `0/7` with unchanged
-`requires supported prepared global memory facts` diagnostics. Do not repeat
-that helper-only publication route unless a future 608-owned packet can name a
-different prepared fact and prove diagnostic movement without touching RV64
-consumer/emission code.
+Goal: extend prepared object-data facts so mixed records can represent
+relocation slots without overloading whole-object relocation booleans.
 
 Primary targets:
-- `src/backend/prealloc/addressing.hpp`
-- `src/backend/prealloc/stack_layout/coordinator.cpp`
-- existing prepared global load/store lookup and publication helpers.
+- `src/backend/prealloc/object_data.hpp`
+- `src/backend/prealloc/prepared_contract_verifier.cpp`
+- existing object-data helper tests or narrow compiler proof selected by the
+  supervisor
 
 Actions:
-- Before editing code, capture the exact `PreparedAddress` / `PreparedMemoryAccess`
-  predicate inputs that make
-  `prepared_global_symbol_memory_has_publication_authority()` fail for at
-  least two supported prepared global memory rows.
-- Trace global load/store lanes from BIR values through prepared address and
-  memory-access facts.
-- Add or repair authority publication for supported global-symbol memory
-  accesses only when the captured evidence shows a missing prepared fact within
-  this plan's ownership: symbol identity, base-plus-offset eligibility, offset,
-  size, alignment, object extent, requested range, range verdict, or layout
-  authority.
-- Keep access-width legality and final instruction emission out of scope.
-- Preserve fail-closed diagnostics for ambiguous symbols, missing identity,
-  unsupported widths, missing initializer/layout facts, and policy-sensitive
-  cases.
-- If the predicate inputs already show complete prepared authority but the row
-  still stops at an RV64 object-route diagnostic, stop and return the evidence
-  for lifecycle routing instead of editing RV64 consumer/emission code.
-- Reject helper-only publication changes that leave the same rows at the exact
-  `requires supported prepared global memory facts` diagnostic.
+- Add a prepared relocation-slot record with byte offset, width or byte size
+  when known, and target identity.
+- Keep `requires_relocation` and `has_relocation` semantics compatible with
+  existing relocation-only rows.
+- Teach the verifier to reject missing, duplicate, overlapping, out-of-range,
+  or targetless relocation slots.
+- Preserve existing byte-only, zero-fill, unsupported, and relocation-only
+  diagnostics.
 
 Completion check:
-- This step remains blocked unless at least one supported prepared global
-  memory-facts row moves past the exact `requires supported prepared global
-  memory facts` stop for a semantic prepared-authority reason. If the row
-  remains at the same object-route diagnostic after prepared facts are
-  complete, preserve the evidence as a handoff note and keep the RV64 consumer
-  work for `609`.
+- Schema and verifier changes build, existing relocation-only selected
+  object-data progress is preserved, and no mixed row is marked coherent until
+  producer data actually supplies slots and bytes.
 
-### Step 3: Complete direct global-symbol base-plus-offset authority
+### Step 3: Populate mixed bytes and relocation slots
 
-Goal: publish direct global-symbol base-plus-offset authority for rows where
-symbol identity and byte offset are semantically known.
-
-Route status: parked after evidence-gated executor review. Captured prepared
-inputs for `src/pr79737-2.c` and neighboring `src/pr82387.c` showed direct
-global-symbol accesses already had constant offsets, nonzero size/alignment,
-`base_plus_offset=yes`, and proven ranges; the first visible missing field was
-`layout_authority=unknown`. A narrow prepared producer experiment could publish
-`ByteStorageAggregate` for the aggregate/bitfield accesses, but the exact
-allowlist proof stayed at `0/5` with unchanged `requires prepared direct
-global-symbol base-plus-offset memory addressing` diagnostics. Do not repeat
-that helper-only publication route unless a future 608-owned packet can name a
-different prepared fact and prove diagnostic movement without touching RV64
-consumer/emission code.
-
-Primary targets:
-- `src/backend/prealloc/addressing.hpp`
-- `src/backend/prealloc/stack_layout/coordinator.cpp`
-- selected-address and address-materialization helpers.
-
-Actions:
-- Inspect how direct global-symbol addresses are resolved and represented in
-  prepared address facts.
-- Repair the prepared authority path for direct symbol plus constant offset
-  where the global, offset, range, and use are all known.
-- Do not treat relocation/materialization facts as pointer freshness authority.
-- Keep GOT/TLS, target relocation emission, and RV64 materialization policy out
-  of this step unless they already exist as prepared facts that must be
-  preserved.
-- If captured predicate inputs already show complete direct global-symbol
-  base-plus-offset authority but the row still stops at an RV64 object-route
-  diagnostic, stop and return the evidence for lifecycle routing instead of
-  editing RV64 consumer/emission code.
-- Reject helper-only layout-authority publication changes that leave the same
-  rows at the exact `requires prepared direct global-symbol base-plus-offset
-  memory addressing` diagnostic.
-
-Completion check:
-- This step remains blocked unless at least one direct global-symbol
-  base-plus-offset row moves past the exact direct base-plus-offset diagnostic
-  for a semantic prepared-authority reason. If the row remains at the same
-  object-route diagnostic after prepared facts are complete, preserve the
-  evidence as a handoff note and keep the RV64 consumer work for `609`.
-
-### Step 4: Complete selected global object-data authority
-
-Goal: make selected global object-data rows publish coherent authority for
-label, identity, extent, alignment, emitted bytes, zero-fill, relocation, and
-unsupported-marker state.
-
-Route status: accepted relocation-only pointer object-data progress. The
-`src/921110-1.c` row moved past the prepared selected object-data contract stop
-to the RV64 relocation-record consumer diagnostic after one-slot pointer object
-data began publishing relocation-required/relocation-present authority.
-Neighboring mixed or aggregate rows remain fail-closed at the prepared contract
-stop unless prepared emitted bytes plus relocation slots can be represented
-safely. Do not route the remaining relocation-record consumer work into this
-plan.
+Goal: populate coherent mixed prepared object-data from BIR initializer/global
+layout evidence.
 
 Primary targets:
 - `src/backend/prealloc/object_data.cpp`
-- `src/backend/prealloc/object_data.hpp`
-- `src/backend/prealloc/prepared_contract_verifier.cpp`
-- `src/backend/prealloc/prepared_contract_verifier.hpp`
+- BIR global initializer element fields that carry byte values and pointer
+  symbol references
 
 Actions:
-- Audit how `PreparedGlobalObjectData` is populated from BIR globals.
-- Repair missing or contradictory prepared object-data facts only where the BIR
-  initializer and global layout evidence supports them.
-- Preserve explicit unsupported or invalid-prepared diagnostics when the
-  initializer facts are absent or out of scope.
-- Avoid moving byte emission into RV64 as a substitute for prepared authority.
+- Convert initializer evidence into emitted byte spans plus relocation slots
+  only when object size, alignment, slot offset, slot target, and ordinary byte
+  ranges are known.
+- Preserve fail-closed unsupported records for partial, ambiguous, TLS/GOT,
+  thread-local, extern-only, or contradictory initializer forms.
+- Avoid reconstructing target relocation records or section bytes in RV64.
+- Keep the implementation semantic across the mixed family, not special-cased
+  to `src/20010924-1.c`.
 
 Completion check:
-- At least one selected global object-data family row advances past the
-  prepared object-data contract stop, and nearby rows either advance for the
-  same semantic reason or retain a precise fail-closed diagnostic.
+- At least one mixed selected object-data row moves past the prepared contract
+  stop for the new prepared facts, and neighboring rows either move for the
+  same rule or retain precise fail-closed diagnostics.
 
-### Step 5: Prove prepared authority handoff and preserve the split
+### Step 4: Prove handoff back to global-data consumers
 
-Goal: demonstrate that this plan improved prepared/global authority without
-absorbing the later RV64/global consumer idea.
-
-Route status: complete. The handoff proof recorded accepted selected
-object-data movement for `src/921110-1.c`, parked Step 2 and Step 3 as
-non-moving evidence, and preserved RV64 relocation/global consumer work for
-`609`. This does not close the source idea because remaining selected
-object-data rows still need prepared mixed emitted-bytes plus relocation-slot
-authority before they can be marked coherent.
+Goal: record the split between coherent prepared mixed object data and later
+RV64 object emission/relocation consumption.
 
 Primary targets:
-- selected global object-data rows
-- selected prepared global memory facts rows
-- selected direct global-symbol base-plus-offset rows
-- neighboring RV64/global consumer rows for split preservation
+- mixed selected object-data allowlist
+- `todo.md`
+- `ideas/open/608_prepared_global_data_authority.md` if the supervisor asks
+  for lifecycle closure or reactivation
 
 Actions:
-- Run the supervisor-selected narrow RV64 gcc-torture proof after each code
-  packet.
-- Re-run the selected object-data proof around the Step 4 relocation-only row
-  and record the diagnostic movement from prepared contract stop to RV64
-  relocation-record consumer stop.
-- Include the parked Step 2 and Step 3 evidence showing that helper-only
-  `ByteStorageAggregate` publication did not move the exact prepared-memory or
-  direct base-plus-offset diagnostics.
-- Confirm proof covers more than one prepared authority family where possible.
-- Confirm global symbol emission and global access-width rows remain classified
-  as RV64/global consumer work unless missing prepared authority was the real
-  first owner.
-- Update `todo.md` with proof commands, results, and remaining handoff notes.
+- Re-run the supervisor-selected narrow proof after implementation.
+- Record rows that moved from the prepared selected object-data contract stop
+  to a later RV64 consumer diagnostic.
+- Confirm remaining RV64 relocation-record, byte emission, symbol
+  materialization, and access-width diagnostics stay assigned to `609`.
+- Return to the supervisor for lifecycle routing; do not close `608` unless
+  delegated and the source idea criteria are satisfied.
 
 Completion check:
-- Prepared/global authority movement and parked evidence are recorded in
-  `todo.md`, the remaining prepared stops are named precisely, and `609`
-  remains the follow-up owner for RV64 global emission, relocation-record
-  consumption, or access-width consumption.
-
-### Step 6: Represent mixed object-data bytes plus relocation slots
-
-Goal: make mixed aggregate object data publish prepared authority only when
-ordinary emitted bytes and relocation slots are both represented coherently.
-
-Primary targets:
-- `src/backend/prealloc/object_data.cpp`
-- `src/backend/prealloc/object_data.hpp`
-- `src/backend/prealloc/prepared_contract_verifier.cpp`
-- `src/backend/prealloc/prepared_contract_verifier.hpp`
-
-Actions:
-- Start from `src/20010924-1.c` and at least one neighboring selected
-  object-data row that still stops at the prepared contract diagnostic.
-- Capture the current `PreparedGlobalObjectData` facts before editing, with
-  emphasis on emitted byte spans, relocation slots, zero-fill, symbol identity,
-  extent, alignment, and unsupported-marker state.
-- Add or repair prepared object-data representation only for facts that are
-  present in BIR initializer/global layout evidence.
-- Preserve fail-closed diagnostics when a mixed aggregate cannot yet represent
-  both emitted bytes and relocation slots safely.
-- Keep RV64 byte emission, relocation-record emission, symbol materialization,
-  and access-width policy out of scope; those remain `609` consumer work once
-  prepared facts are coherent.
-
-Completion check:
-- At least one mixed selected object-data row moves past the prepared selected
-  object-data contract stop for a semantic prepared-authority reason, or the
-  executor returns evidence showing the remaining stop is not representable in
-  current prepared facts without a separate source idea. Nearby rows either
-  move for the same reason or retain precise fail-closed diagnostics.
+- `todo.md` records the movement, remaining parked rows, and handoff owner.
+  The source idea can be closed or reactivated only through a separate
+  plan-owner close/route decision.
