@@ -22131,8 +22131,8 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   prepared = make_prepared_frame_slot_address_arg_call_module();
   duplicate = prepared.addressing.functions[0].address_materializations[0];
   prepared.addressing.functions[0].address_materializations.push_back(duplicate);
-  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
-    return 1;
+  if (!rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected identical duplicate frame-slot address materialization facts to remain admissible for prepared call arguments");
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();

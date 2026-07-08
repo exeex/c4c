@@ -3976,7 +3976,7 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
       continue;
     }
     if (selected != nullptr) {
-      return std::nullopt;
+      continue;
     }
     selected = materialization;
   }
