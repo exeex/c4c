@@ -4089,6 +4089,58 @@ std::optional<std::int32_t> prepared_frame_slot_value_home_call_argument_offset(
   return static_cast<std::int32_t>(offset);
 }
 
+std::optional<std::int32_t> prepared_explicit_scalar_frame_slot_call_argument_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    c4c::backend::bir::TypeKind argument_type,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      argument.source_register_name.has_value() ||
+      argument.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      !argument.source_value_id.has_value() ||
+      !argument.source_slot_id.has_value() ||
+      !argument.source_stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto size_bytes = rv64_scalar_memory_size_for_type(argument_type);
+  const auto* source_home =
+      prepared_value_home_for_id(lookups, *argument.source_value_id);
+  if (!size_bytes.has_value() || source_home == nullptr ||
+      source_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !source_home->slot_id.has_value() ||
+      *source_home->slot_id != *argument.source_slot_id ||
+      !source_home->offset_bytes.has_value() ||
+      *source_home->offset_bytes != *argument.source_stack_offset_bytes) {
+    return std::nullopt;
+  }
+
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *source_home->slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      slot_it->offset_bytes != *source_home->offset_bytes ||
+      slot_it->size_bytes < *size_bytes ||
+      slot_it->align_bytes > *size_bytes) {
+    return std::nullopt;
+  }
+
+  const auto offset = *source_home->offset_bytes;
+  if (offset > stack_frame_bytes ||
+      stack_frame_bytes - offset < *size_bytes ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+  return static_cast<std::int32_t>(offset);
+}
+
 std::optional<std::int32_t> prepared_sret_memory_return_argument_address_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -4695,7 +4747,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     if (argument.source_selection.has_value() &&
         argument.source_selection->kind ==
             prepare::PreparedCallArgumentSourceSelectionKind::
-                LocalFrameAddressMaterialization) {
+                LocalFrameAddressMaterialization &&
+        argument.source_encoding != prepare::PreparedStorageEncodingKind::Register) {
       const auto offset =
           prepared_frame_slot_address_call_argument_offset(stack_layout,
                                                            lookups,
@@ -4713,6 +4766,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                 *offset));  // addi rd, sp, off
       continue;
     }
+    const bool scalar_gpr_frame_slot_argument =
+        argument.value_bank == prepare::PreparedRegisterBank::Gpr &&
+        argument.source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot;
     if (argument.source_selection.has_value() &&
         argument.source_selection->kind ==
             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
@@ -4724,43 +4780,46 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                                                 function_name,
                                                                 argument,
                                                                 stack_frame_bytes);
-      if (!publication.has_value()) {
+      if (!publication.has_value() && scalar_gpr_frame_slot_argument) {
+        // Fall through to explicit scalar frame-slot source handling below.
+      } else if (!publication.has_value()) {
         return std::nullopt;
-      }
-      const std::uint32_t scratch = rv64_temporary_gpr_avoiding(*destination);
-      if (publication->payload_address_offset.has_value()) {
-        append_le32(fragment.bytes,
-                    encode_i_type(0x13,
-                                  scratch,
-                                  0,
-                                  2,
-                                  *publication->payload_address_offset));  // addi rd, sp, off
-      } else if (publication->payload_value.has_value()) {
-        if (!append_rv64_move_value_to_register(fragment,
-                                                scratch,
-                                                stack_layout,
-                                                prepared.names,
-                                                lookups,
-                                                *publication->payload_value,
-                                                stack_frame_bytes)) {
+      } else {
+        const std::uint32_t scratch = rv64_temporary_gpr_avoiding(*destination);
+        if (publication->payload_address_offset.has_value()) {
+          append_le32(fragment.bytes,
+                      encode_i_type(0x13,
+                                    scratch,
+                                    0,
+                                    2,
+                                    *publication->payload_address_offset));  // addi rd, sp, off
+        } else if (publication->payload_value.has_value()) {
+          if (!append_rv64_move_value_to_register(fragment,
+                                                  scratch,
+                                                  stack_layout,
+                                                  prepared.names,
+                                                  lookups,
+                                                  *publication->payload_value,
+                                                  stack_frame_bytes)) {
+            return std::nullopt;
+          }
+        } else {
           return std::nullopt;
         }
-      } else {
-        return std::nullopt;
+        if (!append_rv64_store_register_to_stack(fragment,
+                                                 scratch,
+                                                 publication->destination_offset,
+                                                 8)) {
+          return std::nullopt;
+        }
+        append_le32(fragment.bytes,
+                    encode_i_type(0x13,
+                                  *destination,
+                                  0,
+                                  2,
+                                  publication->address_offset));  // addi rd, sp, off
+        continue;
       }
-      if (!append_rv64_store_register_to_stack(fragment,
-                                               scratch,
-                                               publication->destination_offset,
-                                               8)) {
-        return std::nullopt;
-      }
-      append_le32(fragment.bytes,
-                  encode_i_type(0x13,
-                                *destination,
-                                0,
-                                2,
-                                publication->address_offset));  // addi rd, sp, off
-      continue;
     }
     const bool symbolic_call_argument =
         argument.source_encoding ==
@@ -4836,7 +4895,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         }
         case prepare::PreparedCallArgumentSourceSelectionKind::
             LocalFrameAddressMaterialization:
+          if (argument.source_encoding ==
+              prepare::PreparedStorageEncodingKind::Register) {
+            break;
+          }
+          return std::nullopt;
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+          if (scalar_gpr_frame_slot_argument) {
+            break;
+          }
+          return std::nullopt;
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
           return std::nullopt;
       }
@@ -4875,6 +4943,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                                    stack_frame_bytes);
       if (!offset.has_value()) {
         offset = prepared_frame_slot_value_home_call_argument_offset(
+            stack_layout,
+            lookups,
+            argument,
+            call.arg_types[arg_index],
+            stack_frame_bytes);
+      }
+      if (!offset.has_value() && scalar_gpr_frame_slot_argument) {
+        offset = prepared_explicit_scalar_frame_slot_call_argument_offset(
             stack_layout,
             lookups,
             argument,

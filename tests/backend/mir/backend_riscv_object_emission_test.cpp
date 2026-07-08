@@ -21597,6 +21597,54 @@ int builds_prepared_local_register_arg_call_object() {
   return 0;
 }
 
+int builds_prepared_local_register_arg_call_with_address_provenance_object() {
+  auto prepared = make_prepared_local_register_arg_call_module();
+  auto& args = prepared.call_plans.functions[0].calls[0].arguments;
+  args[0].source_selection = prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization,
+      .source_value_id = prepare::PreparedValueId{4},
+      .source_value_name = prepared.names.value_names.find("%main.x"),
+      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      .source_size_bytes = 4,
+      .source_align_bytes = 4,
+      .address_materialization_block_label =
+          prepared.names.block_labels.find("entry"),
+      .address_materialization_inst_index = std::size_t{4},
+  };
+  args[1].source_selection = prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization,
+      .source_value_id = prepare::PreparedValueId{5},
+      .source_value_name = prepared.names.value_names.find("%main.y"),
+      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      .source_size_bytes = 4,
+      .source_align_bytes = 4,
+      .address_materialization_block_label =
+          prepared.names.block_labels.find("entry"),
+      .address_materialization_inst_index = std::size_t{4},
+  };
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared register-storage call args with address provenance to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* callee = object::find_symbol(*module, "add_pair");
+  const auto* main = object::find_symbol(*module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr ||
+      module->relocations.size() != 1 ||
+      module->relocations[0].symbol != callee->id) {
+    return fail("expected address-provenance register args to preserve same-module call relocation");
+  }
+  const std::size_t call_offset = module->relocations[0].offset;
+  if (read_u32(text->bytes, call_offset - 8) != 0x00028513 ||
+      read_u32(text->bytes, call_offset - 4) != 0x00048593) {
+    return fail("expected address-provenance register args to move scalar registers, not materialize addresses");
+  }
+  return 0;
+}
+
 int builds_prepared_frame_slot_value_arg_call_object() {
   const auto prepared = make_prepared_frame_slot_value_arg_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -21629,6 +21677,32 @@ int builds_prepared_frame_slot_value_arg_call_object() {
       ((store >> 15) & 0x1fU) != 2U || ((store >> 20) & 0x1fU) != 30U ||
       read_u32(text->bytes, module->relocations[0].offset - 4) != 0x01013503) {
     return fail("expected frame-slot payload store and reload into a0 before call");
+  }
+  return 0;
+}
+
+int builds_prepared_frame_slot_value_arg_call_with_address_provenance_object() {
+  auto prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->kind =
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_register_bank =
+      prepare::PreparedRegisterBank::Gpr;
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared frame-slot scalar arg with address provenance to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* sink = object::find_symbol(*module, "sink");
+  if (text == nullptr || sink == nullptr || module->relocations.size() != 1 ||
+      module->relocations[0].symbol != sink->id) {
+    return fail("expected address-provenance frame-slot arg to preserve same-module call relocation");
+  }
+  if (read_u32(text->bytes, module->relocations[0].offset - 4) != 0x01013503) {
+    return fail("expected address-provenance frame-slot arg to load scalar stack value");
   }
   return 0;
 }
@@ -26150,7 +26224,11 @@ int main() {
   status |= reports_prepared_select_publication_move_bundle_fragment_diagnostic();
   status |= publishes_select_publication_stack_home_move_intent_fields();
   status |= builds_prepared_local_register_arg_call_object();
+  status |=
+      builds_prepared_local_register_arg_call_with_address_provenance_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
+  status |=
+      builds_prepared_frame_slot_value_arg_call_with_address_provenance_object();
   status |=
       builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();

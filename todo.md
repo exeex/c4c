@@ -8,96 +8,74 @@ Current Step Title: Broaden Within ABI Consumer Authority
 
 ## Just Finished
 
-Completed the Step 4 residual refresh for adjacent ABI consumer authority after
-Step 2 and Step 3 exhaustion. No implementation files were touched.
+Completed the Step 4 scalar GPR same-module call/result consumer packet in
+RV64 object emission.
 
-Fresh focused probes ran
-`build/c4cll --codegen obj --target riscv64-linux-gnu -o /tmp/...` over the
-current ABI-adjacent case set selected from the RV64 torture backend logs. The
-current focused classification is:
+The object route now treats explicit scalar GPR source storage as authoritative
+when address-provenance selections are also present:
 
-- `47` rows still stop at `unsupported_call_abi`.
-- `12` rows still stop at `unsupported_stack_frame`: `src/20020314-1.c`,
-  `src/20021113-1.c`, `src/20040223-1.c`, `src/20040811-1.c`,
-  `src/20190820-1.c`, `src/920721-2.c`, `src/920929-1.c`,
-  `src/alloca-1.c`, `src/pr36321.c`, `src/pr43220.c`, `src/strcpy-2.c`, and
-  `src/vla-dealloc-1.c`.
-- `36` probed move-bundle target rows are not Step 4 ABI consumer work. The
-  two return-ABI rows, `src/20001130-2.c` and `src/20080719-1.c`, still stop at
-  `reason=return_stack_to_register` with `destination_kind=function_return_abi`,
-  `destination_storage=register`, `source_home_kind=stack_slot`, and
-  `destination_home_kind=stack_slot`; these remain missing prepared return
-  destination-home authority.
-- `src/20021219-1.c` remains past `unsupported_call_abi` and now stops at
-  `malformed_prepared_join_transfer_carrier`.
-- `src/pr77767.c` still compiles through the focused RV64 object probe.
+- Register sources with `local_frame_address_materialization` provenance now
+  move the prepared source register to `a0`-`a7` instead of incorrectly trying
+  to materialize a frame address.
+- Frame-slot sources with `frame_slot_address` provenance still use the
+  existing address-publication route when publication facts exist; otherwise a
+  new fail-closed explicit scalar frame-slot helper loads only when the prepared
+  source value id, source slot id, stack offset, GPR bank, stack home, slot
+  bounds, scalar width, and destination register facts all agree.
+- Existing scalar GPR result publication from `register:a0` to prepared
+  destination registers and non-pointer stack slots remained covered by the
+  prior consumer path.
 
-Prepared callsite dumps for the `unsupported_call_abi` rows show real Step 4
-breadth with complete published consumer facts:
+Focused probes after the change:
 
-- Scalar GPR calls with prepared stack-slot argument sources and argument
-  registers, for example `src/20001017-2.c` publishes
-  `arg3 bank=gpr from=frame_slot:stack+24 to=a3`, `src/20001101.c` publishes
-  `arg1 bank=gpr from=frame_slot:stack+40 to=a1` plus
-  `result bank=gpr from=register:a0 to=register:t0`, and
-  `src/20030715-1.c` publishes `arg1 bank=gpr from=frame_slot:stack+48 to=a1`
-  plus a concrete stack-slot result destination.
-- Scalar GPR result transport has breadth: the focused dump found `28`
-  `result bank=gpr from=register:a0 to=register:t0` rows and multiple concrete
-  `register:a0` to `stack_slot:stack+...` result destinations.
-- Aggregate-address stack/frame call rows remain visible, including
-  `931004-*`/`931031-1.c`, but those are not the first Step 4 packet because
-  they overlap outgoing aggregate transport and producer gaps already split to
-  idea 624.
+- `src/20001017-2.c` now compiles through `--codegen obj`.
+- `src/20010118-1.c` now compiles through `--codegen obj`.
+- `src/20001101.c` moved past `unsupported_call_abi` to
+  `unsupported_terminator_fragment`.
+- `src/20040625-1.c` moved past `unsupported_call_abi` to a downstream
+  `unsupported_move_bundle_target_shape` register/pointer-base stack
+  destination.
+- `src/20030715-1.c` still stops at `unsupported_call_abi`; the remaining
+  shape is pointer call result to prepared stack slot, and removing that guard
+  broke an existing fail-closed test, so it was left out of this packet.
 
-Conclusion: Step 4 has adjacent ordinary ABI consumer breadth. The next
-implementation packet should target complete-fact scalar GPR call argument and
-result transport, not producer-authority or policy rows.
+Focused tests added coverage for register and frame-slot scalar sources that
+carry address-provenance selections without weakening true frame-slot address
+publication handling.
 
 ## Suggested Next
 
-Implement the Step 4 scalar GPR same-module call/result consumer packet in RV64
-object emission. The packet should consume only explicit prepared callsite
-facts for:
-
-- GPR argument transport from `register:*`, `frame_slot:stack+...`, and simple
-  immediate sources to `a0`-`a7`.
-- GPR result transport from `register:a0` to a prepared destination register or
-  prepared destination stack slot.
-- Concrete preservation rows already published by prepared callsite summaries.
-
-Representative positives: `src/20001017-2.c`, `src/20001101.c`,
-`src/20010118-1.c`, `src/20030715-1.c`, and `src/20040625-1.c`.
-Representative guards: `src/20000808-1.c` for idea 624 outgoing-stack
-destination offsets, `src/20020529-1.c` for idea 625 stack-slot preservation
-source publication, `src/20040811-1.c`/`src/pr43220.c` for idea 626 frame
-save-slot placement, `src/20001130-2.c`/`src/20080719-1.c` for prepared return
-destination-home authority, and `src/20021219-1.c` for downstream
-join-transfer carrier authority.
+Refresh Step 4 residuals after the scalar GPR argument/source-storage slice.
+Classify whether any remaining same-authority ABI consumer packet exists, or
+advance to Step 5 residual split/close-readiness if remaining rows are pointer
+stack-result policy, producer authority, FPR/frame policy, aggregate outgoing
+stack transport, generic move-bundle, local/global, runtime/library/variadic,
+or terminator/instruction-fragment owners.
 
 ## Watchouts
 
-- Keep `src/20000808-1.c` under idea 624 and `src/20020529-1.c` under idea
-  625; do not reclassify missing prepared authority as RV64 consumer progress.
-- Keep dynamic/fixed frame callee-saved save-slot placement production under
-  idea 626; do not infer save slots in RV64 object emission.
-- Do not infer return destination home authority for `src/20001130-2.c` or
-  `src/20080719-1.c`; their before-return rows remain producer-authority gaps.
-- Do not fold aggregate-address outgoing stack transport, FPR call/result
-  policy, generic move-bundle authority production, local/global producer
-  repair, runtime/library/variadic policy, or named-case-only call handling
-  into the scalar GPR Step 4 packet.
-- Preserve Step 2 positive/downstream guards: `src/20000603-1.c`,
-  `src/20021219-1.c`, and `src/pr77767.c`.
-- `src/20020314-1.c` remains a compatibility watchout with FPR-heavy
-  frame/call details; do not fold FPR dynamic-frame handling into the first GPR
-  dynamic-frame packet.
+- `src/20000808-1.c` remains under idea 624 at `unsupported_call_abi`.
+- `src/20020529-1.c` remains under idea 625 at `unsupported_call_abi`.
+- `src/20040811-1.c` remains under idea 626 at `unsupported_stack_frame`.
+- `src/20001130-2.c` and `src/20080719-1.c` remain return destination-home
+  authority gaps under `return_stack_to_register` move-bundle ownership.
+- `src/20021219-1.c` remains downstream
+  `malformed_prepared_join_transfer_carrier`; `src/pr77767.c` still compiles.
+- Do not infer pointer stack-result policy from `src/20030715-1.c`; it needs a
+  separate decision because the existing pointer stack-result guard is covered
+  by a fail-closed object-emission test.
 
 ## Proof
 
-Ran exactly:
+Focused proof:
+
+`cmake --build --preset default --target c4cll backend_riscv_object_emission_test && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'`
+
+Result: passed.
+
+Supervisor-delegated proof ran exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: passed, `346/346` backend tests; `test_after.log` reports
-`100% tests passed, 0 tests failed out of 346` and is the preserved proof log.
+Result: passed, `346/346` backend tests. `test_after.log` reports
+`100% tests passed, 0 tests failed out of 346`.
