@@ -2,9 +2,9 @@
 
 Status: Open
 Type: Implementation
-Parent: `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
-- `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+- `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 - `docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`
 - `docs/rv64_gcc_torture_1000_pass_recovery/high_yield_followup_plan.md`
 Owning Layer: Prepared frame authority producer

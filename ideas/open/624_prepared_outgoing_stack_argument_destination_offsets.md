@@ -2,14 +2,14 @@
 
 Status: Open
 Type: Implementation
-Parent: `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
 - `review/613_step2_byval_outgoing_stack_slice_review.md`
-- `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+- `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Owning Layer: prepared call-boundary authority production
 Queue Order: 23
 Prerequisites: ordinary call argument preparation must already identify byval or stack-copy aggregate argument payloads and their outgoing stack area
-Estimated Evidence Breadth: current blocker includes `src/20000808-1.c`; refresh diagnostics before implementation
+Estimated Evidence Breadth: current blockers include `src/20000808-1.c` plus broader aggregate/outgoing-stack argument transport rows; refresh diagnostics before implementation
 Proof Surface: prepared call argument move/binding facts, outgoing stack-area destination offsets, and RV64 call ABI consumer fail-closed guards
 
 ## Goal
@@ -25,6 +25,12 @@ consumer for complete byval outgoing-stack facts, but the representative real
 row `src/20000808-1.c` still lacked prepared destination stack offsets on the
 call-argument move or binding facts. That missing authority belongs to the
 prepared call-boundary producer layer, not to the RV64 consumer.
+
+Step 5 close-readiness classification for idea 613 also assigned adjacent
+aggregate/outgoing-stack argument transport rows such as the `931004-*`
+family, `src/931031-1.c`, `src/950607-2.c`, and `src/pr69447.c` to this
+authority route. Those examples are breadth evidence for outgoing stack
+destination publication, not named-case implementation targets.
 
 ## In Scope
 

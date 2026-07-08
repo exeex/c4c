@@ -2,9 +2,9 @@
 
 Status: Open
 Type: Implementation
-Parent: `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
-- `ideas/open/613_abi_call_result_stack_frame_lowering.md`
+- `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Owning Layer: prepared call-boundary authority production
 Queue Order: 24
 Prerequisites: ordinary call preservation planning must identify live values that must survive a call and their concrete source/destination endpoints

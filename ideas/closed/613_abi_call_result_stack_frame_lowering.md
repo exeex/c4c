@@ -1,6 +1,6 @@
 # ABI Call Result And Stack-Frame Lowering
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -23,6 +23,36 @@ consumption.
 The failure map shows `46` ordinary call ABI/result rows, `12` stack-frame
 layout rows, and `2` return move-bundle target rows. These should run after
 local/global memory prerequisites are clear.
+
+## Closure Summary
+
+Closed after the active runbook reached Step 5 residual split/close-readiness
+classification. The route repaired ordinary same-module ABI/RV64 consumer
+cases that had explicit prepared authority, including scalar GPR call/result
+transport and address-provenance-backed register/frame-slot argument sources.
+The final refreshed residual scan found no remaining complete-authority
+ABI/RV64 consumer family with meaningful breadth.
+
+Durable residual work was split to producer or policy ideas instead of being
+inferred in RV64 object emission:
+
+- `ideas/open/624_prepared_outgoing_stack_argument_destination_offsets.md`
+  covers outgoing stack destination offsets and broader aggregate/outgoing
+  stack argument transport authority.
+- `ideas/open/625_prepared_stack_slot_preservation_source_publication.md`
+  covers prepared stack-slot preservation source endpoints.
+- `ideas/open/626_prepared_dynamic_frame_callee_saved_slot_placement.md`
+  covers prepared GPR dynamic-frame callee-saved save-slot placements.
+- `ideas/open/627_pointer_stack_result_call_policy.md` covers pointer-valued
+  call results whose destination is a stack slot or aggregate home.
+- `ideas/open/628_fpr_abi_frame_policy_and_placement.md` covers FPR ABI,
+  floating frame policy, and prepared FPR frame placement authority.
+- `ideas/open/629_prepared_return_destination_home_authority.md` covers
+  prepared return destination-home publication for return move-bundle rows.
+
+The closed idea should not be reopened merely because residual rows still carry
+`unsupported_call_abi` or related labels. Those rows now require explicit
+producer/policy authority before RV64 consumer lowering can remain semantic.
 
 ## In Scope
 
