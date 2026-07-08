@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/589_direct_edge_publication_move_freshness_ownership.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: State And Encode The Ownership Rule
+Current Step ID: 3
+Current Step Title: Publish Or Locate Freshness For The Selected Route
 
 # Current Packet
 
