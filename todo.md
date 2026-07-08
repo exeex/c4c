@@ -1,50 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Write the Dependency Order to 1000
+Current Step ID: 6
+Current Step Title: Assemble the Handoff Index and Closure Notes
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5: Write the Dependency Order to 1000 by creating
-`docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md`.
-The document states the recommended activation order for ideas `602` through
-`618`, producer-before-consumer gates, which ideas must run before RV64
-consumers, the first `1000+` route, deferred and quarantined lanes, and the
-destination fan-in, runtime mismatch, and pointer/address research gates.
+Completed Step 6: Assemble the Handoff Index and Closure Notes by creating
+`docs/rv64_gcc_torture_1000_pass_recovery/index.md`. The index links the Step
+1-5 handoff docs and generated ideas `602` through `618`, summarizes the
+current `470/1467` evidence, `997` failure bucket method, high-yield route,
+architecture weak points, deferred and quarantined families, stale-count
+guidance, and recommended next lifecycle activation.
 
 ## Suggested Next
 
-Begin Step 6 in `plan.md`: assemble
-`docs/rv64_gcc_torture_1000_pass_recovery/index.md` with links to the Step
-1-5 handoff documents and generated follow-up ideas, plus closure notes for
-evidence, bucket method, generated queue, high-yield route, architecture weak
-points, deferred families, stale-count guidance, and recommended next
-lifecycle activation.
+Begin Step 7 in `plan.md`: run the final lifecycle readiness check. Confirm
+the source idea acceptance criteria are satisfied, no implementation or
+policy/accounting files changed, generated ideas carry reviewer reject
+signals, and the umbrella is ready for plan-owner closure review.
 
 ## Watchouts
 
-- This umbrella is triage and follow-up generation only; do not edit
-  implementation, harness, expectation, unsupported-marker, allowlist,
-  runtime, timeout, or accounting behavior.
-- The generated ideas intentionally split local-memory producer work,
-  prepared/global authority, RV64/global consumption, RV64/MIR consumers,
-  ABI/RV64 consumption, and recent-architecture wiring tails by owner.
-- The dependency order keeps the `125` destination fan-in rows and `72`
-  runtime mismatch rows plus `3` run timeouts behind research/ownership gates
-  before implementation.
-- Deferred or quarantined lanes should stay out of the first `1000+` route
-  unless later evidence changes their breadth or policy status.
-- Step 6 should verify all handoff docs still agree on the current `470/1467`
-  evidence and do not reuse stale `349/1467`, `425/1467`, or `438/1467`
-  counts as current.
+- Step 7 is lifecycle readiness only; do not edit implementation, harness,
+  expectation, unsupported-marker, allowlist, runtime, timeout, or accounting
+  behavior.
+- The handoff docs agree on current `470/1467`, `997` failed, and `0` missing
+  evidence; `349/1467`, `425/1467`, and `438/1467` are historical only.
+- The recommended next lifecycle activation after closure is `602` BIR
+  local-memory load semantics; `607` remains the early research gate if the
+  supervisor chooses architecture-risk reduction before implementation.
 
 ## Proof
 
-Documentation proof for Step 5:
+Documentation proof for Step 6:
 
 ```sh
-test -f docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md && rg '602|618|producer-before-consumer|1000\+|deferred|quarantined|destination fan-in|runtime mismatch|activation order' docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md
+test -f docs/rv64_gcc_torture_1000_pass_recovery/index.md && rg 'current_scan_summary|failure_bucket_map|high_yield_followup_plan|dependency_order_to_1000|602|618|470/1467|997|349/1467|recommended next lifecycle activation' docs/rv64_gcc_torture_1000_pass_recovery/index.md
 ```
+
+Proof log: `test_after.log`
