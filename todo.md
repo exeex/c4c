@@ -1,8 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/620_prepared_mixed_object_data_slots.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove handoff back to global-data consumers
+Current Step ID: 3
+Current Step Title: Populate mixed bytes and relocation slots
+你該做test baseline review了
 
 # Current Packet
 
@@ -11,9 +12,8 @@ Current Step Title: Prove handoff back to global-data consumers
 - Completed Step 3 producer population for mixed bytes plus relocation slots.
 - Added BIR `GlobalInitializerRelocationSlot` metadata and preserved aggregate
   pointer-initializer byte offsets during LIR-to-BIR lowering.
-- Interned addressable string-pool globals with BIR-local link-name identity
-  so aggregate pointer relocation slots can target `.str*` objects without
-  RV64 raw-spelling recovery.
+- Interned addressable string-pool relocation-slot targets with BIR-local
+  link-name identity without changing ordinary string literal operand identity.
 - Taught prepared object-data production to publish coherent mixed
   `emitted_bytes` plus `relocation_slots` only when object extent, alignment,
   slot offset, slot width, slot target, and ordinary byte ranges are known and

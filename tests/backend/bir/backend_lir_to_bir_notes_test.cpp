@@ -890,8 +890,6 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
 
   bool saw_good_string_arg = false;
   bool saw_bad_string_arg = false;
-  const auto good_string_id = result.module->names.link_names.intern(".str.good");
-  const auto bad_string_id = result.module->names.link_names.intern(".str.bad");
   for (const auto& block : lowered_user->blocks) {
     for (const auto& inst : block.insts) {
       const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
@@ -900,12 +898,10 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
       }
       saw_good_string_arg =
           saw_good_string_arg ||
-          call->args.front() ==
-              c4c::backend::bir::Value::named_symbol_pointer("@.str.good", good_string_id);
+          call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str.good");
       saw_bad_string_arg =
           saw_bad_string_arg ||
-          call->args.front() ==
-              c4c::backend::bir::Value::named_symbol_pointer("@.str.bad", bad_string_id);
+          call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str.bad");
     }
   }
   if (!saw_good_string_arg) {

@@ -1442,6 +1442,10 @@ void append_binary_frame_slot_result_materialization(
   });
 }
 
+[[nodiscard]] std::optional<std::string_view> direct_string_constant_name(
+    const bir::Module& module,
+    const bir::Value& value);
+
 void append_direct_global_address_materialization(PreparedNameTables& names,
                                                   PreparedAddressingFunction& function_addressing,
                                                   std::vector<PrepareNote>& notes,
@@ -1452,6 +1456,9 @@ void append_direct_global_address_materialization(PreparedNameTables& names,
                                                   std::size_t inst_index,
                                                   const bir::Value& result) {
   if (result.type != bir::TypeKind::Ptr || result.kind != bir::Value::Kind::Named) {
+    return;
+  }
+  if (direct_string_constant_name(module, result).has_value()) {
     return;
   }
   if (result.pointer_symbol_link_name_id == kInvalidLinkName) {
@@ -1574,11 +1581,18 @@ void append_string_constant_address_materialization(PreparedNameTables& names,
 [[nodiscard]] std::optional<std::string_view> direct_string_constant_name(
     const bir::Module& module,
     const bir::Value& value) {
-  if (value.type != bir::TypeKind::Ptr || value.kind != bir::Value::Kind::Named ||
-      value.name.empty() || value.name.front() != '@') {
+  if (value.type != bir::TypeKind::Ptr || value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
-  std::string_view text_name(value.name.data() + 1, value.name.size() - 1);
+  std::string_view text_name;
+  if (value.pointer_symbol_link_name_id != kInvalidLinkName) {
+    text_name = module.names.link_names.spelling(value.pointer_symbol_link_name_id);
+  } else if (!value.name.empty() && value.name.front() == '@') {
+    text_name = std::string_view(value.name.data() + 1, value.name.size() - 1);
+  }
+  if (text_name.empty()) {
+    return std::nullopt;
+  }
   for (const auto& string_constant : module.string_constants) {
     if (string_constant.name == text_name) {
       return text_name;
@@ -1609,6 +1623,29 @@ void append_pointer_value_address_materialization(PreparedNameTables& names,
                                             value,
                                             0,
                                             frame_slot_facts);
+
+  const auto text_name = direct_string_constant_name(module, value);
+  if (text_name.has_value()) {
+    const auto prepared_text_name = resolve_prepared_text_id(names, module, *text_name);
+    if (!prepared_text_name.has_value()) {
+      append_missing_address_materialization_fact(
+          notes,
+          "prepared string-constant pointer-value address materialization for '" +
+              value.name + "' is missing a string text identity");
+      return;
+    }
+    function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+        .function_name = function_name_id,
+        .block_label = block_label_id,
+        .inst_index = inst_index,
+        .kind = PreparedAddressMaterializationKind::StringConstant,
+        .result_value_name = prepared_named_value_id(names, value),
+        .text_name = *prepared_text_name,
+        .address_space = bir::AddressSpace::Default,
+    });
+    return;
+  }
+
   if (value.pointer_symbol_link_name_id != kInvalidLinkName) {
     append_direct_global_address_materialization(
         names,
@@ -1620,30 +1657,7 @@ void append_pointer_value_address_materialization(PreparedNameTables& names,
         block_label_id,
         inst_index,
         value);
-    return;
   }
-
-  const auto text_name = direct_string_constant_name(module, value);
-  if (!text_name.has_value()) {
-    return;
-  }
-  const auto prepared_text_name = resolve_prepared_text_id(names, module, *text_name);
-  if (!prepared_text_name.has_value()) {
-    append_missing_address_materialization_fact(
-        notes,
-        "prepared string-constant pointer-value address materialization for '" +
-            value.name + "' is missing a string text identity");
-    return;
-  }
-  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
-      .function_name = function_name_id,
-      .block_label = block_label_id,
-      .inst_index = inst_index,
-      .kind = PreparedAddressMaterializationKind::StringConstant,
-      .result_value_name = prepared_named_value_id(names, value),
-      .text_name = *prepared_text_name,
-      .address_space = bir::AddressSpace::Default,
-  });
 }
 
 [[nodiscard]] std::optional<BlockLabelId> resolve_label_address_target(

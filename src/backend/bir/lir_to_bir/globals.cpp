@@ -301,6 +301,7 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
         const auto target_it = global_types.find(address.global_name);
         if (target_it != global_types.end() &&
             address.byte_offset < target_it->second.storage_size_bytes &&
+            target_it->second.link_name_id != kInvalidLinkName &&
             address.link_name_id == kInvalidLinkName) {
           address.link_name_id = target_it->second.link_name_id;
         }
@@ -548,9 +549,9 @@ std::optional<bir::Global> lower_string_constant_global(
 
   bir::Global lowered;
   // The string pool exposes addressable byte data through a retained
-  // compatibility name. Module lowering interns that name as a BIR-local object
-  // identity so aggregate relocation slots can target the prepared string
-  // object without recovering raw spelling downstream.
+  // compatibility name. Ordinary string literal operands remain name-only;
+  // aggregate pointer-initializer lowering interns relocation-slot targets
+  // separately when prepared object data needs stable identity.
   lowered.name = string_constant.pool_name.front() == '@'
                      ? string_constant.pool_name.substr(1)
                      : string_constant.pool_name;
