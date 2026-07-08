@@ -160,6 +160,21 @@ void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
          global.initializer_elements.empty();
 }
 
+[[nodiscard]] bool is_link_symbol_pointer_initializer(
+    const bir::Value& value) {
+  return value.kind == bir::Value::Kind::Named &&
+         value.type == bir::TypeKind::Ptr &&
+         value.pointer_symbol_link_name_id != kInvalidLinkName;
+}
+
+[[nodiscard]] bool has_relocation_only_initializer(const bir::Global& global) {
+  return global.size_bytes == 8 && !global.initializer.has_value() &&
+         !global.initializer_symbol_name.has_value() &&
+         global.initializer_symbol_name_id == kInvalidLinkName &&
+         global.initializer_elements.size() == 1 &&
+         is_link_symbol_pointer_initializer(global.initializer_elements.front());
+}
+
 [[nodiscard]] PreparedGlobalObjectData unsupported_global_object_data(
     const PreparedBirModule& prepared,
     const bir::Global& global) {
@@ -184,6 +199,31 @@ void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
       .requires_unsupported_marker = true,
       .has_unsupported_marker = true,
       .unsupported_but_coherent = true,
+  };
+}
+
+[[nodiscard]] PreparedGlobalObjectData relocation_global_object_data(
+    const PreparedBirModule& prepared,
+    const bir::Global& global) {
+  std::string label{prepared.names.link_names.spelling(global.link_name_id)};
+  if (label.empty()) {
+    label = std::string{
+        prepared.module.names.link_names.spelling(global.link_name_id)};
+  }
+
+  return PreparedGlobalObjectData{
+      .object_label = global.link_name_id,
+      .object_label_text = std::move(label),
+      .section_kind = PreparedObjectDataSectionKind::Data,
+      .object_byte_offset = 0,
+      .object_size_bytes = global.size_bytes,
+      .align_bytes = global.align_bytes,
+      .public_symbol = true,
+      .has_object_label = true,
+      .has_publication_identity = true,
+      .has_object_byte_range = true,
+      .requires_relocation = true,
+      .has_relocation = true,
   };
 }
 
@@ -227,6 +267,11 @@ void populate_prepared_object_data_plans(PreparedBirModule& prepared) {
     }
 
     if (!bytes.has_value()) {
+      if (has_relocation_only_initializer(global)) {
+        prepared.object_data.globals.push_back(
+            relocation_global_object_data(prepared, global));
+        continue;
+      }
       if (!implicit_zero_initializer && !zero_initializer_elements) {
         prepared.object_data.globals.push_back(
             unsupported_global_object_data(prepared, global));

@@ -8,23 +8,26 @@ Current Step Title: Complete selected global object-data authority
 
 ## Just Finished
 
-- Lifecycle review parked Step 3 and advanced execution to Step 4. Step 3
-  evidence showed the visible prepared-field experiment could change prepared
-  dumps but did not move any row past the exact direct base-plus-offset
-  diagnostic, so it is a blocker note rather than accepted progress.
+- Completed Step 4's evidence-gated selected object-data packet for
+  relocation-only pointer object data.
+- Evidence captured for representative `src/20010924-1.c` and neighboring
+  `src/pr61517.c` showed all rows initially stopped at the prepared selected
+  object-data contract with `status=unsupported_but_coherent`.
+- `src/20010924-1.c` is a mixed aggregate initializer with ordinary bytes plus
+  pointer/string payload; it remains fail-closed at the prepared object-data
+  contract because this packet did not have a complete emitted-byte plus
+  relocation payload model for mixed aggregates.
+- `src/921110-1.c` advanced past the prepared contract stop after
+  `PreparedGlobalObjectData` began publishing
+  relocation-required/relocation-present authority for one-slot pointer object
+  data. Neighboring rows `src/pr61517.c`, `src/pr57877.c`, and
+  `src/pr57860.c` remain fail-closed at the prepared contract stop.
 
 ## Suggested Next
 
-- Execute Step 4 evidence-first for selected global object-data authority.
-- Capture diagnostics and prepared object-data facts for representative
-  `src/20010924-1.c` plus at least one neighboring selected object-data row.
-- Edit only `PreparedGlobalObjectData` production or prepared contract
-  verification if the evidence shows a missing 608-owned object-data fact:
-  label, identity, extent, alignment, emitted bytes, zero-fill, relocation, or
-  unsupported-marker state.
-- Stop and return evidence if the remaining issue is RV64 byte emission,
-  symbol materialization, access-width support, or another `609` consumer
-  condition.
+- Supervisor should decide whether Step 4 is complete enough to move to Step 5
+  handoff proof, or whether a separate prepared mixed-aggregate object-data
+  packet is needed for `src/20010924-1.c`.
 
 ## Watchouts
 
@@ -53,7 +56,21 @@ Current Step Title: Complete selected global object-data authority
 - Preserve explicit unsupported or invalid-prepared diagnostics when
   initializer, layout, relocation, or object-data facts are absent or out of
   scope.
+- The remaining failure for moved row `src/921110-1.c` is now an RV64
+  relocation-record consumer stop: `RV64 object route cannot emit prepared
+  relocation object data without relocation records`. That is outside this
+  executor packet and should stay with
+  `ideas/open/609_rv64_global_data_consumer.md`.
+- Do not mark mixed aggregate object data coherent until both ordinary emitted
+  bytes and relocation slots can be represented as prepared facts.
 
 ## Proof
 
-- Lifecycle-only route repair. Validation: run `git diff --check`.
+- Ran exact delegated proof:
+  `{ cmake --build --preset default && ALLOWLIST=build/agent_state/608_step4_selected_object_data.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh; } > test_after.log 2>&1`
+- Result: build succeeded; allowlist still failed overall with `0/5` passed and
+  `5/5` failed.
+- Diagnostic movement: `src/921110-1.c` moved from `prepared selected
+  object-data contract status=unsupported_but_coherent` to the RV64
+  relocation-record diagnostic. `src/20010924-1.c`, `src/pr61517.c`,
+  `src/pr57877.c`, and `src/pr57860.c` retained the prepared contract stop.
