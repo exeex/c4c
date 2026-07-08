@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/620_prepared_mixed_object_data_slots.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory mixed object-data fact gap
+Current Step ID: 2
+Current Step Title: Add explicit relocation-slot prepared facts
 
 # Current Packet
 
 ## Just Finished
 
-- Completed Step 1 inventory for the mixed object-data fact gap.
+- Advanced from Step 1 to Step 2 after completing the mixed object-data fact
+  gap inventory.
 - Evidence files captured:
   - `build/agent_state/620_step1_20010924_bir.txt`
   - `build/agent_state/620_step1_20010924_prepared_bir.txt`
@@ -27,7 +28,8 @@ Current Step Title: Inventory mixed object-data fact gap
   object-data shapes with scalar layout authority in prepared memory facts, but
   the selected object-data contract still fails closed for rows whose
   initializer evidence cannot be represented by the current object-data facts.
-- First missing prepared fact: an explicit mixed object-data relocation slot
+- Step 1 completion decision: the first missing prepared fact is explicit
+  mixed object-data relocation slot
   representation. `PreparedGlobalObjectData` currently has whole-object
   `emitted_bytes`, `zero_fill_byte_count`, and relocation booleans, but no list
   of relocation slots carrying byte offset, byte size, and target identity.
@@ -42,6 +44,13 @@ object-data verifier to reject missing, duplicate, overlapping, out-of-range,
 or targetless slots while preserving current byte-only, zero-fill,
 unsupported, and relocation-only behavior.
 
+Proof recommendation for Step 2: use focused object-data verifier/unit
+coverage if available, then run
+`ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure`.
+If the verifier/schema change affects selected object-data behavior beyond the
+object-emission bucket, escalate to the supervisor-selected mixed object-data
+allowlist after the build.
+
 ## Watchouts
 
 - Do not route RV64 relocation-record emission, byte emission, symbol
@@ -54,8 +63,10 @@ unsupported, and relocation-only behavior.
 - Preserve relocation-only object-data progress from `608`, including the
   `src/921110-1.c` move to the RV64 relocation-record consumer stop.
 - Treat `src/20010924-1.c` as a representative, not a named-case shortcut.
-- Do not populate mixed rows as coherent in Step 2; schema/verifier support
-  should land before producer population.
+- Do not populate mixed rows as coherent in Step 2; producer population belongs
+  to Step 3.
+- Step 2 should stop if it needs BIR initializer producer population or RV64
+  relocation-record emission to prove movement.
 
 ## Proof
 
