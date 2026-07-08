@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/603_bir_local_memory_store_semantics.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Local-Memory Store Production
+Current Step ID: 4
+Current Step Title: Prove Same-Family Breadth
 
 # Current Packet
 
@@ -23,7 +23,11 @@ The selected non-store guard rows and selected RV64 local-memory rows were inclu
 
 ## Suggested Next
 
-Continue Step 3/Step 4 by deciding whether the remaining `src/pr39120.c` full-file boundary belongs in this local-memory store plan or should be handed off as a separate aggregate-to-global store owner before broad same-family counting.
+Lifecycle decision: Step 3 is complete. The remaining `src/pr39120.c` full-file stop is a downstream aggregate-to-global store boundary (`store %struct.X %t0, ptr @x`) and is out of scope for this local-memory store runbook/source idea.
+
+Advance to Step 4 same-family breadth. Use the selected proof rows plus the broader local-memory store family evidence to count which rows progressed beyond the old BIR store producer stop, which rows still expose local-memory store limitations, and which rows now hand off to adjacent owners such as global-data/aggregate stores.
+
+No separate `ideas/open/*` initiative is required yet from this lifecycle decision alone; create one only if the supervisor decides aggregate/global-data store repair should become an active durable route.
 
 ## Watchouts
 
