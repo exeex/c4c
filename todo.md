@@ -1,78 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/603_bir_local_memory_store_semantics.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Reclassify Remaining In-Scope Store Ownership
+Current Step ID: 8
+Current Step Title: Repair the Next In-Scope Store Producer Subfamily
 
 # Current Packet
 
 ## Just Finished
 
-Plan-owner reclassified the blocked Step 7 before implementation. The active
-packet is now evidence-only classification of remaining in-scope local-memory
-store ownership, not implementation of local aggregate subobject stores.
+Completed revised Step 7 evidence classification after aggregate/static global handoff was split to idea 619.
 
-Why the prior packet was retired:
-- Nested local struct field stores such as `v.t.a = 1` lower into scalar leaf-slot stores.
-- Packed/bitfield local struct field stores lower into load/mask/or/store sequences over the local leaf slots.
-- The reproduced remaining stop is the later aggregate-to-global copy handoff, not the local subobject store producer:
+Fresh transient `--dump-bir --target riscv64-linux-gnu` probes over the `46` artifact-derived store-family rows found:
+- `6` current BIR successes/progressed rows: `src/20010605-2.c`, `src/20020413-1.c`, `src/20040208-1.c`, `src/930526-1.c`, `src/ieee/inf-1.c`, and `src/strct-pack-2.c`.
+- `40` rows still report `store local-memory semantic family`.
 
-```c
-struct T { char a,b,c,d; };
-struct S { struct T t; } u;
-void f(void) {
-  struct S v = {0};
-  v.t.a = 1;
-  v.t.b = 2;
-  v.t.c = 3;
-  v.t.d = 4;
-  u = v;
-}
-```
-
-`build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_agg_global_copy_probe.c`
-still reports `semantic lir_to_bir function 'f' failed in store local-memory
-semantic family`, while the same probe without `u = v` dumps BIR successfully.
-Implementing that handoff would cross idea 603's boundary into aggregate/global
-data ownership.
-
-Aggregate value copy/store to global or static storage is now split into
-`ideas/open/619_bir_aggregate_global_store_handoff.md`.
+Remaining row classification:
+- In-scope idea 603 subfamily: aggregate/vector typed stores into local frame aggregate destinations. Representatives: `src/990525-1.c` stores a by-value `struct blah` argument into local `struct blah buf[1]`; `src/pr71626-1.c` and `src/pr71626-2.c` store a `<1 x i64>` function result into a local vector slot. These are local-frame store producer gaps, not aggregate/global handoffs.
+- In-scope singleton/watchout: `src/931102-2.c` still fails on a local union/nested struct scalar field store (`reg.b.l = x`). It is local-memory owned, but it is not enough by itself to drive the next implementation packet.
+- Pointer/address-authority rows: `src/20030913-1.c`, `src/930719-1.c`, `src/alias-1.c`, `src/alias-access-path-1.c`, `src/pr15262-2.c`, `src/pr36343.c`, `src/pr36765.c`, `src/pr58277-1.c`, `src/pr60072.c`, `src/pr69691.c`, and `src/pr79043.c`.
+- Function-label/local pointer-array rows: `src/920501-5.c` and `src/990208-1.c`. `src/pr71626-1.c` and `src/pr71626-2.c` contain a function-label value source in `foo`, but that local vector construction already dumps BIR in isolation; the current full-row stop is the local vector aggregate store in `main`.
+- Aggregate/static global handoff rows for idea 619 or existing global-data routes: `src/20040707-1.c`, `src/20131127-1.c`, `src/930126-1.c`, `src/981130-1.c`, `src/991118-1.c`, `src/compndlit-1.c`, `src/lto-tbaa-1.c`, `src/pr22141-1.c`, `src/pr22141-2.c`, `src/pr39120.c`, `src/pr44164.c`, `src/pr52979-1.c`, `src/pr52979-2.c`, `src/pr57344-1.c`, `src/pr57344-2.c`, `src/pr57344-3.c`, `src/pr57344-4.c`, `src/pr58365.c`, `src/pr70127.c`, `src/pr78170.c`, `src/pr79737-1.c`, `src/pr82388.c`, and `src/struct-cpy-1.c`.
+- Non-store guard owners for any next proof: load `src/20041124-1.c`, alloca `src/20180921-1.c`, prepared/global data `src/20010924-1.c`, RV64/global data `src/20020118-1.c`, plus the six current BIR-success store rows listed above.
 
 ## Suggested Next
 
-Execute revised Step 7:
-- Start from the blocked Step 7 evidence above.
-- Exclude aggregate/static global handoff shapes such as `u = v`,
-  `x = <clit>`, `s[1] = t`, and `x = foo(&i)` from idea 603 implementation
-  ownership; track them against idea 619 or existing global-data ideas.
-- Reclassify the remaining visible store-family rows into in-scope
-  local-memory store producer limitations, pointer/address-authority rows,
-  function-label/local pointer-array rows, aggregate/global handoff rows, and
-  non-store guard owners.
-- Select a Step 8 implementation packet only if at least two rows share a first
-  missing local-memory store producer fact inside idea 603.
+Execute Step 8 for the aggregate/vector typed local-store subfamily.
+
+Suggested implementation target:
+- Add generic BIR local-memory store producer support for aggregate/vector typed stores into local frame aggregate destinations.
+- Primary representatives: `src/990525-1.c`, `src/pr71626-1.c`, and `src/pr71626-2.c`.
+- Treat `src/931102-2.c` as a local union/overlap watchout, not the acceptance driver.
+- Do not implement aggregate/static global handoff rows under idea 603; keep those routed to idea 619 or existing global-data ideas.
+
+Proposed supervisor proof command:
+
+```sh
+cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|llvm_gcc_c_torture_src_(990525_1|pr71626_1|pr71626_2|931102_2|20010605_2|20020413_1|strct_pack_2|20030913_1|920501_5|990208_1|pr22141_1|pr57344_1|pr39120|20041124_1|20180921_1|20010924_1|20020118_1)_c)$' >> test_after.log 2>&1
+```
 
 ## Watchouts
 
-- Do not implement aggregate/static global handoff repair under idea 603.
-- Do not repair local aggregate subobject stores unless new evidence contradicts
-  the local-only probes already recorded above.
-- Exclude pointer/address-authority rows from the first implementation packet unless the code path naturally handles them without guessing authority: `src/20030913-1.c`, `src/alias-1.c`, `src/pr36343.c`, `src/pr36765.c`, `src/pr60072.c`, `src/pr69691.c`, and `src/pr79043.c` are representative pointer-dereference store rows.
-- Exclude function-label/local pointer-array rows as a separate source/destination shape: `src/920501-5.c`, `src/990208-1.c`, `src/990525-1.c`, `src/pr71626-1.c`, and `src/pr71626-2.c`.
-- Keep `src/pr39120.c` separate. The focused failing function is now `main` with `x = foo(&i)`, so it remains best treated as an aggregate-to-global handoff risk unless a later probe proves a first missing local subobject store inside the same function.
-- Treat whole aggregate/static-global copy rows as downstream or adjacent-owner evidence until local subobject store production is repaired: examples include `src/20040707-1.c`, `src/930126-1.c`, `src/981130-1.c`, `src/991118-1.c`, `src/alias-access-path-1.c`, `src/lto-tbaa-1.c`, `src/pr44164.c`, `src/pr52979-1.c`, `src/pr52979-2.c`, `src/pr58365.c`, `src/pr70127.c`, `src/pr79737-1.c`, `src/pr82388.c`, and `src/struct-cpy-1.c`.
-- Guard rows for the proposed Step 7 proof: prior Step 3 successes `src/20010605-2.c`, `src/20020413-1.c`, `src/strct-pack-2.c`; pointer/address guard `src/20030913-1.c`; function-label/local-array guard `src/920501-5.c`; aggregate/global handoff guard `src/pr39120.c`; non-store owner guards `src/20041124-1.c` for load, `src/20180921-1.c` for alloca, `src/20010924-1.c` for prepared/global data, and `src/20020118-1.c` for RV64/global data.
+- Keep the Step 8 repair scoped to local-frame aggregate/vector typed stores. It should not lower `u = v`, `s[1] = t`, `x = foo(&i)`, `x = <clit>`, or static/global aggregate stores.
+- Preserve the earlier evidence that nested local scalar field stores and packed/bitfield local scalar field stores already lower in local-only probes.
+- Pointer/address rows remain adjacent unless a Step 8 code path handles them without guessing authority.
+- Function-label/local pointer-array rows remain adjacent; do not treat `920501-5.c` or `990208-1.c` as proof for aggregate/vector typed local stores.
+- `src/pr39120.c` remains an aggregate/global handoff guard after the earlier `bar` pointer-store boundary moved.
 - Treat stale backend case logs under `build/rv64_gcc_c_torture_backend/` as historical evidence unless the supervisor refreshes the RV64 backend-object scan.
 - Do not change expectations, unsupported markers, allowlists, runtime, timeout, accounting behavior, RV64 lowering, or adjacent owner routes.
 
 ## Proof
 
-Lifecycle-only rewrite; no build or CTest proof was run.
+Evidence-only classification; no build or CTest proof was required or run.
 
 Transient probes used:
-- `build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_agg_store_probe.c`: local nested aggregate field stores dump BIR successfully.
-- `build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_bitfield_store_probe.c`: local packed/bitfield aggregate field stores dump BIR successfully.
-- `build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_agg_global_copy_probe.c`: adding the aggregate-to-global copy reproduces the remaining store-family stop.
+- Fresh `build/c4cll --dump-bir --target riscv64-linux-gnu <row>` probes across the `46` artifact-derived store-family rows.
+- Focused `build/c4cll --dump-hir --target riscv64-linux-gnu <row>` probes to inspect failing functions and store shapes.
+- Focused local probes for `struct` field stores, packed/bitfield stores, local union subfield stores, local aggregate array stores from by-value parameters, local vector function-label construction, and aggregate/global handoff.
 
 No root-level logs were written.
