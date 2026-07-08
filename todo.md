@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/620_prepared_mixed_object_data_slots.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add explicit relocation-slot prepared facts
+Current Step ID: 3
+Current Step Title: Populate mixed bytes and relocation slots
 
 # Current Packet
 
 ## Just Finished
 
-- Completed Step 2 schema/verifier support for explicit relocation-slot
-  prepared facts.
+- Accepted Step 2 schema/verifier support for explicit relocation-slot
+  prepared facts and advanced canonical execution to Step 3.
 - Added `PreparedObjectDataRelocationSlot` with byte offset, byte size, and
   target link identity, and added `relocation_slots` to
   `PreparedGlobalObjectData`.
@@ -19,14 +19,20 @@ Current Step Title: Add explicit relocation-slot prepared facts
   incoherence.
 - Preserved the accepted `608` relocation-only object-data progress by
   publishing a whole-object relocation slot for one-slot pointer object data.
-- No mixed row is populated as coherent yet; producer population remains Step 3.
+- No mixed row is populated as coherent yet; producer population is now the
+  active Step 3 packet.
 
 ## Suggested Next
 
-Supervisor should route Step 2 completion through plan-owner. The next
-executable packet should be Step 3 producer population: convert BIR initializer
-evidence into emitted bytes plus relocation slots only when object size,
-alignment, slot offset, slot target, and ordinary byte ranges are known.
+Next executable packet is Step 3 producer population. Capture the current
+selected object-data diagnostics and prepared facts for `src/20010924-1.c`
+plus at least two neighboring selected object-data rows, then edit only
+`src/backend/prealloc/object_data.cpp` producer logic if the evidence shows
+BIR initializer/global layout facts can supply object size, alignment, emitted
+byte ranges, relocation slot offsets, and relocation target identity.
+
+Recommended proof command:
+`{ cmake --build --preset default && ALLOWLIST=build/agent_state/620_step3_mixed_object_data.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh; } > test_after.log 2>&1`
 
 ## Watchouts
 
@@ -46,6 +52,12 @@ alignment, slot offset, slot target, and ordinary byte ranges are known.
   relocation-record emission to prove movement.
 - Keep Step 3 semantic across the mixed family; do not special-case
   `src/20010924-1.c`.
+- Step 3 may populate prepared facts only from BIR initializer/global layout
+  evidence. It must not reconstruct relocation records, section bytes, or
+  symbol materialization in RV64.
+- Stop and return evidence if the first remaining blocker is RV64
+  relocation-record emission, byte emission, symbol materialization, or
+  access-width policy.
 
 ## Proof
 
