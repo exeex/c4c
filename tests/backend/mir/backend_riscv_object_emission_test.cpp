@@ -8036,6 +8036,172 @@ prepare::PreparedBirModule make_prepared_loaded_base_pointer_arithmetic_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_pointer_add_consumer_module(
+    bool result_on_stack = false,
+    bool offset_on_stack = false,
+    bool base_on_stack = false,
+    bool occupy_first_scratch = false) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("pointer_add_consumer");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto base_name = prepared.names.value_names.intern("%base.ptr");
+  const auto offset_name = prepared.names.value_names.intern("%byte.offset");
+  const auto result_name = prepared.names.value_names.intern("%result.ptr");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result =
+                      bir::Value::named(bir::TypeKind::Ptr, "%result.ptr"),
+                  .operand_type = bir::TypeKind::Ptr,
+                  .lhs = bir::Value::named(bir::TypeKind::Ptr, "%base.ptr"),
+                  .rhs =
+                      bir::Value::named(bir::TypeKind::I64, "%byte.offset"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value =
+      bir::Value::named(bir::TypeKind::Ptr, "%result.ptr");
+
+  auto params = std::vector<bir::Param>{
+  };
+  if (!base_on_stack) {
+    params.push_back(bir::Param{
+        .type = bir::TypeKind::Ptr,
+        .name = "%base.ptr",
+        .size_bytes = 8,
+        .align_bytes = 8,
+    });
+  }
+  if (!offset_on_stack) {
+    params.push_back(bir::Param{
+        .type = bir::TypeKind::I64,
+        .name = "%byte.offset",
+        .size_bytes = 8,
+        .align_bytes = 8,
+    });
+  }
+  prepared.module.functions.push_back(bir::Function{
+      .name = "pointer_add_consumer",
+      .return_type = bir::TypeKind::Ptr,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .params = std::move(params),
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 24;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{0},
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{1},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{2},
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 24,
+      .frame_alignment_bytes = 8,
+      .frame_slot_order = {prepare::PreparedFrameSlotId{0},
+                           prepare::PreparedFrameSlotId{1},
+                           prepare::PreparedFrameSlotId{2}},
+  });
+
+  auto base_home = rv64_gpr_home(1, function_name, base_name, "t0", 5);
+  if (base_on_stack) {
+    base_home = rv64_stack_slot_home(1,
+                                     function_name,
+                                     base_name,
+                                     prepare::PreparedFrameSlotId{2},
+                                     16);
+    base_home.size_bytes = std::size_t{8};
+    base_home.align_bytes = std::size_t{8};
+  }
+  auto offset_home = rv64_gpr_home(2, function_name, offset_name, "s1", 9);
+  if (offset_on_stack) {
+    offset_home = rv64_stack_slot_home(2,
+                                       function_name,
+                                       offset_name,
+                                       prepare::PreparedFrameSlotId{0},
+                                       0);
+    offset_home.size_bytes = std::size_t{8};
+    offset_home.align_bytes = std::size_t{8};
+  }
+  auto result_home = rv64_gpr_home(3, function_name, result_name, "s2", 18);
+  if (result_on_stack) {
+    result_home = rv64_stack_slot_home(3,
+                                       function_name,
+                                       result_name,
+                                       prepare::PreparedFrameSlotId{1},
+                                       8);
+    result_home.size_bytes = std::size_t{8};
+    result_home.align_bytes = std::size_t{8};
+  }
+  std::vector<prepare::PreparedValueHome> value_homes = {
+      base_home,
+      offset_home,
+      result_home,
+  };
+  if (occupy_first_scratch) {
+    struct OccupiedScratch {
+      const char* value_name;
+      const char* register_name;
+      std::uint32_t register_number;
+    };
+    constexpr std::array<OccupiedScratch, 5> occupied_scratches = {{
+        {"%occupied.t1", "t1", 6},
+        {"%occupied.t3", "t3", 28},
+        {"%occupied.t4", "t4", 29},
+        {"%occupied.t5", "t5", 30},
+        {"%occupied.t6", "t6", 31},
+    }};
+    std::uint64_t home_id = 4;
+    for (const auto& occupied : occupied_scratches) {
+      value_homes.push_back(rv64_gpr_home(
+          home_id++,
+          function_name,
+          prepared.names.value_names.intern(occupied.value_name),
+          occupied.register_name,
+          occupied.register_number));
+    }
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = std::move(value_homes),
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_fpr_binary_module(
     bir::BinaryOpcode opcode,
     bir::TypeKind type) {
@@ -19144,6 +19310,153 @@ int builds_prepared_pointer_arithmetic_result_publication_object() {
   return 0;
 }
 
+int builds_prepared_pointer_add_consumer_object() {
+  {
+    const auto prepared = make_prepared_pointer_add_consumer_module();
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected prepared pointer add consumer to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*result.module, ".text");
+    const auto* function = object::find_symbol(*result.module,
+                                               "pointer_add_consumer");
+    if (text == nullptr || function == nullptr || text->bytes.empty() ||
+        function->size_bytes != text->bytes.size()) {
+      return fail("expected prepared pointer add consumer object text/function");
+    }
+    if (!contains_u32_sequence(text->bytes,
+                               {
+                                   0x00928933,  // add s2, t0, s1
+                               })) {
+      return fail("expected pointer add consumer to add prepared GPR homes");
+    }
+    if (!result.module->relocations.empty()) {
+      return fail("expected prepared pointer add consumer object to need no relocations");
+    }
+  }
+
+  {
+    const auto prepared = make_prepared_pointer_add_consumer_module(true);
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected prepared stack-result pointer add consumer to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*result.module, ".text");
+    const auto* function = object::find_symbol(*result.module,
+                                               "pointer_add_consumer");
+    if (text == nullptr || function == nullptr || text->bytes.empty() ||
+        function->size_bytes != text->bytes.size()) {
+      return fail("expected prepared stack-result pointer add consumer object text/function");
+    }
+    bool found = false;
+    for (std::size_t offset = 0; offset + 8 <= text->bytes.size(); offset += 4) {
+      const auto add_word = read_u32(text->bytes, offset);
+      const auto store_word = read_u32(text->bytes, offset + 4);
+      if (is_rv64_add(add_word) &&
+          riscv_rs1(add_word) == 5U &&
+          riscv_rs2(add_word) == 9U &&
+          riscv_rd(add_word) != 5U &&
+          riscv_rd(add_word) != 9U &&
+          is_rv64_store_to_sp(store_word, 3U, riscv_rd(add_word), 8)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return fail("expected pointer add consumer to use safe scratch and store stack result");
+    }
+    if (!result.module->relocations.empty()) {
+      return fail("expected prepared stack-result pointer add consumer object to need no relocations");
+    }
+  }
+
+  {
+    const auto prepared =
+        make_prepared_pointer_add_consumer_module(false, true);
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected prepared stack-offset pointer add consumer to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*result.module, ".text");
+    const auto* function = object::find_symbol(*result.module,
+                                               "pointer_add_consumer");
+    if (text == nullptr || function == nullptr || text->bytes.empty() ||
+        function->size_bytes != text->bytes.size()) {
+      return fail("expected prepared stack-offset pointer add consumer object text/function");
+    }
+    bool found = false;
+    for (std::size_t offset = 0; offset + 8 <= text->bytes.size(); offset += 4) {
+      const auto load_word = read_u32(text->bytes, offset);
+      const auto add_word = read_u32(text->bytes, offset + 4);
+      if (is_rv64_load_from_sp(load_word, 3U, 0) &&
+          is_rv64_add(add_word) &&
+          riscv_rd(load_word) != 5U &&
+          riscv_rd(load_word) != 18U &&
+          riscv_rd(add_word) == 18U &&
+          riscv_rs1(add_word) == 5U &&
+          riscv_rs2(add_word) == riscv_rd(load_word)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return fail("expected pointer add consumer to load stack offset through safe scratch");
+    }
+    if (!result.module->relocations.empty()) {
+      return fail("expected prepared stack-offset pointer add consumer object to need no relocations");
+    }
+  }
+
+  return 0;
+}
+
+int rejects_prepared_pointer_add_consumer_when_scratch_registers_occupied() {
+  auto prepared =
+      make_prepared_pointer_add_consumer_module(true, true, false, true);
+
+  const std::vector<std::string> expected = {
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering",
+      "function=pointer_add_consumer",
+      "block=entry",
+      "instruction_index=0",
+      "instruction_kind=BinaryInst",
+      "owner=ptr %result.ptr",
+  };
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected pointer-add scratch exhaustion to reject");
+  }
+  for (const auto& fragment : expected) {
+    if (result.diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected pointer-add scratch exhaustion diagnostic to contain `" +
+                  fragment + "`, got `" + result.diagnostic + "`");
+    }
+  }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (image.ok() || image.image.has_value()) {
+    return fail("expected pointer-add scratch exhaustion ELF writer to reject");
+  }
+  for (const auto& fragment : expected) {
+    if (image.diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected pointer-add scratch exhaustion ELF diagnostic to contain `" +
+                  fragment + "`, got `" + image.diagnostic + "`");
+    }
+  }
+  if (result.prepared_consumer_category.has_value() ||
+      image.prepared_consumer_category.has_value()) {
+    return fail("expected pointer-add scratch exhaustion to stay RV64-local");
+  }
+  return 0;
+}
+
 int rejects_prepared_pointer_arithmetic_missing_result_home_with_precise_diagnostic() {
   const std::vector<std::string> expected = {
       "unsupported_pointer_arithmetic: RV64 object route requires prepared pointer arithmetic lowering for loaded pointer base plus scaled integer byte offset",
@@ -25528,6 +25841,8 @@ int main() {
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
   status |= builds_prepared_pointer_arithmetic_result_publication_object();
+  status |= builds_prepared_pointer_add_consumer_object();
+  status |= rejects_prepared_pointer_add_consumer_when_scratch_registers_occupied();
   status |= rejects_prepared_pointer_arithmetic_missing_result_home_with_precise_diagnostic();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_f32_scalar_compare_publication_object();
