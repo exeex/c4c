@@ -19396,23 +19396,174 @@ int builds_prepared_pointer_add_consumer_object() {
       const auto add_word = read_u32(text->bytes, offset + 4);
       if (is_rv64_load_from_sp(load_word, 3U, 0) &&
           is_rv64_add(add_word) &&
-          riscv_rd(load_word) != 5U &&
-          riscv_rd(load_word) != 18U &&
+          riscv_rd(load_word) == 18U &&
           riscv_rd(add_word) == 18U &&
           riscv_rs1(add_word) == 5U &&
-          riscv_rs2(add_word) == riscv_rd(load_word)) {
+          riscv_rs2(add_word) == 18U) {
         found = true;
         break;
       }
     }
     if (!found) {
-      return fail("expected pointer add consumer to load stack offset through safe scratch");
+      return fail("expected pointer add consumer to load stack offset through result register");
     }
     if (!result.module->relocations.empty()) {
       return fail("expected prepared stack-offset pointer add consumer object to need no relocations");
     }
   }
 
+  {
+    const auto prepared =
+        make_prepared_pointer_add_consumer_module(false, true, false, true);
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected prepared stack-offset pointer add consumer with occupied scratches to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*result.module, ".text");
+    const auto* function = object::find_symbol(*result.module,
+                                               "pointer_add_consumer");
+    if (text == nullptr || function == nullptr || text->bytes.empty() ||
+        function->size_bytes != text->bytes.size()) {
+      return fail("expected prepared stack-offset occupied-scratch pointer add object text/function");
+    }
+    bool found = false;
+    for (std::size_t offset = 0; offset + 8 <= text->bytes.size(); offset += 4) {
+      const auto load_word = read_u32(text->bytes, offset);
+      const auto add_word = read_u32(text->bytes, offset + 4);
+      if (is_rv64_load_from_sp(load_word, 3U, 0) &&
+          riscv_rd(load_word) == 18U &&
+          is_rv64_add(add_word) &&
+          riscv_rd(add_word) == 18U &&
+          riscv_rs1(add_word) == 5U &&
+          riscv_rs2(add_word) == 18U) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return fail("expected occupied-scratch pointer add to use result register for stack offset");
+    }
+    if (!result.module->relocations.empty()) {
+      return fail("expected prepared stack-offset pointer add consumer object to need no relocations");
+    }
+  }
+
+  {
+    auto prepared = make_prepared_pointer_add_consumer_module(false, true);
+    auto& homes = prepared.value_locations.functions[0].value_homes;
+    homes[0].target_register_identity.reset();
+    homes[2].target_register_identity.reset();
+    prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+        .function_name = prepared.names.function_names.find("pointer_add_consumer"),
+        .values =
+            {
+                prepare::PreparedStoragePlanValue{
+                    .value_id = 1,
+                    .value_name = prepared.names.value_names.find("%base.ptr"),
+                    .encoding = prepare::PreparedStorageEncodingKind::Register,
+                    .bank = prepare::PreparedRegisterBank::Gpr,
+                    .contiguous_width = 1,
+                    .register_name = std::string{"t0"},
+                    .occupied_register_names = {std::string{"t0"}},
+                    .register_placement = prepare::PreparedRegisterPlacement{
+                        .bank = prepare::PreparedRegisterBank::Gpr,
+                        .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                        .slot_index = 0,
+                        .contiguous_width = 1,
+                    },
+                },
+                prepare::PreparedStoragePlanValue{
+                    .value_id = 2,
+                    .value_name = prepared.names.value_names.find("%byte.offset"),
+                    .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                    .bank = prepare::PreparedRegisterBank::Gpr,
+                    .contiguous_width = 1,
+                    .slot_id = prepare::PreparedFrameSlotId{0},
+                    .stack_offset_bytes = std::size_t{0},
+                    .spill_slot_placement = prepare::PreparedSpillSlotPlacement{
+                        .slot_id = prepare::PreparedFrameSlotId{0},
+                        .offset_bytes = 0,
+                    },
+                },
+                prepare::PreparedStoragePlanValue{
+                    .value_id = 3,
+                    .value_name = prepared.names.value_names.find("%result.ptr"),
+                    .encoding = prepare::PreparedStorageEncodingKind::Register,
+                    .bank = prepare::PreparedRegisterBank::Gpr,
+                    .contiguous_width = 1,
+                    .register_name = std::string{"s2"},
+                    .occupied_register_names = {std::string{"s2"}},
+                    .register_placement = prepare::PreparedRegisterPlacement{
+                        .bank = prepare::PreparedRegisterBank::Gpr,
+                        .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                        .slot_index = 1,
+                        .contiguous_width = 1,
+                    },
+                },
+            },
+    });
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected storage-plan identity pointer add consumer to build, got `" +
+                  result.diagnostic + "`");
+    }
+  }
+
+  return 0;
+}
+
+int rejects_prepared_pointer_add_consumer_without_explicit_target_identity() {
+  auto prepared = make_prepared_pointer_add_consumer_module(false, true);
+  prepared.value_locations.functions[0].value_homes[2].target_register_identity.reset();
+
+  const std::vector<std::string> expected = {
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering",
+      "function=pointer_add_consumer",
+      "block=entry",
+      "instruction_index=0",
+      "instruction_kind=BinaryInst",
+      "owner=ptr %result.ptr",
+  };
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected pointer-add consumer without explicit result identity to reject");
+  }
+  for (const auto& fragment : expected) {
+    if (result.diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected pointer-add missing-identity diagnostic to contain `" +
+                  fragment + "`, got `" + result.diagnostic + "`");
+    }
+  }
+  return 0;
+}
+
+int rejects_prepared_pointer_add_consumer_with_stack_base() {
+  const auto prepared =
+      make_prepared_pointer_add_consumer_module(false, true, true);
+
+  const std::vector<std::string> expected = {
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering",
+      "function=pointer_add_consumer",
+      "block=entry",
+      "instruction_index=0",
+      "instruction_kind=BinaryInst",
+      "owner=ptr %result.ptr",
+  };
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected pointer-add consumer with stack base to reject");
+  }
+  for (const auto& fragment : expected) {
+    if (result.diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected pointer-add stack-base diagnostic to contain `" +
+                  fragment + "`, got `" + result.diagnostic + "`");
+    }
+  }
   return 0;
 }
 
@@ -25842,6 +25993,8 @@ int main() {
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
   status |= builds_prepared_pointer_arithmetic_result_publication_object();
   status |= builds_prepared_pointer_add_consumer_object();
+  status |= rejects_prepared_pointer_add_consumer_without_explicit_target_identity();
+  status |= rejects_prepared_pointer_add_consumer_with_stack_base();
   status |= rejects_prepared_pointer_add_consumer_when_scratch_registers_occupied();
   status |= rejects_prepared_pointer_arithmetic_missing_result_home_with_precise_diagnostic();
   status |= rejects_prepared_scalar_compare_publication_missing_home();

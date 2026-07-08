@@ -2527,6 +2527,174 @@ bool prepared_storage_plan_endpoint_is_coherent_gpr_register(
   return true;
 }
 
+std::optional<c4c::backend::prepare::PreparedTargetRegisterIdentity>
+rv64_gpr_target_identity_for_placement(
+    const c4c::TargetProfile& target_profile,
+    const prepare::PreparedRegisterPlacement& placement) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      placement.bank != prepare::PreparedRegisterBank::Gpr ||
+      placement.contiguous_width != 1) {
+    return std::nullopt;
+  }
+  if (placement.pool == prepare::PreparedRegisterSlotPool::CallArgument ||
+      placement.pool == prepare::PreparedRegisterSlotPool::CallResult) {
+    return prepare::target_register_identity_for_abi_register_placement(
+        target_profile,
+        placement);
+  }
+
+  std::optional<std::size_t> physical_index;
+  switch (placement.pool) {
+    case prepare::PreparedRegisterSlotPool::CallerSaved:
+      if (placement.slot_index == 0) {
+        physical_index = 5;  // t0
+      }
+      break;
+    case prepare::PreparedRegisterSlotPool::CalleeSaved:
+      if (placement.slot_index == 0) {
+        physical_index = 9;  // s1
+      } else if (placement.slot_index == 1) {
+        physical_index = 18;  // s2
+      }
+      break;
+    case prepare::PreparedRegisterSlotPool::None:
+    case prepare::PreparedRegisterSlotPool::CallArgument:
+    case prepare::PreparedRegisterSlotPool::CallResult:
+    case prepare::PreparedRegisterSlotPool::ReservedScratch:
+      break;
+  }
+  if (!physical_index.has_value()) {
+    return std::nullopt;
+  }
+  return c4c::backend::prepare::PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .physical_index = *physical_index,
+  };
+}
+
+std::optional<std::uint32_t> rv64_gpr_formal_register_for_home(
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function* function,
+    const c4c::backend::prepare::PreparedValueHome& home) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      function == nullptr ||
+      home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  std::size_t gpr_index = 0;
+  for (const auto& param : function->params) {
+    if (!param.abi.has_value() || !param.abi->passed_in_register ||
+        param.abi->primary_class != c4c::backend::bir::AbiValueClass::Integer) {
+      continue;
+    }
+    const auto param_name = names.value_names.find(param.name);
+    if (param_name == home.value_name) {
+      if (gpr_index >= 8) {
+        return std::nullopt;
+      }
+      return static_cast<std::uint32_t>(10 + gpr_index);
+    }
+    ++gpr_index;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::uint32_t> explicit_gpr_register_for_home(
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function* function,
+    const prepare::PreparedStoragePlanFunction* storage_plan,
+    const c4c::backend::prepare::PreparedValueHome& home) {
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register) {
+    return std::nullopt;
+  }
+  std::optional<c4c::backend::prepare::PreparedTargetRegisterIdentity> identity;
+  if (home.target_register_identity.has_value()) {
+    identity = home.target_register_identity;
+  } else if (const auto* storage =
+                 prepared_storage_plan_value_for_id(storage_plan, home.value_id);
+             storage != nullptr &&
+             storage->encoding == prepare::PreparedStorageEncodingKind::Register &&
+             storage->bank == prepare::PreparedRegisterBank::Gpr &&
+             storage->contiguous_width == 1 &&
+             storage->register_placement.has_value()) {
+    identity = rv64_gpr_target_identity_for_placement(
+        target_profile,
+        *storage->register_placement);
+    if (storage->register_name.has_value()) {
+      const auto spelled = rv64_register_number(*storage->register_name);
+      if (!spelled.has_value() ||
+          (identity.has_value() && *spelled != identity->physical_index)) {
+        return std::nullopt;
+      }
+    }
+  } else if (const auto formal_register =
+                 rv64_gpr_formal_register_for_home(target_profile,
+                                                   names,
+                                                   function,
+                                                   home);
+             formal_register.has_value()) {
+    identity = c4c::backend::prepare::PreparedTargetRegisterIdentity{
+        .target_arch = c4c::TargetArch::Riscv64,
+        .bank = prepare::PreparedRegisterBank::Gpr,
+        .register_class = prepare::PreparedRegisterClass::General,
+        .physical_index = *formal_register,
+    };
+  }
+  if (!identity.has_value() ||
+      identity->target_arch != c4c::TargetArch::Riscv64 ||
+      identity->bank != c4c::backend::prepare::PreparedRegisterBank::Gpr ||
+      identity->register_class !=
+          c4c::backend::prepare::PreparedRegisterClass::General ||
+      identity->physical_index > 31) {
+    return std::nullopt;
+  }
+  const auto register_number =
+      static_cast<std::uint32_t>(identity->physical_index);
+  if (home.register_name.has_value()) {
+    const auto spelled = rv64_register_number(*home.register_name);
+    if (!spelled.has_value() || *spelled != register_number) {
+      return std::nullopt;
+    }
+  }
+  return register_number;
+}
+
+std::optional<std::size_t> prepared_gpr_stack_home_absolute_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedStoragePlanFunction* storage_plan,
+    const c4c::backend::prepare::PreparedValueHome& home,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  if (const auto* storage =
+          prepared_storage_plan_value_for_id(storage_plan, home.value_id);
+      storage != nullptr) {
+    if (storage->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+        storage->bank != prepare::PreparedRegisterBank::Gpr ||
+        storage->contiguous_width != 1 ||
+        !storage->stack_offset_bytes.has_value() ||
+        (home.slot_id.has_value() && storage->slot_id.has_value() &&
+         *home.slot_id != *storage->slot_id)) {
+      return std::nullopt;
+    }
+    const auto offset = *storage->stack_offset_bytes;
+    if (offset > stack_frame_bytes || stack_frame_bytes - offset < size_bytes) {
+      return std::nullopt;
+    }
+    return offset;
+  }
+  return rv64_prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                      home,
+                                                      stack_frame_bytes,
+                                                      size_bytes);
+}
+
 std::optional<std::size_t> prepared_stack_slot_home_size_bytes(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedValueHome& home) {
@@ -5386,8 +5554,11 @@ fragment_for_prepared_pointer_result_frame_address_materialization(
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_pointer_add(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function* function,
+    const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes) {
   namespace bir = c4c::backend::bir;
@@ -5409,43 +5580,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_pointer_add(
       offset_home == nullptr) {
     return std::nullopt;
   }
-  const auto has_explicit_target_register =
-      [](const c4c::backend::prepare::PreparedValueHome& home) {
-    return home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-           home.target_register_identity.has_value();
-  };
-  const auto explicit_gpr_register =
-      [](const c4c::backend::prepare::PreparedValueHome& home)
-      -> std::optional<std::uint32_t> {
-    if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-        !home.target_register_identity.has_value()) {
-      return std::nullopt;
-    }
-    const auto& identity = *home.target_register_identity;
-    if (identity.target_arch != c4c::TargetArch::Riscv64 ||
-        identity.bank != c4c::backend::prepare::PreparedRegisterBank::Gpr ||
-        identity.register_class !=
-            c4c::backend::prepare::PreparedRegisterClass::General ||
-        identity.physical_index > 31) {
-      return std::nullopt;
-    }
-    const auto register_number =
-        static_cast<std::uint32_t>(identity.physical_index);
-    if (home.register_name.has_value()) {
-      const auto spelled = rv64_register_number(*home.register_name);
-      if (spelled.has_value() && *spelled != register_number) {
-        return std::nullopt;
-      }
-    }
-    return register_number;
-  };
-  if (!has_explicit_target_register(*base_home) ||
-      (offset_home != nullptr && !has_explicit_target_register(*offset_home)) ||
-      !has_explicit_target_register(*result_home)) {
-    return std::nullopt;
-  }
 
-  const auto result_register = explicit_gpr_register(*result_home);
+  const auto result_register =
+      explicit_gpr_register_for_home(target_profile,
+                                     names,
+                                     function,
+                                     storage_plan,
+                                     *result_home);
   const auto result_stack_offset =
       result_register.has_value()
           ? std::nullopt
@@ -5457,9 +5598,53 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_pointer_add(
     return std::nullopt;
   }
 
-  const auto lhs_register = explicit_gpr_register(*base_home);
+  const auto lhs_register =
+      explicit_gpr_register_for_home(target_profile,
+                                     names,
+                                     function,
+                                     storage_plan,
+                                     *base_home);
+  if (!lhs_register.has_value()) {
+    return std::nullopt;
+  }
   const auto rhs_register =
-      offset_home == nullptr ? std::nullopt : explicit_gpr_register(*offset_home);
+      explicit_gpr_register_for_home(target_profile,
+                                     names,
+                                     function,
+                                     storage_plan,
+                                     *offset_home);
+  if ((base_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+       !lhs_register.has_value()) ||
+      (offset_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+       !rhs_register.has_value()) ||
+      (result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+       !result_register.has_value())) {
+    return std::nullopt;
+  }
+  const auto rhs_stack_offset =
+      rhs_register.has_value()
+          ? std::nullopt
+          : prepared_gpr_stack_home_absolute_offset(stack_layout,
+                                                    storage_plan,
+                                                    *offset_home,
+                                                    stack_frame_bytes,
+                                                    8);
+  if (lhs_register.has_value() && result_register.has_value() &&
+      rhs_stack_offset.has_value() && *lhs_register != *result_register) {
+    RiscvEncodedFragment fragment;
+    if (!append_rv64_load_stack_offset_to_register(fragment,
+                                                   *result_register,
+                                                   *rhs_stack_offset,
+                                                   8)) {
+      return std::nullopt;
+    }
+    append_rv64_add_registers(fragment,
+                              *result_register,
+                              *lhs_register,
+                              *result_register);
+    return fragment;
+  }
+
   auto destination_register = result_register;
   if (!destination_register.has_value()) {
     destination_register = rv64_unoccupied_temporary_gpr_avoiding(
@@ -5471,14 +5656,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_pointer_add(
   }
 
   auto base_register = lhs_register;
-  if (!base_register.has_value()) {
-    base_register = rv64_unoccupied_temporary_gpr_avoiding(
-        lookups,
-        {*destination_register, rhs_register.value_or(32)});
-  }
-  if (!base_register.has_value()) {
-    return std::nullopt;
-  }
 
   auto offset_register = rhs_register;
   if (!offset_register.has_value()) {
@@ -10570,6 +10747,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     const c4c::backend::bir::Inst& inst,
     std::unordered_map<std::string, PreparedObjectCompare>& compares,
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
     std::size_t stack_frame_bytes) {
   const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
   if (call == nullptr) {
@@ -10675,8 +10853,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
         return fragment;
       }
       if (auto fragment = fragment_for_prepared_pointer_add(prepared.stack_layout,
+                                                            prepared.target_profile,
                                                             prepared.names,
                                                             &lookups,
+                                                            &function,
+                                                            storage_plan,
                                                             *binary,
                                                             stack_frame_bytes);
           fragment.has_value()) {
@@ -11648,6 +11829,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            *event.instruction,
                                                            compares,
                                                            frame_plan,
+                                                           storage_plan,
                                                            *stack_frame_bytes);
           if (!fragment.has_value()) {
             if (auto diagnostic =
@@ -11761,6 +11943,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        block.insts[instruction_index],
                                                        compares,
                                                        frame_plan,
+                                                       storage_plan,
                                                        *stack_frame_bytes);
       if (!fragment.has_value()) {
         if (auto diagnostic =

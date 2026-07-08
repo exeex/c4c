@@ -9,55 +9,34 @@ Current Step Title: Broaden Only Within Pointer BinaryInst Authority
 ## Just Finished
 
 Completed Step 3, "Broaden Only Within Pointer BinaryInst Authority", by
-refreshing direct object-route probes after commit `029f92780` and classifying
-the remaining sampled pointer `BinaryInst` residuals without touching code,
-tests, expectations, markers, `plan.md`, or idea files.
+implementing the bounded adjacent pointer `BinaryInst` class for register
+pointer base plus stack-slot `.byte_offset.static` plus register pointer result.
+The RV64 object consumer now derives explicit GPR identity from prepared home
+identity, formal parameter ABI identity, or storage-plan register placement,
+and derives regalloc spill-slot offsets from storage-plan frame-slot facts. The
+stack-offset add path loads the stack offset through the result register when
+base and result are distinct explicit GPRs, proving the `%t9.byte_offset`/`%t9`
+same-target scratch case without filename-shaped logic. The consumer now
+requires the pointer base itself to have explicit GPR/formal/storage-plan
+register authority; stack-slot/frame-slot/local-slot pointer bases fail closed.
+Unit coverage includes a stack-base pointer-add rejection.
 
-Fresh direct-probe movement after the pointer-add consumer is still visible:
-- `src/20000801-1.c` is past the sampled `foo` entry pointer `BinaryInst`
-  (`owner=ptr %t2`) and now stops at
-  `unsupported_branch_stack_load_authority`, `foo`, `block_1`,
-  `terminator_instruction_index=3`, branch lhs `%t3`.
-- `src/loop-2f.c` is past the sampled `f`/`logic.end.7` pointer
-  `BinaryInst` (`owner=ptr %t10`) and now stops at `main` entry
-  `CallInst`, `instruction_index=0`, `unsupported_instruction_fragment`.
-- `src/pr41395-2.c` is past the sampled `foo` entry pointer `BinaryInst`
-  (`owner=ptr %t3`) and now stops at
-  `ambiguous_non_parallel_multi_source_stack_destination`, `foo` entry
-  `instruction_index=9`, `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
+Fresh direct-probe movement:
+- `src/strct-pack-3.c` moved past `function=f`, `block=entry`,
+  `instruction_index=8`, `instruction_kind=BinaryInst`, `owner=ptr %t9`.
+  It now stops later at
+  `ambiguous_non_parallel_multi_source_stack_destination`,
+  `function=f`, `block=entry`, `instruction_index=14`,
+  `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
+  The later same-shape `%t26` row in `block_1` remains unobserved because this
+  new move-bundle blocker occurs first.
+- `src/930526-1.c` is intentionally excluded and remains at its prior
+  `unsupported_instruction_fragment`, `function=f`, `block=block_1`,
+  `instruction_index=4`, `instruction_kind=BinaryInst`, `owner=ptr %t10`.
+  Its base `%lv.m.0` is a stack-slot/frame-slot local address base, so this
+  packet does not consume it.
 
-Fresh residual pointer `BinaryInst` rows:
-- `src/930526-1.c`: still `unsupported_instruction_fragment`, `function=f`,
-  `block=block_1`, `block_index=3`, `instruction_index=4`,
-  `instruction_kind=BinaryInst`, `owner=ptr %t10`.
-  Prepared BIR shows `%t10 = bir.add ptr %lv.m.0, %t10.byte_offset`;
-  `%lv.m.0` is an address-exposed local-slot/frame-slot base
-  (`object #25`, `type=i32`, `address_exposed=yes`,
-  `permanent_home_slot=yes`) and also appears as a prepared frame-slot home
-  (`home %lv.m.0 value_id=10 kind=stack_slot slot_id=203 offset=912`).
-  `%t10.byte_offset` is stack-slot and `%t10` is register `t0`.
-  Classification: this should not be folded into the generic pointer-add
-  consumer by treating a frame-slot home as a pointer register. It needs a
-  stricter address-materialization handoff or strengthened prepared facts for
-  frame-slot address bases before RV64 consumes the pointer add.
-- `src/strct-pack-3.c`: still `unsupported_instruction_fragment`,
-  `function=f`, `block=entry`, `block_index=0`, `instruction_index=8`,
-  `instruction_kind=BinaryInst`, `owner=ptr %t9`.
-  Prepared BIR shows `%t9 = bir.add ptr %p.ap, %t9.byte_offset.static`;
-  `%p.ap` is register `a0`, `%t9.byte_offset.static` is stack-slot
-  `slot_id=14 offset=32`, and `%t9` is register `s2`. The same function has
-  the adjacent same-shape row `%t26 = bir.add ptr %p.ap,
-  %t26.byte_offset.static` in `block_1`; `%t26.byte_offset.static` is
-  stack-slot `slot_id=24 offset=72`, and `%t26` is also register `s2`.
-  Classification: this has a bounded adjacent implementation home only if the
-  consumer proves target identity and scratch safety when the dynamic offset
-  producer and pointer-add result share the same target register. It should be
-  expressed as a general prepared-home/target-identity extension for register
-  base plus stack static-offset plus register result, not as a
-  `strct-pack-3.c` special case.
-
-Negative guards from the same refreshed probe set stayed under their expected
-owners:
+Guard checks stayed under their expected owners:
 - `src/20021120-1.c` and `src/990524-1.c` remain
   `unsupported_pointer_arithmetic`.
 - `src/20000722-1.c` and `src/ptr-arith-1.c` remain
@@ -75,37 +54,25 @@ owners:
 
 ## Suggested Next
 
-Next bounded implementation packet, if the supervisor wants to keep Step 3 in
-execution, should target only the `src/strct-pack-3.c` class: register pointer
-base, stack-slot `.byte_offset.static`, register pointer result, with explicit
-target identity and scratch-safety proof when the intermediate dynamic offset
-and result use the same target register. Positive rows for that packet are
-`src/strct-pack-3.c` `f` entry `instruction_index=8`, `owner=ptr %t9`, and the
-same-shape later row `f` `block_1` `owner=ptr %t26` once the first blocker
-moves. Required guards are the refreshed guard list above, especially
-`src/20021120-1.c`, `src/990524-1.c`, `src/20000722-1.c`,
-`src/ptr-arith-1.c`, and scalar `src/931110-1.c`.
-
-Do not combine `src/930526-1.c` into that packet. Its base is an
-address-exposed local frame-slot value, so it should go to a stricter
-address-materialization/prepared-fact packet or to Step 4 classification if
-that owner is outside the current pointer `BinaryInst` authority.
+Next coherent packet should classify or repair the new `src/strct-pack-3.c`
+entry move-bundle blocker at `instruction_index=14` before expecting the later
+same-shape `%t26` pointer-add row to become observable.
 
 ## Watchouts
 
-- A `src/strct-pack-3.c` packet must not accept register-name strings without
-  prepared target identity; it needs the same explicit register authority as
-  the first pointer-add consumer.
+- The new pointer-add path still must not accept register-name-only authority:
+  rendered names are only cross-checks after home identity, formal ABI identity,
+  or storage-plan placement identity has supplied the physical GPR.
 - Do not treat `%lv.m.0` in `src/930526-1.c` as an ordinary pointer home. The
-  current prepared facts describe a frame-slot/local-slot address base and need
-  a stricter address-materialization handoff.
+  current prepared facts describe a frame-slot/local-slot address base; this
+  packet keeps that class out of the pointer-add consumer.
 - Do not relax immediate-only or loaded-base plus scaled-offset policy; the
   pointer-arithmetic guards must stay under `unsupported_pointer_arithmetic`.
 - Do not broaden into local-memory, branch, select, cast, ABI, global, inline
   asm, terminator, scalar-binary, or move-bundle owners. Those remained stable
   in the refreshed probe set.
-- The three moved positive rows still expose downstream blockers, not full
-  object success.
+- This is not full object success for `strct-pack-3.c`; it is movement of the
+  owned pointer `BinaryInst` row to the next authority blocker.
 
 ## Proof
 
