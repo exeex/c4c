@@ -9,32 +9,25 @@ Current Step Title: Broaden Only Within Pointer BinaryInst Authority
 ## Just Finished
 
 Completed Step 3, "Broaden Only Within Pointer BinaryInst Authority", by
-implementing the bounded adjacent pointer `BinaryInst` class for register
-pointer base plus stack-slot `.byte_offset.static` plus register pointer result.
-The RV64 object consumer now derives explicit GPR identity from prepared home
-identity, formal parameter ABI identity, or storage-plan register placement,
-and derives regalloc spill-slot offsets from storage-plan frame-slot facts. The
-stack-offset add path loads the stack offset through the result register when
-base and result are distinct explicit GPRs, proving the `%t9.byte_offset`/`%t9`
-same-target scratch case without filename-shaped logic. The consumer now
-requires the pointer base itself to have explicit GPR/formal/storage-plan
-register authority; stack-slot/frame-slot/local-slot pointer bases fail closed.
-Unit coverage includes a stack-base pointer-add rejection.
+refreshing the direct-probe classification after commit `fa08c77ff`. No code or
+expectation files were changed.
 
-Fresh direct-probe movement:
-- `src/strct-pack-3.c` moved past `function=f`, `block=entry`,
-  `instruction_index=8`, `instruction_kind=BinaryInst`, `owner=ptr %t9`.
-  It now stops later at
-  `ambiguous_non_parallel_multi_source_stack_destination`,
-  `function=f`, `block=entry`, `instruction_index=14`,
+Fresh direct-probe classification:
+- `src/strct-pack-3.c` confirms movement from the former pointer `BinaryInst`
+  stop at `function=f`, `block=entry`, `instruction_index=8`,
+  `instruction_kind=BinaryInst`, `owner=ptr %t9`. The current first stop is
+  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`
+  at `function=f`, `block=entry`, `instruction_index=14`, with
+  `diagnostic_owner=rv64_prepared_move_bundle_consumer` and
   `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
-  The later same-shape `%t26` row in `block_1` remains unobserved because this
-  new move-bundle blocker occurs first.
-- `src/930526-1.c` is intentionally excluded and remains at its prior
+  The later same-shape `%t26` pointer-add row remains unobserved because this
+  move-bundle blocker occurs first.
+- `src/930526-1.c` remains intentionally excluded at
   `unsupported_instruction_fragment`, `function=f`, `block=block_1`,
   `instruction_index=4`, `instruction_kind=BinaryInst`, `owner=ptr %t10`.
-  Its base `%lv.m.0` is a stack-slot/frame-slot local address base, so this
-  packet does not consume it.
+  Its base `%lv.m.0` is still a stack-slot/frame-slot local address base, so
+  the blocker remains address-materialization/prepared-fact ownership rather
+  than in-scope pointer `BinaryInst` authority.
 
 Guard checks stayed under their expected owners:
 - `src/20021120-1.c` and `src/990524-1.c` remain
@@ -52,11 +45,19 @@ Guard checks stayed under their expected owners:
 - `src/931110-1.c` remains scalar `BinaryInst owner=i16`
   `unsupported_instruction_fragment`.
 
+Conclusion: no remaining directly observable blocker in this refreshed packet
+belongs to in-scope pointer `BinaryInst` authority. The visible `strct-pack-3.c`
+blocker is a move-bundle owner, `930526-1.c` remains an excluded
+address-materialization/prepared-fact owner, and the remaining guard rows stay
+under their separate owners. The pointer runbook is ready for Step 4
+close-readiness/split classification rather than move-bundle implementation.
+
 ## Suggested Next
 
-Next coherent packet should classify or repair the new `src/strct-pack-3.c`
-entry move-bundle blocker at `instruction_index=14` before expecting the later
-same-shape `%t26` pointer-add row to become observable.
+Next coherent packet should perform Step 4 residual split or close-readiness
+classification for idea 612. Do not start move-bundle implementation from this
+pointer `BinaryInst` runbook unless the supervisor opens or activates that
+separate owner route.
 
 ## Watchouts
 
@@ -72,11 +73,13 @@ same-shape `%t26` pointer-add row to become observable.
   asm, terminator, scalar-binary, or move-bundle owners. Those remained stable
   in the refreshed probe set.
 - This is not full object success for `strct-pack-3.c`; it is movement of the
-  owned pointer `BinaryInst` row to the next authority blocker.
+  owned pointer `BinaryInst` row to a separate move-bundle authority blocker.
+- Direct-probe logs for this refresh are under
+  `build/agent_state/step3_pointer_binaryinst_refresh/`.
 
 ## Proof
 
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed, 346/346 backend tests. Proof log: `test_after.log`.
