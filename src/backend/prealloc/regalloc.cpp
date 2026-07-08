@@ -304,6 +304,8 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
                    binding.destination_occupied_register_names &&
                existing_binding.destination_register_placement ==
                    binding.destination_register_placement &&
+               existing_binding.destination_target_register_identity ==
+                   binding.destination_target_register_identity &&
                existing_binding.destination_stack_offset_bytes ==
                    binding.destination_stack_offset_bytes;
       });
@@ -402,6 +404,12 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                             destination_storage_kind == PreparedMoveStorageKind::Register
                                                 ? abi_register_placement
                                                 : std::nullopt,
+                                        .destination_target_register_identity =
+                                            destination_storage_kind == PreparedMoveStorageKind::Register &&
+                                                    abi_register_placement.has_value()
+                                                ? target_register_identity_for_abi_register_placement(
+                                                      target_profile, *abi_register_placement)
+                                                : std::nullopt,
                                     });
         if (arg_abi.has_value() &&
             arg_abi->type == bir::TypeKind::Ptr &&
@@ -423,6 +431,7 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                     .destination_occupied_register_names = {},
                     .destination_stack_offset_bytes = stack_offset,
                     .destination_register_placement = std::nullopt,
+                    .destination_target_register_identity = std::nullopt,
                 });
           }
           const auto byval_register_placement =
@@ -448,6 +457,12 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                           .destination_stack_offset_bytes = std::nullopt,
                                           .destination_register_placement =
                                               byval_register_placement,
+                                          .destination_target_register_identity =
+                                              byval_register_placement.has_value()
+                                                  ? target_register_identity_for_abi_register_placement(
+                                                        target_profile,
+                                                        *byval_register_placement)
+                                                  : std::nullopt,
                                       });
         }
       }
@@ -508,6 +523,12 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                           : std::vector<std::string>{},
                   .destination_stack_offset_bytes = std::nullopt,
                   .destination_register_placement = destination_register_placement,
+                  .destination_target_register_identity =
+                      result_storage_kind == PreparedMoveStorageKind::Register &&
+                              destination_register_placement.has_value()
+                          ? target_register_identity_for_abi_register_placement(
+                                target_profile, *destination_register_placement)
+                          : std::nullopt,
               });
         }
         continue;
@@ -555,6 +576,13 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                       .destination_stack_offset_bytes = std::nullopt,
                                       .destination_register_placement =
                                           destination_register_placement,
+                                      .destination_target_register_identity =
+                                          result_storage_kind == PreparedMoveStorageKind::Register &&
+                                                  destination_register_placement.has_value()
+                                              ? target_register_identity_for_abi_register_placement(
+                                                    target_profile,
+                                                    *destination_register_placement)
+                                              : std::nullopt,
                                   });
     }
   }

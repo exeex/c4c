@@ -99,8 +99,19 @@ struct RegallocValueNameIndex {
   return PreparedMoveStorageKind::None;
 }
 
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity> abi_target_register_identity(
+    const c4c::TargetProfile& target_profile,
+    PreparedMoveStorageKind storage_kind,
+    const std::optional<PreparedRegisterPlacement>& placement) {
+  if (storage_kind != PreparedMoveStorageKind::Register || !placement.has_value()) {
+    return std::nullopt;
+  }
+  return target_register_identity_for_abi_register_placement(target_profile, *placement);
+}
+
 void append_f128_constant_call_arg_move_resolution_record(
     PreparedRegallocFunction& regalloc_function,
+    const c4c::TargetProfile& target_profile,
     const PreparedRegallocValue& source,
     PreparedMoveStorageKind consumed_kind,
     std::optional<std::size_t> destination_abi_index,
@@ -129,6 +140,9 @@ void append_f128_constant_call_arg_move_resolution_record(
                move.destination_contiguous_width == destination_contiguous_width &&
                move.destination_occupied_register_names == destination_occupied_register_names &&
                move.destination_register_placement == destination_register_placement &&
+               move.destination_target_register_identity ==
+                   abi_target_register_identity(
+                       target_profile, consumed_kind, destination_register_placement) &&
                move.destination_stack_offset_bytes == destination_stack_offset_bytes &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
@@ -142,6 +156,9 @@ void append_f128_constant_call_arg_move_resolution_record(
     return;
   }
 
+  auto destination_target_register_identity =
+      abi_target_register_identity(
+          target_profile, consumed_kind, destination_register_placement);
   regalloc_function.move_resolution.push_back(PreparedMoveResolution{
       .from_value_id = source.value_id,
       .to_value_id = source.value_id,
@@ -162,11 +179,14 @@ void append_f128_constant_call_arg_move_resolution_record(
       .authority_kind = PreparedMoveAuthorityKind::None,
       .reason = "f128_constant_call_arg_immediate_to_abi",
       .destination_register_placement = std::move(destination_register_placement),
+      .destination_target_register_identity =
+          std::move(destination_target_register_identity),
   });
 }
 
 void append_unassigned_return_move_resolution_record(
     PreparedRegallocFunction& regalloc_function,
+    const c4c::TargetProfile& target_profile,
     const PreparedRegallocValue& source,
     PreparedMoveStorageKind consumed_kind,
     std::optional<std::string> destination_register_name,
@@ -194,6 +214,9 @@ void append_unassigned_return_move_resolution_record(
                move.destination_contiguous_width == destination_contiguous_width &&
                move.destination_occupied_register_names == destination_occupied_register_names &&
                move.destination_register_placement == destination_register_placement &&
+               move.destination_target_register_identity ==
+                   abi_target_register_identity(
+                       target_profile, consumed_kind, destination_register_placement) &&
                !move.destination_stack_offset_bytes.has_value() &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
@@ -207,6 +230,9 @@ void append_unassigned_return_move_resolution_record(
     return;
   }
 
+  auto destination_target_register_identity =
+      abi_target_register_identity(
+          target_profile, consumed_kind, destination_register_placement);
   regalloc_function.move_resolution.push_back(PreparedMoveResolution{
       .from_value_id = source.value_id,
       .to_value_id = source.value_id,
@@ -227,6 +253,8 @@ void append_unassigned_return_move_resolution_record(
       .authority_kind = PreparedMoveAuthorityKind::None,
       .reason = std::move(reason),
       .destination_register_placement = std::move(destination_register_placement),
+      .destination_target_register_identity =
+          std::move(destination_target_register_identity),
   });
 }
 
@@ -318,6 +346,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
         if (f128_constant_arg) {
           append_f128_constant_call_arg_move_resolution_record(
               regalloc_function,
+              target_profile,
               *source,
               consumed_kind,
               arg_index,
@@ -363,7 +392,10 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                                                       consumed_kind),
                                         std::nullopt,
                                         std::nullopt,
-                                        destination_register_placement);
+                                        destination_register_placement,
+                                        abi_target_register_identity(target_profile,
+                                                                     consumed_kind,
+                                                                     destination_register_placement));
       }
     }
   }
@@ -471,7 +503,10 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                                               consumed_kind),
                                       std::nullopt,
                                       std::nullopt,
-                                      destination_register_placement);
+                                      destination_register_placement,
+                                      abi_target_register_identity(target_profile,
+                                                                   consumed_kind,
+                                                                   destination_register_placement));
       }
     }
   }
@@ -565,6 +600,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
       if (source_kind == PreparedMoveStorageKind::None) {
         append_unassigned_return_move_resolution_record(
             regalloc_function,
+            target_profile,
             *source,
             consumed_kind,
             destination_register_name,
@@ -601,7 +637,10 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                                             consumed_kind),
                                     std::nullopt,
                                     std::nullopt,
-                                    destination_register_placement);
+                                    destination_register_placement,
+                                    abi_target_register_identity(target_profile,
+                                                                 consumed_kind,
+                                                                 destination_register_placement));
     }
   }
 }

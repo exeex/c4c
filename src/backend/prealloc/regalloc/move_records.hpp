@@ -56,7 +56,9 @@ void append_move_resolution_record(
     std::string reason,
     std::optional<BlockLabelId> source_parallel_copy_predecessor_label = std::nullopt,
     std::optional<BlockLabelId> source_parallel_copy_successor_label = std::nullopt,
-    std::optional<PreparedRegisterPlacement> destination_register_placement = std::nullopt);
+    std::optional<PreparedRegisterPlacement> destination_register_placement = std::nullopt,
+    std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity =
+        std::nullopt);
 
 }  // namespace regalloc_detail
 

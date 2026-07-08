@@ -131,7 +131,8 @@ void append_move_resolution_record(
     std::string reason,
     std::optional<BlockLabelId> source_parallel_copy_predecessor_label,
     std::optional<BlockLabelId> source_parallel_copy_successor_label,
-    std::optional<PreparedRegisterPlacement> destination_register_placement) {
+    std::optional<PreparedRegisterPlacement> destination_register_placement,
+    std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity) {
   if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None) {
     return;
   }
@@ -148,6 +149,8 @@ void append_move_resolution_record(
                move.destination_contiguous_width == destination_contiguous_width &&
                move.destination_occupied_register_names == destination_occupied_register_names &&
                move.destination_register_placement == destination_register_placement &&
+               move.destination_target_register_identity ==
+                   destination_target_register_identity &&
                move.destination_stack_offset_bytes == destination_stack_offset_bytes &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
@@ -188,6 +191,8 @@ void append_move_resolution_record(
       .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
       .reason = std::move(reason),
       .destination_register_placement = std::move(destination_register_placement),
+      .destination_target_register_identity =
+          std::move(destination_target_register_identity),
   });
 }
 

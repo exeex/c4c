@@ -348,6 +348,7 @@ struct CallArgumentDestinationPlan {
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::size_t> stack_size_bytes;
   std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedTargetRegisterIdentity> target_register_identity;
 };
 
 struct CallArgumentSourcePlan {
@@ -1031,6 +1032,16 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   return preferred;
 }
 
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity> abi_target_register_identity(
+    const c4c::TargetProfile& target_profile,
+    PreparedMoveStorageKind storage_kind,
+    const std::optional<PreparedRegisterPlacement>& placement) {
+  if (storage_kind != PreparedMoveStorageKind::Register || !placement.has_value()) {
+    return std::nullopt;
+  }
+  return target_register_identity_for_abi_register_placement(target_profile, *placement);
+}
+
 [[nodiscard]] std::optional<PreparedCallResultPlan> build_call_result_plan(
     const PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
@@ -1065,6 +1076,8 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
       .destination_stack_offset_bytes = std::nullopt,
       .source_register_placement = std::nullopt,
       .destination_register_placement = std::nullopt,
+      .source_target_register_identity = std::nullopt,
+      .destination_target_register_identity = std::nullopt,
       .destination_spill_slot_placement = std::nullopt,
   };
 
@@ -1080,12 +1093,20 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
     if (binding->destination_register_name.has_value()) {
       result_plan.source_register_bank = result_plan.value_bank;
       result_plan.source_register_placement = binding->destination_register_placement;
+      result_plan.source_target_register_identity =
+          binding->destination_target_register_identity;
       if (!result_plan.source_register_placement.has_value() &&
           call.result_abi.has_value()) {
         result_plan.source_register_placement =
             call_result_destination_register_placement(target_profile,
                                                        *call.result_abi,
                                                        result_plan.source_contiguous_width);
+      }
+      if (!result_plan.source_target_register_identity.has_value()) {
+        result_plan.source_target_register_identity =
+            abi_target_register_identity(target_profile,
+                                         result_plan.source_storage_kind,
+                                         result_plan.source_register_placement);
       }
     }
   } else if (!call.result_lanes.empty() &&
@@ -1105,6 +1126,10 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
           call_result_destination_register_placement(target_profile,
                                                      *call.result_abi,
                                                      result_plan.source_contiguous_width);
+      result_plan.source_target_register_identity =
+          abi_target_register_identity(target_profile,
+                                       result_plan.source_storage_kind,
+                                       result_plan.source_register_placement);
     }
   }
 
@@ -1114,6 +1139,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
         home != nullptr) {
       result_plan.destination_storage_kind = move_storage_kind_from_home(*home);
       result_plan.destination_register_name = home->register_name;
+      result_plan.destination_target_register_identity = home->target_register_identity;
       result_plan.destination_slot_id = home->slot_id;
       result_plan.destination_stack_offset_bytes = home->offset_bytes;
       if (home->register_name.has_value()) {
@@ -1235,6 +1261,8 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
     destination.occupied_register_names = binding.destination_occupied_register_names;
     destination.register_bank = call_argument_destination_register_bank(call, arg_index, value_bank);
     destination.register_placement = binding.destination_register_placement;
+    destination.target_register_identity =
+        binding.destination_target_register_identity;
     if (destination.register_placement.has_value() &&
         destination.register_placement->bank == PreparedRegisterBank::None &&
         destination.register_bank == PreparedRegisterBank::Gpr) {
@@ -1247,6 +1275,12 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
                                                   call.arg_abi[arg_index],
                                                   *abi_register_index,
                                                   destination.contiguous_width);
+    }
+    if (!destination.target_register_identity.has_value()) {
+      destination.target_register_identity =
+          abi_target_register_identity(target_profile,
+                                       binding.destination_storage_kind,
+                                       destination.register_placement);
     }
   };
 
@@ -1293,6 +1327,10 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
                                                     *abi,
                                                     *abi_register_index,
                                                     destination.contiguous_width);
+        destination.target_register_identity =
+            abi_target_register_identity(target_profile,
+                                         PreparedMoveStorageKind::Register,
+                                         destination.register_placement);
         if (destination.register_placement.has_value() &&
             destination.register_placement->bank == PreparedRegisterBank::None) {
           destination.register_placement->bank = PreparedRegisterBank::Gpr;
@@ -1319,6 +1357,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
         destination.occupied_register_names.clear();
         destination.register_bank = std::nullopt;
         destination.register_placement = std::nullopt;
+        destination.target_register_identity = std::nullopt;
         destination.stack_offset_bytes =
             regalloc_detail::call_arg_destination_stack_offset_bytes(
                 target_profile, call, arg_index);
@@ -1334,6 +1373,10 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
                                                     call.arg_abi[arg_index],
                                                     *abi_register_index,
                                                     byval_lane_width);
+        destination.target_register_identity =
+            abi_target_register_identity(target_profile,
+                                         PreparedMoveStorageKind::Register,
+                                         destination.register_placement);
       }
     }
   }
@@ -3221,6 +3264,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_stack_size_bytes = std::nullopt,
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
+              .destination_target_register_identity = std::nullopt,
               .source_selection = std::nullopt,
               .aggregate_transport = std::nullopt,
               .direct_global_select_chain_dependency = {},
@@ -3240,6 +3284,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
           arg_plan.destination_stack_offset_bytes = destination.stack_offset_bytes;
           arg_plan.destination_stack_size_bytes = destination.stack_size_bytes;
           arg_plan.destination_register_placement = destination.register_placement;
+          arg_plan.destination_target_register_identity =
+              destination.target_register_identity;
 
           const CallArgumentSourcePlan source =
               plan_call_argument_source(prepared.module,
@@ -3492,6 +3538,7 @@ namespace {
                                 ? argument.destination_stack_offset_bytes
                                 : move.destination_stack_offset_bytes,
       .stack_size_bytes = argument.destination_stack_size_bytes,
+      .target_register_identity = argument.destination_target_register_identity,
   };
 }
 
@@ -3503,6 +3550,7 @@ namespace {
       .register_bank = result.source_register_bank,
       .contiguous_width = result.source_contiguous_width,
       .stack_offset_bytes = result.source_stack_offset_bytes,
+      .target_register_identity = result.source_target_register_identity,
   };
 }
 
@@ -3516,6 +3564,7 @@ namespace {
       .contiguous_width = result.destination_contiguous_width,
       .slot_id = result.destination_slot_id,
       .stack_offset_bytes = result.destination_stack_offset_bytes,
+      .target_register_identity = result.destination_target_register_identity,
   };
 }
 

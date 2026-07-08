@@ -545,6 +545,7 @@ struct PreparedCallArgumentPlan {
   std::optional<std::size_t> destination_stack_size_bytes;
   std::optional<PreparedRegisterPlacement> source_register_placement;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
+  std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity;
   std::optional<PreparedCallArgumentSourceSelection> source_selection;
   std::optional<PreparedAggregateTransportPlan> aggregate_transport;
   PreparedCallArgumentDirectGlobalSelectChainDependency
@@ -718,6 +719,8 @@ struct PreparedCallResultPlan {
   std::optional<std::size_t> destination_stack_offset_bytes;
   std::optional<PreparedRegisterPlacement> source_register_placement;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
+  std::optional<PreparedTargetRegisterIdentity> source_target_register_identity;
+  std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity;
   std::optional<PreparedSpillSlotPlacement> destination_spill_slot_placement;
 };
 
@@ -798,6 +801,7 @@ struct PreparedCallBoundaryEffectEndpoint {
   std::optional<std::size_t> stack_align_bytes;
   std::optional<std::size_t> callee_saved_save_index;
   std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedTargetRegisterIdentity> target_register_identity;
   std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
 };
 

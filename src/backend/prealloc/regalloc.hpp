@@ -224,6 +224,7 @@ struct PreparedMoveResolution {
   std::optional<BlockLabelId> source_parallel_copy_successor_label;
   std::string reason;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
+  std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity;
 };
 
 struct PreparedAbiBinding {
@@ -235,6 +236,7 @@ struct PreparedAbiBinding {
   std::vector<std::string> destination_occupied_register_names;
   std::optional<std::size_t> destination_stack_offset_bytes;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
+  std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity;
 };
 
 struct PreparedSpillReloadOp {

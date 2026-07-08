@@ -1,54 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/586_uniform_target_register_identity_policy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extend Shared Identity Publication
+Current Step ID: 3
+Current Step Title: Adapt Consumers Without Broad Lowering Rewrites
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 from `plan.md` extended shared ABI target register identity publication
-in `src/backend/prealloc/target_register_profile.cpp`.
+Step 3 from `plan.md` adapted narrow prepared/prealloc ABI consumers to carry
+shared target register identity without broad lowering rewrites.
 
 Implementation notes:
-- Preserved the existing RV64 behavior in
-  `target_register_identity_for_abi_register_placement(...)`: `CallArgument`
-  and `CallResult` `Gpr`/`Fpr` placements with slots `0..7` still map to
-  physical indexes `10..17`.
-- Added AArch64 scalar ABI identity publication for `CallArgument` and
-  `CallResult` placements with width `1` and slots `0..7`: `Gpr` and
-  `AggregateAddress` publish concrete GPR identity `x0..x7`, while `Fpr` and
-  `Vreg` publish FP/SIMD identity `0..7`.
-- Added x86-64 scalar ABI identity publication for stable SysV placements:
-  argument `Gpr`/`AggregateAddress` slots `0..5` map to physical indexes
-  `{7, 6, 2, 1, 8, 9}` for `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`; argument
-  `Fpr` slots `0..7` map to `xmm0..xmm7`; result `Gpr`/`AggregateAddress`
-  slot `0` maps to `rax`; result `Fpr` slot `0` maps to `xmm0`.
-- New AArch64/x86-64 paths fail closed for `I686`, non-ABI pools, `None`
-  banks, zero-width placements, out-of-range slots, vector x86 ABI placements,
-  and multi-register/contiguous shapes. AArch64 `x8` sret remains
-  identity-less because there is still no shared placement policy for it.
+- Changed files: `src/backend/prealloc/regalloc.hpp`,
+  `src/backend/prealloc/regalloc/move_records.hpp`,
+  `src/backend/prealloc/regalloc/move_records.cpp`,
+  `src/backend/prealloc/regalloc/call_moves.cpp`,
+  `src/backend/prealloc/regalloc.cpp`, `src/backend/prealloc/calls.hpp`,
+  and `src/backend/prealloc/call_plans.cpp`.
+- `PreparedMoveResolution` and `PreparedAbiBinding` now optionally publish
+  destination `PreparedTargetRegisterIdentity` alongside existing ABI register
+  placement/name facts.
+- ABI call argument, call result, and function return move-resolution paths
+  populate identity through
+  `target_register_identity_for_abi_register_placement(...)` when the ABI
+  placement has a stable shared identity.
+- Prepared call argument/result plans and call-boundary effect endpoints carry
+  those optional identities forward from ABI bindings, value homes, or the
+  shared helper fallback.
+- Existing target lowering and final register rendering still consume prepared
+  placements/spellings where they need target operands; this packet did not
+  rewrite AArch64, x86, or RV64 call lowering.
+- Identity-less/fail-closed shapes remain `std::nullopt`: stack ABI
+  destinations, missing placement, non-ABI placement pools, multi-register or
+  contiguous ABI placements, x86 vector ABI placements, AArch64 `x8` sret
+  without shared placement policy, and any unsupported target/ABI shape rejected
+  by the shared helper.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: adapt the narrow prepared/prealloc or backend
-consumers that need ABI physical identity to use the shared publication surface
-where appropriate, without broad call-lowering rewrites.
+Execute Step 4 from `plan.md`: add focused identity publication tests for RV64,
+AArch64, and x86 stable ABI argument/result placements, including at least one
+fail-closed unsupported or identity-less shape if practical.
 
 ## Watchouts
 
-- Do not change semantic ABI classification, value freshness authority,
-  preservation fallback, move-bundle authority, broad backend lowering, test
-  expectations, unsupported markers, allowlists, or runtime-comparison
-  behavior under this idea.
-- AArch64 `x8` sret pointer still has no placement and no identity; keep it
-  fail-closed unless a later lifecycle step explicitly adds placement policy.
-- x86-64 physical-index numbering is now an explicit shared policy contract for
-  the supported SysV ABI argument/result registers; consumers should not
-  reinterpret ABI slot order as physical register numbering.
-- `AggregateAddress` stable ABI placements publish concrete GPR identity, not
-  a distinct physical aggregate-address register class.
+- Step 4 should assert `PreparedTargetRegisterIdentity` facts directly rather
+  than only register spelling or placement text.
+- Keep target-lowering/rendering paths placement-based unless a consumer
+  genuinely needs physical identity; final instruction operands still require
+  target register representations.
+- AArch64 `x8` sret, x86 vector ABI placements, stack destinations, and
+  multi-register/contiguous ABI shapes should remain identity-less/fail-closed
+  unless a later plan explicitly changes shared placement policy.
 
 ## Proof
 
