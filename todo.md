@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/589_direct_edge_publication_move_freshness_ownership.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Strengthen Observability And Closure Inventory
+Current Step ID: 6
+Current Step Title: Recheck Freshness Regression Anchors
 
 # Current Packet
 
