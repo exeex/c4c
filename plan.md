@@ -109,32 +109,7 @@ Completion check:
 - `todo.md` names the exact Step 1 evidence set, candidate rows, and first
   implementation target without broadening into RV64 emission.
 
-### Step 2: Complete selected global object-data authority
-
-Goal: make selected global object-data rows publish coherent authority for
-label, identity, extent, alignment, emitted bytes, zero-fill, relocation, and
-unsupported-marker state.
-
-Primary targets:
-- `src/backend/prealloc/object_data.cpp`
-- `src/backend/prealloc/object_data.hpp`
-- `src/backend/prealloc/prepared_contract_verifier.cpp`
-- `src/backend/prealloc/prepared_contract_verifier.hpp`
-
-Actions:
-- Audit how `PreparedGlobalObjectData` is populated from BIR globals.
-- Repair missing or contradictory prepared object-data facts only where the BIR
-  initializer and global layout evidence supports them.
-- Preserve explicit unsupported or invalid-prepared diagnostics when the
-  initializer facts are absent or out of scope.
-- Avoid moving byte emission into RV64 as a substitute for prepared authority.
-
-Completion check:
-- At least one selected global object-data family row advances past the
-  prepared object-data contract stop, and nearby rows either advance for the
-  same semantic reason or retain a precise fail-closed diagnostic.
-
-### Step 3: Publish prepared global memory facts
+### Step 2: Publish prepared global memory facts
 
 Goal: make supported global load/store memory accesses carry prepared facts
 that RV64 can consume later without reconstructing address provenance.
@@ -159,7 +134,7 @@ Completion check:
   stopped with missing prepared global memory facts, and unsupported-width rows
   remain target-consumer failures.
 
-### Step 4: Complete direct global-symbol base-plus-offset authority
+### Step 3: Complete direct global-symbol base-plus-offset authority
 
 Goal: publish direct global-symbol base-plus-offset authority for rows where
 symbol identity and byte offset are semantically known.
@@ -183,6 +158,31 @@ Completion check:
 - Direct global-symbol base-plus-offset rows progress when the prepared fact is
   semantically available, and rows with ambiguous or missing authority still
   fail before RV64 emission.
+
+### Step 4: Complete selected global object-data authority
+
+Goal: make selected global object-data rows publish coherent authority for
+label, identity, extent, alignment, emitted bytes, zero-fill, relocation, and
+unsupported-marker state.
+
+Primary targets:
+- `src/backend/prealloc/object_data.cpp`
+- `src/backend/prealloc/object_data.hpp`
+- `src/backend/prealloc/prepared_contract_verifier.cpp`
+- `src/backend/prealloc/prepared_contract_verifier.hpp`
+
+Actions:
+- Audit how `PreparedGlobalObjectData` is populated from BIR globals.
+- Repair missing or contradictory prepared object-data facts only where the BIR
+  initializer and global layout evidence supports them.
+- Preserve explicit unsupported or invalid-prepared diagnostics when the
+  initializer facts are absent or out of scope.
+- Avoid moving byte emission into RV64 as a substitute for prepared authority.
+
+Completion check:
+- At least one selected global object-data family row advances past the
+  prepared object-data contract stop, and nearby rows either advance for the
+  same semantic reason or retain a precise fail-closed diagnostic.
 
 ### Step 5: Prove prepared authority handoff and preserve the split
 

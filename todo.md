@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/608_prepared_global_data_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory prepared/global authority blockers
+Current Step ID: 2
+Current Step Title: Publish prepared global memory facts
 
 # Current Packet
 
@@ -11,6 +11,9 @@ Current Step Title: Inventory prepared/global authority blockers
 - Completed Step 1 from `plan.md`: inventoried the prepared/global authority
   blockers in the current RV64 gcc-torture backend artifacts and selected the
   first narrow implementation target.
+- Lifecycle review reordered `plan.md` so the inventory-recommended prepared
+  global memory facts packet is now Step 2, ahead of selected object-data
+  authority.
 - Exact Step 1 evidence set:
   - `docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`
   - `docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md`
@@ -71,7 +74,7 @@ Current Step Title: Inventory prepared/global authority blockers
     `publish_scalar_global_layout_authority()`, and
     `publish_integer_array_global_layout_authority()` in the prepared
     addressing/coordinator path.
-- First narrow implementation target recommendation: start with Step 3,
+- First narrow implementation target recommendation: start with Step 2,
   prepared global memory facts, using `src/strlen-7.c` plus neighboring
   `supported prepared global memory facts` rows. This crosses the prepared
   global-memory and direct-address helpers without touching RV64 emission, and
@@ -80,7 +83,7 @@ Current Step Title: Inventory prepared/global authority blockers
 
 ## Suggested Next
 
-- Implement the first narrow Step 3 packet: repair prepared publication for
+- Implement the first narrow Step 2 packet: repair prepared publication for
   supported `LoadGlobalInst` / `StoreGlobalInst` global-symbol memory accesses
   so `prepared_global_symbol_memory_has_publication_authority()` succeeds for
   semantically known direct global-symbol base-plus-offset accesses, proving
