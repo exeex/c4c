@@ -8,44 +8,43 @@ Current Step Title: Implement First Ordinary ABI Consumer
 
 ## Just Finished
 
-Completed Step 2, "Implement First Ordinary ABI Consumer", for the
-pointer-base-plus-offset local-frame address materialization variant inside the
-basic same-module GPR/void call/result group.
+Completed Step 2, "Implement First Ordinary ABI Consumer", diagnostic
+classification for stack-slot preservation source authority around
+`src/20020529-1.c`.
 
-The RV64 object call-argument consumer now accepts explicit
-`LocalFrameAddressMaterialization` facts whose selected source home is
-`PointerBasePlusOffset` when the prepared materialization supplies a concrete
-frame-slot byte offset and that offset matches the prepared pointer byte delta
-from the source slot base. This removes the prior scalar-slot containment
-requirement for that pointer-offset materialization path while keeping the
-existing bounds, 12-bit immediate, source value, source stack offset, frame
-plan, and materialization-record checks fail closed.
+Current probes show `src/20020529-1.c` still stops at
+`unsupported_call_abi` on the first same-module call in `foo`:
+`function=foo; block=block_1; block_index=3; instruction_index=0;
+callee=f1; args=1; planned_args=1; result=i32 %t0`.
 
-Representative outcomes from focused probes:
+The prepared callsite has three live preserves. `%p.p` and `%p.c` use
+callee-saved register preservation and publish complete concrete source and
+destination endpoints:
 
-- `src/20021219-1.c` moved past `unsupported_call_abi`; it now stops
-  downstream at
-  `prepared_consumer_category=malformed_prepared_join_transfer_carrier`.
-- `src/pr77767.c` still compiles through `--codegen obj`.
-- `src/20020529-1.c` still stops at `unsupported_call_abi` because the first
-  same-module call carries stack-slot preservation whose source endpoint lacks
-  a concrete source register name for `%p.b`; consuming that would require
-  prepared preservation-source authority, not target-local reconstruction.
-- The `931004-*` and `931031-1.c` rows still stop at `unsupported_call_abi`;
-  they involve aggregate-address/stack ABI argument transport rather than the
-  scalar GPR pointer-offset path handled here.
+- `%p.p`: `preservation_source=register:a0:value#0`,
+  `preservation_destination=register:s1:value#0`
+- `%p.c`: `preservation_source=register:a2:value#2`,
+  `preservation_destination=register:s2:value#2`
 
-Focused object-emission tests were added for the pointer-base-plus-offset call
-argument path and for fail-closed missing/mismatched pointer-delta authority.
+The blocking stack-slot preserve for `%p.b` publishes a concrete destination
+slot but not a concrete source register:
+`route=stack_slot spill_slot=slot#19+stack24 ... preservation_source=register:value#1
+preservation_destination=stack_slot:slot#19:value#1`. The function storage
+summary still records `%p.b` in `a1`, but that is not preservation-source
+authority for this callsite. Consuming it in RV64 would require inferring the
+source register from parameter position or storage state, which is outside
+idea 613's consumer-only rule.
+
+No in-scope Step 2 implementation packet was found for this row. The
+`931004-*` and `931031-1.c` rows remain separate aggregate stack ABI argument
+transport work, not stack-slot preservation-source publication.
 
 ## Suggested Next
 
-Continue Step 2 only if the supervisor wants another in-scope ordinary ABI
-consumer packet. The next coherent packet is stack-slot preservation source
-authority classification for `src/20020529-1.c`: either consume explicit
-register-to-stack / stack-to-register preservation endpoints if prepared facts
-publish source registers, or split the missing preservation-source publication
-gap if they do not.
+Split or hand off the missing prepared stack-slot preservation source
+publication gap for `src/20020529-1.c`. After that lifecycle decision, either
+refresh Step 2 residuals for another ordinary ABI consumer family with complete
+prepared facts, or move to Step 3 if no Step 2 breadth remains.
 
 ## Watchouts
 
