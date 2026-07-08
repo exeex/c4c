@@ -8,71 +8,74 @@ Current Step Title: Broaden Within Authorized Terminator Families
 
 ## Just Finished
 
-Step 3 from `plan.md` implemented RV64 prepared terminator consumer support for
-authorized scalar floating fused-compare conditional branches.
+Step 3 from `plan.md` refreshed direct probes for the remaining RV64
+`unsupported_terminator_fragment` residual rows without changing
+implementation, tests, expectations, unsupported markers, or allowlists.
 
-The new consumer rule requires a prepared `FusedCompare` branch condition with
-an F32/F64 compare type, explicit predicate/lhs/rhs evidence, and materializable
-FPR or zero-immediate operands through the existing FP compare helper. It emits
-the FP compare into `t3`, branches on the produced GPR predicate, and preserves
-the existing false-edge jump. No pointer branch, integer branch, branch-source
-publication/freshness, move-bundle, ABI, runtime, expectation, unsupported
-marker, or allowlist files were edited.
+Direct object probes still report `unsupported_terminator_fragment` for all five
+rows:
+- `src/20030910-1.c`
+- `src/ieee/20001122-1.c`
+- `src/921124-1.c`
+- `src/920710-1.c`
+- `src/991030-1.c`
 
-Focused movement from direct object probes:
-- Now compile to RV64 objects: `src/920618-1.c`, `src/pr23941.c`,
-  `src/ieee/pr67218.c`, `src/921019-2.c`, `src/20040831-1.c`, and
-  `src/ieee/mzero2.c`.
-- Moved past `unsupported_terminator_fragment` to downstream owners:
-  `src/20000731-1.c` and `src/930603-1.c` to
-  `unsupported_scalar_compare_publication`; `src/cmpsf-1.c`,
-  `src/ieee/fp-cmp-1.c`, `src/ieee/fp-cmp-6.c`, and
-  `src/ieee/pr28634.c` to `unsupported_global_data`; `src/pr35456.c` to
-  `unsupported_floating_cast`; `src/ieee/mzero5.c`, `src/ieee/920810-1.c`,
-  `src/930702-1.c`, and `src/pr44683.c` to
-  `unsupported_instruction_fragment`; `src/990127-2.c` and `src/930614-1.c`
-  to `unsupported_move_bundle_target_shape`; `src/921113-1.c` to
-  `unsupported_call_abi`; and `src/ieee/pr84235.c` to ambiguous
-  non-parallel stack-destination fan-in authority.
-- Still report `unsupported_terminator_fragment` after this packet:
-  `src/20030910-1.c`, `src/ieee/20001122-1.c`, `src/921124-1.c`,
-  `src/920710-1.c`, and `src/991030-1.c`.
+Prepared terminator evidence is present for all five rows, so none classify as
+missing prepared branch-condition/control-flow evidence:
+- `src/20030910-1.c`: prepared control flow has one `fused_compare`
+  conditional branch, `ne double %t4, 0x40091EB851EB851F`, with register homes
+  for the FPR input and GPR predicate. The residual is an unsupported RV64
+  object-route terminator consumer shape, not missing terminator facts.
+- `src/ieee/20001122-1.c`: prepared control flow has two `fused_compare`
+  conditional branches over double values, including a loop backedge and a
+  global-load compare. The prepared branch evidence is explicit, but
+  `--codegen asm` stops earlier at unsupported prepared global storage layout,
+  so the object-route residual should not be treated as a clean standalone
+  terminator implementation packet.
+- `src/921124-1.c`: prepared control flow has one double `fused_compare`
+  branch followed by integer fused-compare short-circuit branches. It also
+  records join/select carrier gaps, missing publication for parameter-carried
+  join sources, and one available branch stack-load authority row. This is an
+  unsupported mixed select/join and stack-backed condition consumer shape, not
+  missing prepared terminator evidence.
+- `src/920710-1.c`: prepared control flow has double, integer, and float
+  `fused_compare` conditional branches plus predecessor-terminator parallel
+  copy authority for the join feeding the integer branch. This is an unsupported
+  mixed FP/integer compare plus join consumer shape, not missing terminator
+  evidence.
+- `src/991030-1.c`: prepared control flow has one `fused_compare` conditional
+  branch, `ne double %t0, 0x400F000000000000`, with direct-global select-chain
+  evidence. As with `src/ieee/20001122-1.c`, `--codegen asm` stops earlier at
+  unsupported prepared global storage layout, so this belongs with global-data
+  or global-storage classification before another terminator packet.
 
-Focused out-of-scope checks:
-- Pointer compare row `src/20000801-2.c` remains fail-closed at
-  `unsupported_terminator_fragment`.
-- Branch authority row `src/20000314-3.c` remains fail-closed at
-  `unsupported_branch_stack_load_authority`.
-- ABI row `src/950607-2.c` remains fail-closed at `unsupported_call_abi`.
-- Generic instruction row `src/pr20527-1.c` remains fail-closed at
-  `unsupported_instruction_fragment`.
+No single Step 3 implementation family emerged with explicit prepared operands
+and control-flow authority that would avoid crossing into global storage,
+join/select publication, stack-backed condition, or mixed integer-branch
+consumer ownership.
 
 ## Suggested Next
 
-Step 3 residual-classification packet:
+Step 4 close-readiness classification packet:
 
-Refresh direct probes over the remaining current `unsupported_terminator_fragment`
-rows and split `src/20030910-1.c`, `src/ieee/20001122-1.c`,
-`src/921124-1.c`, `src/920710-1.c`, and `src/991030-1.c` by missing prepared
-terminator evidence versus unsupported consumer shape. Keep this diagnostic-only
-unless a single semantic family with explicit prepared operands/control-flow
-authority emerges.
+Treat the remaining five direct object residuals as classified unsupported
+consumer shapes rather than a single authorized Step 3 terminator family, and
+decide whether the plan should close, split, or activate a new source idea for
+global-storage and join/select/stack-condition follow-up work.
 
 ## Watchouts
 
-- `src/980604-1.c` now compiles as incidental movement through the existing
-  integer branch/select path plus the new final floating branch consumer; do
-  not use it as the proof target for this floating packet.
-- Keep pointer compare branches out of any further floating compare packet.
-- Keep branch operand authority, branch stack-source freshness, ABI, malformed
-  join evidence, move-bundle, and generic instruction-fragment rows out of
-  Step 3 consumer broadening unless a separate plan explicitly owns them.
-- Keep `src/20000314-3.c`, `src/20001017-1.c`, `src/20050125-1.c`,
-  `src/20080519-1.c`, `src/20140828-1.c`, `src/loop-2e.c`,
-  `src/pr39100.c`, `src/20060910-1.c`, `src/930930-1.c`, and
-  `src/990127-1.c` as negative authority/freshness rows.
-- Keep `src/980604-1.c`, `src/pr58574.c`, and `src/pr88714.c` as mixed
-  branch/operand-authority watchouts, not as floating-compare proof targets.
+- Direct object probes alone keep the five rows under
+  `unsupported_terminator_fragment`, but prepared-BIR and asm probes show mixed
+  root ownership. Do not claim another Step 3 implementation packet unless the
+  supervisor intentionally chooses one semantic subfamily.
+- `src/ieee/20001122-1.c` and `src/991030-1.c` have explicit fused-compare
+  branch conditions, but RV64 asm emission currently stops at unsupported
+  prepared global storage layout.
+- `src/921124-1.c` and `src/920710-1.c` include join/select or
+  predecessor-terminator parallel-copy evidence; keep these out of a narrow
+  floating compare branch packet unless that packet explicitly owns the join
+  publication and branch-condition consumer shape.
 - The direct probe path is `build/c4cll`, not `build/src/apps/c4cll`.
 
 ## Proof
@@ -82,6 +85,8 @@ authority emerges.
 Result: passed. Test subset: `^backend_`. Proof log: `test_after.log`.
 
 Focused diagnostic probes used direct `build/c4cll --codegen obj --target
-riscv64-linux-gnu -o <tmp>.o` commands against the GCC torture source paths
-under `tests/c/external/gcc_torture/`; temporary objects and probe files were
-removed.
+riscv64-linux-gnu -o <tmp>.o`, `--dump-prepared-bir`, and targeted
+`--codegen asm` commands against the five GCC torture source paths under
+`tests/c/external/gcc_torture/`. Object probes confirmed all five still report
+`unsupported_terminator_fragment`; prepared-BIR probes provided the
+classification evidence above.
