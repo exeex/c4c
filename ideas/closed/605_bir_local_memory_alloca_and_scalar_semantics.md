@@ -1,6 +1,6 @@
 # BIR Local-Memory Alloca And Scalar Semantics
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -45,6 +45,28 @@ memory stops move.
   failures.
 - Proof uses the RV64 gcc_torture backend-object route or an equivalent
   same-family subset.
+
+## Closure Summary
+
+Closed after the alloca-local repair moved all `11` current alloca
+local-memory producer rows beyond the original BIR producer stop and preserved
+adjacent owner boundaries for load, GEP, store, vector, scalar-cast,
+unordered-compare, runtime, and success rows in the same-family breadth proof.
+
+Proof included selected Step 3 coverage (`16/16`), naming-sensitive backend
+coverage (`9/9`), full backend coverage (`346/346`), Step 4 same-family
+breadth (`65/65`), and a close-time full-suite regression guard with no new
+failures (`3375/3375` before and after).
+
+The remaining `22` scalar/local-memory producer rows are follow-up scope, not
+open acceptance criteria for this alloca-local repair closure:
+`src/20020411-1.c`, `src/20041201-1.c`, `src/20070614-1.c`,
+`src/complex-2.c`, `src/complex-5.c`, `src/complex-6.c`, `src/ffs-2.c`,
+`src/20020227-1.c`, `src/20021118-2.c`, `src/921013-1.c`,
+`src/961223-1.c`, `src/builtin-bitops-1.c`, `src/ffs-1.c`,
+`src/ieee/acc1.c`, `src/ieee/acc2.c`, `src/pr42248.c`, `src/pr42691.c`,
+`src/pr47538.c`, `src/pr56837.c`, `src/pr61725.c`,
+`src/scal-to-vec1.c`, and `src/scal-to-vec2.c`.
 
 ## Reviewer Reject Signals
 
