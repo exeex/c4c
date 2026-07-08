@@ -1,9 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/620_prepared_mixed_object_data_slots.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Populate mixed bytes and relocation slots
-你該做test baseline review了
+Current Step ID: 4
+Current Step Title: Prove handoff back to global-data consumers
 
 # Current Packet
 
