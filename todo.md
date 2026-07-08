@@ -8,49 +8,54 @@ Current Step Title: Broaden Within ABI Consumer Authority
 
 ## Just Finished
 
-Completed the Step 4 scalar GPR same-module call/result consumer packet in
-RV64 object emission.
+Completed the Step 4 residual refresh after the scalar GPR same-module
+call/result consumer slice.
 
-The object route now treats explicit scalar GPR source storage as authoritative
-when address-provenance selections are also present:
+Focused current-build probes were written under
+`build/agent_state/613_step4_residual_refresh.tsv` and
+`build/agent_state/613_step4_prepared_dumps/`. The refreshed probe set confirms
+the accepted Step 4 movement:
 
-- Register sources with `local_frame_address_materialization` provenance now
-  move the prepared source register to `a0`-`a7` instead of incorrectly trying
-  to materialize a frame address.
-- Frame-slot sources with `frame_slot_address` provenance still use the
-  existing address-publication route when publication facts exist; otherwise a
-  new fail-closed explicit scalar frame-slot helper loads only when the prepared
-  source value id, source slot id, stack offset, GPR bank, stack home, slot
-  bounds, scalar width, and destination register facts all agree.
-- Existing scalar GPR result publication from `register:a0` to prepared
-  destination registers and non-pointer stack slots remained covered by the
-  prior consumer path.
+- `src/20001017-2.c` and `src/20010118-1.c` compile through `--codegen obj`.
+- `src/20001101.c` moved to `unsupported_terminator_fragment`.
+- `src/20040625-1.c` moved to `unsupported_move_bundle_target_shape`.
+- Additional stale `unsupported_call_abi` rows now compiling through object
+  include `src/20050613-1.c`, `src/980701-1.c`, `src/pr20466-1.c`, and
+  `src/pr77767.c`.
 
-Focused probes after the change:
+Remaining refreshed ABI-adjacent rows in the focused set were classified as:
 
-- `src/20001017-2.c` now compiles through `--codegen obj`.
-- `src/20010118-1.c` now compiles through `--codegen obj`.
-- `src/20001101.c` moved past `unsupported_call_abi` to
-  `unsupported_terminator_fragment`.
-- `src/20040625-1.c` moved past `unsupported_call_abi` to a downstream
-  `unsupported_move_bundle_target_shape` register/pointer-base stack
-  destination.
-- `src/20030715-1.c` still stops at `unsupported_call_abi`; the remaining
-  shape is pointer call result to prepared stack slot, and removing that guard
-  broke an existing fail-closed test, so it was left out of this packet.
+- `39` `unsupported_call_abi` rows.
+- `13` `unsupported_stack_frame` rows.
+- `4` `unsupported_move_bundle_target_shape` rows.
+- `1` `unsupported_terminator_fragment` row.
+- `1` `malformed_prepared_join_transfer_carrier` row.
 
-Focused tests added coverage for register and frame-slot scalar sources that
-carry address-provenance selections without weakening true frame-slot address
-publication handling.
+No remaining same-authority Step 4 ABI consumer packet with complete prepared
+facts and meaningful breadth was found. Representative residual owners:
+
+- Aggregate/byval and outgoing stack transport: `src/20000808-1.c`,
+  `931004-*`, `src/931031-1.c`, `src/950607-2.c`, and `src/pr69447.c`.
+- Missing prepared producer/publication authority:
+  `src/20020529-1.c`, `src/20010129-1.c`, `src/20020406-1.c`, and
+  frame-slot argument publication rows such as `src/pr58209.c`.
+- Pointer stack-result policy: `src/20030715-1.c`, `src/20011113-1.c`,
+  `src/20041218-1.c`, `src/pr20601-1.c`, `src/pr34176.c`, and
+  `src/pr58209.c`.
+- FPR/frame policy: `src/980605-1.c`, `src/ieee/compare-fp-2.c`,
+  `src/ieee/unsafe-fp-assoc.c`, `src/pr39501.c`, and the refreshed
+  `unsupported_stack_frame` rows.
+- Return destination-home authority remains separated under
+  `return_stack_to_register` move-bundle ownership for `src/20001130-2.c` and
+  `src/20080719-1.c`.
 
 ## Suggested Next
 
-Refresh Step 4 residuals after the scalar GPR argument/source-storage slice.
-Classify whether any remaining same-authority ABI consumer packet exists, or
-advance to Step 5 residual split/close-readiness if remaining rows are pointer
-stack-result policy, producer authority, FPR/frame policy, aggregate outgoing
-stack transport, generic move-bundle, local/global, runtime/library/variadic,
-or terminator/instruction-fragment owners.
+Advance to Step 5 residual split/close-readiness classification for idea 613.
+Use the current residual refresh to decide whether idea 613 is close-ready or
+needs additional durable splits for pointer stack-result policy, FPR/frame
+policy, aggregate outgoing stack transport, return destination-home authority,
+and remaining prepared producer/publication gaps.
 
 ## Watchouts
 
@@ -64,14 +69,12 @@ or terminator/instruction-fragment owners.
 - Do not infer pointer stack-result policy from `src/20030715-1.c`; it needs a
   separate decision because the existing pointer stack-result guard is covered
   by a fail-closed object-emission test.
+- Do not treat FPR argument/result rows, dynamic/static frame policy rows,
+  runtime/library/variadic rows, generic move-bundle rows, local/global
+  producer rows, or terminator/instruction-fragment owners as Step 4 ABI
+  consumer progress.
 
 ## Proof
-
-Focused proof:
-
-`cmake --build --preset default --target c4cll backend_riscv_object_emission_test && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'`
-
-Result: passed.
 
 Supervisor-delegated proof ran exactly:
 
