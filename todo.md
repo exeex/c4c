@@ -8,28 +8,30 @@ Current Step Title: Repair Local-Memory Store Production
 
 ## Just Finished
 
-Completed Step 3 broader-backend contract repair after the ordinary local `f128` store source-value change. `backend_lir_to_bir_notes` was still asserting the old unsupported boundary for `f128` scalar constants; the test now admits the generic scalar `f128` literal capability and verifies the lowered `BinaryInst` carries typed operands plus a structured `bir::Value::immediate_f128_bits(...)` payload.
+Completed Step 3 pointer/address-authority store producer repair for the remaining local-memory store probes.
 
-The failure was a stale unit contract, not an implementation overreach. The existing scalar implementation remains generic to canonical `0xL<32 hex>` / `0x<32 hex>` `f128` immediates and still feeds the existing local-store producer path without testcase-shaped matching.
+Implementation surface:
+- `try_lower_global_provenance_load(...)` now publishes an opaque runtime `PointerAddress` fact when loading a pointer from a global pointer slot and no stronger address/global fact is known. This gives later stores through that loaded pointer real pointer-value store authority without changing expectations or global-data accounting.
+- `lower_memory_store_inst(...)` now lowers dynamic local pointer-array stores by loading each tracked pointer slot, selecting the incoming pointer value for the runtime-selected index and the old value otherwise, and storing the selected pointer back to the concrete local pointer slots. The path clears per-slot address/provenance side tables that cannot represent a runtime-selected element precisely, while preserving pointer value aliases for later value loads.
 
-Confirmed contracts:
-- `backend_lir_to_bir_notes` now verifies full-width `f128` literal materialization in scalar binops instead of requiring rejection through the old 64-bit immediate lane.
-- `build/c4cll --dump-bir --target riscv64-linux-gnu --mir-focus-function main tests/c/external/gcc_torture/src/20010605-2.c` now succeeds and emits local `f128` stores for `%lv.z.0` and `%lv.z.16`.
-- `build/c4cll --dump-bir --target riscv64-linux-gnu --mir-focus-function test tests/c/external/gcc_torture/src/20020413-1.c` now succeeds and emits `bir.store_local %lv.tmp, f128 0x00000000000000003FFF000000000000, addr %lv.tmp`, plus later computed `f128` stores.
-- `build/c4cll --dump-bir --target riscv64-linux-gnu --mir-focus-function bar tests/c/external/gcc_torture/src/pr39120.c` still fails in `store local-memory semantic family`.
-- `build/c4cll --dump-bir --target riscv64-linux-gnu --mir-focus-function main tests/c/external/gcc_torture/src/strct-pack-2.c` still fails in `store local-memory semantic family`.
+Progressed rows:
+- `build/c4cll --dump-bir --target riscv64-linux-gnu --mir-focus-function main tests/c/external/gcc_torture/src/strct-pack-2.c` now succeeds. The old `store ptr %lv.i, ptr %t5` boundary lowers into selected stores for `%lv.a.8` and `%lv.a.16`.
+- `src/pr39120.c` progressed beyond the old `bar` store-through-loaded-pointer producer boundary. After the pointer-field load publication, the next focused stop is the separate `main` aggregate store to global `x` (`store %struct.X %t0, ptr @x`), which is outside this packet's local pointer/address store scope.
+- The existing `f128` local-store probes `src/20010605-2.c` and `src/20020413-1.c` still dump BIR successfully after this packet.
 
 The selected non-store guard rows and selected RV64 local-memory rows were included in the delegated CTest proof and stayed green.
 
 ## Suggested Next
 
-Continue Step 3 with the distinct pointer/address-authority store producer repair for `src/pr39120.c` and `src/strct-pack-2.c`, starting from `try_lower_pointer_provenance_store(...)`, `try_lower_addressed_pointer_store(...)`, and the local-slot pointer/address tracking paths in `try_lower_local_slot_store(...)`.
+Continue Step 3/Step 4 by deciding whether the remaining `src/pr39120.c` full-file boundary belongs in this local-memory store plan or should be handed off as a separate aggregate-to-global store owner before broad same-family counting.
 
 ## Watchouts
 
 - Keep the route limited to BIR local-memory store semantics.
 - Treat `src/pr39120.c` and `src/strct-pack-2.c` as probes for semantic destination/address repair, not implementation keys.
 - Keep ordinary `f128` source-value support separate from pointer/address authority. The `f128` repair lives in generic scalar value lowering and already feeds existing local store production.
+- `src/pr39120.c` no longer demonstrates the original `bar` store-through-loaded-pointer producer stop; its remaining visible semantic stop is `main` assigning the returned aggregate to global `x`, which should not be folded into local pointer/address repair without supervisor approval.
+- Dynamic local pointer-array stores intentionally preserve pointer values but clear precise per-element address facts because a runtime-selected element cannot be represented by the current `LocalSlotAddress` side table shape.
 - The selected non-store guard rows remain excluded from Step 3 implementation ownership: `src/20041124-1.c` (load), `src/20030717-1.c` (GEP), `src/20180921-1.c` (alloca), `src/20000722-1.c` (prepared/RV64 local memory), `src/20000603-1.c` (ABI), `src/pr38533.c` (runtime), `src/20010924-1.c` (prepared/global-data), and `src/20020118-1.c` (RV64/global-data).
 - Do not change tests, expectations, unsupported markers, allowlists, runtime, timeout, or accounting behavior.
 - Preserve the completed load-semantics boundary from idea 602.
@@ -44,7 +46,7 @@ cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -
 
 Result: build passed; selected CTest subset passed 13/13, including `backend_lir_to_bir_notes` and the 12 selected RV64 rows.
 
-Supervisor-side broader backend validation after the contract fix also passed:
+Supervisor-side broader backend validation after the pointer/address repair also passed:
 
 ```sh
 ctest --test-dir build -j --output-on-failure -R '^backend_'

@@ -711,6 +711,17 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
           global_it->second.pointer_initializer_offsets.find(global_ptr_it->second.byte_offset);
       if (pointer_init_it != global_it->second.pointer_initializer_offsets.end()) {
         (*global_pointer_slots)[load.result.str()] = pointer_init_it->second;
+      } else if (global_ptr_it->second.value_type == bir::TypeKind::Ptr &&
+                 pointer_value_addresses->find(load.result.str()) ==
+                     pointer_value_addresses->end() &&
+                 global_pointer_slots->find(load.result.str()) == global_pointer_slots->end()) {
+        (*pointer_value_addresses)[load.result.str()] = PointerAddress{
+            .base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str()),
+            .value_type = bir::TypeKind::Void,
+            .byte_offset = 0,
+            .provenance = unknown_runtime_base_provenance(
+                bir::Value::named(bir::TypeKind::Ptr, load.result.str())),
+        };
       }
     }
   }

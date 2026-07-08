@@ -1144,6 +1144,65 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     return true;
   }
 
+  if (*value_type == bir::TypeKind::Ptr) {
+    if (const auto dynamic_ptr_it = dynamic_local_pointer_arrays_.find(store.ptr.str());
+        dynamic_ptr_it != dynamic_local_pointer_arrays_.end()) {
+      if (dynamic_ptr_it->second.element_slots.empty()) {
+        return false;
+      }
+      for (std::size_t element_index = 0;
+           element_index < dynamic_ptr_it->second.element_slots.size();
+           ++element_index) {
+        const auto& element_slot = dynamic_ptr_it->second.element_slots[element_index];
+        const auto slot_type_it = local_slot_types_.find(element_slot);
+        if (slot_type_it == local_slot_types_.end() || slot_type_it->second != *value_type) {
+          return false;
+        }
+
+        const std::string element_name =
+            store.ptr.str() + ".ptr.elt" + std::to_string(element_index);
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(*value_type, element_name),
+            .slot_name = element_slot,
+        });
+
+        bir::Value stored_value = *value;
+        if (dynamic_ptr_it->second.element_slots.size() > 1) {
+          const auto compare_rhs =
+              make_index_immediate(dynamic_ptr_it->second.index.type, element_index);
+          if (!compare_rhs.has_value()) {
+            return false;
+          }
+          const std::string select_name =
+              store.ptr.str() + ".ptr.store" + std::to_string(element_index);
+          lowered_insts->push_back(bir::SelectInst{
+              .predicate = bir::BinaryOpcode::Eq,
+              .result = bir::Value::named(*value_type, select_name),
+              .compare_type = dynamic_ptr_it->second.index.type,
+              .lhs = dynamic_ptr_it->second.index,
+              .rhs = *compare_rhs,
+              .true_value = *value,
+              .false_value = bir::Value::named(*value_type, element_name),
+          });
+          stored_value = bir::Value::named(*value_type, select_name);
+        }
+
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = element_slot,
+            .value = stored_value,
+            .address = direct_scalar_local_slot_address(element_slot, *value_type),
+        });
+        local_pointer_value_aliases_[element_slot] = stored_value;
+        local_pointer_slot_addresses_.erase(element_slot);
+        local_slot_address_slots_.erase(element_slot);
+        local_address_slots_.erase(element_slot);
+        local_indirect_pointer_slots_.erase(element_slot);
+      }
+      clear_local_scalar_slot_values();
+      return true;
+    }
+  }
+
   if (const auto pointer_store = try_lower_pointer_provenance_store(store.ptr.str(),
                                                                     *value_type,
                                                                     *value,
