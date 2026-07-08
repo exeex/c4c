@@ -12116,30 +12116,39 @@ bool rv64_is_selected_zero_fill_object_data(
          object_data.object_size_bytes == global.size_bytes;
 }
 
+std::optional<c4c::LinkNameId> rv64_selected_pointer_initializer_target(
+    const c4c::backend::bir::Global& global) {
+  if (global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    return global.initializer_symbol_name_id;
+  }
+  if (global.initializer.has_value() &&
+      global.initializer->kind == c4c::backend::bir::Value::Kind::Named &&
+      global.initializer->type == c4c::backend::bir::TypeKind::Ptr &&
+      global.initializer->pointer_symbol_link_name_id != c4c::kInvalidLinkName) {
+    return global.initializer->pointer_symbol_link_name_id;
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> rv64_selected_symbol_pointer_initializer_label(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::bir::Global& global,
     const prepare::PreparedGlobalObjectData& object_data,
     prepare::PreparedSelectedObjectDataContractStatus status) {
+  const auto initializer_target = rv64_selected_pointer_initializer_target(global);
   if (!rv64_prepared_object_data_is_selected_fallback_candidate(
           global, object_data, status) ||
       global.type != c4c::backend::bir::TypeKind::Ptr ||
       global.size_bytes != 8 ||
       global.align_bytes < 8 ||
-      !global.initializer.has_value() ||
-      global.initializer->kind != c4c::backend::bir::Value::Kind::Named ||
-      global.initializer->type != c4c::backend::bir::TypeKind::Ptr ||
-      global.initializer->pointer_symbol_link_name_id == c4c::kInvalidLinkName ||
-      global.initializer_symbol_name.has_value() ||
-      global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
+      !initializer_target.has_value() ||
       !global.initializer_elements.empty() ||
       object_data.object_label != global.link_name_id ||
       object_data.object_size_bytes != 8 ||
       object_data.align_bytes < 8) {
     return std::nullopt;
   }
-  auto label = rv64_prepared_link_name_label(
-      prepared, global.initializer->pointer_symbol_link_name_id);
+  auto label = rv64_prepared_link_name_label(prepared, *initializer_target);
   if (label.empty()) {
     return std::nullopt;
   }
@@ -12199,6 +12208,37 @@ object::SymbolBinding rv64_prepared_object_data_symbol_binding(
                                    : object::SymbolBinding::Local;
 }
 
+const prepare::PreparedGlobalObjectData*
+rv64_find_prepared_global_object_data_for_global(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Global& global) {
+  const auto* fallback = prepare::find_prepared_global_object_data(
+      prepared.object_data, global.link_name_id);
+  for (const auto& object_data : prepared.object_data.globals) {
+    if (object_data.object_label == global.link_name_id &&
+        object_data.object_size_bytes == global.size_bytes &&
+        object_data.align_bytes == global.align_bytes) {
+      return &object_data;
+    }
+  }
+  return fallback;
+}
+
+bool rv64_has_concrete_prepared_object_data_for_label(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::LinkNameId label) {
+  for (const auto& object_data : prepared.object_data.globals) {
+    if (object_data.object_label == label &&
+        !object_data.requires_unsupported_marker &&
+        !object_data.has_unsupported_marker &&
+        !object_data.unsupported_but_coherent &&
+        rv64_prepared_object_data_has_emission_identity(object_data)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::optional<std::string> append_rv64_prepared_data_objects(
     object::ObjectModule& object_module,
     const c4c::backend::prepare::PreparedBirModule& prepared) {
@@ -12242,13 +12282,20 @@ std::optional<std::string> append_rv64_prepared_data_objects(
       continue;
     }
 
-    const auto* object_data = prepare::find_prepared_global_object_data(
-        prepared.object_data, global.link_name_id);
+    const auto* object_data =
+        rv64_find_prepared_global_object_data_for_global(prepared, global);
     const auto facts = rv64_selected_object_data_contract_facts(object_data);
     const auto status =
         prepare::classify_prepared_selected_object_data_contract(facts);
     const auto report =
         prepare::verify_prepared_selected_object_data_contract(facts);
+    if (object_data != nullptr &&
+        rv64_prepared_object_data_is_selected_fallback_candidate(
+            global, *object_data, status) &&
+        rv64_has_concrete_prepared_object_data_for_label(
+            prepared, global.link_name_id)) {
+      continue;
+    }
     if (report.owner_class != prepare::PreparedContractOwnerClass::Coherent) {
       const bool supports_zero_fill =
           object_data != nullptr &&
@@ -12272,9 +12319,8 @@ std::optional<std::string> append_rv64_prepared_data_objects(
     }
 
     const auto* existing = object::find_symbol(object_module, label);
-    if (object_data->align_bytes == 0 ||
-        (existing != nullptr && !object::is_undefined_symbol(*existing))) {
-      return "unsupported_global_data: RV64 object route cannot emit prepared global symbol";
+    if (object_data->align_bytes == 0) {
+      return "unsupported_global_data: RV64 object route cannot emit prepared global without alignment authority";
     }
 
     const bool selected_zero_fill =
@@ -12313,6 +12359,22 @@ std::optional<std::string> append_rv64_prepared_data_objects(
         break;
     }
 
+    if (existing != nullptr && !object::is_undefined_symbol(*existing)) {
+      const auto binding = rv64_prepared_object_data_symbol_binding(*object_data);
+      if (existing->binding == binding &&
+          existing->kind == object::SymbolKind::Object &&
+          existing->section.has_value() && *existing->section == section->id &&
+          existing->size_bytes == object_data->object_size_bytes) {
+        continue;
+      }
+      if (existing->binding != binding ||
+          existing->kind != object::SymbolKind::Object) {
+        return "unsupported_global_data: RV64 object route cannot emit duplicate prepared global symbol '" +
+               label + "' existing_size=" + std::to_string(existing->size_bytes) +
+               " prepared_size=" + std::to_string(object_data->object_size_bytes);
+      }
+    }
+
     object::align_section(*section, object_data->align_bytes, 0);
     const auto symbol_pointer_label =
         rv64_selected_symbol_pointer_initializer_label(
@@ -12325,11 +12387,15 @@ std::optional<std::string> append_rv64_prepared_data_objects(
       std::vector<std::uint8_t> bytes;
       append_le64(bytes, 0);
       offset = object::append_section_bytes(*section, bytes);
+      const auto initializer_target =
+          rv64_selected_pointer_initializer_target(global);
+      if (!initializer_target.has_value()) {
+        return "unsupported_global_data: RV64 object route cannot emit unresolved prepared pointer initializer";
+      }
       const auto target_symbol = rv64_find_or_declare_relocation_symbol(
           object_module,
           *symbol_pointer_label,
-          rv64_prepared_link_symbol_kind(
-              prepared, global.initializer->pointer_symbol_link_name_id));
+          rv64_prepared_link_symbol_kind(prepared, *initializer_target));
       object::attach_relocation(object_module,
                                 section->id,
                                 offset,
