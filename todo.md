@@ -8,41 +8,41 @@ Current Step Title: Repair the Next Store Producer Subfamily
 
 ## Just Finished
 
-Completed Step 6 classification of the remaining visible local-memory store subfamily.
+Blocked Step 7 implementation before code changes because the delegated local aggregate subobject store producer target is already present for the representative local-only shapes.
 
-Starting from the Step 5 checkpoint, the current per-case logs still identify `46` artifact-derived rows whose first stop says `store local-memory semantic family`. The six known full-row BIR dump successes remain excluded from the next implementation target: `src/20010605-2.c`, `src/20020413-1.c`, `src/20040208-1.c`, `src/930526-1.c`, `src/ieee/inf-1.c`, and `src/strct-pack-2.c`.
+Focused local-only probes for the classified subfamily already lower to `bir.store_local`:
+- Nested local struct field stores such as `v.t.a = 1` lower into scalar leaf-slot stores.
+- Packed/bitfield local struct field stores lower into load/mask/or/store sequences over the local leaf slots.
 
-Focused transient `build/c4cll --dump-bir --target riscv64-linux-gnu <row>` probes over the other `40` rows still stop in the store local-memory family. The next common in-scope subfamily is local aggregate subobject store production: scalar or address/function-label values stored into local compound-literal, local struct, local array, or nested field/index destinations before any later aggregate/global handoff.
+The reproduced remaining stop is the later aggregate-to-global copy handoff, not the local subobject store producer:
 
-Representative next-subfamily rows:
-- `src/pr22141-1.c` and `src/pr22141-2.c`: local compound-literal nested struct field stores such as `<clit>.t.a = 1`, followed by a global aggregate copy.
-- `src/compndlit-1.c`: local compound-literal field stores with scalar/select sources before `x = <clit>`.
-- `src/pr57344-1.c` through `src/pr57344-4.c`: local packed/bitfield struct field stores before `s[1] = t`.
+```c
+struct T { char a,b,c,d; };
+struct S { struct T t; } u;
+void f(void) {
+  struct S v = {0};
+  v.t.a = 1;
+  v.t.b = 2;
+  v.t.c = 3;
+  v.t.d = 4;
+  u = v;
+}
+```
 
-Failure grouping from the sampled HIR/BIR evidence:
-- First missing store fact: production of `StoreLocalInst`-equivalent facts for stores into structured local aggregate subobjects, including field paths, nested field paths, local array elements, and bitfield-adjacent fields.
-- Source-value shape: immediate scalar constants, selected scalar values, address/function-label constants, and local aggregate values already present as ordinary HIR expressions. This is not primarily another `f128` literal issue.
-- Destination/address authority: structured local slots and local subobject paths dominate the next target; pointer-dereference rows remain separate because they need pointer/address authority rather than only local subobject store production.
-- Aggregate/global-data handoff risk: many representatives later copy the initialized local aggregate into global/static storage, but the first Step 7 target should stop at the local subobject store producer and let any later aggregate/global copy remain an observable downstream owner.
+`build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_agg_global_copy_probe.c` still reports `semantic lir_to_bir function 'f' failed in store local-memory semantic family`, while the same probe without `u = v` dumps BIR successfully. Implementing that handoff in this packet would cross the Step 7 boundary into aggregate/global-data store ownership.
 
 ## Suggested Next
 
-Execute Step 7: repair local aggregate subobject store production.
+Supervisor should not accept the local subobject-store implementation packet as currently scoped.
 
-Suggested narrow implementation target:
-- Add the generic BIR local-memory store producer support needed for scalar/address stores into structured local aggregate subobjects.
-- Use `src/pr22141-1.c`, `src/pr22141-2.c`, `src/compndlit-1.c`, and at least one `src/pr57344-*.c` row as representatives.
-- Preserve the Step 3 repairs for `f128` local immediates, loaded global pointer-field authority, and dynamic local pointer-array stores.
-
-Proposed supervisor proof command:
-
-```sh
-cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|llvm_gcc_c_torture_src_(pr22141_1|pr22141_2|compndlit_1|pr57344_1|pr57344_2|20010605_2|20020413_1|strct_pack_2|20030913_1|920501_5|pr39120|20041124_1|20180921_1|20010924_1|20020118_1)_c)$' >> test_after.log 2>&1
-```
+Smallest coherent next packet options:
+- Reclassify Step 7 through plan-owner/reviewer because the Step 6 selected representatives are dominated by aggregate-to-global handoff after already-supported local subobject stores.
+- If the supervisor approves crossing that boundary, delegate a new packet explicitly scoped to aggregate value copy/store to global/static storage, with `src/pr22141-1.c`, `src/compndlit-1.c`, and `src/pr57344-1.c` treated as aggregate/global handoff representatives rather than local subobject-store representatives.
 
 ## Watchouts
 
-- Keep the Step 7 repair limited to BIR local aggregate subobject store production.
+- Do not implement `u = v`, `x = foo(&i)`, `s[1] = t`, or `x = <clit>` under the current local aggregate subobject-store packet; those are aggregate/global handoff shapes on the current evidence.
+- Keep the local-only subobject-store evidence separate from current full-row failures. The full rows can still report the broad `store local-memory semantic family` diagnostic even after their local subobject stores lower correctly.
 - Exclude pointer/address-authority rows from the first implementation packet unless the code path naturally handles them without guessing authority: `src/20030913-1.c`, `src/alias-1.c`, `src/pr36343.c`, `src/pr36765.c`, `src/pr60072.c`, `src/pr69691.c`, and `src/pr79043.c` are representative pointer-dereference store rows.
 - Exclude function-label/local pointer-array rows as a separate source/destination shape: `src/920501-5.c`, `src/990208-1.c`, `src/990525-1.c`, `src/pr71626-1.c`, and `src/pr71626-2.c`.
 - Keep `src/pr39120.c` separate. The focused failing function is now `main` with `x = foo(&i)`, so it remains best treated as an aggregate-to-global handoff risk unless a later probe proves a first missing local subobject store inside the same function.
@@ -53,10 +53,11 @@ cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -
 
 ## Proof
 
-Evidence-only classification; no build or CTest proof was required or run.
+Blocked implementation packet; no build or CTest proof was run, and no `test_after.log` was created.
 
 Transient probes used:
-- `build/c4cll --dump-bir --target riscv64-linux-gnu <row>` across the `40` remaining visible rows.
-- `build/c4cll --dump-hir --target riscv64-linux-gnu <representative-row>` for `src/20030913-1.c`, `src/20040707-1.c`, `src/920501-5.c`, `src/alias-1.c`, `src/alias-access-path-1.c`, `src/compndlit-1.c`, `src/pr22141-1.c`, `src/pr39120.c`, `src/pr57344-1.c`, `src/pr58277-1.c`, `src/pr71626-1.c`, `src/pr71626-2.c`, and `src/struct-cpy-1.c`.
+- `build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_agg_store_probe.c`: local nested aggregate field stores dump BIR successfully.
+- `build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_bitfield_store_probe.c`: local packed/bitfield aggregate field stores dump BIR successfully.
+- `build/c4cll --dump-bir --target riscv64-linux-gnu /tmp/local_agg_global_copy_probe.c`: adding the aggregate-to-global copy reproduces the remaining store-family stop.
 
-No root-level logs were written. Existing `test_after.log` was not present in this workspace snapshot, so no canonical proof log was modified.
+No root-level logs were written.
