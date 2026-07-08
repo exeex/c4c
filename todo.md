@@ -8,9 +8,8 @@ Current Step Title: Implement First Ordinary ABI Consumer
 
 ## Just Finished
 
-Completed Step 2, "Implement First Ordinary ABI Consumer", diagnostic
-classification for stack-slot preservation source authority around
-`src/20020529-1.c`.
+Completed Step 2, "Implement First Ordinary ABI Consumer", lifecycle handoff
+for the stack-slot preservation source authority gap around `src/20020529-1.c`.
 
 Current probes show `src/20020529-1.c` still stops at
 `unsupported_call_abi` on the first same-module call in `foo`:
@@ -35,16 +34,19 @@ authority for this callsite. Consuming it in RV64 would require inferring the
 source register from parameter position or storage state, which is outside
 idea 613's consumer-only rule.
 
-No in-scope Step 2 implementation packet was found for this row. The
-`931004-*` and `931031-1.c` rows remain separate aggregate stack ABI argument
-transport work, not stack-slot preservation-source publication.
+No in-scope Step 2 implementation packet was found for this row. The missing
+prepared stack-slot preserve source publication was split to
+`ideas/open/625_prepared_stack_slot_preservation_source_publication.md`.
+The `931004-*` and `931031-1.c` rows remain separate aggregate stack ABI
+argument transport work, not stack-slot preservation-source publication.
 
 ## Suggested Next
 
-Split or hand off the missing prepared stack-slot preservation source
-publication gap for `src/20020529-1.c`. After that lifecycle decision, either
-refresh Step 2 residuals for another ordinary ABI consumer family with complete
-prepared facts, or move to Step 3 if no Step 2 breadth remains.
+Continue idea 613 with a focused residual refresh for Step 2 rows that already
+have complete prepared ABI facts. Keep `src/20000808-1.c` under idea 624 and
+`src/20020529-1.c` under idea 625. If the refresh finds no remaining ordinary
+call/result Step 2 family with complete prepared facts, advance to Step 3 for
+supported stack-frame or return handling with explicit upstream facts.
 
 ## Watchouts
 
@@ -52,6 +54,8 @@ prepared facts, or move to Step 3 if no Step 2 breadth remains.
   join-transfer carrier materialization, not ABI call/result lowering.
 - Do not infer stack preservation source registers from ABI parameter position
   or final assembly shape; require explicit prepared endpoints.
+- Do not absorb idea 625 producer work back into idea 613; 613 should only
+  consume complete preserve-source facts once they exist.
 - Keep `931004-*` / `931031-1.c` aggregate stack argument transport, idea-624
   outgoing-stack destination offsets, memory-return/sret, FPR lanes,
   frame-slot publication, stack-frame, return stack-to-register, local/global
