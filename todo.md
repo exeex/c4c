@@ -1,38 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/593_rv64_branch_stack_source_freshness_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Preserve Fail-Closed Diagnostics
+Current Step ID: 4
+Current Step Title: Add Focused RV64 Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for `plan.md`: RV64 object emission now preserves visible
-status for the selected fused pointer `Lhs` stack-load freshness gate. The Step
-2 boolean gate is backed by a local status carrier that records whether
-freshness was required, whether selected authority was available, the shared
-`PreparedBranchStackLoadAuthorityStatus`, the
-`PreparedValueFreshnessQueryStatus`, and the candidate count.
+Completed Step 4 for `plan.md`: added focused RV64 object-emission proof for
+the migrated fused pointer `Lhs` stack-load path. The accepted fixture now
+builds only after the selected shared `BranchStackLoadSource` /
+`BranchStackSlot` authority is available for the exact branch use, then emits
+an RV64 load from the selected stack slot into the `Lhs` branch scratch
+register before branching.
 
-When a stack-slot `Lhs` fused pointer branch cannot emit, RV64 terminator
-diagnostics now distinguish source-freshness failures with
-`unsupported_branch_stack_load_source_freshness` and report
+The negative proof exercises the Step 3 visible status path with mutated RV64
+lookup authority rows for missing, ambiguous, invalid, stale, wrong-value,
+wrong-use, future-point, and stack-home-only freshness. Those cases fail closed
+through `unsupported_branch_stack_load_source_freshness` with
 `authority_status`, `source_freshness_status`, and
-`source_freshness_candidates`. Other unavailable branch-stack-load authority
-failures use `unsupported_branch_stack_load_authority`, so missing source
-freshness stays distinct from stack/layout/clobber/shape authority failures.
-Non-stack `Lhs` operands stay on their existing path; pointer `Rhs`, scalar
-condition register branches, string assembly emission, aggregate-adjacent
-branch consumers, AArch64, and x86 remain out of scope.
+`source_freshness_candidates`. A missing-layout case remains distinct as
+`unsupported_branch_stack_load_authority`, preserving the source-freshness vs.
+layout/status boundary.
 
 ## Suggested Next
 
-Execute Step 4 narrowly for the same RV64 fused pointer `Lhs` path: add focused
-proof that accepted emission consumes selected shared `BranchStackLoadSource`
-authority and that missing, stale, wrong-value, wrong-use, ambiguous,
-future-point, and stack-home-only authority fail closed with the visible status
-path added in Step 3.
+Execute Step 5 closure inventory for 593: inventory the migrated RV64 fused
+pointer `Lhs` consumer, list remaining RV64 branch stack-source shapes and
+whether they need a 594 handoff, and answer the source-idea completion
+questions at the correct lifecycle layer.
 
 ## Watchouts
 
@@ -41,30 +38,15 @@ path added in Step 3.
   register, or operand-shape evidence as freshness.
 - If a producer fact promised by 592 is missing, record that as a blocker for
   the 592 family instead of manufacturing fallback freshness in RV64.
-- Structural freshness proxy sites found:
-  `object_emission.cpp::fragment_for_prepared_fused_pointer_branch` uses
-  `plan_prepared_fused_pointer_branch_publication` plus generic operand
-  loading; `object_emission.cpp::append_rv64_move_value_to_register` accepts
-  `prepared_stack_slot_home_absolute_offset_for_value` and emits a stack load;
-  `prepared_scalar_emit.cpp::emit_riscv_prepared_fused_compare_branch` uses
-  `emit_move_to_register`; and `prepared_scalar_emit.cpp::emit_move_to_register`
-  accepts register homes, pointer register homes, stack-slot homes, and
-  pointer-base-plus-offset homes directly.
-- Shared prealloc still uses frame-slot/object/clobber checks in
-  `plan_prepared_branch_stack_load_authority`, but only after source freshness
-  selection; RV64 Step 2 must keep those as layout/safety checks, not as
-  fallback freshness.
-- The Step 3 diagnostic path intentionally preserves non-source authority
-  statuses instead of relabeling them as source freshness; Step 4 should assert
-  the exact freshness cases, not weaken layout or clobber failures.
 - Producer-side blocker: pointer `Rhs` is not available for the first RV64
   migration because the current producer/collector keeps it inventory-only
   (`policy=none`, `status=missing_policy`). Do not add an RV64 fallback for
   `Rhs`.
-- `plan_prepared_fused_pointer_branch_publication` still models older
-  GPR-compatible operand publication separately from the selected branch
-  stack-source freshness gate; Step 4 proof should make sure missing freshness
-  is not hidden behind generic operand publication failures.
+- Step 4 added a narrow RV64-local bypass for the older GPR-only fused pointer
+  publication rejection only when stack-slot `Lhs` selected freshness has
+  already passed and `Rhs` remains register-compatible or null. Do not broaden
+  that to pointer `Rhs`, scalar condition register branches, string assembly
+  emission, aggregate-adjacent consumers, AArch64, or x86 during closure.
 
 ## Proof
 

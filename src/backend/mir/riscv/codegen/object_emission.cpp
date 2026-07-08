@@ -9557,6 +9557,30 @@ bool selected_lhs_branch_stack_load_source_freshness_available(
       .available;
 }
 
+bool selected_lhs_stack_branch_freshness_allows_pointer_publication(
+    const c4c::backend::prepare::PreparedFusedPointerBranchPublication& publication,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    const c4c::backend::prepare::PreparedValueHome* rhs_home) {
+  if (publication.status !=
+          c4c::backend::prepare::PreparedFusedPointerBranchPublicationStatus::
+              UnsupportedOperandHome ||
+      lhs_home == nullptr ||
+      lhs_home->kind !=
+          c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !branch_condition.rhs.has_value()) {
+    return false;
+  }
+  const auto& rhs = *branch_condition.rhs;
+  if (rhs.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return rhs.type == c4c::backend::bir::TypeKind::Ptr &&
+           rhs.immediate_bits == 0;
+  }
+  return rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+         rhs_home != nullptr &&
+         gpr_register_number_for_home(*rhs_home).has_value();
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -9599,7 +9623,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
           .rhs_home = rhs_home,
       });
   if (!c4c::backend::prepare::prepared_fused_pointer_branch_publication_available(
-          publication)) {
+          publication) &&
+      !selected_lhs_stack_branch_freshness_allows_pointer_publication(
+          publication, branch_condition, lhs_home, rhs_home)) {
     return std::nullopt;
   }
   const auto normalized = normalize_prepared_pointer_branch_predicate(
@@ -11406,6 +11432,24 @@ std::optional<RiscvInsnDInlineAsmRegister> insn_d_register_operand(
 }
 
 }  // namespace
+
+std::optional<std::string>
+diagnose_rv64_prepared_terminator_fragment_for_authority_status(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Block& block,
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index) {
+  return diagnose_unsupported_prepared_terminator_fragment(names,
+                                                           lookups,
+                                                           control_flow,
+                                                           block,
+                                                           function_name,
+                                                           block_label_id,
+                                                           block_index);
+}
 
 std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
     const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier) {

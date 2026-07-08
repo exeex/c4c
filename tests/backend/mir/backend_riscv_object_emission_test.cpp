@@ -9,6 +9,7 @@
 #include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
 #include "src/backend/prealloc/module.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"
 
 #include <algorithm>
@@ -24,6 +25,18 @@
 #include <tuple>
 #include <variant>
 #include <vector>
+
+namespace c4c::backend::riscv::codegen {
+std::optional<std::string>
+diagnose_rv64_prepared_terminator_fragment_for_authority_status(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Block& block,
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index);
+}
 
 namespace {
 
@@ -720,6 +733,43 @@ prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
 prepare::PreparedBirModule make_prepared_unfused_register_condition_branch_module() {
   auto prepared = make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne);
   prepared.control_flow.functions.front().branch_conditions.clear();
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_fused_pointer_lhs_stack_branch_module() {
+  auto prepared =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ult,
+                                                bir::TypeKind::Ptr);
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  const auto lhs_name = prepared.names.value_names.find("%lhs");
+  auto& lhs_home = prepared.value_locations.functions.front().value_homes.at(1);
+  lhs_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  lhs_home.register_name.reset();
+  lhs_home.target_register_identity.reset();
+  lhs_home.slot_id = prepare::PreparedFrameSlotId{10};
+  lhs_home.offset_bytes = std::size_t{8};
+  lhs_home.size_bytes = std::size_t{8};
+  lhs_home.align_bytes = std::size_t{8};
+
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{10},
+      .function_name = function_name,
+      .value_name = lhs_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{10},
+      .object_id = prepare::PreparedObjectId{10},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
   return prepared;
 }
 
@@ -12578,6 +12628,301 @@ int builds_prepared_fused_ule_ptr_register_compare_branch_object() {
       0x01de7063);
 }
 
+int builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object() {
+  const auto prepared = make_prepared_fused_pointer_lhs_stack_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected stack-homed lhs fused pointer branch to consume selected freshness and build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label = object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected stack-homed lhs fused pointer branch object symbols and text");
+  }
+  if (text->bytes.size() != 44 || text->size_bytes != 44 ||
+      function->value != 0 || function->size_bytes != 44 ||
+      true_label->value != 20 || false_label->value != 32) {
+    return fail("expected stack-homed lhs fused pointer branch text layout, got text=" +
+                std::to_string(text->bytes.size()) + " function=" +
+                std::to_string(function->size_bytes) + " true=" +
+                std::to_string(true_label->value) + " false=" +
+                std::to_string(false_label->value));
+  }
+  bool saw_lhs_stack_load = false;
+  bool saw_branch_using_loaded_lhs = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (is_rv64_load_from_sp(word, 3U, 8) && riscv_rd(word) == 28) {
+      saw_lhs_stack_load = true;
+    }
+    if ((word & 0x7fU) == 0x63U && ((word >> 12) & 0x7U) == 6U &&
+        riscv_rs1(word) == 28 && riscv_rs2(word) == 29) {
+      saw_branch_using_loaded_lhs = true;
+    }
+  }
+  if (!saw_lhs_stack_load || !saw_branch_using_loaded_lhs) {
+    return fail("expected stack-homed lhs fused pointer branch to load lhs from its selected stack slot");
+  }
+  return 0;
+}
+
+prepare::PreparedBranchStackLoadAuthorityRecord*
+find_lhs_branch_stack_load_authority_record(
+    prepare::PreparedFunctionLookups& lookups) {
+  auto record = std::find_if(
+      lookups.branch_stack_load_authorities.records.begin(),
+      lookups.branch_stack_load_authorities.records.end(),
+      [](const prepare::PreparedBranchStackLoadAuthorityRecord& candidate) {
+        return candidate.role == prepare::PreparedBranchStackLoadRole::Lhs;
+      });
+  return record == lookups.branch_stack_load_authorities.records.end()
+             ? nullptr
+             : &*record;
+}
+
+int expect_lhs_stack_branch_authority_diagnostic(
+    const prepare::PreparedBirModule& prepared,
+    prepare::PreparedFunctionLookups lookups,
+    const std::vector<std::string>& expected_fragments,
+    std::string_view case_name) {
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto& block = prepared.module.functions.front().blocks.front();
+  const auto diagnostic =
+      rv64::diagnose_rv64_prepared_terminator_fragment_for_authority_status(
+          prepared.names,
+          lookups,
+          control_flow,
+          block,
+          control_flow.function_name,
+          control_flow.blocks.front().block_label,
+          0);
+  if (!diagnostic.has_value()) {
+    return fail(std::string{"expected lhs stack branch diagnostic for "} +
+                std::string{case_name});
+  }
+  for (const auto& fragment : expected_fragments) {
+    if (diagnostic->find(fragment) == std::string::npos) {
+      return fail(std::string{"expected lhs stack branch diagnostic for "} +
+                  std::string{case_name} + " to contain `" + fragment +
+                  "`, got `" + *diagnostic + "`");
+    }
+  }
+  return 0;
+}
+
+int rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses() {
+  const auto prepared = make_prepared_fused_pointer_lhs_stack_branch_module();
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto& block = prepared.module.functions.front().blocks.front();
+  const auto base_lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+  if (rv64::diagnose_rv64_prepared_terminator_fragment_for_authority_status(
+          prepared.names,
+          base_lookups,
+          control_flow,
+          block,
+          control_flow.function_name,
+          control_flow.blocks.front().block_label,
+          0)
+          .has_value()) {
+    return fail("expected selected lhs branch stack-load authority to have no diagnostic");
+  }
+
+  auto expect_mutated =
+      [&](std::string_view case_name,
+          const auto& mutate,
+          const std::vector<std::string>& expected_fragments) -> int {
+    auto lookups = base_lookups;
+    auto* lhs_record = find_lhs_branch_stack_load_authority_record(lookups);
+    if (lhs_record == nullptr) {
+      return fail("expected lhs branch stack-load authority record");
+    }
+    mutate(*lhs_record);
+    return expect_lhs_stack_branch_authority_diagnostic(
+        prepared, std::move(lookups), expected_fragments, case_name);
+  };
+
+  if (expect_mutated(
+          "missing source freshness",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            record.authority.status =
+                prepare::PreparedBranchStackLoadAuthorityStatus::
+                    MissingSourceFreshnessAuthority;
+            record.authority.source_freshness_status =
+                prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+            record.authority.source_freshness_authority.reset();
+            record.authority.source_freshness_authorities.clear();
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=missing_source_freshness_authority",
+           "source_freshness_status=no_candidate",
+           "source_freshness_candidates=0"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "ambiguous source freshness",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            record.authority.status =
+                prepare::PreparedBranchStackLoadAuthorityStatus::
+                    AmbiguousSourceFreshnessAuthority;
+            record.authority.source_freshness_status =
+                prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
+            record.authority.source_freshness_authority.reset();
+            record.authority.source_freshness_authorities.push_back(
+                record.authority.source_freshness_authorities.front());
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=ambiguous_source_freshness_authority",
+           "source_freshness_status=ambiguous_candidate",
+           "source_freshness_candidates=2"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "invalid source freshness",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            record.authority.status =
+                prepare::PreparedBranchStackLoadAuthorityStatus::
+                    InvalidSourceFreshnessAuthority;
+            record.authority.source_freshness_status =
+                prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate;
+            record.authority.source_freshness_authority.reset();
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=invalid_source_freshness_authority",
+           "source_freshness_status=invalid_candidate",
+           "source_freshness_candidates=1"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "stale branch use",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            record.authority.branch_block_index = std::size_t{1};
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=missing_source_freshness_authority",
+           "source_freshness_status=no_candidate",
+           "source_freshness_candidates=0"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "future branch use",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            record.authority.branch_terminator_instruction_index =
+                std::size_t{1};
+            if (record.authority.source_freshness_authority.has_value()) {
+              record.authority.source_freshness_authority->reference
+                  .instruction_index = std::size_t{1};
+            }
+            for (auto& freshness :
+                 record.authority.source_freshness_authorities) {
+              freshness.reference.instruction_index = std::size_t{1};
+            }
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=missing_source_freshness_authority",
+           "source_freshness_status=no_candidate",
+           "source_freshness_candidates=0"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "wrong value authority",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            ++record.authority.value_id;
+            if (record.authority.source_freshness_authority.has_value()) {
+              ++record.authority.source_freshness_authority->value_id;
+            }
+            for (auto& freshness :
+                 record.authority.source_freshness_authorities) {
+              ++freshness.value_id;
+            }
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=missing_source_freshness_authority",
+           "source_freshness_status=no_candidate",
+           "source_freshness_candidates=0"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "wrong use authority",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            if (record.authority.source_freshness_authority.has_value()) {
+              record.authority.source_freshness_authority->use_kind =
+                  prepare::PreparedValueFreshnessUseKind::
+                      ProducerPublicationOperand;
+            }
+            for (auto& freshness :
+                 record.authority.source_freshness_authorities) {
+              freshness.use_kind =
+                  prepare::PreparedValueFreshnessUseKind::
+                      ProducerPublicationOperand;
+            }
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=unsupported_source_freshness_authority",
+           "source_freshness_status=selected",
+           "source_freshness_candidates=1"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "stack-home-only authority",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            if (record.authority.source_freshness_authority.has_value()) {
+              record.authority.source_freshness_authority->source_kind =
+                  prepare::PreparedValueFreshnessSourceKind::DirectHome;
+              record.authority.source_freshness_authority->proof_kind =
+                  prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering;
+              record.authority.source_freshness_authority->rank =
+                  prepare::PreparedValueFreshnessSourceRank::DirectHome;
+            }
+            for (auto& freshness :
+                 record.authority.source_freshness_authorities) {
+              freshness.source_kind =
+                  prepare::PreparedValueFreshnessSourceKind::DirectHome;
+              freshness.proof_kind =
+                  prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering;
+              freshness.rank =
+                  prepare::PreparedValueFreshnessSourceRank::DirectHome;
+            }
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "authority_status=unsupported_source_freshness_authority",
+           "source_freshness_status=selected",
+           "source_freshness_candidates=1"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "missing layout stays distinct",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record) {
+            record.authority.status =
+                prepare::PreparedBranchStackLoadAuthorityStatus::
+                    MissingFrameSlot;
+          },
+          {"unsupported_branch_stack_load_authority",
+           "authority_status=missing_frame_slot",
+           "source_freshness_status=selected",
+           "source_freshness_candidates=1"}) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering";
@@ -23489,6 +23834,9 @@ int main() {
   status |= builds_prepared_fused_uge_ptr_register_compare_branch_object();
   status |= builds_prepared_fused_ugt_ptr_register_compare_branch_object();
   status |= builds_prepared_fused_ule_ptr_register_compare_branch_object();
+  status |=
+      builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object();
+  status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_register_condition_branch_object();
   status |= rejects_prepared_register_condition_branch_fail_closed_shapes();
