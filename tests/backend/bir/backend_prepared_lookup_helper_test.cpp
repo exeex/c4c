@@ -95,12 +95,18 @@ int verify_prepared_compatibility_status_names() {
           prepare::PreparedValueFreshnessUseKind::
               DirectEdgePublicationSource) !=
           "direct_edge_publication_source" ||
+      prepare::prepared_value_freshness_use_kind_name(
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource) !=
+          "branch_stack_load_source" ||
       prepare::prepared_value_freshness_source_kind_name(
           prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization) !=
           "producer_rematerialization" ||
       prepare::prepared_value_freshness_source_kind_name(
           prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication) !=
           "direct_edge_publication" ||
+      prepare::prepared_value_freshness_source_kind_name(
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot) !=
+          "branch_stack_slot" ||
       prepare::prepared_value_freshness_proof_kind_name(
           prepare::PreparedValueFreshnessProofKind::CallBoundaryPreservation) !=
           "call_boundary_preservation" ||
@@ -108,12 +114,19 @@ int verify_prepared_compatibility_status_names() {
           prepare::PreparedValueFreshnessProofKind::
               DirectEdgePublicationMove) !=
           "direct_edge_publication_move" ||
+      prepare::prepared_value_freshness_proof_kind_name(
+          prepare::PreparedValueFreshnessProofKind::
+              BranchTerminatorOrdering) !=
+          "branch_terminator_ordering" ||
       prepare::prepared_value_freshness_source_rank_name(
           prepare::PreparedValueFreshnessSourceRank::ExplicitPublication) !=
           "explicit_publication" ||
       prepare::prepared_value_freshness_source_rank_name(
           prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication) !=
           "direct_edge_publication" ||
+      prepare::prepared_value_freshness_source_rank_name(
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot) !=
+          "branch_stack_slot" ||
       prepare::prepared_value_freshness_query_status_name(
           prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate) !=
           "ambiguous_candidate") {
@@ -396,6 +409,133 @@ int verify_prepared_value_freshness_authority_lookup() {
   if (prepare::find_prepared_value_freshness_authority(wrong_use_query).status !=
       prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
     return fail("direct edge-publication source freshness should ignore wrong-use candidates");
+  }
+
+  const prepare::PreparedValueFreshnessAuthority branch_stack_slot{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource,
+      .source_kind = prepare::PreparedValueFreshnessSourceKind::BranchStackSlot,
+      .proof_kind =
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering,
+      .rank = prepare::PreparedValueFreshnessSourceRank::BranchStackSlot,
+      .reference = prepare::PreparedValueFreshnessSourceReference{
+          .home = &home,
+          .block_index = std::size_t{5},
+          .instruction_index = std::size_t{9},
+      },
+  };
+  const prepare::PreparedValueFreshnessQuery branch_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource,
+      .block_index = std::size_t{5},
+      .instruction_index = std::size_t{9},
+      .candidates = {branch_stack_slot},
+  };
+  const auto branch_selected =
+      prepare::find_prepared_value_freshness_authority(branch_query);
+  if (!prepare::prepared_value_freshness_query_selected(branch_selected) ||
+      branch_selected.authority == nullptr ||
+      branch_selected.authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot ||
+      branch_selected.authority->proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering ||
+      branch_selected.authority->rank !=
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot ||
+      branch_selected.authority->reference.home != &home) {
+    return fail("branch stack-load source freshness should select branch stack-slot ordering authority");
+  }
+
+  prepare::PreparedValueFreshnessAuthority branch_destination_only =
+      branch_stack_slot;
+  branch_destination_only.source_kind =
+      prepare::PreparedValueFreshnessSourceKind::DirectHome;
+  branch_destination_only.proof_kind =
+      prepare::PreparedValueFreshnessProofKind::DominanceOrOrdering;
+  branch_destination_only.rank =
+      prepare::PreparedValueFreshnessSourceRank::DirectHome;
+  const prepare::PreparedValueFreshnessQuery branch_destination_only_query{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource,
+      .block_index = std::size_t{5},
+      .instruction_index = std::size_t{9},
+      .candidates = {branch_destination_only},
+  };
+  if (prepare::find_prepared_value_freshness_authority(
+          branch_destination_only_query)
+          .status != prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("branch stack-load source freshness should reject destination-only authority");
+  }
+
+  auto branch_wrong_proof = branch_stack_slot;
+  branch_wrong_proof.proof_kind =
+      prepare::PreparedValueFreshnessProofKind::SameBlockBeforeUse;
+  if (prepare::find_prepared_value_freshness_authority(
+          prepare::PreparedValueFreshnessQuery{
+              .value_id = home.value_id,
+              .value_name = home.value_name,
+              .use_kind =
+                  prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource,
+              .block_index = std::size_t{5},
+              .instruction_index = std::size_t{9},
+              .candidates = {branch_wrong_proof},
+          })
+          .status != prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("branch stack-load source freshness should require branch terminator ordering proof");
+  }
+
+  auto branch_stale_ordering = branch_stack_slot;
+  branch_stale_ordering.reference.instruction_index = std::size_t{8};
+  if (prepare::find_prepared_value_freshness_authority(
+          prepare::PreparedValueFreshnessQuery{
+              .value_id = home.value_id,
+              .value_name = home.value_name,
+              .use_kind =
+                  prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource,
+              .block_index = std::size_t{5},
+              .instruction_index = std::size_t{9},
+              .candidates = {branch_stale_ordering},
+          })
+          .status != prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
+    return fail("branch stack-load source freshness should require the exact branch terminator point");
+  }
+
+  auto branch_wrong_use = branch_stack_slot;
+  branch_wrong_use.use_kind =
+      prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource;
+  const auto branch_wrong_use_result =
+      prepare::find_prepared_value_freshness_authority(
+          prepare::PreparedValueFreshnessQuery{
+              .value_id = home.value_id,
+              .value_name = home.value_name,
+              .use_kind =
+                  prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource,
+              .block_index = std::size_t{5},
+              .instruction_index = std::size_t{9},
+              .candidates = {branch_wrong_use},
+          });
+  if (branch_wrong_use_result.status !=
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate) {
+    return fail("branch stack-load source freshness should ignore wrong-use authority");
+  }
+
+  auto branch_stack_slot_as_call_argument = branch_stack_slot;
+  branch_stack_slot_as_call_argument.use_kind =
+      prepare::PreparedValueFreshnessUseKind::CallArgumentSource;
+  const auto branch_stack_slot_as_call_argument_result =
+      prepare::find_prepared_value_freshness_authority(
+          prepare::PreparedValueFreshnessQuery{
+              .value_id = home.value_id,
+              .value_name = home.value_name,
+              .use_kind =
+                  prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+              .candidates = {branch_stack_slot_as_call_argument},
+          });
+  if (branch_stack_slot_as_call_argument_result.status !=
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate) {
+    return fail("branch stack-slot freshness should not authorize call arguments");
   }
 
   return 0;

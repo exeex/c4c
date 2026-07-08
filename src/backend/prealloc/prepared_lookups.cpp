@@ -44,6 +44,10 @@ namespace {
     case PreparedValueFreshnessSourceKind::DirectEdgePublication:
       return authority.reference.edge_publication != nullptr &&
              authority.reference.move != nullptr;
+    case PreparedValueFreshnessSourceKind::BranchStackSlot:
+      return authority.reference.home != nullptr &&
+             authority.reference.block_index.has_value() &&
+             authority.reference.instruction_index.has_value();
     case PreparedValueFreshnessSourceKind::Unknown:
       return false;
   }
@@ -60,6 +64,12 @@ namespace {
                  PreparedValueFreshnessProofKind::DirectEdgePublicationMove &&
              authority.rank ==
                  PreparedValueFreshnessSourceRank::DirectEdgePublication;
+    case PreparedValueFreshnessUseKind::BranchStackLoadSource:
+      return authority.source_kind ==
+                 PreparedValueFreshnessSourceKind::BranchStackSlot &&
+             authority.proof_kind ==
+                 PreparedValueFreshnessProofKind::BranchTerminatorOrdering &&
+             authority.rank == PreparedValueFreshnessSourceRank::BranchStackSlot;
     case PreparedValueFreshnessUseKind::Unknown:
       return false;
     case PreparedValueFreshnessUseKind::CallArgumentSource:
@@ -67,7 +77,9 @@ namespace {
     case PreparedValueFreshnessUseKind::ProducerPublicationOperand:
     case PreparedValueFreshnessUseKind::AbiFormalHome:
       return authority.source_kind !=
-             PreparedValueFreshnessSourceKind::DirectEdgePublication;
+                 PreparedValueFreshnessSourceKind::DirectEdgePublication &&
+             authority.source_kind !=
+                 PreparedValueFreshnessSourceKind::BranchStackSlot;
   }
   return false;
 }
@@ -86,6 +98,12 @@ namespace {
     const PreparedValueFreshnessQuery& query,
     const PreparedValueFreshnessAuthority& authority) {
   if (authority.use_kind != query.use_kind || authority.value_id != query.value_id) {
+    return false;
+  }
+  if (query.use_kind == PreparedValueFreshnessUseKind::BranchStackLoadSource &&
+      (!query.block_index.has_value() || !query.instruction_index.has_value() ||
+       authority.reference.block_index != query.block_index ||
+       authority.reference.instruction_index != query.instruction_index)) {
     return false;
   }
   return query.value_name == kInvalidValueName || authority.value_name == query.value_name;

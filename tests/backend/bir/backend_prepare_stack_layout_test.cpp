@@ -6555,6 +6555,18 @@ int check_branch_stack_load_authority_contract() {
   const auto rhs_name = names.value_names.intern("%rhs");
   const auto other_name = names.value_names.intern("%other");
 
+  if (prepare::prepared_branch_stack_load_freshness_use_kind(
+          prepare::PreparedBranchStackLoadRole::Condition) !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      prepare::prepared_branch_stack_load_freshness_use_kind(
+          prepare::PreparedBranchStackLoadRole::Lhs) !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      prepare::prepared_branch_stack_load_freshness_use_kind(
+          prepare::PreparedBranchStackLoadRole::Rhs) !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource) {
+    return fail("branch stack-load roles should share branch-specific freshness use");
+  }
+
   bir::Terminator terminator;
   terminator.kind = bir::TerminatorKind::CondBranch;
   terminator.condition = bir::Value::named(bir::TypeKind::I32, "%cmp");

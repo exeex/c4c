@@ -406,6 +406,17 @@ enum class PreparedBranchStackLoadRole {
   return "unknown";
 }
 
+[[nodiscard]] constexpr PreparedValueFreshnessUseKind
+prepared_branch_stack_load_freshness_use_kind(PreparedBranchStackLoadRole role) {
+  switch (role) {
+    case PreparedBranchStackLoadRole::Condition:
+    case PreparedBranchStackLoadRole::Lhs:
+    case PreparedBranchStackLoadRole::Rhs:
+      return PreparedValueFreshnessUseKind::BranchStackLoadSource;
+  }
+  return PreparedValueFreshnessUseKind::Unknown;
+}
+
 enum class PreparedBranchStackLoadPolicy {
   None,
   LoadFromStackSlot,
@@ -527,6 +538,8 @@ struct PreparedBranchStackLoadAuthorityInputs {
   PreparedBranchStackLoadPolicy policy = PreparedBranchStackLoadPolicy::None;
   PreparedBranchStackLoadPointerStatus pointer_status =
       PreparedBranchStackLoadPointerStatus::Unknown;
+  // Backed by BranchStackLoadSource/BranchStackSlot freshness proven at the
+  // branch terminator ordering point; stack-home structure alone is not enough.
   bool stack_slot_fresh_at_branch = false;
   bool stack_slot_clobber_safe_at_branch = false;
 };
