@@ -55,6 +55,9 @@ namespace {
       return authority.reference.home != nullptr &&
              authority.reference.block_label.has_value() &&
              authority.reference.instruction_index.has_value();
+    case PreparedValueFreshnessSourceKind::PointerValueMemoryAccess:
+      return authority.reference.block_label.has_value() &&
+             authority.reference.instruction_index.has_value();
     case PreparedValueFreshnessSourceKind::Unknown:
       return false;
   }
@@ -89,6 +92,12 @@ namespace {
              authority.proof_kind ==
                  PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority &&
              authority.rank == PreparedValueFreshnessSourceRank::PointerBasePlusOffset;
+    case PreparedValueFreshnessUseKind::PointerValueMemoryUse:
+      return authority.source_kind ==
+                 PreparedValueFreshnessSourceKind::PointerValueMemoryAccess &&
+             authority.proof_kind ==
+                 PreparedValueFreshnessProofKind::PointerValueMemoryAuthority &&
+             authority.rank == PreparedValueFreshnessSourceRank::PointerValueMemory;
     case PreparedValueFreshnessUseKind::Unknown:
       return false;
     case PreparedValueFreshnessUseKind::CallArgumentSource:
@@ -102,7 +111,9 @@ namespace {
              authority.source_kind !=
                  PreparedValueFreshnessSourceKind::SelectCarrierAlias &&
              authority.source_kind !=
-                 PreparedValueFreshnessSourceKind::PointerBasePlusOffset;
+                 PreparedValueFreshnessSourceKind::PointerBasePlusOffset &&
+             authority.source_kind !=
+                 PreparedValueFreshnessSourceKind::PointerValueMemoryAccess;
   }
   return false;
 }
@@ -130,6 +141,12 @@ namespace {
     return false;
   }
   if (query.use_kind == PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource &&
+      (!query.block_label.has_value() || !query.instruction_index.has_value() ||
+       authority.reference.block_label != query.block_label ||
+       authority.reference.instruction_index != query.instruction_index)) {
+    return false;
+  }
+  if (query.use_kind == PreparedValueFreshnessUseKind::PointerValueMemoryUse &&
       (!query.block_label.has_value() || !query.instruction_index.has_value() ||
        authority.reference.block_label != query.block_label ||
        authority.reference.instruction_index != query.instruction_index)) {

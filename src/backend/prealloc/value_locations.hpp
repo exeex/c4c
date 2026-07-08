@@ -82,6 +82,7 @@ enum class PreparedValueFreshnessUseKind {
   BranchStackLoadSource,
   SelectCarrierAliasSource,
   PointerBasePlusOffsetSource,
+  PointerValueMemoryUse,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_use_kind_name(
@@ -105,6 +106,8 @@ enum class PreparedValueFreshnessUseKind {
       return "select_carrier_alias_source";
     case PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource:
       return "pointer_base_plus_offset_source";
+    case PreparedValueFreshnessUseKind::PointerValueMemoryUse:
+      return "pointer_value_memory_use";
   }
   return "unknown";
 }
@@ -121,6 +124,7 @@ enum class PreparedValueFreshnessSourceKind {
   BranchStackSlot,
   SelectCarrierAlias,
   PointerBasePlusOffset,
+  PointerValueMemoryAccess,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_source_kind_name(
@@ -148,6 +152,8 @@ enum class PreparedValueFreshnessSourceKind {
       return "select_carrier_alias";
     case PreparedValueFreshnessSourceKind::PointerBasePlusOffset:
       return "pointer_base_plus_offset";
+    case PreparedValueFreshnessSourceKind::PointerValueMemoryAccess:
+      return "pointer_value_memory_access";
   }
   return "unknown";
 }
@@ -164,6 +170,7 @@ enum class PreparedValueFreshnessProofKind {
   BranchTerminatorOrdering,
   SelectCarrierAliasAuthority,
   PointerBasePlusOffsetAuthority,
+  PointerValueMemoryAuthority,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_freshness_proof_kind_name(
@@ -191,6 +198,8 @@ enum class PreparedValueFreshnessProofKind {
       return "select_carrier_alias_authority";
     case PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority:
       return "pointer_base_plus_offset_authority";
+    case PreparedValueFreshnessProofKind::PointerValueMemoryAuthority:
+      return "pointer_value_memory_authority";
   }
   return "unknown";
 }
@@ -205,6 +214,7 @@ enum class PreparedValueFreshnessSourceRank {
   DirectEdgePublication = 55,
   SelectCarrierAlias = 57,
   PointerBasePlusOffset = 58,
+  PointerValueMemory = 59,
   ProducerRematerialization = 60,
   BranchStackSlot = 65,
 };
@@ -230,6 +240,8 @@ enum class PreparedValueFreshnessSourceRank {
       return "select_carrier_alias";
     case PreparedValueFreshnessSourceRank::PointerBasePlusOffset:
       return "pointer_base_plus_offset";
+    case PreparedValueFreshnessSourceRank::PointerValueMemory:
+      return "pointer_value_memory";
     case PreparedValueFreshnessSourceRank::ProducerRematerialization:
       return "producer_rematerialization";
     case PreparedValueFreshnessSourceRank::BranchStackSlot:

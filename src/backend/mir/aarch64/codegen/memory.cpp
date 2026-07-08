@@ -20,6 +20,7 @@
 #include "select_materialization.hpp"
 #include "variadic.hpp"
 #include "../../../prealloc/addressing.hpp"
+#include "../../../prealloc/pointer_value_memory_freshness.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 #include "../../../prealloc/stack_layout/stack_layout.hpp"
 #include "../../../prealloc/value_locations.hpp"
@@ -829,6 +830,51 @@ PreparedMemoryOperandRecordError apply_store_identity(
   memory.stored_value_id =
       indexed_value_home_id(value_home_lookups, regalloc, &value_locations, *stored_name);
   return PreparedMemoryOperandRecordError::None;
+}
+
+PreparedMemoryOperandRecordError pointer_value_memory_freshness_error(
+    prepare::PreparedValueFreshnessQueryStatus status) {
+  switch (status) {
+    case prepare::PreparedValueFreshnessQueryStatus::Selected:
+      return PreparedMemoryOperandRecordError::None;
+    case prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate:
+      return PreparedMemoryOperandRecordError::AmbiguousPointerValueMemoryFreshness;
+    case prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate:
+    case prepare::PreparedValueFreshnessQueryStatus::UnknownUse:
+      return PreparedMemoryOperandRecordError::InvalidPointerValueMemoryFreshness;
+    case prepare::PreparedValueFreshnessQueryStatus::MissingValue:
+    case prepare::PreparedValueFreshnessQueryStatus::NoCandidate:
+      return PreparedMemoryOperandRecordError::MissingPointerValueMemoryFreshness;
+  }
+  return PreparedMemoryOperandRecordError::InvalidPointerValueMemoryFreshness;
+}
+
+PreparedMemoryOperandRecordError require_pointer_value_memory_freshness(
+    const prepare::PreparedMemoryAccess& access,
+    const MemoryOperand& memory,
+    prepare::PreparedPointerValueMemoryUseMode use_mode) {
+  if (access.address.base_kind != prepare::PreparedAddressBaseKind::PointerValue) {
+    return PreparedMemoryOperandRecordError::None;
+  }
+  if (!memory.pointer_value_id.has_value()) {
+    return PreparedMemoryOperandRecordError::MissingPointerValueHome;
+  }
+  if (!memory.pointer_value_name.has_value()) {
+    return PreparedMemoryOperandRecordError::MissingPointerValueName;
+  }
+
+  auto authority = prepare::make_prepared_pointer_value_memory_freshness_authority(
+      access, *memory.pointer_value_id, use_mode);
+  const prepare::PreparedPointerValueMemoryFreshnessQuery query{
+      .access = &access,
+      .pointer_value_id = *memory.pointer_value_id,
+      .pointer_value_name = *memory.pointer_value_name,
+      .use_mode = use_mode,
+      .candidates = {authority},
+  };
+  const auto selected =
+      prepare::find_prepared_pointer_value_memory_freshness_authority(query);
+  return pointer_value_memory_freshness_error(selected.status);
 }
 
 PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
@@ -1686,6 +1732,12 @@ std::string_view prepared_memory_operand_record_error_name(
       return "ambiguous_pointer_value_home";
     case PreparedMemoryOperandRecordError::PointerValueMismatch:
       return "pointer_value_mismatch";
+    case PreparedMemoryOperandRecordError::MissingPointerValueMemoryFreshness:
+      return "missing_pointer_value_memory_freshness";
+    case PreparedMemoryOperandRecordError::InvalidPointerValueMemoryFreshness:
+      return "invalid_pointer_value_memory_freshness";
+    case PreparedMemoryOperandRecordError::AmbiguousPointerValueMemoryFreshness:
+      return "ambiguous_pointer_value_memory_freshness";
     case PreparedMemoryOperandRecordError::StringIdentityMismatch:
       return "string_identity_mismatch";
     case PreparedMemoryOperandRecordError::ResultValueMismatch:
@@ -1854,6 +1906,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   const auto value_home_lookups =
       prepare::make_prepared_value_home_lookups(&value_locations);
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (access == nullptr) {
+    return memory_operand_record_error(
+        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
+  }
   if (const auto error = validate_memory_base_identity(
           names,
           &value_home_lookups,
@@ -1878,8 +1936,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
           &value_home_lookups,
           nullptr,
           value_locations,
-          *prepare::find_prepared_memory_access(
-              addressing, block_label, instruction_index),
+          *access,
           load.result,
           *result.record);
       error != PreparedMemoryOperandRecordError::None) {
@@ -1979,9 +2036,21 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
       prepare::prepare_same_width_i32_stack_source_publication(
           find_unique_load_result_stack_source_publication(
               edge_publications, block_label, &load, nullptr));
+  auto operand = make_prepared_memory_operand_record(
+      names, value_locations, addressing, block_label, instruction_index, load);
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (operand.record.has_value() && access != nullptr) {
+    if (const auto error = require_pointer_value_memory_freshness(
+            *access,
+            *operand.record,
+            prepare::PreparedPointerValueMemoryUseMode::Load);
+        error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(error);
+    }
+  }
   return make_load_memory_instruction_record(
-      make_prepared_memory_operand_record(
-          names, value_locations, addressing, block_label, instruction_index, load),
+      std::move(operand),
       value_locations,
       storage_plan,
       load.result.type,
@@ -2149,6 +2218,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   const auto value_home_lookups =
       prepare::make_prepared_value_home_lookups(&value_locations);
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (access == nullptr) {
+    return memory_operand_record_error(
+        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
+  }
   if (const auto error = validate_memory_base_identity(
           names,
           &value_home_lookups,
@@ -2173,8 +2248,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
           &value_home_lookups,
           nullptr,
           value_locations,
-          *prepare::find_prepared_memory_access(
-              addressing, block_label, instruction_index),
+          *access,
           store.value,
           *result.record);
       error != PreparedMemoryOperandRecordError::None) {
@@ -2195,12 +2269,21 @@ PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_rec
       storage_plan.function_name != addressing.function_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
   }
+  auto operand = make_prepared_memory_operand_record(
+      names, value_locations, addressing, block_label, instruction_index, store);
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (operand.record.has_value() && access != nullptr) {
+    if (const auto error = require_pointer_value_memory_freshness(
+            *access,
+            *operand.record,
+            prepare::PreparedPointerValueMemoryUseMode::Store);
+        error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(error);
+    }
+  }
   return make_store_memory_instruction_record(
-      make_prepared_memory_operand_record(
-          names, value_locations, addressing, block_label, instruction_index, store),
-      value_locations,
-      storage_plan,
-      store.value);
+      std::move(operand), value_locations, storage_plan, store.value);
 }
 
 class VaListFieldMemoryOwner final {
@@ -2669,9 +2752,21 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
       prepare::prepare_same_width_i32_stack_source_publication(
           find_unique_load_result_stack_source_publication(
               edge_publications, block_label, nullptr, &load));
+  auto operand = make_prepared_memory_operand_record(
+      names, value_locations, addressing, block_label, instruction_index, load);
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (operand.record.has_value() && access != nullptr) {
+    if (const auto error = require_pointer_value_memory_freshness(
+            *access,
+            *operand.record,
+            prepare::PreparedPointerValueMemoryUseMode::Load);
+        error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(error);
+    }
+  }
   return make_load_memory_instruction_record(
-      make_prepared_memory_operand_record(
-          names, value_locations, addressing, block_label, instruction_index, load),
+      std::move(operand),
       value_locations,
       storage_plan,
       load.result.type,
@@ -2738,12 +2833,21 @@ PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_rec
       storage_plan.function_name != addressing.function_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
   }
+  auto operand = make_prepared_memory_operand_record(
+      names, value_locations, addressing, block_label, instruction_index, store);
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (operand.record.has_value() && access != nullptr) {
+    if (const auto error = require_pointer_value_memory_freshness(
+            *access,
+            *operand.record,
+            prepare::PreparedPointerValueMemoryUseMode::Store);
+        error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(error);
+    }
+  }
   return make_store_memory_instruction_record(
-      make_prepared_memory_operand_record(
-          names, value_locations, addressing, block_label, instruction_index, store),
-      value_locations,
-      storage_plan,
-      store.value);
+      std::move(operand), value_locations, storage_plan, store.value);
 }
 
 MemoryInstructionLoweringResult lower_memory_instruction(
