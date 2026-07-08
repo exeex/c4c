@@ -7355,6 +7355,50 @@ int check_branch_stack_load_authority_contract() {
         });
       };
 
+  const auto missing_rhs_source_freshness =
+      plan_rhs_stack_load(nullptr, branch_terminator_instruction_index);
+  if (missing_rhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      missing_rhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected rhs stack load without producer freshness to stay fail-closed");
+  }
+
+  auto ambiguous_rhs_freshness_authorities = rhs_freshness_authorities;
+  ambiguous_rhs_freshness_authorities.push_back(
+      rhs_freshness_authorities.front());
+  const auto ambiguous_rhs_source_freshness = plan_rhs_stack_load(
+      &ambiguous_rhs_freshness_authorities,
+      branch_terminator_instruction_index);
+  if (ambiguous_rhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              AmbiguousSourceFreshnessAuthority ||
+      ambiguous_rhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected ambiguous rhs branch stack-load freshness to stay fail-closed");
+  }
+
+  const auto stale_rhs_source_freshness =
+      plan_rhs_stack_load(&rhs_freshness_authorities,
+                          stale_branch_terminator_instruction_index);
+  if (stale_rhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      stale_rhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected stale rhs branch terminator freshness point to stay fail-closed");
+  }
+
+  auto wrong_value_rhs_freshness_authorities = rhs_freshness_authorities;
+  wrong_value_rhs_freshness_authorities.front().value_name = other_name;
+  const auto wrong_value_rhs_source_freshness = plan_rhs_stack_load(
+      &wrong_value_rhs_freshness_authorities,
+      branch_terminator_instruction_index);
+  if (wrong_value_rhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      wrong_value_rhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected wrong-value rhs branch stack-load freshness to be ignored");
+  }
+
   auto wrong_use_rhs_freshness_authorities = rhs_freshness_authorities;
   wrong_use_rhs_freshness_authorities.front().use_kind =
       prepare::PreparedValueFreshnessUseKind::ProducerPublicationOperand;
@@ -7366,6 +7410,16 @@ int check_branch_stack_load_authority_contract() {
               MissingSourceFreshnessAuthority ||
       wrong_use_rhs_source_freshness.stack_slot_fresh_at_branch) {
     return fail("expected wrong-use rhs branch stack-load freshness to be ignored");
+  }
+
+  const auto future_rhs_source_freshness =
+      plan_rhs_stack_load(&rhs_freshness_authorities,
+                          future_branch_terminator_instruction_index);
+  if (future_rhs_source_freshness.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      future_rhs_source_freshness.stack_slot_fresh_at_branch) {
+    return fail("expected future rhs branch terminator freshness point to stay fail-closed");
   }
 
   auto stack_home_only_rhs_freshness_authorities = rhs_freshness_authorities;
