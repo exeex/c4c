@@ -57,6 +57,15 @@ consumer code still rejects or mishandles the prepared value-location sequence.
   `src/pr91137.c`, unless refreshed diagnostics prove one belongs to a separate
   named owner.
 
+## Split-In From Idea 611
+
+Idea `611` close-readiness also surfaced `src/ieee/20001122-1.c` and
+`src/991030-1.c` as terminator-labeled direct-object residuals with earlier
+global storage/global data evidence on the asm route. Do not treat them as RV64
+prepared-global consumer rows until producer-side global layout authority is
+complete; if refreshed diagnostics show complete prepared facts, they may be
+used as additional guard rows for this consumer route.
+
 ## Reviewer Reject Signals
 
 - Reject changes that weaken prepared/global authority gates to make RV64

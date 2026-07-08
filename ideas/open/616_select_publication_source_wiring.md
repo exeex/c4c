@@ -45,6 +45,15 @@ and `598`.
 - Rows relying only on alias evidence or destination legality remain rejected.
 - Proof demonstrates the source-freshness boundary from ideas `589` and `598`.
 
+## Split-In From Idea 611
+
+Idea `611` close-readiness classified `src/921124-1.c` and `src/920710-1.c`
+as terminator-labeled direct-object residuals whose prepared evidence points
+through join/select carrier or predecessor-terminator parallel-copy authority.
+Treat these as candidate select publication rows only after refreshed
+diagnostics prove source freshness and destination legality under the idea
+`589`/`598` boundary.
+
 ## Reviewer Reject Signals
 
 - Reject treating alias evidence as source freshness.

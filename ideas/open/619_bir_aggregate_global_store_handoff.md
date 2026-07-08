@@ -65,6 +65,14 @@ route and needs its own owner contract.
 - The proof includes guard rows from idea 603 so local-memory store repairs do
   not regress.
 
+## Split-In From Idea 611
+
+Idea `611` close-readiness classified `src/ieee/20001122-1.c` and
+`src/991030-1.c` as direct-object terminator residuals whose asm route stops
+earlier at prepared global storage/global data layout. Treat these as candidate
+global handoff rows only if refreshed diagnostics still show the global storage
+or global data owner before RV64 terminator consumption.
+
 ## Reviewer Reject Signals
 
 - Reject testcase-shaped fixes for only `src/pr22141-1.c`, `src/compndlit-1.c`,

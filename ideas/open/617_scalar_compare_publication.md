@@ -43,6 +43,15 @@ this is an ordered tail idea rather than a first activation target.
 - No unrelated branch, select, or RV64 instruction-fragment route is changed.
 - Proof covers the complete current small family when possible.
 
+## Split-In From Idea 611
+
+Idea `611` close-readiness left `src/921124-1.c` and `src/920710-1.c` out of
+the terminator-consumer route because their compare/branch evidence depends on
+publication through join/select or predecessor terminator carriers. Use this
+idea only for the scalar compare publication part if refreshed diagnostics show
+that compare authority, rather than select wiring or stack-source freshness, is
+the first owner.
+
 ## Reviewer Reject Signals
 
 - Reject using this low-count idea to justify broad compare or branch rewrites.

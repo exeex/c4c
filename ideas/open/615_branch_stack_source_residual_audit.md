@@ -49,6 +49,14 @@ aggregate-adjacent shapes, or missing consumption of existing authority.
   stack-source gap.
 - Multiple residual rows progress or are reclassified with concrete evidence.
 
+## Split-In From Idea 611
+
+Idea `611` close-readiness classified `src/921124-1.c` as a mixed
+join/select plus stack-backed condition/freshness residual. This idea owns only
+the stack-source audit portion: a future runbook must first prove whether the
+row's first owner is branch stack-source freshness instead of select
+publication before making code changes.
+
 ## Reviewer Reject Signals
 
 - Reject skipping the audit and applying another broad branch fix.
