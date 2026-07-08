@@ -8,6 +8,7 @@ Current Step Title: Prove prepared authority handoff and preserve the split
 
 ## Just Finished
 
+- Completed Step 5 handoff proof for the accepted Step 4 movement.
 - Step 4 is accepted as complete enough to advance: relocation-only one-slot
   pointer object data published prepared relocation-required/relocation-present
   authority and moved `src/921110-1.c` past the prepared selected object-data
@@ -21,14 +22,10 @@ Current Step Title: Prove prepared authority handoff and preserve the split
 
 ## Suggested Next
 
-- Execute Step 5 handoff proof. Re-run the selected object-data allowlist and
-  record the Step 4 diagnostic movement plus the still-parked prepared stops.
-- Include the Step 2 and Step 3 parked evidence in the handoff summary: both
-  generic prepared global memory and direct base-plus-offset helper-only
-  `ByteStorageAggregate` publication experiments changed prepared dumps but did
-  not move the exact object-route diagnostics.
-- Recommended proof command:
-  `{ cmake --build --preset default && ALLOWLIST=build/agent_state/608_step4_selected_object_data.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh; } > test_after.log 2>&1`
+- Supervisor should ask plan-owner whether to close, retire, or replace this
+  runbook. The active runbook has now recorded Step 2/3 blocked evidence and
+  Step 4 prepared-authority movement, while the remaining broad row movement is
+  either fail-closed prepared mixed object data or `609` consumer work.
 
 ## Watchouts
 
@@ -67,6 +64,9 @@ Current Step Title: Prove prepared authority handoff and preserve the split
 - Step 5 is a proof and handoff packet unless evidence reveals a small
   608-owned prepared-authority gap that can move a row without touching RV64
   consumer/emission policy.
+- Parked Step 2 and Step 3 evidence should stay as route notes: helper-only
+  `ByteStorageAggregate` publication changed prepared dumps but did not move
+  the exact prepared-memory or direct base-plus-offset diagnostics.
 
 ## Proof
 
@@ -78,3 +78,9 @@ Current Step Title: Prove prepared authority handoff and preserve the split
   object-data contract status=unsupported_but_coherent` to the RV64
   relocation-record diagnostic. `src/20010924-1.c`, `src/pr61517.c`,
   `src/pr57877.c`, and `src/pr57860.c` retained the prepared contract stop.
+- Final Step 5 proof re-ran the same command into `test_after.log`; result
+  remained build succeeded, allowlist `0/5`. Current diagnostics:
+  - `src/921110-1.c`: `RV64 object route cannot emit prepared relocation
+    object data without relocation records`, owned by `609`.
+  - `src/20010924-1.c`, `src/pr61517.c`, `src/pr57877.c`,
+    `src/pr57860.c`: precise prepared selected object-data contract stops.
