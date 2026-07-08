@@ -1,87 +1,112 @@
 Status: Active
 Source Idea Path: ideas/open/599_pointer_base_plus_offset_selected_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Pointer-Base-Plus-Offset Consumers
+Current Step ID: 2
+Current Step Title: Define Pointer-Arithmetic Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 from `plan.md`: audited pointer-base-plus-offset producers,
-support facts, shared prepared/prealloc exposure points, and narrow RV64,
-AArch64, and x86 consumers.
+Completed Step 2 from `plan.md`: defined the selected pointer-arithmetic
+authority contract for the representative shared store-source publication
+route.
 
-Audited producer/support surfaces:
+Representative route being authorized:
 
-- `src/backend/prealloc/regalloc/value_homes.cpp` produces
-  `PreparedValueHomeKind::PointerBasePlusOffset` from semantic pointer carrier
-  authority, carrying result identity, base value, optional base symbol, byte
-  delta, and any target placement metadata.
-- `src/backend/prealloc/value_locations.hpp` defines
-  `PreparedPointerBasePlusOffsetFact`; `as_pointer_base_plus_offset_fact(...)`
-  accepts only the pointer-base-plus-offset home shape with valid function,
-  result value, base value, delta, and no immediate payloads. Its direct-copy
-  and signed-12-bit flags are support/range facts only.
-- `src/backend/prealloc/prepared_contract_verifier.*` verifies structural
-  coherence only: missing home/function/result/base/delta and conflicting
-  home/payload fail closed, but a coherent contract is not selected
-  pointer-arithmetic authority.
-- `src/backend/prealloc/decoded_home_storage.*` exposes the decoded kind as
-  `PointerBasePlusOffset` while leaving it `UnsupportedValueHomeKind`.
-- `src/backend/prealloc/prepared_lookups.cpp` maps the home to
-  `PreparedMoveStorageKind::None`, so move-storage lookup does not authorize
-  it as a normal register/stack move source.
-- `src/backend/prealloc/publication_plans.*` classifies scalar publication as
-  hook kind `PointerBasePlusOffset` and storage encoding `ComputedAddress`,
-  and records source/base/delta fields in
-  `plan_prepared_store_source_publication(...)`; these are publication
-  support facts, not selected-use authority.
-- `src/backend/prealloc/prepared_printer/*`, `formal_publications.cpp`,
-  `storage_plans.cpp`, `call_plans.cpp`, and prepared object traversal expose
-  or classify computed-address/source-delta fields for diagnostics, dumps,
-  call routing, or storage classification. They do not own freshness.
+- Shared route:
+  `PreparedStoreSourcePublicationPlan` /
+  `plan_prepared_store_source_publication(...)` when the source home is
+  `PreparedValueHomeKind::PointerBasePlusOffset`.
+- Current target-side consumer:
+  AArch64 `plan_pointer_base_plus_offset_store_local_publication(...)` /
+  `lower_pointer_base_plus_offset_store_local_publication(...)`.
+- Authorized use:
+  accepting the computed pointer result as the source value for store-local
+  publication materialization. This is not pointer-value indirect memory-use
+  freshness and does not authorize broad target operand formation.
 
-Audited consumer classification:
+Freshness vocabulary decision:
 
-- Representative shared prepared/prealloc candidate:
-  `plan_prepared_store_source_publication(...)` for a
-  `PointerBasePlusOffset` source home, currently consumed by AArch64
-  `plan_pointer_base_plus_offset_store_local_publication(...)` /
-  `lower_pointer_base_plus_offset_store_local_publication(...)`. This route
-  already has the source home, source value identity, base/delta fields,
-  destination access, producer metadata, and existing freshness plumbing on the
-  plan record, so it is the narrowest shared place to require selected
-  pointer-arithmetic authority before target materialization accepts the
-  computed pointer.
-- Target-consume-only/deferred RV64 paths:
-  `prepared_edge_publication_emit.cpp` consumes a structurally coherent
-  pointer-base-plus-offset source by finding a register home for the base and
-  emitting the delta; `prepared_scalar_emit.cpp`,
-  `prepared_emit_context.cpp`, `prepared_frame_emit.cpp`, and
-  `object_emission.cpp` consume or dump register/stack/address materialization
-  details. These should remain out of scope for this runbook except as later
-  consumers of shared selected authority.
-- Target-consume-only/deferred AArch64 paths:
-  `operands.cpp` rejects decoded pointer-base-plus-offset operands;
-  `memory.cpp` materializes computed pointer addresses for store-local
-  publication; `calls.cpp` uses computed-address argument/source metadata for
-  aggregate/address call copies. The memory route is the target-side consumer
-  of the selected representative shared plan; broad operand/call migration is
-  out of scope.
-- x86 paths are rejection/deferred paths:
-  `module.cpp` rejects pointer-base-plus-offset for prepared i32 return homes,
-  compare branch entry homes, and prepared call result homes. x86 publication
-  plan reuse tests exercise shared planning data, not target semantic
-  acceptance.
+- A distinct pointer-arithmetic vocabulary entry is required. Existing
+  `CallArgumentSource`, `MoveBundleSource`, `ProducerPublicationOperand`,
+  `DirectEdgePublicationSource`, `BranchStackLoadSource`, and
+  `SelectCarrierAliasSource` do not own this boundary because they prove call
+  argument availability, move bundle source availability, producer operand
+  availability, edge move publication, branch stack load ordering, or select
+  carrier aliasing. None ties a computed pointer result to its base pointer,
+  byte delta, and store-source use program point.
+- Step 3 should add narrow enum cases and contract matching:
+  `PreparedValueFreshnessUseKind::PointerBasePlusOffsetSource`,
+  `PreparedValueFreshnessSourceKind::PointerBasePlusOffset`,
+  `PreparedValueFreshnessProofKind::PointerBasePlusOffsetAuthority`, and
+  `PreparedValueFreshnessSourceRank::PointerBasePlusOffset`. Suggested rank
+  placement is a distinct route-specific rank near other selected semantic
+  source ranks; the exact numeric value only needs to be unique and stable.
+
+Query/reference contract:
+
+- Query `value_id` and `value_name` name the computed pointer result carried by
+  the `PointerBasePlusOffset` source home.
+- Query `use_kind` is `PointerBasePlusOffsetSource`.
+- Query program point is the store-source publication use site: the current
+  block/index and instruction index for the store-local publication route.
+- The selected authority must have source kind
+  `PointerBasePlusOffset`, proof kind `PointerBasePlusOffsetAuthority`, and
+  rank `PointerBasePlusOffset`.
+- The selected authority reference must point at the exact
+  `PreparedValueHome` for the computed pointer and must carry the same
+  program-point reference used by the query. The matching helper must require
+  home kind `PointerBasePlusOffset`, matching result `value_id`/`value_name`,
+  matching `pointer_base_value_name`, matching optional base symbol when
+  present, matching `pointer_byte_delta`, and matching block/instruction
+  reference.
+- Base pointer freshness is represented by the selected pointer-arithmetic
+  authority over the coherent source home, not by target placement. The base
+  identity comes from `pointer_base_value_name`; Step 3 must not substitute a
+  register/stack home for the base as freshness.
+
+Facts insufficient by themselves:
+
+- Home shape, byte delta, optional base symbol, stack/register placement,
+  layout/range proof, signed-12-bit encodability, target offset encodability,
+  target operand shape, diagnostics, prepared dumps, structural contract
+  coherence, decoded-home classification, and store-source publication support
+  fields are all insufficient without selected pointer-arithmetic authority.
+- A `PreparedStoreSourcePublicationPlan` with
+  `prepared_store_source_publication_available(plan) == true` remains support
+  evidence only until the selected pointer-arithmetic freshness helper accepts
+  the exact source/result/base/delta/use/program-point authority.
+
+Expected fail-closed statuses/diagnostics:
+
+- Missing/no-candidate freshness: `missing_pointer_arithmetic_source_freshness`
+  or the existing generic `missing_source_freshness_authority` if Step 3 keeps
+  the current status vocabulary narrow.
+- Ambiguous candidates: `ambiguous_pointer_arithmetic_source_freshness` or
+  generic `ambiguous_source_freshness_authority`.
+- Stale/wrong program point: invalid freshness, reported distinctly as
+  `stale_pointer_arithmetic_source_freshness` if a new status is added, or
+  generic `invalid_source_freshness_authority` with the helper rejecting the
+  block/instruction mismatch.
+- Wrong base, wrong result, wrong delta, or wrong use: invalid freshness; the
+  selected helper must reject the route before target materialization.
+- Range-only, target-shape-only, and support-only routes: missing or invalid
+  pointer-arithmetic freshness, never successful source acceptance.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: define the selected pointer-arithmetic
-ownership contract for the store-source publication route. The contract should
-state the exact freshness use/source/proof/rank and reference dimensions that
-authorize accepting a `PointerBasePlusOffset` source home for store-local
-publication.
+Execute Step 3 from `plan.md`: migrate the representative
+`PreparedStoreSourcePublicationPlan` / AArch64 store-local publication route to
+require selected `PointerBasePlusOffsetSource` freshness before accepting a
+`PointerBasePlusOffset` source home.
+
+Step 3 should add the distinct vocabulary and helper in the shared prealloc
+layer, centered on `src/backend/prealloc/value_locations.hpp`,
+`src/backend/prealloc/prepared_lookups.cpp`, and
+`src/backend/prealloc/publication_plans.hpp/.cpp`. The target-side AArch64
+route should consume that helper result; it should not grow target-local
+freshness semantics.
 
 ## Watchouts
 
@@ -93,17 +118,22 @@ publication.
   `PreparedStoreSourcePublicationPlan` / `plan_prepared_store_source_publication(...)`.
   AArch64 memory lowering can consume that result, but target-local
   materialization must not become the semantic authority.
+- If `PreparedStoreSourcePublicationPlan` lacks the block/instruction
+  reference needed by the exact query, Step 3 should add the minimal reference
+  fields required for this route instead of falling back to target shape.
+- The selected helper should fail closed for missing, ambiguous,
+  stale/wrong-program-point, wrong-base, wrong-result, wrong-delta, wrong-use,
+  range-only, target-shape-only, and support-only evidence.
 - Target paths explicitly out of scope for this runbook: RV64 edge publication,
   scalar emit, frame/context helpers, and object-emission diagnostics; AArch64
   generic operand resolution, call lowering, and broad memory lowering beyond
   the representative store-local consumer; x86 module lowering/rejections;
   semantic GEP target consumption; relocation/materialization semantics.
-- Do not reuse branch, edge-publication, move-bundle, select-carrier, alias, or
-  pointer-value memory-use freshness vocabulary unless Step 2 proves the
-  ownership boundary is identical. The audit suggests pointer arithmetic needs
-  its own narrow selected-authority vocabulary.
+- Do not reuse branch, edge-publication, move-bundle, select-carrier, alias,
+  call-argument, producer-publication, or pointer-value memory-use freshness
+  vocabulary for this route.
 
 ## Proof
 
-Audit-only/todo-only packet. No build or tests were run, and `test_after.log`
-was not updated. Proof command: `git diff --check`.
+Contract-only/todo-only packet. No build or tests were run, and
+`test_after.log` was not updated. Proof command: `git diff --check`.
