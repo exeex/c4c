@@ -1,6 +1,6 @@
 # RV64 Global Data Consumer
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -41,6 +41,22 @@ rows whose first owner is RV64/global consumption after prepared handoff.
 - Rows missing prepared facts continue to fail with producer or authority
   diagnostics instead of being guessed by RV64.
 - Proof covers both symbol emission and access-width behavior when possible.
+
+## Completion Summary
+
+Closed after the active runbook completed all five steps and Step 5 recorded
+the consumer-side handoff boundary. The refreshed nine-row allowlist had one
+new pass, `src/20030224-2.c`, and the remaining rows were assigned outside
+this idea's RV64/global consumer scope:
+
+- Runtime/downstream: `src/pr61517.c`.
+- Publication/link: `src/20010924-1.c`, `src/pr57877.c`, `src/pr57860.c`,
+  and `src/20020118-1.c`.
+- Producer-authority or unsupported-width: `src/20000703-1.c`,
+  `src/pr82387.c`, and `src/20020213-1.c`.
+
+The close gate used backend CTest logs with 346 passing tests before and after,
+with no new failures.
 
 ## Reviewer Reject Signals
 
