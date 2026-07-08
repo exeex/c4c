@@ -1,6 +1,6 @@
 # Branch Stack-Load Freshness Contract
 
-Status: Open
+Status: Closed
 Type: Architecture contract and narrow consumer migration
 Parent: `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
 Depends-On: `ideas/open/589_direct_edge_publication_move_freshness_ownership.md`
@@ -153,3 +153,62 @@ separate design discussion.
   a real branch stack-load consumer to freshness authority.
 - Reject closure notes that do not answer whether typed/aggregate stack-source
   producer facts should be next or deferred.
+
+## Closure Note
+
+Closed after the active runbook completed Steps 1-5 and backend regression
+proof passed for the shared-prealloc/backend freshness scope:
+
+```text
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1
+```
+
+The close gate compared canonical backend logs with the regression guard in
+non-decreasing mode because the supervisor had already rolled the green
+executor proof forward: `test_before.log` and `test_after.log` both report
+346 passed, 0 failed.
+
+1. Audited consumers: `PreparedBranchStackLoadRole::Condition`, `Lhs`, and
+   `Rhs` around `plan_prepared_branch_stack_load_authority`,
+   `collect_prepared_branch_stack_load_authorities`, and the adjacent frame
+   slot source fact collector.
+2. Branch-point freshness ownership rule: a prepared stack home, frame slot,
+   stack object, branch payload, and clobber-safety fact are necessary context
+   but never sufficient authority. A branch stack source is accepted only when
+   the shared freshness query selects matching authority for the same prepared
+   value/home at the exact branch terminator block/instruction point.
+3. Freshness vocabulary: the audited roles map to
+   `PreparedValueFreshnessUseKind::BranchStackLoadSource`, using
+   `PreparedValueFreshnessSourceKind::BranchStackSlot`,
+   `PreparedValueFreshnessProofKind::BranchTerminatorOrdering`, and
+   `PreparedValueFreshnessSourceRank::BranchStackSlot`.
+4. Migrated representative consumer: the scalar `Condition` branch stack-load
+   route now publishes/selects branch stack-slot freshness and can become
+   `Available` only after selected freshness, clobber safety, and pointer
+   status checks pass.
+5. Fail-closed coverage: missing or no-candidate authority reports
+   `MissingSourceFreshnessAuthority`; duplicate same-rank candidates report
+   `AmbiguousSourceFreshnessAuthority`; destination-only or wrong-proof
+   candidates report `InvalidSourceFreshnessAuthority`; selected authority
+   with the wrong stack home reports `UnsupportedSourceFreshnessAuthority`;
+   wrong value, wrong use, stale terminator point, and future terminator point
+   are ignored and remain `MissingSourceFreshnessAuthority`; missing clobber
+   safety reports `MissingStackClobberSafety`; stack-home-only or policy-none
+   rows remain fail-closed at `MissingPolicy`.
+6. Remaining consumers: pointer `Lhs` and `Rhs` stack-home rows are still
+   collected for inventory visibility but deliberately stay
+   `policy=none`/`MissingPolicy`. They are protected from accidental target
+   emission because this runbook did not grant source-freshness candidates or
+   load policy to those rows. Full branch, select, edge-publication, and target
+   emission consumers are deferred by scope.
+7. New architecture gap: typed and aggregate branch stack-source producer facts
+   must define how they publish `BranchStackSlot` freshness at branch
+   terminator points before more consumers can be widened.
+8. Target-specific tail: no RV64, AArch64, or x86 emission files were changed,
+   and no target-specific follow-up is ready until the typed/aggregate
+   producer-publication contract exists.
+9. Next direction: typed and aggregate stack-source freshness producer facts
+   should be the next idea before pointer `Lhs`/`Rhs`, select, edge, or target
+   branch-emission migration.
+10. Concrete follow-up opened:
+    `ideas/open/592_typed_aggregate_branch_stack_source_publication.md`.
