@@ -1,0 +1,210 @@
+# Prepared Global Data Authority Runbook
+
+Status: Active
+Source Idea: ideas/open/608_prepared_global_data_authority.md
+Activated from: ideas/open/608_prepared_global_data_authority.md
+
+## Purpose
+
+Complete prepared/global authority for selected object data, prepared global
+memory facts, and direct global-symbol base-plus-offset addressing before any
+RV64 global emission work consumes those facts.
+
+## Goal
+
+Move multiple prepared/global authority rows past the current prepared stop
+while keeping RV64/global consumer rows fail-closed for the later `609` idea.
+
+## Core Rule
+
+Publish prepared authority facts first. Do not repair this idea by emitting
+RV64 globals, widening RV64 access support, changing expectations, or matching
+representative testcase names.
+
+## Read First
+
+- ideas/open/608_prepared_global_data_authority.md
+- docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md
+- docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md
+- docs/rv64_gcc_torture_post_contract/infrastructure_bucket_evidence.md
+- src/backend/prealloc/object_data.cpp
+- src/backend/prealloc/object_data.hpp
+- src/backend/prealloc/prepared_contract_verifier.cpp
+- src/backend/prealloc/prepared_contract_verifier.hpp
+- src/backend/prealloc/addressing.hpp
+- src/backend/prealloc/stack_layout/coordinator.cpp
+
+## Current Targets
+
+- Selected global object-data contract rows: `17`, representative
+  `src/20010924-1.c`.
+- Prepared global memory facts rows: `12`, representative `src/strlen-7.c`.
+- Direct global-symbol base-plus-offset rows: `11`, representative
+  `src/pr79737-2.c`.
+- Handoff facts that later RV64/global consumer work in `609` can rely on.
+
+## Non-Goals
+
+- RV64 global symbol emission.
+- RV64 global access-width lowering or widening.
+- BIR global initializer bootstrap work.
+- Local memory, ABI, runtime/link, timeout, allowlist, accounting, or
+  unsupported-marker policy changes.
+- Expectation rewrites or testcase-specific matching.
+
+## Working Model
+
+The global-data bucket is intentionally split across two owners. This runbook
+owns the `40` prepared/global authority rows: selected object-data contract,
+prepared global memory facts, and direct global-symbol base-plus-offset
+authority. RV64 diagnostics such as `cannot emit prepared global symbol` or
+access-width support remain target-consumer failures for `609` unless the row
+first needs missing prepared facts from this plan.
+
+Prepared object-data and memory authority should be expressed in existing
+prepared facts, contract verification, and addressing/publication helpers.
+Target code may be inspected for diagnostics, but it should not become the
+place where missing prepared facts are reconstructed.
+
+## Execution Rules
+
+- Start every code packet from current failing diagnostics and nearby same
+  family rows, not from one representative testcase alone.
+- Prefer semantic prepared/global facts over special cases for individual C
+  torture files.
+- Preserve fail-closed behavior when object data, symbol identity, extent,
+  alignment, initializer bytes, zero-fill, relocation, or base-plus-offset
+  evidence is missing or contradictory.
+- Keep `todo.md` as the mutable executor state. Do not rewrite this runbook
+  for routine packet progress.
+- For code-changing steps, prove with a fresh build or compile proof plus the
+  supervisor-selected narrow RV64 gcc-torture subset.
+- Escalate to broader validation when one packet touches shared prepared
+  contract or addressing helpers used outside global data.
+
+## Ordered Steps
+
+### Step 1: Inventory prepared/global authority blockers
+
+Goal: identify which current rows are missing prepared authority facts and
+which rows are already prepared but blocked only by later RV64 consumption.
+
+Primary targets:
+- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+- `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
+- diagnostics from `src/backend/prealloc/prepared_contract_verifier.cpp`
+- diagnostics in `src/backend/mir/riscv/codegen/object_emission.cpp`
+
+Actions:
+- Inspect the current selected object-data, prepared global memory, and direct
+  global-symbol base-plus-offset diagnostics.
+- Pick a narrow representative set that covers at least two prepared authority
+  families when possible.
+- Record in `todo.md` which rows are authority-owned and which must stay
+  RV64/global consumer failures for `609`.
+- Identify the existing prepared facts and helpers that should own each
+  missing fact before implementation.
+
+Completion check:
+- `todo.md` names the exact Step 1 evidence set, candidate rows, and first
+  implementation target without broadening into RV64 emission.
+
+### Step 2: Complete selected global object-data authority
+
+Goal: make selected global object-data rows publish coherent authority for
+label, identity, extent, alignment, emitted bytes, zero-fill, relocation, and
+unsupported-marker state.
+
+Primary targets:
+- `src/backend/prealloc/object_data.cpp`
+- `src/backend/prealloc/object_data.hpp`
+- `src/backend/prealloc/prepared_contract_verifier.cpp`
+- `src/backend/prealloc/prepared_contract_verifier.hpp`
+
+Actions:
+- Audit how `PreparedGlobalObjectData` is populated from BIR globals.
+- Repair missing or contradictory prepared object-data facts only where the BIR
+  initializer and global layout evidence supports them.
+- Preserve explicit unsupported or invalid-prepared diagnostics when the
+  initializer facts are absent or out of scope.
+- Avoid moving byte emission into RV64 as a substitute for prepared authority.
+
+Completion check:
+- At least one selected global object-data family row advances past the
+  prepared object-data contract stop, and nearby rows either advance for the
+  same semantic reason or retain a precise fail-closed diagnostic.
+
+### Step 3: Publish prepared global memory facts
+
+Goal: make supported global load/store memory accesses carry prepared facts
+that RV64 can consume later without reconstructing address provenance.
+
+Primary targets:
+- `src/backend/prealloc/addressing.hpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- existing prepared global load/store lookup and publication helpers.
+
+Actions:
+- Trace global load/store lanes from BIR values through prepared address and
+  memory-access facts.
+- Add or repair authority publication for supported global-symbol memory
+  accesses with correct symbol identity, offset, size, alignment, and use.
+- Keep access-width legality and final instruction emission out of scope.
+- Preserve fail-closed diagnostics for ambiguous symbols, missing identity,
+  unsupported widths, missing initializer/layout facts, and policy-sensitive
+  cases.
+
+Completion check:
+- Prepared global memory facts are available for supported rows that previously
+  stopped with missing prepared global memory facts, and unsupported-width rows
+  remain target-consumer failures.
+
+### Step 4: Complete direct global-symbol base-plus-offset authority
+
+Goal: publish direct global-symbol base-plus-offset authority for rows where
+symbol identity and byte offset are semantically known.
+
+Primary targets:
+- `src/backend/prealloc/addressing.hpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- selected-address and address-materialization helpers.
+
+Actions:
+- Inspect how direct global-symbol addresses are resolved and represented in
+  prepared address facts.
+- Repair the prepared authority path for direct symbol plus constant offset
+  where the global, offset, range, and use are all known.
+- Do not treat relocation/materialization facts as pointer freshness authority.
+- Keep GOT/TLS, target relocation emission, and RV64 materialization policy out
+  of this step unless they already exist as prepared facts that must be
+  preserved.
+
+Completion check:
+- Direct global-symbol base-plus-offset rows progress when the prepared fact is
+  semantically available, and rows with ambiguous or missing authority still
+  fail before RV64 emission.
+
+### Step 5: Prove prepared authority handoff and preserve the split
+
+Goal: demonstrate that this plan improved prepared/global authority without
+absorbing the later RV64/global consumer idea.
+
+Primary targets:
+- selected global object-data rows
+- selected prepared global memory facts rows
+- selected direct global-symbol base-plus-offset rows
+- neighboring RV64/global consumer rows for split preservation
+
+Actions:
+- Run the supervisor-selected narrow RV64 gcc-torture proof after each code
+  packet.
+- Confirm proof covers more than one prepared authority family where possible.
+- Confirm global symbol emission and global access-width rows remain classified
+  as RV64/global consumer work unless missing prepared authority was the real
+  first owner.
+- Update `todo.md` with proof commands, results, and remaining handoff notes.
+
+Completion check:
+- Multiple prepared/global authority rows have advanced, proof output is
+  recorded in `todo.md`, and `609` remains the follow-up owner for RV64 global
+  emission or access-width consumption.
