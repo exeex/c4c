@@ -1,33 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/588_shared_prealloc_move_operand_source_freshness_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Wire The Selected Consumer To The Freshness Query
+Current Step ID: 4
+Current Step Title: Strengthen Diagnostics And Debug Visibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 wired the selected dependency operand `LoadFromStackSlot` consumer to
-the shared source-freshness query.
+Step 4 strengthened prepared-dump visibility for dependency operand source
+freshness without changing authority construction or acceptance semantics.
 
-`plan_prepared_dependency_operand_authority` still preserves stack object,
-stack-slot freshness, and clobber-safety validation before considering shared
-freshness authority. After those checks pass, `LoadFromStackSlot` now accepts
-only a selected `ProducerPublicationOperand` / `DirectHome` /
-`DominanceOrOrdering` / `DirectHome` authority that names the dependency value
-and references the dependency home.
-
-The stack-layout contract now proves accepted explicit authority and rejects
-missing/no-candidate, invalid, ambiguous, wrong-value/destination-only,
-wrong-use, stale-reference, and wrong-proof source freshness candidates with
-specific fail-closed dependency operand statuses or query statuses.
+`prepared-dependency-operand-authorities` rows now print the dependency
+authority `source_freshness_status`, source-freshness candidate count, and the
+selected authority fields when an authority is present. The existing dump
+fixture asserts both the available cast-rematerialization row and the
+fail-closed `LoadFromStackSlot` row expose `source_freshness_status=no_candidate`
+with zero candidates, keeping missing dependency stack freshness
+distinguishable in prepared dumps.
 
 ## Suggested Next
 
-Start Step 4 for the selected dependency operand route: make the migrated
-freshness status/debug surface easier to inspect in prepared dumps without
-changing the authority contract or broadening the migration subset.
+Supervisor should decide whether the active runbook is now exhausted enough for
+plan-owner review/closure, or whether a narrow follow-up should make collected
+dependency operand dump records carry selected stack-source freshness facts.
 
 ## Watchouts
 
@@ -46,13 +42,15 @@ changing the authority contract or broadening the migration subset.
   dependency stack-home candidate created from existing semantic facts.
 - Branch stack-load remains deferred; it needs its own branch-point use-kind
   contract.
+- The current dependency operand collector still creates dump records without
+  passing stack freshness and clobber-safety facts into the `LoadFromStackSlot`
+  authority query, so this packet could only add selected-authority printing
+  for authorities that already carry a selected freshness result.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepared_printer|backend_prepared_lookup_helper)$'`
-passed on rerun. The first attempt hit a transient `cc1plus` killed signal
-while compiling unrelated `backend_aarch64_instruction_dispatch_test` object
-code; the rerun completed successfully. Canonical proof log: `test_after.log`.
+passed. Canonical proof log: `test_after.log`.
 
 # Closure Inventory
 

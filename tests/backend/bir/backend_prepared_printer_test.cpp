@@ -7700,7 +7700,9 @@ int main() {
           "source_producer=binary source_producer_block=join "
           "source_producer_inst=1 operand_role=rhs dependency=%dep "
           "dependency_value_id=9 policy=rematerialize_cast_from_source "
-          "status=available dependency_slot=#2 dependency_stack_offset=16 "
+          "status=available source_freshness_status=no_candidate "
+          "source_freshness_candidates=0 dependency_slot=#2 "
+          "dependency_stack_offset=16 "
           "cast_producer_block=join cast_producer_inst=0 cast_source=%src "
           "cast_source_value_id=8 cast_source_home=rematerializable_immediate "
           "cast_source_imm_i32=-2147483643",
@@ -7715,7 +7717,8 @@ int main() {
           "source_producer=binary source_producer_block=join "
           "source_producer_inst=1 operand_role=rhs dependency=%dep "
           "dependency_value_id=9 policy=load_from_stack_slot "
-          "status=missing_stack_freshness dependency_slot=#2 "
+          "status=missing_stack_freshness source_freshness_status=no_candidate "
+          "source_freshness_candidates=0 dependency_slot=#2 "
           "dependency_stack_offset=16",
           "prepared dependency-operand stack-load route stays fail-closed")) {
     return EXIT_FAILURE;

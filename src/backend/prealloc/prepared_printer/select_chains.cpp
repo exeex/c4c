@@ -168,6 +168,33 @@ void append_store_source_publication_row(
   out << "\n";
 }
 
+void append_dependency_operand_source_freshness(
+    std::ostringstream& out,
+    const PreparedBirModule& module,
+    const PreparedDependencyOperandAuthority& authority) {
+  out << " source_freshness_status="
+      << prepared_value_freshness_query_status_name(
+             authority.source_freshness_status)
+      << " source_freshness_candidates="
+      << authority.source_freshness_authorities.size();
+  if (!authority.source_freshness_authority.has_value()) {
+    return;
+  }
+
+  const auto& freshness = *authority.source_freshness_authority;
+  out << " source_freshness_authority="
+      << prepared_value_freshness_source_kind_name(freshness.source_kind)
+      << " source_freshness_value="
+      << maybe_value_name(module.names, freshness.value_name)
+      << " source_freshness_value_id=" << freshness.value_id
+      << " source_freshness_use="
+      << prepared_value_freshness_use_kind_name(freshness.use_kind)
+      << " source_freshness_proof="
+      << prepared_value_freshness_proof_kind_name(freshness.proof_kind)
+      << " source_freshness_rank="
+      << prepared_value_freshness_source_rank_name(freshness.rank);
+}
+
 }  // namespace
 
 void append_store_source_publications(std::ostringstream& out,
@@ -358,6 +385,7 @@ void append_dependency_operand_authorities(std::ostringstream& out,
                authority.policy)
         << " status="
         << prepared_dependency_operand_authority_status_name(authority.status);
+    append_dependency_operand_source_freshness(out, module, authority);
     if (authority.dependency_slot_id.has_value()) {
       out << " dependency_slot=#" << *authority.dependency_slot_id;
     }
