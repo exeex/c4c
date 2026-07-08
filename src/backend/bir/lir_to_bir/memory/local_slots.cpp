@@ -1541,6 +1541,25 @@ bool BirFunctionLowerer::lower_memory_load_inst(
           &pointer_value_addresses_,
           lowered_insts);
       global_load.has_value()) {
+    if (*global_load && *value_type == bir::TypeKind::Ptr &&
+        load.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global &&
+        pointer_value_addresses_.find(load.result.str()) ==
+            pointer_value_addresses_.end() &&
+        global_pointer_slots_.find(load.result.str()) == global_pointer_slots_.end() &&
+        global_object_pointer_slots_.find(load.result.str()) == global_object_pointer_slots_.end()) {
+      const std::string global_name = load.ptr.str().substr(1);
+      const auto global_it = global_types_.find(global_name);
+      if (global_it != global_types_.end() && global_it->second.supports_direct_value &&
+          global_it->second.value_type == bir::TypeKind::Ptr) {
+        pointer_value_addresses_[load.result.str()] = PointerAddress{
+            .base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str()),
+            .value_type = bir::TypeKind::Void,
+            .byte_offset = 0,
+            .provenance = unknown_runtime_base_provenance(
+                bir::Value::named(bir::TypeKind::Ptr, load.result.str())),
+        };
+      }
+    }
     return *global_load;
   }
 
