@@ -8,61 +8,57 @@ Current Step Title: Implement First Ordinary ABI Consumer
 
 ## Just Finished
 
-Completed Step 2, "Implement First Ordinary ABI Consumer", for the ordinary
-same-module prepared call-argument frame-address consumer. The RV64 object
-route now accepts identical duplicate prepared frame-slot address
-materialization facts for a call argument, while preserving rejection for
-conflicting materialization facts. This lets a prepared call plan consume two
-ABI argument bindings that intentionally reuse the same published frame
-address, instead of treating the duplicate publication as ambiguous.
+Completed Step 2, "Implement First Ordinary ABI Consumer", residual scan after
+splitting the byval/outgoing-stack producer gap to idea 624.
 
-Representative behavior:
+Current live gcc_torture backend case logs still contain `51`
+`unsupported_call_abi` rows; `50` were parseable through focused
+`--dump-prepared-bir` sampling. `src/20000603-1.c` is no longer in that owner
+set and remains past call ABI at `unsupported_terminator_fragment`.
 
-- `src/20000603-1.c` moved past `unsupported_call_abi` at `main`
-  `block_index=0`, `instruction_index=1`, `callee=f`, `args=2`,
-  `planned_args=2`, `result=double %t4`. Its first stop is now
-  `unsupported_terminator_fragment`, so the same-module call/result consumer
-  no longer owns that row.
-- `src/20000808-1.c` remains at `unsupported_call_abi` for the broader
-  byval/outgoing-stack aggregate argument shape. Its prepared plan mixes
-  aggregate-address stack-copy arguments with stack-slot address arguments and
-  should be a separate same-module call packet, not folded into the duplicate
-  address-materialization fix.
-- Focused RV64 object-emission coverage now accepts identical duplicate
-  frame-slot address materialization facts for prepared call arguments and
-  keeps conflicting duplicate offsets rejected.
+Focused prepared-call classification:
 
-Guard probes stayed on their prior owners:
-
-- `src/20020314-1.c`, `src/strcpy-2.c`: `unsupported_stack_frame`.
-- `src/20001130-2.c`, `src/20080719-1.c`: before-return
-  `return_stack_to_register` under `unsupported_move_bundle_target_shape`.
-- `src/920411-1.c`: generic move-bundle materialization, not return ABI.
-- `src/20000722-1.c`: `unsupported_local_memory_access`.
-- `src/20030828-1.c`: `unsupported_global_data`.
-- `src/va-arg-2.c`, `src/va-arg-12.c`, `src/va-arg-24.c`: remained outside
-  the ordinary same-module packet.
+- `11` rows are basic same-module register/void call/result consumers without
+  outgoing stack, missing frame-slot publication, fpr, or stack-copy markers:
+  `src/20020529-1.c`, `src/20021219-1.c`, `src/931004-1.c`,
+  `src/931004-11.c`, `src/931004-13.c`, `src/931004-3.c`,
+  `src/931004-5.c`, `src/931004-7.c`, `src/931004-9.c`,
+  `src/931031-1.c`, `src/pr77767.c`.
+- `7` rows have explicit same-module memory-return/sret frame-slot facts:
+  `src/20000917-1.c`, `src/20020206-1.c`, `src/20020810-1.c`,
+  `src/20020920-1.c`, `src/20030613-1.c`, `src/990525-2.c`,
+  `src/bf64-1.c`.
+- `18` rows expose `missing_frame_slot_arg_publication`; keep them out of the
+  next RV64 consumer packet because they need prepared publication authority,
+  not target-local inference.
+- `13` rows expose outgoing stack argument facts, and `7` rows expose
+  aggregate `StackCopy` transport. `src/20000808-1.c` stays in this group and
+  remains split to idea 624 for missing prepared outgoing-stack destination
+  offsets.
+- `7` sampled rows involve FPR argument/result lanes and should remain a
+  separate Step 2 packet from the basic GPR/void group.
+- Guard families remain out of Step 2: stack-frame rows, return
+  `return_stack_to_register` rows, variadic/library/runtime rows, local/global
+  producers, and downstream terminator or move-bundle owners.
 
 ## Suggested Next
 
-Reviewer split verdict recorded in
-`review/613_step2_byval_outgoing_stack_slice_review.md`: the
-`src/20000808-1.c` byval/outgoing-stack aggregate argument shape is blocked by
-missing prepared destination stack offsets, which is producer authority outside
-idea 613.
+Continue Step 2 with a basic same-module GPR/void call/result consumer packet.
+Positive rows should come from the `11` register/void group, with
+`src/931004-1.c` and `src/pr77767.c` as representative positives because they
+exercise multiple scalar argument bindings without requiring outgoing stack,
+missing frame-slot publication, FPR lanes, or aggregate stack-copy transport.
 
-The producer gap is split to
-`ideas/open/624_prepared_outgoing_stack_argument_destination_offsets.md`.
+Negative guards for that packet should include:
 
-Continue idea 613 under Step 2 only with ordinary same-module call/result
-consumer rows whose prepared call/result facts already include the needed
-stack/register boundary authority. Before the next code packet, run a focused
-residual scan to select either:
-
-- another Step 2 ordinary call/result consumer family with complete prepared
-  facts, or
-- a no-breadth handoff to Step 3 stack-frame/return handling if no such Step 2
-  family remains.
+- `src/20000917-1.c` as memory-return/sret breadth, not part of the first
+  basic register/void packet.
+- `src/20000808-1.c` as the idea-624 outgoing-stack destination-offset gap.
+- `src/20001017-2.c` or `src/pr20466-1.c` for missing frame-slot argument
+  publication.
+- `src/20080529-1.c` or `src/ieee/unsafe-fp-assoc.c` for FPR lanes.
+- Existing stack-frame, return stack-to-register, local/global producer,
+  variadic, library, and runtime guard rows.
 
 ## Watchouts
 
@@ -77,6 +73,9 @@ residual scan to select either:
   aggregate-address stack-copy plus outgoing stack-slot argument shape lacks
   prepared destination stack offsets. Treat that as split producer work under
   idea 624, not as immediate 613 consumer scope.
+- Do not fold memory-return/sret, FPR, frame-slot publication, or outgoing
+  stack transport into the next packet unless the supervisor deliberately
+  changes the packet boundary.
 
 ## Proof
 
@@ -84,4 +83,5 @@ Ran exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: passed, `346/346` backend tests; proof log is `test_after.log`.
+Result: passed, `346/346` backend tests; `test_after.log` reports
+`100% tests passed, 0 tests failed out of 346`.
