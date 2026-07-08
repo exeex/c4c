@@ -3424,6 +3424,26 @@ prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
               },
           },
   });
+  auto& prior_arg =
+      prepared.call_plans.functions.back().calls[1].arguments[0];
+  prior_arg.freshness_authorities.push_back(
+      prepare::PreparedValueFreshnessAuthority{
+          .value_id = prepare::PreparedValueId{1},
+          .value_name = param_name,
+          .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+          .source_kind =
+              prepare::PreparedValueFreshnessSourceKind::PriorPreservation,
+          .proof_kind =
+              prepare::PreparedValueFreshnessProofKind::CallBoundaryPreservation,
+          .rank = prepare::PreparedValueFreshnessSourceRank::PriorPreservation,
+          .reference = prepare::PreparedValueFreshnessSourceReference{
+              .preservation =
+                  &prepared.call_plans.functions.back().calls[0].preserved_values[0],
+              .block_index = std::size_t{0},
+              .instruction_index = std::size_t{0},
+              .abi_index = std::size_t{0},
+          },
+      });
   const prepare::PreparedRegisterPlacement s1_placement{
       .bank = prepare::PreparedRegisterBank::Gpr,
       .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
@@ -13849,6 +13869,93 @@ int builds_prepared_prior_preserved_arg_call_object() {
   return 0;
 }
 
+std::optional<std::string> emit_prior_preserved_arg_call_text(
+    const prepare::PreparedBirModule& prepared) {
+  const auto function_name =
+      prepared.names.function_names.find("reload_prior_preserved_arg");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  if (function_name == c4c::kInvalidFunctionName ||
+      block_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  const auto& call = std::get<bir::CallInst>(
+      prepared.module.functions[0].blocks[0].insts[1]);
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared,
+                                              prepared.control_flow.functions[0]);
+  const rv64::PreparedCurrentInstructionContext context{
+      .names = prepared.names,
+      .lookups = &lookups,
+      .block_label = block_label,
+      .instruction_index = 1,
+  };
+  return rv64::emit_riscv_simple_call(prepared, function_name, call, 0, context);
+}
+
+int emits_prepared_prior_preserved_arg_call_text_with_freshness_authority() {
+  const auto prepared = make_prepared_prior_preserved_arg_call_module();
+  const auto emitted = emit_prior_preserved_arg_call_text(prepared);
+  if (!emitted.has_value()) {
+    return fail("expected prepared RV64 call emitter to accept selected prior-preservation freshness");
+  }
+  if (emitted->find("    mv a0, s1\n") == std::string::npos ||
+      emitted->find("    call probe\n") == std::string::npos) {
+    return fail("expected prepared RV64 call emitter to reload prior-preserved GPR argument");
+  }
+  return 0;
+}
+
+int rejects_prepared_prior_preserved_arg_call_text_without_freshness_authority() {
+  auto prepared = make_prepared_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[1]
+      .arguments[0]
+      .freshness_authorities.clear();
+  if (emit_prior_preserved_arg_call_text(prepared).has_value()) {
+    return fail("expected prepared RV64 call emitter to fail closed without freshness authority");
+  }
+  return 0;
+}
+
+int rejects_prepared_prior_preserved_arg_call_text_ambiguous_freshness() {
+  auto prepared = make_prepared_prior_preserved_arg_call_module();
+  auto& authorities = prepared.call_plans.functions[0]
+                          .calls[1]
+                          .arguments[0]
+                          .freshness_authorities;
+  authorities.push_back(authorities.front());
+  if (emit_prior_preserved_arg_call_text(prepared).has_value()) {
+    return fail("expected prepared RV64 call emitter to fail closed on ambiguous freshness authority");
+  }
+  return 0;
+}
+
+int rejects_prepared_prior_preserved_arg_call_text_when_producer_is_fresher() {
+  auto prepared = make_prepared_prior_preserved_arg_call_module();
+  auto& authorities = prepared.call_plans.functions[0]
+                          .calls[1]
+                          .arguments[0]
+                          .freshness_authorities;
+  authorities.push_back(prepare::PreparedValueFreshnessAuthority{
+      .value_id = prepare::PreparedValueId{1},
+      .value_name = prepared.names.value_names.find("%p.ptr"),
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind =
+          prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization,
+      .proof_kind = prepare::PreparedValueFreshnessProofKind::SameBlockBeforeUse,
+      .rank = prepare::PreparedValueFreshnessSourceRank::ProducerRematerialization,
+      .reference = prepare::PreparedValueFreshnessSourceReference{
+          .block_index = std::size_t{0},
+          .instruction_index = std::size_t{0},
+          .abi_index = std::size_t{0},
+      },
+  });
+  if (emit_prior_preserved_arg_call_text(prepared).has_value()) {
+    return fail("expected prepared RV64 call emitter to reject prior preservation when producer freshness wins");
+  }
+  return 0;
+}
+
 int builds_prepared_ptrtoint_param_survives_nested_same_module_call_object() {
   const auto prepared =
       make_prepared_ptrtoint_param_survives_nested_same_module_call_module();
@@ -23410,6 +23517,13 @@ int main() {
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_prior_result_multi_gpr_same_module_call_object();
   status |= builds_prepared_prior_preserved_arg_call_object();
+  status |=
+      emits_prepared_prior_preserved_arg_call_text_with_freshness_authority();
+  status |=
+      rejects_prepared_prior_preserved_arg_call_text_without_freshness_authority();
+  status |= rejects_prepared_prior_preserved_arg_call_text_ambiguous_freshness();
+  status |=
+      rejects_prepared_prior_preserved_arg_call_text_when_producer_is_fresher();
   status |=
       builds_prepared_ptrtoint_param_survives_nested_same_module_call_object();
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();

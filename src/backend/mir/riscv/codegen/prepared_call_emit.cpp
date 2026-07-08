@@ -85,6 +85,46 @@ const c4c::backend::prepare::PreparedValueHome* prepared_call_value_home_for_id(
   return it == lookups->value_homes.homes_by_id.end() ? nullptr : it->second;
 }
 
+c4c::backend::prepare::PreparedValueFreshnessQueryResult
+find_prepared_call_argument_source_freshness(
+    const c4c::backend::prepare::PreparedCallArgumentPlan& plan,
+    std::size_t block_index) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (!plan.source_value_id.has_value()) {
+    return prepare::PreparedValueFreshnessQueryResult{
+        .status = prepare::PreparedValueFreshnessQueryStatus::MissingValue,
+    };
+  }
+  const auto source_value_name =
+      plan.source_selection.has_value() &&
+              plan.source_selection->source_value_name.has_value()
+          ? *plan.source_selection->source_value_name
+          : c4c::kInvalidValueName;
+  return prepare::find_prepared_value_freshness_authority(
+      prepare::PreparedValueFreshnessQuery{
+          .value_id = *plan.source_value_id,
+          .value_name = source_value_name,
+          .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+          .block_index = block_index,
+          .instruction_index = plan.instruction_index,
+          .candidates = plan.freshness_authorities,
+      });
+}
+
+bool prepared_call_argument_source_has_selected_freshness(
+    const c4c::backend::prepare::PreparedCallArgumentPlan& plan,
+    std::size_t block_index,
+    c4c::backend::prepare::PreparedValueFreshnessSourceKind source_kind) {
+  namespace prepare = c4c::backend::prepare;
+
+  const auto freshness =
+      find_prepared_call_argument_source_freshness(plan, block_index);
+  return prepare::prepared_value_freshness_query_selected(freshness) &&
+         freshness.authority != nullptr &&
+         freshness.authority->source_kind == source_kind;
+}
+
 std::optional<std::size_t> rv64_prepared_call_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type) {
   switch (type) {
@@ -904,6 +944,12 @@ std::optional<std::string> emit_riscv_simple_call(
                source_selection->kind ==
                    prepare::PreparedCallArgumentSourceSelectionKind::
                        PriorPreservation) {
+      if (!prepared_call_argument_source_has_selected_freshness(
+              *plan,
+              block_index,
+              prepare::PreparedValueFreshnessSourceKind::PriorPreservation)) {
+        return std::nullopt;
+      }
       if (!emit_riscv_prior_preserved_gpr_argument(out, *plan)) {
         return std::nullopt;
       }
@@ -913,6 +959,20 @@ std::optional<std::string> emit_riscv_simple_call(
             std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} &&
         plan->source_register_name.has_value() &&
         !plan->source_register_name->empty()) {
+      if (!plan->freshness_authorities.empty()) {
+        const auto freshness =
+            find_prepared_call_argument_source_freshness(*plan, block_index);
+        if (!prepare::prepared_value_freshness_query_selected(freshness) ||
+            freshness.authority == nullptr ||
+            (freshness.authority->source_kind !=
+                 prepare::PreparedValueFreshnessSourceKind::DirectHome &&
+             freshness.authority->source_kind !=
+                 prepare::PreparedValueFreshnessSourceKind::ExplicitPublication &&
+             freshness.authority->source_kind !=
+                 prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization)) {
+          return std::nullopt;
+        }
+      }
       if (emit_riscv_frame_slot_address_argument(out,
                                                  prepared,
                                                  function_name,
