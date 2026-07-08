@@ -1,6 +1,6 @@
 # Direct Edge-Publication Move Freshness Ownership
 
-Status: Open
+Status: Closed
 Type: Architecture contract and narrow consumer migration
 Parent: `ideas/closed/588_shared_prealloc_move_operand_source_freshness_inventory.md`
 Related:
@@ -145,3 +145,111 @@ an edge-publication source use, and prove why `MoveBundleSource` or
   a real consumer to freshness authority.
 - Reject closure notes that do not separately list audited, migrated,
   unwired, newly exposed, and recommended-follow-up families.
+
+## Closure Note
+
+Closed after completing the representative direct edge-publication move
+freshness route and backend close gate.
+
+Audited consumers:
+
+- `make_prepared_edge_publication_lookups` builds direct edge-publication rows
+  from join transfers, destination homes, source homes, source producer facts,
+  and matching moves. It remains a row publisher/helper, not the migrated
+  acceptance consumer.
+- `prepare_edge_copy_source_facts`,
+  `find_unique_indexed_block_entry_parallel_copy_edge_publication`, and
+  `prepare_block_entry_parallel_copy_edge_source_facts` consume indexed
+  edge-publication rows and block-entry out-of-SSA move facts.
+- `prepare_current_block_join_parallel_copy_source_facts` consumes those edge
+  source facts for current-block join parallel-copy source acceptance.
+- `prepare_aggregate_stack_source_authority` and
+  `prepare_same_width_i32_stack_source_publication` consume publication rows,
+  stack source homes, destination register placement, and matching moves for
+  stack-source publication routes.
+- `classify_prepared_object_move_bundle_consumer` consumes move bundles through
+  `PreparedValueFreshnessUseKind::MoveBundleSource`.
+- `plan_prepared_store_source_publication`,
+  `publish_store_source_producer_freshness_authority`, and
+  `plan_prepared_dependency_operand_authority` consume producer-publication
+  operands through `PreparedValueFreshnessUseKind::ProducerPublicationOperand`.
+- Select-carrier placement, select-alias collection, destination fan-in, and
+  predecessor-edge consumed suppression routes consume edge-publication rows or
+  nearby move facts for placement, alias, suppression, or destination legality.
+
+Ownership rule:
+
+Direct edge-publication moves require explicit source freshness for the exact
+edge-publication source being accepted. Destination bundle legality, complete
+source homes, direct homes, alias evidence, and local move shape are not source
+freshness. The accepted proof is the exact direct edge-publication row linked
+to the exact block-entry parallel-copy move resolution for the same source
+value and edge.
+
+Freshness vocabulary:
+
+- Added `PreparedValueFreshnessUseKind::DirectEdgePublicationSource`.
+- Added `PreparedValueFreshnessSourceKind::DirectEdgePublication`.
+- Added `PreparedValueFreshnessProofKind::DirectEdgePublicationMove`.
+- Added `PreparedValueFreshnessSourceRank::DirectEdgePublication`.
+- Added an `edge_publication` freshness reference alongside the exact move
+  reference.
+
+Migrated representative consumer:
+
+The migrated family is the current-block join parallel-copy source route
+through `prepare_block_entry_parallel_copy_edge_source_facts` and
+`prepare_current_block_join_parallel_copy_source_facts`. The lower helper
+publishes selected direct edge-publication source freshness after the existing
+publication, move, and source-value checks succeed. The current-block join
+consumer requires the selected `DirectEdgePublicationSource` authority before
+accepting named direct edge-publication sources.
+
+Fail-closed coverage:
+
+Focused backend helper tests cover accepted explicit freshness and rejection
+for missing or no-candidate freshness, invalid freshness, ambiguous freshness,
+wrong source value, wrong use, and destination-only authority. Existing
+missing publication, ambiguous publication, edge mismatch, unsupported move,
+publication/move mismatch, and missing source-fact checks remain preserved.
+Immediate edge sources intentionally remain authority-free and are not
+retrofitted with freshness candidates.
+
+Observability:
+
+The prepared printer exposes
+`prepared-current-block-join-parallel-copy-sources` rows derived through
+`prepare_current_block_join_parallel_copy_source_facts`. Rows show edge/source
+status, source freshness query status, candidate count, selected authority
+source kind, source value/id, use, proof, rank, reference block/instruction,
+source/destination home classes, immediate-source state, and Route 5 agreement
+status.
+
+Remaining unwired families:
+
+- Protected: object traversal move-bundle consumers remain covered by
+  `MoveBundleSource`; dependency and store-source producer-publication
+  consumers remain covered by the existing 587/588
+  `ProducerPublicationOperand` freshness surfaces.
+- Deferred for scope: `make_prepared_edge_publication_lookups`, broad
+  RV64/AArch64/x86 emission tails, and non-selected edge-publication or
+  move-bundle consumer families.
+- Blocked on missing producer/publication facts: typed stack-source and
+  aggregate stack-source publication routes.
+- Blocked on ownership design and split-worthy if continued: select-carrier
+  alias, destination fan-in, predecessor-edge consumed suppression, and
+  similar destination/alias legality routes.
+
+New gaps and follow-ups:
+
+No new target-specific RV64, AArch64, or x86 tail was exposed by the completed
+representative migration. Any follow-up should be a separate idea focused on
+select/alias freshness ownership or typed/aggregate stack-source freshness,
+if the supervisor chooses to continue beyond this representative route.
+
+Close proof:
+
+- Backend close logs: `test_before.log` and `test_after.log` both record 346
+  passing `^backend_` tests and 0 failures.
+- Regression guard passed in non-decreasing mode for this lifecycle-only close:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
