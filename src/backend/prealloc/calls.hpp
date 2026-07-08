@@ -547,6 +547,7 @@ struct PreparedCallArgumentPlan {
   std::optional<PreparedRegisterPlacement> destination_register_placement;
   std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity;
   std::optional<PreparedCallArgumentSourceSelection> source_selection;
+  std::vector<PreparedValueFreshnessAuthority> freshness_authorities;
   std::optional<PreparedAggregateTransportPlan> aggregate_transport;
   PreparedCallArgumentDirectGlobalSelectChainDependency
       direct_global_select_chain_dependency;

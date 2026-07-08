@@ -2229,6 +2229,203 @@ find_no_addressing_local_frame_address_source_compatibility(
   return true;
 }
 
+[[nodiscard]] const PreparedMoveResolution* find_before_call_argument_move(
+    const PreparedMoveBundle* before_call_bundle,
+    const PreparedCallArgumentPlan& argument);
+
+[[nodiscard]] const PreparedMoveResolution* find_call_argument_publication_move(
+    const PreparedMoveBundle* before_call_bundle,
+    const PreparedCallArgumentPlan& argument) {
+  const auto* move = find_before_call_argument_move(before_call_bundle, argument);
+  if (move == nullptr || !move->destination_abi_index.has_value() ||
+      *move->destination_abi_index != argument.arg_index) {
+    return nullptr;
+  }
+  if (argument.source_value_id.has_value() &&
+      move->from_value_id != *argument.source_value_id) {
+    return nullptr;
+  }
+  return move;
+}
+
+[[nodiscard]] bool direct_home_is_call_argument_source(
+    const PreparedCallArgumentPlan& argument,
+    const PreparedValueHome* source_home) {
+  if (argument.source_selection.has_value() &&
+      argument.source_selection->kind ==
+          PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
+    return false;
+  }
+  return source_home != nullptr && argument.source_value_id.has_value() &&
+         *argument.source_value_id == source_home->value_id &&
+         argument.source_encoding != PreparedStorageEncodingKind::None;
+}
+
+void append_call_argument_direct_home_freshness(
+    std::vector<PreparedValueFreshnessAuthority>& candidates,
+    const PreparedCallPlan& call_plan,
+    const PreparedCallArgumentPlan& argument,
+    const PreparedValueHome* source_home) {
+  if (!direct_home_is_call_argument_source(argument, source_home)) {
+    return;
+  }
+  candidates.push_back(PreparedValueFreshnessAuthority{
+      .value_id = source_home->value_id,
+      .value_name = source_home->value_name,
+      .use_kind = PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind = PreparedValueFreshnessSourceKind::DirectHome,
+      .proof_kind = PreparedValueFreshnessProofKind::DominanceOrOrdering,
+      .rank = PreparedValueFreshnessSourceRank::DirectHome,
+      .reference = PreparedValueFreshnessSourceReference{
+          .home = source_home,
+          .block_index = call_plan.block_index,
+          .instruction_index = call_plan.instruction_index,
+          .abi_index = argument.arg_index,
+      },
+  });
+}
+
+void append_call_argument_publication_freshness(
+    std::vector<PreparedValueFreshnessAuthority>& candidates,
+    const PreparedCallPlan& call_plan,
+    const PreparedCallArgumentPlan& argument,
+    const PreparedValueHome* source_home,
+    const PreparedMoveBundle* before_call_bundle) {
+  const auto* move =
+      find_call_argument_publication_move(before_call_bundle, argument);
+  if (move == nullptr || !argument.source_value_id.has_value()) {
+    return;
+  }
+  const ValueNameId value_name = source_home != nullptr
+                                     ? source_home->value_name
+                                     : kInvalidValueName;
+  candidates.push_back(PreparedValueFreshnessAuthority{
+      .value_id = *argument.source_value_id,
+      .value_name = value_name,
+      .use_kind = PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind = PreparedValueFreshnessSourceKind::ExplicitPublication,
+      .proof_kind = PreparedValueFreshnessProofKind::ExplicitPublication,
+      .rank = PreparedValueFreshnessSourceRank::ExplicitPublication,
+      .reference = PreparedValueFreshnessSourceReference{
+          .move_bundle = before_call_bundle,
+          .move = move,
+          .block_index = call_plan.block_index,
+          .instruction_index = call_plan.instruction_index,
+          .abi_index = argument.arg_index,
+      },
+  });
+}
+
+void append_call_argument_producer_freshness(
+    std::vector<PreparedValueFreshnessAuthority>& candidates,
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::Value& argument_value,
+    const PreparedCallPlan& call_plan,
+    const PreparedCallArgumentPlan& argument,
+    std::optional<ValueNameId> source_value_name) {
+  if (!argument.source_value_id.has_value() || !source_value_name.has_value() ||
+      *source_value_name == kInvalidValueName) {
+    return;
+  }
+  const auto materialization =
+      find_prepared_call_argument_source_producer_materialization(
+          names,
+          source_producers,
+          block_label,
+          &block,
+          argument_value,
+          call_plan.instruction_index);
+  if (!materialization.has_value() || !materialization->materializable ||
+      materialization->producer.instruction == nullptr) {
+    return;
+  }
+  candidates.push_back(PreparedValueFreshnessAuthority{
+      .value_id = *argument.source_value_id,
+      .value_name = *source_value_name,
+      .use_kind = PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind = PreparedValueFreshnessSourceKind::ProducerRematerialization,
+      .proof_kind = PreparedValueFreshnessProofKind::SameBlockBeforeUse,
+      .rank = PreparedValueFreshnessSourceRank::ProducerRematerialization,
+      .reference = PreparedValueFreshnessSourceReference{
+          .block_index = call_plan.block_index,
+          .instruction_index = materialization->producer.instruction_index,
+          .abi_index = argument.arg_index,
+      },
+  });
+}
+
+void append_call_argument_prior_preservation_freshness(
+    std::vector<PreparedValueFreshnessAuthority>& candidates,
+    const PreparedCallPlanLookups& call_plan_lookups,
+    const PreparedControlFlowFunction* control_flow,
+    const PreparedCallPlan& call_plan,
+    const PreparedCallArgumentPlan& argument) {
+  if (!argument.source_value_id.has_value()) {
+    return;
+  }
+  const auto preserved_lookup = find_unique_indexed_prior_preserved_value_source(
+      call_plan_lookups, control_flow, call_plan, *argument.source_value_id);
+  if (preserved_lookup.status != PreparedPriorPreservedValueLookupStatus::Found ||
+      preserved_lookup.preserved == nullptr || preserved_lookup.entry == nullptr) {
+    return;
+  }
+  PreparedCallArgumentSourceSelection validation;
+  if (!copy_prior_preservation_source_selection_fields(validation,
+                                                       *preserved_lookup.preserved)) {
+    return;
+  }
+  candidates.push_back(PreparedValueFreshnessAuthority{
+      .value_id = preserved_lookup.preserved->value_id,
+      .value_name = preserved_lookup.preserved->value_name,
+      .use_kind = PreparedValueFreshnessUseKind::CallArgumentSource,
+      .source_kind = PreparedValueFreshnessSourceKind::PriorPreservation,
+      .proof_kind = PreparedValueFreshnessProofKind::CallBoundaryPreservation,
+      .rank = PreparedValueFreshnessSourceRank::PriorPreservation,
+      .reference = PreparedValueFreshnessSourceReference{
+          .preservation = preserved_lookup.preserved,
+          .block_index = preserved_lookup.entry->block_index,
+          .instruction_index = preserved_lookup.entry->instruction_index,
+          .abi_index = argument.arg_index,
+      },
+  });
+}
+
+[[nodiscard]] std::vector<PreparedValueFreshnessAuthority>
+publish_call_argument_freshness_authorities(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::Value& argument_value,
+    const PreparedControlFlowFunction* control_flow,
+    const PreparedCallPlanLookups& call_plan_lookups,
+    const PreparedCallPlan& call_plan,
+    const PreparedCallArgumentPlan& argument,
+    const PreparedValueHome* source_home,
+    const PreparedMoveBundle* before_call_bundle,
+    std::optional<ValueNameId> source_value_name) {
+  std::vector<PreparedValueFreshnessAuthority> candidates;
+  append_call_argument_direct_home_freshness(
+      candidates, call_plan, argument, source_home);
+  append_call_argument_publication_freshness(
+      candidates, call_plan, argument, source_home, before_call_bundle);
+  append_call_argument_producer_freshness(candidates,
+                                          names,
+                                          source_producers,
+                                          block_label,
+                                          block,
+                                          argument_value,
+                                          call_plan,
+                                          argument,
+                                          source_value_name);
+  append_call_argument_prior_preservation_freshness(
+      candidates, call_plan_lookups, control_flow, call_plan, argument);
+  return candidates;
+}
+
 [[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
     const PreparedCallPlan& call_plan,
     const PreparedCallArgumentPlan& argument,
@@ -3266,6 +3463,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_register_placement = std::nullopt,
               .destination_target_register_identity = std::nullopt,
               .source_selection = std::nullopt,
+              .freshness_authorities = {},
               .aggregate_transport = std::nullopt,
               .direct_global_select_chain_dependency = {},
           };
@@ -3334,6 +3532,20 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                    before_call_bundle,
                                                    arg_plan,
                                                    source_home);
+          arg_plan.freshness_authorities =
+              publish_call_argument_freshness_authorities(
+                  prepared.names,
+                  source_producers.has_value() ? &*source_producers : nullptr,
+                  block_label,
+                  block,
+                  call->args[arg_index],
+                  control_flow_function,
+                  prior_preserved_lookups,
+                  call_plan,
+                  arg_plan,
+                  source_home,
+                  before_call_bundle,
+                  source.value_name);
           arg_plan.aggregate_transport =
               plan_prepared_aggregate_transport(prepared.names,
                                                 prepared.stack_layout,

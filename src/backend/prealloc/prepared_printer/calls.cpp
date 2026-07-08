@@ -332,6 +332,53 @@ void append_call_argument_direct_global_dependency(
       << *dependency->direct_global_dependency.root_instruction_index;
 }
 
+void append_call_argument_freshness_authorities(
+    std::ostringstream& out,
+    const PreparedNameTables& names,
+    const PreparedCallArgumentPlan& arg) {
+  for (const auto& authority : arg.freshness_authorities) {
+    out << " freshness_authority="
+        << prepared_value_freshness_source_kind_name(authority.source_kind)
+        << " freshness_value_id=" << authority.value_id;
+    if (authority.value_name != kInvalidValueName) {
+      out << " freshness_value="
+          << maybe_value_name(names, authority.value_name);
+    }
+    out << " freshness_use="
+        << prepared_value_freshness_use_kind_name(authority.use_kind)
+        << " freshness_proof="
+        << prepared_value_freshness_proof_kind_name(authority.proof_kind)
+        << " freshness_rank="
+        << prepared_value_freshness_source_rank_name(authority.rank);
+    if (authority.reference.block_index.has_value()) {
+      out << " freshness_ref_block=" << *authority.reference.block_index;
+    }
+    if (authority.reference.instruction_index.has_value()) {
+      out << " freshness_ref_inst=" << *authority.reference.instruction_index;
+    }
+    if (authority.reference.abi_index.has_value()) {
+      out << " freshness_ref_abi=" << *authority.reference.abi_index;
+    }
+    if (authority.reference.home != nullptr) {
+      out << " freshness_ref_home="
+          << prepared_value_home_kind_name(authority.reference.home->kind);
+    }
+    if (authority.reference.publication != nullptr) {
+      out << " freshness_ref_publication=yes";
+    }
+    if (authority.reference.preservation != nullptr) {
+      out << " freshness_ref_preservation="
+          << prepared_call_preservation_route_name(
+                 authority.reference.preservation->route);
+    }
+    if (authority.reference.move_bundle != nullptr &&
+        authority.reference.move != nullptr) {
+      out << " freshness_ref_move="
+          << prepared_move_phase_name(authority.reference.move_bundle->phase);
+    }
+  }
+}
+
 void append_missing_frame_slot_call_argument_publication_need(
     std::ostringstream& out,
     const PreparedCallArgumentPlan& arg) {
@@ -537,6 +584,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.aggregate_transport.has_value()) {
           append_aggregate_transport_plan(out, *arg.aggregate_transport);
         }
+        append_call_argument_freshness_authorities(out, module.names, arg);
         out << "\n";
       }
       if (call.result.has_value()) {

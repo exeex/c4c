@@ -7794,6 +7794,60 @@ int main() {
     std::cerr << "[FAIL] missing callee-saved prior-preservation source selection fixture\n";
     return EXIT_FAILURE;
   }
+  const auto prior_freshness_it = std::find_if(
+      cross_call_prior_arg.freshness_authorities.begin(),
+      cross_call_prior_arg.freshness_authorities.end(),
+      [&](const prepare::PreparedValueFreshnessAuthority& authority) {
+        return authority.value_id == cross_call_carry->value_id &&
+               authority.source_kind ==
+                   prepare::PreparedValueFreshnessSourceKind::PriorPreservation &&
+               authority.proof_kind ==
+                   prepare::PreparedValueFreshnessProofKind::CallBoundaryPreservation &&
+               authority.rank ==
+                   prepare::PreparedValueFreshnessSourceRank::PriorPreservation &&
+               authority.reference.preservation != nullptr &&
+               authority.reference.block_index == std::optional<std::size_t>{0} &&
+               authority.reference.instruction_index == std::optional<std::size_t>{2} &&
+               authority.reference.abi_index == std::optional<std::size_t>{0};
+      });
+  if (prior_freshness_it == cross_call_prior_arg.freshness_authorities.end()) {
+    std::cerr << "[FAIL] missing callee-saved prior-preservation freshness authority\n";
+    return EXIT_FAILURE;
+  }
+  const prepare::PreparedValueFreshnessQuery prior_freshness_query{
+      .value_id = cross_call_carry->value_id,
+      .value_name = cross_call_carry->value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .block_index = cross_call_plans->calls[1].block_index,
+      .instruction_index = cross_call_plans->calls[1].instruction_index,
+      .candidates = cross_call_prior_arg.freshness_authorities,
+  };
+  const auto prior_freshness =
+      prepare::find_prepared_value_freshness_authority(prior_freshness_query);
+  if (!prepare::prepared_value_freshness_query_selected(prior_freshness) ||
+      prior_freshness.authority == nullptr ||
+      prior_freshness.authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::ProducerRematerialization) {
+    std::cerr << "[FAIL] producer freshness should outrank prior preservation\n";
+    return EXIT_FAILURE;
+  }
+  const prepare::PreparedValueFreshnessQuery prior_only_freshness_query{
+      .value_id = cross_call_carry->value_id,
+      .value_name = cross_call_carry->value_name,
+      .use_kind = prepare::PreparedValueFreshnessUseKind::CallArgumentSource,
+      .block_index = cross_call_plans->calls[1].block_index,
+      .instruction_index = cross_call_plans->calls[1].instruction_index,
+      .candidates = {*prior_freshness_it},
+  };
+  const auto prior_only_freshness =
+      prepare::find_prepared_value_freshness_authority(prior_only_freshness_query);
+  if (!prepare::prepared_value_freshness_query_selected(prior_only_freshness) ||
+      prior_only_freshness.authority == nullptr ||
+      prior_only_freshness.authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::PriorPreservation) {
+    std::cerr << "[FAIL] prior preservation should remain valid as the unique freshness source\n";
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(cross_call_dump,
                        "arg.source_selection=prior_preservation selection_source_value_id=" +
                            std::to_string(cross_call_carry->value_id) +
@@ -7808,6 +7862,17 @@ int main() {
                            register_placement_text(cross_call_saved_it->placement,
                                                    "selection_preserved_placement"),
                        "callee-saved prior-preservation source selection payload")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(cross_call_dump,
+                       "freshness_authority=prior_preservation freshness_value_id=" +
+                           std::to_string(cross_call_carry->value_id) +
+                           " freshness_value=carry freshness_use=call_argument_source "
+                           "freshness_proof=call_boundary_preservation "
+                           "freshness_rank=prior_preservation freshness_ref_block=0 "
+                           "freshness_ref_inst=2 freshness_ref_abi=0 "
+                           "freshness_ref_preservation=callee_saved_register",
+                       "callee-saved prior-preservation freshness dump")) {
     return EXIT_FAILURE;
   }
 
