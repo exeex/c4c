@@ -9432,7 +9432,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_register_condition_bra
   return fragment;
 }
 
-bool selected_lhs_branch_stack_load_source_freshness_available(
+struct Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus {
+  bool freshness_required = false;
+  bool available = true;
+  c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus authority_status =
+      c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::Available;
+  c4c::backend::prepare::PreparedValueFreshnessQueryStatus
+      source_freshness_status =
+          c4c::backend::prepare::PreparedValueFreshnessQueryStatus::Selected;
+  std::size_t source_freshness_candidates = 0;
+};
+
+Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus
+selected_lhs_branch_stack_load_source_freshness_status(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
@@ -9440,22 +9452,40 @@ bool selected_lhs_branch_stack_load_source_freshness_available(
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
+  Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus status;
   if (lookups == nullptr || lhs_home == nullptr ||
       lhs_home->kind !=
           c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
-    return true;
+    return status;
   }
+  status.freshness_required = true;
+  status.available = false;
+  status.authority_status =
+      c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+          MissingSourceFreshnessAuthority;
+  status.source_freshness_status =
+      c4c::backend::prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
   if (!branch_condition.lhs.has_value() ||
       branch_condition.lhs->kind !=
           c4c::backend::bir::Value::Kind::Named ||
       branch_condition.lhs->name.empty()) {
-    return false;
+    status.authority_status =
+        c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+            UnsupportedBranchValue;
+    status.source_freshness_status =
+        c4c::backend::prepare::PreparedValueFreshnessQueryStatus::MissingValue;
+    return status;
   }
   const auto value_name = names.value_names.find(branch_condition.lhs->name);
   if (value_name == c4c::kInvalidValueName ||
       value_name != lhs_home->value_name ||
       lhs_home->value_id == c4c::backend::prepare::PreparedValueId{0}) {
-    return false;
+    status.authority_status =
+        c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+            HomeValueMismatch;
+    status.source_freshness_status =
+        c4c::backend::prepare::PreparedValueFreshnessQueryStatus::MissingValue;
+    return status;
   }
 
   for (const auto& record : lookups->branch_stack_load_authorities.records) {
@@ -9463,15 +9493,21 @@ bool selected_lhs_branch_stack_load_source_freshness_available(
     if (record.role !=
             c4c::backend::prepare::PreparedBranchStackLoadRole::Lhs ||
         record.block_label != block_label_id ||
-        !c4c::backend::prepare::prepared_branch_stack_load_authority_available(
-            authority) ||
         authority.value_id != lhs_home->value_id ||
         authority.value_name != lhs_home->value_name ||
         authority.branch_block_index != block_index ||
         authority.branch_terminator_instruction_index !=
-            terminator_instruction_index ||
-        !authority.source_freshness_authority.has_value()) {
+            terminator_instruction_index) {
       continue;
+    }
+    status.authority_status = authority.status;
+    status.source_freshness_status = authority.source_freshness_status;
+    status.source_freshness_candidates =
+        authority.source_freshness_authorities.size();
+    if (!c4c::backend::prepare::prepared_branch_stack_load_authority_available(
+            authority) ||
+        !authority.source_freshness_authority.has_value()) {
+      return status;
     }
     const auto& freshness = *authority.source_freshness_authority;
     if (freshness.value_id == lhs_home->value_id &&
@@ -9492,10 +9528,33 @@ bool selected_lhs_branch_stack_load_source_freshness_available(
         freshness.reference.block_index == block_index &&
         freshness.reference.instruction_index ==
             terminator_instruction_index) {
-      return true;
+      status.available = true;
+      return status;
     }
+    status.authority_status =
+        c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+            UnsupportedSourceFreshnessAuthority;
   }
-  return false;
+  return status;
+}
+
+bool selected_lhs_branch_stack_load_source_freshness_available(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  return selected_lhs_branch_stack_load_source_freshness_status(
+             names,
+             lookups,
+             branch_condition,
+             lhs_home,
+             block_label_id,
+             block_index,
+             terminator_instruction_index)
+      .available;
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
@@ -9698,6 +9757,85 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
     }
   }
   return std::nullopt;
+}
+
+std::optional<std::string>
+diagnose_unsupported_prepared_terminator_fragment(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Block& block,
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index) {
+  if (block.terminator.kind !=
+      c4c::backend::bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+  const auto* branch_condition =
+      find_branch_condition_for_terminator(control_flow,
+                                           block_label_id,
+                                           block.terminator.condition);
+  if (branch_condition == nullptr ||
+      !prepared_branch_condition_is_supported_pointer_branch(*branch_condition)) {
+    return std::nullopt;
+  }
+  const auto* lhs_home =
+      prepared_pointer_branch_operand_home_for(names,
+                                               &lookups,
+                                               *branch_condition->lhs);
+  const auto status =
+      selected_lhs_branch_stack_load_source_freshness_status(
+          names,
+          &lookups,
+          *branch_condition,
+          lhs_home,
+          block_label_id,
+          block_index,
+          block.insts.size());
+  if (!status.freshness_required || status.available) {
+    return std::nullopt;
+  }
+
+  const bool source_freshness_failure =
+      status.authority_status ==
+          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingSourceFreshnessAuthority ||
+      status.authority_status ==
+          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+              InvalidSourceFreshnessAuthority ||
+      status.authority_status ==
+          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+              AmbiguousSourceFreshnessAuthority ||
+      status.authority_status ==
+          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+              UnsupportedSourceFreshnessAuthority;
+  std::ostringstream out;
+  if (source_freshness_failure) {
+    out << "unsupported_branch_stack_load_source_freshness: RV64 fused pointer Lhs stack-load requires selected BranchStackLoadSource freshness";
+  } else {
+    out << "unsupported_branch_stack_load_authority: RV64 fused pointer Lhs stack-load requires available branch stack-load authority";
+  }
+  out << "; function=" << rv64_prepared_function_name(names, function_name)
+      << "; block=" << rv64_prepared_block_label(names, block_label_id)
+      << "; block_index=" << block_index
+      << "; terminator_instruction_index=" << block.insts.size()
+      << "; role=lhs";
+  if (branch_condition->lhs.has_value() &&
+      branch_condition->lhs->kind ==
+          c4c::backend::bir::Value::Kind::Named &&
+      !branch_condition->lhs->name.empty()) {
+    out << "; value=" << branch_condition->lhs->name;
+  }
+  out << "; authority_status="
+      << c4c::backend::prepare::prepared_branch_stack_load_authority_status_name(
+             status.authority_status)
+      << "; source_freshness_status="
+      << c4c::backend::prepare::prepared_value_freshness_query_status_name(
+             status.source_freshness_status)
+      << "; source_freshness_candidates="
+      << status.source_freshness_candidates;
+  return out.str();
 }
 
 bool prepared_binary_result_is_rematerializable_i32_immediate(
@@ -10851,6 +10989,18 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                has_call,
                                                *stack_frame_bytes);
           if (!terminator_fragment.has_value()) {
+            if (auto diagnostic =
+                    diagnose_unsupported_prepared_terminator_fragment(
+                        prepared.names,
+                        lookups,
+                        control_flow,
+                        *block,
+                        control_flow.function_name,
+                        prepared_block_label,
+                        event.block_index)) {
+              return make_rv64_prepared_function_rejection(
+                  std::move(*diagnostic));
+            }
             return make_rv64_prepared_function_rejection(
                 "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
           }
@@ -10951,6 +11101,17 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                          has_call,
                                          *stack_frame_bytes);
     if (!terminator_fragment.has_value()) {
+      if (auto diagnostic =
+              diagnose_unsupported_prepared_terminator_fragment(
+                  prepared.names,
+                  lookups,
+                  control_flow,
+                  block,
+                  control_flow.function_name,
+                  prepared_block_label,
+                  block_index)) {
+        return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+      }
       return make_rv64_prepared_function_rejection(
           "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
     }
