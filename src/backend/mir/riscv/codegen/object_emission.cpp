@@ -9432,7 +9432,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_register_condition_bra
   return fragment;
 }
 
-struct Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus {
+struct Rv64SelectedBranchStackLoadSourceFreshnessStatus {
   bool freshness_required = false;
   bool available = true;
   c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus authority_status =
@@ -9443,19 +9443,19 @@ struct Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus {
   std::size_t source_freshness_candidates = 0;
 };
 
-Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus
-selected_lhs_branch_stack_load_source_freshness_status(
+Rv64SelectedBranchStackLoadSourceFreshnessStatus
+selected_branch_stack_load_source_freshness_status(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
-    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    const c4c::backend::bir::Value* value,
+    const c4c::backend::prepare::PreparedValueHome* home,
+    c4c::backend::prepare::PreparedBranchStackLoadRole role,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
-  Rv64SelectedLhsBranchStackLoadSourceFreshnessStatus status;
-  if (lookups == nullptr || lhs_home == nullptr ||
-      lhs_home->kind !=
-          c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+  Rv64SelectedBranchStackLoadSourceFreshnessStatus status;
+  if (lookups == nullptr || home == nullptr ||
+      home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
     return status;
   }
   status.freshness_required = true;
@@ -9465,10 +9465,9 @@ selected_lhs_branch_stack_load_source_freshness_status(
           MissingSourceFreshnessAuthority;
   status.source_freshness_status =
       c4c::backend::prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
-  if (!branch_condition.lhs.has_value() ||
-      branch_condition.lhs->kind !=
-          c4c::backend::bir::Value::Kind::Named ||
-      branch_condition.lhs->name.empty()) {
+  if (value == nullptr ||
+      value->kind != c4c::backend::bir::Value::Kind::Named ||
+      value->name.empty()) {
     status.authority_status =
         c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
             UnsupportedBranchValue;
@@ -9476,10 +9475,9 @@ selected_lhs_branch_stack_load_source_freshness_status(
         c4c::backend::prepare::PreparedValueFreshnessQueryStatus::MissingValue;
     return status;
   }
-  const auto value_name = names.value_names.find(branch_condition.lhs->name);
-  if (value_name == c4c::kInvalidValueName ||
-      value_name != lhs_home->value_name ||
-      lhs_home->value_id == c4c::backend::prepare::PreparedValueId{0}) {
+  const auto value_name = names.value_names.find(value->name);
+  if (value_name == c4c::kInvalidValueName || value_name != home->value_name ||
+      home->value_id == c4c::backend::prepare::PreparedValueId{0}) {
     status.authority_status =
         c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
             HomeValueMismatch;
@@ -9490,11 +9488,10 @@ selected_lhs_branch_stack_load_source_freshness_status(
 
   for (const auto& record : lookups->branch_stack_load_authorities.records) {
     const auto& authority = record.authority;
-    if (record.role !=
-            c4c::backend::prepare::PreparedBranchStackLoadRole::Lhs ||
+    if (record.role != role ||
         record.block_label != block_label_id ||
-        authority.value_id != lhs_home->value_id ||
-        authority.value_name != lhs_home->value_name ||
+        authority.value_id != home->value_id ||
+        authority.value_name != home->value_name ||
         authority.branch_block_index != block_index ||
         authority.branch_terminator_instruction_index !=
             terminator_instruction_index) {
@@ -9510,8 +9507,8 @@ selected_lhs_branch_stack_load_source_freshness_status(
       return status;
     }
     const auto& freshness = *authority.source_freshness_authority;
-    if (freshness.value_id == lhs_home->value_id &&
-        freshness.value_name == lhs_home->value_name &&
+    if (freshness.value_id == home->value_id &&
+        freshness.value_name == home->value_name &&
         freshness.use_kind ==
             c4c::backend::prepare::PreparedValueFreshnessUseKind::
                 BranchStackLoadSource &&
@@ -9524,7 +9521,7 @@ selected_lhs_branch_stack_load_source_freshness_status(
         freshness.rank ==
             c4c::backend::prepare::PreparedValueFreshnessSourceRank::
                 BranchStackSlot &&
-        freshness.reference.home == lhs_home &&
+        freshness.reference.home == home &&
         freshness.reference.block_index == block_index &&
         freshness.reference.instruction_index ==
             terminator_instruction_index) {
@@ -9536,6 +9533,46 @@ selected_lhs_branch_stack_load_source_freshness_status(
             UnsupportedSourceFreshnessAuthority;
   }
   return status;
+}
+
+Rv64SelectedBranchStackLoadSourceFreshnessStatus
+selected_lhs_branch_stack_load_source_freshness_status(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  return selected_branch_stack_load_source_freshness_status(
+      names,
+      lookups,
+      branch_condition.lhs.has_value() ? &*branch_condition.lhs : nullptr,
+      lhs_home,
+      c4c::backend::prepare::PreparedBranchStackLoadRole::Lhs,
+      block_label_id,
+      block_index,
+      terminator_instruction_index);
+}
+
+Rv64SelectedBranchStackLoadSourceFreshnessStatus
+selected_rhs_branch_stack_load_source_freshness_status(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* rhs_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  return selected_branch_stack_load_source_freshness_status(
+      names,
+      lookups,
+      branch_condition.rhs.has_value() ? &*branch_condition.rhs : nullptr,
+      rhs_home,
+      c4c::backend::prepare::PreparedBranchStackLoadRole::Rhs,
+      block_label_id,
+      block_index,
+      terminator_instruction_index);
 }
 
 bool selected_lhs_branch_stack_load_source_freshness_available(
@@ -9551,6 +9588,25 @@ bool selected_lhs_branch_stack_load_source_freshness_available(
              lookups,
              branch_condition,
              lhs_home,
+             block_label_id,
+             block_index,
+             terminator_instruction_index)
+      .available;
+}
+
+bool selected_rhs_branch_stack_load_source_freshness_available(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* rhs_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  return selected_rhs_branch_stack_load_source_freshness_status(
+             names,
+             lookups,
+             branch_condition,
+             rhs_home,
              block_label_id,
              block_index,
              terminator_instruction_index)
@@ -9579,6 +9635,87 @@ bool selected_lhs_stack_branch_freshness_allows_pointer_publication(
   return rhs.kind == c4c::backend::bir::Value::Kind::Named &&
          rhs_home != nullptr &&
          gpr_register_number_for_home(*rhs_home).has_value();
+}
+
+bool selected_rhs_stack_branch_freshness_allows_pointer_publication(
+    const c4c::backend::prepare::PreparedFusedPointerBranchPublication& publication,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    const c4c::backend::prepare::PreparedValueHome* rhs_home) {
+  if (publication.status !=
+          c4c::backend::prepare::PreparedFusedPointerBranchPublicationStatus::
+              UnsupportedOperandHome ||
+      rhs_home == nullptr ||
+      rhs_home->kind !=
+          c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !branch_condition.lhs.has_value()) {
+    return false;
+  }
+  const auto& lhs = *branch_condition.lhs;
+  if (lhs.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return lhs.type == c4c::backend::bir::TypeKind::Ptr &&
+           lhs.immediate_bits == 0;
+  }
+  return lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+         lhs_home != nullptr &&
+         gpr_register_number_for_home(*lhs_home).has_value();
+}
+
+bool rv64_branch_stack_load_status_is_source_freshness_failure(
+    const Rv64SelectedBranchStackLoadSourceFreshnessStatus& status) {
+  return status.authority_status ==
+             c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+                 MissingSourceFreshnessAuthority ||
+         status.authority_status ==
+             c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+                 InvalidSourceFreshnessAuthority ||
+         status.authority_status ==
+             c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+                 AmbiguousSourceFreshnessAuthority ||
+         status.authority_status ==
+             c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
+                 UnsupportedSourceFreshnessAuthority;
+}
+
+std::string rv64_branch_stack_load_freshness_diagnostic(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index,
+    std::string_view role_display_name,
+    std::string_view role_field_name,
+    const c4c::backend::bir::Value* value,
+    const Rv64SelectedBranchStackLoadSourceFreshnessStatus& status) {
+  std::ostringstream out;
+  if (rv64_branch_stack_load_status_is_source_freshness_failure(status)) {
+    out << "unsupported_branch_stack_load_source_freshness: RV64 fused pointer "
+        << role_display_name
+        << " stack-load requires selected BranchStackLoadSource freshness";
+  } else {
+    out << "unsupported_branch_stack_load_authority: RV64 fused pointer "
+        << role_display_name
+        << " stack-load requires available branch stack-load authority";
+  }
+  out << "; function=" << rv64_prepared_function_name(names, function_name)
+      << "; block=" << rv64_prepared_block_label(names, block_label_id)
+      << "; block_index=" << block_index
+      << "; terminator_instruction_index=" << terminator_instruction_index
+      << "; role=" << role_field_name;
+  if (value != nullptr &&
+      value->kind == c4c::backend::bir::Value::Kind::Named &&
+      !value->name.empty()) {
+    out << "; value=" << value->name;
+  }
+  out << "; authority_status="
+      << c4c::backend::prepare::prepared_branch_stack_load_authority_status_name(
+             status.authority_status)
+      << "; source_freshness_status="
+      << c4c::backend::prepare::prepared_value_freshness_query_status_name(
+             status.source_freshness_status)
+      << "; source_freshness_candidates="
+      << status.source_freshness_candidates;
+  return out.str();
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
@@ -9613,6 +9750,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
           terminator_instruction_index)) {
     return std::nullopt;
   }
+  if (!selected_rhs_branch_stack_load_source_freshness_available(
+          names,
+          lookups,
+          branch_condition,
+          rhs_home,
+          block_label_id,
+          block_index,
+          terminator_instruction_index)) {
+    return std::nullopt;
+  }
   const auto publication =
       c4c::backend::prepare::plan_prepared_fused_pointer_branch_publication({
           .names = &names,
@@ -9625,6 +9772,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
   if (!c4c::backend::prepare::prepared_fused_pointer_branch_publication_available(
           publication) &&
       !selected_lhs_stack_branch_freshness_allows_pointer_publication(
+          publication, branch_condition, lhs_home, rhs_home) &&
+      !selected_rhs_stack_branch_freshness_allows_pointer_publication(
           publication, branch_condition, lhs_home, rhs_home)) {
     return std::nullopt;
   }
@@ -9810,7 +9959,7 @@ diagnose_unsupported_prepared_terminator_fragment(
       prepared_pointer_branch_operand_home_for(names,
                                                &lookups,
                                                *branch_condition->lhs);
-  const auto status =
+  const auto lhs_status =
       selected_lhs_branch_stack_load_source_freshness_status(
           names,
           &lookups,
@@ -9819,49 +9968,45 @@ diagnose_unsupported_prepared_terminator_fragment(
           block_label_id,
           block_index,
           block.insts.size());
-  if (!status.freshness_required || status.available) {
-    return std::nullopt;
+  if (lhs_status.freshness_required && !lhs_status.available) {
+    return rv64_branch_stack_load_freshness_diagnostic(
+        names,
+        function_name,
+        block_label_id,
+        block_index,
+        block.insts.size(),
+        "Lhs",
+        "lhs",
+        branch_condition->lhs.has_value() ? &*branch_condition->lhs : nullptr,
+        lhs_status);
   }
 
-  const bool source_freshness_failure =
-      status.authority_status ==
-          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-              MissingSourceFreshnessAuthority ||
-      status.authority_status ==
-          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-              InvalidSourceFreshnessAuthority ||
-      status.authority_status ==
-          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-              AmbiguousSourceFreshnessAuthority ||
-      status.authority_status ==
-          c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-              UnsupportedSourceFreshnessAuthority;
-  std::ostringstream out;
-  if (source_freshness_failure) {
-    out << "unsupported_branch_stack_load_source_freshness: RV64 fused pointer Lhs stack-load requires selected BranchStackLoadSource freshness";
-  } else {
-    out << "unsupported_branch_stack_load_authority: RV64 fused pointer Lhs stack-load requires available branch stack-load authority";
+  const auto* rhs_home =
+      prepared_pointer_branch_operand_home_for(names,
+                                               &lookups,
+                                               *branch_condition->rhs);
+  const auto rhs_status =
+      selected_rhs_branch_stack_load_source_freshness_status(
+          names,
+          &lookups,
+          *branch_condition,
+          rhs_home,
+          block_label_id,
+          block_index,
+          block.insts.size());
+  if (rhs_status.freshness_required && !rhs_status.available) {
+    return rv64_branch_stack_load_freshness_diagnostic(
+        names,
+        function_name,
+        block_label_id,
+        block_index,
+        block.insts.size(),
+        "Rhs",
+        "rhs",
+        branch_condition->rhs.has_value() ? &*branch_condition->rhs : nullptr,
+        rhs_status);
   }
-  out << "; function=" << rv64_prepared_function_name(names, function_name)
-      << "; block=" << rv64_prepared_block_label(names, block_label_id)
-      << "; block_index=" << block_index
-      << "; terminator_instruction_index=" << block.insts.size()
-      << "; role=lhs";
-  if (branch_condition->lhs.has_value() &&
-      branch_condition->lhs->kind ==
-          c4c::backend::bir::Value::Kind::Named &&
-      !branch_condition->lhs->name.empty()) {
-    out << "; value=" << branch_condition->lhs->name;
-  }
-  out << "; authority_status="
-      << c4c::backend::prepare::prepared_branch_stack_load_authority_status_name(
-             status.authority_status)
-      << "; source_freshness_status="
-      << c4c::backend::prepare::prepared_value_freshness_query_status_name(
-             status.source_freshness_status)
-      << "; source_freshness_candidates="
-      << status.source_freshness_candidates;
-  return out.str();
+  return std::nullopt;
 }
 
 bool prepared_binary_result_is_rematerializable_i32_immediate(
