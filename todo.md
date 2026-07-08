@@ -8,71 +8,74 @@ Current Step Title: Residual Split Or Close-Readiness Classification
 
 ## Just Finished
 
-Completed the Step 4 residual refresh after the scalar GPR same-module
-call/result consumer slice.
+Completed Step 5 residual split/close-readiness classification for idea 613.
 
-Focused current-build probes were written under
-`build/agent_state/613_step4_residual_refresh.tsv` and
-`build/agent_state/613_step4_prepared_dumps/`. The refreshed probe set confirms
-the accepted Step 4 movement:
-
-- `src/20001017-2.c` and `src/20010118-1.c` compile through `--codegen obj`.
-- `src/20001101.c` moved to `unsupported_terminator_fragment`.
-- `src/20040625-1.c` moved to `unsupported_move_bundle_target_shape`.
-- Additional stale `unsupported_call_abi` rows now compiling through object
-  include `src/20050613-1.c`, `src/980701-1.c`, `src/pr20466-1.c`, and
-  `src/pr77767.c`.
-
-Remaining refreshed ABI-adjacent rows in the focused set were classified as:
+Current residual evidence comes from the refreshed probe table at
+`build/agent_state/613_step4_residual_refresh.tsv` and prepared dumps under
+`build/agent_state/613_step4_prepared_dumps/`. The focused residual set now
+contains:
 
 - `39` `unsupported_call_abi` rows.
 - `13` `unsupported_stack_frame` rows.
 - `4` `unsupported_move_bundle_target_shape` rows.
 - `1` `unsupported_terminator_fragment` row.
 - `1` `malformed_prepared_join_transfer_carrier` row.
+- `6` rows that now compile through `--codegen obj`.
+- `1` missing-source row.
 
-No remaining same-authority Step 4 ABI consumer packet with complete prepared
-facts and meaningful breadth was found. Representative residual owners:
+No remaining in-scope ABI/RV64 consumer family was found with complete prepared
+facts and meaningful breadth. The ordinary same-module scalar GPR call/result
+consumer work under idea 613 has either landed, moved rows to downstream
+owners, or exposed producer/policy gaps that must not be inferred in RV64.
 
-- Aggregate/byval and outgoing stack transport: `src/20000808-1.c`,
-  `931004-*`, `src/931031-1.c`, `src/950607-2.c`, and `src/pr69447.c`.
-- Missing prepared producer/publication authority:
-  `src/20020529-1.c`, `src/20010129-1.c`, `src/20020406-1.c`, and
-  frame-slot argument publication rows such as `src/pr58209.c`.
-- Pointer stack-result policy: `src/20030715-1.c`, `src/20011113-1.c`,
-  `src/20041218-1.c`, `src/pr20601-1.c`, `src/pr34176.c`, and
-  `src/pr58209.c`.
-- FPR/frame policy: `src/980605-1.c`, `src/ieee/compare-fp-2.c`,
-  `src/ieee/unsafe-fp-assoc.c`, `src/pr39501.c`, and the refreshed
-  `unsupported_stack_frame` rows.
-- Return destination-home authority remains separated under
-  `return_stack_to_register` move-bundle ownership for `src/20001130-2.c` and
-  `src/20080719-1.c`.
+Residual owner classification:
+
+- Already split producer gaps:
+  - idea 624 covers prepared outgoing stack argument destination offsets for
+    `src/20000808-1.c` and adjacent byval/outgoing-stack aggregate rows.
+  - idea 625 covers prepared stack-slot preservation source publication for
+    `src/20020529-1.c`.
+  - idea 626 covers prepared dynamic-frame callee-saved GPR save-slot
+    placement for rows such as `src/20040811-1.c`, `src/pr43220.c`, and
+    `src/vla-dealloc-1.c`.
+- Additional durable split recommendations:
+  - pointer stack-result call policy/authority, represented by
+    `src/20030715-1.c`, `src/20011113-1.c`, `src/20041218-1.c`,
+    `src/pr20601-1.c`, `src/pr34176.c`, and `src/pr58209.c`.
+  - FPR ABI/frame policy and prepared FPR frame placement, represented by
+    `src/980605-1.c`, `src/ieee/compare-fp-2.c`,
+    `src/ieee/unsafe-fp-assoc.c`, `src/pr39501.c`, and FPR-heavy
+    `unsupported_stack_frame` rows.
+  - prepared return destination-home authority for `return_stack_to_register`
+    move-bundle rows `src/20001130-2.c` and `src/20080719-1.c`.
+  - broader aggregate/outgoing-stack argument transport beyond the current
+    idea 624 representative, including `931004-*`, `src/931031-1.c`,
+    `src/950607-2.c`, and `src/pr69447.c`, unless the plan owner chooses to
+    treat them as covered by the idea 624 outgoing-stack authority route.
+- Existing non-613 routes cover or should retain unrelated residual owners:
+  downstream move-bundle authority, local/global producers, runtime/library or
+  variadic policy, terminator/instruction-fragment stops, and the
+  `src/20021219-1.c` prepared join-transfer carrier blocker.
 
 ## Suggested Next
 
-Advance to Step 5 residual split/close-readiness classification for idea 613.
-Use the current residual refresh to decide whether idea 613 is close-ready or
-needs additional durable splits for pointer stack-result policy, FPR/frame
-policy, aggregate outgoing stack transport, return destination-home authority,
-and remaining prepared producer/publication gaps.
+Hand off to the plan owner. Recommendation: close or retire idea 613 after the
+plan owner records the residual splits above, because the active ABI/RV64
+consumer route has no remaining complete-authority implementation packet with
+meaningful breadth.
 
 ## Watchouts
 
-- `src/20000808-1.c` remains under idea 624 at `unsupported_call_abi`.
-- `src/20020529-1.c` remains under idea 625 at `unsupported_call_abi`.
-- `src/20040811-1.c` remains under idea 626 at `unsupported_stack_frame`.
-- `src/20001130-2.c` and `src/20080719-1.c` remain return destination-home
-  authority gaps under `return_stack_to_register` move-bundle ownership.
-- `src/20021219-1.c` remains downstream
-  `malformed_prepared_join_transfer_carrier`; `src/pr77767.c` still compiles.
-- Do not infer pointer stack-result policy from `src/20030715-1.c`; it needs a
-  separate decision because the existing pointer stack-result guard is covered
-  by a fail-closed object-emission test.
-- Do not treat FPR argument/result rows, dynamic/static frame policy rows,
-  runtime/library/variadic rows, generic move-bundle rows, local/global
-  producer rows, or terminator/instruction-fragment owners as Step 4 ABI
-  consumer progress.
+- Do not treat the remaining `unsupported_call_abi` label as sufficient proof
+  that a row still belongs to idea 613; the refreshed prepared dumps show the
+  live blockers are missing authority, pointer stack-result policy, FPR/frame
+  policy, aggregate/outgoing-stack transport, or unrelated downstream owners.
+- Do not infer outgoing stack offsets, preserve sources, callee-saved frame
+  placements, return destination homes, or pointer stack-result rules inside
+  RV64 object emission.
+- If the plan owner creates new ideas, keep them producer/policy scoped rather
+  than named-case scoped. The representative rows are evidence, not the
+  implementation contract.
 
 ## Proof
 
@@ -80,5 +83,4 @@ Supervisor-delegated proof ran exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: passed, `346/346` backend tests. `test_after.log` reports
-`100% tests passed, 0 tests failed out of 346`.
+Result: passed, `346/346` backend tests. Proof log path: `test_after.log`.
