@@ -1,54 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/593_rv64_branch_stack_source_freshness_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Producer Contract And RV64 Consumers
+Current Step ID: 2
+Current Step Title: Wire The Selected RV64 Consumer To Shared Freshness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for `plan.md`: inspected the idea 592 producer
-contract, shared branch stack-load freshness helpers, and RV64 branch emission
-consumers.
+Completed Step 2 for `plan.md`: RV64 object emission now carries shared
+`PreparedBranchStackLoadAuthorityRecords` through `PreparedFunctionLookups` and
+requires an available selected pointer `Lhs`
+`PreparedBranchStackLoadRole::Lhs` authority before
+`fragment_for_prepared_fused_pointer_branch` may load a stack-slot `Lhs` for a
+fused pointer branch.
 
-Idea 592 now publishes selected `PreparedValueFreshnessSourceKind::BranchStackSlot`
-facts for `PreparedValueFreshnessUseKind::BranchStackLoadSource` at the exact
-branch block plus terminator instruction point, with
-`PreparedValueFreshnessProofKind::BranchTerminatorOrdering` and
-`PreparedValueFreshnessSourceRank::BranchStackSlot`. Shared prealloc proves
-scalar condition stack loads and pointer `PreparedBranchStackLoadRole::Lhs`;
-pointer `Rhs` remains inventory-only with `policy=none` /
-`missing_policy`, despite having a candidate freshness row, and should not be
-chosen for the first RV64 migration.
-
-Selected Step 2 consumer path: RV64 object emission
-`fragment_for_prepared_fused_pointer_branch` in
-`src/backend/mir/riscv/codegen/object_emission.cpp`, specifically the pointer
-`Lhs` stack-source load before emitting the fused pointer branch. Today that
-path validates only `plan_prepared_fused_pointer_branch_publication` and then
-loads operands through `append_rv64_move_value_to_register`, which can accept a
-prepared stack home / frame-slot offset as enough evidence.
-
-Shared freshness query for Step 2: require a selected
-`PreparedValueFreshnessQuery` via
-`prepare::find_prepared_value_freshness_authority`, matching the `Lhs`
-prepared value id/name, `PreparedValueFreshnessUseKind::BranchStackLoadSource`,
-the exact RV64 branch block index, the terminator instruction index
-`block.insts.size()`, and candidates from the producer-published
-`BranchStackSlot` authority. The selected authority must match
-`BranchStackSlot`, `BranchTerminatorOrdering`, `BranchStackSlot` rank, and the
-same prepared stack home.
+The selected RV64 `Lhs` stack-source gate checks the same prepared value
+id/name, `PreparedValueFreshnessUseKind::BranchStackLoadSource`,
+`PreparedValueFreshnessSourceKind::BranchStackSlot`,
+`PreparedValueFreshnessProofKind::BranchTerminatorOrdering`,
+`PreparedValueFreshnessSourceRank::BranchStackSlot`, the same prepared stack
+home, and the exact branch block plus terminator instruction point. Non-stack
+`Lhs` operands stay on their existing path; pointer `Rhs`, scalar condition
+register branches, string assembly emission, aggregate-adjacent branch
+consumers, AArch64, and x86 remain out of scope.
 
 ## Suggested Next
 
-Implement Step 2 narrowly for the selected RV64 object-emission pointer `Lhs`
-path: before `fragment_for_prepared_fused_pointer_branch` loads the `Lhs`
-operand from a stack slot, require the shared selected
-`BranchStackLoadSource` / `BranchStackSlot` freshness authority for that exact
-branch terminator point. Leave pointer `Rhs`, string assembly emission in
-`prepared_scalar_emit.cpp`, scalar condition register branches, and
-aggregate-adjacent branch consumers for later inventory/follow-up work.
+Execute Step 3 narrowly for the same RV64 fused pointer `Lhs` path: add or
+preserve visible diagnostics/status for missing selected source freshness and
+keep that failure distinct from missing stack home, unsupported operand shape,
+layout mismatch, and clobber-safety failures.
 
 ## Watchouts
 
@@ -74,12 +56,15 @@ aggregate-adjacent branch consumers for later inventory/follow-up work.
   migration because the current producer/collector keeps it inventory-only
   (`policy=none`, `status=missing_policy`). Do not add an RV64 fallback for
   `Rhs`.
-- Step 2 may need to expose branch stack-load authority records to RV64 object
-  emission, since `PreparedFunctionLookups` currently does not carry
-  `PreparedBranchStackLoadAuthorityRecords`; use shared prealloc APIs rather
-  than a target-local freshness reconstruction.
+- `plan_prepared_fused_pointer_branch_publication` still models older
+  GPR-compatible operand publication separately from the selected branch
+  stack-source freshness gate; keep Step 3 diagnostics careful so missing
+  freshness does not get hidden behind generic operand publication failures.
 
 ## Proof
 
-Audit-only packet per supervisor instruction. No build/tests run and no
-root-level proof logs created.
+Ran the supervisor-selected proof command:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
+
+Result: passed, `100% tests passed, 0 tests failed out of 346`. Canonical proof
+log: `test_after.log`.

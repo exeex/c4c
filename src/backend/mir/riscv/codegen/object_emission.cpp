@@ -9432,12 +9432,81 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_register_condition_bra
   return fragment;
 }
 
+bool selected_lhs_branch_stack_load_source_freshness_available(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  if (lookups == nullptr || lhs_home == nullptr ||
+      lhs_home->kind !=
+          c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+    return true;
+  }
+  if (!branch_condition.lhs.has_value() ||
+      branch_condition.lhs->kind !=
+          c4c::backend::bir::Value::Kind::Named ||
+      branch_condition.lhs->name.empty()) {
+    return false;
+  }
+  const auto value_name = names.value_names.find(branch_condition.lhs->name);
+  if (value_name == c4c::kInvalidValueName ||
+      value_name != lhs_home->value_name ||
+      lhs_home->value_id == c4c::backend::prepare::PreparedValueId{0}) {
+    return false;
+  }
+
+  for (const auto& record : lookups->branch_stack_load_authorities.records) {
+    const auto& authority = record.authority;
+    if (record.role !=
+            c4c::backend::prepare::PreparedBranchStackLoadRole::Lhs ||
+        record.block_label != block_label_id ||
+        !c4c::backend::prepare::prepared_branch_stack_load_authority_available(
+            authority) ||
+        authority.value_id != lhs_home->value_id ||
+        authority.value_name != lhs_home->value_name ||
+        authority.branch_block_index != block_index ||
+        authority.branch_terminator_instruction_index !=
+            terminator_instruction_index ||
+        !authority.source_freshness_authority.has_value()) {
+      continue;
+    }
+    const auto& freshness = *authority.source_freshness_authority;
+    if (freshness.value_id == lhs_home->value_id &&
+        freshness.value_name == lhs_home->value_name &&
+        freshness.use_kind ==
+            c4c::backend::prepare::PreparedValueFreshnessUseKind::
+                BranchStackLoadSource &&
+        freshness.source_kind ==
+            c4c::backend::prepare::PreparedValueFreshnessSourceKind::
+                BranchStackSlot &&
+        freshness.proof_kind ==
+            c4c::backend::prepare::PreparedValueFreshnessProofKind::
+                BranchTerminatorOrdering &&
+        freshness.rank ==
+            c4c::backend::prepare::PreparedValueFreshnessSourceRank::
+                BranchStackSlot &&
+        freshness.reference.home == lhs_home &&
+        freshness.reference.block_index == block_index &&
+        freshness.reference.instruction_index ==
+            terminator_instruction_index) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::bir::Terminator& terminator,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index,
     std::string true_label,
     std::string false_label,
     std::size_t stack_frame_bytes) {
@@ -9451,6 +9520,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
       prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.lhs);
   const auto* rhs_home =
       prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.rhs);
+  if (!selected_lhs_branch_stack_load_source_freshness_available(
+          names,
+          lookups,
+          branch_condition,
+          lhs_home,
+          block_label_id,
+          block_index,
+          terminator_instruction_index)) {
+    return std::nullopt;
+  }
   const auto publication =
       c4c::backend::prepare::plan_prepared_fused_pointer_branch_publication({
           .names = &names,
@@ -9577,6 +9656,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                                                             lookups,
                                                             *branch_condition,
                                                             block.terminator,
+                                                            block_label_id,
+                                                            block_index,
+                                                            block.insts.size(),
                                                             true_asm_label,
                                                             false_asm_label,
                                                             stack_frame_bytes);

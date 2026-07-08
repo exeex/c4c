@@ -20,6 +20,7 @@ struct PreparedFunctionLookups {
   PreparedValueHomeLookups value_homes;
   PreparedEdgePublicationLookups edge_publications;
   PreparedEdgePublicationSourceProducerLookups edge_publication_source_producers;
+  PreparedBranchStackLoadAuthorityRecords branch_stack_load_authorities;
 };
 
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(

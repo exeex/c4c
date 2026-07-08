@@ -1671,6 +1671,15 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
       make_prepared_edge_publication_source_producer_lookups(prepared, function);
   auto edge_publication_lookups = make_prepared_edge_publication_lookups(
       prepared, function, value_locations, &value_home_lookups);
+  auto branch_stack_load_authorities =
+      collect_prepared_branch_stack_load_authorities(prepared);
+  branch_stack_load_authorities.records.erase(
+      std::remove_if(branch_stack_load_authorities.records.begin(),
+                     branch_stack_load_authorities.records.end(),
+                     [&](const PreparedBranchStackLoadAuthorityRecord& record) {
+                       return record.function_name != function.function_name;
+                     }),
+      branch_stack_load_authorities.records.end());
   return PreparedFunctionLookups{
       .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
       .address_materializations =
@@ -1680,6 +1689,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
       .value_homes = std::move(value_home_lookups),
       .edge_publications = std::move(edge_publication_lookups),
       .edge_publication_source_producers = std::move(source_producer_lookups),
+      .branch_stack_load_authorities = std::move(branch_stack_load_authorities),
   };
 }
 
