@@ -8,59 +8,67 @@ Current Step Title: Implement First Ordinary ABI Consumer
 
 ## Just Finished
 
-Completed Step 2, "Implement First Ordinary ABI Consumer", lifecycle handoff
-for the stack-slot preservation source authority gap around `src/20020529-1.c`.
+Completed Step 2, "Implement First Ordinary ABI Consumer", residual refresh
+after the producer gaps for `src/20000808-1.c` and `src/20020529-1.c` were
+split to ideas 624 and 625.
 
-Current probes show `src/20020529-1.c` still stops at
-`unsupported_call_abi` on the first same-module call in `foo`:
-`function=foo; block=block_1; block_index=3; instruction_index=0;
-callee=f1; args=1; planned_args=1; result=i32 %t0`.
+Current focused `build/c4cll --codegen obj --target riscv64-linux-gnu`
+probes confirm the accepted Step 2 positives remain moved:
 
-The prepared callsite has three live preserves. `%p.p` and `%p.c` use
-callee-saved register preservation and publish complete concrete source and
-destination endpoints:
+- `src/20000603-1.c` now stops at downstream
+  `unsupported_terminator_fragment`, not `unsupported_call_abi`.
+- `src/20021219-1.c` now stops at downstream
+  `malformed_prepared_join_transfer_carrier`, not `unsupported_call_abi`.
+- `src/pr77767.c` still compiles through RV64 object codegen.
 
-- `%p.p`: `preservation_source=register:a0:value#0`,
-  `preservation_destination=register:s1:value#0`
-- `%p.c`: `preservation_source=register:a2:value#2`,
-  `preservation_destination=register:s2:value#2`
+The refreshed ordinary same-module `unsupported_call_abi` candidates sampled
+after those moves do not expose a remaining complete-authority Step 2 consumer
+packet. The live residual classes are:
 
-The blocking stack-slot preserve for `%p.b` publishes a concrete destination
-slot but not a concrete source register:
-`route=stack_slot spill_slot=slot#19+stack24 ... preservation_source=register:value#1
-preservation_destination=stack_slot:slot#19:value#1`. The function storage
-summary still records `%p.b` in `a1`, but that is not preservation-source
-authority for this callsite. Consuming it in RV64 would require inferring the
-source register from parameter position or storage state, which is outside
-idea 613's consumer-only rule.
+- Missing frame-slot call-argument publication:
+  `src/20001101.c`, `src/20001017-2.c`, `src/20010118-1.c`,
+  `src/20020404-1.c`, `src/20020406-1.c`, `src/20030715-1.c`, and
+  `src/20041218-1.c` have prepared call rows that still publish
+  `missing_frame_slot_arg_publication=yes` or equivalent incomplete
+  frame-slot source authority before RV64 can consume them.
+- Missing stack-preserve source register publication:
+  `src/20020529-1.c` remains idea 625, and the same prepared-authority shape
+  is also visible in rows such as `src/20010129-1.c`,
+  `src/20020404-1.c`, `src/20020406-1.c`, and `src/20041218-1.c` through
+  `preservation_source=register:value#...` with no concrete source register.
+- Outgoing stack / aggregate transport:
+  `src/20000808-1.c` remains idea 624; the same family includes
+  `931004-*` and `src/931031-1.c`, where prepared facts are still not a
+  simple complete GPR register call/result consumer packet.
+- Memory-return / sret and FPR lanes:
+  representative residuals such as `src/20000917-1.c` and
+  `src/20020810-1.c` require stack/memory return or lane-specific ABI
+  handling outside this first ordinary GPR Step 2 packet.
 
-No in-scope Step 2 implementation packet was found for this row. The missing
-prepared stack-slot preserve source publication was split to
-`ideas/open/625_prepared_stack_slot_preservation_source_publication.md`.
-The `931004-*` and `931031-1.c` rows remain separate aggregate stack ABI
-argument transport work, not stack-slot preservation-source publication.
+No implementation files, plan files, idea files, expectations, unsupported
+markers, allowlists, or timeout/accounting files were touched.
 
 ## Suggested Next
 
-Continue idea 613 with a focused residual refresh for Step 2 rows that already
-have complete prepared ABI facts. Keep `src/20000808-1.c` under idea 624 and
-`src/20020529-1.c` under idea 625. If the refresh finds no remaining ordinary
-call/result Step 2 family with complete prepared facts, advance to Step 3 for
-supported stack-frame or return handling with explicit upstream facts.
+Hand off idea 613 to Step 3, "Add Supported Frame Or Return Handling". The next
+coherent packet should refresh supported stack-frame and prepared return
+residuals, then select a frame or return consumer row only when explicit
+upstream facts are already complete. Treat the remaining Step 2
+`unsupported_call_abi` rows above as producer gaps or later distinct ABI
+families, not as ordinary complete-authority GPR call/result work.
 
 ## Watchouts
 
-- `src/20021219-1.c` is no longer a call ABI row; its next owner is prepared
-  join-transfer carrier materialization, not ABI call/result lowering.
-- Do not infer stack preservation source registers from ABI parameter position
-  or final assembly shape; require explicit prepared endpoints.
-- Do not absorb idea 625 producer work back into idea 613; 613 should only
-  consume complete preserve-source facts once they exist.
-- Keep `931004-*` / `931031-1.c` aggregate stack argument transport, idea-624
-  outgoing-stack destination offsets, memory-return/sret, FPR lanes,
-  frame-slot publication, stack-frame, return stack-to-register, local/global
-  producer, variadic, library, and runtime rows outside this packet unless the
-  supervisor changes the boundary.
+- Keep `src/20000808-1.c` under idea 624 and `src/20020529-1.c` under idea
+  625; do not reclassify missing prepared authority as RV64 consumer progress.
+- Do not infer frame-slot argument sources, stack-preserve source registers,
+  outgoing stack offsets, FPR lanes, memory-return slots, or aggregate payload
+  transport from ABI index, final assembly shape, or testcase names.
+- `931004-*` / `src/931031-1.c` have breadth, but the breadth is aggregate
+  stack transport, not the already-complete ordinary GPR call/result consumer
+  family selected for Step 2.
+- Existing positive rows (`src/20000603-1.c`, `src/20021219-1.c`,
+  `src/pr77767.c`) should remain guards for any Step 3 frame/return slice.
 
 ## Proof
 
