@@ -681,6 +681,42 @@ bool BirFunctionLowerer::is_local_array_element_slot(std::string_view slot_name,
   return false;
 }
 
+bool BirFunctionLowerer::is_local_object_slot_name_available(std::string_view slot_name) const {
+  const std::string candidate(slot_name);
+  if (local_slot_types_.find(candidate) != local_slot_types_.end() ||
+      local_array_slots_.find(candidate) != local_array_slots_.end() ||
+      local_aggregate_slots_.find(candidate) != local_aggregate_slots_.end()) {
+    return false;
+  }
+
+  for (const auto& inst : function_.alloca_insts) {
+    const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst);
+    if (alloca != nullptr && alloca->result.str() == candidate) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string BirFunctionLowerer::make_available_local_carrier_slot_name(
+    std::string_view legacy_name,
+    std::string_view private_base_name) const {
+  if (is_local_object_slot_name_available(legacy_name)) {
+    return std::string(legacy_name);
+  }
+
+  if (is_local_object_slot_name_available(private_base_name)) {
+    return std::string(private_base_name);
+  }
+
+  for (std::size_t suffix = 1;; ++suffix) {
+    std::string candidate = std::string(private_base_name) + "." + std::to_string(suffix);
+    if (is_local_object_slot_name_available(candidate)) {
+      return candidate;
+    }
+  }
+}
+
 std::optional<std::pair<std::size_t, bir::TypeKind>> BirFunctionLowerer::parse_local_array_type(
     std::string_view text) {
   if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
@@ -796,7 +832,10 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
     array_slots.element_slots.reserve(array_type->first);
     const auto element_size = type_size_bytes(array_type->second);
     for (std::size_t index = 0; index < array_type->first; ++index) {
-      const std::string element_slot = slot_name + "." + std::to_string(index);
+      const std::string legacy_slot = slot_name + "." + std::to_string(index);
+      const std::string private_slot = slot_name + ".element." + std::to_string(index);
+      const std::string element_slot =
+          make_available_local_carrier_slot_name(legacy_slot, private_slot);
       local_slot_types_.emplace(element_slot, array_type->second);
       local_pointer_slots_.emplace(element_slot, element_slot);
       array_slots.element_slots.push_back(element_slot);

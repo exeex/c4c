@@ -290,14 +290,18 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
                                                      structured_layouts_);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid ||
       layout.align_bytes == 0 ||
-      (layout.kind != AggregateTypeLayout::Kind::Array && layout.size_bytes == 0)) {
+      (layout.kind == AggregateTypeLayout::Kind::Scalar && layout.size_bytes == 0)) {
     return false;
   }
 
   switch (layout.kind) {
     case AggregateTypeLayout::Kind::Scalar: {
-      const std::string slot_name =
+      const std::string legacy_slot =
           std::string(slot_prefix) + "." + std::to_string(byte_offset);
+      const std::string private_slot =
+          std::string(slot_prefix) + ".field." + std::to_string(byte_offset);
+      const std::string slot_name =
+          make_available_local_carrier_slot_name(legacy_slot, private_slot);
       const auto scalar_size = type_size_bytes(layout.scalar_type);
       if (scalar_size == 0) {
         return false;

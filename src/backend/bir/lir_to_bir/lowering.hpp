@@ -704,6 +704,9 @@ class BirFunctionLowerer {
       const LocalAggregateSlots& aggregate_slots);
   static bool is_local_array_element_slot(std::string_view slot_name,
                                           const LocalArraySlotMap& local_array_slots);
+  bool is_local_object_slot_name_available(std::string_view slot_name) const;
+  std::string make_available_local_carrier_slot_name(std::string_view legacy_name,
+                                                     std::string_view private_base_name) const;
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
       std::string_view text);
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_vector_type(
