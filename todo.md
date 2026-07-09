@@ -8,89 +8,94 @@ Current Step Title: Trace Remaining Stack-Home Local-Memory Bucket
 
 ## Just Finished
 
-Step 8 reran the aggregate stack-home residual probe after the Step 7 RV64
-consumer repair and recorded fresh evidence under
-`build/agent_state/633_step8_*`.
+Step 9 traced the remaining stack-home local-memory bucket after the Step 7
+RV64 consumer repair and recorded focused notes at
+`build/agent_state/633_step9_remaining_stack_home_trace.md`.
 
-Probe result:
-- Command returned nonzero for residual failures after a clean build.
-- Count changed by owner, but not by aggregate total:
-  Step 5 was `total=35 passed=3 failed=32`; Step 8 is
-  `total=35 passed=3 failed=32` in the script summary.
-- A fresh copied allowlist was recorded at
-  `build/agent_state/633_step8_aggregate_stack_home.allowlist`.
-- A fresh diagnostic table was recorded at
-  `build/agent_state/633_step8_current_diagnostics.tsv`.
+Primary target results:
+- `src/pr30185.c`: byval loads such as function `foo`, block `entry`,
+  instruction `36`, `%lv.param.x.byval.copy.0 = load_local i8 addr %p.x`
+  have pointer-value base, offset `0`, size `1`, align `8`,
+  `base_plus_offset=yes`, proven range, byval value home `%p.x`, frame slot
+  `#1`, and byval stack object size/alignment `16/8`. The first remaining
+  failure is not that byval lane. The matching sret stores such as
+  instruction `77`, `store_local ... addr %ret.sret`, have the same
+  pointer-value/proven-range shape, but `prepared_stack_home_local_memory_has_authority(...,
+  SretParam)` still rejects because the current predicate compares the
+  requested pointee extent for `sret(size=16, align=8)` against the 8-byte
+  `%ret.sret` pointer-home stack object.
+- `src/20020215-1.c`: byval loads such as function `foo`, block `entry`,
+  instruction `30`, `%lv.param.s.byval.copy.0 = load_local i16 addr %p.s`
+  have offset `0`, size `2`, align `8`, byval stack object size/alignment
+  `24/8`, and are expected to pass the Step 7 stronger-than-lane alignment
+  route. Sret stores such as instruction `64`, `store_local ... addr
+  %ret.sret`, reject at the same sret authority boundary because the ABI
+  pointee extent is `sret(size=24, align=8)` while `%ret.sret` is an 8-byte
+  pointer home.
+- `src/950628-1.c`: representative stores in `g` instruction `5` and `f`
+  instruction `12` write 1-byte lanes through `%ret.sret` with
+  `base_plus_offset=yes`, proven range, and stack-home metadata, but reject at
+  the same sret authority boundary because the ABI pointee extent is
+  `sret(size=6, align=2)` while `%ret.sret` is an 8-byte pointer home.
 
-Representative movement:
-- `src/20000722-1.c` remains a runtime mismatch row rather than a stack-home
-  local-memory compile rejection.
-- `src/pr38969.c` moved past the stack-home local-memory gate and now stops at
-  `unsupported_call_abi` for the ordinary same-module call from `bar` to
-  `foo`.
-- `src/struct-ret-1.c` moved past the local-memory gate and now stops at an
-  unsupported `CallInst` instruction fragment.
-- `src/921117-1.c`, `src/pr58984.c`, `src/pr52129.c`, and `src/complex-7.c`
-  also moved from the Step 5 generic local-memory owner to later call ABI,
-  branch stack-load authority, or aggregate global-data owners.
-- `src/pr30185.c`, `src/950628-1.c`, and `src/20020215-1.c` still stop at
-  `unsupported_local_memory_access: RV64 object route requires prepared
-  frame-slot or pointer-value base-plus-offset local memory addressing`.
-  Fresh extracts show byval/sret pointer-value accesses with
-  `base_plus_offset=yes` and proven ranges still exist in these rows.
+Comparison against moved row:
+- `src/pr38969.c` moved because its sret/byval pointee extent is 8 bytes.
+  That happens to match the `%ret.sret` pointer-home object size, so the
+  current sret authority predicate accepts the F32 route after Step 7. The
+  remaining rows expose the same route with non-8-byte sret pointee extents.
 
-Residual buckets from Step 8:
-- Passing rows: `src/20010123-1.c`, `src/20030920-1.c`,
-  `src/pr35800.c`.
-- Later non-stack-home owners: call ABI/result lowering
-  (`src/921117-1.c`, `src/pr38969.c`, `src/pr58984.c`), call instruction
-  fragment (`src/struct-ret-1.c`), branch stack-load authority
-  (`src/pr52129.c`), aggregate global data width (`src/complex-7.c`),
-  move-bundle authority (`src/20011109-2.c`, `src/20021204-1.c`,
-  `src/920429-1.c`, `src/930429-1.c`, `src/pr34415.c`,
-  `src/ptr-arith-1.c`), and F128/16-byte local-memory width
-  (`src/20010605-2.c`, `src/20040208-1.c`, `src/ieee/inf-1.c`), plus runtime
-  mismatch (`src/20000722-1.c`).
-- Remaining local-memory bucket: `src/20020215-1.c`, `src/941110-1.c`,
-  `src/950628-1.c`, `src/ipa-sra-2.c`, `src/pr30185.c`, `src/pr46309.c`,
-  `src/pr49073.c`, `src/pr57861.c`, `src/pr58431.c`, `src/pr60017.c`,
-  `src/pr60822.c`, `src/pr66556.c`, `src/pr68185.c`, `src/pr68321.c`,
+Other remaining local-memory rows:
+- In scope for the same Step 10 repair from current evidence:
+  `src/941110-1.c`, `src/950628-1.c`, `src/pr30185.c`,
+  `src/20020215-1.c`.
+- Likely related but should be reclassified after the sret repair:
+  `src/ipa-sra-2.c`, `src/pr49073.c`, `src/pr57861.c`,
+  `src/pr58431.c`, `src/pr60017.c`, `src/pr60822.c`,
+  `src/pr66556.c`, `src/pr68185.c`, `src/pr68321.c`,
   `src/pr70005.c`, `src/pr88739.c`.
+- Out of scope for Step 10 from current evidence: `src/pr46309.c`
+  pointer-loaded-from-global, F128/16-byte width rows, move-bundle rows, later
+  call ABI/call instruction rows, runtime mismatch rows, and aggregate
+  global-data rows.
 
 ## Suggested Next
 
-Delegate Step 9 as a narrow trace packet for the remaining local-memory
-bucket. Primary targets are `src/pr30185.c`, `src/950628-1.c`, and
-`src/20020215-1.c`, starting from the fresh Step 8 prepared extracts and
-object-route diagnostics. The packet should compare those rows against the
-now-moved `src/pr38969.c` route, identify the first diverging prepared fact or
-RV64 dispatch boundary, and classify the other remaining local-memory rows
-only enough to decide whether they share the same stack-home route.
+Delegate Step 10 as a narrow prepared-authority/RV64 consumer repair for
+non-8-byte sret stack-home stores. The repair should make sret stack-home
+local-memory authority validate the ABI memory-return pointee extent, selected
+offset, and requested range separately from the 8-byte `%ret.sret` pointer
+home, then prove RV64 emits the integer byte/halfword/word/dword sret stores
+from explicit authority. Keep byval behavior unchanged unless the focused test
+shows the same extent conflation there.
 
 ## Watchouts
 
-Do not close idea 633 yet: the clean `pr38969` floating route moved, but the
-integer byte-sliced and wider byval/sret families still contain in-scope
-stack-home local-memory rows.
+The smallest shared repair is not source-file matching and not an expectations
+rewrite. It is the authority shape difference between an sret pointer home and
+the memory-return pointee extent. Preserve the `pr38969` moved route and keep
+later call ABI, call-instruction, branch stack-load, move-bundle, aggregate
+global-data, F128/16-byte, runtime, pointer-loaded-from-global, and mixed
+local/global rows out of the Step 10 packet.
 
-Keep later call ABI, call-instruction, branch stack-load, move-bundle,
-aggregate global-data, F128/16-byte, runtime, and mixed local/global rows out
-of the next stack-home packet.
+The non-floating local-memory diagnostic is asymmetric: store handling has an
+sret pre-check, while the generic non-floating diagnostic checks byval but not
+sret. If the sret authority fix is correct, the store pre-check should prevent
+the generic diagnostic for valid stores, but focused negative tests should
+still keep malformed sret routes fail-closed with the right owner.
 
 ## Proof
 
-Evidence command:
-`cmake --build --preset default && ALLOWLIST=build/agent_state/614_step3_residual_refresh/local_memory_candidates.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/633_step8_aggregate_stack_home.log 2>&1`
+Trace-only packet; no build proof required and no root-level `.log` file was
+created.
 
-Result: build succeeded; residual probe returned nonzero for classification
-with `total=35 passed=3 failed=32`.
+Evidence inputs:
+- `build/agent_state/633_step8_current_diagnostics.tsv`
+- `build/agent_state/633_step8_pr30185.prepared.txt`
+- `build/agent_state/633_step8_950628-1.prepared.txt`
+- `build/agent_state/633_step8_20020215-1.prepared.txt`
+- `build/agent_state/633_step8_pr38969.prepared.txt`
+
+Evidence output:
+- `build/agent_state/633_step9_remaining_stack_home_trace.md`
 
 Extra check: `git diff --check` passed.
-
-Evidence logs:
-- `build/agent_state/633_step8_aggregate_stack_home.log`
-- `build/agent_state/633_step8_current_diagnostics.tsv`
-- `build/agent_state/633_step8_*.prepared.txt`
-- `build/agent_state/633_step8_*.extract.txt`
-
-No new root-level `.log` file was created.
