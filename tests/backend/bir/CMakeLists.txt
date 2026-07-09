@@ -681,6 +681,15 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 dynamic_stack vla fixed_slot
 )
 
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_riscv64_stack_destination_authority_rejection_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_stack_destination_authority_rejection.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${CMAKE_BINARY_DIR}/backend_route/riscv64_stack_destination_authority_rejection.o"
+  EXPECTED_DIAGNOSTICS "prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination|non-parallel register-source fan-in to one stack destination has no ordering or mutually-exclusive authority|function=main|authority=none|move_count=2|parallel_copy=no|move[0].source_home_kind=register|move[0].destination_home_kind=stack_slot|move[1].source_home_kind=register|move[1].destination_home_kind=stack_slot|diagnostic_owner=rv64_prepared_move_bundle_consumer|fragment_status=producer_authority_missing_for_register_fan_in_stack_destination"
+  LABELS riscv64 stack_destination authority_rejection
+)
+
 add_test(
   NAME backend_cli_dump_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
