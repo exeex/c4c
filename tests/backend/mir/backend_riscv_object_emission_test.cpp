@@ -2827,6 +2827,150 @@ prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_modul
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_scalar_stack_arguments_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto callee_name = prepared.names.function_names.intern("stack_sink");
+  const auto caller_name = prepared.names.function_names.intern("caller");
+  const auto stack_source_name = prepared.names.value_names.intern("%stack.source");
+
+  bir::CallInst call;
+  call.callee = "stack_sink";
+  call.args = {
+      bir::Value::immediate_i32(2),
+      bir::Value::named(bir::TypeKind::I64, "%reg.arg"),
+      bir::Value::named(bir::TypeKind::I64, "%stack.source"),
+      bir::Value::immediate_i32(6),
+      bir::Value::immediate_f64_bits(0x401c000000000000ull),
+  };
+  call.arg_types = {bir::TypeKind::I32,
+                    bir::TypeKind::I64,
+                    bir::TypeKind::I64,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::F64};
+  call.return_type = bir::TypeKind::Void;
+
+  bir::Block callee_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  bir::Block caller_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "stack_sink",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(callee_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "caller",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(caller_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = caller_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = caller_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{3},
+                  .function_name = caller_name,
+                  .value_name = stack_source_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s2"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = caller_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"stack_sink"},
+          .outgoing_stack_argument_area =
+              prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 24},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal = bir::Value::immediate_i32(2),
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_register_name = std::string{"s1"},
+                      .source_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a1"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 2,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{3},
+                      .source_register_name = std::string{"s2"},
+                      .source_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .destination_contiguous_width = 1,
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .destination_stack_size_bytes = std::size_t{8},
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 3,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal = bir::Value::immediate_i32(6),
+                      .destination_contiguous_width = 1,
+                      .destination_stack_offset_bytes = std::size_t{8},
+                      .destination_stack_size_bytes = std::size_t{8},
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 4,
+                      .value_bank = prepare::PreparedRegisterBank::Fpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal =
+                          bir::Value::immediate_f64_bits(0x401c000000000000ull),
+                      .destination_contiguous_width = 1,
+                      .destination_stack_offset_bytes = std::size_t{16},
+                      .destination_stack_size_bytes = std::size_t{8},
+                  },
+              },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedValueHome make_fpr_home(c4c::FunctionNameId function_name,
                                          c4c::ValueNameId value_name,
                                          prepare::PreparedValueId value_id,
@@ -15836,6 +15980,111 @@ int rejects_prepared_byval_stack_copy_call_fail_closed_shapes() {
   prepared.call_plans.functions[0].calls[0].outgoing_stack_argument_area =
       prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 16};
   if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int builds_prepared_scalar_stack_arguments_same_module_call_object() {
+  const auto prepared =
+      make_prepared_scalar_stack_arguments_same_module_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar stack-argument same-module call object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "stack_sink");
+  const auto* caller = object::find_symbol(module, "caller");
+  if (text == nullptr || callee == nullptr || caller == nullptr) {
+    return fail("expected prepared scalar stack-argument object to publish text/functions");
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id) {
+    return fail("expected scalar stack-argument same-module call relocation");
+  }
+
+  const std::size_t call_offset = module.relocations[0].offset;
+  if (call_offset < caller->value + 28) {
+    return fail("expected scalar stack-argument stores before call relocation");
+  }
+  if (!contains_u32_sequence(
+          text->bytes,
+          {
+              0xfe810113,  // addi sp, sp, -24
+              0x00090e13,  // mv t3, s2
+              0x01c13023,  // sd t3, 0(sp)
+              0x00600e13,  // li t3, 6
+              0x01c13423,  // sd t3, 8(sp)
+          })) {
+    return fail("expected scalar GPR stack args to use prepared outgoing stack slots");
+  }
+  bool saw_f64_stack_store = false;
+  for (std::size_t offset = caller->value; offset + 4 <= call_offset; offset += 4) {
+    if (is_rv64_fp_store_to_sp(read_u32(text->bytes, offset), 3U, 16)) {
+      saw_f64_stack_store = true;
+      break;
+    }
+  }
+  if (!saw_f64_stack_store) {
+    return fail("expected scalar F64 stack arg to store to prepared outgoing stack slot");
+  }
+  if (read_u32(text->bytes, call_offset + 8) != 0x01810113) {
+    return fail("expected scalar stack-argument call to restore outgoing stack area");
+  }
+  return 0;
+}
+
+int expect_scalar_stack_argument_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
+}
+
+int rejects_prepared_scalar_stack_argument_call_fail_closed_shapes() {
+  auto prepared = make_prepared_scalar_stack_arguments_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].outgoing_stack_argument_area =
+      std::nullopt;
+  if (expect_scalar_stack_argument_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_arguments_same_module_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[2]
+      .destination_stack_size_bytes = std::nullopt;
+  if (expect_scalar_stack_argument_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_arguments_same_module_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[3]
+      .destination_stack_offset_bytes = std::size_t{24};
+  if (expect_scalar_stack_argument_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_arguments_same_module_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[4]
+      .destination_stack_size_bytes = std::size_t{4};
+  if (expect_scalar_stack_argument_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_arguments_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[2].value_bank =
+      prepare::PreparedRegisterBank::Fpr;
+  if (expect_scalar_stack_argument_call_rejection(prepared) != 0) {
     return 1;
   }
 
@@ -29986,6 +30235,8 @@ int main() {
   status |= rejects_prepared_scalar_register_result_call_fail_closed_shapes();
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
   status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();
+  status |= builds_prepared_scalar_stack_arguments_same_module_call_object();
+  status |= rejects_prepared_scalar_stack_argument_call_fail_closed_shapes();
   status |= builds_prepared_same_module_sret_call_object();
   status |= builds_representative_prepared_same_module_sret_call_object();
   status |= rejects_prepared_same_module_sret_call_fail_closed_shapes();

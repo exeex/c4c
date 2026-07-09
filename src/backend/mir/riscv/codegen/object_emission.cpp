@@ -5367,6 +5367,220 @@ const prepare::PreparedCallPreservedValue* exact_prior_preserved_value_for_selec
   return it == entries.end() ? nullptr : it->preserved;
 }
 
+bool ensure_rv64_prepared_call_outgoing_stack_area(
+    RiscvEncodedFragment& fragment,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t* active_call_stack_adjustment) {
+  if (active_call_stack_adjustment == nullptr ||
+      !call_plan.outgoing_stack_argument_area.has_value() ||
+      call_plan.outgoing_stack_argument_area->size_bytes == 0) {
+    return false;
+  }
+  const std::size_t size_bytes =
+      call_plan.outgoing_stack_argument_area->size_bytes;
+  if (size_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      !fits_signed_12_bit_immediate(-static_cast<std::int32_t>(size_bytes))) {
+    return false;
+  }
+  if (*active_call_stack_adjustment == size_bytes) {
+    return true;
+  }
+  if (*active_call_stack_adjustment != 0) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            2,
+                            0,
+                            2,
+                            -static_cast<std::int32_t>(size_bytes)));
+  *active_call_stack_adjustment = size_bytes;
+  return true;
+}
+
+bool prepared_scalar_stack_call_argument_destination_is_valid(
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedCallArgumentPlan& argument,
+    c4c::backend::bir::TypeKind argument_type) {
+  if (argument.destination_register_bank.has_value() ||
+      argument.destination_register_name.has_value() ||
+      argument.destination_register_placement.has_value() ||
+      argument.aggregate_transport.has_value() ||
+      !argument.destination_stack_offset_bytes.has_value() ||
+      !argument.destination_stack_size_bytes.has_value() ||
+      !call_plan.outgoing_stack_argument_area.has_value()) {
+    return false;
+  }
+  const auto floating_size =
+      argument_type == c4c::backend::bir::TypeKind::F32
+          ? std::optional<std::size_t>{4}
+          : argument_type == c4c::backend::bir::TypeKind::F64
+                ? std::optional<std::size_t>{8}
+                : std::optional<std::size_t>{};
+  const auto integer_size = rv64_scalar_memory_size_for_type(argument_type);
+  const std::size_t offset = *argument.destination_stack_offset_bytes;
+  const std::size_t size = *argument.destination_stack_size_bytes;
+  const std::size_t area_size = call_plan.outgoing_stack_argument_area->size_bytes;
+  if (offset > area_size || size > area_size - offset ||
+      offset >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return false;
+  }
+  if (rv64_floating_type(argument_type)) {
+    return floating_size.has_value() && size == *floating_size &&
+           argument.value_bank == prepare::PreparedRegisterBank::Fpr;
+  }
+  return integer_size.has_value() && size >= *integer_size && size <= 8 &&
+         rv64_load_store_funct3_for_size(size).has_value() &&
+         (argument.value_bank == prepare::PreparedRegisterBank::Gpr ||
+          argument.value_bank == prepare::PreparedRegisterBank::None);
+}
+
+std::optional<std::int32_t> add_active_call_stack_adjustment_to_offset(
+    std::int32_t offset,
+    std::size_t active_call_stack_adjustment) {
+  if (active_call_stack_adjustment >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      offset > std::numeric_limits<std::int32_t>::max() -
+                   static_cast<std::int32_t>(active_call_stack_adjustment)) {
+    return std::nullopt;
+  }
+  const auto adjusted =
+      offset + static_cast<std::int32_t>(active_call_stack_adjustment);
+  if (!fits_signed_12_bit_immediate(adjusted)) {
+    return std::nullopt;
+  }
+  return adjusted;
+}
+
+bool append_rv64_prepared_scalar_stack_call_argument(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedCallPlan& call_plan,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    c4c::backend::bir::TypeKind argument_type,
+    std::size_t stack_frame_bytes,
+    std::size_t* active_call_stack_adjustment) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (!prepared_scalar_stack_call_argument_destination_is_valid(call_plan,
+                                                               argument,
+                                                               argument_type) ||
+      !ensure_rv64_prepared_call_outgoing_stack_area(
+          fragment, call_plan, active_call_stack_adjustment)) {
+    return false;
+  }
+
+  const std::size_t destination_offset =
+      *argument.destination_stack_offset_bytes;
+  const std::size_t destination_size = *argument.destination_stack_size_bytes;
+  if (rv64_floating_type(argument_type)) {
+    constexpr std::uint32_t scratch_fpr = 30;  // ft10
+    constexpr std::uint32_t scratch_gpr = 28;  // t3
+    if (argument.value_bank != prepare::PreparedRegisterBank::Fpr) {
+      return false;
+    }
+    if (argument.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
+        argument.source_literal.has_value()) {
+      if (argument.source_literal->kind != c4c::backend::bir::Value::Kind::Immediate ||
+          argument.source_literal->type != argument_type ||
+          argument.source_literal->immediate_bits >
+              static_cast<std::uint64_t>(
+                  std::numeric_limits<std::int64_t>::max())) {
+        return false;
+      }
+      append_rv64_load_immediate(
+          fragment,
+          scratch_gpr,
+          static_cast<std::int64_t>(argument.source_literal->immediate_bits));
+      if (!append_rv64_gpr_to_fpr_move(fragment,
+                                       scratch_fpr,
+                                       scratch_gpr,
+                                       argument_type)) {
+        return false;
+      }
+    } else if (argument.source_encoding ==
+                   prepare::PreparedStorageEncodingKind::Register &&
+               argument.source_register_bank == prepare::PreparedRegisterBank::Fpr &&
+               argument.source_register_name.has_value()) {
+      const auto source = rv64_fpr_register_number(*argument.source_register_name);
+      if (!source.has_value() ||
+          !append_rv64_fpr_move(fragment, scratch_fpr, *source, argument_type)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+    return append_rv64_store_fpr_to_stack(fragment,
+                                         scratch_fpr,
+                                         static_cast<std::int32_t>(
+                                             destination_offset),
+                                         argument_type);
+  }
+
+  constexpr std::uint32_t scratch_gpr = 28;  // t3
+  if (argument.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
+      argument.source_literal.has_value()) {
+    const auto immediate =
+        integer_immediate_for_value(prepared.names, lookups, *argument.source_literal);
+    if (immediate.has_value()) {
+      append_rv64_load_immediate(fragment, scratch_gpr, *immediate);
+    } else if (is_rv64_null_pointer_value(*argument.source_literal)) {
+      append_rv64_load_immediate(fragment, scratch_gpr, 0);
+    } else {
+      return false;
+    }
+  } else if (argument.source_encoding ==
+                 prepare::PreparedStorageEncodingKind::Register &&
+             argument.source_register_bank == prepare::PreparedRegisterBank::Gpr &&
+             argument.source_register_name.has_value()) {
+    const auto source = rv64_register_number(*argument.source_register_name);
+    if (!source.has_value()) {
+      return false;
+    }
+    append_rv64_move(fragment, scratch_gpr, *source);
+  } else if (argument.source_encoding ==
+                 prepare::PreparedStorageEncodingKind::FrameSlot) {
+    auto offset = prepared_frame_slot_call_argument_offset(stack_layout,
+                                                          lookups,
+                                                          argument,
+                                                          argument_type,
+                                                          stack_frame_bytes);
+    if (!offset.has_value()) {
+      offset = prepared_frame_slot_value_home_call_argument_offset(
+          stack_layout, lookups, argument, argument_type, stack_frame_bytes);
+    }
+    if (!offset.has_value()) {
+      offset = prepared_explicit_scalar_frame_slot_call_argument_offset(
+          stack_layout, lookups, argument, argument_type, stack_frame_bytes);
+    }
+    const auto adjusted_offset =
+        offset.has_value()
+            ? add_active_call_stack_adjustment_to_offset(
+                  *offset, *active_call_stack_adjustment)
+            : std::optional<std::int32_t>{};
+    const auto source_size = rv64_scalar_memory_size_for_type(argument_type);
+    if (!adjusted_offset.has_value() || !source_size.has_value() ||
+        !append_rv64_load_stack_to_register(fragment,
+                                           scratch_gpr,
+                                           *adjusted_offset,
+                                           *source_size)) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  return append_rv64_store_register_to_stack(fragment,
+                                            scratch_gpr,
+                                            static_cast<std::int32_t>(
+                                                destination_offset),
+                                            destination_size);
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -5653,6 +5867,23 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       }
       append_rv64_move(fragment, *destination, 2);
       active_call_stack_adjustment = pending_stack_adjustment;
+      continue;
+    }
+    if (argument.destination_stack_offset_bytes.has_value() ||
+        argument.destination_stack_size_bytes.has_value()) {
+      if (arg_index >= call.arg_types.size() ||
+          !append_rv64_prepared_scalar_stack_call_argument(
+              fragment,
+              prepared,
+              stack_layout,
+              lookups,
+              *call_plan,
+              argument,
+              call.arg_types[arg_index],
+              stack_frame_bytes,
+              &active_call_stack_adjustment)) {
+        return std::nullopt;
+      }
       continue;
     }
     if (!argument.destination_register_bank.has_value()) {
