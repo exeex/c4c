@@ -1,5 +1,6 @@
 #include "object_emission.hpp"
 
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/prepared_contract_verifier.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/publication_plans.hpp"
@@ -12075,7 +12076,8 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
   const auto local_memory_diagnostic =
       [&](const std::optional<std::size_t>& size_bytes,
           const prepare::PreparedMemoryAccess* access,
-          bool f64_memory = false) -> std::optional<std::string> {
+          bool f64_memory = false,
+          bool allow_string_constant_load = false) -> std::optional<std::string> {
     if (!size_bytes.has_value()) {
       return std::string{
           "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses"};
@@ -12099,6 +12101,25 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       }
       return std::nullopt;
     }
+    const auto string_constant_local_load_is_supported = [&]() {
+      if (!allow_string_constant_load || *size_bytes != 8 || access == nullptr ||
+          access->address_space != bir::AddressSpace::Default ||
+          access->is_volatile ||
+          access->address.base_kind !=
+              prepare::PreparedAddressBaseKind::StringConstant ||
+          access->address.size_bytes != 8 ||
+          access->address.align_bytes != 8 ||
+          !fits_signed_12_bit_immediate(access->address.byte_offset) ||
+          !prepare::prepared_string_constant_local_memory_has_authority(
+              access->address)) {
+        return false;
+      }
+      const std::string_view label =
+          access->address.symbol_name.has_value()
+              ? names.link_names.spelling(*access->address.symbol_name)
+              : std::string_view{};
+      return !label.empty();
+    };
     if (!prepared_frame_slot_absolute_byte_offset(stack_layout,
                                                   access,
                                                   stack_frame_bytes,
@@ -12117,7 +12138,8 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                       access,
                                                       stack_frame_bytes,
                                                       *size_bytes)
-             .has_value()) {
+             .has_value() &&
+        !string_constant_local_load_is_supported()) {
       return std::string{
           "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
     }
@@ -12156,7 +12178,8 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                      prepared_block_label,
                                                      instruction_index,
                                                      *load),
-        rv64_floating_type(load->result.type));
+        rv64_floating_type(load->result.type),
+        load->result.type == bir::TypeKind::Ptr);
   }
   if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
     const auto access = prepared_memory_access_for_instruction(&lookups,

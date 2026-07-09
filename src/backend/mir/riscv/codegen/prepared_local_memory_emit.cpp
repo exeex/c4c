@@ -1908,6 +1908,53 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     const c4c::backend::bir::LoadLocalInst& load,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
+  if (load.result.type == c4c::backend::bir::TypeKind::Ptr &&
+      access != nullptr &&
+      access->address_space == c4c::backend::bir::AddressSpace::Default &&
+      !access->is_volatile &&
+      access->address.base_kind ==
+          c4c::backend::prepare::PreparedAddressBaseKind::StringConstant &&
+      access->address.size_bytes == 8 &&
+      access->address.align_bytes == 8 &&
+      fits_signed_12_bit_immediate(access->address.byte_offset) &&
+      c4c::backend::prepare::prepared_string_constant_local_memory_has_authority(
+          access->address)) {
+    const auto destination =
+        gpr_register_number_for_value_local(names, lookups, load.result);
+    const auto destination_offset =
+        prepared_stack_slot_home_absolute_offset_for_value_local(stack_layout,
+                                                                 names,
+                                                                 lookups,
+                                                                 load.result,
+                                                                 stack_frame_bytes);
+    if (!destination.has_value() && !destination_offset.has_value()) {
+      return std::nullopt;
+    }
+    const std::string_view label =
+        access->address.symbol_name.has_value()
+            ? prepared.names.link_names.spelling(*access->address.symbol_name)
+            : std::string_view{};
+    if (label.empty()) {
+      return std::nullopt;
+    }
+    const std::uint32_t destination_register = destination.value_or(6);
+    RiscvEncodedFragment fragment = make_rv64_pcrel_address_fragment(
+        destination_register,
+        std::string{label},
+        ".Lpcrel_hi_string_local_load_" + std::to_string(access->function_name) +
+            "_" + std::to_string(access->block_label) + "_" +
+            std::to_string(access->inst_index),
+        RiscvObjectFixupTargetKind::Object,
+        access->address.byte_offset);
+    if (destination_offset.has_value() &&
+        !append_rv64_store_register_to_stack_offset_local(fragment,
+                                                         destination_register,
+                                                         *destination_offset,
+                                                         8)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
   if (rv64_floating_type_local(load.result.type)) {
     const auto size_bytes = rv64_local_memory_size_for_type(load.result.type);
     if (!size_bytes.has_value()) {

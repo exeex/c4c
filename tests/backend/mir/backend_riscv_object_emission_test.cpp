@@ -25038,6 +25038,107 @@ int rejects_prepared_inline_asm_insn_d_object() {
   return 0;
 }
 
+prepare::PreparedBirModule
+make_prepared_string_constant_local_memory_load_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%str");
+  const auto result_name = prepared.names.value_names.intern("%result");
+  const auto link_name = prepared.names.link_names.intern(".LC_string_local");
+  const auto text_name = prepared.names.texts.intern(".LC_string_local");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::Ptr, "%result"),
+                  .slot_name = "%str",
+                  .slot_id = slot_name,
+                  .align_bytes = 8,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::Ptr, "%result");
+
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".LC_string_local",
+      .name_id = text_name,
+      .bytes = "0123456789abcdef",
+      .align_bytes = 1,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::Ptr,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .local_slots = {bir::LocalSlot{
+          .name = "%str",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 1,
+          .function_name = function_name,
+          .value_name = result_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"a0"},
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .result_value_name = result_name,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::StringConstant,
+              .symbol_name = link_name,
+              .byte_offset = 4,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+              .provenance = bir::MemoryAccessProvenance{
+                  .base_identity = bir::MemoryProvenanceBaseIdentity{
+                      .kind =
+                          bir::MemoryProvenanceBaseIdentityKind::StringConstant,
+                      .spelling = ".LC_string_local",
+                      .link_name_id = link_name,
+                  },
+                  .object_extent = bir::MemoryObjectExtent{
+                      .completeness =
+                          bir::MemoryObjectExtentCompleteness::Complete,
+                      .size_bytes = 16,
+                      .size_known = true,
+                  },
+                  .requested_range = bir::make_memory_byte_range(4, 8),
+                  .layout_authority =
+                      bir::MemoryLayoutAuthorityKind::StringConstantBytes,
+                  .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+              },
+          },
+      }},
+  });
+  return prepared;
+}
+
 int emits_prepared_string_constant_object_storage() {
   auto prepared = make_prepared_direct_call_module();
   const auto text_name = prepared.module.names.texts.intern(".LC0");
@@ -25071,6 +25172,97 @@ int emits_prepared_string_constant_object_storage() {
   if (!image.has_value()) {
     return fail("expected RV64 ELF writer to serialize prepared string object");
   }
+  return 0;
+}
+
+int builds_prepared_string_constant_local_memory_load_object() {
+  const auto prepared = make_prepared_string_constant_local_memory_load_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail("expected prepared string-constant local-memory load to build: " +
+                build.diagnostic);
+  }
+  const auto* rodata = object::find_section(*build.module, ".rodata");
+  const auto* symbol = object::find_symbol(*build.module, ".LC_string_local");
+  const auto* function = object::find_symbol(*build.module, "main");
+  if (rodata == nullptr || symbol == nullptr || function == nullptr) {
+    return fail("expected string local-memory object to publish rodata, string symbol, and main");
+  }
+  if (symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      symbol->size_bytes != 17) {
+    return fail("expected prepared string local-memory load target to remain a string object");
+  }
+  return 0;
+}
+
+int rejects_prepared_string_constant_local_memory_load_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing";
+
+  auto prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .layout_authority = bir::MemoryLayoutAuthorityKind::Unknown;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.provenance.requested_range =
+      bir::make_memory_byte_range(12, 8);
+  prepared.addressing.functions[0].accesses[0].address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::ProvenOutOfBounds;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address_space =
+      bir::AddressSpace::Tls;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  auto& inst = prepared.module.functions[0].blocks[0].insts[0];
+  inst = bir::StoreLocalInst{
+      .slot_name = "%str",
+      .slot_id = prepared.names.slot_names.find("%str"),
+      .value = null_pointer_value(),
+      .align_bytes = 8,
+  };
+  prepared.addressing.functions[0].accesses[0].result_value_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.base_kind =
+      prepare::PreparedAddressBaseKind::GlobalSymbol;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.base_kind =
+      prepare::PreparedAddressBaseKind::FrameSlot;
+  prepared.addressing.functions[0].accesses[0].address.symbol_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.base_kind =
+      prepare::PreparedAddressBaseKind::PointerValue;
+  prepared.addressing.functions[0].accesses[0].address.symbol_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -28162,6 +28354,8 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_template_modifier_shape();
   status |= rejects_prepared_inline_asm_insn_d_object();
   status |= emits_prepared_string_constant_object_storage();
+  status |= builds_prepared_string_constant_local_memory_load_object();
+  status |= rejects_prepared_string_constant_local_memory_load_fail_closed_shapes();
   status |= rejects_prepared_global_memory_without_prepared_access();
   status |= rejects_prepared_f64_global_load_without_prepared_access();
   status |= emits_prepared_f64_global_load_from_explicit_facts();
