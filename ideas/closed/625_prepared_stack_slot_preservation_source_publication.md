@@ -1,6 +1,6 @@
 # Prepared Stack-Slot Preservation Source Publication
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
@@ -75,3 +75,20 @@ prepared authority production.
   preserve facts without explicit concrete source endpoints.
 - Reject broad ABI, variadic, library, local/global producer, or runtime
   rewrites that are not needed to publish stack-slot preserve source authority.
+
+## Closure Notes
+
+Closed after producer-side prepared preserve source facts were published for
+ordinary same-module stack-slot preserves and RV64 consumers were guarded to
+require those explicit endpoints. The repaired family includes concrete
+register-source facts for `20020529-1.c`, `20000412-4.c`, and `pr51933.c`.
+
+Close-time proof refreshed the full-suite regression guard:
+`test_before.log` and `test_after.log` both report 3376 passed, 0 failed, and
+the guard passed with non-decreasing pass-count mode.
+
+Remaining row failures are outside this source idea:
+`20020529-1.c` is now owned by `unsupported_terminator_fragment`,
+`20000412-4.c` by the RV64 prepared move-bundle consumer for ambiguous
+non-parallel multi-source stack destinations, and `pr51933.c` by inline asm
+policy.
