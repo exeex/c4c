@@ -21,6 +21,11 @@ struct PreparedSretStackPointerAccess {
   std::int32_t pointee_offset = 0;
 };
 
+enum class Rv64LargeSelectedPointerOffsetMaterializationStatus {
+  NotApplicable,
+  MissingScratchClobberAuthority,
+};
+
 [[nodiscard]] std::optional<std::size_t> prepared_frame_slot_absolute_byte_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
@@ -29,6 +34,12 @@ struct PreparedSretStackPointerAccess {
 
 [[nodiscard]] std::optional<std::pair<std::uint32_t, std::int32_t>>
 prepared_pointer_value_base_offset(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t size_bytes);
+
+[[nodiscard]] Rv64LargeSelectedPointerOffsetMaterializationStatus
+rv64_large_selected_pointer_offset_materialization_status(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t size_bytes);

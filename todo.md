@@ -1,74 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/634_large_selected_pointer_offset_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Trace Selected Pointer And Range Authority
+Current Step ID: 3
+Current Step Title: Define Scratch And Clobber Materialization Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of idea `634` traced the prepared carrier boundary for large selected pointer-offset local-memory rows without changing implementation code.
+Step 3 of idea `634` added the RV64 consumer-side classifier `rv64_large_selected_pointer_offset_materialization_status` beside the existing narrow `prepared_pointer_value_base_offset` path.
 
-Producer functions and carrier fields:
+The Step 3 contract recognizes only selected pointer-value local-memory rows that have default address space, nonvolatile access, pointer-value base/name, base-plus-offset addressing, matching width/alignment, a resolvable base GPR, a non-12-bit offset, and available compatible requested-range facts. When those facts are present, the classifier currently returns `MissingScratchClobberAuthority` because no explicit local-memory-row scratch/clobber publication exists yet.
 
-| Layer | Exact function | Carrier facts |
-| --- | --- | --- |
-| BIR pointer provenance | `pointer_value_memory_provenance` and `pointer_value_memory_provenance_with_layout_authority` in `src/backend/bir/lir_to_bir/memory/provenance.cpp` | Fills missing pointer base identity, requested byte range, dynamic-array data when present, layout authority, and range verdict. |
-| BIR load producer | `BirFunctionLowerer::try_lower_addressed_pointer_load` in `src/backend/bir/lir_to_bir/memory/provenance.cpp` | Creates `bir::LoadLocalInst` with `MemoryAddress::BaseKind::PointerValue`, selected `base_value`, `byte_offset`, `size_bytes`, `align_bytes`, and provenance. |
-| Prepared address producer | `build_pointer_indirect_address` in `src/backend/prealloc/stack_layout/coordinator.cpp` | Publishes `PreparedAddress::base_kind`, `pointer_value_name`, `byte_offset`, `size_bytes`, `align_bytes`, `can_use_base_plus_offset`, and `provenance`. |
-| Prepared access producer | `build_pointer_indirect_access` for `LoadLocalInst` in `src/backend/prealloc/stack_layout/coordinator.cpp` | Publishes `PreparedMemoryAccess::function_name`, `block_label`, `inst_index`, `result_value_name`, `address_space`, `is_volatile`, and `address`. |
-| RV64 consumer gate | `local_memory_diagnostic` in `src/backend/mir/riscv/codegen/object_emission.cpp` and `prepared_pointer_value_base_offset` in `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp` | Requires default address space, nonvolatile pointer-value base, pointer value name, base-plus-offset, matching size/alignment, base GPR lookup, and currently a signed 12-bit offset. |
-
-Target row evidence:
-
-- `src/ipa-sra-2.c` `foo` block_1 inst 0: `%p.agg+3999996`, width 4, prepared row `base=pointer_value result=%t5 pointer=%p.agg offset=3999996 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=unknown_compatible`; `%p.agg` has register home/storage `a1`.
-- `src/pr60822.c` `Avg` entry inst 0 and 1: `%p.p+800000` and `%p.p+1700004`, width 4, prepared rows `base=pointer_value ... pointer=%p.p ... size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=unknown_compatible`; `%p.p` has register home/storage `a0`.
-- The first unsupported authority boundary is the RV64 consumer predicate `fits_signed_12_bit_immediate(access->address.byte_offset)` inside `prepared_pointer_value_base_offset`; the prepared carrier already exposes selected base identity, offset, width, default access space, volatility, base GPR home, and range verdict for these rows.
-
-Fail-closed states recorded:
-
-- Missing selected base or absent pointer identity: `prepared_pointer_value_base_offset` rejects unless `base_kind == PointerValue` and `pointer_value_name` is present.
-- Absent offset/width/address-space carrier: not observed for the target rows; `PreparedAddress::byte_offset`, `size_bytes`, `align_bytes`, and `PreparedMemoryAccess::address_space` are present.
-- Stale or mismatched memory-use freshness: no selected freshness authority is attached to the load-local access row; only downstream store-source publication freshness is selected in `ipa-sra-2.c` for `%t5`/`%t10` store-local publication.
-- Ambiguous pointer base: not observed for these rows; `gpr_register_number_for_value_name_local` can resolve the base value homes to `a1`/`a0`.
-- Unsupported range: observed at the RV64 consumer helper because offsets `3999996`, `800000`, and `1700004` do not fit the signed 12-bit load/store immediate.
-- Scratch/clobber authority: visible only in call-plan reserved scratch/clobber rows such as `gpr:t0`; no local-memory large-offset materialization scratch/clobber contract is published at the access row.
-
-Evidence artifacts:
-
-- `build/agent_state/634_step2_boundary_summary.md`
-- `build/agent_state/634_step2_ipa-sra-2.prepared.txt`
-- `build/agent_state/634_step2_ipa-sra-2.evidence.txt`
-- `build/agent_state/634_step2_pr60822.prepared.txt`
-- `build/agent_state/634_step2_pr60822.evidence.txt`
-- `build/agent_state/634_step2_producer_provenance_excerpt.txt`
-- `build/agent_state/634_step2_pointer_load_producer_excerpt.txt`
-- `build/agent_state/634_step2_prepared_access_producer_excerpt.txt`
-- `build/agent_state/634_step2_prepared_carrier_fields_excerpt.txt`
-- `build/agent_state/634_step2_prepared_printer_fields_excerpt.txt`
-- `build/agent_state/634_step2_object_emission_gate_excerpt.txt`
-- `build/agent_state/634_step2_pointer_consumer_boundary_excerpt.txt`
-- `build/agent_state/634_step2_materialization_helper_excerpt.txt`
-- `build/agent_state/634_step2_base_register_lookup_excerpt.txt`
-- `build/agent_state/634_step2_consumer_symbol_map.txt`
+The existing immediate path is preserved: narrow selected pointer offsets still use `prepared_pointer_value_base_offset`, while large selected pointer offsets reject that path and classify as missing scratch/clobber authority only after range facts are present. Large selected pointer rows without requested-range facts remain `NotApplicable` and fail closed before scratch policy.
 
 ## Suggested Next
 
-Step 3 should define the RV64 large-offset selected pointer materialization contract at the consumer boundary, starting from `prepared_pointer_value_base_offset` and `materialize_prepared_pointer_value_base_offset`. The smallest non-overfit packet is to require explicit default address space, nonvolatile access, pointer-value base, matching width/alignment, base GPR availability, large-offset range classification, and scratch/clobber safety, then fail closed with precise diagnostics when scratch/clobber authority is missing. Do not admit the target cases yet unless the scratch/clobber contract is explicit.
-
-Step 4 should consume the Step 3 contract in `local_memory_diagnostic` and the load emission path, materializing only prepared selected pointer-value local-memory rows that satisfy the contract. Keep direct globals, frame slots, zero/narrow offsets, byval/sret stack pointer paths, filename predicates, exact-offset predicates, and expectation changes out of this admission route.
+Step 4 should publish explicit scratch/clobber authority for large selected pointer-value local-memory materialization, or consume an already-approved equivalent contract if one exists. Once that authority is explicit, wire the classifier into the local-memory diagnostic/emission path and materialize only rows that satisfy the Step 3 facts plus scratch/clobber safety.
 
 ## Watchouts
 
-The trace shows a consumer-range/materialization gap, not a missing prepared pointer carrier for the target rows. `prepared_pointer_value_memory_has_proven_authority` is stricter than these pointer rows because their layout authority remains `unknown` and range verdict is `unknown_compatible`; do not silently swap to that authority predicate unless Step 3 intentionally decides this idea must require proven object extent. The diagnostic remains generic and still does not distinguish missing selected pointer facts from large-offset scratch/clobber policy.
+The Step 3 slice intentionally does not admit large selected pointer-offset rows and does not change external expectations. `object_emission.cpp` still emits the generic local-memory rejection until Step 4 owns diagnostic/emission consumption. Do not bypass the new classifier with filename predicates, exact-offset predicates, or implicit use of `t0`; Step 4 needs an explicit scratch/clobber publication or approved existing authority.
 
 ## Proof
 
-Trace-only proof ran read-only dump/excerpt commands and wrote non-regression evidence under `build/agent_state/634_step2_*`:
+Ran the delegated proof command:
 
-- `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/ipa-sra-2.c > build/agent_state/634_step2_ipa-sra-2.prepared.txt 2> build/agent_state/634_step2_ipa-sra-2.prepared.err`
-- `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/pr60822.c > build/agent_state/634_step2_pr60822.prepared.txt 2> build/agent_state/634_step2_pr60822.prepared.err`
-- targeted `rg`, `nl`, and `sed` excerpt commands into the `build/agent_state/634_step2_*` artifacts listed above.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$' > test_after.log 2>&1`
 
-No code change was made, no root-level canonical logs were written, and `test_after.log` was not created for this trace-only packet.
+`test_after.log` shows `backend_riscv_object_emission` passed, 1/1 tests, 0 failures.

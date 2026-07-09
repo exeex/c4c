@@ -1390,6 +1390,47 @@ prepared_pointer_value_base_offset(
       static_cast<std::int32_t>(access->address.byte_offset)};
 }
 
+Rv64LargeSelectedPointerOffsetMaterializationStatus
+rv64_large_selected_pointer_offset_materialization_status(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t size_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (access == nullptr ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes > size_bytes ||
+      fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable;
+  }
+  const auto base_register =
+      gpr_register_number_for_value_name_local(lookups,
+                                               *access->address.pointer_value_name);
+  if (!base_register.has_value()) {
+    return Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable;
+  }
+  const auto& provenance = access->address.provenance;
+  const auto& requested = provenance.requested_range;
+  if (provenance.range_verdict == bir::MemoryRangeVerdict::ProvenOutOfBounds ||
+      !requested.available ||
+      requested.overflowed ||
+      !requested.end_available ||
+      requested.begin != access->address.byte_offset ||
+      requested.size_bytes != size_bytes ||
+      requested.end < requested.begin ||
+      requested.end - requested.begin != static_cast<std::int64_t>(size_bytes)) {
+    return Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable;
+  }
+  return Rv64LargeSelectedPointerOffsetMaterializationStatus::
+      MissingScratchClobberAuthority;
+}
+
 std::optional<std::size_t> prepared_pointer_value_stack_home_base_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,

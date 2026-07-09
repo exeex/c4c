@@ -5,6 +5,7 @@
 #include "src/backend/mir/riscv/codegen/prepared_edge_publication_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_emit_context.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_frame_emit.hpp"
+#include "src/backend/mir/riscv/codegen/prepared_local_memory_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_module_emit.hpp"
 #include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
@@ -18204,6 +18205,16 @@ int expect_pointer_value_scalar_local_rejection(
       "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
 }
 
+void make_pointer_value_access_large_with_range(
+    prepare::PreparedMemoryAccess& access) {
+  access.address.byte_offset = 4096;
+  access.address.provenance.requested_range =
+      bir::make_memory_byte_range(access.address.byte_offset,
+                                  access.address.size_bytes);
+  access.address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+}
+
 int rejects_prepared_pointer_value_i8_local_store_fail_closed_shapes() {
   auto prepared = make_prepared_pointer_value_i8_local_store_module();
   prepared.addressing.functions[0].accesses[0].address.pointer_value_name =
@@ -18388,6 +18399,13 @@ int rejects_prepared_pointer_value_scalar_local_fail_closed_shapes() {
   }
 
   prepared = make_prepared_pointer_value_scalar_local_module();
+  make_pointer_value_access_large_with_range(
+      prepared.addressing.functions[0].accesses[0]);
+  if (expect_pointer_value_scalar_local_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_value_scalar_local_module();
   prepared.addressing.functions[0].accesses[0].address.align_bytes = 4;
   if (expect_pointer_value_scalar_local_rejection(prepared) != 0) {
     return 1;
@@ -18432,6 +18450,64 @@ int rejects_prepared_pointer_value_scalar_local_fail_closed_shapes() {
           "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses") !=
       0) {
     return 1;
+  }
+
+  return 0;
+}
+
+int classifies_prepared_pointer_value_large_selected_offset_scratch_contract() {
+  auto prepared = make_prepared_pointer_value_scalar_local_module();
+  const auto& control_flow = prepared.control_flow.functions.front();
+  auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto& narrow_access = prepared.addressing.functions[0].accesses[0];
+  if (rv64::rv64_large_selected_pointer_offset_materialization_status(
+          &lookups,
+          &narrow_access,
+          2) !=
+      rv64::Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable) {
+    return fail("expected narrow selected pointer offset to stay on the immediate path");
+  }
+  if (!rv64::prepared_pointer_value_base_offset(&lookups, &narrow_access, 2)
+           .has_value()) {
+    return fail("expected narrow selected pointer offset base register contract");
+  }
+
+  prepared = make_prepared_pointer_value_scalar_local_module();
+  make_pointer_value_access_large_with_range(
+      prepared.addressing.functions[0].accesses[0]);
+  lookups = prepare::make_prepared_function_lookups(
+      prepared,
+      prepared.control_flow.functions.front());
+  const auto& large_access = prepared.addressing.functions[0].accesses[0];
+  if (rv64::prepared_pointer_value_base_offset(&lookups, &large_access, 2)
+          .has_value()) {
+    return fail("expected large selected pointer offset to reject the immediate path");
+  }
+  if (rv64::rv64_large_selected_pointer_offset_materialization_status(
+          &lookups,
+          &large_access,
+          2) != rv64::Rv64LargeSelectedPointerOffsetMaterializationStatus::
+                    MissingScratchClobberAuthority) {
+    return fail("expected large selected pointer offset to require scratch/clobber authority");
+  }
+
+  prepared = make_prepared_pointer_value_scalar_local_module();
+  make_pointer_value_access_large_with_range(
+      prepared.addressing.functions[0].accesses[0]);
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .requested_range = bir::MemoryByteRange{};
+  lookups = prepare::make_prepared_function_lookups(
+      prepared,
+      prepared.control_flow.functions.front());
+  if (rv64::rv64_large_selected_pointer_offset_materialization_status(
+          &lookups,
+          &prepared.addressing.functions[0].accesses[0],
+          2) !=
+      rv64::Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable) {
+    return fail("expected large selected pointer offset without range facts to stay rejected before scratch policy");
   }
 
   return 0;
@@ -28904,6 +28980,8 @@ int main() {
   status |= rejects_prepared_sret_stack_pointer_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_i8_local_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
+  status |=
+      classifies_prepared_pointer_value_large_selected_offset_scratch_contract();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();
   status |= builds_prepared_before_return_stack_to_register_abi_move_object();
