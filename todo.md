@@ -1,82 +1,90 @@
 Status: Active
 Source Idea Path: ideas/open/655_stack_destination_fan_in_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Select The First Follow-Up Implementation Seam
+Current Step ID: 5
+Current Step Title: Prepare The Follow-Up Lifecycle Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4: selected exactly one safe follow-up seam from the Step 3
-probe specifications.
-
-Selected follow-up seam: authority-rejection focused probe only.
-
-First probe filename: `tests/backend/case/riscv64_stack_destination_authority_rejection.c`.
-
-Negative proof expectation: prepared/prealloc output for a two-register
-fan-in into one stack destination must record the visible source homes and
-destination, but the bundle and each move must remain `authority=none`,
-`parallel_copy=no`, with fragment status
-`producer_authority_missing_for_register_fan_in_stack_destination` when no
-matching destination authority producer exists. Unrelated source freshness,
-call-preservation, branch-load, select/join, or carrier facts must not satisfy
-the destination-authority contract when their consumer point, value,
-destination, or semantics do not match.
-
-Why outside idea 637: this follow-up is a fail-closed non-637 boundary probe.
-It does not implement or depend on
-`SelectMaterializationPreservedStackFallback`, does not materialize a select
-result through a preserved stack fallback, and does not authorize a destination
-from any `%*.sel*` carrier. The positive fact is intentionally absent; the
-probe proves that idea 637-style or unrelated facts cannot authorize
-stack-destination register fan-in.
-
-Residual seams intentionally left blocked:
-
-- Ordered final-state authority is blocked because no legal non-637
-  `ordered_final_state` producer fact is currently proven.
-- Mutual-exclusion authority is blocked because the existing
-  `src/20021204-1.c` evidence remains rejection-only and does not contain a
-  destination producer fact proving candidate exclusivity.
-- Explicit merge authority is blocked because no producer currently publishes
-  an explicit merge carrier for the destination stack value at the consumer
-  point.
+Completed Step 5: converted the selected authority-rejection seam into a
+precise next executor handoff. The selected seam stays inside this
+decomposition idea because it is a test/probe-only negative boundary for
+missing stack-destination fan-in authority, not a new positive producer
+implementation initiative.
 
 ## Suggested Next
 
-Execute Step 5 by preparing a test/probe-only handoff for the selected
-authority-rejection seam. The next packet should add
+to_subagent: c4c-executor
+
+Objective: Add
 `tests/backend/case/riscv64_stack_destination_authority_rejection.c` as a
-negative focused probe without producer implementation, expectation
-downgrades, unsupported markers, or allowlist changes.
+negative focused probe for fail-closed stack-destination register fan-in
+authority when no matching destination-authority producer fact exists.
+
+Plan Step: Step 5 follow-up implementation packet for the selected
+authority-rejection seam.
+
+Owned Files: `tests/backend/case/riscv64_stack_destination_authority_rejection.c`,
+`todo.md`, and only the narrow test harness metadata required for the repo's
+normal backend case discovery if the new file is not auto-discovered.
+
+Do Not Touch: `plan.md`, `ideas/open/**`, implementation source files,
+expectations for unrelated tests, unsupported markers, allowlists, timeout or
+pass/fail accounting files, root-level logs other than `test_after.log`, and
+any idea 637 route files.
+
+Proof Command Recommendation: run the narrow backend/prepared test command
+that proves only
+`tests/backend/case/riscv64_stack_destination_authority_rejection.c` and writes
+the result to `test_after.log`. If the repo requires a compile/build step
+before that test can run, run the matching narrow build first and include both
+commands in `test_after.log`.
+
+Done When: the new probe is present and validates that a two-register fan-in
+into one stack destination records the visible source homes and destination,
+but the bundle and each move remain `authority=none`, `parallel_copy=no`, with
+fragment status
+`producer_authority_missing_for_register_fan_in_stack_destination` when no
+matching destination-authority producer exists. The packet is not done if it
+passes by weakening expectations, marking the test unsupported, allowlisting
+the failure, or adding producer implementation.
+
+Watchouts: do not implement ordered final-state, mutual-exclusion, explicit
+merge, or any other positive producer authority in this packet. Do not reopen
+idea 637 or use `SelectMaterializationPreservedStackFallback`,
+select-materialized preserved-stack fallback behavior, `%*.sel*` carriers,
+source freshness, call-preservation, branch-load, select/join, diagnostic
+wording, move order, or GCC torture testcase identity as destination-authority
+proof. If adding this negative probe requires a broader lifecycle split,
+implementation source changes, expectation downgrades, unsupported markers, or
+allowlist changes, stop and report the blocker instead of editing those files.
 
 ## Watchouts
 
-- Do not reopen idea 637 through `SelectMaterializationPreservedStackFallback`.
+- The next packet is probe-only and negative by design; it must not become a
+  producer implementation packet.
+- Do not reopen idea 637 through `SelectMaterializationPreservedStackFallback`
+  or select-materialized preserved-stack fallback behavior.
 - Do not claim the rejected `src/20021204-1.c` route from unrelated `%t25`
-  select facts.
-- Do not treat the diagnostic phrase `mutually-exclusive authority
-  event_kind=before_instruction_copies` as positive mutual-exclusion evidence;
-  the same excerpts report `authority=none` and missing producer authority.
+  select facts or diagnostic wording.
+- Do not treat `mutually-exclusive authority
+  event_kind=before_instruction_copies` as positive evidence; the current
+  excerpts still report `authority=none` and missing producer authority.
 - Keep source freshness separate from destination authority; branch stack-load,
-  call-preservation, or source-publication facts do not by themselves authorize
-  multi-register fan-in into a stack destination.
-- Existing code has only the closed idea 637 semantics enum
-  `SelectMaterializationPreservedStackFallback`; do not treat that as the
-  selected implementation seam.
-- Ordered final-state, mutual-exclusion, and explicit merge remain proposed
-  producer contract shapes, not proof that implementation support already
-  exists.
-- The selected authority-rejection follow-up is negative by design and must
-  not be converted into an expectation downgrade or an unsupported marker
-  change.
-- No positive producer implementation work is selected by this Step 4 packet.
+  call-preservation, source-publication, select/join, or carrier facts do not
+  by themselves authorize multi-register fan-in into a stack destination.
+- Ordered final-state, mutual-exclusion, and explicit merge remain blocked
+  producer seams because no legal non-637 positive producer fact is currently
+  proven.
+- Do not make the probe pass through expectation downgrades, unsupported
+  markers, allowlists, timeout/pass-fail accounting changes, or named-case
+  shortcuts.
 
 ## Proof
 
 No build or ctest proof required by the delegated packet because this was a
-selection-only `todo.md` update. Used the current Step 3 probe specifications
-in `todo.md` and the active `plan.md`. Did not create or overwrite
+handoff-only `todo.md` update. Used the current `todo.md` Step 4 seam
+selection and the active `plan.md`. Did not create or overwrite
 `test_after.log`.
