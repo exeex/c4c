@@ -1,6 +1,6 @@
 # Large Selected Pointer-Offset Local-Memory Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/614_rv64_pointer_local_memory_consumption.md`
 Related:
@@ -57,6 +57,30 @@ range handling separate from the narrow local-memory consumer.
 - Negative proof keeps narrow frame-slot accesses, producer-owned pointer
   rows, direct pointer arithmetic, string/global rows, and aggregate homes
   outside this policy.
+
+## Closure Note
+
+Closed after the Step 4 RV64 consumer admission and Step 5 reclassification.
+`src/ipa-sra-2.c` selected pointer offset `3999996` moved past
+`unsupported_local_memory_access`; object disassembly in
+`build/agent_state/634_step5_ipa_sra_2_c4c_bin_objdump.txt` shows large-offset
+materialization through `t6` followed by `lw ..., 0(t6)`. Its remaining first
+owner is an out-of-scope scalar call-boundary freshness/runtime mismatch now
+tracked by
+`ideas/open/643_rv64_scalar_call_boundary_freshness_after_call.md`.
+
+`src/pr60822.c` selected pointer offsets `800000` and `1700004` also moved past
+`unsupported_local_memory_access`; their remaining first owner is
+`unsupported_global_data`, which is covered by existing aggregate/global
+residual ownership in
+`ideas/open/641_aggregate_global_object_materialization_policy.md`.
+
+Close proof used the existing focused `backend_riscv_object_emission`
+`test_before.log`, regenerated `test_after.log` after a fresh build with
+`ctest --test-dir build -j --output-on-failure -R
+'^backend_riscv_object_emission$'`, and accepted the lifecycle-only close with
+`c4c-regression-guard --allow-non-decreasing-passed`: `1` passed before,
+`1` passed after, no new failures.
 
 ## Reviewer Reject Signals
 
