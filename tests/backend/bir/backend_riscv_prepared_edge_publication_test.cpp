@@ -292,6 +292,42 @@ void set_edge_publication_value_types(prepare::PreparedBirModule& prepared,
       destination_type;
 }
 
+void convert_fixture_to_select_publication(prepare::PreparedBirModule& prepared,
+                                           const FixtureIds& ids) {
+  auto& control_flow = prepared.control_flow.functions.front();
+  auto& join_transfer = control_flow.join_transfers.front();
+  join_transfer.kind = prepare::PreparedJoinTransferKind::SelectMaterialization;
+  join_transfer.carrier_kind =
+      prepare::PreparedJoinTransferCarrierKind::SelectMaterialization;
+
+  control_flow.parallel_copy_bundles = {prepare::PreparedParallelCopyBundle{
+      .predecessor_label = ids.predecessor,
+      .successor_label = ids.successor,
+      .execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .execution_block_label = ids.predecessor,
+      .moves =
+          {prepare::PreparedParallelCopyMove{
+              .join_transfer_index = 0,
+              .edge_transfer_index = 0,
+              .source_value = bir::Value::named(bir::TypeKind::I32, "%src"),
+              .destination_value = bir::Value::named(bir::TypeKind::I32, "%dst"),
+              .carrier_kind =
+                  prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+          }},
+      .steps = {prepare::PreparedParallelCopyStep{
+          .kind = prepare::PreparedParallelCopyStepKind::Move,
+          .move_index = 0,
+      }},
+  }};
+
+  auto& move_bundle = prepared.value_locations.functions.front().move_bundles.front();
+  auto& move = move_bundle.moves.front();
+  move.source_parallel_copy_step_index = std::size_t{0};
+  move.source_parallel_copy_predecessor_label = ids.predecessor;
+  move.source_parallel_copy_successor_label = ids.successor;
+}
+
 int check_register_to_register_move_uses_shared_lookup() {
   auto prepared = make_register_edge_publication_module();
   const auto ids = FixtureIds{
@@ -356,6 +392,145 @@ int check_register_to_register_move_uses_shared_lookup() {
               "RISC-V helper should not rediscover edge moves after shared lookup authority is removed")) {
     return 1;
   }
+  return 0;
+}
+
+int check_select_stack_slot_to_register_move_uses_explicit_source_freshness() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+  convert_fixture_to_select_publication(prepared, ids);
+
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  source_home.register_name.reset();
+  source_home.slot_id = prepare::PreparedFrameSlotId{31};
+  source_home.offset_bytes = 64;
+  source_home.size_bytes = 4;
+  source_home.align_bytes = 4;
+  source_home.immediate_i32.reset();
+  source_home.pointer_base_value_name.reset();
+  source_home.pointer_byte_delta.reset();
+
+  const auto asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(asm_text.find("lw a1, 64(sp)") != std::string::npos,
+              "RISC-V select publication should consume explicit stack-source "
+              "freshness for an I32 GPR publication")) {
+    return 1;
+  }
+
+  auto lookups = make_lookups(prepared);
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V select stack-source publication intent should be available") ||
+      !expect(intent.publication != nullptr &&
+                  intent.publication->carrier_kind ==
+                      prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+              "RISC-V select stack-source publication should preserve select carrier authority") ||
+      !expect(intent.source_stack_slot_id == prepare::PreparedFrameSlotId{31} &&
+                  intent.source_stack_offset_bytes == 64 &&
+                  intent.source_stack_size_bytes == 4 &&
+                  intent.source_register.empty() &&
+                  !intent.source_memory_byte_offset.has_value() &&
+                  !intent.source_pointer_byte_delta.has_value() &&
+                  intent.destination_register == "a1",
+              "RISC-V select stack-source publication should expose explicit "
+              "stack-source facts without alias or pointer evidence") ||
+      !expect(intent.instruction_text == "lw a1, 64(sp)",
+              "RISC-V select stack-source publication should render the target load")) {
+    return 1;
+  }
+
+  source_home.offset_bytes.reset();
+  source_home.pointer_base_value_name = ids.base_name;
+  source_home.pointer_byte_delta = 64;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V select stack-source publication should fail closed when "
+              "explicit source offset freshness is missing") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_stack_offset_bytes.has_value() &&
+                  !intent.source_pointer_byte_delta.has_value(),
+              "RISC-V select stack-source publication should not substitute "
+              "alias or pointer-base evidence for source freshness")) {
+    return 1;
+  }
+
+  auto& destination_home = prepared.value_locations.functions.front().value_homes.at(1);
+  destination_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  destination_home.register_name.reset();
+  destination_home.slot_id = prepare::PreparedFrameSlotId{41};
+  destination_home.offset_bytes = 80;
+  destination_home.size_bytes = 4;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V select stack-to-stack publication should keep missing "
+              "source freshness rejected before destination legality") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_stack_offset_bytes.has_value() &&
+                  !intent.destination_stack_offset_bytes.has_value(),
+              "RISC-V select stack-to-stack publication should not expose a "
+              "destination route when source freshness is absent")) {
+    return 1;
+  }
+
+  source_home.kind = prepare::PreparedValueHomeKind::Register;
+  source_home.register_name = std::string{"a0"};
+  source_home.slot_id.reset();
+  source_home.offset_bytes.reset();
+  source_home.size_bytes.reset();
+  source_home.pointer_base_value_name.reset();
+  source_home.pointer_byte_delta.reset();
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.destination_stack_offset_bytes == 80 &&
+                  !intent.source_stack_offset_bytes.has_value(),
+              "RISC-V select stack-source publication test should keep "
+              "destination legality separate from source freshness")) {
+    return 1;
+  }
+
+  destination_home.kind = prepare::PreparedValueHomeKind::Register;
+  destination_home.register_name = std::string{"a1"};
+  destination_home.slot_id.reset();
+  destination_home.offset_bytes.reset();
+  destination_home.size_bytes.reset();
+  source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  source_home.register_name.reset();
+  source_home.slot_id = prepare::PreparedFrameSlotId{32};
+  source_home.offset_bytes = 4096;
+  source_home.size_bytes = 4;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  const auto large_offset_asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.source_stack_offset_bytes == 4096 &&
+                  intent.instruction_text ==
+                      "li t6, 4096\n    add t6, sp, t6\n    lw a1, 0(t6)",
+              "RISC-V select stack-source publication should render large "
+              "source offsets through address materialization") ||
+      !expect(large_offset_asm_text.find(
+                  "li t6, 4096\n    add t6, sp, t6\n    lw a1, 0(t6)") !=
+                  std::string::npos,
+              "RISC-V select stack-source publication should emit large-offset "
+              "loads after admission")) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -2418,6 +2593,11 @@ int main() {
     return result;
   }
   if (const int result = check_stack_slot_to_register_move_uses_shared_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          check_select_stack_slot_to_register_move_uses_explicit_source_freshness();
       result != 0) {
     return result;
   }

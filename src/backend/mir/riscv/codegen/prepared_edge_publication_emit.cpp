@@ -1025,6 +1025,45 @@ std::optional<std::size_t> rv64_select_publication_scalar_memory_size_for_type(
 
 }  // namespace
 
+bool prepared_select_publication_stack_source_to_gpr_is_admitted(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.publication == nullptr ||
+      intent.publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      intent.source_type != intent.destination_type ||
+      intent.source_type == bir::TypeKind::Ptr ||
+      !intent.source_stack_slot_id.has_value() ||
+      !intent.source_stack_offset_bytes.has_value() ||
+      !intent.source_stack_size_bytes.has_value() ||
+      !intent.source_register.empty() ||
+      intent.source_immediate_i32.has_value() ||
+      intent.source_memory_base_value_id.has_value() ||
+      !intent.source_memory_base_register.empty() ||
+      intent.source_memory_byte_offset.has_value() ||
+      intent.source_memory_size_bytes.has_value() ||
+      intent.source_pointer_base_value_id.has_value() ||
+      !intent.source_pointer_base_register.empty() ||
+      intent.source_pointer_byte_delta.has_value() ||
+      intent.destination_register.empty() ||
+      intent.destination_stack_slot_id.has_value() ||
+      intent.destination_stack_offset_bytes.has_value() ||
+      intent.destination_stack_size_bytes.has_value()) {
+    return false;
+  }
+  const auto source_size_bytes =
+      rv64_select_publication_scalar_memory_size_for_type(intent.source_type);
+  if (!source_size_bytes.has_value() ||
+      *source_size_bytes != *intent.source_stack_size_bytes ||
+      (*intent.source_stack_size_bytes != 4 &&
+       *intent.source_stack_size_bytes != 8) ||
+      *intent.source_stack_offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+    return false;
+  }
+  return rv64_prepared_register_number(intent.destination_register).has_value();
+}
+
 bool prepared_select_publication_gpr_to_stack_destination_is_admitted(
     const EdgePublicationMoveIntent& intent) {
   if (intent.status != EdgePublicationMoveIntentStatus::Available ||
@@ -1115,6 +1154,9 @@ std::string rv64_select_publication_move_rejection_reason(
     return "unsupported_destination_stack_offset";
   }
   if (intent.source_stack_offset_bytes.has_value()) {
+    if (prepared_select_publication_stack_source_to_gpr_is_admitted(intent)) {
+      return "available";
+    }
     return "unsupported_source_stack_offset";
   }
   if (intent.source_memory_byte_offset.has_value()) {
@@ -1152,6 +1194,21 @@ bool prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
     const prepare::PreparedParallelCopyBundle& bundle) {
   return prepared_select_publication_pointer_stack_source_to_gpr_is_admitted(
              intent) &&
+         intent.publication->parallel_copy_bundle == &bundle &&
+         intent.publication->parallel_copy_execution_site ==
+             prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator &&
+         intent.publication->parallel_copy_execution_block_label ==
+             std::optional<BlockLabelId>{bundle.predecessor_label} &&
+         intent.publication->parallel_copy_step_kind ==
+             prepare::PreparedParallelCopyStepKind::Move &&
+         !intent.publication->parallel_copy_step_uses_cycle_temp_source &&
+         !intent.publication->parallel_copy_bundle_has_cycle;
+}
+
+bool prepared_select_publication_stack_source_to_gpr_matches_bundle(
+    const EdgePublicationMoveIntent& intent,
+    const prepare::PreparedParallelCopyBundle& bundle) {
+  return prepared_select_publication_stack_source_to_gpr_is_admitted(intent) &&
          intent.publication->parallel_copy_bundle == &bundle &&
          intent.publication->parallel_copy_execution_site ==
              prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator &&
@@ -1300,6 +1357,9 @@ bool prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
         (!prepared_select_publication_move_is_rv64_object_admitted(intent) &&
          !prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
+             intent,
+             bundle) &&
+         !prepared_select_publication_stack_source_to_gpr_matches_bundle(
              intent,
              bundle) &&
          !prepared_select_publication_gpr_to_stack_destination_matches_bundle(

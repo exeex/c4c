@@ -9428,6 +9428,8 @@ std::optional<std::string> rv64_select_publication_bundle_rejection_diagnostic(
         !prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
             intent,
             bundle) &&
+        !prepared_select_publication_stack_source_to_gpr_matches_bundle(intent,
+                                                                        bundle) &&
         !prepared_select_publication_gpr_to_stack_destination_matches_bundle(
             intent,
             bundle) &&
@@ -9525,6 +9527,9 @@ fragment_for_predecessor_select_publication_pointer_stack_source_to_gpr(
         *destination_value_id);
     if (!prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
             intent,
+            bundle) &&
+        !prepared_select_publication_stack_source_to_gpr_matches_bundle(
+            intent,
             bundle)) {
       return std::nullopt;
     }
@@ -9532,10 +9537,10 @@ fragment_for_predecessor_select_publication_pointer_stack_source_to_gpr(
     if (!destination.has_value()) {
       return std::nullopt;
     }
-    if (!append_rv64_load_stack_to_register(
+    if (!append_rv64_load_stack_offset_to_register(
             fragment,
             *destination,
-            static_cast<std::int32_t>(*intent.source_stack_offset_bytes),
+            *intent.source_stack_offset_bytes,
             *intent.source_stack_size_bytes)) {
       return std::nullopt;
     }

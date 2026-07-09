@@ -26,6 +26,10 @@ prepared_select_publication_pointer_stack_source_to_gpr_is_admitted(
     const EdgePublicationMoveIntent& intent);
 
 [[nodiscard]] bool
+prepared_select_publication_stack_source_to_gpr_is_admitted(
+    const EdgePublicationMoveIntent& intent);
+
+[[nodiscard]] bool
 prepared_select_publication_gpr_to_stack_destination_is_admitted(
     const EdgePublicationMoveIntent& intent);
 
@@ -40,6 +44,11 @@ prepared_select_publication_gpr_to_stack_destination_is_admitted(
 
 [[nodiscard]] bool
 prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
+    const EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedParallelCopyBundle& bundle);
+
+[[nodiscard]] bool
+prepared_select_publication_stack_source_to_gpr_matches_bundle(
     const EdgePublicationMoveIntent& intent,
     const c4c::backend::prepare::PreparedParallelCopyBundle& bundle);
 
