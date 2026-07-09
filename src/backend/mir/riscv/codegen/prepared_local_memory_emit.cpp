@@ -1511,7 +1511,7 @@ std::optional<std::int32_t> prepared_byval_stack_slot_pointer_access_offset(
       !access->address.pointer_value_name.has_value() ||
       !access->address.can_use_base_plus_offset ||
       access->address.size_bytes != size_bytes ||
-      access->address.align_bytes > size_bytes ||
+      access->address.align_bytes > 8 ||
       access->address.byte_offset < 0 ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return std::nullopt;
@@ -1538,7 +1538,8 @@ std::optional<std::int32_t> prepared_byval_stack_slot_pointer_access_offset(
       !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
       !home.size_bytes.has_value() || !home.align_bytes.has_value() ||
       home.value_name != *access->address.pointer_value_name ||
-      *home.align_bytes > size_bytes) {
+      access->address.align_bytes > *home.align_bytes ||
+      *home.align_bytes > 8) {
     return std::nullopt;
   }
   const auto frame_slot_it =
@@ -1602,7 +1603,7 @@ prepared_sret_stack_slot_pointer_access(
       !access->address.pointer_value_name.has_value() ||
       !access->address.can_use_base_plus_offset ||
       access->address.size_bytes != size_bytes ||
-      access->address.align_bytes > size_bytes ||
+      access->address.align_bytes > 8 ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return std::nullopt;
   }
@@ -1628,6 +1629,7 @@ prepared_sret_stack_slot_pointer_access(
       !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
       !home.size_bytes.has_value() || !home.align_bytes.has_value() ||
       home.value_name != *access->address.pointer_value_name ||
+      access->address.align_bytes > *home.align_bytes ||
       *home.align_bytes > 8) {
     return std::nullopt;
   }
@@ -1822,6 +1824,32 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
       if (!source_fpr.has_value() ||
           !append_rv64_store_fpr_to_stack_offset_local(
               fragment, *source_fpr, *offset, store.value.type)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    const auto sret_pointer =
+        prepared_sret_stack_slot_pointer_access(stack_layout,
+                                                lookups,
+                                                access,
+                                                stack_frame_bytes,
+                                                *size_bytes);
+    if (sret_pointer.has_value()) {
+      RiscvEncodedFragment fragment;
+      if (!append_rv64_load_stack_to_register_local(fragment,
+                                                   7,
+                                                   sret_pointer->pointer_home_offset,
+                                                   8)) {
+        return std::nullopt;
+      }
+      const auto source_fpr = append_rv64_prepare_floating_value_for_store_local(
+          fragment, scratch_fpr, 6, names, lookups, store.value);
+      if (!source_fpr.has_value() ||
+          !append_rv64_store_fpr_to_base_local(fragment,
+                                              *source_fpr,
+                                              7,
+                                              sret_pointer->pointee_offset,
+                                              store.value.type)) {
         return std::nullopt;
       }
       return fragment;
@@ -2098,6 +2126,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     if (offset.has_value()) {
       if (!append_rv64_load_stack_offset_to_fpr_local(
               fragment, *destination, *offset, load.result.type)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    const auto byval_offset =
+        prepared_byval_stack_slot_pointer_access_offset(stack_layout,
+                                                        lookups,
+                                                        access,
+                                                        stack_frame_bytes,
+                                                        *size_bytes);
+    if (byval_offset.has_value()) {
+      if (!append_rv64_load_stack_offset_to_fpr_local(
+              fragment, *destination, *byval_offset, load.result.type)) {
         return std::nullopt;
       }
       return fragment;

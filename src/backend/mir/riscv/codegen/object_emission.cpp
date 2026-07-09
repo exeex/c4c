@@ -12090,6 +12090,18 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                .has_value() &&
           !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
                .has_value() &&
+          !prepared_byval_stack_slot_pointer_access_offset(stack_layout,
+                                                           &lookups,
+                                                           access,
+                                                           stack_frame_bytes,
+                                                           *size_bytes)
+               .has_value() &&
+          !prepared_sret_stack_slot_pointer_access(stack_layout,
+                                                   &lookups,
+                                                   access,
+                                                   stack_frame_bytes,
+                                                   *size_bytes)
+               .has_value() &&
           !prepared_pointer_value_stack_home_base_offset(stack_layout,
                                                         &lookups,
                                                         access,
