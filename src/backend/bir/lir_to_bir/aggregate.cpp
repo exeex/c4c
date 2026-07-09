@@ -493,6 +493,39 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
                                                 lowered_insts);
 }
 
+bool BirFunctionLowerer::append_local_aggregate_copy_to_global(
+    const LocalAggregateSlots& source_slots,
+    const GlobalAddress& target_address,
+    std::size_t target_align_bytes,
+    std::string_view temp_prefix,
+    std::vector<bir::Inst>* lowered_insts) const {
+  const auto source_leaves = collect_sorted_leaf_slots(source_slots);
+  for (const auto& [byte_offset, source_slot_name] : source_leaves) {
+    const auto slot_type_it = local_slot_types_.find(source_slot_name);
+    if (slot_type_it == local_slot_types_.end()) {
+      return false;
+    }
+    const auto slot_size = type_size_bytes(slot_type_it->second);
+    if (slot_size == 0) {
+      return false;
+    }
+    const std::string temp_name =
+        std::string(temp_prefix) + "." + std::to_string(byte_offset);
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(slot_type_it->second, temp_name),
+        .slot_name = source_slot_name,
+    });
+    lowered_insts->push_back(bir::StoreGlobalInst{
+        .global_name = target_address.global_name,
+        .global_name_id = target_address.link_name_id,
+        .value = bir::Value::named(slot_type_it->second, temp_name),
+        .byte_offset = target_address.byte_offset + byte_offset,
+        .align_bytes = std::max(slot_size, target_align_bytes),
+    });
+  }
+  return true;
+}
+
 bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts) {
   for (const auto& [param_name, info] : aggregate_params_) {
     if ((info.layout.kind != AggregateTypeLayout::Kind::Struct &&

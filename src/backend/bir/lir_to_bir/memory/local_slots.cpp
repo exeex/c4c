@@ -982,7 +982,8 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     const auto aggregate_layout =
         lower_byval_aggregate_layout(store.type_str.str(), type_decls_, &structured_layouts_);
     if (!aggregate_layout.has_value() ||
-        store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        (store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
+         store.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global) ||
         store.val.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return false;
     }
@@ -1091,6 +1092,52 @@ bool BirFunctionLowerer::lower_memory_store_inst(
               source_aggregate_it->second,
               dynamic_target_it->second,
               store.ptr.str() + ".dynamic.aggregate.copy");
+        }
+      }
+      if (source_aggregate_it != local_aggregate_slots_.end()) {
+        const auto source_layout =
+            lower_byval_aggregate_layout(source_aggregate_it->second.type_text,
+                                         type_decls_,
+                                         &structured_layouts_);
+        if (!source_layout.has_value() ||
+            source_layout->size_bytes != aggregate_layout->size_bytes) {
+          return false;
+        }
+        auto append_direct_global_aggregate_copy =
+            [&](const GlobalAddress& target_address,
+                std::string_view temp_prefix) -> bool {
+          const auto global_it = global_types_.find(target_address.global_name);
+          if (global_it == global_types_.end() || !global_it->second.supports_linear_addressing ||
+              global_it->second.storage_size_bytes <
+                  target_address.byte_offset + aggregate_layout->size_bytes) {
+            return false;
+          }
+          clear_local_scalar_slot_values();
+          return append_local_aggregate_copy_to_global(source_aggregate_it->second,
+                                                       target_address,
+                                                       aggregate_layout->align_bytes,
+                                                       temp_prefix,
+                                                       lowered_insts);
+        };
+        if (store.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+          const std::string global_name = store.ptr.str().substr(1);
+          const auto global_it = global_types_.find(global_name);
+          if (global_it == global_types_.end()) {
+            return false;
+          }
+          return append_direct_global_aggregate_copy(
+              GlobalAddress{
+                  .global_name = global_name,
+                  .link_name_id = global_it->second.link_name_id,
+                  .value_type = global_it->second.value_type,
+                  .byte_offset = 0,
+              },
+              std::string(global_name) + ".aggregate.copy");
+        }
+        if (const auto global_target_it = global_pointer_slots_.find(store.ptr.str());
+            global_target_it != global_pointer_slots_.end()) {
+          return append_direct_global_aggregate_copy(
+              global_target_it->second, store.ptr.str() + ".global.aggregate.copy");
         }
       }
       const auto addressed_target_it = pointer_value_addresses_.find(store.ptr.str());

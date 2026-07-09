@@ -1100,6 +1100,17 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 select short_circuit dump
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_aggregate_global_store_handoff
+  SRC "${BACKEND_CASE_ROOT}/aggregate_global_store_handoff.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-bir
+  REQUIRED_SNIPPETS "bir.store_global @sink, i32 sink.aggregate.copy.0|bir.store_global @sink, offset 4, i32 sink.aggregate.copy.4|bir.store_global @slots, offset 8, i32 %t7.global.aggregate.copy.0|bir.store_global @slots, offset 12, i32 %t7.global.aggregate.copy.4"
+  FORBIDDEN_SNIPPETS "semantic lir_to_bir failed|prepared.module"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 aggregate global_store dump
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_pointer_to_pointer_local_address
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
