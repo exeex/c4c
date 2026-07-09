@@ -1775,6 +1775,7 @@ struct HirStructField {
   int bit_width = -1;           // width in bits (0 for zero-width padding bitfield)
   int bit_offset = 0;           // offset within storage unit (from LSB)
   int storage_unit_bits = 0;    // backing storage integer size (8, 16, 32, or 64)
+  int packed_storage_offset_bytes = -1;  // byte offset for packed bitfield byte-storage access
   bool is_bf_signed = false;    // true if original declared type was signed
   std::optional<FnPtrSig> fn_ptr_sig;  // Phase C: fn_ptr signature for callable fields
 };
@@ -1788,6 +1789,7 @@ struct HirStructDef {
   int align_bytes = 1;
   int pack_align = 0;    // #pragma pack alignment (0 = default, >0 = cap field alignment to N)
   int struct_align = 0;  // __attribute__((aligned(N))) on struct (0 = default)
+  bool has_zero_width_bitfield = false;
   std::vector<HirStructField> fields;
   std::vector<SymbolName> base_tags;
   std::vector<TextId> base_tag_text_ids;

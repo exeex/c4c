@@ -220,6 +220,19 @@ LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module
   return lir_field_type_ref(field_ty, lir_module, mod, field.elem_type);
 }
 
+bool packed_bitfield_byte_storage_record(const HirStructDef& sd) {
+  if (sd.pack_align != 1 || sd.is_union || !sd.base_tags.empty() ||
+      sd.fields.empty() || sd.size_bytes <= 0) {
+    return false;
+  }
+  for (const auto& field : sd.fields) {
+    if (field.bit_width < 0 || field.packed_storage_offset_bytes < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<LirTypeRef> lir_global_type_ref(const std::string& rendered_text,
                                               LirModule* lir_module,
                                               const c4c::hir::Module& mod,
@@ -740,6 +753,15 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
     auto record_structured_decl = [&]() {
       if (lir_module) lir_module->record_struct_decl(std::move(structured_decl));
     };
+
+    if (packed_bitfield_byte_storage_record(sd)) {
+      decls.push_back(sty + " = type <{ [" + std::to_string(sd.size_bytes) +
+                      " x i8] }>");
+      structured_decl.fields.push_back(
+          {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
+      record_structured_decl();
+      continue;
+    }
 
     if (sd.fields.empty() && sd.base_tags.empty()) {
       if (sd.size_bytes == 0) {

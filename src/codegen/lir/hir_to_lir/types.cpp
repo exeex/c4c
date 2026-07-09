@@ -134,6 +134,7 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
         step.bit_width = f.bit_width;
         step.bit_offset = f.bit_offset;
         step.storage_unit_bits = f.storage_unit_bits;
+        step.packed_storage_offset_bytes = f.packed_storage_offset_bytes;
         step.bf_is_signed = f.is_bf_signed;
       }
       chain.push_back(std::move(step));
@@ -211,6 +212,7 @@ bool StmtEmitter::find_field_chain_by_member_symbol_id(const std::string& tag,
       step.bit_width = f.bit_width;
       step.bit_offset = f.bit_offset;
       step.storage_unit_bits = f.storage_unit_bits;
+      step.packed_storage_offset_bytes = f.packed_storage_offset_bytes;
       step.bf_is_signed = f.is_bf_signed;
     }
     chain.push_back(std::move(step));
@@ -276,6 +278,7 @@ bool StmtEmitter::resolve_field_access(const std::string& tag, const std::string
     out_bf->bit_width = last.bit_width;
     out_bf->bit_offset = last.bit_offset;
     out_bf->storage_unit_bits = last.storage_unit_bits;
+    out_bf->packed_storage_offset_bytes = last.packed_storage_offset_bytes;
     out_bf->is_signed = last.bf_is_signed;
   }
   return true;
@@ -292,6 +295,7 @@ bool StmtEmitter::resolve_field_access_by_member_symbol_id(
     out_bf->bit_width = last.bit_width;
     out_bf->bit_offset = last.bit_offset;
     out_bf->storage_unit_bits = last.storage_unit_bits;
+    out_bf->packed_storage_offset_bytes = last.packed_storage_offset_bytes;
     out_bf->is_signed = last.bf_is_signed;
   }
   return true;

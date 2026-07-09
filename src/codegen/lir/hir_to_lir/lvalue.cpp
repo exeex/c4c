@@ -78,6 +78,13 @@ std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr
                            tmp, sty_ref, cur_ptr, false,
                            {"i32 0", "i32 " + std::to_string(step.llvm_idx)}});
       cur_ptr = tmp;
+      if (step.packed_storage_offset_bytes >= 0) {
+        const std::string byte_ptr = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirGepOp{
+                             byte_ptr, "i8", cur_ptr, false,
+                             {"i64 " + std::to_string(step.packed_storage_offset_bytes)}});
+        cur_ptr = byte_ptr;
+      }
     }
   }
   return cur_ptr;

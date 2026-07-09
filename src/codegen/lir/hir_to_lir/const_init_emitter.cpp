@@ -41,6 +41,19 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
+bool packed_bitfield_byte_storage_record(const HirStructDef& sd) {
+  if (sd.pack_align != 1 || sd.is_union || !sd.base_tags.empty() ||
+      sd.fields.empty() || sd.size_bytes <= 0) {
+    return false;
+  }
+  for (const auto& field : sd.fields) {
+    if (field.bit_width < 0 || field.packed_storage_offset_bytes < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
                               std::string_view fallback) {
   const std::string_view resolved = mod.link_names.spelling(id);
@@ -1538,6 +1551,42 @@ std::string ConstInitEmitter::format_array_literal(const TypeSpec& elem_ts,
 
 std::string ConstInitEmitter::format_struct_literal(const HirStructDef& sd,
                                                      const std::vector<std::string>& field_vals) const {
+  if (packed_bitfield_byte_storage_record(sd)) {
+    std::vector<unsigned char> bytes(static_cast<std::size_t>(sd.size_bytes), 0);
+    for (std::size_t i = 0; i < sd.fields.size() && i < field_vals.size(); ++i) {
+      const auto& bf = sd.fields[i];
+      if (bf.bit_width <= 0 || bf.packed_storage_offset_bytes < 0) continue;
+      long long signed_val = 0;
+      try {
+        signed_val = std::stoll(field_vals[i]);
+      } catch (...) {
+      }
+      const unsigned long long mask =
+          (bf.bit_width >= 64) ? ~0ULL : ((1ULL << bf.bit_width) - 1);
+      const unsigned long long value =
+          static_cast<unsigned long long>(signed_val) & mask;
+      const int absolute_bit_offset = bf.packed_storage_offset_bytes * 8 + bf.bit_offset;
+      for (int bit = 0; bit < bf.bit_width; ++bit) {
+        if (((value >> bit) & 1ULL) == 0) continue;
+        const int out_bit = absolute_bit_offset + bit;
+        const std::size_t byte_index = static_cast<std::size_t>(out_bit / 8);
+        if (byte_index >= bytes.size()) continue;
+        bytes[byte_index] |= static_cast<unsigned char>(1U << (out_bit % 8));
+      }
+    }
+    const std::string array_ty = "[" + std::to_string(sd.size_bytes) + " x i8]";
+    const bool all_zero =
+        std::all_of(bytes.begin(), bytes.end(), [](unsigned char byte) { return byte == 0; });
+    if (all_zero) return "<{ " + array_ty + " zeroinitializer }>";
+    std::string array = "[";
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+      if (i) array += ", ";
+      array += "i8 " + std::to_string(static_cast<unsigned int>(bytes[i]));
+    }
+    array += "]";
+    return "<{ " + array_ty + " " + array + " }>";
+  }
+
   std::string out = sd.pack_align > 0 ? "<{ " : "{ ";
   bool first = true;
   int cur_offset = 0;

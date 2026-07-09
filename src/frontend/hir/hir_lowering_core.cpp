@@ -546,6 +546,61 @@ void prepare_field_layout(const hir::Module& module, HirStructField& field, int 
   if (pack > 0 && field.align_bytes > pack) field.align_bytes = pack;
 }
 
+bool is_packed_bitfield_byte_storage_record(const HirStructDef& def, int pack) {
+  if (pack != 1 || def.is_union || def.has_zero_width_bitfield ||
+      !def.base_tags.empty() || def.fields.empty()) {
+    return false;
+  }
+  for (const auto& field : def.fields) {
+    if (field.bit_width < 0 || field.packed_storage_offset_bytes < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void clear_packed_bitfield_byte_storage_layout(HirStructDef& def) {
+  for (auto& field : def.fields) {
+    field.packed_storage_offset_bytes = -1;
+  }
+}
+
+bool compute_packed_bitfield_byte_storage_layout(HirStructDef& def) {
+  def.align_bytes = 1;
+  int end_bit = 0;
+  for (auto& field : def.fields) {
+    end_bit = std::max(end_bit,
+                       field.packed_storage_offset_bytes * 8 + field.bit_offset +
+                           std::max(0, field.bit_width));
+  }
+  def.size_bytes = std::max(0, (end_bit + 7) / 8);
+  if (def.struct_align > 0)
+    def.align_bytes = std::max(def.align_bytes, def.struct_align);
+  def.size_bytes = align_to(def.size_bytes, def.align_bytes);
+  for (auto& field : def.fields) {
+    const int absolute_bit_offset =
+        field.packed_storage_offset_bytes * 8 + field.bit_offset;
+    const int storage_bytes = std::max(1, field.storage_unit_bits / 8);
+    field.align_bytes = 1;
+    field.size_bytes = storage_bytes;
+    if (storage_bytes > def.size_bytes) {
+      clear_packed_bitfield_byte_storage_layout(def);
+      return false;
+    }
+    if (field.packed_storage_offset_bytes + field.size_bytes > def.size_bytes) {
+      field.packed_storage_offset_bytes = std::max(0, def.size_bytes - field.size_bytes);
+      field.bit_offset = absolute_bit_offset - field.packed_storage_offset_bytes * 8;
+    }
+    if (field.packed_storage_offset_bytes < 0 ||
+        field.packed_storage_offset_bytes + field.size_bytes > def.size_bytes) {
+      clear_packed_bitfield_byte_storage_layout(def);
+      return false;
+    }
+    field.offset_bytes = field.packed_storage_offset_bytes;
+  }
+  return true;
+}
+
 void apply_struct_align(HirStructDef& def) {
   if (def.struct_align > 0)
     def.align_bytes = std::max(def.align_bytes, def.struct_align);
@@ -620,6 +675,12 @@ void compute_struct_layout(hir::Module* module, HirStructDef& def) {
     compute_union_layout(*module, def, pack);
     return;
   }
+
+  if (is_packed_bitfield_byte_storage_record(def, pack) &&
+      compute_packed_bitfield_byte_storage_layout(def)) {
+    return;
+  }
+  clear_packed_bitfield_byte_storage_layout(def);
 
   compute_record_layout(*module, def, pack);
 }

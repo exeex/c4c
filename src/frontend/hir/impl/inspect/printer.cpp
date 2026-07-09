@@ -429,6 +429,8 @@ class Printer {
         out << " bitfield(width=" << field.bit_width
             << ", bit_offset=" << field.bit_offset
             << ", storage_bits=" << field.storage_unit_bits;
+        if (field.packed_storage_offset_bytes >= 0)
+          out << ", packed_storage_offset=" << field.packed_storage_offset_bytes;
         if (field.is_bf_signed) out << ", signed";
         out << ")";
       }

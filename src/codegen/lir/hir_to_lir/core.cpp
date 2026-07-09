@@ -29,6 +29,21 @@ static int align_to_bytes(int value, int align) {
 
 static void append_legacy_layout_field_types(const Module& mod, const HirStructDef& sd,
                                              std::vector<std::string>& out) {
+  if (sd.pack_align == 1 && !sd.is_union && sd.base_tags.empty() &&
+      !sd.fields.empty() && sd.size_bytes > 0) {
+    bool packed_bitfield_byte_storage = true;
+    for (const auto& field : sd.fields) {
+      if (field.bit_width < 0 || field.packed_storage_offset_bytes < 0) {
+        packed_bitfield_byte_storage = false;
+        break;
+      }
+    }
+    if (packed_bitfield_byte_storage) {
+      out.push_back("[" + std::to_string(sd.size_bytes) + " x i8]");
+      return;
+    }
+  }
+
   if (sd.fields.empty() && sd.base_tags.empty()) {
     if (sd.size_bytes > 0) out.push_back("[" + std::to_string(sd.size_bytes) + " x i8]");
     return;

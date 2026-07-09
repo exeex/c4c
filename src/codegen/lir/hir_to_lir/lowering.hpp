@@ -51,8 +51,10 @@ struct BitfieldAccess {
   int bit_width = -1;
   int bit_offset = 0;
   int storage_unit_bits = 0;
+  int packed_storage_offset_bytes = -1;
   bool is_signed = false;
   bool is_bitfield() const { return bit_width >= 0; }
+  bool uses_packed_byte_storage() const { return packed_storage_offset_bytes >= 0; }
 };
 
 // ── Struct field lookup ───────────────────────────────────────────────────
@@ -66,6 +68,7 @@ struct FieldStep {
   int bit_width = -1;
   int bit_offset = 0;
   int storage_unit_bits = 0;
+  int packed_storage_offset_bytes = -1;
   bool bf_is_signed = false;
 };
 

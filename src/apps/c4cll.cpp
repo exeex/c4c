@@ -303,6 +303,7 @@ void print_usage(const char *argv0) {
       << "Code generation:\n"
 #if C4C_ENABLE_BACKEND
       << "  --codegen llvm|asm|obj|compare Select codegen backend path\n"
+      << "  --emit-llvm               Compatibility alias for --codegen llvm\n"
       << "                            asm emits selected backend-native machine\n"
       << "                            nodes as assembly when supported\n"
       << "                            obj emits target-native ELF object bytes\n"
@@ -511,6 +512,8 @@ int main(int argc, char **argv) {
         pie_level = 2;
       } else if (arg == "-fpie") {
         pie_level = 1;
+      } else if (arg == "--emit-llvm") {
+        codegen_path = c4c::codegen::llvm_backend::CodegenPath::Llvm;
       } else if (arg == "--codegen" && i + 1 < args.size()) {
         const std::string& val = args[++i];
         if (val == "llvm") {

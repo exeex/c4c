@@ -1199,12 +1199,45 @@ c4c_add_backend_codegen_object_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_hir_riscv64_packed_global_bitfield_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_packed_global_bitfield_access.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-hir
+  REQUIRED_SNIPPETS "struct Rv64PackedGlobalBits size=9 align=1|packed_storage_offset=0|packed_storage_offset=2|packed_storage_offset=5"
+  FORBIDDEN_SNIPPETS "size=12|src/pr79737-2.c|symbol=i|symbol=j"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 packed_global bitfield dump hir
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_hir_riscv64_packed_global_bitfield_zero_width_rejected
+  SRC "${BACKEND_CASE_ROOT}/riscv64_packed_global_bitfield_zero_width_rejected.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-hir
+  REQUIRED_SNIPPETS "struct Rv64PackedZeroWidthBits|field a:|field b:"
+  FORBIDDEN_SNIPPETS "packed_storage_offset|byte_storage_aggregate"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 packed_global bitfield dump hir
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_hir_riscv64_packed_global_bitfield_tiny_rejected
+  SRC "${BACKEND_CASE_ROOT}/riscv64_packed_global_bitfield_tiny_rejected.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-hir
+  REQUIRED_SNIPPETS "struct Rv64PackedTinyBits|field a:"
+  FORBIDDEN_SNIPPETS "packed_storage_offset|byte_storage_aggregate"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 packed_global bitfield dump hir
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_packed_global_bitfield_access
   SRC "${BACKEND_CASE_ROOT}/riscv64_packed_global_bitfield_access.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.load_global i32 @rv64_packed_global_left|bir.store_global @rv64_packed_global_left|bir.load_global i32 @rv64_packed_global_right|base=global_symbol result=%t1.bf.unit symbol=rv64_packed_global_left offset=0 size=4 align=4 base_plus_offset=yes layout_authority=byte_storage_aggregate range_verdict=proven_in_bounds"
-  FORBIDDEN_SNIPPETS "unsupported_global_data|src/pr79737-2.c|symbol=i|symbol=j"
+  REQUIRED_SNIPPETS "bir.load_global i32 @rv64_packed_global_left|bir.store_global @rv64_packed_global_left|bir.load_global i32 @rv64_packed_global_right|symbol=rv64_packed_global_left offset=0 size=4 align=4 base_plus_offset=yes layout_authority=byte_storage_aggregate range_verdict=proven_in_bounds|symbol=rv64_packed_global_left offset=2 size=4 align=4 base_plus_offset=yes layout_authority=byte_storage_aggregate range_verdict=proven_in_bounds|symbol=rv64_packed_global_left offset=5 size=4 align=4 base_plus_offset=yes layout_authority=byte_storage_aggregate range_verdict=proven_in_bounds"
+  FORBIDDEN_SNIPPETS "unsupported_global_data|range_verdict=proven_out_of_bounds|src/pr79737-2.c|symbol=i|symbol=j"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 packed_global bitfield dump
 )
