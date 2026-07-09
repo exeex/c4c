@@ -46,6 +46,7 @@ assumptions would blur ABI policy and risk testcase-shaped assembly output.
 - Floating comparison semantics, floating casts, runtime mismatch triage,
   local/global producer repair, variadic/library policy, expectation changes,
   unsupported marker changes, allowlists, timeouts, or accounting.
+- f128 issues, handle by future project
 
 ## Acceptance Criteria
 
