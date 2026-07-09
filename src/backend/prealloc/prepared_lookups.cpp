@@ -944,6 +944,102 @@ void collect_block_entry_republication_effects(
                                  : !access->stored_value_name.has_value();
 }
 
+[[nodiscard]] bool prepared_scalar_local_access_type_is_supported(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return true;
+    default:
+      return false;
+  }
+}
+
+[[nodiscard]] std::optional<std::size_t> prepared_scalar_local_access_size(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+      return std::size_t{8};
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] bool prepared_local_access_matches_slot(
+    const PreparedBirModule& prepared,
+    const PreparedMemoryAccess& access,
+    SlotNameId slot_id,
+    std::string_view fallback_slot_name,
+    bir::TypeKind value_type) {
+  const auto size_bytes = prepared_scalar_local_access_size(value_type);
+  if (!size_bytes.has_value() ||
+      access.address_space != bir::AddressSpace::Default ||
+      access.is_volatile ||
+      access.address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !access.address.frame_slot_id.has_value() ||
+      !access.address.can_use_base_plus_offset ||
+      access.address.byte_offset < 0 ||
+      access.address.size_bytes != *size_bytes ||
+      access.address.align_bytes > *size_bytes) {
+    return false;
+  }
+  const auto* frame_slot =
+      find_frame_slot_by_id(prepared.stack_layout, *access.address.frame_slot_id);
+  if (frame_slot == nullptr ||
+      (access.function_name != kInvalidFunctionName &&
+       frame_slot->function_name != kInvalidFunctionName &&
+       frame_slot->function_name != access.function_name)) {
+    return false;
+  }
+  const auto* object =
+      find_stack_object_by_id(prepared.stack_layout, frame_slot->object_id);
+  if (object == nullptr || object->source_kind != "local_slot" ||
+      object->type != value_type) {
+    return false;
+  }
+  if (slot_id != kInvalidSlotName) {
+    return object->slot_name == std::optional<SlotNameId>{slot_id};
+  }
+  return !fallback_slot_name.empty() &&
+         prepared_stack_object_name(prepared.names, *object) == fallback_slot_name;
+}
+
+[[nodiscard]] bool prepared_local_memory_access_matches_current_instruction(
+    const PreparedBirModule& prepared,
+    const PreparedMemoryAccess& access,
+    const bir::Inst& inst) {
+  if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
+    return prepared_scalar_local_access_type_is_supported(load->result.type) &&
+           access.result_value_name ==
+               prepared_existing_value_name_id(prepared.names, load->result) &&
+           !access.stored_value_name.has_value() &&
+           prepared_local_access_matches_slot(prepared,
+                                              access,
+                                              load->slot_id,
+                                              load->slot_name,
+                                              load->result.type);
+  }
+  if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst)) {
+    return prepared_scalar_local_access_type_is_supported(store->value.type) &&
+           !access.result_value_name.has_value() &&
+           prepared_store_access_matches_value(prepared.names, &access, *store) &&
+           prepared_local_access_matches_slot(prepared,
+                                              access,
+                                              store->slot_id,
+                                              store->slot_name,
+                                              store->value.type);
+  }
+  return false;
+}
+
 [[nodiscard]] const bir::Value* prepared_lookup_source_producer_result(
     const PreparedEdgePublicationSourceProducer& producer) {
   switch (producer.kind) {
@@ -1511,6 +1607,11 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
            access.stored_value_name == stored_value_name &&
            prepared_access_symbol_matches(
                prepared, access, store->global_name, store->global_name_id);
+  }
+  if (prepared_local_memory_access_matches_current_instruction(prepared,
+                                                               access,
+                                                               inst)) {
+    return true;
   }
   return false;
 }

@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/prepared_object_traversal.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"
@@ -13134,6 +13135,237 @@ int check_prepared_addressing_contract_activation() {
   return 0;
 }
 
+int check_scalar_local_frame_slot_access_lookup_repair() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+  const auto function_name =
+      prepared.names.function_names.intern("scalar_local_lookup_repair");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto noise_slot = prepared.names.slot_names.intern("%lv.noise");
+  const auto scalar_slot = prepared.names.slot_names.intern("%lv.scalar");
+  const auto pointer_slot = prepared.names.slot_names.intern("%lv.ptr");
+  const auto stored_name = prepared.names.value_names.intern("%stored");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.noise",
+                  .slot_id = noise_slot,
+                  .value = bir::Value::immediate_i32(7),
+                  .align_bytes = 4,
+              },
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.scalar",
+                  .slot_id = scalar_slot,
+                  .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+                  .align_bytes = 4,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                  .slot_name = "%lv.scalar",
+                  .slot_id = scalar_slot,
+                  .align_bytes = 4,
+              },
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.ptr",
+                  .slot_id = pointer_slot,
+                  .value = bir::Value::named(bir::TypeKind::Ptr, "%ptr"),
+                  .align_bytes = 8,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "scalar_local_lookup_repair",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots =
+          {
+              bir::LocalSlot{
+                  .name = "%lv.noise",
+                  .slot_id = noise_slot,
+                  .type = bir::TypeKind::I32,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+              },
+              bir::LocalSlot{
+                  .name = "%lv.scalar",
+                  .slot_id = scalar_slot,
+                  .type = bir::TypeKind::I32,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+              },
+              bir::LocalSlot{
+                  .name = "%lv.ptr",
+                  .slot_id = pointer_slot,
+                  .type = bir::TypeKind::Ptr,
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+          },
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.objects = {
+      prepare::PreparedStackObject{
+          .object_id = prepare::PreparedObjectId{1},
+          .function_name = function_name,
+          .slot_name = noise_slot,
+          .source_kind = "local_slot",
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedStackObject{
+          .object_id = prepare::PreparedObjectId{2},
+          .function_name = function_name,
+          .slot_name = scalar_slot,
+          .source_kind = "local_slot",
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedStackObject{
+          .object_id = prepare::PreparedObjectId{3},
+          .function_name = function_name,
+          .slot_name = pointer_slot,
+          .source_kind = "local_slot",
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{11},
+          .object_id = prepare::PreparedObjectId{1},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{12},
+          .object_id = prepare::PreparedObjectId{2},
+          .function_name = function_name,
+          .offset_bytes = 4,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{13},
+          .object_id = prepare::PreparedObjectId{3},
+          .function_name = function_name,
+          .offset_bytes = 8,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .stored_value_name = stored_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{12},
+                          .byte_offset = 0,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = loaded_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{12},
+                          .byte_offset = 0,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 2,
+                  .stored_value_name = prepared.names.value_names.intern("%ptr"),
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{13},
+                          .byte_offset = 0,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared,
+                                              prepared.control_flow.functions[0]);
+  const auto* repaired_store = prepare::find_indexed_prepared_memory_access(
+      &lookups.memory_accesses,
+      block_label,
+      1);
+  if (repaired_store == nullptr ||
+      repaired_store->stored_value_name !=
+          std::optional<c4c::ValueNameId>{stored_name} ||
+      repaired_store->address.frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{12}}) {
+    return fail("expected stale scalar local frame-slot store access to remap to the current local store");
+  }
+
+  const auto* repaired_load = prepare::find_indexed_prepared_memory_access(
+      &lookups.memory_accesses,
+      block_label,
+      2);
+  if (repaired_load == nullptr ||
+      repaired_load->result_value_name !=
+          std::optional<c4c::ValueNameId>{loaded_name} ||
+      repaired_load->address.frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{12}}) {
+    return fail("expected stale scalar local frame-slot load access to remap to the current local load");
+  }
+
+  const auto* pointer_store = prepare::find_indexed_prepared_memory_access(
+      &lookups.memory_accesses,
+      block_label,
+      3);
+  if (pointer_store != nullptr) {
+    return fail("expected pointer local frame-slot access not to remap through scalar local repair");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -13275,6 +13507,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_prepared_addressing_contract_activation(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_scalar_local_frame_slot_access_lookup_repair();
+      rc != 0) {
     return rc;
   }
 
