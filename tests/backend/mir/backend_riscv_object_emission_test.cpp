@@ -15356,47 +15356,12 @@ int builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object(
   return 0;
 }
 
-int builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_after_frame_object() {
+int rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_without_incoming_authority() {
   const auto prepared =
       make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module();
-  const auto result =
-      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
-  const auto& module = result.module;
-  if (!module.has_value()) {
-    return fail(
-        "expected stack-passed formal fused pointer branch to build: " +
-        result.diagnostic);
-  }
-  const auto* text = object::find_section(*module, ".text");
-  const auto* function = object::find_symbol(*module, "cmp_branch");
-  if (text == nullptr || function == nullptr) {
-    return fail("expected stack-passed formal branch object symbols and text");
-  }
-  bool saw_incoming_formal_load = false;
-  bool saw_local_frame_formal_load = false;
-  bool saw_branch_using_loaded_lhs = false;
-  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
-       offset += 4) {
-    const auto word = read_u32(text->bytes, offset);
-    saw_incoming_formal_load |= is_rv64_load_from_sp(word, 3U, 64) &&
-                                riscv_rd(word) == 28;
-    saw_local_frame_formal_load |= is_rv64_load_from_sp(word, 3U, 48) &&
-                                   riscv_rd(word) == 28;
-    saw_branch_using_loaded_lhs |= (word & 0x7fU) == 0x63U &&
-                                   ((word >> 12) & 0x7U) == 6U &&
-                                   riscv_rs1(word) == 28 &&
-                                   riscv_rs2(word) == 29;
-  }
-  if (!saw_incoming_formal_load) {
-    return fail("expected stack-passed formal branch lhs to load from callee frame plus incoming offset");
-  }
-  if (saw_local_frame_formal_load) {
-    return fail("expected stack-passed formal branch lhs not to use local frame offset");
-  }
-  if (!saw_branch_using_loaded_lhs) {
-    return fail("expected branch to compare the loaded formal lhs");
-  }
-  return 0;
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes");
 }
 
 int builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object() {
@@ -18266,86 +18231,28 @@ int expect_stack_passed_scalar_param_home_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
       prepared,
-      "unsupported_param_home: RV64 object route requires stack-passed scalar formal homes to match prepared frame-slot facts");
+      "unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes");
 }
 
-int builds_stack_passed_scalar_param_home_object() {
+int rejects_stack_passed_scalar_param_home_missing_incoming_authority() {
   const auto prepared = make_prepared_stack_passed_scalar_param_home_module();
-  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
-  if (!module.has_value()) {
-    return fail("expected prepared stack-passed scalar formal home to build");
-  }
-  const auto* text = object::find_section(*module, ".text");
-  const auto* function =
-      object::find_symbol(*module, "stack_passed_scalar_param_home");
-  if (text == nullptr || function == nullptr) {
-    return fail("expected stack-passed scalar formal object to publish text/function");
-  }
-  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
-      function->value != 0 || function->size_bytes != 12 ||
-      function->section != std::optional<object::SectionId>{text->id}) {
-    return fail("expected stack-passed scalar formal object text layout");
-  }
-  if (read_u32(text->bytes, 0) != 0xfc010113 ||
-      read_u32(text->bytes, 4) != 0x04010113 ||
-      read_u32(text->bytes, 8) != 0x00008067) {
-    return fail("expected stack-passed formal to use prepared home without entry register store");
-  }
-  if (!module->relocations.empty()) {
-    return fail("expected stack-passed scalar formal object to need no relocations");
+  if (expect_stack_passed_scalar_param_home_rejection(prepared) != 0) {
+    return 1;
   }
 
   const auto floating =
       make_prepared_stack_passed_scalar_param_home_module(bir::TypeKind::F64,
                                                          bir::AbiValueClass::Sse);
-  if (!rv64::build_rv64_prepared_text_object_module(floating).has_value()) {
-    return fail("expected prepared stack-passed F64 formal home to build");
+  if (expect_stack_passed_scalar_param_home_rejection(floating) != 0) {
+    return 1;
   }
   return 0;
 }
 
-int loads_stack_passed_scalar_param_home_after_callee_frame_object() {
+int rejects_stack_passed_scalar_param_load_without_incoming_authority() {
   const auto prepared =
       make_prepared_stack_passed_scalar_param_load_with_local_frame_module();
-  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
-  if (!module.has_value()) {
-    return fail("expected prepared stack-passed scalar formal load to build");
-  }
-  const auto* text = object::find_section(*module, ".text");
-  const auto* function =
-      object::find_symbol(*module, "stack_passed_scalar_param_load");
-  if (text == nullptr || function == nullptr) {
-    return fail("expected stack-passed scalar formal load object to publish text/function");
-  }
-  if (function->value != 0 ||
-      function->section != std::optional<object::SectionId>{text->id}) {
-    return fail("expected stack-passed scalar formal load function symbol in .text");
-  }
-  bool saw_incoming_formal_load = false;
-  bool saw_local_frame_load = false;
-  bool saw_misclassified_formal_as_local = false;
-  bool saw_misclassified_local_as_incoming = false;
-  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
-    const auto word = read_u32(text->bytes, offset);
-    saw_incoming_formal_load |= is_rv64_load_from_sp(word, 3U, 64) &&
-                                riscv_rd(word) == 28;
-    saw_local_frame_load |= is_rv64_load_from_sp(word, 3U, 16) &&
-                            riscv_rd(word) == 29;
-    saw_misclassified_formal_as_local |= is_rv64_load_from_sp(word, 3U, 48) &&
-                                         riscv_rd(word) == 28;
-    saw_misclassified_local_as_incoming |= is_rv64_load_from_sp(word, 3U, 80) &&
-                                           riscv_rd(word) == 29;
-  }
-  if (!saw_incoming_formal_load) {
-    return fail("expected stack-passed formal load at callee frame plus incoming offset");
-  }
-  if (!saw_local_frame_load) {
-    return fail("expected ordinary local frame load to keep prepared frame offset");
-  }
-  if (saw_misclassified_formal_as_local || saw_misclassified_local_as_incoming) {
-    return fail("expected stack-passed formal and local frame offsets to remain distinct");
-  }
-  return 0;
+  return expect_stack_passed_scalar_param_home_rejection(prepared);
 }
 
 int rejects_stack_passed_scalar_param_home_fail_closed_shapes() {
@@ -30762,7 +30669,7 @@ int main() {
   status |=
       builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object();
   status |=
-      builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_after_frame_object();
+      rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_without_incoming_authority();
   status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |=
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();
@@ -30833,8 +30740,8 @@ int main() {
   status |= rejects_byval_stack_slot_param_home_fail_closed_shapes();
   status |= builds_scalar_gpr_stack_slot_param_home_object();
   status |= rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes();
-  status |= builds_stack_passed_scalar_param_home_object();
-  status |= loads_stack_passed_scalar_param_home_after_callee_frame_object();
+  status |= rejects_stack_passed_scalar_param_home_missing_incoming_authority();
+  status |= rejects_stack_passed_scalar_param_load_without_incoming_authority();
   status |= rejects_stack_passed_scalar_param_home_fail_closed_shapes();
   status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();

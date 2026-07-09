@@ -8,39 +8,38 @@ Current Step Title: Implement One Prepared Incoming Stack Formal Authority Path
 
 ## Just Finished
 
-Lifecycle repair consumed the blocking route review in `review/reviewA.md`.
-The review rejects the current callee-side Step 3 route as source-idea drift:
-`object_emission.cpp` and `prepared_local_memory_emit.cpp` recompute incoming
-stack-passed formal offsets from formal order plus ABI size/alignment, then
-load via `stack_frame_bytes + incoming_offset`.
+Step 3 removed the rejected RV64 consumer-side incoming stack formal
+reconstruction from `object_emission.cpp` and
+`prepared_local_memory_emit.cpp`.
 
-That path violates idea 644's prepared ABI/home authority rule and closed idea
-512's rejection of RV64-side stack argument offset inference. The source idea
-remains valid; the active Step 3 runbook was tightened to require explicit
-prepared incoming stack-parameter/home authority.
+The available prepared formal publication model records
+`IncomingStackToHome` plus the callee local stack-slot home, but it does not
+publish an explicit caller-stack incoming offset/address authority distinct
+from that local spill-slot home. RV64 now fails closed for stack-passed scalar
+formal homes with an explicit missing-authority diagnostic instead of loading
+`stack_frame_bytes + inferred_incoming_offset`.
+
+Focused RV64 object coverage was adjusted away from literal `sp + 64`
+positive assertions and now covers the missing explicit incoming-stack
+authority path.
 
 ## Suggested Next
 
-Next packet must remove or replace the RV64-side incoming-offset
-reconstruction in the callee-side formal load paths. It should consume an
-explicit prepared incoming stack-parameter/home fact for the caller-stack
-address, while retaining local spill-slot/home checks only as fail-closed
-coherence validation.
-
-If no explicit incoming stack formal authority is published, stop the RV64
-consumer work and classify the residual as a producer/prealloc publication gap
-instead of deriving offsets from formal order, ABI folklore, source layout, or
-final assembly.
+Next packet should publish explicit prepared incoming stack formal authority
+from the producer/prealloc side. That fact needs to identify the caller-stack
+incoming byte offset/address for each stack-passed scalar formal separately
+from the callee's local spill-slot/home record.
 
 ## Watchouts
 
 - Do not build on helpers that compute `incoming_offset` by walking
   `function.params` and then add `stack_frame_bytes`; `review/reviewA.md`
   marks that route as high-severity drift.
-- Positive coverage must prove the explicit prepared incoming-stack authority,
-  not merely an expected load offset such as `sp + 64`.
-- Negative coverage should cover missing or ambiguous incoming-stack authority;
-  local spill-slot malformed-home rejection alone is not enough.
+- Positive consumer coverage should wait until producer/prealloc publishes an
+  explicit incoming-stack authority fact; do not reintroduce literal expected
+  load offsets such as `sp + 64` as the proof.
+- The current `src/20001017-1.c` residual is now classified as a
+  producer/prealloc publication gap, not an RV64 consumer inference task.
 - The local address helper intentionally reuses
   `prepared_frame_slot_address_call_argument_offset`, so missing prepared
   addressing/frame-plan authority remains fail-closed instead of falling back to
@@ -52,14 +51,24 @@ final assembly.
   `main`: it now emits `addi t0, sp, 0x10`, adjusted `addi t0, sp, 0x28`,
   `addi s1, sp, 0x18`, and `addi s2, sp, 0x20` before consuming those pointer
   sources as register or stack call arguments.
-- The new residual appears callee-side in `bug`, where the first comparison
-  loads `0x58(sp)`, the saved `ra` slot, before comparing with `a0` and
-  branching to `abort`.
+- The current callee-side residual now stops at object-route admission with the
+  missing explicit incoming-stack formal authority diagnostic.
 
 ## Proof
 
-Lifecycle-only repair; no implementation validation was run.
+Exact delegated proof command was run and wrote `test_after.log`.
 
-Review state: `review/reviewA.md` is the code-review artifact for the pending
-review. The rejected baseline candidate introduced 20 failures, so it is not
-accepted as proof for this route.
+Build and selected CTest subset passed:
+`backend_riscv_object_emission`,
+`backend_prepare_frame_stack_call_contract`,
+`backend_prepared_lookup_helper`,
+`backend_prealloc_call_boundary_classification`,
+`backend_prepared_object_consumer_contract`, and
+`backend_call_boundary_effect_plan`.
+
+The final allowlisted RV64 GCC torture progress check failed only for
+`src/20001017-1.c`, with:
+`unsupported_param_home: RV64 object route requires explicit prepared incoming
+stack formal authority before consuming stack-passed scalar formal homes`.
+This is the classified producer/prealloc publication gap, but the exact
+delegated shell command exited non-zero.
