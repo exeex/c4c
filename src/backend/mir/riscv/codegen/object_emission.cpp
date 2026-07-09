@@ -5257,10 +5257,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       const auto source = rv64_register_number(*result.source_register_name);
       const auto* destination_home =
           prepared_value_home_for_id(lookups, *result.destination_value_id);
-      if (call.result->type == c4c::backend::bir::TypeKind::Ptr) {
+      const bool pointer_result_type =
+          call.result->type == c4c::backend::bir::TypeKind::Ptr;
+      const bool pointer_return_type =
+          call.return_type == c4c::backend::bir::TypeKind::Ptr;
+      if (pointer_result_type != pointer_return_type) {
         return std::nullopt;
       }
-      const auto size_bytes = rv64_scalar_memory_size_for_type(call.result->type);
+      const bool pointer_stack_result = pointer_result_type && pointer_return_type;
+      if (pointer_stack_result &&
+          (!result.source_register_placement.has_value() ||
+           !prepare::has_prepared_register_placement(
+               *result.source_register_placement) ||
+           result.source_register_placement->bank !=
+               prepare::PreparedRegisterBank::Gpr ||
+           result.source_register_placement->pool !=
+               prepare::PreparedRegisterSlotPool::CallResult ||
+           result.source_register_placement->contiguous_width != 1)) {
+        return std::nullopt;
+      }
+      const auto size_bytes =
+          pointer_stack_result
+              ? std::optional<std::size_t>{8}
+              : rv64_scalar_memory_size_for_type(call.result->type);
       if (!source.has_value() || destination_home == nullptr ||
           !size_bytes.has_value() ||
           destination_home->kind != prepare::PreparedValueHomeKind::StackSlot ||

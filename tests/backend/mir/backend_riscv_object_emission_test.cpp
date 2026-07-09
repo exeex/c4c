@@ -5877,6 +5877,76 @@ prepare::PreparedBirModule make_prepared_scalar_stack_result_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_pointer_stack_result_call_module() {
+  auto prepared = make_prepared_immediate_null_same_module_call_module();
+  const auto main_name = prepared.names.function_names.intern("main");
+
+  auto& callee = prepared.module.functions[0];
+  callee.return_type = bir::TypeKind::Ptr;
+  callee.return_size_bytes = 8;
+  callee.return_align_bytes = 8;
+  callee.blocks[0].terminator.value =
+      bir::Value::named(bir::TypeKind::Ptr, "%p.p");
+
+  auto& main = prepared.module.functions[1];
+  main.return_type = bir::TypeKind::Void;
+  main.return_size_bytes = 0;
+  main.return_align_bytes = 1;
+  auto& call = std::get<bir::CallInst>(main.blocks[0].insts[0]);
+  call.result->type = bir::TypeKind::Ptr;
+  call.return_type = bir::TypeKind::Ptr;
+  main.blocks[0].terminator.value = std::nullopt;
+
+  auto& result_home = prepared.value_locations.functions[1].value_homes[0];
+  result_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  result_home.register_name = std::nullopt;
+  result_home.slot_id = prepare::PreparedFrameSlotId{12};
+  result_home.offset_bytes = 8;
+  result_home.size_bytes = 8;
+  result_home.align_bytes = 8;
+
+  auto& result = *prepared.call_plans.functions[0].calls[0].result;
+  result.value_bank = prepare::PreparedRegisterBank::Gpr;
+  result.destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  result.destination_register_name = std::nullopt;
+  result.destination_register_bank = std::nullopt;
+  result.destination_slot_id = prepare::PreparedFrameSlotId{12};
+  result.destination_stack_offset_bytes = 8;
+  result.destination_contiguous_width = 1;
+  result.source_register_placement = prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallResult,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+
+  prepared.frame_plan.functions = {
+      prepare::PreparedFramePlanFunction{
+          .function_name = prepared.names.function_names.intern("mix"),
+          .frame_size_bytes = 0,
+          .frame_alignment_bytes = 1,
+      },
+      prepare::PreparedFramePlanFunction{
+          .function_name = main_name,
+          .frame_size_bytes = 16,
+          .frame_alignment_bytes = 8,
+          .frame_slot_order = {prepare::PreparedFrameSlotId{12}},
+      },
+  };
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{12},
+          .function_name = main_name,
+          .offset_bytes = 8,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  return prepared;
+}
+
 prepare::PreparedValueHome make_fpr_home(c4c::FunctionNameId function_name,
                                          c4c::ValueNameId value_name,
                                          prepare::PreparedValueId value_id,
@@ -15041,7 +15111,42 @@ int builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object() {
   return 0;
 }
 
+int builds_prepared_pointer_stack_result_call_object() {
+  const auto prepared = make_prepared_pointer_stack_result_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared pointer stack-result call RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "mix");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected prepared pointer stack-result call object to publish text/functions");
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id ||
+      module.relocations[0].offset < main->value ||
+      module.relocations[0].offset + 8 >= text->bytes.size()) {
+    return fail("expected pointer stack-result same-module call relocation");
+  }
+  if (read_u32(text->bytes, module.relocations[0].offset + 8) != 0x00a13423) {
+    return fail("expected pointer call result to publish from a0 into stack slot with an 8-byte store");
+  }
+  return 0;
+}
+
 int expect_scalar_stack_result_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
+}
+
+int expect_pointer_stack_result_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
       prepared, kUnsupportedSameModuleCallAbiDiagnostic);
@@ -15125,6 +15230,39 @@ int rejects_prepared_scalar_stack_result_call_fail_closed_shapes() {
   prepared.call_plans.functions[0].calls[0].result->destination_storage_kind =
       prepare::PreparedMoveStorageKind::None;
   if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int rejects_prepared_pointer_stack_result_call_fail_closed_shapes() {
+  auto prepared = make_prepared_pointer_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->source_register_placement =
+      std::nullopt;
+  if (expect_pointer_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->source_register_placement->pool =
+      prepare::PreparedRegisterSlotPool::CallArgument;
+  if (expect_pointer_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_stack_result_call_module();
+  prepared.value_locations.functions[1].value_homes[0].offset_bytes = 0;
+  if (expect_pointer_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_stack_result_call_module();
+  if (auto* call = std::get_if<bir::CallInst>(
+          &prepared.module.functions[1].blocks[0].insts[0])) {
+    call->return_type = bir::TypeKind::I64;
+  }
+  if (expect_pointer_stack_result_call_rejection(prepared) != 0) {
     return 1;
   }
 
@@ -27163,7 +27301,9 @@ int main() {
   status |= rejects_prepared_same_module_sret_call_fail_closed_shapes();
   status |= builds_prepared_scalar_stack_result_call_object();
   status |= builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object();
+  status |= builds_prepared_pointer_stack_result_call_object();
   status |= rejects_prepared_scalar_stack_result_call_fail_closed_shapes();
+  status |= rejects_prepared_pointer_stack_result_call_fail_closed_shapes();
   status |= builds_prepared_fpr_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();
