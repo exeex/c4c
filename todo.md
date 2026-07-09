@@ -1,57 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/629_prepared_return_destination_home_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Narrow RV64 Return Consumer Admission
+Current Step ID: 5
+Current Step Title: Reclassify Representative Rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added narrow RV64 object-emission admission for explicit prepared
-return destination-home authority on before-return stack-slot-to-register
-function return moves.
+Step 5 re-ran the representative return rows after the Step 3/4 return
+destination-home authority changes:
 
-The consumer now emits the selected pointer return load only when the prepared
-move carries `FunctionReturnDestinationHome` on
-`function_return_authority_kind`, keeps generic move/bundle authority as
-`None`, has phase `BeforeReturn`, reason `return_stack_to_register`,
-destination kind `FunctionReturnAbi`, register storage, a stack-slot
-`PreparedValueHome` source, matching destination register name, occupied name,
-placement, and target identity for RV64 `a0`, width 1, matching block and
-instruction association, and no immediate, parallel-copy, cycle-temp, or
-destination-stack side channels.
+- `src/20001130-2.c`: failed with `[RV64_BACKEND_RUNTIME_MISMATCH]`,
+  `clang_exit=0`, and `c4c_exit=Segmentation fault`. The row now reaches a
+  linked executable instead of failing return-authority admission. The emitted
+  `output_25` return paths return uninitialized saved registers or stack
+  contents for string literal addresses (`s1`, `s2`, or `0(sp)`) rather than
+  materialized `.rodata` homes, so the residual owner is local/global literal
+  address publication or address-value preservation, not return
+  destination-home authority.
+- `src/20080719-1.c`: failed with `[RV64_BACKEND_RUNTIME_MISMATCH]`,
+  `clang_exit=0`, and `c4c_exit=Segmentation fault`. The row now reaches a
+  linked executable instead of failing return-authority admission. The emitted
+  `xxx` return paths store and reload uninitialized registers (`s2`, `s1`, or
+  `t0`) for static table addresses rather than materialized `.rodata` homes,
+  so the residual owner is local/global table address publication or
+  address-value preservation, not return destination-home authority.
 
-Focused RV64 object-emission coverage now proves the authorized pointer return
-loads from the prepared stack home and returns without an extra generic pointer
-return load. The same coverage rejects missing or unrelated return authority,
-missing/non-stack source home, wrong destination kind/storage/reason/phase,
-missing or mismatched destination name/placement/target identity/occupied
-names, wrong width, malformed block/instruction association, side channels, and
-generic move-bundle authority.
+Both representative rows are now out of scope for idea 629. The return
+destination-home authority slice is close-ready from this reclassification.
 
 ## Suggested Next
 
-Execute Step 5 representative row reclassification for
-`src/20001130-2.c` and `src/20080719-1.c` to decide whether idea 629 is
-close-ready or whether another return-authority packet is justified.
+Ask the plan owner to close idea 629, preserving the residual runtime
+segfaults as out-of-scope local/global address publication or address-value
+preservation work if follow-up tracking is needed.
 
 ## Watchouts
 
-The direct-global pointer return path remains preserved and separately owned;
-the new admission is only for explicit prepared stack-slot return authority.
-Step 5 should classify any residual representative-row failures without
-broadening into scalar call/result transport, pointer stack-results, FPR policy,
-generic move-bundle authority, runtime triage, local/global repair,
-variadic/library policy, expectation changes, unsupported marker changes,
-allowlists, timeouts, or accounting.
+Do not broaden this idea into the residual runtime segfaults. They are after
+return-authority admission and point at missing constant or table address
+materialization/preservation, which is outside the return destination-home
+authority boundary.
 
 ## Proof
 
 Proof command:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+`cmake --build --preset default && ALLOWLIST=build/agent_state/629_step5_return_authority.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/629_step5_return_authority.log 2>&1`
 
-Result: passed, 347/347 backend tests.
+Result: build passed; focused scan returned nonzero with `total=2 passed=0 failed=2`.
 
-Log path: `test_after.log`.
+Log path: `build/agent_state/629_step5_return_authority.log`.
