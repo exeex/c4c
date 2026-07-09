@@ -1,111 +1,103 @@
 Status: Active
 Source Idea Path: ideas/open/631_direct_global_symbol_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Direct Global-Symbol Evidence
+Current Step ID: 2
+Current Step Title: Trace Direct Global-Symbol Authority Carriers
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed the direct `global_symbol` local-memory evidence for the 18-row
-focused allowlist in `build/agent_state/631_step1_global_symbol.allowlist`.
-Current proof result: total=18, passed=0, failed=18. Fresh prepared dumps are in
-`build/agent_state/631_step1_*.prepared.txt`; compact row facts are in
-`build/agent_state/631_step1_global_symbol_access_extract.tsv`.
+Step 2 traced the direct `global_symbol` local-memory carrier for
+`src/pr46309.c`. The two Step 1 accesses remain:
+`bar/block_1/inst_index=0 result=%t15 symbol=q offset=0 size=8 align=8` and
+`main/entry/inst_index=7 stored=%lv.y symbol=q offset=0 size=8 align=8`, both
+`base_plus_offset=yes layout_authority=scalar_layout range=proven_in_bounds`.
 
-Inspected rows and current owners:
-- `src/20021204-1.c`: 1 scalar `global_symbol` access (`z`, offset 0, size 4)
-  exists, but the first current owner is `unsupported_prepared_move_bundle_classification`.
-- `src/920429-1.c`: 2 scalar `global_symbol` accesses (`i,j`, offset 0,
-  size 4) exist, but the first current owner is `unsupported_prepared_move_bundle_classification`.
-- `src/921117-1.c`: aggregate global object direct memory (`cell`, offsets
-  0..12, sizes 1/4, `byte_storage_aggregate` plus unknown layout), current
-  diagnostic `unsupported_local_memory_access`.
-- `src/complex-7.c`: aggregate global object direct memory with 16-byte lanes
-  (`f*`, `d*`, `ld*`, offsets 0/4/8/16, sizes 4/8/16,
-  `byte_storage_aggregate`), current diagnostic `unsupported_local_memory_access`.
-- `src/pr46309.c`: true scalar direct `global_symbol` local-memory candidate:
-  `symbol=q offset=0 size=8 layout_authority=scalar_layout range=proven_in_bounds
-  base_plus_offset=yes`; current diagnostic `unsupported_local_memory_access`.
-- `src/pr49073.c`: mixed aggregate/scalar global object direct memory
-  (`a,c`, offsets 0..24, size 4, `byte_storage_aggregate` plus
-  `scalar_layout`), current diagnostic `unsupported_local_memory_access`.
-- `src/pr57861.c`: true scalar direct `global_symbol` local-memory candidate:
-  symbols `a,b,c,d,e,f,g,h,i,j`, offset 0, sizes 2/4/8,
-  `scalar_layout`, proven in bounds, base-plus-offset; current diagnostic
-  `unsupported_local_memory_access`.
-- `src/pr58431.c`: true scalar direct `global_symbol` local-memory candidate:
-  symbols `a,b,c,d,e,g,h,i,j,k`, offset 0, sizes 1/2/4,
-  `scalar_layout`, proven in bounds, base-plus-offset; current diagnostic
-  `unsupported_local_memory_access`.
-- `src/pr58984.c`: true scalar direct `global_symbol` local-memory candidate:
-  symbols `a,b,c,e,m,n`, offset 0, sizes 4/8, `scalar_layout`, proven in
-  bounds, base-plus-offset; current diagnostic `unsupported_local_memory_access`.
-- `src/pr60017.c`: aggregate global object direct memory (`x`, offsets
-  0/4/5/6/7/8/10/12/14, sizes 1/2/4, `byte_storage_aggregate` plus unknown
-  layout), current diagnostic `unsupported_local_memory_access`.
-- `src/pr60822.c`: large-offset aggregate global object direct memory (`x`,
-  offsets 800000 and 1700004, size 4, `byte_storage_aggregate`), current
-  diagnostic `unsupported_local_memory_access`; route owner should include
-  large selected offset/materialization, not Step 2 scalar carrier tracing.
-- `src/pr66556.c`: mixed aggregate/scalar global object direct memory
-  (`a,b,c,d,e,f,g,h,j,k,l`, offsets 0/4, sizes 1/2/4/8,
-  `byte_storage_aggregate` plus `scalar_layout`), current diagnostic
-  `unsupported_local_memory_access`.
-- `src/pr68185.c`: true scalar direct `global_symbol` local-memory candidate:
-  symbols `a,b,c,d,e,f,o,q,t,u,w,z`, offset 0, sizes 2/4,
-  `scalar_layout`, proven in bounds, base-plus-offset; current diagnostic
-  `unsupported_local_memory_access`.
-- `src/pr68321.c`: true direct `global_symbol` local-memory candidate with
-  scalar/unknown layout: symbols `a,b,e,m,n,t,t2,t5,u`, offset 0, sizes 1/4,
-  proven in bounds, base-plus-offset; current diagnostic `unsupported_local_memory_access`.
-- `src/pr70005.c`: true scalar direct `global_symbol` local-memory candidate:
-  symbols `a,b,c`, offset 0, sizes 1/4, `scalar_layout`, proven in bounds,
-  base-plus-offset; current diagnostic `unsupported_local_memory_access`.
-- `src/pr88739.c`: mixed aggregate/scalar global object direct memory
-  (`__static_local_bar_1,v`, offsets 0/12/14, sizes 2/4,
-  `byte_storage_aggregate` plus `scalar_layout`), current diagnostic
-  `unsupported_local_memory_access`.
-- `src/struct-ret-1.c`: aggregate-home/struct-return owner candidate
-  (`B1,B2,__static_local_f_23,c2,d3,fp`, offsets 0..33, sizes 1/4/8,
-  aggregate/scalar/unknown layout), current diagnostic `unsupported_local_memory_access`.
-- `src/pr79737-2.c`: direct global base-plus-offset facts are present
-  (`i,j`, offsets 0/4/8, size 4, `byte_storage_aggregate`, proven in bounds),
-  but the current proof reaches `RV64_BACKEND_RUNTIME_MISMATCH`, so this row is
-  not the Step 2 local-memory rejection carrier.
+Producer functions and carrier fields:
+- `build_direct_symbol_backed_access(..., const bir::LoadLocalInst&)` and
+  `build_direct_symbol_backed_access(..., const bir::StoreLocalInst&)` in
+  `src/backend/prealloc/stack_layout/coordinator.cpp` construct the
+  `PreparedMemoryAccess` rows with `result_value_name` or `stored_value_name`,
+  `address_space=prepared_memory_address_space(inst.address)`, `is_volatile`,
+  and `.address = build_direct_symbol_backed_address(...)`.
+- `build_direct_symbol_backed_address` resolves global identity through
+  `resolve_prepared_global_symbol_address` and carries the link-name identity in
+  `PreparedAddress.symbol_name` plus
+  `PreparedAddress.provenance.base_identity.kind=GlobalSymbol` and
+  `base_identity.link_name_id`.
+- The same `PreparedAddress` carries `global_address_materialization_policy`,
+  `byte_offset`, `size_bytes`, `align_bytes`, `can_use_base_plus_offset=true`,
+  `provenance.object_extent` from the resolved global size, and
+  `provenance.requested_range` from `prepared_memory_provenance`.
+- `publish_scalar_global_layout_authority` is the scalar layout authority
+  producer for `q`; it requires a resolved non-extern, non-TLS scalar global
+  with complete extent, matching global link-name identity,
+  `can_use_base_plus_offset`, known size/alignment, and
+  `range_verdict=ProvenInBounds` before setting
+  `provenance.layout_authority=ScalarLayout`.
+- Addressing mode is present as
+  `PreparedAddress.global_address_materialization_policy`; for this static
+  direct-global route it resolves to direct materialization. Address space is
+  present on `PreparedMemoryAccess.address_space` and is default for the
+  `pr46309.c` rows.
 
-No refreshed row is a prepared global value-location/idea-621 candidate. No
-row's first current owner is string-constant policy. `address_space` and
-relocation/addressing-mode fields are not printed in these prepared access
-rows; the visible addressing fact is `base_plus_offset=yes`.
+Prepared authority check already exists:
+`prepared_global_symbol_memory_has_publication_authority` in
+`src/backend/prealloc/addressing.hpp` accepts exactly a `GlobalSymbol` address
+with `symbol_name`, `can_use_base_plus_offset`, nonzero size/alignment, global
+base identity, concrete non-opaque layout authority, complete known extent, and
+a requested range matching `byte_offset`/`size_bytes` with
+`range_verdict=ProvenInBounds`. The `pr46309.c` accesses satisfy the visible
+scalar subset of this contract.
+
+Current RV64 consumer checks/rejection points:
+- `prepared_memory_access_for_local_instruction` in
+  `src/backend/mir/riscv/codegen/object_emission.cpp` selects the prepared
+  access by block/instruction or unique result/stored value.
+- `diagnose_unsupported_prepared_instruction_fragment` then calls
+  `local_memory_diagnostic` for `LoadLocalInst`/`StoreLocalInst`.
+- `local_memory_diagnostic` currently admits only
+  `prepared_frame_slot_absolute_byte_offset`,
+  `prepared_byval_stack_slot_pointer_access_offset`,
+  `prepared_pointer_value_base_offset`,
+  `prepared_pointer_value_stack_home_base_offset`, and an 8-byte
+  string-constant pointer-load special case. It never checks
+  `PreparedAddressBaseKind::GlobalSymbol` or
+  `prepared_global_symbol_memory_has_publication_authority`, so the first
+  missing boundary is RV64 local-memory consumer admission for direct global
+  symbol prepared accesses.
+- `prepared_local_memory_emit.cpp` has direct-global address materialization
+  support for pointer values and string/global address materializations, but no
+  load/store helper that consumes a `PreparedMemoryAccess` with
+  `address.base_kind=GlobalSymbol` as local memory.
 
 ## Suggested Next
 
-Step 2 should trace the carrier path for `src/pr46309.c` only: two scalar
-direct `global_symbol` local-memory accesses, `symbol=q offset=0 size=8
-layout_authority=scalar_layout range=proven_in_bounds base_plus_offset=yes`,
-with current first owner `unsupported_local_memory_access`. The packet should
-identify where global identity, symbol, offset, width, extent/layout authority,
-and local-memory use authority are produced or lost before RV64 object
-emission.
+Step 4 consumer packet: add a narrow RV64 direct-global local-memory admission
+for the `pr46309.c` scalar family. Gate it on `access != nullptr`,
+`address_space=Default`, `!is_volatile`,
+`address.base_kind=PreparedAddressBaseKind::GlobalSymbol`,
+`prepared_global_symbol_memory_has_publication_authority(access->address)`,
+direct/default addressing policy, supported 1/2/4/8-byte width, alignment not
+larger than width, and an encodable direct-global address+offset sequence. Use
+the same packet to add fail-closed focused coverage for missing symbol identity,
+missing base-plus-offset, non-default address space or unsupported addressing
+policy, incomplete extent/range, wrong layout authority, volatile access, and
+unsupported width.
 
 ## Watchouts
 
-Do not use `src/pr79737-2.c` as the first Step 2 carrier despite its docs-bucket
-role; the current allowlisted proof has moved it to runtime mismatch. Keep
-aggregate byte-storage rows, `src/pr60822.c` large offsets, 16-byte lanes in
-`src/complex-7.c`, and `src/struct-ret-1.c` aggregate-home/struct-return
-evidence out of the scalar Step 2 trace. Do not infer missing address-space or
-relocation facts from final symbols or assembly.
+This trace found a consumer gap, not a missing prepared producer for the
+`pr46309.c` scalar row. Keep the Step 4 packet limited to direct scalar
+global-symbol local memory; do not admit aggregate byte-storage rows, large
+offset rows, string constants, aggregate homes, move-bundle rows, runtime
+mismatches, or unsupported-width cases. Do not infer authority from final symbol
+spelling or assembly: consume only the prepared fields named above.
 
 ## Proof
 
-Ran:
-
-`cmake --build --preset default && ALLOWLIST=build/agent_state/631_step1_global_symbol.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/631_step1_global_symbol.log 2>&1`
-
-Result: command exited 1 because all 18 focused rows still fail in the current
-backend scan; log path is `build/agent_state/631_step1_global_symbol.log`.
-The delegated proof intentionally used the packet-local log path and did not
-create a root-level `test_after.log`.
+Evidence-only trace; no build or backend tests were required and no root-level
+logs were created. Used `c4c-clang-tool-ccdb` for symbol/caller/callee queries
+before focused source reads, plus the existing Step 1 artifact
+`build/agent_state/631_step1_pr46309.prepared.txt`.
