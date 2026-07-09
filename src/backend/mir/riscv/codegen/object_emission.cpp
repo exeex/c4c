@@ -6187,27 +6187,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         argument.source_selection->kind ==
             prepare::PreparedCallArgumentSourceSelectionKind::
                 LocalFrameAddressMaterialization) {
-      if (argument.source_encoding == prepare::PreparedStorageEncodingKind::Register) {
-        if (argument.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
-            !argument.source_register_name.has_value()) {
-          return std::nullopt;
-        }
-        const auto source = rv64_register_number(*argument.source_register_name);
-        if (!source.has_value() ||
-            !append_rv64_prepared_local_frame_address_call_argument_source(
-                fragment,
-                stack_layout,
-                lookups,
-                frame_plan,
-                argument,
-                *source,
-                stack_frame_bytes,
-                active_call_stack_adjustment)) {
-          return std::nullopt;
-        }
-        append_rv64_move(fragment, *destination, *source);
-        continue;
-      }
       if (!append_rv64_prepared_local_frame_address_call_argument_source(
               fragment,
               stack_layout,

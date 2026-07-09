@@ -1253,6 +1253,17 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 call pointer prepared_call_boundary emission
 )
 
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_call_arg_local_frame_address_materialization
+  SRC "${BACKEND_CASE_ROOT}/riscv64_call_arg_local_frame_address_materialization.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_call_arg_local_frame_address_materialization.o"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "13050100"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object call pointer prepared_call_boundary cli
+)
+
 c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_local_string_constant_label_pointer_load
   SRC "${BACKEND_CASE_ROOT}/riscv64_local_string_constant_label_pointer_load.c"
