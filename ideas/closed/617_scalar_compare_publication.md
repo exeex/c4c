@@ -1,6 +1,6 @@
 # Scalar Compare Publication
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -42,6 +42,32 @@ this is an ordered tail idea rather than a first activation target.
   owner evidence.
 - No unrelated branch, select, or RV64 instruction-fragment route is changed.
 - Proof covers the complete current small family when possible.
+
+## Closure Notes
+
+Closed after the Step 3 semantic repair and Step 4 family classification.
+
+Step 3 extended scalar compare publication so prepared scalar FP compare
+results can be published without target-file special handling. The focused
+object-emission test passed, and the delegated backend proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+with `346/346` backend tests green.
+
+Step 4 rebuilt `build/c4cll` and reran the complete seven-row target set from
+the refreshed evidence probe. Four rows now pass:
+`src/20000731-1.c`, `src/20011217-1.c`, `src/930603-1.c`, and
+`src/990117-1.c`.
+
+The three remaining rows no longer have `unsupported_scalar_compare_publication`
+as first owner and are classified to separate owners:
+
+- `src/gofast.c`: `unsupported_instruction_fragment` for a call instruction.
+- `src/loop-8.c`: ambiguous non-parallel multi-source stack-destination
+  move-bundle/consumer authority.
+- `src/strct-pack-1.c`: RV64 backend runtime mismatch / segmentation fault.
+
+Close-gate backend regression guard passed with non-decreasing backend results:
+`346/346` before and `346/346` after, no new failures.
 
 ## Split-In From Idea 611
 
