@@ -8,48 +8,52 @@ Current Step Title: Publish Call-Preservation-Aware Clobber-Safety Authority
 
 ## Just Finished
 
-Step 4 probed the RV64/prealloc consumer boundary for the seven delegated
-representative rows. RV64 is reading prepared branch stack-load authority
-records and rejecting rows whose selected pointer source freshness is present
-but whose prepared clobber-safety authority is still not `Available`.
+Step 5 published prepared producer-side call-preservation-aware branch
+stack-source clobber safety. Intervening calls now remain fail-closed unless
+the prepared call plan explicitly preserves the selected source value in the
+same stack slot, and intervening move bundles without direct stack offsets can
+only prove non-clobber when their destination value home resolves to a known
+different stack slot.
 
-Prepared dumps and the delegated allowlist run show two rows have already moved
-outside this packet:
-- `src/20001017-1.c`: prepared pointer `lhs` authority for `bug` is
-  `available`; the backend stops later at `unsupported_call_abi` in `main`.
-- `src/20000314-3.c`: prepared pointer `rhs` authority for `attr_rtx` is
-  `available`; the backend stops later at `unsupported_terminator_fragment`.
+Focused prepared-layer coverage was added for preserved calls, calls without
+preservation, mismatched preserved slots, stale preserved source identity,
+explicit different-slot moves, and explicit same-slot moves.
 
-Five rows remain in-scope selected-freshness rows that still fail closed at
-`missing_stack_clobber_safety`: `src/loop-2e.c`, `src/pr39100.c`,
-`src/20140828-1.c`, `src/20080519-1.c`, and `src/20050125-1.c`. Focused dumps
-are under `build/agent_state/635_step4_*`, with the rollup in
-`build/agent_state/635_step4_branch_authority_probe.tsv`.
+The delegated backend probe moved the five Step 5 rows
+`src/loop-2e.c`, `src/pr39100.c`, `src/20140828-1.c`, `src/20080519-1.c`,
+and `src/20050125-1.c` past `missing_stack_clobber_safety`; they now stop at
+`unsupported_terminator_fragment`. `src/20001017-1.c` remains
+`unsupported_call_abi`, and `src/20000314-3.c` remains
+`unsupported_terminator_fragment`. A refreshed trace for the anchor row is in
+`build/agent_state/635_step5_loop-2e_prepared_dump.txt`.
 
 ## Suggested Next
 
-Execute plan Step 5 in the prepared producer layer. Start with the five
-selected-freshness rows that still stop at `missing_stack_clobber_safety`, and
-trace call/helper rejection to the smallest producer-side packet that can admit
-only explicit same-slot preservation evidence. For example, `src/loop-2e.c` has
-an intervening same-module call that explicitly preserves `%t23` in the same
-stack slot, but the current prepared clobber-safety proof still treats
-call/helper instructions as fail-closed.
+Execute plan Step 6. Reclassify the seven representative rows after Step 5:
+five rows have left clobber-safety authority and now point at terminator
+lowering, one remains ABI, and one was already terminator lowering. Decide
+whether idea `635` is close-ready or should split residual terminator/ABI work
+to the appropriate initiatives.
 
 ## Watchouts
 
-No consumer change was made. Admitting the five remaining rows from RV64 would
-require bypassing prepared `Available` authority or inferring safety from stack
-homes/offsets/final shape, which is out of scope and would weaken the
-fail-closed rule. Step 5 must preserve fail-closed behavior for calls/helpers
-without explicit same-slot preservation, with stale source identity, or with
-contradictory clobber evidence. `src/20001017-1.c` and `src/20000314-3.c`
-should not be counted as Step 4 consumer blockers because their selected
-pointer branch authority is already available.
+The move-bundle refinement intentionally accepts only explicit destination
+value-home evidence for a different stack slot when the move itself lacks a
+destination offset; unknown destinations and same-slot destinations remain
+fail-closed. No RV64 target-local inference, final-shape inference,
+expectation rewrite, unsupported marker, or allowlist change was made.
 
 ## Proof
 
-`cmake --build --preset default && ALLOWLIST=build/agent_state/635_step1_branch_clobber_safety.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1`
+Canonical proof:
+`cmake --build --preset default --target backend_prepare_stack_layout_test -j1 && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
 
-Result: failed as expected for this blocked consumer-only packet:
-`total=7 passed=0 failed=7`. Proof log: `test_after.log`.
+Result: passed. Proof log: `test_after.log`.
+
+Supplemental probe:
+`cmake --build --preset default && ALLOWLIST=build/agent_state/635_step1_branch_clobber_safety.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/635_step5_branch_clobber_safety.log 2>&1`
+
+Result: failed with `total=7 passed=0 failed=7`, but the five Step 5 rows now
+fail at `unsupported_terminator_fragment` instead of
+`missing_stack_clobber_safety`. Supplemental log:
+`build/agent_state/635_step5_branch_clobber_safety.log`.

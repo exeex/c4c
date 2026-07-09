@@ -2850,7 +2850,9 @@ prepared_collected_branch_stack_load_pointer_status(
     FunctionNameId function_name,
     std::size_t branch_block_index,
     std::size_t branch_terminator_instruction_index,
-    const PreparedFrameSlot* frame_slot) {
+    const PreparedFrameSlot* frame_slot,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
   if (bundle.function_name != function_name ||
       bundle.block_index != branch_block_index ||
       bundle.instruction_index > branch_terminator_instruction_index) {
@@ -2860,15 +2862,76 @@ prepared_collected_branch_stack_load_pointer_status(
     if (move.destination_storage_kind != PreparedMoveStorageKind::StackSlot) {
       continue;
     }
-    if (frame_slot == nullptr ||
-        !move.destination_stack_offset_bytes.has_value()) {
+    if (frame_slot == nullptr) {
       return true;
     }
-    if (*move.destination_stack_offset_bytes == frame_slot->offset_bytes) {
+    if (move.destination_stack_offset_bytes.has_value()) {
+      if (*move.destination_stack_offset_bytes == frame_slot->offset_bytes) {
+        return true;
+      }
+      continue;
+    }
+    if (move.destination_kind != PreparedMoveDestinationKind::Value ||
+        move.to_value_id == PreparedValueId{0}) {
+      return true;
+    }
+    const auto* destination_home =
+        find_indexed_prepared_value_home(value_home_lookups,
+                                         value_locations,
+                                         move.to_value_id);
+    if (destination_home == nullptr ||
+        destination_home->kind != PreparedValueHomeKind::StackSlot ||
+        !destination_home->slot_id.has_value()) {
+      return true;
+    }
+    if (*destination_home->slot_id == frame_slot->slot_id) {
       return true;
     }
   }
   return false;
+}
+
+[[nodiscard]] bool prepared_call_preserves_branch_stack_slot_source(
+    const PreparedCallPlanLookups* call_plan_lookups,
+    std::size_t branch_block_index,
+    std::size_t call_instruction_index,
+    const PreparedValueHome* value_home,
+    const PreparedFrameSlot* frame_slot) {
+  if (call_plan_lookups == nullptr || value_home == nullptr ||
+      frame_slot == nullptr || value_home->value_id == PreparedValueId{0} ||
+      value_home->value_name == kInvalidValueName ||
+      !value_home->slot_id.has_value()) {
+    return false;
+  }
+
+  const auto* call_plan =
+      find_indexed_prepared_call_plan(call_plan_lookups,
+                                      nullptr,
+                                      branch_block_index,
+                                      call_instruction_index);
+  if (call_plan == nullptr) {
+    return false;
+  }
+
+  return std::any_of(
+      call_plan->preserved_values.begin(),
+      call_plan->preserved_values.end(),
+      [&](const PreparedCallPreservedValue& preserved) {
+        return preserved.route == PreparedCallPreservationRoute::StackSlot &&
+               preserved.value_id == value_home->value_id &&
+               preserved.value_name == value_home->value_name &&
+               preserved.slot_id.has_value() &&
+               *preserved.slot_id == *value_home->slot_id &&
+               *preserved.slot_id == frame_slot->slot_id &&
+               (!value_home->offset_bytes.has_value() ||
+                *value_home->offset_bytes == frame_slot->offset_bytes) &&
+               preserved.stack_offset_bytes.has_value() &&
+               *preserved.stack_offset_bytes == frame_slot->offset_bytes &&
+               preserved.stack_size_bytes.has_value() &&
+               *preserved.stack_size_bytes == frame_slot->size_bytes &&
+               preserved.stack_align_bytes.has_value() &&
+               *preserved.stack_align_bytes == frame_slot->align_bytes;
+      });
 }
 
 [[nodiscard]] bool branch_stack_load_intervening_instructions_clobber_safe(
@@ -2879,6 +2942,9 @@ prepared_collected_branch_stack_load_pointer_status(
     std::size_t branch_block_index,
     std::size_t branch_terminator_instruction_index,
     const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedCallPlanLookups* call_plan_lookups,
+    const PreparedValueHome* value_home,
     const PreparedFrameSlot* frame_slot,
     const PreparedStackObject* stack_object) {
   if (block == nullptr ||
@@ -2905,7 +2971,9 @@ prepared_collected_branch_stack_load_pointer_status(
               function_name,
               branch_block_index,
               branch_terminator_instruction_index,
-              frame_slot)) {
+              frame_slot,
+              value_locations,
+              value_home_lookups)) {
         return false;
       }
     }
@@ -2914,7 +2982,12 @@ prepared_collected_branch_stack_load_pointer_status(
   for (std::size_t index = 0; index < branch_terminator_instruction_index;
        ++index) {
     const auto& inst = block->insts[index];
-    if (std::get_if<bir::CallInst>(&inst) != nullptr) {
+    if (std::get_if<bir::CallInst>(&inst) != nullptr &&
+        !prepared_call_preserves_branch_stack_slot_source(call_plan_lookups,
+                                                          branch_block_index,
+                                                          index,
+                                                          value_home,
+                                                          frame_slot)) {
       return false;
     }
     const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst);
@@ -2944,6 +3017,8 @@ prepared_collected_branch_stack_load_pointer_status(
     std::optional<std::size_t> branch_block_index,
     std::optional<std::size_t> branch_terminator_instruction_index,
     const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedCallPlanLookups* call_plan_lookups,
     const PreparedValueHome* value_home,
     const PreparedFrameSlot* frame_slot,
     const PreparedStackObject* stack_object,
@@ -2973,6 +3048,9 @@ prepared_collected_branch_stack_load_pointer_status(
       *branch_block_index,
       *branch_terminator_instruction_index,
       value_locations,
+      value_home_lookups,
+      call_plan_lookups,
+      value_home,
       frame_slot,
       stack_object);
 }
@@ -3320,6 +3398,7 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
     std::optional<std::size_t> branch_terminator_instruction_index,
     PreparedBranchStackLoadRole role,
     const PreparedValueLocationFunction* value_locations,
+    const PreparedCallPlanLookups* call_plan_lookups,
     const PreparedValueHomeLookups* value_home_lookups) {
   const auto* branch_value = branch_stack_load_value_for_role(branch_condition, role);
   const auto* value_home =
@@ -3381,6 +3460,8 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
                   branch_block_index,
                   branch_terminator_instruction_index,
                   value_locations,
+                  value_home_lookups,
+                  call_plan_lookups,
                   value_home,
                   frame_slot,
                   stack_object,
@@ -3406,6 +3487,7 @@ void collect_branch_stack_load_authority_for_role(
     std::optional<std::size_t> branch_terminator_instruction_index,
     PreparedBranchStackLoadRole role,
     const PreparedValueLocationFunction* value_locations,
+    const PreparedCallPlanLookups* call_plan_lookups,
     const PreparedValueHomeLookups* value_home_lookups) {
   const auto* branch_value = branch_stack_load_value_for_role(branch_condition, role);
   if (branch_value == nullptr || branch_value->kind != bir::Value::Kind::Named) {
@@ -3429,6 +3511,7 @@ void collect_branch_stack_load_authority_for_role(
       branch_terminator_instruction_index,
       role,
       value_locations,
+      call_plan_lookups,
       value_home_lookups));
 }
 
@@ -3443,6 +3526,10 @@ collect_prepared_branch_stack_load_authorities(
         find_prepared_value_location_function(prepared, function_cf.function_name);
     const auto value_home_lookups =
         make_prepared_value_home_lookups(value_locations);
+    const auto* call_plans =
+        find_prepared_call_plans(prepared, function_cf.function_name);
+    const auto call_plan_lookups =
+        make_prepared_call_plan_lookups(prepared, call_plans, function_cf);
     const auto* bir_function =
         prepared_bir_function_by_name(prepared, function_cf.function_name);
     for (const auto& branch_condition : function_cf.branch_conditions) {
@@ -3477,6 +3564,7 @@ collect_prepared_branch_stack_load_authorities(
           branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Condition,
           value_locations,
+          &call_plan_lookups,
           &value_home_lookups);
       collect_branch_stack_load_authority_for_role(
           records,
@@ -3489,6 +3577,7 @@ collect_prepared_branch_stack_load_authorities(
           branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Lhs,
           value_locations,
+          &call_plan_lookups,
           &value_home_lookups);
       collect_branch_stack_load_authority_for_role(
           records,
@@ -3501,6 +3590,7 @@ collect_prepared_branch_stack_load_authorities(
           branch_terminator_instruction_index,
           PreparedBranchStackLoadRole::Rhs,
           value_locations,
+          &call_plan_lookups,
           &value_home_lookups);
     }
   }

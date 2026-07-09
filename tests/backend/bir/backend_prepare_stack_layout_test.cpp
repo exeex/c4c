@@ -8492,6 +8492,168 @@ int check_branch_stack_load_authority_contract() {
     return fail("expected exact same-slot intervening write to reject only the clobbered branch stack load");
   }
 
+  auto call_without_preservation = prepared;
+  call_without_preservation.module.functions.front().blocks.front().insts.push_back(
+      bir::CallInst{
+          .callee = "same_module_helper",
+          .return_type = bir::TypeKind::Void,
+      });
+  const auto call_without_preservation_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          call_without_preservation);
+  if (call_without_preservation_records.records.size() != 3 ||
+      call_without_preservation_records.records[1].role !=
+          prepare::PreparedBranchStackLoadRole::Lhs ||
+      call_without_preservation_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety ||
+      call_without_preservation_records.records[2].role !=
+          prepare::PreparedBranchStackLoadRole::Rhs ||
+      call_without_preservation_records.records[2].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("expected intervening call without explicit preservation to stay fail-closed");
+  }
+
+  auto call_with_lhs_preservation = call_without_preservation;
+  prepare::PreparedCallPlansFunction preserved_call_plans{
+      .function_name = prepared_function_name,
+  };
+  preserved_call_plans.calls.push_back(prepare::PreparedCallPlan{
+      .block_index = 0,
+      .instruction_index = 2,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+      .direct_callee_name = std::string{"same_module_helper"},
+      .preserved_values =
+          std::vector<prepare::PreparedCallPreservedValue>{
+              prepare::PreparedCallPreservedValue{
+                  .value_id = 6,
+                  .value_name = prepared_lhs_name,
+                  .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{10},
+                  .stack_offset_bytes = std::size_t{80},
+                  .stack_size_bytes = std::size_t{8},
+                  .stack_align_bytes = std::size_t{8},
+                  .spill_slot_placement =
+                      prepare::PreparedSpillSlotPlacement{
+                          .slot_id = prepare::PreparedFrameSlotId{10},
+                          .offset_bytes = std::size_t{80},
+                      },
+                  .preservation_reason = "test_same_slot_preservation",
+              }},
+  });
+  call_with_lhs_preservation.call_plans.functions.push_back(
+      std::move(preserved_call_plans));
+  const auto call_with_lhs_preservation_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          call_with_lhs_preservation);
+  if (call_with_lhs_preservation_records.records.size() != 3 ||
+      call_with_lhs_preservation_records.records[1].role !=
+          prepare::PreparedBranchStackLoadRole::Lhs ||
+      call_with_lhs_preservation_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::Available ||
+      call_with_lhs_preservation_records.records[2].role !=
+          prepare::PreparedBranchStackLoadRole::Rhs ||
+      call_with_lhs_preservation_records.records[2].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("expected same-slot call preservation to authorize only the selected lhs branch source");
+  }
+
+  auto unrelated_stack_move_before_preserved_call = call_with_lhs_preservation;
+  unrelated_stack_move_before_preserved_call.value_locations.functions.front()
+      .move_bundles.push_back(prepare::PreparedMoveBundle{
+          .function_name = prepared_function_name,
+          .phase = prepare::PreparedMovePhase::BeforeInstruction,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves =
+              std::vector<prepare::PreparedMoveResolution>{
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = 6,
+                      .to_value_id = 4,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .block_index = 0,
+                      .instruction_index = 1,
+                  }},
+      });
+  const auto unrelated_stack_move_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          unrelated_stack_move_before_preserved_call);
+  if (unrelated_stack_move_records.records.size() != 3 ||
+      unrelated_stack_move_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::Available) {
+    return fail("expected explicit different-slot move before preserved call not to clobber lhs branch source");
+  }
+
+  auto same_slot_stack_move_before_preserved_call =
+      call_with_lhs_preservation;
+  same_slot_stack_move_before_preserved_call.value_locations.functions.front()
+      .move_bundles.push_back(prepare::PreparedMoveBundle{
+          .function_name = prepared_function_name,
+          .phase = prepare::PreparedMovePhase::BeforeInstruction,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves =
+              std::vector<prepare::PreparedMoveResolution>{
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = 4,
+                      .to_value_id = 6,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .block_index = 0,
+                      .instruction_index = 1,
+                  }},
+      });
+  const auto same_slot_stack_move_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          same_slot_stack_move_before_preserved_call);
+  if (same_slot_stack_move_records.records.size() != 3 ||
+      same_slot_stack_move_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("expected explicit same-slot move before preserved call to clobber lhs branch source");
+  }
+
+  auto mismatched_preserved_slot = call_with_lhs_preservation;
+  mismatched_preserved_slot.call_plans.functions.front()
+      .calls.front()
+      .preserved_values.front()
+      .slot_id = prepare::PreparedFrameSlotId{12};
+  const auto mismatched_preserved_slot_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          mismatched_preserved_slot);
+  if (mismatched_preserved_slot_records.records.size() != 3 ||
+      mismatched_preserved_slot_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("expected mismatched preserved call slot to stay fail-closed");
+  }
+
+  auto stale_preserved_source = call_with_lhs_preservation;
+  stale_preserved_source.call_plans.functions.front()
+      .calls.front()
+      .preserved_values.front()
+      .value_id = 4;
+  stale_preserved_source.call_plans.functions.front()
+      .calls.front()
+      .preserved_values.front()
+      .value_name = prepared_rhs_name;
+  const auto stale_preserved_source_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          stale_preserved_source);
+  if (stale_preserved_source_records.records.size() != 3 ||
+      stale_preserved_source_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("expected stale preserved call source identity to stay fail-closed");
+  }
+
   return 0;
 }
 
