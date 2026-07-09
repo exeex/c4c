@@ -1331,6 +1331,153 @@ std::optional<std::int32_t> rv64_va_start_destination_load_offset_local(
                                              size_bytes);
 }
 
+std::optional<std::size_t> prepared_stack_passed_scalar_formal_load_offset(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::bir::LoadLocalInst& load,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (access == nullptr ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.byte_offset != 0 ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes > size_bytes ||
+      load.slot_name.empty()) {
+    return std::nullopt;
+  }
+  const std::string_view function_spelling =
+      prepare::prepared_function_name(prepared.names, function_name);
+  if (function_spelling.empty()) {
+    return std::nullopt;
+  }
+  const auto* function = [&]() -> const bir::Function* {
+    for (const auto& candidate : prepared.module.functions) {
+      if (candidate.name == function_spelling) {
+        return &candidate;
+      }
+    }
+    return nullptr;
+  }();
+  if (function == nullptr) {
+    return std::nullopt;
+  }
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared, function_name);
+  if (value_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto loaded_value_name = prepared.names.value_names.find(load.slot_name);
+  if (loaded_value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+
+  for (const auto& param : function->params) {
+    if (param.name != load.slot_name || param.is_byval || param.is_sret ||
+        param.is_varargs || !param.abi.has_value() ||
+        param.abi->passed_in_register || !param.abi->passed_on_stack ||
+        (param.abi->primary_class != bir::AbiValueClass::Integer &&
+         param.abi->primary_class != bir::AbiValueClass::Sse) ||
+        param.abi->type != param.type ||
+        param.abi->size_bytes != param.size_bytes ||
+        param.abi->align_bytes != param.align_bytes ||
+        param.size_bytes != size_bytes ||
+        param.align_bytes > size_bytes) {
+      continue;
+    }
+    std::size_t incoming_offset = 0;
+    bool found_incoming_offset = false;
+    for (const auto& candidate : function->params) {
+      if (!candidate.abi.has_value() || candidate.abi->passed_in_register ||
+          !candidate.abi->passed_on_stack || candidate.abi->size_bytes == 0 ||
+          candidate.abi->align_bytes == 0) {
+        continue;
+      }
+      const std::size_t abi_alignment =
+          std::min<std::size_t>(
+              std::max<std::size_t>(candidate.abi->align_bytes, 8),
+              16);
+      incoming_offset = ((incoming_offset + abi_alignment - 1) /
+                         abi_alignment) *
+                        abi_alignment;
+      if (&candidate == &param) {
+        found_incoming_offset = true;
+        break;
+      }
+      const std::size_t abi_size =
+          ((std::max<std::size_t>(candidate.abi->size_bytes, 8) + 7) / 8) *
+          8;
+      if (incoming_offset >
+          std::numeric_limits<std::size_t>::max() - abi_size) {
+        return std::nullopt;
+      }
+      incoming_offset += abi_size;
+    }
+    if (!found_incoming_offset) {
+      return std::nullopt;
+    }
+    const auto home_it =
+        std::find_if(value_locations->value_homes.begin(),
+                     value_locations->value_homes.end(),
+                     [&](const prepare::PreparedValueHome& home) {
+                       return home.value_name == loaded_value_name &&
+                              home.kind ==
+                                  prepare::PreparedValueHomeKind::StackSlot &&
+                              home.slot_id.has_value() &&
+                              home.offset_bytes.has_value() &&
+                              home.size_bytes.has_value() &&
+                              home.align_bytes.has_value() &&
+                              *home.slot_id == *access->address.frame_slot_id &&
+                              *home.size_bytes == size_bytes &&
+                              *home.align_bytes == param.align_bytes;
+                     });
+    if (home_it == value_locations->value_homes.end()) {
+      continue;
+    }
+    const auto* frame_slot =
+        rv64_prepared_find_function_frame_slot(stack_layout,
+                                               *home_it->slot_id,
+                                               function_name);
+    if (frame_slot == nullptr ||
+        frame_slot->offset_bytes != *home_it->offset_bytes ||
+        frame_slot->size_bytes != size_bytes ||
+        frame_slot->align_bytes != param.align_bytes) {
+      return std::nullopt;
+    }
+    const auto object_it =
+        std::find_if(stack_layout.objects.begin(),
+                     stack_layout.objects.end(),
+                     [&](const prepare::PreparedStackObject& object) {
+                       return object.object_id == frame_slot->object_id &&
+                              object.function_name == function_name;
+                     });
+    if (object_it == stack_layout.objects.end() ||
+        object_it->value_name != loaded_value_name ||
+        object_it->source_kind != "regalloc.spill_slot" ||
+        object_it->type != param.type ||
+        object_it->size_bytes != size_bytes ||
+        object_it->align_bytes != param.align_bytes ||
+        object_it->address_exposed || object_it->requires_home_slot ||
+        object_it->permanent_home_slot) {
+      return std::nullopt;
+    }
+    if (incoming_offset >
+        std::numeric_limits<std::size_t>::max() - stack_frame_bytes) {
+      return std::nullopt;
+    }
+    return stack_frame_bytes + incoming_offset;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 std::optional<std::size_t> prepared_frame_slot_absolute_byte_offset(
@@ -2334,10 +2481,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
   if (va_start_destination_offset.has_value()) {
     offset = static_cast<std::size_t>(*va_start_destination_offset);
   } else {
-    offset = prepared_frame_slot_absolute_byte_offset(stack_layout,
-                                                      access,
-                                                      stack_frame_bytes,
-                                                      *size_bytes);
+    offset = prepared_stack_passed_scalar_formal_load_offset(prepared,
+                                                             function_name,
+                                                             stack_layout,
+                                                             load,
+                                                             access,
+                                                             stack_frame_bytes,
+                                                             *size_bytes);
+    if (!offset.has_value()) {
+      offset = prepared_frame_slot_absolute_byte_offset(stack_layout,
+                                                        access,
+                                                        stack_frame_bytes,
+                                                        *size_bytes);
+    }
   }
   if (!offset.has_value()) {
     const auto byval_offset =

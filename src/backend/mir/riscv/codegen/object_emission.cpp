@@ -3615,6 +3615,141 @@ std::optional<std::size_t> prepared_gpr_stack_home_absolute_offset(
                                                       size_bytes);
 }
 
+std::optional<std::size_t> rv64_stack_passed_scalar_formal_home_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedValueHome& home,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
+      !home.size_bytes.has_value() || !home.align_bytes.has_value() ||
+      *home.size_bytes != size_bytes) {
+    return std::nullopt;
+  }
+  const std::string_view value_name = names.value_names.spelling(home.value_name);
+  if (value_name.empty()) {
+    return std::nullopt;
+  }
+  const auto param_it =
+      std::find_if(function.params.begin(),
+                   function.params.end(),
+                   [&](const bir::Param& param) {
+                     return param.name == value_name;
+                   });
+  if (param_it == function.params.end() || param_it->is_byval ||
+      param_it->is_sret || param_it->is_varargs ||
+      !param_it->abi.has_value() || param_it->abi->passed_in_register ||
+      !param_it->abi->passed_on_stack ||
+      (param_it->abi->primary_class != bir::AbiValueClass::Integer &&
+       param_it->abi->primary_class != bir::AbiValueClass::Sse) ||
+      param_it->abi->type != param_it->type ||
+      param_it->abi->size_bytes != param_it->size_bytes ||
+      param_it->abi->align_bytes != param_it->align_bytes ||
+      param_it->size_bytes != size_bytes ||
+      param_it->align_bytes != *home.align_bytes) {
+    return std::nullopt;
+  }
+  std::size_t incoming_offset = 0;
+  bool found_incoming_offset = false;
+  for (const auto& param : function.params) {
+    if (!param.abi.has_value() || param.abi->passed_in_register ||
+        !param.abi->passed_on_stack || param.abi->size_bytes == 0 ||
+        param.abi->align_bytes == 0) {
+      continue;
+    }
+    const std::size_t abi_alignment =
+        std::min<std::size_t>(std::max<std::size_t>(param.abi->align_bytes, 8),
+                              16);
+    incoming_offset = ((incoming_offset + abi_alignment - 1) /
+                       abi_alignment) *
+                      abi_alignment;
+    if (&param == &*param_it) {
+      found_incoming_offset = true;
+      break;
+    }
+    const std::size_t abi_size =
+        ((std::max<std::size_t>(param.abi->size_bytes, 8) + 7) / 8) * 8;
+    if (incoming_offset >
+        std::numeric_limits<std::size_t>::max() - abi_size) {
+      return std::nullopt;
+    }
+    incoming_offset += abi_size;
+  }
+  if (!found_incoming_offset) {
+    return std::nullopt;
+  }
+  const auto* frame_slot =
+      rv64_prepared_find_function_frame_slot(stack_layout,
+                                             *home.slot_id,
+                                             home.function_name);
+  if (frame_slot == nullptr ||
+      frame_slot->offset_bytes != *home.offset_bytes ||
+      frame_slot->size_bytes != size_bytes ||
+      frame_slot->align_bytes != *home.align_bytes) {
+    return std::nullopt;
+  }
+  const auto object_it =
+      std::find_if(stack_layout.objects.begin(),
+                   stack_layout.objects.end(),
+                   [&](const prepare::PreparedStackObject& object) {
+                     return object.object_id == frame_slot->object_id &&
+                            object.function_name == home.function_name;
+                   });
+  if (object_it == stack_layout.objects.end() ||
+      object_it->value_name != home.value_name ||
+      object_it->source_kind != "regalloc.spill_slot" ||
+      object_it->type != param_it->type ||
+      object_it->size_bytes != size_bytes ||
+      object_it->align_bytes != *home.align_bytes ||
+      object_it->address_exposed || object_it->requires_home_slot ||
+      object_it->permanent_home_slot ||
+      incoming_offset >
+          std::numeric_limits<std::size_t>::max() - stack_frame_bytes) {
+    return std::nullopt;
+  }
+  return stack_frame_bytes + incoming_offset;
+}
+
+bool append_rv64_move_value_to_register_with_formal_stack_home(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  const auto size_bytes = rv64_scalar_memory_size_for_type(value.type);
+  if (home != nullptr && size_bytes.has_value()) {
+    const auto stack_offset =
+        rv64_stack_passed_scalar_formal_home_offset(stack_layout,
+                                                    names,
+                                                    function,
+                                                    *home,
+                                                    stack_frame_bytes,
+                                                    *size_bytes);
+    if (stack_offset.has_value()) {
+      return append_rv64_load_stack_offset_to_register(fragment,
+                                                      destination,
+                                                      *stack_offset,
+                                                      *size_bytes);
+    }
+  }
+  return append_rv64_move_value_to_register(fragment,
+                                           destination,
+                                           stack_layout,
+                                           names,
+                                           lookups,
+                                           value,
+                                           stack_frame_bytes);
+}
+
 std::optional<std::size_t> prepared_stack_slot_home_size_bytes(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedValueHome& home) {
@@ -11647,6 +11782,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_integer_branch(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function& function,
     c4c::backend::bir::BinaryOpcode opcode,
     const c4c::backend::bir::Value& lhs,
     const c4c::backend::bir::Value& rhs,
@@ -11679,20 +11815,24 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_integer_branch(
   }
 
   RiscvEncodedFragment fragment;
-  if (!append_rv64_move_value_to_register(fragment,
-                                          28,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          normalized->lhs,
-                                          stack_frame_bytes) ||
-      !append_rv64_move_value_to_register(fragment,
-                                          29,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          normalized->rhs,
-                                          stack_frame_bytes)) {
+  if (!append_rv64_move_value_to_register_with_formal_stack_home(
+          fragment,
+          28,
+          stack_layout,
+          names,
+          lookups,
+          function,
+          normalized->lhs,
+          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register_with_formal_stack_home(
+          fragment,
+          29,
+          stack_layout,
+          names,
+          lookups,
+          function,
+          normalized->rhs,
+          stack_frame_bytes)) {
     return std::nullopt;
   }
   append_rv64_local_branch(fragment, *funct3, 28, 29, std::move(true_label));
@@ -12022,6 +12162,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::bir::Terminator& terminator,
     c4c::BlockLabelId block_label_id,
@@ -12090,20 +12231,24 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
   }
 
   RiscvEncodedFragment fragment;
-  if (!append_rv64_move_value_to_register(fragment,
-                                          28,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          normalized->lhs,
-                                          stack_frame_bytes) ||
-      !append_rv64_move_value_to_register(fragment,
-                                          29,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          normalized->rhs,
-                                          stack_frame_bytes)) {
+  if (!append_rv64_move_value_to_register_with_formal_stack_home(
+          fragment,
+          28,
+          stack_layout,
+          names,
+          lookups,
+          function,
+          normalized->lhs,
+          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register_with_formal_stack_home(
+          fragment,
+          29,
+          stack_layout,
+          names,
+          lookups,
+          function,
+          normalized->rhs,
+          stack_frame_bytes)) {
     return std::nullopt;
   }
   append_rv64_local_branch(fragment, *funct3, 28, 29, std::move(true_label));
@@ -12117,6 +12262,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& block,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
@@ -12188,6 +12334,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
           return fragment_for_prepared_fused_pointer_branch(prepared.stack_layout,
                                                             names,
                                                             lookups,
+                                                            function,
                                                             *branch_condition,
                                                             block.terminator,
                                                             block_label_id,
@@ -12201,6 +12348,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                 fragment_for_prepared_fused_integer_branch(prepared.stack_layout,
                                                            names,
                                                            lookups,
+                                                           function,
                                                            *branch_condition->predicate,
                                                            *branch_condition->lhs,
                                                            *branch_condition->rhs,
@@ -13713,6 +13861,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                  control_flow,
                                                  prepared.names,
                                                  &lookups,
+                                                 *function,
                                                  *block,
                                                  prepared_block_label,
                                                  event.block_index,
@@ -13827,6 +13976,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                          control_flow,
                                          prepared.names,
                                          &lookups,
+                                         *function,
                                          block,
                                          prepared_block_label,
                                          block_index,

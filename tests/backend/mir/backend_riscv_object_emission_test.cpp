@@ -873,6 +873,39 @@ prepare::PreparedBirModule make_prepared_fused_pointer_lhs_stack_branch_module()
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module() {
+  auto prepared = make_prepared_fused_pointer_lhs_stack_branch_module();
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  auto& function = prepared.module.functions.front();
+  function.params = {bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%lhs",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = false,
+          .passed_on_stack = true,
+      },
+  }};
+  auto& lhs_home = prepared.value_locations.functions.front().value_homes.at(1);
+  lhs_home.offset_bytes = std::size_t{48};
+  prepared.stack_layout.frame_slots.front().offset_bytes = 48;
+  prepared.stack_layout.frame_size_bytes = 64;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 8,
+      .frame_slot_order = {prepare::PreparedFrameSlotId{10}},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_fused_pointer_rhs_stack_branch_module() {
   auto prepared =
       make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ult,
@@ -12878,6 +12911,190 @@ prepare::PreparedBirModule make_prepared_stack_passed_scalar_param_home_module(
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_stack_passed_scalar_param_load_with_local_frame_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("stack_passed_scalar_param_load");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto param_name = prepared.names.value_names.intern("%p.late");
+  const auto local_name = prepared.names.value_names.intern("%local");
+  const auto param_result_name = prepared.names.value_names.intern("%from.param");
+  const auto local_result_name = prepared.names.value_names.intern("%from.local");
+  const auto local_slot_name = prepared.names.slot_names.intern("%local");
+  const auto param_object_id = prepare::PreparedObjectId{42};
+  const auto local_object_id = prepare::PreparedObjectId{43};
+  const auto param_slot_id = prepare::PreparedFrameSlotId{44};
+  const auto local_slot_id = prepare::PreparedFrameSlotId{45};
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::Ptr, "%from.param"),
+                  .slot_name = "%p.late",
+                  .align_bytes = 8,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::Ptr, "%from.local"),
+                  .slot_name = "%local",
+                  .slot_id = local_slot_name,
+                  .align_bytes = 8,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "stack_passed_scalar_param_load",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::Ptr,
+          .name = "%p.late",
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .abi = bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = false,
+              .passed_on_stack = true,
+          },
+      }},
+      .local_slots = {bir::LocalSlot{
+          .name = "%local",
+          .slot_id = local_slot_name,
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = param_object_id,
+      .function_name = function_name,
+      .value_name = param_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = false,
+      .requires_home_slot = false,
+      .permanent_home_slot = false,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = local_object_id,
+      .function_name = function_name,
+      .value_name = local_name,
+      .source_kind = "local",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = false,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = param_slot_id,
+      .object_id = param_object_id,
+      .function_name = function_name,
+      .offset_bytes = 48,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = local_slot_id,
+      .object_id = local_object_id,
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 64;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .result_value_name = param_result_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = param_slot_id,
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = local_result_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = local_slot_id,
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 8,
+                  .function_name = function_name,
+                  .value_name = param_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = param_slot_id,
+                  .offset_bytes = std::size_t{48},
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 9,
+                  .function_name = function_name,
+                  .value_name = param_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t3"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 10,
+                  .function_name = function_name,
+                  .value_name = local_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t4"},
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_fpr_formal_param_home_module(
     bool publish_target_identity) {
   prepare::PreparedBirModule prepared;
@@ -14957,6 +15174,49 @@ int builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object(
   }
   if (!saw_lhs_stack_load || !saw_branch_using_loaded_lhs) {
     return fail("expected stack-homed lhs fused pointer branch to load lhs from its selected stack slot");
+  }
+  return 0;
+}
+
+int builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_after_frame_object() {
+  const auto prepared =
+      make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected stack-passed formal fused pointer branch to build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected stack-passed formal branch object symbols and text");
+  }
+  bool saw_incoming_formal_load = false;
+  bool saw_local_frame_formal_load = false;
+  bool saw_branch_using_loaded_lhs = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    saw_incoming_formal_load |= is_rv64_load_from_sp(word, 3U, 64) &&
+                                riscv_rd(word) == 28;
+    saw_local_frame_formal_load |= is_rv64_load_from_sp(word, 3U, 48) &&
+                                   riscv_rd(word) == 28;
+    saw_branch_using_loaded_lhs |= (word & 0x7fU) == 0x63U &&
+                                   ((word >> 12) & 0x7U) == 6U &&
+                                   riscv_rs1(word) == 28 &&
+                                   riscv_rs2(word) == 29;
+  }
+  if (!saw_incoming_formal_load) {
+    return fail("expected stack-passed formal branch lhs to load from callee frame plus incoming offset");
+  }
+  if (saw_local_frame_formal_load) {
+    return fail("expected stack-passed formal branch lhs not to use local frame offset");
+  }
+  if (!saw_branch_using_loaded_lhs) {
+    return fail("expected branch to compare the loaded formal lhs");
   }
   return 0;
 }
@@ -17818,6 +18078,50 @@ int builds_stack_passed_scalar_param_home_object() {
                                                          bir::AbiValueClass::Sse);
   if (!rv64::build_rv64_prepared_text_object_module(floating).has_value()) {
     return fail("expected prepared stack-passed F64 formal home to build");
+  }
+  return 0;
+}
+
+int loads_stack_passed_scalar_param_home_after_callee_frame_object() {
+  const auto prepared =
+      make_prepared_stack_passed_scalar_param_load_with_local_frame_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared stack-passed scalar formal load to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function =
+      object::find_symbol(*module, "stack_passed_scalar_param_load");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected stack-passed scalar formal load object to publish text/function");
+  }
+  if (function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected stack-passed scalar formal load function symbol in .text");
+  }
+  bool saw_incoming_formal_load = false;
+  bool saw_local_frame_load = false;
+  bool saw_misclassified_formal_as_local = false;
+  bool saw_misclassified_local_as_incoming = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    saw_incoming_formal_load |= is_rv64_load_from_sp(word, 3U, 64) &&
+                                riscv_rd(word) == 28;
+    saw_local_frame_load |= is_rv64_load_from_sp(word, 3U, 16) &&
+                            riscv_rd(word) == 29;
+    saw_misclassified_formal_as_local |= is_rv64_load_from_sp(word, 3U, 48) &&
+                                         riscv_rd(word) == 28;
+    saw_misclassified_local_as_incoming |= is_rv64_load_from_sp(word, 3U, 80) &&
+                                           riscv_rd(word) == 29;
+  }
+  if (!saw_incoming_formal_load) {
+    return fail("expected stack-passed formal load at callee frame plus incoming offset");
+  }
+  if (!saw_local_frame_load) {
+    return fail("expected ordinary local frame load to keep prepared frame offset");
+  }
+  if (saw_misclassified_formal_as_local || saw_misclassified_local_as_incoming) {
+    return fail("expected stack-passed formal and local frame offsets to remain distinct");
   }
   return 0;
 }
@@ -30218,6 +30522,8 @@ int main() {
   status |= builds_prepared_fused_ule_ptr_register_compare_branch_object();
   status |=
       builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object();
+  status |=
+      builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_after_frame_object();
   status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |=
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();
@@ -30288,6 +30594,7 @@ int main() {
   status |= builds_scalar_gpr_stack_slot_param_home_object();
   status |= rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes();
   status |= builds_stack_passed_scalar_param_home_object();
+  status |= loads_stack_passed_scalar_param_home_after_callee_frame_object();
   status |= rejects_stack_passed_scalar_param_home_fail_closed_shapes();
   status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();

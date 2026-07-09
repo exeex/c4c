@@ -8,49 +8,43 @@ Current Step Title: Implement One Prepared ABI/Home Path
 
 ## Just Finished
 
-Step 3 from `plan.md` implemented the RV64 object-route prepared ordinary
-same-module call path for explicit scalar stack-destination call arguments.
+Step 3 from `plan.md` repaired the RV64 object-route callee-side consumption
+path for stack-passed scalar formal homes after callee frame allocation.
 
-- `fragment_for_prepared_call` now consumes explicit
-  `outgoing_stack_argument_area`, `destination_stack_offset_bytes`, and
-  `destination_stack_size_bytes` for scalar stack arguments.
-- Supported sources in this slice are GPR register, GPR/null/integer
-  immediate, scalar frame-slot GPR sources with the active outgoing-area
-  offset accounted for, FPR register, and F32/F64 immediate sources.
-- The path emits one outgoing stack-area adjustment, stores each scalar value
-  to the prepared stack offset, lowers the direct call, then restores `sp`.
-- Missing outgoing stack area, missing/malformed stack destination facts,
-  out-of-area destinations, unsupported banks, aggregate transports, and
-  mismatched FPR stack sizes remain fail-closed.
-- Focused object-emission coverage now includes a positive same-module call
-  with scalar stack GPR register, GPR immediate, and F64 immediate sources,
-  plus negative malformed/missing authority cases.
-- `src/20001017-1.c` moved past the prior `unsupported_call_abi` boundary.
-  The new first residual is runtime mismatch: clang exits `0`, while the c4c
-  binary aborts. Disassembly shows caller `main` now allocates the prepared
-  `40`-byte outgoing area and stores stack args at offsets `0`, `8`, `16`,
-  `24`, and `32` before calling `bug`; `bug` then aborts while reading a
-  stack-passed formal from its post-prologue frame-relative offset
-  (`ld t3,56(sp)`) instead of the incoming argument area adjusted by the callee
+- Fused pointer/integer branch operands now validate stack-passed scalar formal
+  homes against prepared value-home, frame-slot, stack-object, and formal ABI
+  facts before reading from the incoming argument area adjusted by the callee
   frame size.
+- Scalar `LoadLocalInst` formal reads gained the same fail-closed
+  stack-passed-formal path while ordinary local frame slots continue using their
+  prepared local frame offsets.
+- Focused object-emission coverage now proves a stack-passed pointer formal
+  branch operand reads from `frame_size + incoming_stack_offset`, and a separate
+  local-memory fixture proves ordinary local frame slots are not reclassified as
+  incoming arguments.
+- `src/20001017-1.c` advanced past the callee-side formal-home consumption
+  mismatch: `bug` now reads `%p.C` from `ld t3,120(sp)`, i.e. callee frame
+  `112` plus incoming formal stack offset `8`, instead of the old local home
+  `56(sp)`.
 
 ## Suggested Next
 
-Next packet should classify and repair the callee-side RV64 object-route
-stack-passed formal home consumption for ordinary same-module calls. The likely
-owner is formal stack-slot entry materialization using explicit prepared callee
-homes plus callee frame size, not caller stack-argument production.
+Next packet should classify the remaining `src/20001017-1.c` runtime mismatch
+as a caller-side RV64 mixed integer/FPR stack-argument production issue: caller
+`main` still stores the pointer argument `%p.C` at outgoing stack offset `24`,
+while the callee-side ABI/formal path now expects it at incoming offset `8`.
 
 ## Watchouts
 
-- The caller-side scalar stack-argument path is general over prepared stack
-  destination facts and must not be replaced with ABI formula reconstruction.
-- The new residual should not be fixed by changing expectations or by
-  weakening the caller path; the caller emits the prepared outgoing stack area
-  and direct call now.
-- The callee-side stack formal offsets seen in the prepared facts are explicit
-  homes, but the object route must distinguish callee local frame offsets from
-  incoming caller argument area addresses after the callee prologue.
+- The accepted callee-side repair validates local homes but computes the
+  incoming stack offset from stack-passed formal ABI facts; do not revert it to
+  using the local spill-slot home offset.
+- The remaining caller-side residual appears to involve mixed integer/FPR
+  argument placement: the caller stores stack arguments at `0`, `8`, `16`,
+  `24`, and `32`, while the callee expects `%p.C` at incoming offset `8`.
+- Do not weaken the caller-side stack-argument path or rewrite expectations;
+  the next slice should repair the prepared caller destination facts/ABI
+  classification that placed `%p.C` at offset `24`.
 
 ## Proof
 
@@ -59,5 +53,7 @@ Ran the exact supervisor proof command into `test_after.log`:
 `rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_object_consumer_contract|backend_call_boundary_effect_plan)$' && ALLOWLIST=build/agent_state/644_step1_20001017_1.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
 
 Proof status: build passed; all six focused CTests passed; the one-row torture
-probe still failed, but no longer at `unsupported_call_abi`. New result:
-`RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, `c4c_exit=Subprocess aborted`.
+probe still failed at runtime mismatch. New result remains
+`RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, `c4c_exit=Subprocess aborted`,
+but the callee-side offset moved from the old incorrect `ld t3,56(sp)` to
+`ld t3,120(sp)`. The exact proof log is `test_after.log`.
