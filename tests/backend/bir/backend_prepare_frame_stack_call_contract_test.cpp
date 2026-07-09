@@ -1293,6 +1293,141 @@ bir::Module make_cross_call_preservation_contract_module() {
   return module;
 }
 
+bir::Module make_dynamic_stack_callee_saved_slot_placement_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "dynamic_boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function float_sink;
+  float_sink.name = "dynamic_float_sink";
+  float_sink.is_declaration = true;
+  float_sink.return_type = bir::TypeKind::Void;
+  float_sink.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(float_sink));
+
+  bir::Function function;
+  function.name = "dynamic_stack_callee_saved_slot_placement_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.float",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.fixed",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "pre.only"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "float.carry"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "p.float"),
+      .rhs = bir::Value::immediate_f32_bits(0x3f800000U),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.fixed",
+      .value = bir::Value::named(bir::TypeKind::I32, "pre.only"),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.sp"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "vla.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I32, "pre.only")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "dynamic_boundary_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "pre.only")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.sp")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "dynamic_float_sink",
+      .args = {bir::Value::named(bir::TypeKind::F32, "float.carry")},
+      .arg_types = {bir::TypeKind::F32},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "fixed.out"),
+      .slot_name = "lv.fixed",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "after"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "result"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "after"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "fixed.out"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "result")};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_prior_preservation_source_selection_contract_module() {
   bir::Module module;
   module.target_triple = "riscv64-unknown-linux-gnu";
@@ -5261,6 +5396,122 @@ int check_cross_call_preservation_contract() {
                 frame_plan->frame_slot_order.end(),
                 *saved_it->slot_placement->slot_id) != frame_plan->frame_slot_order.end()) {
     return fail("cross-call preservation contract: saved-register placement perturbed frame-slot order");
+  }
+
+  return 0;
+}
+
+int check_dynamic_stack_callee_saved_slot_placement_contract() {
+  constexpr std::string_view function_name =
+      "dynamic_stack_callee_saved_slot_placement_contract";
+  const auto prepared =
+      prepare_riscv_module(make_dynamic_stack_callee_saved_slot_placement_contract_module());
+  const auto* frame_plan = find_frame_plan_function(prepared, function_name);
+  const auto* call_plans = find_call_plans_function(prepared, function_name);
+  const auto* storage_plan = find_storage_plan_function(prepared, function_name);
+  const auto* carry =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "carry");
+  if (frame_plan == nullptr || call_plans == nullptr || storage_plan == nullptr ||
+      carry == nullptr || !frame_plan->has_dynamic_stack ||
+      !frame_plan->uses_frame_pointer_for_fixed_slots) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: missing dynamic frame, call, storage, or fixed-slot authority");
+  }
+
+  const prepare::PreparedCallPreservedValue* preserved_carry = nullptr;
+  for (const auto& call : call_plans->calls) {
+    const auto preserved_it = std::find_if(
+        call.preserved_values.begin(),
+        call.preserved_values.end(),
+        [carry](const prepare::PreparedCallPreservedValue& preserved) {
+          return preserved.value_id == carry->value_id &&
+                 preserved.route ==
+                     prepare::PreparedCallPreservationRoute::CalleeSavedRegister &&
+                 preserved.register_bank ==
+                     std::optional<prepare::PreparedRegisterBank>{
+                         prepare::PreparedRegisterBank::Gpr};
+        });
+    if (preserved_it != call.preserved_values.end()) {
+      preserved_carry = &*preserved_it;
+      break;
+    }
+  }
+  if (preserved_carry == nullptr || !preserved_carry->register_name.has_value() ||
+      preserved_carry->occupied_register_names.empty() ||
+      !preserved_carry->callee_saved_save_index.has_value()) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: missing GPR callee-saved preserved-value authority");
+  }
+
+  const auto saved_it = std::find_if(
+      frame_plan->saved_callee_registers.begin(),
+      frame_plan->saved_callee_registers.end(),
+      [preserved_carry](const prepare::PreparedSavedRegister& saved) {
+        return saved.bank == prepare::PreparedRegisterBank::Gpr &&
+               saved.register_name == *preserved_carry->register_name &&
+               saved.occupied_register_names == preserved_carry->occupied_register_names &&
+               saved.save_index == *preserved_carry->callee_saved_save_index;
+      });
+  if (saved_it == frame_plan->saved_callee_registers.end()) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: frame plan lost saved GPR authority");
+  }
+  if (!saved_it->slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(*saved_it->slot_placement) ||
+      saved_it->slot_placement->bank != saved_it->bank ||
+      saved_it->slot_placement->register_name != saved_it->register_name ||
+      saved_it->slot_placement->occupied_register_names != saved_it->occupied_register_names ||
+      saved_it->slot_placement->save_index != saved_it->save_index ||
+      saved_it->slot_placement->register_placement != saved_it->placement ||
+      saved_it->slot_placement->size_bytes != std::optional<std::size_t>{8} ||
+      saved_it->slot_placement->align_bytes != std::optional<std::size_t>{8} ||
+      !saved_it->slot_placement->fixed_location) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: saved GPR lost complete prepared slot-placement facts");
+  }
+  if (!saved_it->slot_placement->slot_id.has_value() ||
+      !saved_it->slot_placement->stack_offset_bytes.has_value() ||
+      *saved_it->slot_placement->stack_offset_bytes < frame_plan->frame_size_bytes ||
+      std::find(frame_plan->frame_slot_order.begin(),
+                frame_plan->frame_slot_order.end(),
+                *saved_it->slot_placement->slot_id) != frame_plan->frame_slot_order.end()) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: saved GPR placement no longer lives after fixed frame slots");
+  }
+
+  const auto non_gpr_saved_it = std::find_if(
+      frame_plan->saved_callee_registers.begin(),
+      frame_plan->saved_callee_registers.end(),
+      [](const prepare::PreparedSavedRegister& saved) {
+        return saved.bank != prepare::PreparedRegisterBank::Gpr;
+      });
+  if (non_gpr_saved_it == frame_plan->saved_callee_registers.end()) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: fixture lost non-GPR boundary coverage");
+  }
+  if (non_gpr_saved_it->slot_placement.has_value()) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: dynamic non-GPR saved registers must stay outside idea 626 placement publication");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  const std::string expected_function =
+      "prepared.func @dynamic_stack_callee_saved_slot_placement_contract frame_size=";
+  const std::string expected_slot =
+      " slot_placement=slot#" + std::to_string(*saved_it->slot_placement->slot_id) +
+      "+stack" + std::to_string(*saved_it->slot_placement->stack_offset_bytes) +
+      " slot_size=8 slot_align=8";
+  const std::string unexpected_non_gpr_slot =
+      std::string("slot_reg=") +
+      std::string(prepare::prepared_register_bank_name(non_gpr_saved_it->bank)) + ":" +
+      non_gpr_saved_it->register_name;
+  if (prepared_dump.find(expected_function) == std::string::npos ||
+      prepared_dump.find(" has_dynamic_stack=yes fixed_slots_use_fp=yes") ==
+          std::string::npos ||
+      prepared_dump.find(expected_slot) == std::string::npos ||
+      prepared_dump.find(unexpected_non_gpr_slot) != std::string::npos) {
+    return fail(
+        "dynamic callee-saved slot-placement contract: prepared dump does not expose only saved GPR slot_placement before object emission");
   }
 
   return 0;
@@ -10123,6 +10374,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_cross_call_preservation_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_dynamic_stack_callee_saved_slot_placement_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_prior_preservation_source_selection_contract(); rc != 0) {

@@ -140,6 +140,12 @@ namespace {
   };
 }
 
+[[nodiscard]] bool should_publish_saved_register_slot_placement(
+    const PreparedSavedRegister& saved,
+    bool has_dynamic_stack) {
+  return !has_dynamic_stack || saved.bank == PreparedRegisterBank::Gpr;
+}
+
 [[nodiscard]] const PreparedRegallocFunction* find_regalloc_function(
     const PreparedRegalloc& regalloc,
     FunctionNameId function_name) {
@@ -292,27 +298,28 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         }
       }
     }
-    if (!plan.has_dynamic_stack) {
-      PreparedFrameSlotId next_saved_slot_id =
-          next_prepared_frame_slot_id(prepared.stack_layout);
-      std::size_t next_saved_offset = plan.frame_size_bytes;
-      for (auto& saved : saved_registers) {
-        const std::size_t unit_size =
-            saved_register_slot_unit_size(prepared.target_profile, saved.bank);
-        if (unit_size == 0U || !saved.placement.has_value()) {
-          continue;
-        }
-        const std::size_t align_bytes = unit_size;
-        const std::size_t size_bytes =
-            unit_size * std::max<std::size_t>(saved.contiguous_width, 1);
-        next_saved_offset = align_prepared_offset(next_saved_offset, align_bytes);
-        saved.slot_placement = make_saved_register_slot_placement(saved,
-                                                                   next_saved_slot_id++,
-                                                                   next_saved_offset,
-                                                                   size_bytes,
-                                                                   align_bytes);
-        next_saved_offset += size_bytes;
+    PreparedFrameSlotId next_saved_slot_id =
+        next_prepared_frame_slot_id(prepared.stack_layout);
+    std::size_t next_saved_offset = plan.frame_size_bytes;
+    for (auto& saved : saved_registers) {
+      if (!should_publish_saved_register_slot_placement(saved, plan.has_dynamic_stack)) {
+        continue;
       }
+      const std::size_t unit_size =
+          saved_register_slot_unit_size(prepared.target_profile, saved.bank);
+      if (unit_size == 0U || !saved.placement.has_value()) {
+        continue;
+      }
+      const std::size_t align_bytes = unit_size;
+      const std::size_t size_bytes =
+          unit_size * std::max<std::size_t>(saved.contiguous_width, 1);
+      next_saved_offset = align_prepared_offset(next_saved_offset, align_bytes);
+      saved.slot_placement = make_saved_register_slot_placement(saved,
+                                                                 next_saved_slot_id++,
+                                                                 next_saved_offset,
+                                                                 size_bytes,
+                                                                 align_bytes);
+      next_saved_offset += size_bytes;
     }
     std::unordered_map<PreparedFrameSlotId, std::size_t> frame_slot_offsets;
     frame_slot_offsets.reserve(prepared.stack_layout.frame_slots.size());

@@ -1,75 +1,101 @@
 Status: Active
 Source Idea Path: ideas/open/626_prepared_dynamic_frame_callee_saved_slot_placement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Locate Producer Authority
+Current Step ID: 3
+Current Step Title: Publish Prepared Save-Slot Placement Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 located the prepared-frame producer authority for callee-saved GPR
-save-slot placements:
+Step 3 corrected the prepared save-slot placement producer so idea 626's
+dynamic-stack extension is GPR-only while fixed-frame behavior remains
+unchanged, then proved the producer on representative idea-626 rows before RV64
+object emission.
 
-- Producer function target: `populate_frame_plan(PreparedBirModule&)` in
-  `src/backend/prealloc/frame_plan.cpp`. It already gathers saved
-  callee-saved register identity from `prepared.regalloc`, derives `save_index`
-  via `callee_saved_span_save_index`, and owns the final
-  `PreparedFramePlanFunction::saved_callee_registers` publication.
-- Producer helper target: local
-  `make_saved_register_slot_placement(...)` in
-  `src/backend/prealloc/frame_plan.cpp`. It already builds the complete
-  `PreparedSavedRegisterSlotPlacement` payload from a saved register plus
-  slot id, stack offset, size, and alignment.
-- Frame-layout authority feeding the producer: `BirPreAlloc::run_stack_layout()`
-  and `stack_layout::assign_frame_slots(...)` publish per-function fixed-slot
-  frame size/alignment and `PreparedFrameSlot` offsets before
-  `populate_frame_plan` runs. `populate_frame_plan` also computes the
-  callee-saved area after fixed frame slots using `next_prepared_frame_slot_id`,
-  `saved_register_slot_unit_size`, and `align_prepared_offset`.
-- Existing carrier fields are sufficient for Step 3: `PreparedSavedRegister`
-  already has optional `slot_placement`, and
-  `PreparedSavedRegisterSlotPlacement` already carries bank, register name,
-  width, occupied units, save index, register placement, slot id,
-  stack-offset bytes, size, alignment, and `fixed_location`.
-- Current dynamic-stack gap: the existing publication block is guarded by
-  `if (!plan.has_dynamic_stack)`, so dynamic rows keep saved-register identity
-  but publish no `slot_placement`. A fixed-frame comparison row currently
-  shows complete `slot_placement=slot#...+stack... slot_size=8 slot_align=8`
-  facts, confirming the helper/carrier path is live for non-dynamic frames.
-- Fail-closed condition: if a saved callee-saved GPR has no complete
-  producer-published `slot_placement`, or if unit size/register placement
-  authority is missing, RV64 must continue rejecting the object route rather
-  than deriving placement from frame size, register order, source filename, or
-  final assembly shape.
+Changed files:
+
+- `src/backend/prealloc/frame_plan.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- `todo.md`
+- `test_after.log`
+
+Producer behavior:
+
+- `populate_frame_plan(PreparedBirModule&)` now uses
+  `should_publish_saved_register_slot_placement(...)` to preserve the original
+  fixed-frame all-bank saved-register slot-placement path while limiting
+  dynamic-stack publication to `PreparedRegisterBank::Gpr`.
+- The placement remains producer-authored from existing frame-layout and
+  register-placement authority: `next_prepared_frame_slot_id(...)`,
+  `plan.frame_size_bytes`, `align_prepared_offset(...)`,
+  `saved_register_slot_unit_size(...)`, and
+  `make_saved_register_slot_placement(...)`.
+- The fail-closed checks are unchanged: rows still skip placement publication
+  when the bank has no slot unit size or the saved register has no target
+  `placement`.
+- Dynamic FPR/vector saved-register rows intentionally remain without
+  `slot_placement` in this idea; that boundary avoids drifting into FPR/vector
+  dynamic-frame placement work.
+- Generated saved-register save slots remain placement facts on
+  `PreparedSavedRegister::slot_placement`; they are not added to
+  `frame_slot_order`.
+
+Test coverage:
+
+- Added a RISC-V dynamic-stack fixture with a fixed local slot, stack
+  save/dynamic alloca/restore calls, a live GPR callee-saved value across a
+  call, and non-GPR saved-register boundary coverage.
+- Added `check_dynamic_stack_callee_saved_slot_placement_contract()` to prove
+  the dynamic frame row has `has_dynamic_stack=yes`, uses the frame pointer for
+  fixed slots, preserves a GPR through callee-saved authority, publishes a
+  complete `PreparedSavedRegisterSlotPlacement`, places the generated save slot
+  after fixed frame slots, and exposes `slot_placement=slot#...+stack...`
+  facts in `prepare::print(prepared)` before object emission.
+- The same focused test requires a dynamic non-GPR saved-register row to remain
+  without `slot_placement` and checks that the prepared dump exposes only the
+  GPR save-slot placement facts.
+- No CMake changes were required because the coverage lives in the existing
+  backend prepared frame/stack/call contract test.
+
+Representative row evidence:
+
+- Ran `./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu
+  tests/c/external/gcc_torture/src/20040811-1.c`; the prepared dump for
+  `@main` reports `frame_size=24 frame_alignment=8 has_dynamic_stack=yes
+  fixed_slots_use_fp=yes` and complete saved GPR placement facts:
+  `s1 slot_placement=slot#4+stack24 slot_size=8 slot_align=8` and
+  `s2 slot_placement=slot#5+stack32 slot_size=8 slot_align=8`.
+- Also spot-checked the other named representatives with the same command:
+  `pr43220.c` reports `s1 slot#7+stack40` and `s2 slot#8+stack48`, and
+  `vla-dealloc-1.c` reports `s1 slot#4+stack24` and `s2 slot#5+stack32`.
+- The representative evidence is from the prepared dump path and occurs before
+  RV64 object emission; no implementation changes were needed during this
+  evidence packet.
 
 ## Suggested Next
 
-Run Step 3 as a narrow producer implementation packet in
-`src/backend/prealloc/frame_plan.cpp`: remove the dynamic-stack exclusion from
-callee-saved GPR slot-placement publication only after confirming the computed
-callee-saved area remains after fixed slots and uses `fp`-stable offsets for
-dynamic frames. Add focused producer coverage proving at least one idea-626 row
-emits complete `slot_placement` facts in the prepared dump before RV64 object
-emission.
+Run Step 4 as a narrow RV64 consumer-guard packet: make RV64 object-route
+admission consume only complete producer-published
+`PreparedSavedRegisterSlotPlacement` facts for dynamic-stack callee-saved GPR
+rows, and fail closed when the placement is absent or incomplete. Keep the
+consumer from deriving save-slot offsets from frame size, register order,
+source filename, final assembly shape, or dynamic-frame heuristics.
 
 ## Watchouts
 
-- Do not infer callee-saved save-slot placements in RV64 from frame size,
-  register order, source filename, or final assembly shape.
-- Keep FPR placement, move-bundle authority, local/global memory repair, call
-  policy, and expectation changes outside this idea.
-- Preserve dynamic stack operation metadata and existing frame size/alignment
-  facts while adding placement authority.
-- The implementation should not add a new broad carrier unless Step 3 finds an
-  unstated authority gap; current evidence says the existing
-  `PreparedSavedRegisterSlotPlacement` carrier is enough.
-- Do not add generated callee-saved slot ids to `frame_slot_order` unless the
-  consumer contract explicitly needs it; existing fixed-frame placement tests
-  expect save slots to remain producer-published placement facts, not ordinary
-  fixed frame slots.
+- Step 3 intentionally did not touch RV64 object consumer implementation,
+  unsupported markers, allowlists, or unrelated expectations.
+- Consumer work must read the producer-published `slot_placement` carrier and
+  reject incomplete rows instead of recovering missing placement downstream.
+- Dynamic FPR/vector placement remains out of scope for idea 626 and should not
+  be inferred from this GPR-only producer path.
+- Dynamic-frame object lowering, move-bundle authority, local/global memory
+  repair, and call policy remain outside this slice.
+- Saved-register save slots are still not ordinary fixed frame slots and should
+  not be treated as entries in `frame_slot_order`.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-passed: 347/347 backend tests. Proof log: `test_after.log`.
+passed. Proof log: `test_after.log`.
