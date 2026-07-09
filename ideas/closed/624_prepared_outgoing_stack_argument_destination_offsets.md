@@ -1,6 +1,6 @@
 # Prepared Outgoing Stack Argument Destination Offsets
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
@@ -81,3 +81,17 @@ destination publication, not named-case implementation targets.
 - Reject broad ABI, variadic, library, local/global producer, or runtime
   rewrites that are not needed to publish the outgoing stack destination
   authority.
+
+## Closure Note
+
+Closed after Step 5 breadth proof. The prepared call-boundary route now
+publishes explicit destination stack offset and size facts for the former
+producer-owned outgoing stack argument rows, including `src/20000808-1.c`, odd
+`931004-*`, `src/931031-1.c`, `src/950607-2.c`, and scalar guard
+`src/pr69447.c`. RV64 call consumers require those prepared facts and keep
+missing or conflicting destination authority fail-closed rather than deriving
+offsets locally.
+
+Remaining diagnostics are outside this idea: ordinary same-module call
+ABI/result support, semantic local-memory guards for even `931004-*`, and
+carrier-alias/select residuals in `src/20000808-1.c`.
