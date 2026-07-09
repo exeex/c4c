@@ -1,84 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/623_rv64_cast_instruction_fragment_consumers.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh cast residual evidence
+Current Step ID: 2
+Current Step Title: Split ownership by first missing fact
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed current cast-shaped `unsupported_instruction_fragment`
-evidence from the RV64 gcc torture backend scan without implementation,
-expectation, unsupported-marker, allowlist, runtime/accounting, or plan/idea
-changes.
-
-Refresh inputs and command provenance:
-- Inputs: `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`,
-  `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`, and
-  `build/rv64_gcc_c_torture_backend/*/case.log`.
-- Extraction classified only current failed-case diagnostics whose normalized
-  text begins `prepared module shape: unsupported_instruction_fragment: BIR
-  instruction requires unsupported RV64 object lowering` and exposes
-  `instruction_kind=...`.
-- Freshness boundary: the refresh uses the current scan artifacts dated
-  2026-07-09T01:31:56Z, not stale idea-612 counts.
+Step 2 classified the 28 refreshed CastInst residual rows from
+`build/agent_state/623_step1_cast_residuals.tsv` by first missing or
+responsible owner without implementation, test, unsupported-marker, allowlist,
+runtime/accounting, plan, or idea changes.
 
 Artifacts written:
-- `build/agent_state/623_step1_cast_residuals.tsv`: 28 current CastInst rows.
-- `build/agent_state/623_step1_non_cast_guard_rows.tsv`: 60 current non-cast
-  guard rows from the same diagnostic bucket.
-- `build/agent_state/623_step1_cast_refresh_notes.md`: grouped counts,
-  representative cast rows, representative non-cast guards, and the diagnostic
-  boundary.
+- `build/agent_state/623_step2_cast_owner_buckets.tsv`: row-level ownership
+  classification, prepared cast line, source kind, and producer/move evidence.
+- `build/agent_state/623_step2_cast_owner_notes.md`: summary counts,
+  multi-row RV64 consumer sub-families, outside-route guardrails, and row
+  details.
 
-Current cast rows by source operation and diagnostic boundary:
-- `CastInst: i32 ...`: 26 rows. Cases: `src/20010604-1.c`,
-  `src/20020506-1.c`, `src/20021111-1.c`, `src/20030714-1.c`,
-  `src/20090113-2.c`, `src/20090113-3.c`, `src/20120919-1.c`,
-  `src/20150611-1.c`, `src/961122-2.c`, `src/compare-1.c`,
-  `src/fprintf-chk-1.c`, `src/ieee/mzero5.c`, `src/loop-2d.c`,
-  `src/p18298.c`, `src/pr19005.c`, `src/pr23467.c`, `src/pr37573.c`,
-  `src/pr41750.c`, `src/pr43835.c`, `src/pr81555.c`, `src/pr81556.c`,
-  `src/pr90949.c`, `src/printf-chk-1.c`, `src/stkalign.c`,
-  `src/vfprintf-chk-1.c`, `src/vprintf-chk-1.c`.
-- `CastInst: f128 ...`: 2 rows. Cases: `src/930622-2.c`,
-  `src/ieee/pr29302-1.c`.
-- Example diagnostic text for the row list is recorded verbatim per row in
-  `623_step1_cast_residuals.tsv`; representative form:
-  `prepared module shape: unsupported_instruction_fragment: BIR instruction
-  requires unsupported RV64 object lowering; function=...; block=...;
-  block_index=...; instruction_index=...; instruction_kind=CastInst;
-  owner=...`.
+Ownership result:
+- `RV64 consumer`: 26 ordinary i32 rows. BIR producer facts are complete for
+  these rows: each row has a typed prepared `CastInst` line and a matching
+  before-instruction prepared move bundle. The first missing fact is RV64
+  object-route consumption of the CastInst.
+- `policy`: 2 f128/floating rows, `src/930622-2.c` and
+  `src/ieee/pr29302-1.c`, kept outside the ordinary RV64 GPR cast-consumer
+  route.
 
-Nearby non-cast guard rows from the same current diagnostic bucket:
-- `BinaryInst`: 10 rows; mostly `ptr` owners plus one `i16 %t13.bf.sext`.
-- `CallInst`: 39 rows; owners include `i32`, `ptr`, `double`, `float`, `i64`,
-  and `none`.
-- `SelectInst`: 7 rows; all representative rows are `ptr` owners.
-- `StoreLocalInst`: 3 rows; float/double sret copy owners.
-- `LoadLocalInst`: 1 row; `double %t10`.
-- Full guard row details and representative examples live in
-  `build/agent_state/623_step1_non_cast_guard_rows.tsv` and
-  `build/agent_state/623_step1_cast_refresh_notes.md`.
+Multi-row RV64 consumer sub-families with complete producer facts:
+- `rv64-consumer:width-preserving-zext-i32-to-i32`: 18 rows.
+- `rv64-consumer:width-preserving-trunc-i32-to-i32`: 4 rows.
+- `rv64-consumer:ptrtoint-*-ptr-to-i32`: 4 rows split by value, global, and
+  local-memory pointer source kind.
+
+No refreshed CastInst row was assigned to BIR producer, semantic cast, ABI,
+global, local-memory, select, branch, move-bundle, runtime, width, signedness,
+source-kind, or authority as the first missing owner. Source kind only refines
+the ptrtoint RV64-consumer sub-family. The nearby 60 non-cast guard rows remain
+outside this route.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: bucket the 28 refreshed CastInst rows by first
-missing or responsible owner, and identify whether a multi-row ordinary
-RV64/MIR consumer sub-family exists after excluding `f128`/floating policy and
-other non-consumer lanes.
+Execute the first implementation packet for the ordinary RV64 consumer family:
+add semantic RV64 object-route consumption for width-preserving i32-to-i32
+CastInst rows, starting with the 18-row `zext i32 ... to i32` sub-family and
+keeping f128/floating-policy rows out of scope.
 
 ## Watchouts
 
-- Step 1 evidence is diagnostic classification only; it does not prove producer
-  facts are complete for any CastInst row.
-- Keep the 60 non-cast guard rows outside this route unless the supervisor
-  opens a separate owner packet.
-- The 2 `f128` CastInst rows should remain suspect policy/floating lanes until
-  Step 2 proves otherwise.
-- Reject named-case-only cast lowering and any expectation/unsupported-marker
-  rewrite route.
+- Do not include the 2 `sitofp -> f128` rows in the ordinary GPR cast-consumer
+  packet; they remain policy/floating work.
+- Do not use the 60 Step 1 non-cast guard rows as acceptance for this route.
+- Keep ptrtoint source-kind differences as a separate RV64 consumer sub-family
+  if width-preserving i32 cast consumption is split first.
+- Reject any route that rewrites expectations or unsupported markers instead
+  of lowering the RV64 CastInst consumer path.
 
 ## Proof
 
