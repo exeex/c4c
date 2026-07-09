@@ -1428,6 +1428,127 @@ bir::Module make_dynamic_stack_callee_saved_slot_placement_contract_module() {
   return module;
 }
 
+bir::Module make_riscv_fpr_abi_frame_fact_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64gc-unknown-linux-gnu";
+
+  bir::Function int_helper;
+  int_helper.name = "fpr_boundary_helper";
+  int_helper.is_declaration = true;
+  int_helper.return_type = bir::TypeKind::I32;
+  int_helper.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(int_helper));
+
+  bir::Function fpr_sink;
+  fpr_sink.name = "fpr_literal_sink";
+  fpr_sink.is_declaration = true;
+  fpr_sink.return_type = bir::TypeKind::F32;
+  fpr_sink.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(fpr_sink));
+
+  bir::Function function;
+  function.name = "riscv_fpr_abi_frame_fact_contract";
+  function.return_type = bir::TypeKind::F32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.float",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "float.carry"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "p.float"),
+      .rhs = bir::Value::immediate_f32_bits(0x3f800000U),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "fpr_boundary_helper",
+      .args = {bir::Value::immediate_i32(17)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::F32, "literal.out"),
+      .callee = "fpr_literal_sink",
+      .args = {bir::Value::immediate_f32_bits(0x40800000U)},
+      .arg_types = {bir::TypeKind::F32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "f32",
+      .return_type = bir::TypeKind::F32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::F32,
+          .primary_class = bir::AbiValueClass::Sse,
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "result"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "float.carry"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "literal.out"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::F32, "result")};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_prior_preservation_source_selection_contract_module() {
   bir::Module module;
   module.target_triple = "riscv64-unknown-linux-gnu";
@@ -5512,6 +5633,148 @@ int check_dynamic_stack_callee_saved_slot_placement_contract() {
       prepared_dump.find(unexpected_non_gpr_slot) != std::string::npos) {
     return fail(
         "dynamic callee-saved slot-placement contract: prepared dump does not expose only saved GPR slot_placement before object emission");
+  }
+
+  return 0;
+}
+
+int check_riscv_fpr_abi_frame_fact_contract() {
+  constexpr std::string_view function_name = "riscv_fpr_abi_frame_fact_contract";
+  const auto prepared =
+      prepare_riscv_float_abi_module(make_riscv_fpr_abi_frame_fact_contract_module());
+  const auto* call_plans = find_call_plans_function(prepared, function_name);
+  const auto* frame_plan = find_frame_plan_function(prepared, function_name);
+  const auto* storage_plan = find_storage_plan_function(prepared, function_name);
+  const auto* carry = storage_plan == nullptr
+                          ? nullptr
+                          : find_storage_value(prepared, *storage_plan, "float.carry");
+  if (call_plans == nullptr || call_plans->calls.size() != 2 ||
+      frame_plan == nullptr || storage_plan == nullptr || carry == nullptr) {
+    return fail("rv64 FPR ABI/frame fact contract: missing call, frame, or storage facts");
+  }
+
+  const auto& boundary_call = call_plans->calls.front();
+  const auto& literal_call = call_plans->calls.back();
+  if (boundary_call.direct_callee_name != std::optional<std::string>{"fpr_boundary_helper"} ||
+      literal_call.direct_callee_name != std::optional<std::string>{"fpr_literal_sink"} ||
+      literal_call.arguments.size() != 1 || !literal_call.result.has_value()) {
+    return fail("rv64 FPR ABI/frame fact contract: call-plan shape changed");
+  }
+
+  const auto& literal_arg = literal_call.arguments.front();
+  if (literal_arg.value_bank != prepare::PreparedRegisterBank::Fpr ||
+      literal_arg.source_encoding != prepare::PreparedStorageEncodingKind::Immediate ||
+      !literal_arg.source_literal.has_value() ||
+      literal_arg.source_literal->type != bir::TypeKind::F32 ||
+      literal_arg.source_literal->immediate_bits != 0x40800000U ||
+      literal_arg.destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Fpr} ||
+      literal_arg.destination_register_name != std::optional<std::string>{"fa0"} ||
+      literal_arg.destination_contiguous_width != 1 ||
+      literal_arg.destination_occupied_register_names != std::vector<std::string>{"fa0"} ||
+      !literal_arg.destination_register_placement.has_value() ||
+      literal_arg.destination_register_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      literal_arg.destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      literal_arg.destination_register_placement->slot_index != 0 ||
+      literal_arg.destination_register_placement->contiguous_width != 1 ||
+      !literal_arg.destination_target_register_identity.has_value() ||
+      literal_arg.destination_target_register_identity->bank !=
+          prepare::PreparedRegisterBank::Fpr ||
+      literal_arg.destination_target_register_identity->register_class !=
+          prepare::PreparedRegisterClass::Float ||
+      literal_arg.destination_target_register_identity->physical_index != 10) {
+    return fail("rv64 FPR ABI/frame fact contract: FPR literal argument facts are incomplete");
+  }
+
+  const auto& literal_result = *literal_call.result;
+  if (literal_result.value_bank != prepare::PreparedRegisterBank::Fpr ||
+      literal_result.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      literal_result.source_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Fpr} ||
+      literal_result.source_register_name != std::optional<std::string>{"fa0"} ||
+      !literal_result.source_register_placement.has_value() ||
+      literal_result.source_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallResult ||
+      literal_result.source_register_placement->bank != prepare::PreparedRegisterBank::Fpr) {
+    return fail("rv64 FPR ABI/frame fact contract: FPR result ABI facts are incomplete");
+  }
+
+  const auto preserved_it = std::find_if(
+      boundary_call.preserved_values.begin(),
+      boundary_call.preserved_values.end(),
+      [carry](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id &&
+               preserved.route ==
+                   prepare::PreparedCallPreservationRoute::CalleeSavedRegister &&
+               preserved.register_bank ==
+                   std::optional<prepare::PreparedRegisterBank>{
+                       prepare::PreparedRegisterBank::Fpr};
+      });
+  if (preserved_it == boundary_call.preserved_values.end() ||
+      !preserved_it->register_name.has_value() ||
+      preserved_it->contiguous_width != 1 ||
+      preserved_it->occupied_register_names !=
+          std::vector<std::string>{*preserved_it->register_name} ||
+      !preserved_it->register_placement.has_value() ||
+      preserved_it->register_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      preserved_it->register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      !preserved_it->callee_saved_save_index.has_value() ||
+      preserved_it->preservation_source.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      preserved_it->preservation_destination.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      preserved_it->preservation_source.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Fpr} ||
+      preserved_it->preservation_destination.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Fpr}) {
+    return fail("rv64 FPR ABI/frame fact contract: FPR preservation facts are incomplete");
+  }
+
+  const auto saved_it = std::find_if(
+      frame_plan->saved_callee_registers.begin(),
+      frame_plan->saved_callee_registers.end(),
+      [&](const prepare::PreparedSavedRegister& saved) {
+        return saved.bank == prepare::PreparedRegisterBank::Fpr &&
+               saved.register_name == *preserved_it->register_name &&
+               saved.occupied_register_names == preserved_it->occupied_register_names &&
+               saved.save_index == *preserved_it->callee_saved_save_index;
+      });
+  if (saved_it == frame_plan->saved_callee_registers.end() ||
+      !saved_it->slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(
+          *saved_it->slot_placement) ||
+      saved_it->slot_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      saved_it->slot_placement->register_name != saved_it->register_name ||
+      saved_it->slot_placement->occupied_register_names !=
+          saved_it->occupied_register_names ||
+      saved_it->slot_placement->save_index != saved_it->save_index ||
+      saved_it->slot_placement->register_placement != saved_it->placement ||
+      saved_it->slot_placement->size_bytes != std::optional<std::size_t>{8} ||
+      saved_it->slot_placement->align_bytes != std::optional<std::size_t>{8} ||
+      !saved_it->slot_placement->fixed_location ||
+      saved_it->slot_placement->stack_offset_bytes !=
+          std::optional<std::size_t>{frame_plan->frame_size_bytes}) {
+    return fail("rv64 FPR ABI/frame fact contract: fixed-frame FPR saved slot facts are incomplete");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  const std::string expected_saved =
+      "slot_placement=slot#" +
+      std::to_string(*saved_it->slot_placement->slot_id) + "+stack" +
+      std::to_string(*saved_it->slot_placement->stack_offset_bytes) +
+      " slot_size=8 slot_align=8 fixed_location=yes slot_reg=fpr:" +
+      saved_it->register_name;
+  if (prepared_dump.find(
+          "arg index=0 value_bank=fpr source_encoding=immediate "
+          "source_literal=0x40800000") == std::string::npos ||
+      prepared_dump.find("dest_placement=fpr:call_argument#0/w1 dest_reg=fa0 "
+                         "dest_bank=fpr") == std::string::npos ||
+      prepared_dump.find("preserve value=float.carry value_id=1 "
+                         "route=callee_saved_register") == std::string::npos ||
+      prepared_dump.find(expected_saved) == std::string::npos) {
+    return fail("rv64 FPR ABI/frame fact contract: prepared dump hides FPR facts");
   }
 
   return 0;
@@ -10377,6 +10640,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_dynamic_stack_callee_saved_slot_placement_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_fpr_abi_frame_fact_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_prior_preservation_source_selection_contract(); rc != 0) {
