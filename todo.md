@@ -1,62 +1,90 @@
 Status: Active
 Source Idea Path: ideas/open/639_pointer_loaded_from_global_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement one semantic authority packet
+Current Step ID: 4
+Current Step Title: Validate and decide next lifecycle action
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implemented one semantic authority packet for the same-block
-pointer-loaded-from-global shape. Prepared addressing now publishes and prints
-`pointer_loaded_from_global_required=yes` plus a complete
-`pointer_loaded_from_global` authority for the `src/pr46309.c` row
-`%t15 = bir.load_global ptr @q` followed by
-`%t16 = bir.load_local i32 %t16.addr, addr %t15`.
+Step 4 re-ran the representative row probe and focused negative proof for idea
+639 after Step 3 commit `f89def249`.
 
-The fact carries pointer value `%t15`, producer `load_global` at
-`block_1 inst=0`, source global `q`, pointer width/extent `8/8`, selected
-local-memory use `block_1 inst=1 offset=0 width=4`, default producer/selected
-address spaces, and explicit freshness. RV64 pointer-value base-plus-offset
-consumption now requires that complete fact only when prepared marks a
-same-block loaded-global pointer authority requirement. Non-loaded-global
-pointer policies remain on their existing routes.
+`src/pr46309.c` has the intended complete authority for the accepted row:
+`%t15 = bir.load_global ptr @q` at `block_1 inst=0` followed by
+`%t16 = bir.load_local i32 %t16.addr, addr %t15` at `block_1 inst=1`.
+The current prepared dump prints
+`pointer_loaded_from_global_required=yes pointer_loaded_from_global=yes` with
+pointer `%t15`, producer `load_global`, source global `q`, pointer
+width/extent `8/8`, selected use `block_1 inst=1 offset=0 width=4`, default
+producer/selected address spaces, and `pointer_fresh=yes`. That confirms the
+row moved past the prior `block_1 inst=1` loaded-global authority boundary.
 
-Focused tests cover an accepted same-block loaded-global pointer local-memory
-access and a stale intervening global-store row that requires authority but
-does not receive the complete fact.
+The three-row probe still reports `total=3 passed=0 failed=3`, but the current
+first owners are residuals:
+
+- `src/pr46309.c`: still `unsupported_local_memory_access`, now after the
+  accepted loaded-global row. Current prepared evidence also shows later
+  ordinary pointer/local-memory and publication residuals, including
+  `logic.rhs.22 inst=0` on pointer `%p.p` and `logic.end.25` join publication
+  rows for `%t34` with `status=missing_publication`; this is not the prior
+  loaded-global `%t15` authority gap.
+- `src/pr58984.c`: `unsupported_call_abi` at `main entry block_index=0
+  instruction_index=23`, callee `foo`, `args=1`, `planned_args=1`,
+  `result=i32 %t7`. The prepared dump shows the call as
+  `bir.call i32 foo(ptr byval(size=4, align=4) %lv.o)` plus aggregate/byval
+  parameter-copy local-memory setup, so this remains ABI/byval work outside
+  idea 639.
+- `src/pr66556.c`: `unsupported_local_memory_access`. The prepared dump has
+  loaded pointer globals such as `@k` and `@f`, but the visible residuals are
+  mixed aggregate/global bitfield and ordinary pointer/local-memory ownership:
+  `load_local ptr %lv.n`, `access block=logic.end.7 inst_index=16
+  base=pointer_value pointer=%t23 size=2`, global byte-storage aggregate
+  accesses, and direct-global select-chain/store-source rows. It remains
+  outside the accepted Step 3 packet.
+
+Negative ownership remains intact: direct global-symbol rows stay with idea
+631, prepared global value-location rows stay with idea 621,
+aggregate/byval/stack-home rows stay with idea 633 and related ABI policy,
+string-constant local memory stays outside idea 639, and the focused stale
+loaded-global test still proves missing freshness fails closed.
 
 ## Suggested Next
 
-Run Step 4 validation and lifecycle triage. The `src/pr46309.c` loaded-global
-row now advances past the prior `block_1 inst=1` authority boundary, but the
-supplemental allowlist still fails overall: `pr46309` reaches a later
-local-memory owner, `pr58984` currently fails in call ABI/result lowering, and
-`pr66556` still fails in local-memory ownership.
+Recommend plan-owner closure for idea 639: the source acceptance criterion is
+satisfied by one complete-authority pointer-loaded-from-global row moving past
+its previous owner, while the remaining representative failures classify to
+other existing policy/ABI owners. Continue residual work under the appropriate
+follow-up ideas instead of widening idea 639.
 
 ## Watchouts
 
-- Keep direct `addr @symbol` local-memory rows under idea 631 and prepared
-  global value-location rows under idea 621.
-- Keep aggregate/byval/sret/stack-home rows under idea 633 and related ABI
-  policy; `pr58984` and `pr66556` should not drive this packet.
-- Missing producer, missing freshness, non-default address space, volatile
-  access, incomplete global source identity, incomplete extent/width,
-  ambiguous multiple producers, and stale cross-call/global publication remain
-  fail-closed for loaded-global pointer rows.
-- Do not infer loaded-pointer authority from source filenames, final symbol
-  names, final assembly layout, register assignment, or BIR adjacency alone.
+- The required row-probe command fails overall because all three
+  representative source files still fail; treat that as residual
+  classification, not as a Step 3 authority regression.
+- The allowlist helper does not refresh `dump-prepared-bir` artifacts; current
+  Step 4 dumps were regenerated under `build/agent_state/639_step4_validation/`.
+- Do not use `pr58984` byval/aggregate setup or `pr66556` aggregate/global
+  bitfield local-memory residuals to widen pointer-loaded-from-global policy.
+- Preserve the fail-closed requirements for missing producer, missing
+  freshness, non-default address space, volatile access, incomplete source
+  identity, incomplete extent/width, ambiguous producers, and stale
+  publication.
 
 ## Proof
 
-Canonical proof passed:
-`cmake --build --preset default --target backend_prepare_stack_layout_test -j1 && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`.
+Required proof command:
+`cmake --build --preset default && ALLOWLIST=build/agent_state/639_step1_pointer_loaded_from_global.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1`.
+Result: build succeeded; row probe exited nonzero with `total=3 passed=0
+failed=3`, preserving root `test_after.log`.
 
-Supplemental probe command was run after a serial full-build retry to avoid a
-parallel `cc1plus` resource kill:
-`cmake --build --preset default && ALLOWLIST=build/agent_state/639_step1_pointer_loaded_from_global.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/639_step3_pointer_loaded_from_global.log 2>&1`.
-The probe log is `build/agent_state/639_step3_pointer_loaded_from_global.log`
-and reports `total=3 passed=0 failed=3`; the prepared authority evidence for
-`pr46309` is captured at
-`build/agent_state/639_step3_pointer_loaded_from_global/pr46309.dump-prepared-bir.txt`.
+Focused proof command:
+`cmake --build --preset default --target backend_prepare_stack_layout_test -j1 && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$' > build/agent_state/639_step4_backend_prepare_stack_layout.log 2>&1`.
+Result: passed, `100% tests passed, 0 tests failed out of 1`.
+
+Current Step 4 evidence:
+`build/agent_state/639_step4_validation/representative_rows.md`,
+`build/agent_state/639_step4_validation/pr46309.dump-prepared-bir.txt`,
+`build/agent_state/639_step4_validation/pr58984.dump-prepared-bir.txt`, and
+`build/agent_state/639_step4_validation/pr66556.dump-prepared-bir.txt`.
