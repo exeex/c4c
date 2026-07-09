@@ -895,6 +895,115 @@ bool append_rv64_callee_saved_gpr_preservation_effect(
   return true;
 }
 
+std::optional<std::uint32_t> fpr_register_number_for_target_identity(
+    const c4c::backend::prepare::PreparedTargetRegisterIdentity& identity);
+
+bool append_rv64_fpr_move(RiscvEncodedFragment& fragment,
+                          std::uint32_t destination,
+                          std::uint32_t source,
+                          c4c::backend::bir::TypeKind type);
+
+void append_rv64_load_immediate(RiscvEncodedFragment& fragment,
+                                std::uint32_t destination,
+                                std::int64_t immediate);
+
+bool rv64_fpr_endpoint_names_one_register(
+    const c4c::backend::prepare::PreparedCallBoundaryEffectEndpoint& endpoint) {
+  return endpoint.register_name.has_value() &&
+         !endpoint.register_name->empty() &&
+         endpoint.contiguous_width == 1 &&
+         endpoint.occupied_register_names.size() == 1 &&
+         endpoint.occupied_register_names.front() == *endpoint.register_name;
+}
+
+std::optional<std::uint32_t> fpr_register_number_for_boundary_endpoint(
+    const c4c::backend::prepare::PreparedCallBoundaryEffectEndpoint& endpoint) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (endpoint.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      endpoint.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      endpoint.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Fpr} ||
+      !rv64_fpr_endpoint_names_one_register(endpoint)) {
+    return std::nullopt;
+  }
+  const auto by_name = rv64_fpr_register_number(*endpoint.register_name);
+  if (!by_name.has_value()) {
+    return std::nullopt;
+  }
+  if (!endpoint.target_register_identity.has_value()) {
+    return std::nullopt;
+  }
+  const auto by_identity =
+      fpr_register_number_for_target_identity(*endpoint.target_register_identity);
+  if (!by_identity.has_value() || *by_identity != *by_name) {
+    return std::nullopt;
+  }
+  if (endpoint.register_placement.has_value() &&
+      (endpoint.register_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+       endpoint.register_placement->contiguous_width != 1)) {
+    return std::nullopt;
+  }
+  return by_name;
+}
+
+bool rv64_is_callee_saved_fpr_endpoint(
+    const c4c::backend::prepare::PreparedCallBoundaryEffectEndpoint& endpoint) {
+  namespace prepare = c4c::backend::prepare;
+
+  return endpoint.callee_saved_save_index.has_value() &&
+         endpoint.register_placement.has_value() &&
+         endpoint.register_placement->bank == prepare::PreparedRegisterBank::Fpr &&
+         endpoint.register_placement->pool ==
+             prepare::PreparedRegisterSlotPool::CalleeSaved &&
+         endpoint.register_placement->contiguous_width == 1;
+}
+
+bool append_rv64_callee_saved_fpr_preservation_effect(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedCallBoundaryEffectPlan& effect,
+    c4c::backend::prepare::PreparedCallBoundaryEffectKind effect_kind,
+    c4c::backend::prepare::PreparedMovePhase phase) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (effect.effect_kind != effect_kind || effect.phase != phase ||
+      effect.classification_status !=
+          prepare::PreparedCallBoundaryMoveClassificationStatus::Available ||
+      effect.preservation_route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    return false;
+  }
+
+  const auto source =
+      fpr_register_number_for_boundary_endpoint(effect.source);
+  const auto destination =
+      fpr_register_number_for_boundary_endpoint(effect.destination);
+  if (!source.has_value() || !destination.has_value()) {
+    return false;
+  }
+  const bool source_is_callee_saved =
+      rv64_is_callee_saved_fpr_endpoint(effect.source);
+  const bool destination_is_callee_saved =
+      rv64_is_callee_saved_fpr_endpoint(effect.destination);
+  if (effect_kind ==
+          prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation) {
+    if (source_is_callee_saved || !destination_is_callee_saved) {
+      return false;
+    }
+  } else if (effect_kind ==
+             prepare::PreparedCallBoundaryEffectKind::PreservationRepublication) {
+    if (!source_is_callee_saved || destination_is_callee_saved) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  return append_rv64_fpr_move(
+      fragment, *destination, *source, c4c::backend::bir::TypeKind::F64);
+}
+
 bool append_rv64_register_source_stack_slot_preservation_effect(
     RiscvEncodedFragment& fragment,
     const c4c::backend::prepare::PreparedCallBoundaryEffectPlan& effect,
@@ -1123,6 +1232,60 @@ bool append_rv64_gpr_to_fpr_move(RiscvEncodedFragment& fragment,
   append_le32(fragment.bytes,
               encode_r_type(0x53, destination, 0, source, 0, *funct7));
   return true;
+}
+
+bool append_rv64_fpr_immediate_call_argument(
+    RiscvEncodedFragment& fragment,
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    c4c::backend::bir::TypeKind arg_type) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (argument.value_bank != prepare::PreparedRegisterBank::Fpr ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::Immediate ||
+      !argument.source_literal.has_value() ||
+      argument.source_literal->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      argument.source_literal->type != arg_type ||
+      (arg_type != c4c::backend::bir::TypeKind::F32 &&
+       arg_type != c4c::backend::bir::TypeKind::F64) ||
+      (argument.source_register_bank.has_value() &&
+       argument.source_register_bank != prepare::PreparedRegisterBank::None) ||
+      argument.destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Fpr} ||
+      !argument.destination_register_name.has_value() ||
+      argument.destination_contiguous_width != 1 ||
+      argument.destination_occupied_register_names.size() != 1 ||
+      argument.destination_occupied_register_names.front() !=
+          *argument.destination_register_name ||
+      !argument.destination_register_placement.has_value() ||
+      argument.destination_register_placement->bank !=
+          prepare::PreparedRegisterBank::Fpr ||
+      argument.destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      argument.destination_register_placement->contiguous_width != 1 ||
+      !argument.destination_target_register_identity.has_value()) {
+    return false;
+  }
+
+  const auto destination_by_name =
+      rv64_fpr_register_number(*argument.destination_register_name);
+  const auto destination_by_placement = fpr_register_number_for_abi_placement(
+      target_profile, *argument.destination_register_placement);
+  const auto destination_by_identity = fpr_register_number_for_target_identity(
+      *argument.destination_target_register_identity);
+  if (!destination_by_name.has_value() || !destination_by_placement.has_value() ||
+      !destination_by_identity.has_value() ||
+      *destination_by_name != *destination_by_placement ||
+      *destination_by_name != *destination_by_identity) {
+    return false;
+  }
+
+  constexpr std::uint32_t scratch = 5;  // t0
+  append_rv64_load_immediate(
+      fragment, scratch, static_cast<std::int64_t>(argument.source_literal->immediate_bits));
+  return append_rv64_gpr_to_fpr_move(
+      fragment, *destination_by_placement, scratch, arg_type);
 }
 
 const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
@@ -4663,6 +4826,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
             effect,
             prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation,
             prepare::PreparedMovePhase::BeforeCall) &&
+        !append_rv64_callee_saved_fpr_preservation_effect(
+            fragment,
+            effect,
+            prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation,
+            prepare::PreparedMovePhase::BeforeCall) &&
         !append_rv64_register_source_stack_slot_preservation_effect(
             fragment,
             effect,
@@ -4872,6 +5040,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       return std::nullopt;
     }
     if (*argument.destination_register_bank == prepare::PreparedRegisterBank::Fpr) {
+      if (arg_index < call.arg_types.size() &&
+          append_rv64_fpr_immediate_call_argument(fragment,
+                                                  prepared.target_profile,
+                                                  argument,
+                                                  call.arg_types[arg_index])) {
+        continue;
+      }
       if (argument.value_bank != prepare::PreparedRegisterBank::Fpr ||
           argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
           argument.source_register_bank != prepare::PreparedRegisterBank::Fpr ||
@@ -5348,6 +5523,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       continue;
     }
     if (!append_rv64_callee_saved_gpr_preservation_effect(
+            fragment,
+            effect,
+            prepare::PreparedCallBoundaryEffectKind::PreservationRepublication,
+            prepare::PreparedMovePhase::AfterCall) &&
+        !append_rv64_callee_saved_fpr_preservation_effect(
             fragment,
             effect,
             prepare::PreparedCallBoundaryEffectKind::PreservationRepublication,

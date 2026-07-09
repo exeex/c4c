@@ -1,32 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/628_fpr_abi_frame_policy_and_placement.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish Or Verify Prepared FPR Facts
+Current Step ID: 4
+Current Step Title: Add Narrow RV64 FPR Consumer Admission
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 verified prepared-layer FPR facts for the fixed-frame idea 628 family before RV64 lowering. Added focused coverage in `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`; no producer files changed because the existing carriers already publish the required facts.
+Step 4 added narrow RV64 object-emission admission in `fragment_for_prepared_call(...)` for explicit prepared F32/F64 immediate/literal FPR call arguments and prepared FPR callee-saved register-preservation effects.
 
-The new `riscv_fpr_abi_frame_fact_contract` fixture proves:
+The consumer now accepts only FPR immediate call arguments with an immediate F32/F64 source literal matching the BIR argument type, value bank `Fpr`, explicit destination bank `Fpr`, width 1, occupied destination register names matching the named ABI destination, a `PreparedRegisterSlotPool::CallArgument` FPR placement, and a destination target-register identity that maps to the same RV64 FPR as the destination name and placement. It materializes the literal bits through `t0` and moves them into the destination FPR with `fmv.w.x`/`fmv.d.x`.
 
-- FPR immediate/literal call argument placement is explicit before object emission: `source_encoding=Immediate`, `source_literal=0x40800000` with `F32` type, `value_bank=Fpr`, destination `fa0`, destination bank `Fpr`, destination occupied names `fa0`, `PreparedRegisterSlotPool::CallArgument`, width 1, and RV64 target FPR identity physical index 10.
-- FPR call-result authority remains explicit on the same focused call: result `value_bank=Fpr`, source storage `Register`, source bank/name `Fpr:fa0`, and `CallResult` placement.
-- FPR callee-saved preservation across the preceding call is explicit: `PreparedCallPreservedValue` for `float.carry` uses `route=CalleeSavedRegister`, bank `Fpr`, `fs*` register placement in the callee-saved pool, width 1, occupied names matching the saved register, `callee_saved_save_index`, and register-to-register FPR preservation endpoints.
-- Fixed-frame FPR saved-register slot placement is complete: matching `PreparedSavedRegister` bank/name/save index, complete `PreparedSavedRegisterSlotPlacement`, fixed location, 8-byte size/align, slot id, stack offset equal to the fixed frame size, and matching register placement.
-- The prepared dump exposes the same authority through `prepared-call-plans` and `prepared-frame-plan` lines before object emission.
+The consumer now accepts only register-to-register FPR callee-saved preservation effects with available classification, `CalleeSavedRegister` route, FPR register endpoints, matching occupied names, required target identities that agree with endpoint names, and a callee-saved FPR placement on the storage endpoint. It emits `fmv.d` before/after the call for the preservation population/republication path.
 
-Structured prepared facts, not final object output, are the proof surface for this packet.
+Added focused RV64 object-emission coverage for positive F32/F64 immediate FPR call arguments, positive FPR callee-saved preservation around a call, and fail-closed mutations for missing/mismatched FPR placement, missing/mismatched target identity bank/class/index, GPR/FPR destination confusion, wrong width, missing/non-F32/F64 literal, explicit GPR source-bank confusion, type mismatch, malformed preservation endpoint storage/banks/placement/identity, missing preservation endpoint target identity, and occupied-register mismatch. Existing scalar GPR and pointer stack-result call tests remain in the same backend subset.
 
 ## Suggested Next
 
-Execute Step 4 as a narrow RV64 consumer packet in `fragment_for_prepared_call(...)`: admit only prepared F32/F64 immediate/literal call arguments into explicit FPR ABI destinations and admit only prepared callee-saved FPR register-preservation effects before/after calls. Add focused positive and fail-closed object-emission coverage for missing/mismatched FPR bank, missing placement or target identity, wrong width, absent/non-F32/F64 source literal, malformed preservation endpoints, and GPR/FPR bank confusion.
+Execute Step 5 by re-running the idea 628 representative-row probes and classifying the remaining failures. Decide whether the source idea is close-ready, needs another narrow FPR ABI/frame packet, or should split residual rows into separate owner initiatives.
 
 ## Watchouts
 
-Do not collapse this into scalar GPR call lowering with `fa` spellings. The Step 3 test intentionally proves explicit prepared FPR facts before consumer work. Keep dynamic FPR frame-slot publication, FPR stack results, FPR stack-slot arguments, `unsafe-fp-assoc-1.c` fan-in, floating comparisons/min/max/casts, local/global memory repair, runtime mismatch triage, variadic/library policy, unsupported markers, allowlists, timeouts, and `f128` outside idea 628.
+Dynamic FPR frame-slot publication, FPR stack results, FPR stack-slot arguments, `unsafe-fp-assoc-1.c` fan-in, floating comparisons/min/max/casts, local/global memory repair, runtime mismatch triage, variadic/library policy, unsupported markers, allowlists, timeouts, and `f128` remain outside this Step 4 slice. The FPR preservation consumer intentionally emits only register-to-register `fmv.d` for callee-saved FPR endpoints; it does not add FPR stack preservation or dynamic FPR frame-slot support.
 
 ## Proof
 

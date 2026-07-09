@@ -23,6 +23,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -157,6 +158,28 @@ bool is_rv64_store_to_sp(std::uint32_t word,
                          std::int32_t offset) {
   return (word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == funct3 &&
          riscv_rs1(word) == 2U && riscv_s_imm(word) == offset;
+}
+
+bool is_rv64_gpr_to_fpr_move(std::uint32_t word,
+                             unsigned destination,
+                             unsigned source,
+                             bir::TypeKind type) {
+  const unsigned funct7 =
+      type == bir::TypeKind::F32 ? 0x78U : type == bir::TypeKind::F64 ? 0x79U : 0U;
+  return funct7 != 0U && (word & 0x7fU) == 0x53U &&
+         riscv_rd(word) == destination && riscv_rs1(word) == source &&
+         riscv_rs2(word) == 0U && ((word >> 25) & 0x7fU) == funct7;
+}
+
+bool is_rv64_fpr_move(std::uint32_t word,
+                      unsigned destination,
+                      unsigned source,
+                      bir::TypeKind type) {
+  const unsigned funct7 =
+      type == bir::TypeKind::F32 ? 0x10U : type == bir::TypeKind::F64 ? 0x11U : 0U;
+  return funct7 != 0U && (word & 0x7fU) == 0x53U &&
+         riscv_rd(word) == destination && riscv_rs1(word) == source &&
+         riscv_rs2(word) == source && ((word >> 25) & 0x7fU) == funct7;
 }
 
 bool is_rv64_fp_store_to_sp(std::uint32_t word,
@@ -351,6 +374,16 @@ prepare::PreparedTargetRegisterIdentity rv64_gpr_identity(
       .target_arch = c4c::TargetArch::Riscv64,
       .bank = prepare::PreparedRegisterBank::Gpr,
       .register_class = prepare::PreparedRegisterClass::General,
+      .physical_index = physical_index,
+  };
+}
+
+prepare::PreparedTargetRegisterIdentity rv64_fpr_identity(
+    std::size_t physical_index) {
+  return prepare::PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .register_class = prepare::PreparedRegisterClass::Float,
       .physical_index = physical_index,
   };
 }
@@ -2885,6 +2918,143 @@ prepare::PreparedBirModule make_prepared_fpr_same_module_call_module() {
                   },
           },
       }},
+  });
+  return prepared;
+}
+
+prepare::PreparedRegisterPlacement fpr_callee_saved_fs1_placement() {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+}
+
+prepare::PreparedCallBoundaryEffectEndpoint fpr_register_endpoint(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    std::string register_name,
+    std::size_t physical_index) {
+  const auto occupied_name = register_name;
+  return prepare::PreparedCallBoundaryEffectEndpoint{
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .value_id = value_id,
+      .value_name = value_name,
+      .register_name = std::move(register_name),
+      .register_bank = prepare::PreparedRegisterBank::Fpr,
+      .contiguous_width = 1,
+      .occupied_register_names = {occupied_name},
+      .target_register_identity = rv64_fpr_identity(physical_index),
+  };
+}
+
+prepare::PreparedCallBoundaryEffectEndpoint fpr_callee_saved_fs1_endpoint(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name) {
+  auto endpoint = fpr_register_endpoint(value_id, value_name, "fs1", 9);
+  endpoint.callee_saved_save_index = std::size_t{0};
+  endpoint.register_placement = fpr_callee_saved_fs1_placement();
+  return endpoint;
+}
+
+prepare::PreparedBirModule make_prepared_fpr_immediate_call_module(
+    bir::TypeKind arg_type,
+    std::uint64_t immediate_bits,
+    bool with_fpr_preservation = false) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern(with_fpr_preservation
+                                               ? "fpr_preserved_immediate_call"
+                                               : "fpr_immediate_call");
+  const auto carry_name = prepared.names.value_names.intern("%carry");
+  bir::Value argument = bir::Value::immediate_f128_bits(immediate_bits, 0);
+  if (arg_type == bir::TypeKind::F32) {
+    argument = bir::Value::immediate_f32_bits(
+        static_cast<std::uint32_t>(immediate_bits));
+  } else if (arg_type == bir::TypeKind::F64) {
+    argument = bir::Value::immediate_f64_bits(immediate_bits);
+  }
+
+  bir::CallInst call;
+  call.callee = "sink";
+  call.args = {argument};
+  call.arg_types = {arg_type};
+  call.return_type = bir::TypeKind::Void;
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = with_fpr_preservation ? "fpr_preserved_immediate_call"
+                                    : "fpr_immediate_call",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  if (with_fpr_preservation) {
+    prepared.value_locations.functions.push_back(
+        prepare::PreparedValueLocationFunction{
+            .function_name = function_name,
+            .value_homes = {make_fpr_home(
+                function_name, carry_name, prepare::PreparedValueId{3}, "fs1", 9)},
+        });
+  }
+  prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"sink"},
+      .arguments = {prepare::PreparedCallArgumentPlan{
+          .instruction_index = 0,
+          .arg_index = 0,
+          .value_bank = prepare::PreparedRegisterBank::Fpr,
+          .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+          .source_literal = argument,
+          .destination_register_name = std::string{"fa0"},
+          .destination_contiguous_width = 1,
+          .destination_occupied_register_names = {std::string{"fa0"}},
+          .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .destination_register_placement =
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Fpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+          .destination_target_register_identity = rv64_fpr_identity(10),
+      }},
+  };
+  if (with_fpr_preservation) {
+    call_plan.preserved_values = {prepare::PreparedCallPreservedValue{
+        .value_id = prepare::PreparedValueId{3},
+        .value_name = carry_name,
+        .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+        .callee_saved_save_index = std::size_t{0},
+        .contiguous_width = 1,
+        .register_name = std::string{"fs1"},
+        .register_bank = prepare::PreparedRegisterBank::Fpr,
+        .occupied_register_names = {std::string{"fs1"}},
+        .register_placement = fpr_callee_saved_fs1_placement(),
+        .preservation_source = fpr_register_endpoint(
+            prepare::PreparedValueId{3}, carry_name, "fa1", 11),
+        .preservation_destination = fpr_callee_saved_fs1_endpoint(
+            prepare::PreparedValueId{3}, carry_name),
+        .preservation_reason = "callee_saved_register_preservation",
+    }};
+  }
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {std::move(call_plan)},
   });
   return prepared;
 }
@@ -15307,6 +15477,295 @@ int builds_prepared_fpr_same_module_call_object() {
   return 0;
 }
 
+int expect_fpr_immediate_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared, kGenericUnsupportedInstructionFragmentDiagnostic);
+}
+
+int builds_prepared_fpr_immediate_call_objects() {
+  for (const auto [type, bits] :
+       {std::pair{bir::TypeKind::F32, 0x40800000ull},
+        std::pair{bir::TypeKind::F64, 0x4010000000000000ull}}) {
+    const auto prepared = make_prepared_fpr_immediate_call_module(type, bits);
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!result.module.has_value()) {
+      return fail("expected prepared FPR immediate call object to build, got `" +
+                  result.diagnostic + "`");
+    }
+    const auto& module = *result.module;
+    const auto* text = object::find_section(module, ".text");
+    const auto* caller = object::find_symbol(module, "fpr_immediate_call");
+    const auto* callee = object::find_symbol(module, "sink");
+    if (text == nullptr || caller == nullptr || callee == nullptr) {
+      return fail("expected prepared FPR immediate call symbols");
+    }
+    if (module.relocations.size() != 1 ||
+        module.relocations[0].section != text->id ||
+        module.relocations[0].type != R_RISCV_CALL_PLT ||
+        module.relocations[0].symbol != callee->id ||
+        module.relocations[0].offset < caller->value + 8 ||
+        module.relocations[0].offset >= caller->value + caller->size_bytes) {
+      return fail("expected one FPR immediate call relocation after argument materialization");
+    }
+    if (!is_rv64_gpr_to_fpr_move(
+            read_u32(text->bytes, module.relocations[0].offset - 4),
+            10,
+            5,
+            type)) {
+      return fail("expected prepared FPR immediate argument to materialize through t0 into fa0");
+    }
+  }
+  return 0;
+}
+
+int rejects_prepared_fpr_immediate_call_fail_closed_shapes() {
+  auto prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0].calls[0]
+      .arguments[0]
+      .destination_register_placement = std::nullopt;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_register_placement->bank = prepare::PreparedRegisterBank::Gpr;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0].calls[0].arguments[0].destination_register_bank =
+      prepare::PreparedRegisterBank::Gpr;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_contiguous_width = 2;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_target_register_identity = std::nullopt;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_target_register_identity->bank = prepare::PreparedRegisterBank::Gpr;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_target_register_identity->register_class =
+      prepare::PreparedRegisterClass::General;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_target_register_identity->physical_index = 11;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .destination_occupied_register_names = {std::string{"fa1"}};
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_literal =
+      std::nullopt;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_literal =
+      bir::Value::immediate_i32(3);
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_register_bank =
+      prepare::PreparedRegisterBank::Gpr;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_fpr_immediate_call_module(bir::TypeKind::F32, 0x40800000ull);
+  if (auto* call = std::get_if<bir::CallInst>(
+          &prepared.module.functions[0].blocks[0].insts[0])) {
+    call->arg_types[0] = bir::TypeKind::F64;
+  }
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int builds_prepared_fpr_callee_saved_call_preservation_object() {
+  const auto prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared FPR callee-saved preservation object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* caller =
+      object::find_symbol(module, "fpr_preserved_immediate_call");
+  const auto* callee = object::find_symbol(module, "sink");
+  if (text == nullptr || caller == nullptr || callee == nullptr ||
+      module.relocations.size() != 1 ||
+      module.relocations[0].symbol != callee->id) {
+    return fail("expected prepared FPR preservation call symbols and relocation");
+  }
+  const auto call_offset = module.relocations[0].offset;
+  bool saw_population = false;
+  for (std::size_t offset = caller->value; offset + 4 <= call_offset;
+       offset += 4) {
+    if (is_rv64_fpr_move(read_u32(text->bytes, offset), 9, 11, bir::TypeKind::F64)) {
+      saw_population = true;
+      break;
+    }
+  }
+  if (!saw_population) {
+    return fail("expected FPR callee-saved preservation to populate fs1 from fa1 before call");
+  }
+  if (call_offset + 8 >= text->bytes.size() ||
+      !is_rv64_fpr_move(
+          read_u32(text->bytes, call_offset + 8), 11, 9, bir::TypeKind::F64)) {
+    return fail("expected FPR callee-saved preservation to republish fa1 from fs1 after call");
+  }
+  return 0;
+}
+
+int rejects_prepared_fpr_callee_saved_call_preservation_fail_closed_shapes() {
+  auto prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_source
+      .storage_kind = prepare::PreparedMoveStorageKind::None;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination
+      .register_bank = prepare::PreparedRegisterBank::Gpr;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_source
+      .target_register_identity = std::nullopt;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination
+      .target_register_identity = std::nullopt;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination
+      .register_placement->pool = prepare::PreparedRegisterSlotPool::CallArgument;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_source
+      .target_register_identity->bank = prepare::PreparedRegisterBank::Gpr;
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fpr_immediate_call_module(
+      bir::TypeKind::F64, 0x4010000000000000ull, true);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination
+      .occupied_register_names = {std::string{"fa0"}};
+  if (expect_fpr_immediate_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int preserves_missing_variadic_entry_plan_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_variadic_return_zero_module(),
@@ -27305,6 +27764,10 @@ int main() {
   status |= rejects_prepared_scalar_stack_result_call_fail_closed_shapes();
   status |= rejects_prepared_pointer_stack_result_call_fail_closed_shapes();
   status |= builds_prepared_fpr_same_module_call_object();
+  status |= builds_prepared_fpr_immediate_call_objects();
+  status |= rejects_prepared_fpr_immediate_call_fail_closed_shapes();
+  status |= builds_prepared_fpr_callee_saved_call_preservation_object();
+  status |= rejects_prepared_fpr_callee_saved_call_preservation_fail_closed_shapes();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();
   status |= rejects_incomplete_helper_free_variadic_entry_contract();
