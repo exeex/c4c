@@ -1,6 +1,6 @@
 # RV64 String-Label Pointer Runtime Object Correctness
 
-Status: Open
+Status: Closed
 Type: Research
 Parent: `ideas/closed/630_string_constant_local_memory_policy.md`
 Related:
@@ -61,6 +61,28 @@ before opening an implementation fix.
   surface.
 - The investigation does not claim progress from changing expectations,
   allowlists, timeout policy, or runtime comparison behavior.
+
+## Closure Notes
+
+Closed after the active research runbook classified the first concrete owner as
+RV64 call-argument lowering for address-materialized local frame-slot values.
+The row reaches object and link, consumes
+`layout_authority=string_constant_label_pointer`, and materializes `.str0`
+before the call. Prepared BIR and the prepared call plan select the local frame
+slot address for `%lv._clit_`, including
+`arg.source_selection=local_frame_address_materialization`, but RV64 lowers the
+argument as a register-home copy into `a0`. The linked c4c binary uses
+`mv a0,s2`; clang passes the selected frame-slot address with
+`addi a0,s0,-32`.
+
+Rejected owners: string-label address materialization, local/global memory,
+stack layout, ABI destination convention, branch/control flow, and true runtime
+support. Follow-up implementation ownership was split to
+`ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md`.
+
+Close proof used matching lifecycle-only backend guard logs:
+`cmake --build --preset default` and
+`ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$'`.
 
 ## Reviewer Reject Signals
 
