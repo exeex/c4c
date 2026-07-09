@@ -1,47 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/649_pointer_global_local_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Representative Integration
+Current Step ID: 5
+Current Step Title: Run Broader Validation And Close Or Park
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 representative integration proof for `pr57861.c`.
+Repaired the Step 5 RV64 regression-guard blocker from the Step 3 code slice.
 
-Focused proof remained green:
+The new failing test was
+`backend_cli_riscv64_local_string_constant_label_pointer_compound_arg`, which
+failed at `pass_compound_literal` instruction 0 with
+`unsupported_local_memory_access ... access_base=none`.
 
-- `backend_dump_riscv64_pointer_global_local_publication` passed.
-- `backend_cli_riscv64_pointer_global_local_publication` passed.
-- `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
-  passed, preserving the fail-closed live-load rejection.
+Root cause: the Step 3 tightening of
+`prepared_memory_access_for_local_instruction(...)` required a named stored
+value before accepting the indexed `StoreLocalInst` access. That preserved
+pointer/global publication exactness for named stores, but accidentally dropped
+valid anonymous same-instruction frame-slot accesses used by existing
+string-label/compound local-memory support for zero-initializing compound
+literal fields.
 
-Representative evidence:
+Repair: keep named stores exact, and restore the indexed access only when both
+the BIR store value and prepared access have no result/stored value identity.
+This lets anonymous compound-literal frame-slot stores find their prepared
+access without broadening unknown local-memory access or weakening the
+pointer/global publication checks.
 
-- `tests/c/external/gcc_torture/src/pr57861.c` emitted an RV64 object at
-  `build/agent_state/649_step4_representative_integration/pr57861.o`.
-- Disassembly was captured at
-  `build/agent_state/649_step4_representative_integration/pr57861.objdump.txt`.
-- The `%lv.l` publication site advanced past the prior
-  `unsupported_local_memory_access` owner. The representative object contains
-  `.Lpcrel_hi_global_pointer_local_publication_2_10_0` with direct global
-  address materialization into `t1` followed by the local pointer-slot store:
-  `13c: auipc t1, 0x0`, `140: mv t1, t1`, `144: sd t1, 0x0(sp)`.
-- Later representative code continues through scalar global/local accesses,
-  including `lh`/`sh` sequences and returns; no separate downstream owner was
-  exposed by this Step 4 object/disassembly proof.
-
-Focused positive and negative coverage therefore still brackets the Step 3
-implementation: direct global-address publication into the exact local pointer
-slot is supported, while a reload used as a later memory-address base remains
-rejected.
+The regressed compound string-label object test now passes again. The idea 649
+focused positive object route, focused dump route, live-load expected-failure
+negative route, and representative `pr57861.c` object emission all still pass.
 
 ## Suggested Next
 
-Proceed to Step 5 broader RV64 validation and lifecycle recommendation. The
-focused and representative evidence both indicate the `%lv.l`
-pointer/global local-publication owner is repaired.
+Proceed with the supervisor-selected broader RV64 regression guard for Step 5.
+This blocker repair has a green focused proof, but it does not replace the
+matched before/after broader validation needed for lifecycle close.
 
 ## Watchouts
 
@@ -56,9 +52,12 @@ pointer/global local-publication owner is repaired.
 - Do not rewrite prepared provenance or mark all unknown local pointer slots as
   supported. The discovered positive route depends on exact publication,
   direct-global identity, slot identity, and ordering.
-- Keep the live-load expected-failure coverage intact; Step 4 proves the
-  representative dead reload is safely elided, not that arbitrary reloaded
-  pointer publications are supported.
+- Keep named `StoreLocalInst` lookup exact for pointer/global publication; only
+  anonymous same-instruction accesses with no prepared value identity are
+  restored by this repair.
+- Keep the live-load expected-failure coverage intact; the representative dead
+  reload is safely elided, but arbitrary reloaded pointer publications are not
+  supported.
 - Do not infer authority from source spelling, final assembly order,
   diagnostics, testcase identity, local/global names, or stack-slot shape.
 - Do not edit expectations, unsupported markers, allowlists, timeouts,
@@ -66,13 +65,13 @@ pointer/global local-publication owner is repaired.
 
 ## Proof
 
-Step 4 proof passed and was written to `test_after.log`:
+Blocker repair proof passed and was written to `test_after.log`:
 
 ```sh
-bash -lc 'set -o pipefail; mkdir -p build/agent_state/649_step4_representative_integration && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|cli|cli_failure)_riscv64_pointer_global_local_publication" && build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o build/agent_state/649_step4_representative_integration/pr57861.o && llvm-objdump -d build/agent_state/649_step4_representative_integration/pr57861.o > build/agent_state/649_step4_representative_integration/pr57861.objdump.txt && rg -n "<foo>|global_pointer_local_publication|sd\s+t1|lh|sh|ret|auipc" build/agent_state/649_step4_representative_integration/pr57861.objdump.txt; } 2>&1 | tee test_after.log'
+bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_cli_riscv64_local_string_constant_label_pointer_compound_arg|backend_(dump|cli|cli_failure)_riscv64_pointer_global_local_publication)" && mkdir -p build/agent_state/649_step4_representative_integration && build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o build/agent_state/649_step4_representative_integration/pr57861.o; } 2>&1 | tee test_after.log'
 ```
 
-Result: build succeeded, all three focused tests passed, representative
-`pr57861.c` emitted and disassembled successfully, and the evidence grep found
-the direct publication sequence plus later representative `lh`/`sh`/`ret`
-instructions.
+Result: build succeeded, all four focused tests passed, including the
+previously regressed compound string-label object test, and representative
+`pr57861.c` still emitted
+`build/agent_state/649_step4_representative_integration/pr57861.o`.

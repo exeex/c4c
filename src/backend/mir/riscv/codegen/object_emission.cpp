@@ -7055,6 +7055,12 @@ prepared_memory_access_for_local_instruction(
       access->stored_value_name == stored_value_name) {
     return access;
   }
+  if (access != nullptr &&
+      !stored_value_name.has_value() &&
+      !access->result_value_name.has_value() &&
+      !access->stored_value_name.has_value()) {
+    return access;
+  }
   return unique_prepared_memory_access_for_value_in_block(
       lookups,
       block_label,
