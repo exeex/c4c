@@ -21,6 +21,13 @@ Do not reconstruct parameter placement from source syntax, stack offsets, or
 final assembly; consume explicit prepared ABI/home facts and keep unsupported
 parameter homes fail-closed.
 
+Route repair checkpoint: `review/reviewA.md` rejected the current callee-side
+route because RV64 recomputed incoming stack-passed formal offsets from formal
+order, ABI size/alignment, and `stack_frame_bytes`. Step 3 must replace that
+route with explicit prepared incoming stack-parameter/home authority, or
+classify the missing authority as a producer/prealloc publication gap before
+more RV64 consumer support lands.
+
 ## Read First
 
 - ideas/open/644_rv64_object_route_stack_parameter_abi_residual.md
@@ -101,7 +108,7 @@ Completion check:
 - `todo.md` names the rejected parameter, prepared home facts, missing producer
   or RV64 consumer authority, and the smallest complete repair family.
 
-### Step 3: Implement One Prepared ABI/Home Path
+### Step 3: Implement One Prepared Incoming Stack Formal Authority Path
 
 Goal: repair one semantic RV64 object-route parameter ABI/home path without
 weakening fail-closed behavior.
@@ -109,14 +116,26 @@ weakening fail-closed behavior.
 Actions:
 - Add producer or RV64 consumer support only where prepared facts explicitly
   describe the parameter home.
+- Remove or replace any RV64 consumer path that derives incoming stack-passed
+  formal load offsets from formal order, ABI size/alignment, source layout, or
+  `stack_frame_bytes + incoming_offset`.
+- Require an explicit prepared incoming stack-parameter/home fact for the
+  caller-stack address consumed by callee-side formal loads. If no such fact is
+  published, stop and route the packet to the producer/prealloc publication
+  gap instead of reconstructing the offset in RV64.
+- Keep local spill-slot/home coherence checks as fail-closed validation only;
+  do not treat a callee local home as authority for the incoming caller-stack
+  ABI offset.
 - Keep unsupported diagnostics for missing, ambiguous, layout-only, or
   unsupported parameter homes.
-- Add focused positive coverage for the repaired path and negative coverage for
-  unsupported parameter ABI/home shapes.
+- Add focused positive coverage for explicit incoming stack formal authority
+  and negative coverage for missing or ambiguous incoming-stack authority.
 
 Completion check:
 - The narrow build/test proof passes, and `src/20001017-1.c` no longer stops at
-  the repaired `unsupported_call_abi` boundary.
+- the repaired `unsupported_call_abi` boundary because of explicit prepared
+  incoming stack formal authority, or `todo.md` records the precise
+  producer/prealloc publication gap that blocks such authority.
 
 ### Step 4: Validate Boundaries
 

@@ -2,40 +2,45 @@ Status: Active
 Source Idea Path: ideas/open/644_rv64_object_route_stack_parameter_abi_residual.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Implement One Prepared ABI/Home Path
+Current Step Title: Implement One Prepared Incoming Stack Formal Authority Path
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md` repaired RV64 object-emission local frame-address
-call-argument source publication for prepared register-source pointer
-arguments.
+Lifecycle repair consumed the blocking route review in `review/reviewA.md`.
+The review rejects the current callee-side Step 3 route as source-idea drift:
+`object_emission.cpp` and `prepared_local_memory_emit.cpp` recompute incoming
+stack-passed formal offsets from formal order plus ABI size/alignment, then
+load via `stack_frame_bytes + incoming_offset`.
 
-- `fragment_for_prepared_call` now materializes an explicit prepared
-  `LocalFrameAddressMaterialization` route into the selected GPR source before
-  that source is consumed by a register call argument.
-- `append_rv64_prepared_scalar_stack_call_argument` now applies the same
-  prepared local frame-address publication before copying a register-source
-  pointer into an outgoing stack argument, including active outgoing-stack
-  adjustment in the frame offset.
-- The fix still fails closed through the existing prepared frame-slot address
-  authority checks when materialization facts are missing, incomplete,
-  ambiguous, dynamic-frame-only, or out of range.
-- Focused object-emission coverage now proves a complete local frame-address
-  route feeding both a register argument and a stack argument, and converts the
-  old incomplete address-provenance register-source case into rejection
-  coverage.
+That path violates idea 644's prepared ABI/home authority rule and closed idea
+512's rejection of RV64-side stack argument offset inference. The source idea
+remains valid; the active Step 3 runbook was tightened to require explicit
+prepared incoming stack-parameter/home authority.
 
 ## Suggested Next
 
-Next packet should repair or reclassify the new `src/20001017-1.c` residual in
-`bug`: the linked binary now reaches the callee and immediately branches to
-`abort` after comparing `a0` against `ld t3, 0x58(sp)`, which is the saved
-return-address slot in `bug`'s frame, not the incoming `Cref` formal value.
+Next packet must remove or replace the RV64-side incoming-offset
+reconstruction in the callee-side formal load paths. It should consume an
+explicit prepared incoming stack-parameter/home fact for the caller-stack
+address, while retaining local spill-slot/home checks only as fail-closed
+coherence validation.
+
+If no explicit incoming stack formal authority is published, stop the RV64
+consumer work and classify the residual as a producer/prealloc publication gap
+instead of deriving offsets from formal order, ABI folklore, source layout, or
+final assembly.
 
 ## Watchouts
 
+- Do not build on helpers that compute `incoming_offset` by walking
+  `function.params` and then add `stack_frame_bytes`; `review/reviewA.md`
+  marks that route as high-severity drift.
+- Positive coverage must prove the explicit prepared incoming-stack authority,
+  not merely an expected load offset such as `sp + 64`.
+- Negative coverage should cover missing or ambiguous incoming-stack authority;
+  local spill-slot malformed-home rejection alone is not enough.
 - The local address helper intentionally reuses
   `prepared_frame_slot_address_call_argument_offset`, so missing prepared
   addressing/frame-plan authority remains fail-closed instead of falling back to
@@ -53,13 +58,8 @@ return-address slot in `bug`'s frame, not the incoming `Cref` formal value.
 
 ## Proof
 
-Ran the exact supervisor proof command into `test_after.log`:
+Lifecycle-only repair; no implementation validation was run.
 
-`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_object_consumer_contract|backend_call_boundary_effect_plan)$' && ALLOWLIST=build/agent_state/644_step1_20001017_1.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
-
-Proof status: build passed; all six focused CTests passed; the one-row torture
-probe still failed with `RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, and
-`c4c_exit=Subprocess aborted`. The repaired caller-side local frame-address
-source publication is visible in `main`; the fresh residual owner is callee-side
-formal value/home materialization for `bug`'s `Cref` comparison, which currently
-loads from the saved-RA stack slot. The exact proof log is `test_after.log`.
+Review state: `review/reviewA.md` is the code-review artifact for the pending
+review. The rejected baseline candidate introduced 20 failures, so it is not
+accepted as proof for this route.
