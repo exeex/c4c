@@ -186,3 +186,74 @@ Actions:
 Completion check:
 - `todo.md` contains row-by-row classification, proof results, and a clear
   close/split/continue recommendation for the supervisor.
+
+## Step 6: Trace Stack-Home Fallthrough After Authority Gate
+
+Goal: determine why clean byval/sret pointer-value stack-home accesses with
+published authority still reach the generic `unsupported_local_memory_access`
+diagnostic.
+
+Primary target: `src/pr38969.c`, with `src/pr30185.c` and `src/950628-1.c`
+as cross-checks.
+
+Actions:
+- Start from the prepared dumps and object-emission diagnostic path for
+  `src/pr38969.c`.
+- Trace one byval load and one sret store whose prepared address has
+  `base=pointer_value`, byval or sret stack-home source objects,
+  `base_plus_offset=yes`, complete extent, and
+  `range_verdict=proven_in_bounds`.
+- Identify the exact branch, predicate, helper, or representation mismatch
+  that prevents the Step 4 `prepared_stack_home_local_memory_has_authority(...)`
+  consumer from accepting the access.
+- Cross-check the same boundary against `src/pr30185.c` and `src/950628-1.c`
+  before choosing a code-changing packet.
+- Record whether the miss is an RV64 consumer-routing issue, a prepared-address
+  shape issue, a stale authority predicate issue, or a separate producer gap.
+
+Completion check:
+- `todo.md` names the exact failing boundary and the smallest non-overfit
+  Step 7 packet, or reclassifies the clean representatives with evidence that
+  idea 633 no longer owns them.
+
+## Step 7: Repair The Narrow Stack-Home Consumer Route
+
+Goal: move the verified clean byval/sret stack-home lane past the generic
+local-memory gate without broadening idea 633 into unrelated aggregate,
+move-bundle, F128, mixed global, runtime, or ABI work.
+
+Actions:
+- If Step 6 proves the prepared facts are complete but the RV64 consumer route
+  fails to reach the stack-home authority helper, repair only that routing or
+  predicate mismatch.
+- If Step 6 proves a prepared-address shape is missing a fact required by
+  `prepared_stack_home_local_memory_has_authority(...)`, publish that fact at
+  the narrow producer/carrier boundary and keep the RV64 consumer fail-closed.
+- Add focused positive coverage for the representative route and negative
+  coverage for malformed or out-of-scope shapes that could otherwise be
+  admitted by the repair.
+- Preserve existing frame-slot, string/global, move-bundle, large-offset,
+  F128/16-byte, runtime, and mixed local/global behavior.
+
+Completion check:
+- Focused prepared-layer or RV64 object-emission tests pass, and the accepted
+  route is justified by explicit stack-home authority rather than row names,
+  final layout, ABI convention, or object shape inference.
+
+## Step 8: Reclassify Aggregate Stack-Home Rows After Route Repair
+
+Goal: decide whether idea 633 can close after the follow-up repair or whether
+additional stack-home packets remain justified.
+
+Actions:
+- Re-run the same aggregate stack-home residual probe used by Step 5.
+- Compare the clean byval/sret representatives against the Step 5 baseline.
+- Reclassify remaining rows into in-scope stack-home gaps, existing open ideas,
+  or new durable residual owners.
+- Record whether the source idea is close-ready, needs another numbered
+  stack-home step, or should split residual initiatives.
+
+Completion check:
+- `todo.md` records the refreshed probe result, representative movement or
+  non-movement, residual owner buckets, and a close/continue/split
+  recommendation grounded in current evidence.

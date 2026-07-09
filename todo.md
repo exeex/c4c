@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/633_aggregate_stack_home_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Reclassify Aggregate Stack-Home Rows
+Current Step ID: 6
+Current Step Title: Trace Stack-Home Fallthrough After Authority Gate
 
 # Current Packet
 
@@ -79,13 +79,19 @@ Representative prepared evidence:
 
 ## Suggested Next
 
-Continue idea 633 with a narrow follow-up packet for the remaining aggregate
-copy stack-home lane. Start from `src/pr38969.c` and cross-check
-`src/pr30185.c` and `src/950628-1.c`; determine why prepared accesses with
-`base=pointer_value`, byval/sret source objects, `base_plus_offset=yes`, and
+Step 6 is the current packet. Continue idea 633 with a narrow fallthrough
+trace for the remaining aggregate copy stack-home lane. Start from
+`src/pr38969.c` and cross-check `src/pr30185.c` and `src/950628-1.c`;
+determine why prepared accesses with `base=pointer_value`, byval/sret source
+objects, `base_plus_offset=yes`, complete extent, and
 `range_verdict=proven_in_bounds` still fall through to the generic
 `unsupported_local_memory_access` diagnostic instead of the Step 4
 `prepared_stack_home_local_memory_has_authority(...)` consumer.
+
+The Step 6 packet should record the exact rejecting branch, predicate, helper,
+or representation mismatch and then recommend the smallest non-overfit Step 7
+repair. It should not edit implementation files unless the supervisor
+delegates Step 7 after the trace.
 
 ## Watchouts
 
