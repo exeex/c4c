@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/634_large_selected_pointer_offset_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Define Scratch And Clobber Materialization Contract
+Current Step ID: 4
+Current Step Title: Add Narrow RV64 Large-Offset Consumer Admission
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of idea `634` added the RV64 consumer-side classifier `rv64_large_selected_pointer_offset_materialization_status` beside the existing narrow `prepared_pointer_value_base_offset` path.
+Step 4 of idea `634` admitted narrow RV64 large selected pointer-value local-memory rows through explicit producer-published `rv64_large_selected_pointer_offset_scratch_clobber_authority`.
 
-The Step 3 contract recognizes only selected pointer-value local-memory rows that have default address space, nonvolatile access, pointer-value base/name, base-plus-offset addressing, matching width/alignment, a resolvable base GPR, a non-12-bit offset, and available compatible requested-range facts. When those facts are present, the classifier currently returns `MissingScratchClobberAuthority` because no explicit local-memory-row scratch/clobber publication exists yet.
+The stack-layout pointer-indirect address producer now publishes the authority for RV64 rows whose prepared pointer-value address facts already match the large-offset contract: pointer-value base, base-plus-offset addressing, non-12-bit byte offset, nonzero compatible width/alignment, and requested-range facts matching the access. The consumer contract returns `Available` only after those row facts are present, the authority bit is set, and the reserved large-offset scratch register `t6` is not itself the pointer base or any prepared GPR value home. Missing authority remains `MissingScratchClobberAuthority`; malformed occupied-`t6` authority returns `MalformedScratchClobberAuthority` and the object route still rejects through the generic local-memory diagnostic.
 
-The existing immediate path is preserved: narrow selected pointer offsets still use `prepared_pointer_value_base_offset`, while large selected pointer offsets reject that path and classify as missing scratch/clobber authority only after range facts are present. Large selected pointer rows without requested-range facts remain `NotApplicable` and fail closed before scratch policy.
+Authorized rows materialize the non-12-bit selected pointer offset with the existing prepared immediate helper into `t6`, add the pointer base into `t6`, and consume the resulting address with offset zero. Narrow immediate rows still use `prepared_pointer_value_base_offset`, and frame-slot/byval/sret/global/string local-memory behavior remains on its prior paths.
 
 ## Suggested Next
 
-Step 4 should publish explicit scratch/clobber authority for large selected pointer-value local-memory materialization, or consume an already-approved equivalent contract if one exists. Once that authority is explicit, wire the classifier into the local-memory diagnostic/emission path and materialize only rows that satisfy the Step 3 facts plus scratch/clobber safety.
+Supervisor should review this producer-plus-consumer Step 4 slice for acceptance and decide whether the current plan is ready for closure review or another focused packet.
 
 ## Watchouts
 
-The Step 3 slice intentionally does not admit large selected pointer-offset rows and does not change external expectations. `object_emission.cpp` still emits the generic local-memory rejection until Step 4 owns diagnostic/emission consumption. Do not bypass the new classifier with filename predicates, exact-offset predicates, or implicit use of `t0`; Step 4 needs an explicit scratch/clobber publication or approved existing authority.
+The authority bit defaults false and is published only by the RV64 stack-layout pointer-indirect producer path; handwritten or malformed prepared rows remain fail-closed unless they carry coherent authority and pass the consumer's `t6` occupancy check. No external expectations or allowlists were touched.
 
 ## Proof
 

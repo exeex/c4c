@@ -12090,6 +12090,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                .has_value() &&
           !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
                .has_value() &&
+          rv64_large_selected_pointer_offset_materialization_status(
+              &lookups,
+              access,
+              *size_bytes) !=
+              Rv64LargeSelectedPointerOffsetMaterializationStatus::Available &&
           !prepared_byval_stack_slot_pointer_access_offset(stack_layout,
                                                            &lookups,
                                                            access,
@@ -12168,6 +12173,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
              .has_value() &&
         !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
              .has_value() &&
+        rv64_large_selected_pointer_offset_materialization_status(
+            &lookups,
+            access,
+            *size_bytes) !=
+            Rv64LargeSelectedPointerOffsetMaterializationStatus::Available &&
         !prepared_pointer_value_stack_home_base_offset(stack_layout,
                                                       &lookups,
                                                       access,

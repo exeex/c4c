@@ -108,6 +108,7 @@ struct PreparedAddress {
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   bool can_use_base_plus_offset = false;
+  bool rv64_large_selected_pointer_offset_scratch_clobber_authority = false;
   bir::MemoryAccessProvenance provenance;
 };
 

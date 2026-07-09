@@ -1185,6 +1185,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
 
 [[nodiscard]] std::optional<PreparedAddress> build_pointer_indirect_address(
     PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     const std::optional<bir::MemoryAddress>& address,
     std::int64_t fallback_byte_offset,
     std::size_t size_bytes,
@@ -1194,7 +1195,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     return std::nullopt;
   }
 
-  return PreparedAddress{
+  auto prepared_address = PreparedAddress{
       .base_kind = PreparedAddressBaseKind::PointerValue,
       .pointer_value_name = prepared_named_value_id(names, address->base_value),
       .byte_offset = address->byte_offset + fallback_byte_offset,
@@ -1204,10 +1205,31 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       .provenance = prepared_memory_provenance(
           address, address->byte_offset + fallback_byte_offset, size_bytes),
   };
+  const auto& requested = prepared_address.provenance.requested_range;
+  prepared_address.rv64_large_selected_pointer_offset_scratch_clobber_authority =
+      target_profile.arch == c4c::TargetArch::Riscv64 &&
+      prepared_address.pointer_value_name.has_value() &&
+      prepared_address.can_use_base_plus_offset &&
+      prepared_address.size_bytes != 0 &&
+      prepared_address.align_bytes != 0 &&
+      prepared_address.align_bytes <= prepared_address.size_bytes &&
+      !prepared_signed_12_bit_immediate_range_contains(prepared_address.byte_offset) &&
+      prepared_address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenOutOfBounds &&
+      requested.available &&
+      !requested.overflowed &&
+      requested.end_available &&
+      requested.begin == prepared_address.byte_offset &&
+      requested.size_bytes == prepared_address.size_bytes &&
+      requested.end >= requested.begin &&
+      requested.end - requested.begin ==
+          static_cast<std::int64_t>(prepared_address.size_bytes);
+  return prepared_address;
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
     PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -1223,7 +1245,12 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
                                                         : inst.align_bytes,
       size_bytes);
   auto address = build_pointer_indirect_address(
-      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      target_profile,
+      inst.address,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -1241,6 +1268,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
     PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -1256,7 +1284,12 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
                                                         : inst.align_bytes,
       size_bytes);
   auto address = build_pointer_indirect_address(
-      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      target_profile,
+      inst.address,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -1274,6 +1307,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
     PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -1289,7 +1323,12 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
                                                         : inst.align_bytes,
       size_bytes);
   auto address = build_pointer_indirect_address(
-      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      target_profile,
+      inst.address,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -1307,6 +1346,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
     PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -1322,7 +1362,12 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
                                                         : inst.align_bytes,
       size_bytes);
   auto address = build_pointer_indirect_address(
-      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      target_profile,
+      inst.address,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -1353,7 +1398,13 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
       const auto& inst = block.insts[inst_index];
       if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
         if (auto access =
-                build_pointer_indirect_access(names, function_name_id, block_label_id, inst_index, *load_local);
+                build_pointer_indirect_access(
+                    names,
+                    target_profile,
+                    function_name_id,
+                    block_label_id,
+                    inst_index,
+                    *load_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -1386,7 +1437,12 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
       if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
         if (auto access =
                 build_pointer_indirect_access(
-                    names, function_name_id, block_label_id, inst_index, *store_local);
+                    names,
+                    target_profile,
+                    function_name_id,
+                    block_label_id,
+                    inst_index,
+                    *store_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -1419,7 +1475,12 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
       if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
         if (auto access =
                 build_pointer_indirect_access(
-                    names, function_name_id, block_label_id, inst_index, *load_global);
+                    names,
+                    target_profile,
+                    function_name_id,
+                    block_label_id,
+                    inst_index,
+                    *load_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -1440,7 +1501,12 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
       }
       if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
         if (auto access = build_pointer_indirect_access(
-                names, function_name_id, block_label_id, inst_index, *store_global);
+                names,
+                target_profile,
+                function_name_id,
+                block_label_id,
+                inst_index,
+                *store_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;

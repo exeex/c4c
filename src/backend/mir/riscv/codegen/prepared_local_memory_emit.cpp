@@ -849,6 +849,25 @@ std::uint32_t rv64_temporary_gpr_avoiding_local(std::uint32_t reserved_register)
   return reserved_register == t1 ? t2 : t1;
 }
 
+bool rv64_prepared_gpr_register_is_occupied_local(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::uint32_t candidate) {
+  if (lookups == nullptr) {
+    return true;
+  }
+  for (const auto& home_entry : lookups->value_homes.homes_by_id) {
+    const auto* home = home_entry.second;
+    if (home == nullptr) {
+      continue;
+    }
+    const auto home_register = rv64_prepared_gpr_register_number_for_home(*home);
+    if (home_register.has_value() && *home_register == candidate) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::optional<std::size_t> prepared_stack_slot_home_absolute_offset_for_value_local(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -1427,8 +1446,17 @@ rv64_large_selected_pointer_offset_materialization_status(
       requested.end - requested.begin != static_cast<std::int64_t>(size_bytes)) {
     return Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable;
   }
-  return Rv64LargeSelectedPointerOffsetMaterializationStatus::
-      MissingScratchClobberAuthority;
+  if (!access->address.rv64_large_selected_pointer_offset_scratch_clobber_authority) {
+    return Rv64LargeSelectedPointerOffsetMaterializationStatus::
+        MissingScratchClobberAuthority;
+  }
+  constexpr std::uint32_t scratch_register = 31;  // t6
+  if (*base_register == scratch_register ||
+      rv64_prepared_gpr_register_is_occupied_local(lookups, scratch_register)) {
+    return Rv64LargeSelectedPointerOffsetMaterializationStatus::
+        MalformedScratchClobberAuthority;
+  }
+  return Rv64LargeSelectedPointerOffsetMaterializationStatus::Available;
 }
 
 std::optional<std::size_t> prepared_pointer_value_stack_home_base_offset(
@@ -1517,6 +1545,29 @@ materialize_prepared_pointer_value_base_offset(
       prepared_pointer_value_base_offset(lookups, access, size_bytes);
   if (base_register.has_value()) {
     return base_register;
+  }
+  if (rv64_large_selected_pointer_offset_materialization_status(
+          lookups,
+          access,
+          size_bytes) ==
+      Rv64LargeSelectedPointerOffsetMaterializationStatus::Available) {
+    const auto large_base_register =
+        gpr_register_number_for_value_name_local(lookups,
+                                                 *access->address.pointer_value_name);
+    if (!large_base_register.has_value()) {
+      return std::nullopt;
+    }
+    constexpr std::uint32_t large_offset_scratch_register = 31;  // t6
+    append_rv64_prepared_load_immediate(fragment,
+                                        large_offset_scratch_register,
+                                        access->address.byte_offset);
+    append_rv64_prepared_add_registers(fragment,
+                                       large_offset_scratch_register,
+                                       *large_base_register,
+                                       large_offset_scratch_register);
+    return std::pair<std::uint32_t, std::int32_t>{
+        large_offset_scratch_register,
+        0};
   }
   const auto stack_home_offset =
       prepared_pointer_value_stack_home_base_offset(stack_layout,

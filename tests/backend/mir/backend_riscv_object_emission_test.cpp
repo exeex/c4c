@@ -5532,6 +5532,101 @@ prepare::PreparedBirModule make_prepared_pointer_value_scalar_local_module(
 }
 
 prepare::PreparedBirModule
+make_prepared_pointer_value_large_offset_scalar_local_module_from_stack_layout(
+    std::string pointer_register = "t2") {
+  const auto target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  bir::Module module;
+  module.target_triple = target_profile.triple;
+  const auto block_label = module.names.block_labels.intern("entry");
+  const auto slot_name = module.names.slot_names.intern("%ptr");
+
+  const auto pointer_address = [] {
+    return bir::MemoryAddress{
+        .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, "%p"),
+        .byte_offset = 4096,
+        .size_bytes = 2,
+        .align_bytes = 2,
+    };
+  };
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%ptr",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_i16(9),
+                  .align_bytes = 2,
+                  .address = pointer_address(),
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I16, "%t0"),
+                  .slot_name = "%ptr",
+                  .slot_id = slot_name,
+                  .align_bytes = 2,
+                  .address = pointer_address(),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I16, "%t0");
+
+  module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I16,
+      .return_size_bytes = 2,
+      .return_align_bytes = 2,
+      .local_slots = {bir::LocalSlot{
+          .name = "%ptr",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I16,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      }},
+      .blocks = {std::move(entry)},
+  });
+
+  prepare::BirPreAlloc prealloc(module, target_profile);
+  prealloc.run_stack_layout();
+  auto prepared = std::move(prealloc.prepared());
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto prepared_block_label = prepared.names.block_labels.intern("entry");
+  const auto pointer_name = prepared.names.value_names.intern("%p");
+  const auto result_name = prepared.names.value_names.intern("%t0");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = prepared_block_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = pointer_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::move(pointer_register),
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule
 make_prepared_pointer_value_scalar_stack_home_local_module() {
   auto prepared = make_prepared_pointer_value_scalar_local_module();
   const auto function_name = prepared.names.function_names.find("main");
@@ -18455,6 +18550,73 @@ int rejects_prepared_pointer_value_scalar_local_fail_closed_shapes() {
   return 0;
 }
 
+int builds_prepared_pointer_value_large_offset_scalar_local_object() {
+  auto prepared =
+      make_prepared_pointer_value_large_offset_scalar_local_module_from_stack_layout();
+  if (prepared.addressing.functions.empty() ||
+      prepared.addressing.functions[0].accesses.size() != 2 ||
+      !prepared.addressing.functions[0]
+           .accesses[0]
+           .address
+           .rv64_large_selected_pointer_offset_scratch_clobber_authority ||
+      !prepared.addressing.functions[0]
+           .accesses[1]
+           .address
+           .rv64_large_selected_pointer_offset_scratch_clobber_authority) {
+    return fail("expected stack-layout producer to publish large selected pointer-offset scratch authority");
+  }
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected authorized large selected pointer-offset scalar local object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected authorized large selected pointer-offset object to publish text/main");
+  }
+  if (text->bytes.size() != 52 || text->size_bytes != 52 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 52) {
+    return fail("expected authorized large selected pointer-offset object text layout, got " +
+                std::to_string(text->bytes.size()) + " bytes");
+  }
+  if (!contains_u32_sequence(text->bytes,
+                             {0x00100f93,
+                              0x00cf9f93,
+                              0x01f38fb3,
+                              0x00900313,
+                              0x006f9023,
+                              0x00100f93,
+                              0x00cf9f93,
+                              0x01f38fb3,
+                              0x000f9283,
+                              0x00028513}) ||
+      read_u32(text->bytes, 48) != 0x00008067) {
+    return fail("expected authorized large selected pointer-offset object to materialize through t6 scratch");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected authorized large selected pointer-offset object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_pointer_value_large_offset_malformed_scratch_authority() {
+  auto prepared =
+      make_prepared_pointer_value_large_offset_scalar_local_module_from_stack_layout("t6");
+  const auto& control_flow = prepared.control_flow.functions.front();
+  auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  if (rv64::rv64_large_selected_pointer_offset_materialization_status(
+          &lookups,
+          &prepared.addressing.functions[0].accesses[0],
+          2) != rv64::Rv64LargeSelectedPointerOffsetMaterializationStatus::
+                    MalformedScratchClobberAuthority) {
+    return fail("expected large selected pointer offset to reject occupied t6 scratch authority");
+  }
+  if (expect_pointer_value_scalar_local_rejection(prepared) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int classifies_prepared_pointer_value_large_selected_offset_scratch_contract() {
   auto prepared = make_prepared_pointer_value_scalar_local_module();
   const auto& control_flow = prepared.control_flow.functions.front();
@@ -18489,6 +18651,19 @@ int classifies_prepared_pointer_value_large_selected_offset_scratch_contract() {
           2) != rv64::Rv64LargeSelectedPointerOffsetMaterializationStatus::
                     MissingScratchClobberAuthority) {
     return fail("expected large selected pointer offset to require scratch/clobber authority");
+  }
+
+  prepared =
+      make_prepared_pointer_value_large_offset_scalar_local_module_from_stack_layout();
+  lookups = prepare::make_prepared_function_lookups(
+      prepared,
+      prepared.control_flow.functions.front());
+  if (rv64::rv64_large_selected_pointer_offset_materialization_status(
+          &lookups,
+          &prepared.addressing.functions[0].accesses[0],
+          2) !=
+      rv64::Rv64LargeSelectedPointerOffsetMaterializationStatus::Available) {
+    return fail("expected authorized large selected pointer offset to be materializable");
   }
 
   prepared = make_prepared_pointer_value_scalar_local_module();
@@ -28972,6 +29147,7 @@ int main() {
   status |= builds_prepared_pointer_value_scalar_local_object();
   status |= builds_prepared_pointer_value_scalar_stack_home_local_object();
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
+  status |= builds_prepared_pointer_value_large_offset_scalar_local_object();
   status |= builds_prepared_pointer_value_i8_local_store_object();
   status |= builds_prepared_pointer_value_f64_local_object();
   status |= builds_prepared_sret_stack_pointer_store_object();
@@ -28980,6 +29156,8 @@ int main() {
   status |= rejects_prepared_sret_stack_pointer_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_i8_local_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
+  status |=
+      rejects_prepared_pointer_value_large_offset_malformed_scratch_authority();
   status |=
       classifies_prepared_pointer_value_large_selected_offset_scratch_contract();
   status |= builds_prepared_stack_slot_scalar_flow_object();

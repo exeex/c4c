@@ -24,6 +24,8 @@ struct PreparedSretStackPointerAccess {
 enum class Rv64LargeSelectedPointerOffsetMaterializationStatus {
   NotApplicable,
   MissingScratchClobberAuthority,
+  MalformedScratchClobberAuthority,
+  Available,
 };
 
 [[nodiscard]] std::optional<std::size_t> prepared_frame_slot_absolute_byte_offset(
