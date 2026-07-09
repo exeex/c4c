@@ -1,77 +1,111 @@
 Status: Active
 Source Idea Path: ideas/open/635_prepared_branch_stack_clobber_safety_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Prepared Branch Clobber-Safety Evidence
+Current Step ID: 2
+Current Step Title: Trace Prepared Clobber-Safety Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed the prepared branch stack-load clobber-safety evidence for the
-delegated seven-row allowlist. The allowlist is
-`build/agent_state/635_step1_branch_clobber_safety.allowlist`; the compact row
-classification is
-`build/agent_state/635_step1_branch_clobber_safety.classification.tsv`; focused
-prepared dumps live at `build/agent_state/635_step1_*.prepared.txt`.
+Step 2 traced the prepared clobber-safety authority boundary for the seven Step
+1 selected branch stack-load pointer rows without implementation edits.
 
-All seven rows are in-scope selected-freshness / missing-clobber-safety rows:
+Exact producer functions:
 
-| Row | First owner and use point | Selected candidate identity | Visible clobber-safety facts |
-| --- | --- | --- | --- |
-| `src/20001017-1.c` | `unsupported_branch_stack_load_authority`; `bug` `entry`, branch terminator index `1`, `lhs` `%p.C` | `source_freshness_status=selected`, `source_freshness_candidates=1`, `branch_stack_slot`, `%p.C` value id `11`, `branch_terminator_ordering`, ref block `0`, ref inst `1` | `policy=load_from_stack_slot`, `pointer_status=proven`, `status=missing_stack_clobber_safety`, slot `#13`, object `#12`, stack offset `56` |
-| `src/loop-2e.c` | `unsupported_branch_stack_load_authority`; `main` `block_6`, branch terminator index `14`, `rhs` `%t23` | `selected`, one `branch_stack_slot` candidate, `%t23` value id `26`, `branch_terminator_ordering`, ref block `3`, ref inst `14` | `load_from_stack_slot`, `pointer_status=proven`, `missing_stack_clobber_safety`, slot `#46`, object `#51`, stack offset `336` |
-| `src/pr39100.c` | `unsupported_branch_stack_load_authority`; `foo` `block_1`, branch terminator index `2`, `lhs` `%t0` | `selected`, one `branch_stack_slot` candidate, `%t0` value id `4`, `branch_terminator_ordering`, ref block `1`, ref inst `2` | `load_from_stack_slot`, `pointer_status=proven`, `missing_stack_clobber_safety`, slot `#41`, object `#42`, stack offset `152` |
-| `src/20000314-3.c` | `unsupported_branch_stack_load_authority`; `attr_rtx` `entry`, branch terminator index `1`, `rhs` `@arg0` | `selected`, one `branch_stack_slot` candidate, `@arg0` value id `3`, `branch_terminator_ordering`, ref block `0`, ref inst `1` | `load_from_stack_slot`, `pointer_status=proven`, `missing_stack_clobber_safety`, slot `#0`, object `#1`, stack offset `0` |
-| `src/20140828-1.c` | `unsupported_branch_stack_load_authority`; `main` `entry`, branch terminator index `3`, `rhs` `%t6` | `selected`, one `branch_stack_slot` candidate, `%t6` value id `18`, `branch_terminator_ordering`, ref block `0`, ref inst `3` | `load_from_stack_slot`, `pointer_status=proven`, `missing_stack_clobber_safety`, slot `#16`, object `#17`, stack offset `8` |
-| `src/20080519-1.c` | `unsupported_branch_stack_load_authority`; `regrename_optimize` `for.cond.4`, branch terminator index `3`, `lhs` `%t8` | `selected`, one `branch_stack_slot` candidate, `%t8` value id `13`, `branch_terminator_ordering`, ref block `1`, ref inst `3` | `load_from_stack_slot`, `pointer_status=proven`, `missing_stack_clobber_safety`, slot `#32`, object `#32`, stack offset `112` |
-| `src/20050125-1.c` | `unsupported_branch_stack_load_authority`; `bracket_empty` `entry`, branch terminator index `3`, `rhs` `%t3` | `selected`, one `branch_stack_slot` candidate, `%t3` value id `4`, `branch_terminator_ordering`, ref block `0`, ref inst `3` | `load_from_stack_slot`, `pointer_status=proven`, `missing_stack_clobber_safety`, slot `#13`, object `#13`, stack offset `40` |
+- `collect_prepared_branch_stack_load_authorities` walks prepared control-flow
+  branch conditions, finds the BIR block, and sets
+  `branch_terminator_instruction_index = block->insts.size()`.
+- `collect_branch_stack_load_authority_for_role` limits records to named
+  stack-slot operands for `Condition`, `Lhs`, and `Rhs`.
+- `make_branch_stack_load_authority_record` constructs
+  `PreparedBranchStackLoadAuthorityRecord`, publishes the selected freshness
+  candidate with `publish_prepared_branch_stack_source_freshness_candidate`,
+  proves pointer identity with
+  `prepared_branch_stack_load_pointer_operand_is_proven`, chooses
+  `policy`/`pointer_status`, and passes clobber safety from
+  `prepared_collected_branch_stack_load_clobber_safe`.
+- `plan_prepared_branch_stack_load_authority` verifies names, terminator,
+  branch condition, target labels, selected source freshness, selected source
+  identity, clobber-safety input, and pointer status before setting
+  `Available`.
 
-No row in this packet currently has a no-candidate source-freshness first owner,
-select-publication first owner, generic terminator first owner, move-bundle
-first owner, unrelated ABI/runtime first owner, or accounting-only outcome.
-There are ancillary non-first-owner records in the prepared dumps, such as
-`pr39100.c` line `799` and `20080519-1.c` lines `690` and `693`, but the
-runner-selected first owner for each delegated row is the missing
-branch-stack-load clobber-safety authority above.
+Carrier fields already present: `PreparedBranchStackLoadAuthority::role`,
+`policy`, `pointer_status`, `value_id`, `value_name`, `slot_id`,
+`stack_object_id`, `branch_block_index`, `branch_terminator_instruction_index`,
+`stack_slot_fresh_at_branch`, `source_freshness_authorities`,
+`source_freshness_status`, and `source_freshness_authority`. The input-only
+field `PreparedBranchStackLoadAuthorityInputs::stack_slot_clobber_safe_at_branch`
+is consumed but no detailed clobber-safety fact, proof kind, or fail-closed
+clobber reason is persisted in the branch authority.
+
+First missing boundary: `prepared_collected_branch_stack_load_clobber_safe` is a
+placeholder, not a real intervening-clobber analysis. For pointer `Lhs`/`Rhs`,
+it requires `pointer_operand_proven` and
+`branch_stack_load_has_no_intervening_instructions`, which only returns true
+when `branch_terminator_instruction_index == 0`. All seven selected rows have
+terminator indices greater than zero, so they fail closed as
+`MissingStackClobberSafety` before RV64 can consume them.
+
+Consumer checks before RV64 emission: `selected_branch_stack_load_source_freshness_status`
+matches role, block label, value id/name, branch block index, and terminator
+instruction index, requires `prepared_branch_stack_load_authority_available`,
+and rechecks the selected freshness authority fields before
+`fragment_for_prepared_fused_pointer_branch` emits. RV64 currently does not
+infer safety from stack homes, offsets, or final assembly shape.
+
+Fail-closed states found or required:
+
+- missing selected freshness: existing `MissingSourceFreshnessAuthority`
+- stale/contradictory freshness: existing `InvalidSourceFreshnessAuthority`,
+  `AmbiguousSourceFreshnessAuthority`, or `UnsupportedSourceFreshnessAuthority`
+- missing clobber proof: existing `MissingStackClobberSafety`
+- mismatched branch source identity: existing selected-freshness match rejects
+  wrong value, home, role, block, or terminator index
+- contradictory clobber proof: not yet branch-specific; the adjacent
+  `PreparedFrameSlotSourceFact` carrier has same-slot write, call/helper,
+  publication, move-bundle, and parallel-copy clobber statuses, but branch
+  stack-load authority does not consume those facts or equivalent analysis yet
+
+Evidence artifacts:
+
+- `build/agent_state/635_step2_authority_boundary_summary.md`
+- `build/agent_state/635_step2_branch_stack_authority_producer_excerpt.txt`
+- `build/agent_state/635_step2_branch_stack_authority_carrier_excerpt.txt`
+- `build/agent_state/635_step2_frame_slot_fact_boundary_excerpt.txt`
+- `build/agent_state/635_step2_frame_slot_fact_carrier_excerpt.txt`
+- `build/agent_state/635_step2_rv64_branch_consumer_excerpt.txt`
+- `build/agent_state/635_step2_make_branch_stack_load_authority_record_callees.json`
+- `build/agent_state/635_step2_plan_prepared_branch_stack_load_authority_callees.json`
+- `build/agent_state/635_step2_selected_branch_stack_load_source_freshness_status_callees.json`
+- `build/agent_state/635_step2_635_step1_*_authority_trace.txt`
 
 ## Suggested Next
 
-Step 2 packet boundary: repair the semantic clobber-safety authority for
-selected prepared branch stack-load pointer operands when the selected
-`branch_stack_slot` freshness fact exactly matches the branch terminator use and
-the pointer operand is proven. Keep the slice general over role/function/block:
-it should make the authority status available only through a real
-clobber-safety proof, not through named-source matching, expectation rewrites,
-or final-assembly inference.
+Smallest non-overfit Step 3 packet: implement a prepared-layer clobber-safety
+proof for branch stack-slot pointer operands in the branch authority producer
+path. Replace the `terminator_instruction_index == 0` placeholder with a
+general branch-use-point analysis bound to the selected `BranchStackLoadSource`
+authority, exact stack slot/object, and exact branch block/terminator index.
+Preserve fail-closed rejection for absent selected freshness, stale/mismatched
+freshness, unknown path validity, same-slot writes, call/helper clobbers,
+publication clobbers, move-bundle clobbers, and parallel-copy clobbers. Do not
+edit RV64 admission first and do not special-case source files, functions,
+roles, or offsets.
 
 ## Watchouts
 
-The current failure family is narrower than branch freshness publication:
-freshness is already selected for all seven first owners. Do not spend Step 2 on
-no-candidate freshness rows, select-publication gaps, generic terminator gaps,
-move bundles, ABI/runtime behavior, accounting, unsupported-marker changes,
-allowlist edits, stack-home inference, final assembly inference, stack-offset
-inference, or named-source shortcuts.
-
-Prepared dumps show no accepted clobber-safe proof field for the first-owner
-pointer rows; they show `pointer_status=proven` plus
-`status=missing_stack_clobber_safety`. That is the semantic boundary to repair.
+`PreparedFrameSlotSourceFact` is useful precedent, but Step 3 should not simply
+reuse it unless the proof binds the selected branch stack source to the exact
+branch use point. A consumer-only RV64 patch would be route drift because the
+prepared authority remains `MissingStackClobberSafety`. A boolean-only fix that
+marks all intervening-instruction pointer rows safe would also overfit; the
+repair needs distinguishable fail-closed clobber outcomes.
 
 ## Proof
 
-Ran the delegated command:
-
-`cmake --build --preset default && ALLOWLIST=build/agent_state/635_step1_branch_clobber_safety.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/635_step1_branch_clobber_safety.log 2>&1`
-
-Result: build was up to date; progress check returned nonzero with
-`total=7 passed=0 failed=7`. The nonzero result is classification evidence, not
-an executor blocker: every failure is the expected Step 1 first owner,
-`unsupported_branch_stack_load_authority` with selected freshness and
-`missing_stack_clobber_safety`.
-
-Proof/log paths:
-
-- `build/agent_state/635_step1_branch_clobber_safety.log`
-- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
-- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+Trace-only proof packet. No code build/test was delegated and no
+`test_after.log` was written. Read-only evidence was captured in
+`build/agent_state/635_step2_*`, including targeted source excerpts,
+AST-backed callee maps from `c4c-clang-tool-ccdb`, and per-row prepared dump
+authority traces.
