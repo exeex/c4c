@@ -1,68 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/652_prepared_incoming_stack_formal_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish One Explicit Incoming Stack Formal Fact
+Current Step ID: 3
+Current Step Title: Wire RV64 To Consume The Explicit Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 published explicit incoming stack formal authority in producer/prealloc
-metadata without wiring RV64 consumption.
+Step 3 wired RV64 object-route stack-passed scalar formal consumers to read
+`PreparedFormalPublicationPlan::incoming_stack_offset_bytes` from the shared
+formal-publication planner.
 
-Fact shape:
-`bir::CallArgAbiInfo::incoming_stack_offset_bytes` is an optional caller-stack
-incoming byte offset. `PreparedFormalPublicationPlan::incoming_stack_offset_bytes`
-copies that fact for `IncomingStackToHome` publications and keeps it distinct
-from `PreparedValueHome::offset_bytes`, which remains the callee local
-spill-slot/home offset.
-
-Producer derivation:
-`src/backend/bir/lir_to_bir/module.cpp::apply_rv64_ordinary_c_stack_pressure_to_abi`
-now assigns incoming stack offsets during RV64 ABI stack-pressure publication,
-after deciding which ordinary C scalar lanes are stack-passed. It clears the
-field for non-stack lanes and computes offsets from target ABI size/alignment
-policy in the BIR producer layer, not in RV64 object emission.
-
-Publication gate:
-`src/backend/prealloc/formal_publications.cpp::plan_prepared_formal_publication`
-now requires `incoming_stack_offset_bytes` before an `IncomingStackToHome`
-formal publication is available. Missing local home offset still reports
-`MissingStackOffset`; local-home-only authority now reports
-`MissingIncomingStackOffset`.
+Consumer path:
+RV64 admission now accepts stack-passed scalar formal homes only when the
+`IncomingStackToHome` publication is available, while preserving local
+home/frame-slot coherence checks as validation. Branch stack-load operands and
+`LoadLocal` formal loads use the explicit incoming offset plus the established
+callee incoming-stack base; they do not derive that offset from formal order or
+`PreparedValueHome::offset_bytes`.
 
 Focused coverage:
-`tests/backend/bir/backend_prealloc_formal_publications_test.cpp` proves an
-available stack formal with incoming offset `8` and local home offset `40`,
-plus negative local-home-only coverage. The x86 prepared query fixture was
-updated to preserve the new shared fact in its synthetic stack formal plan.
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` now proves both a
+stack-passed formal pointer branch operand and a local-memory formal load use
+explicit incoming authority rather than the local home offset, while
+local-home-only authority remains fail-closed.
 
 ## Suggested Next
 
-Execute Step 3: wire RV64 object-route stack-passed scalar formal loading to
-consume `PreparedFormalPublicationPlan::incoming_stack_offset_bytes` only when
-the formal publication is available. Keep missing-authority diagnostics for
-local-home-only or ambiguous facts, and add RV64 coverage proving the load
-source comes from the explicit prepared fact rather than from formal-order or
-frame-size reconstruction.
+Execute Step 4: validate and review the RV64 consumer boundary. Compare the
+fresh `test_after.log` against the accepted before log, inspect that the RV64
+diff consumes formal-publication authority rather than rebuilding ABI offsets,
+and decide whether broader stack-passed formal coverage is needed before
+lifecycle review.
 
 ## Watchouts
 
-- Do not reintroduce RV64 helpers that compute incoming offsets by walking
-  `function.params`, applying ABI size/alignment, or adding
-  `stack_frame_bytes`.
+- Do not reintroduce RV64 helpers that compute incoming offsets by applying
+  ABI size/alignment policy in the consumer. The current RV64 loops over
+  formals only to find the matching prepared formal-publication plan.
 - Do not use `PreparedValueHome::offset_bytes` as incoming authority; it is
   still the callee local home offset.
-- RV64 object emission currently still fails closed with
-  `unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes`.
-- The new BIR ABI field is producer-owned. Step 3 should consume it through
-  formal-publication/prepared data, not by recomputing the ABI stack layout in
-  RV64.
+- Incoming stack formal loads in functions that save `ra` must use the
+  established call-frame size as the incoming-stack base; local home validation
+  still uses local frame-slot offsets.
+- `src/20001017-1.c` now passes the allowlisted RV64 backend object progress
+  check.
 
 ## Proof
 
 Validation command written to `test_after.log`:
-`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_formal_publications|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prepared_object_consumer_contract|backend_call_boundary_effect_plan)$') > test_after.log 2>&1`
+`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_formal_publications|backend_prealloc_call_boundary_classification|backend_prepared_object_consumer_contract|backend_call_boundary_effect_plan|backend_x86_prepared_decoded_home_storage)$' && ALLOWLIST=build/agent_state/644_step1_20001017_1.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
 
-Result: PASS, 5/5 focused tests passed.
+Result: PASS. The 8/8 focused CTests passed, and
+`src/20001017-1.c` passed the allowlisted RV64 backend object progress check.

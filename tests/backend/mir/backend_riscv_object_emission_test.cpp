@@ -145,6 +145,13 @@ bool is_rv64_load_from_sp(std::uint32_t word,
          riscv_rs1(word) == 2U && riscv_i_imm(word) == offset;
 }
 
+bool is_rv64_fpr_load_from_sp(std::uint32_t word,
+                              unsigned funct3,
+                              std::int32_t offset) {
+  return (word & 0x7fU) == 0x07U && ((word >> 12) & 0x7U) == funct3 &&
+         riscv_rs1(word) == 2U && riscv_i_imm(word) == offset;
+}
+
 bool is_rv64_store_to_sp(std::uint32_t word,
                          unsigned funct3,
                          unsigned stored_register,
@@ -874,7 +881,8 @@ prepare::PreparedBirModule make_prepared_fused_pointer_lhs_stack_branch_module()
 }
 
 prepare::PreparedBirModule
-make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module() {
+make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module(
+    bool publish_incoming_stack_authority = false) {
   auto prepared = make_prepared_fused_pointer_lhs_stack_branch_module();
   const auto function_name = prepared.names.function_names.find("cmp_branch");
   auto& function = prepared.module.functions.front();
@@ -892,6 +900,9 @@ make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module() {
           .passed_on_stack = true,
       },
   }};
+  if (publish_incoming_stack_authority) {
+    function.params.front().abi->incoming_stack_offset_bytes = std::size_t{24};
+  }
   auto& lhs_home = prepared.value_locations.functions.front().value_homes.at(1);
   lhs_home.offset_bytes = std::size_t{48};
   prepared.stack_layout.frame_slots.front().offset_bytes = 48;
@@ -13008,7 +13019,8 @@ prepare::PreparedBirModule make_prepared_stack_passed_scalar_param_home_module(
 }
 
 prepare::PreparedBirModule
-make_prepared_stack_passed_scalar_param_load_with_local_frame_module() {
+make_prepared_stack_passed_scalar_param_load_with_local_frame_module(
+    bool publish_incoming_stack_authority = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -13074,6 +13086,11 @@ make_prepared_stack_passed_scalar_param_load_with_local_frame_module() {
       }},
       .blocks = {std::move(entry)},
   });
+  if (publish_incoming_stack_authority) {
+    prepared.module.functions.back()
+        .params[0]
+        .abi->incoming_stack_offset_bytes = std::size_t{8};
+  }
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
       .blocks = {prepare::PreparedControlFlowBlock{
@@ -15362,6 +15379,38 @@ int rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_without_incomi
   return expect_prepared_rejection_diagnostic(
       prepared,
       "unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes");
+}
+
+int builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_with_incoming_authority() {
+  const auto prepared =
+      make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module(true);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected stack-passed formal pointer branch to consume explicit incoming authority: " +
+                result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  if (text == nullptr) {
+    return fail("expected stack-passed formal pointer branch object text");
+  }
+  bool saw_incoming_authority_load = false;
+  bool saw_local_home_load = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (is_rv64_load_from_sp(word, 3U, 88) && riscv_rd(word) == 28) {
+      saw_incoming_authority_load = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 48) && riscv_rd(word) == 28) {
+      saw_local_home_load = true;
+    }
+  }
+  if (!saw_incoming_authority_load || saw_local_home_load) {
+    return fail("expected stack-passed formal branch to load from explicit incoming offset 24 plus frame 64, not local home offset 48");
+  }
+  return 0;
 }
 
 int builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object() {
@@ -18253,6 +18302,102 @@ int rejects_stack_passed_scalar_param_load_without_incoming_authority() {
   const auto prepared =
       make_prepared_stack_passed_scalar_param_load_with_local_frame_module();
   return expect_stack_passed_scalar_param_home_rejection(prepared);
+}
+
+int builds_stack_passed_scalar_param_load_with_explicit_incoming_authority() {
+  const auto prepared =
+      make_prepared_stack_passed_scalar_param_load_with_local_frame_module(true);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected stack-passed scalar formal load to consume explicit incoming authority: " +
+                result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function =
+      object::find_symbol(*module, "stack_passed_scalar_param_load");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected stack-passed scalar formal load object symbols and text");
+  }
+  bool saw_param_incoming_load = false;
+  bool saw_local_frame_load = false;
+  bool saw_param_local_home_load = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (is_rv64_load_from_sp(word, 3U, 72) && riscv_rd(word) == 28) {
+      saw_param_incoming_load = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 16) && riscv_rd(word) == 29) {
+      saw_local_frame_load = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 48) && riscv_rd(word) == 28) {
+      saw_param_local_home_load = true;
+    }
+  }
+  if (!saw_param_incoming_load || !saw_local_frame_load ||
+      saw_param_local_home_load) {
+    return fail("expected stack-passed formal load from explicit incoming offset 8 plus frame 64, while local load stays frame-slot based");
+  }
+  return 0;
+}
+
+int emits_f64_stack_passed_formal_load_from_incoming_call_frame_base() {
+  auto prepared =
+      make_prepared_stack_passed_scalar_param_load_with_local_frame_module(true);
+  auto& function = prepared.module.functions.front();
+  auto& formal = function.params.front();
+  formal.type = bir::TypeKind::F64;
+  formal.abi->type = bir::TypeKind::F64;
+  formal.abi->primary_class = bir::AbiValueClass::Sse;
+
+  auto& load =
+      std::get<bir::LoadLocalInst>(function.blocks.front().insts.front());
+  load.result = bir::Value::named(bir::TypeKind::F64, "%from.param");
+
+  prepared.stack_layout.objects[0].type = bir::TypeKind::F64;
+  prepared.addressing.functions[0].accesses[0].address.size_bytes = 8;
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 8;
+
+  auto& result_home = prepared.value_locations.functions[0].value_homes[1];
+  result_home.kind = prepare::PreparedValueHomeKind::Register;
+  result_home.register_name = std::string{"ft0"};
+  result_home.target_register_identity =
+      prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Riscv64,
+          .bank = prepare::PreparedRegisterBank::Fpr,
+          .register_class = prepare::PreparedRegisterClass::Float,
+          .physical_index = 0,
+      };
+
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &lookups.memory_accesses,
+      control_flow.blocks.front().block_label,
+      0);
+  const auto fragment = rv64::fragment_for_prepared_load_local(
+      prepared,
+      control_flow.function_name,
+      0,
+      0,
+      prepared.stack_layout,
+      prepared.names,
+      &lookups,
+      load,
+      access,
+      80,
+      64);
+  if (!fragment.has_value() || fragment->bytes.size() != 4) {
+    return fail("expected F64 stack-passed formal load fragment from explicit incoming authority");
+  }
+  const auto word = read_u32(fragment->bytes, 0);
+  if (!is_rv64_fpr_load_from_sp(word, 3U, 88) || riscv_rd(word) != 0) {
+    return fail("expected F64 stack-passed formal load to use incoming offset 8 plus call-frame base 80");
+  }
+  return 0;
 }
 
 int rejects_stack_passed_scalar_param_home_fail_closed_shapes() {
@@ -30670,6 +30815,8 @@ int main() {
       builds_prepared_fused_pointer_lhs_stack_branch_with_shared_freshness_object();
   status |=
       rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_without_incoming_authority();
+  status |=
+      builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_with_incoming_authority();
   status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |=
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();
@@ -30742,6 +30889,9 @@ int main() {
   status |= rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes();
   status |= rejects_stack_passed_scalar_param_home_missing_incoming_authority();
   status |= rejects_stack_passed_scalar_param_load_without_incoming_authority();
+  status |=
+      builds_stack_passed_scalar_param_load_with_explicit_incoming_authority();
+  status |= emits_f64_stack_passed_formal_load_from_incoming_call_frame_base();
   status |= rejects_stack_passed_scalar_param_home_fail_closed_shapes();
   status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();

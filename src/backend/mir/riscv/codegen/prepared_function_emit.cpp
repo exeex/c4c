@@ -382,6 +382,9 @@ RiscvPreparedFunctionAdmissionResult prepare_rv64_object_function_admission_shel
                                                         control_flow.function_name);
   result.storage_plan = prepare::find_prepared_storage_plan(prepared,
                                                             control_flow.function_name);
+  result.value_locations =
+      prepare::find_prepared_value_location_function(prepared,
+                                                     control_flow.function_name);
   result.inline_asm_carriers =
       prepare::find_prepared_inline_asm_carriers(prepared,
                                                  control_flow.function_name);
@@ -410,6 +413,7 @@ RiscvPreparedFunctionAdmissionResult prepare_rv64_object_function_admission_shel
             callbacks.param_homes_diagnostic(prepared.stack_layout,
                                              prepared.names,
                                              &result.lookups,
+                                             result.value_locations,
                                              *result.function,
                                              *result.stack_frame_bytes)) {
       result.diagnostic = std::move(*diagnostic);

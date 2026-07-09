@@ -7,6 +7,7 @@
 #include "rv64_line_assembler.hpp"
 
 #include "../../../prealloc/addressing.hpp"
+#include "../../../prealloc/formal_publications.hpp"
 #include "../../../prealloc/prepared_contract_verifier.hpp"
 
 #include <algorithm>
@@ -893,6 +894,83 @@ std::optional<std::size_t> prepared_stack_slot_home_absolute_offset_for_value_lo
                                                        *home,
                                                        stack_frame_bytes,
                                                        *size_bytes);
+}
+
+const c4c::backend::bir::Function* find_prepared_bir_function_local(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  const std::string_view name =
+      c4c::backend::prepare::prepared_function_name(prepared.names, function_name);
+  if (name.empty()) {
+    return nullptr;
+  }
+  for (const auto& function : prepared.module.functions) {
+    if (!function.is_declaration && function.name == name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<std::size_t> prepared_incoming_stack_formal_absolute_offset_local(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::LoadLocalInst& load,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || load.slot_name.empty()) {
+    return std::nullopt;
+  }
+  const auto* function = find_prepared_bir_function_local(prepared, function_name);
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared, function_name);
+  if (function == nullptr || value_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedFormalPublicationInputs inputs{
+      .names = &prepared.names,
+      .function = function,
+      .value_locations = value_locations,
+      .value_home_lookups = &lookups->value_homes,
+  };
+  std::optional<std::size_t> selected_incoming_offset;
+  for (std::size_t formal_index = 0; formal_index < function->params.size();
+       ++formal_index) {
+    const auto& formal = function->params[formal_index];
+    if (formal.name != load.slot_name || formal.type != load.result.type ||
+        formal.size_bytes != size_bytes) {
+      continue;
+    }
+    const auto plan =
+        prepare::plan_prepared_formal_publication(inputs, formal_index);
+    if (!prepare::prepared_formal_publication_available(plan) ||
+        plan.action != prepare::PreparedFormalPublicationAction::IncomingStackToHome ||
+        plan.home == nullptr ||
+        plan.home_kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !plan.incoming_stack_offset_bytes.has_value()) {
+      return std::nullopt;
+    }
+    if (selected_incoming_offset.has_value()) {
+      return std::nullopt;
+    }
+    selected_incoming_offset = plan.incoming_stack_offset_bytes;
+  }
+  if (!selected_incoming_offset.has_value()) {
+    return std::nullopt;
+  }
+  if (*selected_incoming_offset >
+      std::numeric_limits<std::size_t>::max() - stack_frame_bytes) {
+    return std::nullopt;
+  }
+  const auto absolute_offset = stack_frame_bytes + *selected_incoming_offset;
+  if (!fits_signed_12_bit_load_offset(absolute_offset)) {
+    return std::nullopt;
+  }
+  return absolute_offset;
 }
 
 std::optional<std::uint32_t> rv64_load_store_funct3_for_size_local(
@@ -2160,6 +2238,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::LoadLocalInst& load,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t incoming_stack_base_bytes,
     std::size_t stack_frame_bytes) {
   if (load.result.type == c4c::backend::bir::TypeKind::Ptr &&
       access != nullptr &&
@@ -2219,14 +2298,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
       return std::nullopt;
     }
     const auto offset =
+        prepared_incoming_stack_formal_absolute_offset_local(prepared,
+                                                             function_name,
+                                                             lookups,
+                                                             load,
+                                                             incoming_stack_base_bytes,
+                                                             *size_bytes)
+            .value_or(std::numeric_limits<std::size_t>::max());
+    RiscvEncodedFragment fragment;
+    if (offset != std::numeric_limits<std::size_t>::max()) {
+      if (!append_rv64_load_stack_offset_to_fpr_local(
+              fragment, *destination, offset, load.result.type)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    const auto frame_slot_offset =
         prepared_frame_slot_absolute_byte_offset(stack_layout,
                                                  access,
                                                  stack_frame_bytes,
                                                  *size_bytes);
-    RiscvEncodedFragment fragment;
-    if (offset.has_value()) {
+    if (frame_slot_offset.has_value()) {
       if (!append_rv64_load_stack_offset_to_fpr_local(
-              fragment, *destination, *offset, load.result.type)) {
+              fragment, *destination, *frame_slot_offset, load.result.type)) {
         return std::nullopt;
       }
       return fragment;
@@ -2333,6 +2427,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
   std::optional<std::size_t> offset;
   if (va_start_destination_offset.has_value()) {
     offset = static_cast<std::size_t>(*va_start_destination_offset);
+  } else if (const auto incoming_formal_offset =
+                 prepared_incoming_stack_formal_absolute_offset_local(prepared,
+                                                                      function_name,
+                                                                     lookups,
+                                                                     load,
+                                                                     incoming_stack_base_bytes,
+                                                                     *size_bytes);
+             incoming_formal_offset.has_value()) {
+    offset = incoming_formal_offset;
   } else {
     offset = prepared_frame_slot_absolute_byte_offset(stack_layout,
                                                       access,

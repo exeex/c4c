@@ -24,6 +24,7 @@ struct RiscvPreparedFunctionAdmissionCallbacks {
       const c4c::backend::prepare::PreparedStackLayout& stack_layout,
       const c4c::backend::prepare::PreparedNameTables& names,
       const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+      const c4c::backend::prepare::PreparedValueLocationFunction* value_locations,
       const c4c::backend::bir::Function& function,
       std::size_t stack_frame_bytes) = nullptr;
   std::optional<std::string> (*variadic_helper_diagnostic)(
@@ -46,6 +47,7 @@ struct RiscvPreparedFunctionAdmissionResult {
   const c4c::backend::prepare::PreparedAddressingFunction* addressing = nullptr;
   const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan = nullptr;
   const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan = nullptr;
+  const c4c::backend::prepare::PreparedValueLocationFunction* value_locations = nullptr;
   const c4c::backend::prepare::PreparedInlineAsmCarrierFunction*
       inline_asm_carriers = nullptr;
   std::optional<std::size_t> stack_frame_bytes;

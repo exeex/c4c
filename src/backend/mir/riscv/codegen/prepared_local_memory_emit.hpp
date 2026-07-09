@@ -103,6 +103,7 @@ prepared_frame_slot_address_materialization_offset(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::LoadLocalInst& load,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t incoming_stack_base_bytes,
     std::size_t stack_frame_bytes);
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_store_local(
