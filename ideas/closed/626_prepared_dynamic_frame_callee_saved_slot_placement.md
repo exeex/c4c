@@ -1,6 +1,6 @@
 # Prepared Dynamic-Frame Callee-Saved Slot Placement
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
@@ -66,6 +66,17 @@ violate idea 613's scope.
   missing-authority diagnostic instead of inferred placement.
 - Existing non-GPR, FPR-heavy, local/global, move-bundle, runtime, library, and
   variadic guards remain outside this idea.
+
+## Closure Notes
+
+Closed after the prepared-frame producer published callee-saved GPR
+`slot_placement` authority for dynamic-frame rows and the RV64 object route was
+guarded to require those prepared facts instead of inferring save locations.
+The representative rows `20040811-1.c`, `pr43220.c`, and `vla-dealloc-1.c` now
+publish complete saved GPR placements for `s1`/`s2` in prepared dumps. Their
+remaining RV64 object-route rejections are outside this idea: dynamic
+local-memory/fixed-slot object lowering, not missing callee-saved placement
+authority.
 
 ## Reviewer Reject Signals
 
