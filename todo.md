@@ -8,111 +8,103 @@ Current Step Title: Revise Producer Authority Family Selection
 
 ## Just Finished
 
-Route checkpoint after the Step 3 discovery packet for the selected row
-`src/20021204-1.c` at
-`main:tern.end.12` before instruction 1. Fresh evidence lives under
-`build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/`.
+Reviewed the Step 2 family-revision evidence after the route review in
+`review/647_step2_family_revision_review.md`. Fresh residual classification
+and excerpts remain available under
+`build/agent_state/647_step2_family_revision/`, with the summary in
+`build/agent_state/647_step2_family_revision/summary.md`, but the previously
+selected `select_materialization_preserved_stack_fallback` route is rejected
+for idea 647 because it reopens the closed idea 637
+`SelectMaterializationPreservedStackFallback` contract.
 
-Result: no acceptable prepared/prealloc mutual-exclusion proof exists for the
-two register-source stack-destination producers at this consumer point. The
-fresh object-route diagnostic still reports `authority=none`, `move_count=2`,
-`parallel_copy=no`, `move[0].from_value_id=19`, `move[1].from_value_id=20`,
-both targeting stack destination `to_value_id=18`, with
+Rejected route: `src/20021204-1.c` at `main:tern.end.12` before instruction 1
+still has the failing `%t20/%t21 -> %t22` register-source stack-destination
+bundle with `authority=none`, `parallel_copy=no`, and
 `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
+The nearby `%t17/%t24 -> %t25` select edge/control-flow facts are unrelated to
+the failing destination `%t22` and must not be reused as authority.
 
-The fresh `--dump-prepared-bir` shows the failing bundle is the unpredicated
-consumer bundle for `%t20` and `%t21` into `%t22`:
+Rejected revised route: `src/20011109-2.c`, function `main`, block `block_1`,
+before instruction 9 has real select-materialized preserved-stack-fallback
+evidence, including select-chain evidence naming `%t12.sel1` as
+`source_producer=select_materialization` at `block_1`, `root_inst=9`. That
+evidence is useful diagnostic input, but it is not a legal Step 3 target under
+idea 647 because the selected family would be the closed idea 637
+`PreparedMoveAuthorityKind::StackDestinationRegisterFanIn` plus
+`PreparedStackDestinationFanInSemantics::SelectMaterializationPreservedStackFallback`
+contract. Keep this row outside idea 647's implementation route unless the
+supervisor creates or switches to a separate lifecycle initiative for the
+possible 637 closure gap.
 
-- `%t22 = bir.sub i64 %t20, %t21`
-- `%t22` is `value_id=18`, home `stack_slot`
-- `%t20` is `value_id=19`, home `register`
-- `%t21` is `value_id=20`, home `register`
-- `move_bundle phase=before_instruction authority=none block_index=5
-  instruction_index=1`
+Current Step 2 state: no legal revised first packet is selected yet under idea
+647. Continue Step 2 only on non-637 families, such as ordered final-state
+authority, mutual-exclusion authority supported by new producer evidence, merge
+authority distinct from the idea 637 select-materialized contract, or another
+explicitly named prepared/prealloc destination authority outside the closed
+637 family.
 
-The only explicit edge/control-flow authority nearby is for the different
-select materialization `%t17/%t24 -> %t25`: `join_transfer tern.end.12
-result=%t25`, edge transfers from `tern.then.end.9` and `tern.else.end.11`,
-and predecessor `parallel_copy` records for `%t25`. Those facts do not
-authorize `%t20/%t21 -> %t22`.
+Minimal negative examples:
 
-Producer-surface checks for `%t22` are negative:
+- `src/20021204-1.c`: rejected mutual-exclusion row; no predicate, edge,
+  selected-active-candidate, guarded-copy, or carrier fact for `%t22`.
+- `src/920429-1.c`: failing row is `main:entry` before instruction 8, two
+  register sources into stack destination `21`; select-carrier rows belong to
+  function `f` `%t12` and report `unsupported_publication`.
+- `src/930429-1.c` and `src/ptr-arith-1.c`: same-entry two-register fan-in
+  rows with no matching select-chain or ordered-final-state authority at the
+  consumer point.
+- `src/pr34415.c` and `src/pr70005.c`: nearby join/select authority context
+  belongs to other join results and reports `missing_carrier_aliases` or
+  `unsupported_publication`, not authority for the failing consumer bundles.
 
-- `block_entry_publication` for `to_value_id=18` reports
-  `status=unsupported_destination_storage` on both incoming predecessor
-  blocks.
-- `current_block_join_parallel_copy_source` for `destination=%t22`,
-  `destination_value_id=18`, `source=%t20`, `source_value_id=19` reports
-  `status=missing_publication`, `source_freshness_status=no_candidate`, and
-  no incoming expression/source identity on both predecessor edges.
-- No matching predicate, selected-active-candidate, guarded-copy, or
-  destination-authority carrier is present for `source_value_id=20`.
-
-Conclusion: Step 3 should stop for the selected mutual-exclusion family. Any
-implementation that publishes authority for this row from source availability,
-same-block order, arithmetic operand shape, value-id shape, diagnostics,
-testcase identity, final assembly, or the unrelated `%t25` select edge facts
-would be overfit route drift.
-
-Lifecycle decision: return the active route to Step 2. The attempted
-mutual-exclusion family for `src/20021204-1.c` is not an executable Step 3
-implementation target. The source idea remains valid because its acceptance
-criteria allow recording precise producer evidence that no legal first packet
-is available.
+Residuals left out of scope: plain ordered final-state authority,
+mutual-exclusion authority, merge authority, the rejected
+`src/20011109-2.c` select-materialized preserved-stack-fallback row, and all
+other non-selected residual rows. They remain fail-closed under their current
+missing-authority diagnostics until a future Step 2 packet or separate
+lifecycle state proves a concrete non-637 producer fact for them.
 
 ## Suggested Next
 
-Execute Step 2 family revision before any new Step 3 implementation packet.
-
-Recommended next packet:
-
-- Re-open the residual classification and select a different first family only
-  if evidence supports it.
-- Treat ordered final-state authority as the likely next candidate to inspect,
-  but require proof that the producer designates a final authoritative
-  stack-slot state at the consumer point.
-- Keep `src/20021204-1.c` `%t20/%t21 -> %t22` out of scope for
-  mutual-exclusion publication unless new producer proof appears.
-- If no residual row can publish ordered final-state, merge, mutual-exclusion,
-  or another explicit prepared/prealloc destination-authority fact, stop Step 2
-  and create or request a separate proof-discovery lifecycle instead of
-  forcing implementation.
-
-Step 2 completion should update this file with the revised selected family,
-first target row, positive and negative examples, fact shape, owner label,
-negative statuses, and intentionally excluded residuals.
+Do not execute Step 3 yet. Delegate another Step 2 classification packet if the
+supervisor wants to continue idea 647: it must select a first implementation
+family outside the closed idea 637 select-materialized preserved-stack-fallback
+contract, name minimal positive and negative examples, and identify the
+prepared/prealloc fact shape, owner label, negative statuses, and consumer
+program point. If no such non-637 family can be proven from the refreshed
+residual evidence, record that no legal first packet is currently available
+under idea 647 and ask the supervisor whether to split or switch lifecycle
+state.
 
 ## Watchouts
 
-- The `%t25` select materialization has branch/edge authority, but the selected
-  failing destination is `%t22`. Do not transfer authority across those
-  surfaces.
-- `%t20` appears in edge-preservation stack moves at block entry, but those
-  publications are `unsupported_destination_storage`/`missing_publication` for
-  `%t22` and do not prove mutual exclusion.
-- There is no durable evidence for `%t21` as a predicated/edge-selected
-  stack-destination producer at this consumer point.
-- Keep rejecting source availability, same-block order, source freshness,
-  value-id shape, diagnostic wording, testcase identity, and final assembly as
-  Step 3 authority.
-- Do not treat the phrase "likely ordered final-state" as selection. It is only
-  the next candidate family to inspect unless fresh evidence proves the
-  final-state authority contract.
+- Do not reselect `src/20021204-1.c` for mutual exclusion; it remains rejected
+  for this route.
+- Do not reselect `src/20011109-2.c` as a Step 3 target through
+  `SelectMaterializationPreservedStackFallback`; that is the closed idea 637
+  contract, not idea 647 progress.
+- Do not infer authority from move order, source freshness, source
+  availability, final assembly, testcase identity, or unrelated select/join
+  facts.
+- Any selected family must be ordered-final-state, mutual-exclusion, merge, or
+  another explicitly named non-637 destination-authority family proven by
+  producer evidence at the consumer point. Rows lacking that proof must stay
+  fail-closed.
 
 ## Proof
 
-No build/test proof was required for this lifecycle-only route revision. Did
-not create or overwrite `test_after.log`.
+No build/ctest proof was required because this packet made no implementation
+or test changes. Did not create or overwrite `test_after.log`. Lifecycle repair
+was limited to `todo.md`.
 
 Commands/evidence:
 
-- `build/c4cll -I . --target riscv64-linux-gnu --dump-prepared-bir
-  tests/c/external/gcc_torture/src/20021204-1.c` wrote
-  `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/fresh_dump_prepared_bir.txt`
-  with exit code `0`.
-- The focused object-route diagnostic wrote
-  `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/fresh_case.log`
-  with exit code `1`, still reporting
-  `producer_authority_missing_for_register_fan_in_stack_destination`.
-- Packet conclusion is summarized in
-  `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/evidence_summary.md`.
+- For each residual target, ran `build/c4cll -I tests/c/external/gcc_torture
+  --target riscv64-linux-gnu --dump-prepared-bir ...` and `--dump-bir ...`;
+  all dump commands exited `0`.
+- For each residual target, ran
+  `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`; all
+  object probes exited `1` with current fail-closed diagnostics.
+- Durable evidence and excerpts are under
+  `build/agent_state/647_step2_family_revision/`; summary at
+  `build/agent_state/647_step2_family_revision/summary.md`.
