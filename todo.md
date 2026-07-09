@@ -1,46 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Representative Integration
+Current Step ID: 5
+Current Step Title: Run Broader Validation And Close Or Park
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 by proving representative integration after the Step 3
-object-route call-argument fix. Evidence lives under
-`build/agent_state/648_step4_representative_integration/`, with summary at
-`build/agent_state/648_step4_representative_integration/summary.md`.
+Completed Step 5 broader validation recording for idea 648.
 
-The focused call-argument subset remains green: dump, text-route, and object
-CLI coverage for `riscv64_call_arg_local_frame_address_materialization` all
-passed.
+The Step 4 focused and representative proof remains accepted. Focused dump,
+text-route, and object CLI coverage for
+`riscv64_call_arg_local_frame_address_materialization` passed. Representative
+RV64 object emission for `tests/c/external/gcc_torture/src/20000722-1.c`
+succeeded, and fresh objdump showed the `bar` call setup materializing the
+selected local frame-slot address directly in `a0`:
 
-Representative RV64 object emission for
-`tests/c/external/gcc_torture/src/20000722-1.c` now succeeds and writes
-`build/agent_state/648_step4_representative_integration/20000722-1.o`.
-Fresh `llvm-objdump` evidence for `bar` shows the call setup now materializes
-the selected local frame-slot address directly in `a0`:
-
-```text
-98: 00010513      mv a0, sp
-9c: 00000097      auipc ra, 0x0
-a0: 000080e7      jalr ra <.Lpcrel_hi_string_local_load_4_1_7+0x1c>
-```
+`98: 00010513      mv a0, sp`
 
 This removes the prior representative stale call-argument shape `mv s2, sp`
-followed by `mv a0, s2` before the `foo` call. The proof grep still finds a
-later `mv a0, s1` in `foo` near return setup, but that instruction is not the
-`bar` call-argument owner for idea 648. No remaining downstream owner was
-identified by this Step 4 proof.
+followed by `mv a0, s2` before the `foo` call. The later `foo` return-path
+`mv a0, s1` remains classified as not the idea 648 `bar` call-argument owner.
+
+The attempted raw broader command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "riscv64"`
+had known unrelated failures, so the supervisor generated a matched
+before/after regression pair instead: before at `b63e601f5`, after at current
+`main`.
+
+Regression guard command:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result: passed. Counts: before passed=88 failed=18 total=106; after passed=89
+failed=18 total=107; delta passed=+1 failed=0; new failing tests=0.
+
+Based on the accepted focused proof, representative integration proof, and
+matched non-regressing broader RV64 guard, idea 648 acceptance criteria appear
+satisfied.
 
 ## Suggested Next
 
-Execute Step 5 by running the supervisor-selected broader validation for the
-affected RV64 backend bucket and then requesting lifecycle close or park. The
-current Step 4 evidence supports closure consideration for idea 648 unless
-broader validation exposes a distinct downstream owner.
+Request plan-owner lifecycle close for idea 648.
 
 ## Watchouts
 
@@ -63,16 +65,15 @@ broader validation exposes a distinct downstream owner.
 
 ## Proof
 
-Ran the delegated proof:
+No new proof command was run in this recording-only packet. Used the existing
+canonical logs and supervisor regression-guard result.
 
-`bash -lc 'set -o pipefail; mkdir -p build/agent_state/648_step4_representative_integration && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|codegen_route|cli)_riscv64_call_arg_local_frame_address_materialization$" && build/c4cll --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000722-1.c -o build/agent_state/648_step4_representative_integration/20000722-1.o && llvm-objdump -d build/agent_state/648_step4_representative_integration/20000722-1.o > build/agent_state/648_step4_representative_integration/20000722-1.objdump.txt && rg -n "<bar>|<foo>|mv\s+a0|addi\s+a0,\s*sp|jalr|auipc" build/agent_state/648_step4_representative_integration/20000722-1.objdump.txt; } 2>&1 | tee test_after.log'`
+Raw broader command had known unrelated failures:
 
-Result: passed. The build was up to date, all three focused tests passed, and
-representative RV64 object emission plus objdump completed:
-`backend_dump_riscv64_call_arg_local_frame_address_materialization`,
-`backend_codegen_route_riscv64_call_arg_local_frame_address_materialization`,
-and `backend_cli_riscv64_call_arg_local_frame_address_materialization`.
-Proof log: `test_after.log`. Representative artifacts:
-`build/agent_state/648_step4_representative_integration/20000722-1.o`,
-`build/agent_state/648_step4_representative_integration/20000722-1.objdump.txt`,
-and `build/agent_state/648_step4_representative_integration/summary.md`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "riscv64"`
+
+Matched regression guard passed:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Canonical logs: `test_before.log`, `test_after.log`.
