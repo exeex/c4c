@@ -1,6 +1,6 @@
 # RV64 Branch Residual Terminator Fragment Lowering
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/635_prepared_branch_stack_clobber_safety_authority.md`
 Related:
@@ -71,3 +71,26 @@ and freshness routes should not absorb generic terminator lowering.
   accounting changes as capability progress.
 - Reject helper renames or diagnostic wording changes that leave
   `unsupported_terminator_fragment` as the effective first owner.
+
+## Closure Notes
+
+Closed after RV64 object-route lowering admitted a prepared fused pointer
+compare branch shape where the fused condition and exactly one pointer operand
+are stack-backed, using explicit `branch_stack_load_authority` for
+`role=condition` plus the selected `role=lhs` or `role=rhs` operand authority.
+
+Focused coverage includes condition-plus-RHS and condition-plus-LHS positive
+paths, missing or ambiguous condition authority rejection, and existing
+operand-authority negatives. `src/20140828-1.c` and `src/loop-2e.c` now advance
+past `unsupported_terminator_fragment` and fail later at runtime. The remaining
+owner for those rows is stack-carried pointer source publication or
+materialization, not terminator-fragment admission.
+
+`src/20000314-3.c` remains at `unsupported_terminator_fragment` for a separate
+direct-global stack-backed pointer branch boundary outside the accepted
+condition-plus-one-stack-operand path.
+
+Follow-up ideas created:
+
+- `ideas/open/653_stack_carried_pointer_source_publication_materialization.md`
+- `ideas/open/654_direct_global_stack_backed_pointer_branch_boundary.md`

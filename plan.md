@@ -1,151 +1,151 @@
-# RV64 Branch Residual Terminator Fragment Lowering Runbook
+# RV64 Branch Same-Block Home/Value Identity Reconciliation Runbook
 
 Status: Active
-Source Idea: ideas/open/645_rv64_branch_residual_terminator_fragment_lowering.md
+Source Idea: ideas/open/646_rv64_branch_same_block_home_value_identity_reconciliation.md
 
 ## Purpose
 
-Repair or precisely classify the remaining RV64 object-route branch residuals
-whose first owner is now terminator fragment lowering.
+Classify and repair the RV64 branch stack-load same-block home/value identity
+boundary exposed after prepared branch stack-source freshness is already
+selected.
 
 ## Goal
 
-Advance at least one supported same-family branch terminator shape through
-semantic RV64 lowering, or reclassify all representative rows to more precise
-owners with current evidence.
+Advance one semantic same-block home/value identity shape past
+`home_value_mismatch`, or reclassify the representative row to a more precise
+owner with current evidence.
 
 ## Core Rule
 
-Do not accept branch stack operands by apparent stack offsets, frame homes,
-final assembly shape, or assumed no-clobber behavior. Terminator lowering may
-consume branch operands only when required freshness and clobber-safety
-authority is explicit.
+Do not infer value identity from stack offsets, final assembly, source syntax,
+local names, or diagnostic strings. RV64 may consume a same-block branch
+stack-load home only when explicit prepared facts prove that the selected home
+and source value are the same semantic branch operand at the consumer point.
 
 ## Read First
 
-- ideas/open/645_rv64_branch_residual_terminator_fragment_lowering.md
-- ideas/closed/611_rv64_terminator_fragment_lowering.md
-- ideas/closed/635_prepared_branch_stack_clobber_safety_authority.md
+- ideas/open/646_rv64_branch_same_block_home_value_identity_reconciliation.md
+- ideas/closed/590_branch_stack_load_freshness_contract.md
+- ideas/closed/593_rv64_branch_stack_source_freshness_consumption.md
 - ideas/closed/636_prepared_branch_stack_source_freshness_publication.md
 - docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md
-- docs/rv64_gcc_torture_1000_pass_recovery/dependency_order_to_1000.md
 
 ## Current Scope
 
-- Refresh diagnostics for the eight branch residual rows named by the source
-  idea.
-- Group each row by concrete BIR terminator shape and first unsupported
-  lowering boundary.
-- Compare the grouped shapes with existing RV64 terminator-fragment support.
-- Add semantic RV64 object-route terminator lowering only for a shape with
-  explicit branch-source freshness and clobber-safety evidence.
+- Refresh diagnostics for the `src/990127-1.c` same-block RHS `%lv.a` row.
+- Identify the prepared home, source value, branch block, and consumer point.
+- Decide whether the mismatch is missing producer identity, stale or absent
+  home-value publication, RV64 consumer key mismatch, or another precise owner.
+- Add producer or RV64 consumer support only for explicit home/value identity
+  evidence.
 
 ## Non-Goals
 
-- Do not publish branch stack-source freshness or clobber-safety authority.
-- Do not reopen parameter ABI/home admission for `src/20001017-1.c`.
-- Do not change select publication, compare publication, runtime policy,
-  expectations, unsupported markers, allowlists, timeouts, or accounting.
-- Do not add named-case handling for any representative source file.
+- Do not reopen prepared branch stack-source freshness publication closed by
+  idea 636.
+- Do not reopen RV64 terminator-fragment lowering closed by idea 645.
+- Do not touch clobber-safety authority, destination fan-in authority,
+  parameter ABI/home admission, runtime policy, expectations, unsupported
+  markers, allowlists, timeouts, or accounting.
+- Do not add named-case handling for `src/990127-1.c`, `%lv.a`, or `block_1`.
 
 ## Working Model
 
-The representative rows now stop at `unsupported_terminator_fragment` after
-clobber-safety or freshness authority is no longer the first owner. The next
-work is to determine whether the unsupported boundary is a shared semantic
-terminator shape RV64 can lower, or whether each row belongs to a more precise
-owner outside this idea.
+The original `src/990127-1.c` `block_1` / `lhs` `%t6` freshness row was moved
+past the missing-source-freshness blocker by idea 636. The current first
+failure is a separate same-block `role=rhs`, `value=%lv.a` row with
+`authority_status=home_value_mismatch`,
+`source_freshness_status=missing_value`, and zero freshness candidates.
 
 ## Execution Rules
 
 - Keep routine execution notes in `todo.md`.
-- Start with probes and diagnostics before changing RV64 lowering.
-- Prefer shape-based coverage over source-file-specific assertions.
-- Preserve fail-closed behavior for missing freshness, missing
-  clobber-safety, unsupported branch operands, and unrelated terminator forms.
-- Any code-changing acceptance slice needs fresh build proof and the
-  supervisor-selected regression comparison.
+- Start with probes and diagnostics before changing producer or RV64 code.
+- Prefer semantic home/value identity coverage over source-file-specific
+  assertions.
+- Preserve fail-closed behavior for missing value identity, mismatched homes,
+  stale publication, ambiguous candidates, and unrelated branch operand
+  shapes.
+- Any code-changing slice needs fresh build proof and the supervisor-selected
+  regression comparison.
 
 ## Steps
 
-### Step 1: Refresh Residual Terminator Evidence
+### Step 1: Refresh Same-Block Identity Evidence
 
-Goal: identify the current first unsupported boundary and concrete BIR
-terminator shape for each representative row.
+Goal: confirm the current first owner and exact same-block RHS `%lv.a`
+home/value mismatch shape.
 
 Actions:
-- Refresh object-route diagnostics for `src/loop-2e.c`, `src/pr39100.c`,
-  `src/20000314-3.c`, `src/20140828-1.c`, `src/20080519-1.c`,
-  `src/20050125-1.c`, `src/930930-1.c`, and `src/20060910-1.c`.
-- Capture the BIR terminator shape, branch operand source, and required
-  freshness or clobber-safety evidence for each row.
-- Group rows by semantic terminator shape and first unsupported lowering
-  boundary.
+- Refresh object-route diagnostics for `src/990127-1.c`.
+- Capture the relevant BIR and prepared-BIR branch row, including branch block,
+  role, source value, selected home, and consumer point.
+- Record whether current evidence points to producer identity, publication
+  freshness, RV64 consumer lookup, or a different owner.
 
 Completion check:
-- `todo.md` records the grouped residual shapes and identifies whether at
-  least one shared terminator family is in scope for semantic RV64 lowering.
+- `todo.md` records the refreshed first owner, exact same-block row shape, and
+  likely ownership boundary.
 
-### Step 2: Compare Against Existing Terminator Support
+### Step 2: Locate The Identity Authority Boundary
 
-Goal: decide whether the grouped shape is a missing RV64 lowering case or a
-  more precise non-terminator owner.
+Goal: determine where explicit home/value identity should be produced or
+consumed.
 
 Actions:
-- Compare the grouped shapes with existing RV64 terminator-fragment support and
-  closed idea 611 evidence.
-- Identify the smallest semantic lowering target that can be implemented
-  without weakening freshness or clobber-safety contracts.
-- If no target is in scope, record the precise owner for each row.
+- Inspect prepared branch stack-load publication and RV64 consumer lookup for
+  the selected row.
+- Compare with closed ideas 590, 593, and 636 so this route does not reopen
+  generic source freshness.
+- Identify the smallest semantic identity fact or consumer key repair that can
+  prove the selected home and value match at the branch consumer point.
 
 Completion check:
-- `todo.md` names the selected in-scope semantic shape and proof surface, or
-  records a precise reclassification for all rows.
+- `todo.md` identifies the selected repair route or records a precise
+  reclassification to another owner.
 
-### Step 3: Lower One Supported Same-Family Shape
+### Step 3: Implement One Semantic Identity Path
 
-Goal: add RV64 object-route lowering for one semantic terminator shape using
-only explicit prepared authority.
+Goal: advance one legal same-block home/value identity shape without weakening
+branch authority contracts.
 
 Actions:
-- Implement the narrow lowering path for the selected shape.
-- Require explicit branch-source freshness and clobber-safety evidence where
-  the operand family needs it.
-- Keep unsupported operands and unrelated terminator forms rejected with
+- Add producer or RV64 consumer support for the selected explicit identity
+  path.
+- Keep missing, stale, ambiguous, or mismatched identity states rejected with
   precise diagnostics.
-- Add focused positive and negative coverage for the shape, not a named row.
+- Add focused positive and negative coverage for the semantic shape, not the
+  named representative row.
 
 Completion check:
-- The narrow build/test proof passes, and at least one representative row
-  advances past `unsupported_terminator_fragment` without expectation or
-  allowlist churn.
+- The narrow build/test proof passes, and the representative row advances
+  past `home_value_mismatch` or the route records why no legal repair is
+  available.
 
 ### Step 4: Validate Boundaries And Residual Owners
 
 Goal: prove the route is not a testcase-shaped shortcut and does not weaken
-branch authority contracts.
+branch freshness or clobber-safety contracts.
 
 Actions:
-- Re-run the supervisor-selected RV64 object and branch-authority subsets.
+- Re-run the supervisor-selected branch/RV64 object subsets.
 - Compare before/after logs with the regression guard.
-- Inspect nearby same-family branch rows affected by the shared lowering.
-- Record any remaining rows and their precise owners in `todo.md`.
+- Inspect nearby branch stack-load identity cases affected by the shared path.
+- Record remaining residual owners in `todo.md`.
 
 Completion check:
-- Regression proof is non-regressing, negative freshness and clobber-safety
-  cases remain rejected, and remaining residuals are assigned to explicit
-  owners.
+- Regression proof is non-regressing, negative identity cases remain rejected,
+  and any remaining residuals are assigned to explicit owners.
 
 ### Step 5: Final Lifecycle Review
 
-Goal: decide whether the terminator-fragment idea is complete.
+Goal: decide whether the same-block home/value identity idea is complete.
 
 Actions:
 - Compare final behavior against the source idea acceptance criteria and
   reviewer reject signals.
-- Close only if at least one same-family terminator shape advanced through
-  semantic RV64 lowering, or all representative rows were reclassified to more
-  precise owners with current evidence.
+- Close only if one semantic same-block identity shape advanced or the
+  representative row was reclassified to a more precise owner.
 
 Completion check:
 - Plan owner can close, deactivate, or split the lifecycle state with matching
