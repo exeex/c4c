@@ -1,12 +1,12 @@
 # Aggregate Global-Object Materialization Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/631_direct_global_symbol_local_memory_policy.md`
 Related:
 - `ideas/closed/631_direct_global_symbol_local_memory_policy.md`
-- `ideas/open/633_aggregate_stack_home_local_memory_policy.md`
-- `ideas/open/634_large_selected_pointer_offset_local_memory_policy.md`
+- `ideas/closed/633_aggregate_stack_home_local_memory_policy.md`
+- `ideas/closed/634_large_selected_pointer_offset_local_memory_policy.md`
 - `docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`
 Owning Layer: aggregate global-object materialization and byte-storage policy
 Queue Order: 41
@@ -62,6 +62,41 @@ traffic, or very large aggregate offsets.
 - Negative proof keeps scalar direct global-symbol rows, stack-home aggregate
   rows, large-offset rows owned by idea `634`, and runtime-only failures
   outside this policy.
+
+## Closure Notes
+
+Closed after commit `075bc612a` added width-aware RV64 byte-storage
+aggregate global-symbol consumer support and commit `a2baac3da` recorded the
+post-repair boundaries.
+
+The accepted family was complete-authority byte-storage aggregate
+global-symbol lane materialization, including the 4-byte F32 lane that blocked
+`src/complex-7.c` before the selected 16-byte long-double lanes. The RV64
+consumer now requires explicit prepared global-symbol identity,
+base-plus-offset addressing, requested byte range, complete object extent,
+`byte_storage_aggregate` layout authority, and `proven_in_bounds` memory facts
+before emitting object memory operations.
+
+`src/complex-7.c` advanced past the previous aggregate-global F32
+`unsupported_global_data` blocker and now stops later in `check_float` at
+instruction index `27`, a `LoadLocalInst` for `float %t4`. That spillover is
+local/frame or aggregate stack-home local-memory work, not unfinished
+aggregate global-object materialization.
+
+Boundary rows stayed outside this policy: `src/pr60822.c` retains prepared
+global-memory fact ownership, `src/pr88739.c` retains local-memory authority
+ownership, `src/pr49073.c` retains destination/source fan-in and local-memory
+authority ownership, and `src/pr60017.c` retains call ABI or sret stack-home
+ownership.
+
+Close validation used the Step 3 proof scope:
+
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$' && ALLOWLIST=build/agent_state/641_step1_aggregate_global.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
+
+The CTest subset passed, the allowlist remained fail-closed at `total=5
+passed=0 failed=5`, and `c4c-regression-guard` reported PASS comparing the
+accepted `test_before.log` to the close `test_after.log` with non-decreasing
+passes allowed for this lifecycle-only closure.
 
 ## Reviewer Reject Signals
 
