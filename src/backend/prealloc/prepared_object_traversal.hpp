@@ -467,6 +467,47 @@ struct PreparedObjectMoveBundleConsumerQuery {
       move_source_freshness_authorities = nullptr;
 };
 
+enum class PreparedStackDestinationFanInSemantics {
+  None,
+  SelectMaterializationPreservedStackFallback,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_stack_destination_fan_in_semantics_name(
+    PreparedStackDestinationFanInSemantics semantics) {
+  switch (semantics) {
+    case PreparedStackDestinationFanInSemantics::None:
+      return "none";
+    case PreparedStackDestinationFanInSemantics::
+        SelectMaterializationPreservedStackFallback:
+      return "select_materialization_preserved_stack_fallback";
+  }
+  return "unknown";
+}
+
+struct PreparedStackDestinationFanInSource {
+  std::size_t candidate_order = 0;
+  PreparedValueId source_value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
+  std::optional<std::string> source_register_name;
+  std::optional<PreparedFrameSlotId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+};
+
+struct PreparedStackDestinationFanInAuthorityFact {
+  PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
+  std::string owner;
+  PreparedStackDestinationFanInSemantics semantics =
+      PreparedStackDestinationFanInSemantics::None;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
+  std::optional<PreparedFrameSlotId> destination_slot_id;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+  std::vector<PreparedStackDestinationFanInSource> source_homes;
+};
+
 struct PreparedObjectMoveBundleConsumerClassification {
   PreparedObjectMoveBundleConsumerStatus status =
       PreparedObjectMoveBundleConsumerStatus::MissingEvent;
@@ -484,6 +525,8 @@ struct PreparedObjectMoveBundleConsumerClassification {
   PreparedValueFreshnessQueryStatus source_freshness_status =
       PreparedValueFreshnessQueryStatus::NoCandidate;
   std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
+  std::optional<PreparedStackDestinationFanInAuthorityFact>
+      stack_destination_fan_in_authority;
   PreparedObjectTraversalEvent::MoveBundleLookupEvidence
       move_bundle_lookup_evidence;
 };

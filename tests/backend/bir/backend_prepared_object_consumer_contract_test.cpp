@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1263,7 +1264,8 @@ int verify_move_bundle_consumer_accepts_select_materialization_stack_destination
   fixture.locations.move_bundles.push_back(prepare::PreparedMoveBundle{
       .function_name = fixture.function_name,
       .phase = prepare::PreparedMovePhase::BeforeInstruction,
-      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .authority_kind =
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn,
       .block_index = 1,
       .instruction_index = select_instruction_index,
       .moves = {
@@ -1274,7 +1276,8 @@ int verify_move_bundle_consumer_accepts_select_materialization_stack_destination
               .destination_storage_kind =
                   prepare::PreparedMoveStorageKind::StackSlot,
               .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::
+                  StackDestinationRegisterFanIn,
           },
           prepare::PreparedMoveResolution{
               .from_value_id = 912,
@@ -1283,7 +1286,8 @@ int verify_move_bundle_consumer_accepts_select_materialization_stack_destination
               .destination_storage_kind =
                   prepare::PreparedMoveStorageKind::StackSlot,
               .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::
+                  StackDestinationRegisterFanIn,
           },
           prepare::PreparedMoveResolution{
               .from_value_id = 913,
@@ -1292,7 +1296,8 @@ int verify_move_bundle_consumer_accepts_select_materialization_stack_destination
               .destination_storage_kind =
                   prepare::PreparedMoveStorageKind::StackSlot,
               .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::
+                  StackDestinationRegisterFanIn,
           },
       },
   });
@@ -1328,13 +1333,72 @@ int verify_move_bundle_consumer_accepts_select_materialization_stack_destination
               "select-materialized multi-source stack destination should be classified as available") ||
       !expect(classification.move_count == 3,
               "select-materialized stack-destination classification should preserve all move sources") ||
+      !expect(classification.stack_destination_fan_in_authority.has_value(),
+              "authorized select-materialized stack destination should expose a destination fan-in fact") ||
       !expect(!diagnostic.has_value(),
               "select-materialized stack-destination classification should not produce a diagnostic")) {
     return 1;
   }
 
+  const auto& fan_in_authority =
+      *classification.stack_destination_fan_in_authority;
+  if (!expect(fan_in_authority.authority_kind ==
+                  prepare::PreparedMoveAuthorityKind::
+                      StackDestinationRegisterFanIn,
+              "destination fan-in fact should preserve authority kind") ||
+      !expect(fan_in_authority.owner ==
+                  "prepared_stack_destination_register_fan_in",
+              "destination fan-in fact should expose its prepared owner") ||
+      !expect(fan_in_authority.semantics ==
+                  prepare::PreparedStackDestinationFanInSemantics::
+                      SelectMaterializationPreservedStackFallback,
+              "destination fan-in fact should expose select fan-in semantics") ||
+      !expect(fan_in_authority.destination_value_id == 914,
+              "destination fan-in fact should expose destination value") ||
+      !expect(fan_in_authority.destination_home_kind ==
+                  prepare::PreparedValueHomeKind::StackSlot,
+              "destination fan-in fact should expose destination stack home") ||
+      !expect(fan_in_authority.destination_slot_id ==
+                  std::optional<prepare::PreparedFrameSlotId>{
+                      prepare::PreparedFrameSlotId{25}},
+              "destination fan-in fact should expose destination slot") ||
+      !expect(fan_in_authority.destination_stack_offset_bytes ==
+                  std::optional<std::size_t>{104},
+              "destination fan-in fact should expose destination offset") ||
+      !expect(fan_in_authority.source_homes.size() == 3,
+              "destination fan-in fact should expose all source homes") ||
+      !expect(fan_in_authority.source_homes[0].candidate_order == 0 &&
+                  fan_in_authority.source_homes[0].source_value_id == 911 &&
+                  fan_in_authority.source_homes[0].source_home_kind ==
+                      prepare::PreparedValueHomeKind::Register &&
+                  fan_in_authority.source_homes[0].source_register_name ==
+                      std::optional<std::string>{"t0"},
+              "destination fan-in fact should expose first register source in candidate order") ||
+      !expect(fan_in_authority.source_homes[1].candidate_order == 1 &&
+                  fan_in_authority.source_homes[1].source_value_id == 912 &&
+                  fan_in_authority.source_homes[1].source_home_kind ==
+                      prepare::PreparedValueHomeKind::Register &&
+                  fan_in_authority.source_homes[1].source_register_name ==
+                      std::optional<std::string>{"s2"},
+              "destination fan-in fact should expose second register source in candidate order") ||
+      !expect(fan_in_authority.source_homes[2].candidate_order == 2 &&
+                  fan_in_authority.source_homes[2].source_value_id == 913 &&
+                  fan_in_authority.source_homes[2].source_home_kind ==
+                      prepare::PreparedValueHomeKind::StackSlot &&
+                  fan_in_authority.source_homes[2].source_slot_id ==
+                      std::optional<prepare::PreparedFrameSlotId>{
+                          prepare::PreparedFrameSlotId{24}},
+              "destination fan-in fact should expose preserved stack source in candidate order")) {
+    return 1;
+  }
+
   fixture.locations.move_bundles.back().moves.erase(
       fixture.locations.move_bundles.back().moves.begin() + 1);
+  fixture.locations.move_bundles.back().authority_kind =
+      prepare::PreparedMoveAuthorityKind::None;
+  for (auto& move : fixture.locations.move_bundles.back().moves) {
+    move.authority_kind = prepare::PreparedMoveAuthorityKind::None;
+  }
   const auto single_register_source_lookups =
       prepare::make_prepared_value_home_lookups(&fixture.locations);
   const auto single_register_source_traversal =

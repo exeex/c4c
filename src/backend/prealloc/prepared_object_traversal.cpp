@@ -343,6 +343,88 @@ prepared_move_bundle_is_select_materialization_stack_destination(
   return register_source_count >= 2 && has_stack_source;
 }
 
+[[nodiscard]] std::optional<PreparedStackDestinationFanInAuthorityFact>
+publish_stack_destination_register_fan_in_authority_fact(
+    const PreparedMoveBundle& move_bundle,
+    const PreparedValueHomeLookups* value_home_lookups,
+    PreparedStackDestinationFanInSemantics semantics) {
+  if (value_home_lookups == nullptr ||
+      move_bundle.authority_kind !=
+          PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      move_bundle.moves.size() < 2) {
+    return std::nullopt;
+  }
+
+  PreparedStackDestinationFanInAuthorityFact fact{
+      .authority_kind = PreparedMoveAuthorityKind::StackDestinationRegisterFanIn,
+      .owner = "prepared_stack_destination_register_fan_in",
+      .semantics = semantics,
+  };
+  const PreparedValueHome* destination_home = nullptr;
+  std::size_t register_source_count = 0;
+  bool has_stack_source = false;
+
+  for (std::size_t index = 0; index < move_bundle.moves.size(); ++index) {
+    const auto& move = move_bundle.moves[index];
+    if (move.authority_kind !=
+            PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+        move.source_parallel_copy_step_index.has_value() ||
+        move.destination_kind != PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+        move.op_kind != PreparedMoveResolutionOpKind::Move ||
+        move.uses_cycle_temp_source ||
+        move.source_immediate_i32.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* source_home =
+        prepared_object_value_home_for_id(value_home_lookups, move.from_value_id);
+    const auto* move_destination_home =
+        prepared_object_value_home_for_id(value_home_lookups, move.to_value_id);
+    if (source_home == nullptr || move_destination_home == nullptr ||
+        !prepared_object_value_home_is_complete(*source_home) ||
+        !prepared_object_value_home_is_complete(*move_destination_home) ||
+        move_destination_home->kind != PreparedValueHomeKind::StackSlot) {
+      return std::nullopt;
+    }
+    if (destination_home == nullptr) {
+      destination_home = move_destination_home;
+      fact.destination_value_id = move.to_value_id;
+      fact.destination_value_name = move_destination_home->value_name;
+      fact.destination_home_kind = move_destination_home->kind;
+      fact.destination_slot_id = move_destination_home->slot_id;
+      fact.destination_stack_offset_bytes = move_destination_home->offset_bytes;
+    } else if (move.to_value_id != fact.destination_value_id &&
+               !prepared_stack_homes_same_destination(*destination_home,
+                                                      *move_destination_home)) {
+      return std::nullopt;
+    }
+
+    if (source_home->kind == PreparedValueHomeKind::Register) {
+      ++register_source_count;
+    } else if (source_home->kind == PreparedValueHomeKind::StackSlot) {
+      has_stack_source = true;
+    } else {
+      return std::nullopt;
+    }
+    fact.source_homes.push_back(PreparedStackDestinationFanInSource{
+        .candidate_order = index,
+        .source_value_id = move.from_value_id,
+        .source_value_name = source_home->value_name,
+        .source_home_kind = source_home->kind,
+        .source_register_name = source_home->register_name,
+        .source_slot_id = source_home->slot_id,
+        .source_stack_offset_bytes = source_home->offset_bytes,
+    });
+  }
+
+  if (destination_home == nullptr || register_source_count < 2 ||
+      !has_stack_source || fact.source_homes.size() != move_bundle.moves.size()) {
+    return std::nullopt;
+  }
+  return fact;
+}
+
 [[nodiscard]] const PreparedMoveBundle* find_parallel_copy_move_bundle(
     const PreparedControlFlowFunction& control_flow,
     const PreparedValueLocationFunction* value_locations,
@@ -1124,6 +1206,17 @@ classify_prepared_object_move_bundle_consumer(
             MismatchedStackDestinationRegisterFanInMoveAuthority;
         return result;
       }
+      result.stack_destination_fan_in_authority =
+          publish_stack_destination_register_fan_in_authority_fact(
+              move_bundle,
+              query.value_home_lookups,
+              PreparedStackDestinationFanInSemantics::
+                  SelectMaterializationPreservedStackFallback);
+      if (!result.stack_destination_fan_in_authority.has_value()) {
+        result.status = PreparedObjectMoveBundleConsumerStatus::
+            MismatchedStackDestinationRegisterFanInMoveAuthority;
+        return result;
+      }
       if (!accept_with_source_freshness()) {
         return result;
       }
@@ -1145,6 +1238,17 @@ classify_prepared_object_move_bundle_consumer(
                  PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
         });
     if (!all_moves_authorized) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          MismatchedStackDestinationRegisterFanInMoveAuthority;
+      return result;
+    }
+    result.stack_destination_fan_in_authority =
+        publish_stack_destination_register_fan_in_authority_fact(
+            move_bundle,
+            query.value_home_lookups,
+            PreparedStackDestinationFanInSemantics::
+                SelectMaterializationPreservedStackFallback);
+    if (!result.stack_destination_fan_in_authority.has_value()) {
       result.status = PreparedObjectMoveBundleConsumerStatus::
           MismatchedStackDestinationRegisterFanInMoveAuthority;
       return result;
