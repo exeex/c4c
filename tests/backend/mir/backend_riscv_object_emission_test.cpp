@@ -955,6 +955,43 @@ prepare::PreparedBirModule make_prepared_fused_pointer_rhs_stack_branch_module()
 }
 
 prepare::PreparedBirModule
+make_prepared_fused_pointer_condition_and_lhs_stack_branch_module() {
+  auto prepared = make_prepared_fused_pointer_lhs_stack_branch_module();
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  const auto condition_name = prepared.names.value_names.find("%cmp");
+  auto& condition_home =
+      prepared.value_locations.functions.front().value_homes.front();
+  condition_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  condition_home.register_name.reset();
+  condition_home.target_register_identity.reset();
+  condition_home.slot_id = prepare::PreparedFrameSlotId{12};
+  condition_home.offset_bytes = std::size_t{16};
+  condition_home.size_bytes = std::size_t{4};
+  condition_home.align_bytes = std::size_t{4};
+
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{12},
+      .function_name = function_name,
+      .value_name = condition_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{12},
+      .object_id = prepare::PreparedObjectId{12},
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 32;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  return prepared;
+}
+
+prepare::PreparedBirModule
 make_prepared_fused_pointer_condition_and_rhs_stack_branch_module() {
   auto prepared = make_prepared_fused_pointer_rhs_stack_branch_module();
   const auto function_name = prepared.names.function_names.find("cmp_branch");
@@ -15547,6 +15584,53 @@ int builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object() {
   }
   if (!saw_rhs_stack_load || !saw_branch_using_loaded_rhs) {
     return fail("expected fused pointer branch to load rhs from selected branch stack slot");
+  }
+  if (saw_condition_stack_load) {
+    return fail("expected fused pointer branch to use condition authority as admission, not reload the folded bool");
+  }
+  return 0;
+}
+
+int builds_prepared_fused_pointer_condition_and_lhs_stack_branch_object() {
+  const auto prepared =
+      make_prepared_fused_pointer_condition_and_lhs_stack_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected stack-homed fused condition plus lhs pointer branch to consume selected authorities and build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label =
+      object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected condition-plus-lhs stack fused pointer branch symbols and text");
+  }
+  bool saw_lhs_stack_load = false;
+  bool saw_condition_stack_load = false;
+  bool saw_branch_using_loaded_lhs = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (is_rv64_load_from_sp(word, 3U, 8) && riscv_rd(word) == 28) {
+      saw_lhs_stack_load = true;
+    }
+    if (is_rv64_load_from_sp(word, 2U, 16) ||
+        is_rv64_load_from_sp(word, 3U, 16)) {
+      saw_condition_stack_load = true;
+    }
+    if ((word & 0x7fU) == 0x63U && ((word >> 12) & 0x7U) == 6U &&
+        riscv_rs1(word) == 28 && riscv_rs2(word) == 29) {
+      saw_branch_using_loaded_lhs = true;
+    }
+  }
+  if (!saw_lhs_stack_load || !saw_branch_using_loaded_lhs) {
+    return fail("expected fused pointer branch to load lhs from selected branch stack slot");
   }
   if (saw_condition_stack_load) {
     return fail("expected fused pointer branch to use condition authority as admission, not reload the folded bool");
@@ -31048,6 +31132,8 @@ int main() {
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();
   status |=
       builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object();
+  status |=
+      builds_prepared_fused_pointer_condition_and_lhs_stack_branch_object();
   status |=
       rejects_prepared_fused_pointer_condition_stack_branch_authority_statuses();
   status |= rejects_prepared_fused_pointer_rhs_stack_branch_authority_statuses();
