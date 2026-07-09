@@ -1,6 +1,6 @@
 # FPR ABI Frame Policy And Placement
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
@@ -59,6 +59,21 @@ assumptions would blur ABI policy and risk testcase-shaped assembly output.
 - Scalar GPR, pointer stack-result, aggregate outgoing-stack, runtime,
   variadic/library, local/global, and unsupported semantic rows remain outside
   this idea.
+
+## Closure Notes
+
+Closed after Step 5 representative reclassification. Prepared-layer coverage
+now proves explicit FPR immediate/literal argument homes, result authority, and
+callee-saved FPR preservation facts before object emission. RV64 object
+emission now admits only explicit F32/F64 immediate FPR call arguments and
+register-to-register FPR callee-saved preservation effects, with fail-closed
+coverage for missing or mismatched FPR authority.
+
+The five-row representative scan passed `src/ieee/compare-fp-2.c`,
+`src/ieee/unsafe-fp-assoc.c`, and `src/pr39501.c`. The remaining failures are
+outside this idea: `src/980605-1.c` is blocked by ordinary scalar same-module
+call/result lowering for `getval()`, and `src/ieee/unsafe-fp-assoc-1.c` is
+blocked by prepared move bundle fan-in to one stack destination.
 
 ## Reviewer Reject Signals
 
