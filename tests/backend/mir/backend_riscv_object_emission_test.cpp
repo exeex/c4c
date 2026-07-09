@@ -7256,6 +7256,160 @@ prepare::PreparedBirModule make_prepared_global_f64_frame_slot_load_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_global_f32_byte_storage_lane_module(
+    bool publish_access = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("global_f32_lane_flow");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lane_name =
+      prepared.names.value_names.intern("%lane.global.aggregate.load.0");
+  const auto slot_name = prepared.names.slot_names.intern("%lane.0");
+  const auto global_name = prepared.names.link_names.intern("float_lanes");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadGlobalInst{
+                  .result = bir::Value::named(
+                      bir::TypeKind::F32,
+                      "%lane.global.aggregate.load.0"),
+                  .global_name = "float_lanes",
+                  .global_name_id = global_name,
+                  .byte_offset = 4,
+                  .align_bytes = 4,
+              },
+              bir::StoreLocalInst{
+                  .slot_name = "%lane.0",
+                  .slot_id = slot_name,
+                  .value = bir::Value::named(
+                      bir::TypeKind::F32,
+                      "%lane.global.aggregate.load.0"),
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  bir::Global aggregate{
+      .name = "float_lanes",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::F32,
+      .is_constant = true,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements =
+          {
+              bir::Value::immediate_f32_bits(0x3f800000u),
+              bir::Value::immediate_f32_bits(0x40000000u),
+          },
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  };
+  prepared.module.globals.push_back(std::move(aggregate));
+  publish_prepared_object_data(prepared);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "global_f32_lane_flow",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lane.0",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 4;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{131},
+      .function_name = function_name,
+      .offset_bytes = 12,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {make_fpr_home(function_name, lane_name, 1, "ft0", 0)},
+  });
+  if (publish_access) {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .frame_size_bytes = 16,
+        .frame_alignment_bytes = 4,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 0,
+                    .result_value_name = lane_name,
+                    .address = prepare::PreparedAddress{
+                        .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                        .symbol_name = global_name,
+                        .global_address_materialization_policy =
+                            bir::GlobalAddressMaterializationPolicy::Direct,
+                        .byte_offset = 4,
+                        .size_bytes = 4,
+                        .align_bytes = 4,
+                        .can_use_base_plus_offset = true,
+                        .provenance = bir::MemoryAccessProvenance{
+                            .base_identity = bir::MemoryProvenanceBaseIdentity{
+                                .kind = bir::MemoryProvenanceBaseIdentityKind::
+                                    GlobalSymbol,
+                                .link_name_id = global_name,
+                            },
+                            .object_extent = bir::MemoryObjectExtent{
+                                .completeness =
+                                    bir::MemoryObjectExtentCompleteness::Complete,
+                                .size_bytes = 8,
+                                .size_known = true,
+                            },
+                            .requested_range =
+                                bir::make_memory_byte_range(4, 4),
+                            .layout_authority =
+                                bir::MemoryLayoutAuthorityKind::
+                                    ByteStorageAggregate,
+                            .range_verdict =
+                                bir::MemoryRangeVerdict::ProvenInBounds,
+                        },
+                    },
+                },
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 1,
+                    .stored_value_name = lane_name,
+                    .address = prepare::PreparedAddress{
+                        .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                        .frame_slot_id = prepare::PreparedFrameSlotId{131},
+                        .byte_offset = 0,
+                        .size_bytes = 4,
+                        .align_bytes = 4,
+                        .can_use_base_plus_offset = true,
+                    },
+                },
+            },
+    });
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_aggregate_lane_frame_slot_flow_module(
     bool publish_access = true) {
   prepare::PreparedBirModule prepared;
@@ -7395,6 +7549,346 @@ prepare::PreparedBirModule make_prepared_global_aggregate_lane_frame_slot_flow_m
             },
     });
   }
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_i128_byte_storage_flow_module(
+    bool publish_access = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("global_i128_stack_flow");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lane_name = prepared.names.value_names.intern("%lane128");
+  const auto source_global = prepared.names.link_names.intern("source_blob");
+  const auto destination_global =
+      prepared.names.link_names.intern("destination_blob");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadGlobalInst{
+                  .result = bir::Value::named(bir::TypeKind::I128, "%lane128"),
+                  .global_name = "source_blob",
+                  .global_name_id = source_global,
+                  .byte_offset = 16,
+                  .align_bytes = 16,
+              },
+              bir::StoreGlobalInst{
+                  .global_name = "destination_blob",
+                  .global_name_id = destination_global,
+                  .value = bir::Value::named(bir::TypeKind::I128, "%lane128"),
+                  .byte_offset = 0,
+                  .align_bytes = 16,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  auto make_zero_blob = [](std::string name, c4c::LinkNameId link_name) {
+    bir::Global global{
+        .name = std::move(name),
+        .link_name_id = link_name,
+        .type = bir::TypeKind::I8,
+        .size_bytes = 32,
+        .align_bytes = 16,
+        .address_materialization_policy =
+            bir::GlobalAddressMaterializationPolicy::Direct,
+    };
+    global.initializer_elements.push_back(
+        bir::Value{.kind = bir::Value::Kind::Immediate,
+                   .type = bir::TypeKind::I128});
+    global.initializer_elements.push_back(
+        bir::Value{.kind = bir::Value::Kind::Immediate,
+                   .type = bir::TypeKind::I128});
+    return global;
+  };
+  prepared.module.globals.push_back(make_zero_blob("source_blob", source_global));
+  prepared.module.globals.back().is_constant = true;
+  prepared.module.globals.push_back(
+      make_zero_blob("destination_blob", destination_global));
+  publish_prepared_object_data(prepared);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "global_i128_stack_flow",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 32;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{132},
+      .function_name = function_name,
+      .value_name = lane_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I128,
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{132},
+      .object_id = prepare::PreparedObjectId{132},
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {rv64_sized_stack_slot_home(1,
+                                                 function_name,
+                                                 lane_name,
+                                                 prepare::PreparedFrameSlotId{132},
+                                                 16,
+                                                 16)},
+  });
+  if (publish_access) {
+    const auto make_address =
+        [&](c4c::LinkNameId symbol, std::int64_t byte_offset) {
+          return prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = symbol,
+              .global_address_materialization_policy =
+                  bir::GlobalAddressMaterializationPolicy::Direct,
+              .byte_offset = byte_offset,
+              .size_bytes = 16,
+              .align_bytes = 16,
+              .can_use_base_plus_offset = true,
+              .provenance = bir::MemoryAccessProvenance{
+                  .base_identity = bir::MemoryProvenanceBaseIdentity{
+                      .kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+                      .link_name_id = symbol,
+                  },
+                  .object_extent = bir::MemoryObjectExtent{
+                      .completeness =
+                          bir::MemoryObjectExtentCompleteness::Complete,
+                      .size_bytes = 32,
+                      .size_known = true,
+                  },
+                  .requested_range =
+                      bir::make_memory_byte_range(byte_offset, 16),
+                  .layout_authority =
+                      bir::MemoryLayoutAuthorityKind::ByteStorageAggregate,
+                  .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+              },
+          };
+        };
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 0,
+                    .result_value_name = lane_name,
+                    .address = make_address(source_global, 16),
+                },
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 1,
+                    .stored_value_name = lane_name,
+                    .address = make_address(destination_global, 0),
+                },
+            },
+    });
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_f128_byte_storage_publication_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("global_f128_publication_flow");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lane_name =
+      prepared.names.value_names.intern("%lane.global.aggregate.load.16");
+  const auto slot_name = prepared.names.slot_names.intern("%lane.16");
+  const auto source_global = prepared.names.link_names.intern("f128_lanes");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadGlobalInst{
+                  .result = bir::Value::named(
+                      bir::TypeKind::F128,
+                      "%lane.global.aggregate.load.16"),
+                  .global_name = "f128_lanes",
+                  .global_name_id = source_global,
+                  .byte_offset = 16,
+                  .align_bytes = 16,
+              },
+              bir::StoreLocalInst{
+                  .slot_name = "%lane.16",
+                  .slot_id = slot_name,
+                  .value = bir::Value::named(
+                      bir::TypeKind::F128,
+                      "%lane.global.aggregate.load.16"),
+                  .align_bytes = 16,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  bir::Global aggregate{
+      .name = "f128_lanes",
+      .link_name_id = source_global,
+      .type = bir::TypeKind::I8,
+      .is_constant = true,
+      .size_bytes = 32,
+      .align_bytes = 16,
+      .initializer_elements =
+          {
+              bir::Value::immediate_f128_bits(0, 0),
+              bir::Value::immediate_f128_bits(0, 0),
+          },
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  };
+  prepared.module.globals.push_back(std::move(aggregate));
+  publish_prepared_object_data(prepared);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "global_f128_publication_flow",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lane.16",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::F128,
+          .size_bytes = 16,
+          .align_bytes = 16,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 64;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{133},
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  auto make_address = [&](std::int64_t byte_offset) {
+    return prepare::PreparedAddress{
+        .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+        .symbol_name = source_global,
+        .global_address_materialization_policy =
+            bir::GlobalAddressMaterializationPolicy::Direct,
+        .byte_offset = byte_offset,
+        .size_bytes = 16,
+        .align_bytes = 16,
+        .can_use_base_plus_offset = true,
+        .provenance = bir::MemoryAccessProvenance{
+            .base_identity = bir::MemoryProvenanceBaseIdentity{
+                .kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+                .link_name_id = source_global,
+            },
+            .object_extent = bir::MemoryObjectExtent{
+                .completeness = bir::MemoryObjectExtentCompleteness::Complete,
+                .size_bytes = 32,
+                .size_known = true,
+            },
+            .requested_range = bir::make_memory_byte_range(byte_offset, 16),
+            .layout_authority =
+                bir::MemoryLayoutAuthorityKind::ByteStorageAggregate,
+            .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+        },
+    };
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .result_value_name = lane_name,
+                  .address = make_address(16),
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .stored_value_name = lane_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{133},
+                      .byte_offset = 0,
+                      .size_bytes = 16,
+                      .align_bytes = 16,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+
+  auto& function = prepared.module.functions.back();
+  const auto* source_load =
+      std::get_if<bir::LoadGlobalInst>(&function.blocks[0].insts[0]);
+  const auto* destination_access =
+      &prepared.addressing.functions.back().accesses[1];
+  prepared.store_source_publications.records.push_back(
+      prepare::PreparedStoreSourcePublicationRecord{
+          .function_name = function_name,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .plan =
+              prepare::PreparedStoreSourcePublicationPlan{
+                  .status =
+                      prepare::PreparedStoreSourcePublicationStatus::Available,
+                  .intent = prepare::PreparedStoreSourcePublicationIntent::
+                      StoreLocalPublication,
+                  .source_value = bir::Value::named(
+                      bir::TypeKind::F128,
+                      "%lane.global.aggregate.load.16"),
+                  .source_value_id = prepare::PreparedValueId{1},
+                  .source_value_name = lane_name,
+                  .destination_access = destination_access,
+                  .destination_base_kind =
+                      prepare::PreparedAddressBaseKind::FrameSlot,
+                  .destination_frame_slot_id = prepare::PreparedFrameSlotId{133},
+                  .destination_byte_offset = 0,
+                  .destination_size_bytes = 16,
+                  .destination_align_bytes = 16,
+                  .destination_can_use_base_plus_offset = true,
+                  .source_producer_kind =
+                      prepare::PreparedEdgePublicationSourceProducerKind::
+                          LoadGlobal,
+                  .source_producer_block_label = block_label,
+                  .source_producer_instruction_index = 0,
+                  .source_load_global = source_load,
+              },
+      });
   return prepared;
 }
 
@@ -26265,6 +26759,194 @@ int emits_prepared_global_integer_aggregate_lane_frame_slot_flow() {
   return 0;
 }
 
+int emits_prepared_global_f32_byte_storage_lane_flow() {
+  const auto prepared = make_prepared_global_f32_byte_storage_lane_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail(
+        "expected prepared RV64 object path to emit F32 byte-storage aggregate global lane flow: " +
+        build.diagnostic);
+  }
+  const auto& module = *build.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* rodata = object::find_section(module, ".rodata");
+  const auto* global_symbol = object::find_symbol(module, "float_lanes");
+  if (text == nullptr || rodata == nullptr || global_symbol == nullptr) {
+    return fail("expected text, rodata, and F32 byte-storage global symbol");
+  }
+
+  bool saw_global_flw = false;
+  bool saw_frame_slot_fsw = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x07U && ((word >> 12) & 0x7U) == 2U &&
+        riscv_rs1(word) != 2U && riscv_i_imm(word) == 4) {
+      saw_global_flw = true;
+    }
+    if (is_rv64_fp_store_to_sp(word, 2U, 12)) {
+      saw_frame_slot_fsw = true;
+    }
+  }
+  if (!saw_global_flw || !saw_frame_slot_fsw) {
+    return fail("expected F32 byte-storage aggregate global lane to load through FPR and store to prepared local slot");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      global_symbol->size_bytes != 8) {
+    return fail("expected F32 byte-storage aggregate target to remain a defined object");
+  }
+  if (module.relocations.size() != 2 ||
+      module.relocations[0].symbol != global_symbol->id ||
+      module.relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module.relocations[1].type != R_RISCV_PCREL_LO12_I) {
+    return fail("expected one PC-relative relocation pair for F32 aggregate global load");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize F32 aggregate global lane flow");
+  }
+  return 0;
+}
+
+int emits_prepared_global_i128_byte_storage_stack_flow() {
+  const auto prepared = make_prepared_global_i128_byte_storage_flow_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail(
+        "expected prepared RV64 object path to emit 16-byte byte-storage aggregate global flow: " +
+        build.diagnostic);
+  }
+  const auto& module = *build.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* source_symbol = object::find_symbol(module, "source_blob");
+  const auto* destination_symbol = object::find_symbol(module, "destination_blob");
+  if (text == nullptr || source_symbol == nullptr || destination_symbol == nullptr) {
+    return fail("expected text and 16-byte byte-storage global symbols");
+  }
+
+  bool saw_global_ld_low = false;
+  bool saw_global_ld_high = false;
+  bool saw_stack_sd_low = false;
+  bool saw_stack_sd_high = false;
+  bool saw_stack_ld_low = false;
+  bool saw_stack_ld_high = false;
+  bool saw_global_sd_low = false;
+  bool saw_global_sd_high = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x03U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U && riscv_i_imm(word) == 16) {
+      saw_global_ld_low = true;
+    }
+    if ((word & 0x7fU) == 0x03U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U && riscv_i_imm(word) == 24) {
+      saw_global_ld_high = true;
+    }
+    if (is_rv64_store_to_sp(word, 3U, 16)) {
+      saw_stack_sd_low = true;
+    }
+    if (is_rv64_store_to_sp(word, 3U, 24)) {
+      saw_stack_sd_high = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 16)) {
+      saw_stack_ld_low = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 24)) {
+      saw_stack_ld_high = true;
+    }
+    if ((word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U && riscv_s_imm(word) == 0) {
+      saw_global_sd_low = true;
+    }
+    if ((word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U && riscv_s_imm(word) == 8) {
+      saw_global_sd_high = true;
+    }
+  }
+  if (!saw_global_ld_low || !saw_global_ld_high || !saw_stack_sd_low ||
+      !saw_stack_sd_high || !saw_stack_ld_low || !saw_stack_ld_high ||
+      !saw_global_sd_low || !saw_global_sd_high) {
+    return fail("expected 16-byte byte-storage global flow to compose legal ld/sd operations");
+  }
+  if (source_symbol->kind != object::SymbolKind::Object ||
+      destination_symbol->kind != object::SymbolKind::Object ||
+      source_symbol->size_bytes != 32 || destination_symbol->size_bytes != 32) {
+    return fail("expected 16-byte byte-storage globals to retain object sizes");
+  }
+  if (module.relocations.size() != 4 ||
+      module.relocations[0].symbol != source_symbol->id ||
+      module.relocations[2].symbol != destination_symbol->id) {
+    return fail("expected one PC-relative relocation pair per 16-byte global access");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize 16-byte global flow");
+  }
+  return 0;
+}
+
+int emits_prepared_global_f128_byte_storage_publication_flow() {
+  const auto prepared =
+      make_prepared_global_f128_byte_storage_publication_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail(
+        "expected prepared RV64 object path to emit F128 byte-storage aggregate publication flow: " +
+        build.diagnostic);
+  }
+  const auto& module = *build.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* global_symbol = object::find_symbol(module, "f128_lanes");
+  if (text == nullptr || global_symbol == nullptr) {
+    return fail("expected text and F128 byte-storage global symbol");
+  }
+
+  bool saw_global_ld_low = false;
+  bool saw_global_ld_high = false;
+  bool saw_stack_sd_low = false;
+  bool saw_stack_sd_high = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x03U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U && riscv_i_imm(word) == 16) {
+      saw_global_ld_low = true;
+    }
+    if ((word & 0x7fU) == 0x03U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U && riscv_i_imm(word) == 24) {
+      saw_global_ld_high = true;
+    }
+    if (is_rv64_store_to_sp(word, 3U, 32)) {
+      saw_stack_sd_low = true;
+    }
+    if (is_rv64_store_to_sp(word, 3U, 40)) {
+      saw_stack_sd_high = true;
+    }
+  }
+  if (!saw_global_ld_low || !saw_global_ld_high || !saw_stack_sd_low ||
+      !saw_stack_sd_high) {
+    return fail("expected F128 byte-storage publication to compose paired RV64 loads and stores");
+  }
+  if (global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->size_bytes != 32) {
+    return fail("expected F128 byte-storage global to retain object size");
+  }
+  if (module.relocations.size() != 2 ||
+      module.relocations[0].symbol != global_symbol->id ||
+      module.relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module.relocations[1].type != R_RISCV_PCREL_LO12_I) {
+    return fail("expected one PC-relative relocation pair for F128 publication load");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize F128 publication flow");
+  }
+  return 0;
+}
+
 int rejects_prepared_global_frame_slot_consumer_fail_closed_shapes() {
   constexpr const char* missing_access_diagnostic =
       "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing";
@@ -26309,6 +26991,94 @@ int rejects_prepared_global_frame_slot_consumer_fail_closed_shapes() {
   aggregate.value_locations.functions[0].value_homes[0].kind =
       prepare::PreparedValueHomeKind::RematerializableImmediate;
   if (expect_prepared_rejection_diagnostic(aggregate, global_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int rejects_prepared_global_i128_byte_storage_fail_closed_shapes() {
+  constexpr const char* missing_access_diagnostic =
+      "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing";
+  constexpr const char* aggregate_fact_diagnostic =
+      "unsupported_global_data: RV64 object route requires complete 16-byte byte-storage aggregate global-symbol memory facts";
+
+  auto prepared = make_prepared_global_i128_byte_storage_flow_module(false);
+  if (expect_prepared_rejection_diagnostic(prepared, missing_access_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_i128_byte_storage_flow_module();
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 8;
+  if (expect_prepared_rejection_diagnostic(prepared, aggregate_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_i128_byte_storage_flow_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout;
+  if (expect_prepared_rejection_diagnostic(prepared, aggregate_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_i128_byte_storage_flow_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .range_verdict = bir::MemoryRangeVerdict::ProvenOutOfBounds;
+  if (expect_prepared_rejection_diagnostic(prepared, aggregate_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int rejects_prepared_global_f32_byte_storage_fail_closed_shapes() {
+  constexpr const char* missing_access_diagnostic =
+      "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing";
+  constexpr const char* aggregate_fact_diagnostic =
+      "unsupported_global_data: RV64 object route requires complete 4-byte byte-storage aggregate global-symbol memory facts";
+
+  auto prepared = make_prepared_global_f32_byte_storage_lane_module(false);
+  if (expect_prepared_rejection_diagnostic(prepared, missing_access_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_f32_byte_storage_lane_module();
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 2;
+  if (expect_prepared_rejection_diagnostic(prepared, aggregate_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_f32_byte_storage_lane_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout;
+  if (expect_prepared_rejection_diagnostic(prepared, aggregate_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_f32_byte_storage_lane_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .range_verdict = bir::MemoryRangeVerdict::ProvenOutOfBounds;
+  if (expect_prepared_rejection_diagnostic(prepared, aggregate_fact_diagnostic) !=
       0) {
     return 1;
   }
@@ -29335,7 +30105,12 @@ int main() {
   status |= emits_prepared_global_aggregate_lane_load_from_explicit_facts();
   status |= emits_prepared_f64_global_load_to_frame_slot_from_explicit_facts();
   status |= emits_prepared_global_integer_aggregate_lane_frame_slot_flow();
+  status |= emits_prepared_global_f32_byte_storage_lane_flow();
+  status |= emits_prepared_global_i128_byte_storage_stack_flow();
+  status |= emits_prepared_global_f128_byte_storage_publication_flow();
   status |= rejects_prepared_global_frame_slot_consumer_fail_closed_shapes();
+  status |= rejects_prepared_global_f32_byte_storage_fail_closed_shapes();
+  status |= rejects_prepared_global_i128_byte_storage_fail_closed_shapes();
   status |= rejects_raw_load_local_global_address_lane_without_prepared_access();
   status |= builds_prepared_direct_global_scalar_local_memory_object();
   status |= rejects_prepared_direct_global_scalar_local_memory_fail_closed_shapes();
