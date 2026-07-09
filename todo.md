@@ -1,57 +1,76 @@
 Status: Active
 Source Idea Path: ideas/open/649_pointer_global_local_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Representative Pointer/Global Local Evidence
+Current Step ID: 2
+Current Step Title: Locate The Publication Authority Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 diagnostics for
-`tests/c/external/gcc_torture/src/pr57861.c`. The first current owner remains
-pointer/global local publication, with the sharper boundary at RV64 object-route
-admission for `%lv.l`: prepared BIR publishes global address `@f` into the local
-pointer slot, but the frame-slot accesses for that local pointer slot still have
-`layout_authority=unknown`.
+Completed Step 2 boundary inspection for `%lv.l` using the Step 1 evidence and
+AST-backed symbol/callee queries before opening implementation slices.
 
-Named evidence:
+Boundary decision: the missing owner is RV64 object-route consumer/emission
+admission, not a broad prepared-producer rewrite. The producer already emits
+the key facts for the representative:
 
-- Prepared pointer value/global object source: `@f`, global object `f`, with
-  prepared home `value_id=15 kind=register reg=s1`.
-- Local-slot destination: `%lv.l`, `object #1`, `frame_slot=#0`, offset 0,
-  size 8, align 8.
-- Publication point: semantic `bir.store_local %lv.l, ptr @f`; prepared
-  `store_source function=foo block=block_3 inst=0 source=@f status=available
+- `store_source function=foo block=block_3 inst=0 source=@f status=available
   intent=store_local_publication`.
-- Load/use point: semantic `%t33 = bir.load_local ptr %lv.l`; prepared
-  `access block=logic.end.27 inst_index=3 base=frame_slot result=%t33
-  frame_slot=#0 offset=0 size=8 align=8 base_plus_offset=yes
-  layout_authority=unknown range_verdict=proven_in_bounds`.
-- Final source-level `*l = 0` path is currently represented as direct global
-  `bir.store_global @f, i16 0`, whose prepared direct-global memory access has
-  `layout_authority=scalar_layout`.
+- `address_materialization block=block_3 inst_index=0 kind=direct_global
+  result=@f symbol=f policy=direct`.
+- `%lv.l` is `object #1`, `frame_slot=#0`, offset 0, size 8, align 8, and the
+  prepared memory accesses are base-plus-offset and proven in bounds.
 
-Available authority: direct global address materialization exists for `@f`
-(`address_materialization block=block_3 inst_index=0 kind=direct_global
-result=@f symbol=f policy=direct`), `%lv.l` frame-slot accesses are
-base-plus-offset and proven in bounds, scalar frame-slot memory such as `%lv.k`
-has `layout_authority=scalar_layout`, and direct global-symbol memory such as
-`@f` also has `layout_authority=scalar_layout`.
+Owned implementation surface for the next packet should stay narrow:
 
-Missing authority: `%lv.l` has no pointer/global local-publication authority
-for its frame-slot store/load; both relevant prepared local-slot accesses
-(`block_3 inst_index=0 stored=@f` and `logic.end.27 inst_index=3 result=%t33`)
-remain `layout_authority=unknown`. This is distinct from scalar frame-slot
-local-memory and from direct global-symbol local-memory, both of which already
-have scalar layout authority in the same function.
+- Consumer/admission: `src/backend/mir/riscv/codegen/object_emission.cpp`,
+  around `fragment_for_prepared_instruction(...)`,
+  `prepared_memory_access_for_local_instruction(...)`,
+  `prepared_store_source_publication_for_instruction(...)`, and the
+  `local_memory_diagnostic` branch for `StoreLocalInst`/`LoadLocalInst`.
+- Local emission helper surface:
+  `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`, around
+  `fragment_for_prepared_store_local(...)`,
+  `append_rv64_materialize_or_move_store_value_local(...)`, and
+  `fragment_for_prepared_load_local(...)`.
+- Producer facts to consume, not broaden:
+  `src/backend/prealloc/stack_layout/coordinator.cpp` already builds the direct
+  frame-slot access and store-source publication inputs through
+  `append_direct_frame_slot_accesses(...)`, `build_direct_frame_slot_access(...)`,
+  and the existing publication planning path.
+
+Focused positive test target shape: a small RV64 object-route case with a
+global object address stored into a local pointer slot, then reloaded/used via
+that slot, matching the representative shape `short *l = &f; *l = 0;`. The
+positive should require the direct-global materialization for `@f` to be tied to
+the exact `StoreLocalPublication` into `%lv.l`/frame slot #0 and should advance
+RV64 object emission for the representative `pr57861.c` route.
+
+Fail-closed behavior to preserve:
+
+- Reject stale pointer values: do not accept if the selected publication source
+  is not fresh at the local store/load use or if an intervening write invalidates
+  the global/pointer identity.
+- Reject missing global identity: require a direct global address
+  materialization with a concrete symbol matching the published source value.
+- Reject ambiguous publication order: require the publication/materialization
+  to be at the selected instruction or otherwise ordered before the accepted
+  use; do not search loosely across unrelated blocks/instructions.
+- Reject mismatched slots: require the `StoreLocalPublication` destination
+  access to be the exact prepared memory access/frame slot/offset/size/align
+  being emitted.
+- Reject scalar-only facts: scalar frame-slot layout authority and direct
+  global-symbol scalar memory authority are not sufficient without the
+  pointer/global local-publication fact.
 
 ## Suggested Next
 
-Proceed to Step 2 by locating the producer/consumer boundary that should either
-publish pointer/global local-publication authority for `%lv.l` or teach the RV64
-object-route consumer to accept the existing direct-global publication fact plus
-proven in-bounds frame-slot access.
+Proceed to Step 3 with a narrow RV64 consumer/emission change that consumes the
+existing `StoreLocalPublication` plus direct-global address materialization
+facts for the exact `%lv.l` frame slot. If Step 3 ownership excludes
+`prepared_local_memory_emit.cpp`, split the packet rather than broadening
+`object_emission.cpp` or the producer.
 
 ## Watchouts
 
@@ -63,6 +82,9 @@ proven in-bounds frame-slot access.
 - Do not use the `main` call-argument direct-global select-chain evidence as
   the owner for this idea; the representative owner is inside `foo` around
   `%lv.l`.
+- Do not rewrite prepared provenance or mark all unknown local pointer slots as
+  supported. The discovered positive route depends on exact publication,
+  direct-global identity, slot identity, and ordering.
 - Do not infer authority from source spelling, final assembly order,
   diagnostics, testcase identity, local/global names, or stack-slot shape.
 - Do not edit expectations, unsupported markers, allowlists, timeouts,
@@ -70,31 +92,23 @@ proven in-bounds frame-slot access.
 
 ## Proof
 
-No CTest proof was required and `test_after.log` was not overwritten.
-Diagnostics and captured outputs are under
-`build/agent_state/649_step1_pointer_global_local_evidence/`, with summary at
+No build or CTest proof was required for this diagnostic-only packet, and
+`test_after.log` was not overwritten.
+
+Evidence source: Step 1 summary at
 `build/agent_state/649_step1_pointer_global_local_evidence/summary.md`.
 
-Commands captured:
+AST-backed inspection used:
 
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --dump-bir tests/c/external/gcc_torture/src/pr57861.c`
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --dump-prepared-bir tests/c/external/gcc_torture/src/pr57861.c`
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --dump-mir --mir-focus-function foo
-  tests/c/external/gcc_torture/src/pr57861.c`
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --trace-mir --mir-focus-function foo
-  tests/c/external/gcc_torture/src/pr57861.c`
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --codegen asm tests/c/external/gcc_torture/src/pr57861.c -o
-  build/agent_state/649_step1_pointer_global_local_evidence/pr57861.s`
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o
-  build/agent_state/649_step1_pointer_global_local_evidence/pr57861.o`
-
-Return codes: `dump_bir=0`, `dump_prepared_bir=0`, `dump_mir_foo=0`,
-`trace_mir_foo=0`, `codegen_asm=1`, `codegen_obj=2`. Object route failed with
-`unsupported_local_memory_access: RV64 object route requires prepared frame-slot
-or pointer-value base-plus-offset local memory addressing`.
+- `c4c-clang-tool-ccdb list-symbols` on
+  `src/backend/mir/riscv/codegen/object_emission.cpp`,
+  `src/backend/prealloc/stack_layout/coordinator.cpp`, and
+  `src/backend/prealloc/prepared_contract_verifier.cpp`.
+- `c4c-clang-tool-ccdb function-callees` for
+  `build_direct_frame_slot_access`,
+  `publish_pointer_loaded_from_global_local_memory_authority`,
+  `append_direct_frame_slot_accesses`,
+  `fragment_for_prepared_instruction`,
+  `fragment_for_prepared_store_local`, and
+  `fragment_for_prepared_load_local`.
+- Targeted source slices were then read only around the symbols listed above.
