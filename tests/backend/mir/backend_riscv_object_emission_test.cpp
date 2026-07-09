@@ -7154,6 +7154,76 @@ prepare::PreparedBirModule make_prepared_same_width_integer_zext_module(
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_same_width_integer_zext_move_materialized_module(
+    prepare::PreparedValueHomeKind source_home_kind,
+    prepare::PreparedValueHomeKind result_home_kind) {
+  auto prepared = make_prepared_same_width_integer_zext_module(
+      bir::CastOpcode::ZExt,
+      bir::TypeKind::I32,
+      bir::TypeKind::I32,
+      source_home_kind,
+      result_home_kind);
+  const auto function_name = prepared.names.function_names.find("same_width_zext");
+  auto& locations = prepared.value_locations.functions.front();
+  const auto source_is_register =
+      source_home_kind == prepare::PreparedValueHomeKind::Register;
+  const auto result_is_register =
+      result_home_kind == prepare::PreparedValueHomeKind::Register;
+  const std::string reason =
+      source_is_register ? (result_is_register ? "consumer_register_to_register"
+                                               : "consumer_register_to_stack")
+                         : (result_is_register ? "consumer_stack_to_register"
+                                               : "consumer_stack_to_stack");
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = function_name,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .block_index = 0,
+      .instruction_index = 0,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 2,
+                  .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      result_is_register ? prepare::PreparedMoveStorageKind::Register
+                                         : prepare::PreparedMoveStorageKind::StackSlot,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+                  .reason = reason,
+              },
+          },
+  });
+  if (source_home_kind == prepare::PreparedValueHomeKind::StackSlot ||
+      result_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    prepared.stack_layout.frame_slots = {
+        prepare::PreparedFrameSlot{
+            .slot_id = prepare::PreparedFrameSlotId{0},
+            .object_id = prepare::PreparedObjectId{0},
+            .function_name = function_name,
+            .offset_bytes = 0,
+            .size_bytes = 4,
+            .align_bytes = 4,
+        },
+        prepare::PreparedFrameSlot{
+            .slot_id = prepare::PreparedFrameSlotId{1},
+            .object_id = prepare::PreparedObjectId{1},
+            .function_name = function_name,
+            .offset_bytes = 8,
+            .size_bytes = 4,
+            .align_bytes = 4,
+        },
+    };
+    prepared.stack_layout.frame_size_bytes = 16;
+    prepared.stack_layout.frame_alignment_bytes = 8;
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_pointer_cast_module(
     bir::CastOpcode opcode = bir::CastOpcode::IntToPtr,
     bir::TypeKind operand_type = bir::TypeKind::I64,
@@ -26065,6 +26135,31 @@ int emits_prepared_same_width_i32_cast_gpr_copy_family() {
   return 0;
 }
 
+int emits_prepared_same_width_i32_zext_materialized_by_move_bundle() {
+  for (const auto& prepared :
+       {
+           make_prepared_same_width_integer_zext_move_materialized_module(
+               prepare::PreparedValueHomeKind::Register,
+               prepare::PreparedValueHomeKind::StackSlot),
+       }) {
+    const auto build =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    if (!build.ok()) {
+      return fail("expected prepared same-width i32 zext materialized by move bundle to build: " +
+                  build.diagnostic);
+    }
+    const auto* text = object::find_section(*build.module, ".text");
+    if (text == nullptr || text->bytes.size() < 8) {
+      return fail("expected materialized same-width i32 zext object text");
+    }
+    const auto image = rv64::write_rv64_relocatable_elf_object(*build.module);
+    if (!image.has_value()) {
+      return fail("expected RV64 ELF writer to serialize materialized same-width zext object");
+    }
+  }
+  return 0;
+}
+
 int rejects_prepared_same_width_i32_cast_fail_closed_shapes() {
   const std::string unsupported_instruction =
       "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
@@ -27029,6 +27124,7 @@ int main() {
   status |= emits_prepared_global_i8_load_and_zext_instruction();
   status |= emits_prepared_global_scalar_load_widths_from_explicit_facts();
   status |= emits_prepared_same_width_i32_cast_gpr_copy_family();
+  status |= emits_prepared_same_width_i32_zext_materialized_by_move_bundle();
   status |= rejects_prepared_same_width_i32_cast_fail_closed_shapes();
   status |= emits_prepared_pointer_cast_gpr_movement_object();
   status |= emits_prepared_pointer_cast_rematerialized_source_object();

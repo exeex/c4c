@@ -8195,6 +8195,74 @@ fragment_for_prepared_width_preserving_i32_cast(
   return fragment;
 }
 
+bool prepared_width_preserving_i32_zext_is_materialized_by_move_bundle(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::bir::CastInst& cast) {
+  if (lookups == nullptr ||
+      cast.opcode != c4c::backend::bir::CastOpcode::ZExt ||
+      cast.operand.type != c4c::backend::bir::TypeKind::I32 ||
+      cast.result.type != c4c::backend::bir::TypeKind::I32 ||
+      cast.operand.kind != c4c::backend::bir::Value::Kind::Named ||
+      cast.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto* source_home = prepared_value_home_for(names, lookups, cast.operand);
+  const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
+  if (source_home == nullptr || destination_home == nullptr) {
+    return false;
+  }
+  const auto is_supported_i32_gpr_home =
+      [](const c4c::backend::prepare::PreparedValueHome& home) {
+        return home.kind == prepare::PreparedValueHomeKind::Register ||
+               home.kind == prepare::PreparedValueHomeKind::StackSlot;
+      };
+  if (!is_supported_i32_gpr_home(*source_home) ||
+      !is_supported_i32_gpr_home(*destination_home)) {
+    return false;
+  }
+  const auto* move_bundle = prepare::find_indexed_prepared_move_bundle(
+      &lookups->move_bundles,
+      nullptr,
+      prepare::PreparedMovePhase::BeforeInstruction,
+      block_index,
+      instruction_index);
+  if (move_bundle == nullptr ||
+      move_bundle->phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      move_bundle->authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      !move_bundle->abi_bindings.empty() || move_bundle->moves.size() != 1) {
+    return false;
+  }
+  const auto& move = move_bundle->moves.front();
+  const auto expected_destination_storage =
+      destination_home->kind == prepare::PreparedValueHomeKind::Register
+          ? prepare::PreparedMoveStorageKind::Register
+          : prepare::PreparedMoveStorageKind::StackSlot;
+  const std::string_view expected_reason =
+      source_home->kind == prepare::PreparedValueHomeKind::Register
+          ? (destination_home->kind == prepare::PreparedValueHomeKind::Register
+                 ? std::string_view{"consumer_register_to_register"}
+                 : std::string_view{"consumer_register_to_stack"})
+          : (destination_home->kind == prepare::PreparedValueHomeKind::Register
+                 ? std::string_view{"consumer_stack_to_register"}
+                 : std::string_view{"consumer_stack_to_stack"});
+  return move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.authority_kind == prepare::PreparedMoveAuthorityKind::None &&
+         move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+         move.destination_storage_kind == expected_destination_storage &&
+         move.from_value_id == source_home->value_id &&
+         move.to_value_id == destination_home->value_id &&
+         move.reason == expected_reason &&
+         !move.uses_cycle_temp_source &&
+         !move.source_immediate_i32.has_value() &&
+         !move.source_parallel_copy_step_index.has_value() &&
+         !move.source_parallel_copy_predecessor_label.has_value() &&
+         !move.source_parallel_copy_successor_label.has_value() &&
+         move.destination_contiguous_width == 1;
+}
+
 PreparedSelectEdgeSourceProducerFragment
 fragment_for_prepared_block_entry_select_edge_source_producer(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -11242,6 +11310,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
           fragment_for_prepared_width_preserving_i32_cast(prepared.names,
                                                           &lookups,
                                                           *cast);
+      if (!fragment.has_value() &&
+          prepared_width_preserving_i32_zext_is_materialized_by_move_bundle(
+              prepared.names,
+              &lookups,
+              block_index,
+              instruction_index,
+              *cast)) {
+        return RiscvEncodedFragment{};
+      }
       if (!fragment.has_value()) {
         fragment = fragment_for_prepared_cast(prepared.stack_layout,
                                               prepared.names,
