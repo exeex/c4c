@@ -8,127 +8,86 @@ Current Step Title: Publish Selected Producer Authority
 
 ## Just Finished
 
-Step 2 selected the first producer authority family from the refreshed Step 1
-evidence: mutual-exclusion stack-destination register fan-in authority for a
-non-parallel, two-register-source move bundle where both register sources target
-the same stack destination at one consumer program point.
+Step 3 discovery packet completed for the selected row `src/20021204-1.c` at
+`main:tern.end.12` before instruction 1. Fresh evidence lives under
+`build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/`.
 
-Selected first target row: `src/20021204-1.c` at `main:tern.end.12` before
-instruction 1. The refreshed evidence shows owner
-`rv64_prepared_move_bundle_consumer`, consumer category
-`ambiguous_non_parallel_multi_source_stack_destination`, event kind
-`before_instruction_copies`, `authority=none`, `move_count=2`,
-`parallel_copy=no`, register sources 19 and 20, stack destination value 18, and
+Result: no acceptable prepared/prealloc mutual-exclusion proof exists for the
+two register-source stack-destination producers at this consumer point. The
+fresh object-route diagnostic still reports `authority=none`, `move_count=2`,
+`parallel_copy=no`, `move[0].from_value_id=19`, `move[1].from_value_id=20`,
+both targeting stack destination `to_value_id=18`, with
 `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
 
-Minimal positive scope:
+The fresh `--dump-prepared-bir` shows the failing bundle is the unpredicated
+consumer bundle for `%t20` and `%t21` into `%t22`:
 
-- Primary positive: `src/20021204-1.c`, two register sources 19 and 20 to stack
-  destination value 18 at `main:tern.end.12` before instruction 1.
-- Same-family corroborating rows, still not required for the first
-  implementation packet: `src/920429-1.c`, `src/930429-1.c`,
-  `src/pr34415.c`, `src/ptr-arith-1.c`, and `src/pr70005.c`, each with exactly
-  two register sources, one stack destination, `parallel_copy=no`, and current
-  status
-  `producer_authority_missing_for_register_fan_in_stack_destination`.
+- `%t22 = bir.sub i64 %t20, %t21`
+- `%t22` is `value_id=18`, home `stack_slot`
+- `%t20` is `value_id=19`, home `register`
+- `%t21` is `value_id=20`, home `register`
+- `move_bundle phase=before_instruction authority=none block_index=5
+  instruction_index=1`
 
-Minimal negative scope:
+The only explicit edge/control-flow authority nearby is for the different
+select materialization `%t17/%t24 -> %t25`: `join_transfer tern.end.12
+result=%t25`, edge transfers from `tern.then.end.9` and `tern.else.end.11`,
+and predecessor `parallel_copy` records for `%t25`. Those facts do not
+authorize `%t20/%t21 -> %t22`.
 
-- `src/20011109-2.c` remains separate: it is the only refreshed row with
-  `missing_stack_destination_fan_in_authority_fact`, `move_count=3`, and a
-  register + preserved-stack + register select-materialized stack destination.
-- Reject non-selected family shapes: ordered final-state-only rows, three-or-
-  more-source stack fan-ins, register + preserved-stack mixes, stack-to-stack
-  sources, parallel-copy bundles, and any bundle where producer evidence cannot
-  prove mutual exclusion at the consumer point.
-- Negative statuses to preserve:
-  `producer_authority_missing_for_register_fan_in_stack_destination`,
-  `missing_stack_destination_fan_in_authority_fact`,
-  `unsupported_prepared_move_bundle_classification`,
-  `ambiguous_non_parallel_multi_source_stack_destination`,
-  stale source or destination authority, and bundle-versus-individual-move
-  authority mismatch.
+Producer-surface checks for `%t22` are negative:
 
-Proposed prepared/prealloc fact shape:
+- `block_entry_publication` for `to_value_id=18` reports
+  `status=unsupported_destination_storage` on both incoming predecessor
+  blocks.
+- `current_block_join_parallel_copy_source` for `destination=%t22`,
+  `destination_value_id=18`, `source=%t20`, `source_value_id=19` reports
+  `status=missing_publication`, `source_freshness_status=no_candidate`, and
+  no incoming expression/source identity on both predecessor edges.
+- No matching predicate, selected-active-candidate, guarded-copy, or
+  destination-authority carrier is present for `source_value_id=20`.
 
-- Publish a `stack_destination_fan_in_authority` fact at the consumer program
-  point with authority family `mutual_exclusion_register_stack_destination`.
-- Required fields: function, block label/index, instruction index, phase
-  `before_instruction`, destination value id, destination storage `stack_slot`,
-  source value ids, source home kinds all `register`, `move_count=2`,
-  `parallel_copy=no`, producer proof of mutual exclusion for the two sources,
-  and the source-to-destination move bundle identity consumed by RV64.
-- Owner label: `prepared_mutual_exclusion_stack_destination_fan_in_producer`
-  for publication, consumed by `rv64_prepared_move_bundle_consumer`.
-- Consumer point: the exact prepared/prealloc move bundle before the consuming
-  instruction, not source order, move-vector order, final assembly, diagnostic
-  wording, or testcase identity.
-
-Residual rows intentionally left out of scope for the first family:
-`src/20011109-2.c` and any future row that is select-materialized
-preserved-stack, ordered-final-state-only, ambiguous without mutual-exclusion
-proof, stale, mismatched between bundle and individual moves, or not exactly a
-two-register-source non-parallel stack-destination fan-in.
-
-Step 3 has had two rejected implementation attempts and must be narrowed before
-another code packet:
-
-- The reviewer rejected the first attempt in
-  `review/647_step3_route_review.md`: it accepted manually stamped
-  `StackDestinationRegisterFanIn` authority in consumer/classification paths
-  instead of publishing authority from a real prepared/prealloc producer proof.
-- The supervisor rejected the follow-up producer attempt: same-block
-  source-producer-before-consumer evidence proves source availability/order
-  only. It does not prove the required mutual-exclusion predicate or edge
-  relationship for the selected family.
-- The real selected row `src/20021204-1.c` still dumped `authority=none` and
-  failed with
-  `producer_authority_missing_for_register_fan_in_stack_destination` after the
-  follow-up attempt, so Step 3 remains incomplete.
+Conclusion: Step 3 should stop for the selected mutual-exclusion family. Any
+implementation that publishes authority for this row from source availability,
+same-block order, arithmetic operand shape, value-id shape, diagnostics,
+testcase identity, final assembly, or the unrelated `%t25` select edge facts
+would be overfit route drift.
 
 ## Suggested Next
 
-Continue Step 3 only as a narrow producer-proof discovery/publication packet
-for the selected mutual-exclusion family:
-
-- Find the real prepared/prealloc evidence that proves the two register-source
-  producers for `src/20021204-1.c` are mutually exclusive at
-  `main:tern.end.12` before instruction 1. Acceptable evidence must be an
-  explicit predicate/edge/control-flow mutual-exclusion proof at the consumer
-  program point, not source availability, same-block order, source-producer
-  freshness, value id shape, testcase identity, diagnostics, or final assembly.
-- If that proof exists, publish `stack_destination_fan_in_authority` with owner
-  `prepared_mutual_exclusion_stack_destination_fan_in_producer` from the
-  producer surface, starting from `authority=none`, and add focused proof that
-  the selected row or fixture is stamped before consumer classification.
-- If no mutual-exclusion predicate/edge proof exists for the selected row,
-  stop Step 3 and return to Step 2 family selection with evidence. The likely
-  revision is to choose an ordered-final-state family or split a separate
-  proof-discovery idea rather than broadening mutual-exclusion by order.
+Return to Step 2 family revision or split a separate proof-discovery lifecycle
+before any new Step 3 implementation packet. The current selected
+mutual-exclusion family has no publishable producer proof for
+`src/20021204-1.c`.
 
 ## Watchouts
 
-- Do not treat this as another idea 637 select-materialized semantic-merge
-  packet.
-- Do not infer authority from testcase identity, move-vector order, source
-  order, diagnostics, final assembly, or expectations.
-- Keep `20011109-2.c` out of this family unless later evidence proves a true
-  mutual-exclusion two-register-source shape; current refreshed evidence does
-  not.
-- Keep the other five same-family rows as corroborating positive candidates,
-  not as named-case shortcuts for implementation.
-- Fail closed if producer proof is missing, stale, ambiguous, or mismatched
-  against the move bundle consumed by RV64.
-- Same-block source-producer-before-consumer evidence is insufficient for this
-  selected family. It may show that each source exists before the consumer, but
-  it does not show that the incoming producers are mutually exclusive.
-- Do not revive the manually stamped authority route rejected by
-  `review/647_step3_route_review.md`; consumer acceptance can be tested only
-  after real producer publication exists.
-- Do not route through RV64 consumption before the prepared/prealloc producer
-  publishes explicit selected-family authority.
+- The `%t25` select materialization has branch/edge authority, but the selected
+  failing destination is `%t22`. Do not transfer authority across those
+  surfaces.
+- `%t20` appears in edge-preservation stack moves at block entry, but those
+  publications are `unsupported_destination_storage`/`missing_publication` for
+  `%t22` and do not prove mutual exclusion.
+- There is no durable evidence for `%t21` as a predicated/edge-selected
+  stack-destination producer at this consumer point.
+- Keep rejecting source availability, same-block order, source freshness,
+  value-id shape, diagnostic wording, testcase identity, and final assembly as
+  Step 3 authority.
 
 ## Proof
 
-No build/test proof was required for this lifecycle repair. Did not create or
-overwrite `test_after.log`.
+No build/test proof was required for this evidence-only discovery packet. Did
+not create or overwrite `test_after.log`.
+
+Commands/evidence:
+
+- `build/c4cll -I . --target riscv64-linux-gnu --dump-prepared-bir
+  tests/c/external/gcc_torture/src/20021204-1.c` wrote
+  `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/fresh_dump_prepared_bir.txt`
+  with exit code `0`.
+- The focused object-route diagnostic wrote
+  `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/fresh_case.log`
+  with exit code `1`, still reporting
+  `producer_authority_missing_for_register_fan_in_stack_destination`.
+- Packet conclusion is summarized in
+  `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/evidence_summary.md`.
