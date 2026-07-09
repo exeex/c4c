@@ -1,6 +1,6 @@
 # RV64 Scalar Call-Boundary Freshness After Call
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/634_large_selected_pointer_offset_local_memory_policy.md`
 Related:
@@ -61,6 +61,21 @@ policy.
   missing preservation, republication, or rematerialization authority.
 - Negative proof rejects post-call reads from ABI-clobbered registers unless a
   fresh scalar source is explicit.
+
+## Closure Notes
+
+Closed after Step 5 final lifecycle review. Step 3 accepted the RV64 scalar
+call-boundary freshness repair: stale post-call direct register homes now fail
+closed unless explicit prior preservation exists, and RV64 call plans synthesize
+complete same-block consumer-move preservation for clobbered direct-register
+scalar homes into non-overlapping saved callee registers. Focused positive and
+negative tests covered the accepted path.
+
+Step 4 validation accepted the 22-test structural backend subset plus the
+focused `src/ipa-sra-2.c` RV64 torture probe. The focused row passed without
+expectation, unsupported-marker, allowlist, timeout, runtime comparison, or
+pass/fail accounting changes. The broader `ctest -L backend` residual failures
+remain outside this idea's closure scope.
 
 ## Reviewer Reject Signals
 
