@@ -1,6 +1,6 @@
 # BIR Aggregate Global Store Handoff
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -85,3 +85,20 @@ or global data owner before RV64 terminator consumption.
   or prepared authority facts are missing.
 - Reject helper-only refactors that leave the same aggregate-to-global handoff
   stop under a renamed diagnostic.
+
+## Closure Notes
+
+Closed 2026-07-09 after the aggregate/global handoff repair in `2e150b048`
+and residual classification in `9ee3252ba`.
+
+The repaired path moves the original aggregate/global producer and prepared
+handoff rows beyond the prior stop. Step 4 evidence under
+`build/agent_state/619_step4_residual_classification/` shows semantic and
+prepared BIR success for `src/pr22141-1.c`, `src/compndlit-1.c`,
+`src/pr57344-1.c`, `src/pr39120.c`, `src/ieee/20001122-1.c`, and
+`src/991030-1.c`.
+
+Remaining failures are downstream owners, not idea 619 handoff misses:
+`src/pr22141-1.c` and `src/pr39120.c` are RV64 consumer/ABI-runtime runtime
+mismatches after prepared facts are present, and `src/ieee/20001122-1.c` is
+prepared global-data/RV64 global memory access-width support.
