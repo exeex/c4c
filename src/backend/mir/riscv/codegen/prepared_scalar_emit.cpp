@@ -120,15 +120,33 @@ std::optional<std::int64_t> simple_or_prepared_integer_immediate(
 std::optional<std::string> emit_riscv_simple_compare_value(
     const c4c::backend::bir::BinaryInst& binary,
     std::string_view destination_register,
+    const PreparedCurrentInstructionContext& context);
+
+std::optional<std::string> emit_riscv_simple_compare_value(
+    const c4c::backend::bir::BinaryInst& binary,
+    std::string_view destination_register,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  return emit_riscv_simple_compare_value(
+      binary,
+      destination_register,
+      PreparedCurrentInstructionContext{
+          .names = names,
+          .lookups = lookups,
+      });
+}
+
+std::optional<std::string> emit_riscv_simple_compare_value(
+    const c4c::backend::bir::BinaryInst& binary,
+    std::string_view destination_register,
+    const PreparedCurrentInstructionContext& context) {
   if (!c4c::backend::bir::is_compare_opcode(binary.opcode)) {
     return std::nullopt;
   }
 
   std::string out;
-  if (!emit_move_to_register(out, "t3", names, lookups, binary.lhs) ||
-      !emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+  if (!emit_move_to_register(out, "t3", context, binary.lhs) ||
+      !emit_move_to_register(out, "t4", context, binary.rhs)) {
     return std::nullopt;
   }
 
@@ -274,8 +292,8 @@ std::optional<std::string> emit_select_to_i32_location(
   }
 
   std::string out;
-  if (!emit_move_to_register(out, "t3", context.names, context.lookups, select.lhs) ||
-      !emit_move_to_register(out, "t4", context.names, context.lookups, select.rhs)) {
+  if (!emit_move_to_register(out, "t3", context, select.lhs) ||
+      !emit_move_to_register(out, "t4", context, select.rhs)) {
     return std::nullopt;
   }
 
@@ -330,8 +348,8 @@ std::optional<std::string> emit_select_to_i16_location(
   }
 
   std::string out;
-  if (!emit_move_to_register(out, "t3", context.names, context.lookups, select.lhs) ||
-      !emit_move_to_register(out, "t4", context.names, context.lookups, select.rhs)) {
+  if (!emit_move_to_register(out, "t3", context, select.lhs) ||
+      !emit_move_to_register(out, "t4", context, select.rhs)) {
     return std::nullopt;
   }
 
@@ -430,12 +448,7 @@ bool emit_move_to_pointer_register(
     out += "\n";
     return true;
   }
-  if (emit_move_to_register(
-          out,
-          destination_register,
-          context.names,
-          context.lookups,
-          value)) {
+  if (emit_move_to_register(out, destination_register, context, value)) {
     return true;
   }
   const auto* home = prepared_value_home_for(context, value);
@@ -472,8 +485,8 @@ std::optional<std::string> emit_select_to_pointer_location(
   }
 
   std::string out;
-  if (!emit_move_to_register(out, "t3", context.names, context.lookups, select.lhs) ||
-      !emit_move_to_register(out, "t4", context.names, context.lookups, select.rhs)) {
+  if (!emit_move_to_register(out, "t3", context, select.lhs) ||
+      !emit_move_to_register(out, "t4", context, select.rhs)) {
     return std::nullopt;
   }
 
@@ -537,12 +550,7 @@ bool emit_move_to_i32_location(
         return true;
       }
     }
-    if (emit_move_to_register(
-        out,
-        *destination_home.register_name,
-        context.names,
-        context.lookups,
-        value)) {
+    if (emit_move_to_register(out, *destination_home.register_name, context, value)) {
       return true;
     }
     std::size_t producer_instruction_index = 0;
@@ -557,6 +565,7 @@ bool emit_move_to_i32_location(
     const PreparedCurrentInstructionContext nested_context{
         .names = context.names,
         .lookups = context.lookups,
+        .block_index = context.block_index,
         .block_label = context.block_label,
         .instruction_index = producer_instruction_index,
     };
@@ -592,7 +601,7 @@ bool emit_move_to_i32_location(
         materialized = true;
       }
     }
-    if (!materialized && !emit_move_to_register(out, "t3", context.names, context.lookups, value)) {
+    if (!materialized && !emit_move_to_register(out, "t3", context, value)) {
       std::size_t producer_instruction_index = 0;
       const auto* nested_select = find_same_block_select_producer(
           block,
@@ -605,6 +614,7 @@ bool emit_move_to_i32_location(
       const PreparedCurrentInstructionContext nested_context{
           .names = context.names,
           .lookups = context.lookups,
+          .block_index = context.block_index,
           .block_label = context.block_label,
           .instruction_index = producer_instruction_index,
       };
@@ -644,12 +654,7 @@ bool emit_move_to_i16_location(
     std::size_t& label_serial) {
   if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
       destination_home.register_name.has_value()) {
-    if (emit_move_to_register(
-        out,
-        *destination_home.register_name,
-        context.names,
-        context.lookups,
-        value)) {
+    if (emit_move_to_register(out, *destination_home.register_name, context, value)) {
       return true;
     }
     std::size_t producer_instruction_index = 0;
@@ -664,6 +669,7 @@ bool emit_move_to_i16_location(
     const PreparedCurrentInstructionContext nested_context{
         .names = context.names,
         .lookups = context.lookups,
+        .block_index = context.block_index,
         .block_label = context.block_label,
         .instruction_index = producer_instruction_index,
     };
@@ -685,7 +691,7 @@ bool emit_move_to_i16_location(
       destination_home.offset_bytes.has_value() &&
       destination_home.size_bytes == std::optional<std::size_t>{2} &&
       fits_signed_12_bit_load_offset(*destination_home.offset_bytes)) {
-    if (!emit_move_to_register(out, "t3", context.names, context.lookups, value)) {
+    if (!emit_move_to_register(out, "t3", context, value)) {
       std::size_t producer_instruction_index = 0;
       const auto* nested_select = find_same_block_select_producer(
           block,
@@ -698,6 +704,7 @@ bool emit_move_to_i16_location(
       const PreparedCurrentInstructionContext nested_context{
           .names = context.names,
           .lookups = context.lookups,
+          .block_index = context.block_index,
           .block_label = context.block_label,
           .instruction_index = producer_instruction_index,
       };
@@ -761,6 +768,7 @@ bool emit_move_to_pointer_location(
     const PreparedCurrentInstructionContext nested_context{
         .names = context.names,
         .lookups = context.lookups,
+        .block_index = context.block_index,
         .block_label = context.block_label,
         .instruction_index = producer_instruction_index,
     };
@@ -802,6 +810,7 @@ bool emit_move_to_pointer_location(
       const PreparedCurrentInstructionContext nested_context{
           .names = context.names,
           .lookups = context.lookups,
+          .block_index = context.block_index,
           .block_label = context.block_label,
           .instruction_index = producer_instruction_index,
       };
@@ -1404,6 +1413,46 @@ bool append_rv64_move_value_to_register(
                                                     *size_bytes);
   }
   return false;
+}
+
+[[nodiscard]] bool append_prior_preserved_value_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedCallPreservedValue& preserved,
+    c4c::backend::bir::TypeKind type) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (preserved.route == prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    if (preserved.register_bank !=
+            std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+        !preserved.register_name.has_value() || preserved.register_name->empty() ||
+        preserved.contiguous_width != 1 || preserved.occupied_register_names.empty() ||
+        !preserved.register_placement.has_value()) {
+      return false;
+    }
+    const auto source = rv64_prepared_register_number(*preserved.register_name);
+    if (!source.has_value()) {
+      return false;
+    }
+    if (*source != destination) {
+      append_rv64_move(fragment, destination, *source);
+    }
+    return true;
+  }
+
+  if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
+      !preserved.stack_offset_bytes.has_value() ||
+      !preserved.stack_size_bytes.has_value()) {
+    return false;
+  }
+  const auto size_bytes = rv64_scalar_memory_size_for_type(type);
+  if (!size_bytes.has_value() || *size_bytes != *preserved.stack_size_bytes) {
+    return false;
+  }
+  return append_rv64_load_stack_offset_to_register(fragment,
+                                                  destination,
+                                                  *preserved.stack_offset_bytes,
+                                                  *size_bytes);
 }
 
 
@@ -2219,12 +2268,74 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
 }
 
 
+[[nodiscard]] const c4c::backend::prepare::PreparedCallPreservedValue*
+find_prior_preserved_value_for_current_instruction(
+    const PreparedCurrentInstructionContext& context,
+    c4c::backend::prepare::PreparedValueId value_id);
+
+[[nodiscard]] std::optional<std::uint32_t> fresh_gpr_register_for_value(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value);
+
+[[nodiscard]] bool append_fresh_move_value_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes);
+
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::BinaryInst& binary,
-    std::size_t stack_frame_bytes) {
+    std::size_t stack_frame_bytes,
+    std::optional<std::size_t> block_index,
+    std::optional<std::size_t> instruction_index) {
+  const PreparedCurrentInstructionContext context{
+      .names = names,
+      .lookups = lookups,
+      .block_index = block_index,
+      .instruction_index = instruction_index.value_or(0),
+  };
+  auto direct_fresh_gpr_register_for_value =
+      [&](const c4c::backend::bir::Value& value) -> std::optional<std::uint32_t> {
+    const auto* home = prepared_value_home_for(names, lookups, value);
+    if (home == nullptr) {
+      return std::nullopt;
+    }
+    if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+        home->register_name.has_value() && lookups != nullptr &&
+        block_index.has_value() && instruction_index.has_value()) {
+      const c4c::backend::prepare::PreparedCallPlan* selected = nullptr;
+      for (const auto& entry : lookups->call_plans.calls_by_position) {
+        const auto* call = entry.second;
+        if (call == nullptr || call->block_index != *block_index ||
+            call->instruction_index >= *instruction_index) {
+          continue;
+        }
+        if (selected == nullptr ||
+            selected->instruction_index < call->instruction_index) {
+          selected = call;
+        }
+      }
+      if (selected != nullptr) {
+        for (const auto& clobber : selected->clobbered_registers) {
+          if (clobber.bank == c4c::backend::prepare::PreparedRegisterBank::Gpr &&
+              (clobber.register_name == *home->register_name ||
+               std::find(clobber.occupied_register_names.begin(),
+                         clobber.occupied_register_names.end(),
+                         *home->register_name) !=
+                   clobber.occupied_register_names.end())) {
+            return std::nullopt;
+          }
+        }
+      }
+    }
+    return gpr_register_number_for_home(*home);
+  };
   if (auto fragment = fragment_for_prepared_fp_binary(names, lookups, binary)) {
     return fragment;
   }
@@ -2264,7 +2375,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
       return std::nullopt;
     }
 
-    const auto base_register = gpr_register_number_for_value(names, lookups, *base);
+    const auto base_register = direct_fresh_gpr_register_for_value(*base);
     if (!base_register.has_value()) {
       return std::nullopt;
     }
@@ -2288,7 +2399,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
                                 *base_register,
                                 static_cast<std::int32_t>(adjusted_offset)));
     } else {
-      const auto offset_register = gpr_register_number_for_value(names, lookups, *offset);
+      const auto offset_register = direct_fresh_gpr_register_for_value(*offset);
       if (!offset_register.has_value()) {
         return std::nullopt;
       }
@@ -2333,8 +2444,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
   }
   const std::uint32_t destination_register = destination.value_or(30);
 
-  const auto lhs_register = gpr_register_number_for_value(names, lookups, binary.lhs);
-  const auto rhs_register = gpr_register_number_for_value(names, lookups, binary.rhs);
+  const auto lhs_register = direct_fresh_gpr_register_for_value(binary.lhs);
+  const auto rhs_register = direct_fresh_gpr_register_for_value(binary.rhs);
   const auto lhs_immediate = integer_immediate_for_value(names, lookups, binary.lhs);
   const auto rhs_immediate = integer_immediate_for_value(names, lookups, binary.rhs);
 
@@ -2463,20 +2574,18 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
       break;
     case c4c::backend::bir::BinaryOpcode::Eq:
     case c4c::backend::bir::BinaryOpcode::Ne:
-      if (!append_rv64_move_value_to_register(fragment,
-                                             28,
-                                             stack_layout,
-                                             names,
-                                             lookups,
-                                             binary.lhs,
-                                             stack_frame_bytes) ||
-          !append_rv64_move_value_to_register(fragment,
-                                             29,
-                                             stack_layout,
-                                             names,
-                                             lookups,
-                                             binary.rhs,
-                                             stack_frame_bytes)) {
+      if (!append_fresh_move_value_to_register(fragment,
+                                               28,
+                                               stack_layout,
+                                               context,
+                                               binary.lhs,
+                                               stack_frame_bytes) ||
+          !append_fresh_move_value_to_register(fragment,
+                                               29,
+                                               stack_layout,
+                                               context,
+                                               binary.rhs,
+                                               stack_frame_bytes)) {
         return std::nullopt;
       }
       append_le32(fragment.bytes,
@@ -2508,13 +2617,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     if (*rhs_immediate < 0 || *rhs_immediate >= shift_width) {
       return std::nullopt;
     }
-    if (!append_rv64_move_value_to_register(fragment,
-                                            28,
-                                            stack_layout,
-                                            names,
-                                            lookups,
-                                            binary.lhs,
-                                            stack_frame_bytes)) {
+    if (!append_fresh_move_value_to_register(fragment,
+                                             28,
+                                             stack_layout,
+                                             context,
+                                             binary.lhs,
+                                             stack_frame_bytes)) {
       return std::nullopt;
     }
     append_le32(fragment.bytes,
@@ -2527,20 +2635,18 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
                               static_cast<std::int32_t>(0x400 | *rhs_immediate)));
     return finish();
   }
-  if (!append_rv64_move_value_to_register(fragment,
-                                          28,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          binary.lhs,
-                                          stack_frame_bytes) ||
-      !append_rv64_move_value_to_register(fragment,
-                                          29,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          binary.rhs,
-                                          stack_frame_bytes)) {
+  if (!append_fresh_move_value_to_register(fragment,
+                                           28,
+                                           stack_layout,
+                                           context,
+                                           binary.lhs,
+                                           stack_frame_bytes) ||
+      !append_fresh_move_value_to_register(fragment,
+                                           29,
+                                           stack_layout,
+                                           context,
+                                           binary.rhs,
+                                           stack_frame_bytes)) {
     return std::nullopt;
   }
   switch (binary.opcode) {
@@ -2718,12 +2824,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_compare_branch(
   return fragment;
 }
 
-
 bool prepared_compare_feeds_supported_scalar_trunc_publication(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Block& block,
+    std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes) {
@@ -2743,6 +2849,19 @@ bool prepared_compare_feeds_supported_scalar_trunc_publication(
   const auto* compare_home = prepared_value_home_for(names, lookups, binary.result);
   if (compare_home == nullptr ||
       !gpr_register_number_for_home(*compare_home).has_value()) {
+    return false;
+  }
+  const PreparedCurrentInstructionContext context{
+      .names = names,
+      .lookups = lookups,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+  };
+  const auto* lhs_home = prepared_value_home_for(names, lookups, binary.lhs);
+  if (lhs_home == nullptr ||
+      (!fresh_gpr_register_for_value(context, binary.lhs).has_value() &&
+       find_prior_preserved_value_for_current_instruction(context, lhs_home->value_id) ==
+           nullptr)) {
     return false;
   }
 
@@ -2782,6 +2901,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_scalar_compare_trunc_s
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Block& block,
+    std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes) {
@@ -2789,6 +2909,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_scalar_compare_trunc_s
                                                                  names,
                                                                  lookups,
                                                                  block,
+                                                                 block_index,
                                                                  instruction_index,
                                                                  binary,
                                                                  stack_frame_bytes)) {
@@ -2796,20 +2917,38 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_scalar_compare_trunc_s
   }
   const auto destination =
       gpr_register_number_for_value(names, lookups, binary.result);
-  const auto lhs = gpr_register_number_for_value(names, lookups, binary.lhs);
   const auto rhs = integer_immediate_for_value(names, lookups, binary.rhs);
-  if (!destination.has_value() || !lhs.has_value() || !rhs.has_value() ||
+  if (!destination.has_value() || !rhs.has_value() ||
       !fits_signed_12_bit_immediate(*rhs)) {
     return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
+  const PreparedCurrentInstructionContext context{
+      .names = names,
+      .lookups = lookups,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+  };
+  std::uint32_t lhs_register = 28;
+  if (const auto fresh_lhs = fresh_gpr_register_for_value(context, binary.lhs)) {
+    lhs_register = *fresh_lhs;
+  } else {
+    if (!append_fresh_move_value_to_register(fragment,
+                                             lhs_register,
+                                             stack_layout,
+                                             context,
+                                             binary.lhs,
+                                             stack_frame_bytes)) {
+      return std::nullopt;
+    }
+  }
   append_le32(fragment.bytes,
               encode_i_type(0x13,
-                            *destination,
-                            2,
-                            *lhs,
-                            static_cast<std::int32_t>(*rhs)));
+                             *destination,
+                             2,
+                             lhs_register,
+                             static_cast<std::int32_t>(*rhs)));
   append_le32(fragment.bytes,
               encode_i_type(0x13, *destination, 4, *destination, 1));
   return fragment;
@@ -2882,11 +3021,214 @@ std::optional<std::string> emit_riscv_prepared_fused_compare_branch(
   return out;
 }
 
+[[nodiscard]] std::optional<std::string> load_mnemonic_for_scalar_type(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I16:
+      return std::string{"lh"};
+    case c4c::backend::bir::TypeKind::I32:
+      return std::string{"lw"};
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return std::string{"ld"};
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] const c4c::backend::prepare::PreparedCallPreservedValue*
+find_prior_preserved_value_for_current_instruction(
+    const PreparedCurrentInstructionContext& context,
+    c4c::backend::prepare::PreparedValueId value_id) {
+  if (context.lookups == nullptr || !context.block_index.has_value()) {
+    return nullptr;
+  }
+  const c4c::backend::prepare::PreparedCallPlan current_position{
+      .block_index = *context.block_index,
+      .instruction_index = context.instruction_index,
+  };
+  const auto result =
+      c4c::backend::prepare::find_unique_indexed_prior_preserved_value_source(
+          context.lookups->call_plans,
+          nullptr,
+          current_position,
+          value_id);
+  return result.status ==
+                 c4c::backend::prepare::PreparedPriorPreservedValueLookupStatus::Found
+             ? result.preserved
+             : nullptr;
+}
+
+[[nodiscard]] const c4c::backend::prepare::PreparedCallPlan*
+latest_same_block_call_before_current_instruction(
+    const PreparedCurrentInstructionContext& context) {
+  if (context.lookups == nullptr || !context.block_index.has_value()) {
+    return nullptr;
+  }
+  const c4c::backend::prepare::PreparedCallPlan* selected = nullptr;
+  for (const auto& entry : context.lookups->call_plans.calls_by_position) {
+    const auto* call = entry.second;
+    if (call == nullptr || call->block_index != *context.block_index ||
+        call->instruction_index >= context.instruction_index) {
+      continue;
+    }
+    if (selected == nullptr ||
+        selected->instruction_index < call->instruction_index) {
+      selected = call;
+    }
+  }
+  return selected;
+}
+
+[[nodiscard]] bool call_clobbers_gpr_register(
+    const c4c::backend::prepare::PreparedCallPlan& call,
+    std::string_view register_name) {
+  for (const auto& clobber : call.clobbered_registers) {
+    if (clobber.bank != c4c::backend::prepare::PreparedRegisterBank::Gpr) {
+      continue;
+    }
+    if (clobber.register_name == register_name ||
+        std::find(clobber.occupied_register_names.begin(),
+                  clobber.occupied_register_names.end(),
+                  register_name) != clobber.occupied_register_names.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool direct_register_home_is_stale_after_call(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::prepare::PreparedValueHome& home) {
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value() || home.register_name->empty()) {
+    return false;
+  }
+  const auto* call = latest_same_block_call_before_current_instruction(context);
+  return call != nullptr && call_clobbers_gpr_register(*call, *home.register_name);
+}
+
+[[nodiscard]] std::optional<std::uint32_t> fresh_gpr_register_for_value(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value) {
+  const auto* home = prepared_value_home_for(context.names, context.lookups, value);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    if (find_prior_preserved_value_for_current_instruction(context, home->value_id) !=
+        nullptr) {
+      return std::nullopt;
+    }
+    if (direct_register_home_is_stale_after_call(context, *home)) {
+      return std::nullopt;
+    }
+  }
+  return gpr_register_number_for_home(*home);
+}
+
+[[nodiscard]] bool append_fresh_move_value_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
+  const auto immediate = integer_immediate_for_value(context.names, context.lookups, value);
+  if (immediate.has_value()) {
+    append_rv64_load_immediate(fragment, destination, *immediate);
+    return true;
+  }
+  const auto* home = prepared_value_home_for(context.names, context.lookups, value);
+  if (home == nullptr) {
+    return false;
+  }
+  if (const auto* preserved =
+          find_prior_preserved_value_for_current_instruction(context, home->value_id);
+      preserved != nullptr) {
+    return append_prior_preserved_value_to_register(fragment,
+                                                   destination,
+                                                   *preserved,
+                                                   value.type);
+  }
+  if (direct_register_home_is_stale_after_call(context, *home)) {
+    return false;
+  }
+  return append_rv64_move_value_to_register(fragment,
+                                           destination,
+                                           stack_layout,
+                                           context.names,
+                                           context.lookups,
+                                           value,
+                                           stack_frame_bytes);
+}
+
+bool emit_prior_preserved_value_to_register(
+    std::string& out,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedCallPreservedValue& preserved,
+    c4c::backend::bir::TypeKind type) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (preserved.route == prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    if (preserved.register_bank !=
+            std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+        !preserved.register_name.has_value() || preserved.register_name->empty() ||
+        preserved.contiguous_width != 1 || preserved.occupied_register_names.empty() ||
+        !preserved.register_placement.has_value()) {
+      return false;
+    }
+    if (*preserved.register_name != destination_register) {
+      out += "    mv ";
+      out += destination_register;
+      out += ", ";
+      out += *preserved.register_name;
+      out += "\n";
+    }
+    return true;
+  }
+
+  if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
+      !preserved.stack_offset_bytes.has_value() ||
+      !preserved.stack_size_bytes.has_value()) {
+    return false;
+  }
+  const auto mnemonic = load_mnemonic_for_scalar_type(type);
+  if (!mnemonic.has_value() ||
+      !fits_signed_12_bit_load_offset(*preserved.stack_offset_bytes)) {
+    return false;
+  }
+  out += "    ";
+  out += *mnemonic;
+  out += " ";
+  out += destination_register;
+  out += ", ";
+  out += std::to_string(*preserved.stack_offset_bytes);
+  out += "(sp)\n";
+  return true;
+}
+
 bool emit_move_to_register(std::string& out,
                            std::string_view destination_register,
                            const c4c::backend::prepare::PreparedNameTables& names,
                            const c4c::backend::prepare::PreparedFunctionLookups* lookups,
                            const c4c::backend::bir::Value& value) {
+  return emit_move_to_register(out,
+                               destination_register,
+                               PreparedCurrentInstructionContext{
+                                   .names = names,
+                                   .lookups = lookups,
+                               },
+                               value);
+}
+
+bool emit_move_to_register(std::string& out,
+                           std::string_view destination_register,
+                           const PreparedCurrentInstructionContext& context,
+                           const c4c::backend::bir::Value& value) {
+  const auto& names = context.names;
+  const auto* lookups = context.lookups;
   const auto immediate = simple_or_prepared_integer_immediate(names, lookups, value);
   if (immediate.has_value()) {
     out += "    li ";
@@ -2899,6 +3241,21 @@ bool emit_move_to_register(std::string& out,
 
   const auto source_register = prepared_register_for_value(names, lookups, value);
   if (source_register.has_value()) {
+    if (const auto* home = prepared_value_home_for(names, lookups, value);
+        home != nullptr) {
+      if (const auto* preserved =
+              find_prior_preserved_value_for_current_instruction(context,
+                                                                 home->value_id);
+          preserved != nullptr) {
+        return emit_prior_preserved_value_to_register(out,
+                                                      destination_register,
+                                                      *preserved,
+                                                      value.type);
+      }
+      if (direct_register_home_is_stale_after_call(context, *home)) {
+        return false;
+      }
+    }
     if (*source_register != destination_register) {
       out += "    mv ";
       out += destination_register;
@@ -3264,8 +3621,9 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
 
 std::optional<std::string> emit_riscv_simple_binary(
     const c4c::backend::bir::BinaryInst& binary,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+    const PreparedCurrentInstructionContext& context) {
+  const auto& names = context.names;
+  const auto* lookups = context.lookups;
   if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Sub &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Mul &&
@@ -3287,8 +3645,8 @@ std::optional<std::string> emit_riscv_simple_binary(
         destination_home->offset_bytes.has_value() &&
         destination_home->size_bytes == std::optional<std::size_t>{4}) {
       std::string out;
-      if (!emit_move_to_register(out, "t3", names, lookups, binary.lhs) ||
-          !emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+      if (!emit_move_to_register(out, "t3", context, binary.lhs) ||
+          !emit_move_to_register(out, "t4", context, binary.rhs)) {
         return std::nullopt;
       }
       switch (binary.opcode) {
@@ -3340,8 +3698,7 @@ std::optional<std::string> emit_riscv_simple_binary(
     return emit_riscv_simple_compare_value(
         binary,
         *destination_register,
-        names,
-        lookups);
+        context);
   }
 
   const auto lhs_imm = simple_or_prepared_integer_immediate(names, lookups, binary.lhs);
@@ -3398,7 +3755,7 @@ std::optional<std::string> emit_riscv_simple_binary(
     } else if (lhs_imm.has_value()) {
       lhs_register_name = "t3";
       out += "    li " + lhs_register_name + ", " + std::to_string(*lhs_imm) + "\n";
-    } else if (emit_move_to_register(out, "t3", names, lookups, binary.lhs)) {
+    } else if (emit_move_to_register(out, "t3", context, binary.lhs)) {
       lhs_register_name = "t3";
     } else {
       return std::nullopt;
@@ -3410,7 +3767,7 @@ std::optional<std::string> emit_riscv_simple_binary(
     } else if (rhs_imm.has_value()) {
       rhs_register_name = "t4";
       out += "    li " + rhs_register_name + ", " + std::to_string(*rhs_imm) + "\n";
-    } else if (emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+    } else if (emit_move_to_register(out, "t4", context, binary.rhs)) {
       rhs_register_name = "t4";
     } else {
       return std::nullopt;
@@ -3519,8 +3876,8 @@ std::optional<std::string> emit_riscv_simple_binary(
       binary.opcode == c4c::backend::bir::BinaryOpcode::And ||
       binary.opcode == c4c::backend::bir::BinaryOpcode::Or ||
       binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
-    if (!emit_move_to_register(out, "t3", names, lookups, binary.lhs) ||
-        !emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+    if (!emit_move_to_register(out, "t3", context, binary.lhs) ||
+        !emit_move_to_register(out, "t4", context, binary.rhs)) {
       return std::nullopt;
     }
     const char* opcode = nullptr;

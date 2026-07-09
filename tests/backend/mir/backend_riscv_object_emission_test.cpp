@@ -8776,6 +8776,103 @@ prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_post_call_scalar_compare_module(
+    bool with_prior_preservation) {
+  auto prepared = make_prepared_scalar_compare_trunc_module();
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto keep_name = prepared.names.function_names.intern("keep");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  auto& main = prepared.module.functions.front();
+  auto& entry = main.blocks.front();
+
+  bir::CallInst keep_call;
+  keep_call.callee = "keep";
+  keep_call.return_type = bir::TypeKind::Void;
+  entry.insts.insert(entry.insts.begin(), keep_call);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "keep",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {bir::Block{
+          .label = "entry",
+          .terminator = bir::Terminator{},
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = keep_name,
+  });
+
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes[0] = rv64_gpr_home(1, main_name, lhs_name, "a0", 10);
+
+  const prepare::PreparedRegisterPlacement s2_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  prepare::PreparedCallPlan keep_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+      .direct_callee_name = std::string{"keep"},
+      .clobbered_registers = {prepare::PreparedClobberedRegister{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_name = std::string{"a0"},
+          .contiguous_width = 1,
+          .occupied_register_names = {std::string{"a0"}},
+      }},
+  };
+  if (with_prior_preservation) {
+    keep_plan.preserved_values = {prepare::PreparedCallPreservedValue{
+        .value_id = prepare::PreparedValueId{1},
+        .value_name = lhs_name,
+        .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+        .callee_saved_save_index = std::size_t{0},
+        .contiguous_width = 1,
+        .register_name = std::string{"s2"},
+        .register_bank = prepare::PreparedRegisterBank::Gpr,
+        .occupied_register_names = {std::string{"s2"}},
+        .register_placement = s2_placement,
+        .preservation_source =
+            prepare::PreparedCallBoundaryEffectEndpoint{
+                .encoding = prepare::PreparedStorageEncodingKind::Register,
+                .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                .value_id = prepare::PreparedValueId{1},
+                .value_name = lhs_name,
+                .register_name = std::string{"a0"},
+                .register_bank = prepare::PreparedRegisterBank::Gpr,
+                .contiguous_width = 1,
+                .occupied_register_names = {std::string{"a0"}},
+                .target_register_identity = rv64_gpr_identity(10),
+            },
+        .preservation_destination =
+            prepare::PreparedCallBoundaryEffectEndpoint{
+                .encoding = prepare::PreparedStorageEncodingKind::Register,
+                .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                .value_id = prepare::PreparedValueId{1},
+                .value_name = lhs_name,
+                .register_name = std::string{"s2"},
+                .register_bank = prepare::PreparedRegisterBank::Gpr,
+                .contiguous_width = 1,
+                .occupied_register_names = {std::string{"s2"}},
+                .callee_saved_save_index = std::size_t{0},
+                .register_placement = s2_placement,
+                .target_register_identity = rv64_gpr_identity(18),
+            },
+        .preservation_reason = "callee_saved_register_preservation",
+    }};
+  }
+
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls = {std::move(keep_plan)},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
     bir::TypeKind operand_type,
     bool with_select_consumer,
@@ -20939,6 +21036,62 @@ int builds_prepared_scalar_compare_trunc_object() {
   return 0;
 }
 
+int builds_prepared_post_call_scalar_compare_from_prior_preserved_register() {
+  const auto prepared =
+      make_prepared_post_call_scalar_compare_module(true);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected post-call scalar compare with prior preservation to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* main = object::find_symbol(module, "main");
+  const auto* keep = object::find_symbol(module, "keep");
+  if (text == nullptr || main == nullptr || keep == nullptr ||
+      module.relocations.empty() || module.relocations[0].symbol != keep->id) {
+    return fail("expected post-call scalar compare fixture to publish main/keep and call relocation");
+  }
+
+  bool saw_preserved_compare_source = false;
+  bool saw_stale_home_compare_source = false;
+  for (std::size_t offset = main->value; offset + 12 <= main->value + main->size_bytes;
+       offset += 4) {
+    const auto move = read_u32(text->bytes, offset);
+    const auto compare = read_u32(text->bytes, offset + 4);
+    const auto invert = read_u32(text->bytes, offset + 8);
+    const bool slti_s1_t3_8 =
+        (compare & 0x7fU) == 0x13U && ((compare >> 12) & 0x7U) == 2U &&
+        riscv_rd(compare) == 9U && riscv_rs1(compare) == 28U &&
+        riscv_i_imm(compare) == 8;
+    const bool xori_s1_s1_1 =
+        (invert & 0x7fU) == 0x13U && ((invert >> 12) & 0x7U) == 4U &&
+        riscv_rd(invert) == 9U && riscv_rs1(invert) == 9U &&
+        riscv_i_imm(invert) == 1;
+    saw_preserved_compare_source =
+        saw_preserved_compare_source ||
+        (is_rv64_mv(move, 28U, 18U) && slti_s1_t3_8 && xori_s1_s1_1);
+    saw_stale_home_compare_source =
+        saw_stale_home_compare_source ||
+        (is_rv64_mv(move, 28U, 10U) && slti_s1_t3_8 && xori_s1_s1_1);
+  }
+  if (!saw_preserved_compare_source) {
+    return fail("expected post-call scalar compare to consume prior-preserved s2 source");
+  }
+  if (saw_stale_home_compare_source) {
+    return fail("post-call scalar compare must not consume stale a0 home");
+  }
+  return 0;
+}
+
+int rejects_post_call_scalar_compare_without_freshness_authority() {
+  constexpr const char* diagnostic =
+      "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands";
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_post_call_scalar_compare_module(false), diagnostic);
+}
+
 int builds_prepared_scalar_ordered_compare_return_object() {
   auto prepared = make_prepared_scalar_compare_trunc_module();
   auto& function = prepared.module.functions[0];
@@ -29961,6 +30114,9 @@ int main() {
       rejects_prepared_out_of_ssa_phi_join_immediate_materialization_fail_closed_shapes();
   status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();
+  status |=
+      builds_prepared_post_call_scalar_compare_from_prior_preserved_register();
+  status |= rejects_post_call_scalar_compare_without_freshness_authority();
   status |= builds_prepared_scalar_ordered_compare_return_object();
   status |= builds_prepared_scalar_ashr_register_object();
   status |= builds_prepared_scalar_ashr_immediate_object();

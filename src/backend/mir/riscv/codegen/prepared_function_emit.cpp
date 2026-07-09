@@ -568,6 +568,7 @@ bool append_simple_prepared_bir_function_asm(
       const PreparedCurrentInstructionContext context{
           .names = prepared.names,
           .lookups = lookups,
+          .block_index = block_index,
           .block_label = *block_label_id,
           .instruction_index = instruction_index,
       };
@@ -584,6 +585,7 @@ bool append_simple_prepared_bir_function_asm(
               has_frame_slot_address_materialization_at(PreparedCurrentInstructionContext{
                   .names = prepared.names,
                   .lookups = lookups,
+                  .block_index = block_index,
                   .block_label = *block_label_id,
                   .instruction_index = instruction_index + 1,
               }) &&
@@ -612,7 +614,7 @@ bool append_simple_prepared_bir_function_asm(
             *binary,
             context);
         if (!emitted.has_value()) {
-          emitted = emit_riscv_simple_binary(*binary, prepared.names, lookups);
+          emitted = emit_riscv_simple_binary(*binary, context);
         }
         if (!emitted.has_value()) {
           return false;

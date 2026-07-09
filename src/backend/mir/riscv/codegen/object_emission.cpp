@@ -12216,6 +12216,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                 prepared.names,
                 &lookups,
                 block,
+                block_index,
                 instruction_index,
                 *binary,
                 stack_frame_bytes);
@@ -12254,7 +12255,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                    prepared.names,
                                                    &lookups,
                                                    *binary,
-                                                   stack_frame_bytes);
+                                                   stack_frame_bytes,
+                                                   block_index,
+                                                   instruction_index);
       if (fragment.has_value()) {
         return fragment;
       }
@@ -12962,6 +12965,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                                  names,
                                                                  &lookups,
                                                                  block,
+                                                                 block_index,
                                                                  instruction_index,
                                                                  *binary,
                                                                  stack_frame_bytes) &&
@@ -12973,7 +12977,9 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                     names,
                                     &lookups,
                                     *binary,
-                                    stack_frame_bytes)
+                                    stack_frame_bytes,
+                                    block_index,
+                                    instruction_index)
            .has_value()) {
     return std::string{
         "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands"};

@@ -49,6 +49,12 @@ struct SimpleCompare {
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Value& value);
 
+[[nodiscard]] bool emit_move_to_register(
+    std::string& out,
+    std::string_view destination_register,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value);
+
 
 [[nodiscard]] bool append_rv64_move_value_to_register(
     RiscvEncodedFragment& fragment,
@@ -64,7 +70,9 @@ struct SimpleCompare {
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::BinaryInst& binary,
-    std::size_t stack_frame_bytes);
+    std::size_t stack_frame_bytes,
+    std::optional<std::size_t> block_index = std::nullopt,
+    std::optional<std::size_t> instruction_index = std::nullopt);
 
 [[nodiscard]] std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -89,6 +97,7 @@ struct SimpleCompare {
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Block& block,
+    std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes);
@@ -99,6 +108,7 @@ fragment_for_prepared_scalar_compare_trunc_source(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Block& block,
+    std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes);
@@ -147,8 +157,7 @@ fragment_for_prepared_scalar_compare_trunc_source(
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_binary(
     const c4c::backend::bir::BinaryInst& binary,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+    const PreparedCurrentInstructionContext& context);
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,

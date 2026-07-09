@@ -1567,6 +1567,38 @@ void append_call_clobbered_register_spans(
   return clobbers;
 }
 
+void append_call_result_clobber(std::vector<PreparedClobberedRegister>& clobbers,
+                                const PreparedCallResultPlan* result) {
+  if (result == nullptr ||
+      result->source_storage_kind != PreparedMoveStorageKind::Register ||
+      !result->source_register_name.has_value() ||
+      result->source_register_name->empty() ||
+      !result->source_register_bank.has_value()) {
+    return;
+  }
+  const std::vector<std::string> occupied =
+      result->source_occupied_register_names.empty()
+          ? std::vector<std::string>{*result->source_register_name}
+          : result->source_occupied_register_names;
+  const auto duplicate = std::find_if(
+      clobbers.begin(),
+      clobbers.end(),
+      [&](const PreparedClobberedRegister& clobber) {
+        return clobber.bank == *result->source_register_bank &&
+               clobber.occupied_register_names == occupied;
+      });
+  if (duplicate != clobbers.end()) {
+    return;
+  }
+  clobbers.push_back(PreparedClobberedRegister{
+      .bank = *result->source_register_bank,
+      .register_name = *result->source_register_name,
+      .contiguous_width = result->source_contiguous_width,
+      .occupied_register_names = occupied,
+      .placement = as_reserved_scratch_placement(result->source_register_placement),
+  });
+}
+
 [[nodiscard]] bool is_callee_saved_register_assignment(const c4c::TargetProfile& target_profile,
                                                        const PreparedRegallocValue& value) {
   if (!value.assigned_register.has_value()) {
@@ -3598,6 +3630,10 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                   after_call_bundle,
                                                   instruction_index,
                                                   *call);
+        append_call_result_clobber(call_plan.clobbered_registers,
+                                   call_plan.result.has_value()
+                                       ? &*call_plan.result
+                                       : nullptr);
 
         function_plan.calls.push_back(std::move(call_plan));
         seed_supported_prior_call_preservations_from_current_call(
