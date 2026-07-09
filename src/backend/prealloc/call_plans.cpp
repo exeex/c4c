@@ -340,6 +340,17 @@ struct CallPreservationCandidates {
   std::vector<const PreparedRegallocValue*> by_start_point;
 };
 
+struct ConsumerMovePreservationCandidate {
+  const PreparedRegallocValue* source = nullptr;
+  const PreparedRegallocValue* destination = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+};
+
+struct ConsumerMovePreservationDestination {
+  PreparedPhysicalRegisterAssignment assignment;
+  std::optional<std::size_t> callee_saved_save_index;
+};
+
 struct CallArgumentDestinationPlan {
   std::optional<std::string> register_name;
   std::size_t contiguous_width = 1;
@@ -424,6 +435,20 @@ struct CallArgumentSourcePlan {
     return nullptr;
   }
   return it->second;
+}
+
+[[nodiscard]] const PreparedRegallocValue* find_regalloc_value_by_id(
+    const PreparedRegallocFunction* regalloc_function,
+    PreparedValueId value_id) {
+  if (regalloc_function == nullptr) {
+    return nullptr;
+  }
+  const auto it = std::find_if(regalloc_function->values.begin(),
+                               regalloc_function->values.end(),
+                               [value_id](const PreparedRegallocValue& value) {
+                                 return value.value_id == value_id;
+                               });
+  return it == regalloc_function->values.end() ? nullptr : &*it;
 }
 
 [[nodiscard]] const PreparedMemoryAccess* find_unique_memory_access_by_result_name(
@@ -1631,7 +1656,275 @@ void append_call_result_clobber(std::vector<PreparedClobberedRegister>& clobbers
   return std::nullopt;
 }
 
-[[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
+[[nodiscard]] std::optional<std::size_t> find_saved_callee_save_index(
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedPhysicalRegisterAssignment& assignment) {
+  if (frame_plan == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& saved : frame_plan->saved_callee_registers) {
+    if (saved.occupied_register_names == assignment.occupied_register_names &&
+        !saved.occupied_register_names.empty()) {
+      return saved.save_index;
+    }
+    if (saved.register_name == assignment.register_name) {
+      return saved.save_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool register_assignment_overlaps_call_result(
+    const PreparedPhysicalRegisterAssignment& assignment,
+    const PreparedCallResultPlan* result) {
+  if (result == nullptr ||
+      result->destination_storage_kind != PreparedMoveStorageKind::Register ||
+      !result->destination_register_name.has_value()) {
+    return false;
+  }
+  const auto occupied = result->destination_occupied_register_names.empty()
+                            ? std::vector<std::string>{*result->destination_register_name}
+                            : result->destination_occupied_register_names;
+  return assignment.occupied_register_names == occupied ||
+         assignment.register_name == *result->destination_register_name;
+}
+
+[[nodiscard]] std::optional<ConsumerMovePreservationDestination>
+select_consumer_move_preservation_destination(
+    const c4c::TargetProfile& target_profile,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedCallPlan& call_plan,
+    const PreparedRegallocValue& source,
+    const PreparedRegallocValue& preferred_destination) {
+  if (preferred_destination.assigned_register.has_value() &&
+      is_callee_saved_register_assignment(target_profile, preferred_destination) &&
+      !register_assignment_overlaps_call_result(*preferred_destination.assigned_register,
+                                                call_plan.result.has_value()
+                                                    ? &*call_plan.result
+                                                    : nullptr)) {
+    if (const auto save_index =
+            find_saved_callee_save_index(frame_plan, preferred_destination);
+        save_index.has_value()) {
+      return ConsumerMovePreservationDestination{
+          .assignment = *preferred_destination.assigned_register,
+          .callee_saved_save_index = save_index,
+      };
+    }
+  }
+
+  for (const auto& span :
+       callee_saved_register_spans(target_profile,
+                                   source.register_class,
+                                   std::max<std::size_t>(source.register_group_width, 1))) {
+    PreparedPhysicalRegisterAssignment assignment{
+        .reg_class = source.register_class,
+        .register_name = span.register_name,
+        .contiguous_width = span.contiguous_width,
+        .occupied_register_names = span.occupied_register_names,
+        .placement = span.placement,
+    };
+    if (register_assignment_overlaps_call_result(assignment,
+                                                 call_plan.result.has_value()
+                                                     ? &*call_plan.result
+                                                     : nullptr)) {
+      continue;
+    }
+    const auto save_index = find_saved_callee_save_index(frame_plan, assignment);
+    if (!save_index.has_value()) {
+      continue;
+    }
+    return ConsumerMovePreservationDestination{
+        .assignment = std::move(assignment),
+        .callee_saved_save_index = save_index,
+    };
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool call_clobbers_register_home(
+    const PreparedCallPlan& call_plan,
+    const PreparedRegallocValue& value,
+    const PreparedValueHome& value_home) {
+  if (value_home.kind != PreparedValueHomeKind::Register ||
+      !value_home.register_name.has_value() ||
+      value_home.register_name->empty()) {
+    return false;
+  }
+  const PreparedRegisterBank bank = register_bank_from_class(value.register_class);
+  const std::vector<std::string> occupied{*value_home.register_name};
+  return std::any_of(call_plan.clobbered_registers.begin(),
+                     call_plan.clobbered_registers.end(),
+                     [&](const PreparedClobberedRegister& clobber) {
+                       return clobber.bank == bank &&
+                              (clobber.occupied_register_names == occupied ||
+                               clobber.register_name == *value_home.register_name);
+                     });
+}
+
+[[nodiscard]] bool scalar_register_home_can_use_consumer_preservation(
+    const PreparedRegallocValue& value,
+    const PreparedValueHome& value_home) {
+  if (value_home.kind != PreparedValueHomeKind::Register ||
+      !value_home.register_name.has_value()) {
+    return false;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+      return true;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<ConsumerMovePreservationCandidate>
+find_same_block_consumer_move_preservation_candidate(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueHomeLookup& value_home_lookup,
+    const PreparedCallPlan& call_plan) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      regalloc_function == nullptr) {
+    return std::nullopt;
+  }
+
+  std::optional<ConsumerMovePreservationCandidate> candidate;
+  for (const auto& move : regalloc_function->move_resolution) {
+    if (move.block_index != call_plan.block_index ||
+        move.instruction_index <= call_plan.instruction_index ||
+        move.destination_kind != PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != PreparedMoveStorageKind::Register ||
+        move.op_kind != PreparedMoveResolutionOpKind::Move ||
+        move.uses_cycle_temp_source) {
+      continue;
+    }
+
+    const auto* source = find_regalloc_value_by_id(regalloc_function, move.from_value_id);
+    const auto* destination = find_regalloc_value_by_id(regalloc_function, move.to_value_id);
+    const auto* source_home =
+        find_prepared_value_home(value_home_lookup, move.from_value_id);
+    if (source == nullptr || destination == nullptr || source_home == nullptr ||
+        source->value_kind == PreparedValueKind::CallResult ||
+        !scalar_register_home_can_use_consumer_preservation(*source, *source_home) ||
+        !call_clobbers_register_home(call_plan, *source, *source_home) ||
+        !is_callee_saved_register_assignment(target_profile, *destination)) {
+      continue;
+    }
+
+    ConsumerMovePreservationCandidate next{
+        .source = source,
+        .destination = destination,
+        .source_home = source_home,
+    };
+    if (candidate.has_value() &&
+        candidate->source->value_id != next.source->value_id) {
+      return std::nullopt;
+    }
+    candidate = next;
+  }
+  return candidate;
+}
+
+[[nodiscard]] std::optional<PreparedCallPreservedValue>
+make_consumer_move_preserved_value(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedCallPlan& call_plan,
+    const ConsumerMovePreservationCandidate& candidate) {
+  if (candidate.source == nullptr || candidate.destination == nullptr ||
+      candidate.source_home == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto& source = *candidate.source;
+  const auto& destination = *candidate.destination;
+  const auto preservation_destination =
+      select_consumer_move_preservation_destination(prepared.target_profile,
+                                                   frame_plan,
+                                                   call_plan,
+                                                   source,
+                                                   destination);
+  if (!preservation_destination.has_value()) {
+    return std::nullopt;
+  }
+  const auto& assignment = preservation_destination->assignment;
+  PreparedCallPreservedValue preserved{
+      .value_id = source.value_id,
+      .value_name = source.value_name,
+      .route = PreparedCallPreservationRoute::CalleeSavedRegister,
+      .callee_saved_save_index = preservation_destination->callee_saved_save_index,
+      .contiguous_width = assignment.contiguous_width,
+      .register_name = assignment.register_name,
+      .register_bank = register_bank_from_class(source.register_class),
+      .occupied_register_names = assignment.occupied_register_names,
+      .slot_id = std::nullopt,
+      .stack_offset_bytes = std::nullopt,
+      .stack_size_bytes = std::nullopt,
+      .stack_align_bytes = std::nullopt,
+      .register_placement = assignment.placement,
+      .spill_slot_placement = std::nullopt,
+  };
+  preserved.preservation_source =
+      make_preservation_value_source_endpoint(prepared.target_profile,
+                                              source,
+                                              candidate.source_home,
+                                              true);
+  preserved.preservation_destination =
+      make_preservation_destination_endpoint(preserved);
+  preserved.preservation_reason = make_preservation_reason(preserved);
+  return preserved;
+}
+
+void append_consumer_move_preserved_value_if_complete(
+    std::vector<PreparedCallPreservedValue>& preserved_values,
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueHomeLookup& value_home_lookup,
+    const PreparedCallPlan& call_plan) {
+  const auto candidate =
+      find_same_block_consumer_move_preservation_candidate(prepared.target_profile,
+                                                          regalloc_function,
+                                                          value_home_lookup,
+                                                          call_plan);
+  if (!candidate.has_value()) {
+    return;
+  }
+  const bool duplicate =
+      std::any_of(preserved_values.begin(),
+                  preserved_values.end(),
+                  [&](const PreparedCallPreservedValue& preserved) {
+                    return preserved.value_id == candidate->source->value_id;
+                  });
+  if (duplicate) {
+    return;
+  }
+  auto preserved =
+      make_consumer_move_preserved_value(prepared, frame_plan, call_plan, *candidate);
+  if (!preserved.has_value() ||
+      preserved->route == PreparedCallPreservationRoute::Unknown ||
+      preserved->preservation_source.storage_kind != PreparedMoveStorageKind::Register ||
+      preserved->preservation_destination.storage_kind !=
+          PreparedMoveStorageKind::Register ||
+      !preserved->register_name.has_value() ||
+      !preserved->register_bank.has_value() ||
+      !preserved->callee_saved_save_index.has_value() ||
+      preserved->preservation_source.register_name == preserved->register_name) {
+    return;
+  }
+  preserved_values.push_back(std::move(*preserved));
+}
+
+[[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_liveness_preserved_values(
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
     const PreparedLivenessFunction* liveness_function,
@@ -1733,6 +2026,32 @@ void append_call_result_clobber(std::vector<PreparedClobberedRegister>& clobbers
       preserved_values.push_back(std::move(preserved));
     }
   }
+  return preserved_values;
+}
+
+[[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedLivenessFunction* liveness_function,
+    const CallPreservationCandidates& candidates,
+    const PreparedValueHomeLookup& value_home_lookup,
+    const PreparedCallPlan& call_plan,
+    std::size_t program_point) {
+  auto preserved_values =
+      build_call_liveness_preserved_values(prepared,
+                                           frame_plan,
+                                           liveness_function,
+                                           candidates,
+                                           value_home_lookup,
+                                           program_point);
+
+  append_consumer_move_preserved_value_if_complete(preserved_values,
+                                                   prepared,
+                                                   frame_plan,
+                                                   regalloc_function,
+                                                   value_home_lookup,
+                                                   call_plan);
 
   const auto by_value_id =
       [](const PreparedCallPreservedValue& lhs,
@@ -1748,9 +2067,11 @@ void append_call_result_clobber(std::vector<PreparedClobberedRegister>& clobbers
 [[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
+    const PreparedRegallocFunction* regalloc_function,
     const PreparedLivenessFunction* liveness_function,
     const CallPreservationCandidates& candidates,
     const PreparedValueHomeLookup& value_home_lookup,
+    const PreparedCallPlan& call_plan,
     std::size_t block_index,
     std::size_t instruction_index) {
   if (liveness_function == nullptr) {
@@ -1763,9 +2084,11 @@ void append_call_result_clobber(std::vector<PreparedClobberedRegister>& clobbers
   }
   return build_call_preserved_values(prepared,
                                      frame_plan,
+                                     regalloc_function,
                                      liveness_function,
                                      candidates,
                                      value_home_lookup,
+                                     call_plan,
                                      *call_point);
 }
 
@@ -3467,14 +3790,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
             .outgoing_stack_argument_area = std::nullopt,
             .arguments = {},
             .result = std::nullopt,
-            .preserved_values = build_call_preserved_values(
-                prepared,
-                frame_plan,
-                liveness_function,
-                call_preservation_candidates,
-                value_home_lookup,
-                block_index,
-                instruction_index),
+            .preserved_values = {},
             .clobbered_registers = call_clobbers,
         };
 
@@ -3634,6 +3950,16 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                    call_plan.result.has_value()
                                        ? &*call_plan.result
                                        : nullptr);
+        call_plan.preserved_values =
+            build_call_preserved_values(prepared,
+                                        frame_plan,
+                                        regalloc_function,
+                                        liveness_function,
+                                        call_preservation_candidates,
+                                        value_home_lookup,
+                                        call_plan,
+                                        block_index,
+                                        instruction_index);
 
         function_plan.calls.push_back(std::move(call_plan));
         seed_supported_prior_call_preservations_from_current_call(

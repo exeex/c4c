@@ -8,45 +8,36 @@ Current Step Title: Implement One Complete-Authority Freshness Path
 
 ## Just Finished
 
-Step 3 implemented a complete-authority RV64 scalar freshness consumer path for
-prepared scalar values used after an intervening call.
+Step 3 added producer-side complete-authority preservation for RV64
+register-homed scalar formals or scalar values consumed after an intervening
+call.
 
 Changed files:
 - `src/backend/prealloc/call_plans.cpp`
-- `src/backend/mir/riscv/codegen/prepared_emit_context.hpp`
-- `src/backend/mir/riscv/codegen/prepared_function_emit.cpp`
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.hpp`
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- `todo.md`
 
 Completed work:
-- Prepared call plans now publish call-result source registers as clobbered
-  registers, so a call returning through a GPR invalidates stale direct homes in
-  that physical result register.
-- RV64 prepared text emission and object emission now carry block/instruction
-  position into scalar value materialization.
-- RV64 scalar move, compare, compare/trunc publication, and generic encoded
-  binary fallback paths now reject a direct register home after a same-block
-  clobbering call unless a prior preservation fact exists.
-- The positive authority path consumes prior scalar preservation facts: a
-  preserved callee-saved register is moved from that register, and a preserved
-  stack-slot scalar is loaded from the preserved stack slot.
-- Fail-closed behavior is preserved when no preservation, republication, or
-  rematerialization authority exists.
-- Added focused Step 3 tests:
-  `builds_prepared_post_call_scalar_compare_from_prior_preserved_register`
-  proves a post-call scalar compare consumes explicit prior callee-saved
-  preservation authority, and
-  `rejects_post_call_scalar_compare_without_freshness_authority` proves the
-  same shape fails closed without that authority.
+- Prepared call plans now synthesize a preservation fact for a clobbered
+  direct-register scalar home when a same-block post-call consumer move proves
+  the scalar is needed after the call and a complete saved callee register is
+  available.
+- The route rejects incomplete authority: call-result values are not treated as
+  pre-call preservation candidates, and preservation destinations must not
+  overlap the current call result destination.
+- When the consumer move's preferred register would be overwritten by the call
+  result, the producer selects another saved callee register with complete frame
+  save authority.
+- Added focused positive/negative BIR contract coverage for RV64 formal
+  consumer-move preservation and for the no-post-call-consumer case.
+- `src/ipa-sra-2.c` now publishes `%p.argc` preservation from `a0` into `s2`
+  at the `calloc` boundary and passes the focused RV64 object torture row.
 
 ## Suggested Next
 
-Next packet should add the producer-side preservation/republication authority
-for register-homed scalar formals or live scalar values that are used after a
-call, then rerun the same focused proof to move `src/ipa-sra-2.c` past the
-current fail-closed diagnostic.
+Next packet should let the supervisor decide whether Step 3 is acceptance-ready
+for broader regression guard validation or whether another adjacent scalar
+freshness boundary needs review.
 
 ## Watchouts
 
@@ -55,12 +46,11 @@ current fail-closed diagnostic.
   call boundaries.
 - Do not treat a pre-call register home as fresh after a call without explicit
   preservation, republication, or rematerialization authority.
-- `src/ipa-sra-2.c` now fails before object creation with
-  `unsupported_scalar_compare_publication`; there is no refreshed `c4c.bin`
-  because the stale object emission is rejected.
-- Prepared dump still shows `%p.argc` value id `6` homed in `register a0` and
-  no `preserve value=%p.argc` fact, so the remaining owner is producer-side
-  preservation/republication/rematerialization authority for that scalar.
+- The producer path is currently same-block consumer-move preservation with a
+  complete saved callee-register destination; broader cross-block or stack-slot
+  producer paths remain separate route choices.
+- The focused torture row passed, so this packet did not leave a new
+  `src/ipa-sra-2.c` residual.
 
 ## Proof
 
@@ -68,12 +58,7 @@ Ran the delegated proof command exactly:
 
 `rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_object_consumer_contract)$' && ALLOWLIST=build/agent_state/643_step1_ipa_sra_2.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
 
-Result after adding focused tests: nonzero due only to the focused torture row.
-All five focused CTests passed, including the new positive and negative
-`backend_riscv_object_emission` Step 3 scalar freshness rows.
-`src/ipa-sra-2.c` now fails with `[RV64_C4C_OBJ_COMPILE_FAIL]` and
-`unsupported_scalar_compare_publication: RV64 object route requires prepared
-scalar compare result homes and materializable operands`, instead of producing
-an object that reads post-call `a0`.
+Result: pass. The default build was up to date, all five focused CTests passed,
+and the one-row RV64 torture probe passed for `src/ipa-sra-2.c`.
 
 Proof log: `test_after.log`.

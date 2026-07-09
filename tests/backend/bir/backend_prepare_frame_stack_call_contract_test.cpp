@@ -1782,6 +1782,90 @@ bir::Module make_aarch64_formal_preservation_source_endpoint_contract_module() {
   return module;
 }
 
+bir::Module make_riscv_formal_consumer_move_preservation_contract_module(
+    bool use_formal_after_call) {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "formal_boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = use_formal_after_call
+                      ? "riscv_formal_consumer_move_preservation_contract"
+                      : "riscv_formal_pre_call_only_preservation_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "live.formal",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "formal_boundary_helper",
+      .args = {bir::Value::immediate_i32(7)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  if (use_formal_after_call) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Sgt,
+        .result = bir::Value::named(bir::TypeKind::I32, "after.compare"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "live.formal"),
+        .rhs = bir::Value::immediate_i32(3),
+    });
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "after.mix"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+        .rhs = bir::Value::named(bir::TypeKind::I32, "after.compare"),
+    });
+    entry.terminator = bir::ReturnTerminator{
+        .value = bir::Value::named(bir::TypeKind::I32, "after.mix")};
+  } else {
+    entry.terminator =
+        bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "call.out")};
+  }
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_local_frame_address_source_selection_contract_module() {
   bir::Module module;
   module.target_triple = "aarch64-linux-gnu";
@@ -6072,6 +6156,91 @@ int check_aarch64_formal_preservation_source_endpoint_contract() {
       preserved.preservation_destination.register_name == preserved.preservation_source.register_name) {
     return fail(
         "aarch64 formal preservation endpoint contract: source must name live pre-call x0 and destination must name distinct callee-saved storage");
+  }
+
+  return 0;
+}
+
+int check_riscv_formal_consumer_move_preservation_contract() {
+  constexpr std::string_view function_name =
+      "riscv_formal_consumer_move_preservation_contract";
+  const auto prepared = prepare_riscv_module(
+      make_riscv_formal_consumer_move_preservation_contract_module(true));
+  const auto* call_plans = find_call_plans_function(prepared, function_name);
+  const auto* storage_plan = find_storage_plan_function(prepared, function_name);
+  const auto* formal =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "live.formal");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 || formal == nullptr) {
+    return fail(
+        "RV64 formal consumer-move preservation contract: missing call plan or formal storage");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto preserved_it = std::find_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [formal](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == formal->value_id;
+      });
+  if (preserved_it == call_plan.preserved_values.end()) {
+    return fail(
+        "RV64 formal consumer-move preservation contract: missing post-call formal preservation");
+  }
+
+  const auto& preserved = *preserved_it;
+  if (preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved.preservation_source.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      preserved.preservation_source.register_name != std::optional<std::string>{"a0"} ||
+      preserved.preservation_source.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+      preserved.preservation_source.value_id !=
+          std::optional<prepare::PreparedValueId>{formal->value_id} ||
+      preserved.preservation_destination.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      !preserved.preservation_destination.register_name.has_value() ||
+      preserved.preservation_destination.register_name != preserved.register_name ||
+      preserved.preservation_destination.register_name == preserved.preservation_source.register_name ||
+      !preserved.callee_saved_save_index.has_value()) {
+    return fail(
+        "RV64 formal consumer-move preservation contract: source must name clobbered incoming formal and destination must name complete callee-saved storage");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("preserve value=live.formal") == std::string::npos ||
+      prepared_dump.find("preservation_source=register:a0") == std::string::npos ||
+      prepared_dump.find("preservation_destination=register:s") == std::string::npos) {
+    return fail(
+        "RV64 formal consumer-move preservation contract: prepared dump hides preservation authority");
+  }
+
+  return 0;
+}
+
+int check_riscv_formal_pre_call_only_does_not_publish_preservation() {
+  constexpr std::string_view function_name =
+      "riscv_formal_pre_call_only_preservation_contract";
+  const auto prepared = prepare_riscv_module(
+      make_riscv_formal_consumer_move_preservation_contract_module(false));
+  const auto* call_plans = find_call_plans_function(prepared, function_name);
+  const auto* storage_plan = find_storage_plan_function(prepared, function_name);
+  const auto* formal =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "live.formal");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 || formal == nullptr) {
+    return fail(
+        "RV64 formal pre-call-only preservation contract: missing call plan or formal storage");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto preserved_it = std::find_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [formal](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == formal->value_id;
+      });
+  if (preserved_it != call_plan.preserved_values.end()) {
+    return fail(
+        "RV64 formal pre-call-only preservation contract: producer published preservation without a post-call consumer move");
   }
 
   return 0;
@@ -10838,6 +11007,15 @@ int main() {
     return rc;
   }
   if (const int rc = check_aarch64_formal_preservation_source_endpoint_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_formal_consumer_move_preservation_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_riscv_formal_pre_call_only_does_not_publish_preservation();
       rc != 0) {
     return rc;
   }
