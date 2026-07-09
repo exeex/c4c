@@ -2759,27 +2759,222 @@ prepared_collected_branch_stack_load_pointer_status(
                                 : PreparedBranchStackLoadPointerStatus::Unknown;
 }
 
-[[nodiscard]] bool branch_stack_load_has_no_intervening_instructions(
+[[nodiscard]] bool branch_stack_load_source_freshness_bound_to_use(
+    const PreparedValueHome* value_home,
+    std::optional<std::size_t> branch_block_index,
+    std::optional<std::size_t> branch_terminator_instruction_index,
+    const std::vector<PreparedValueFreshnessAuthority>& candidates) {
+  if (value_home == nullptr ||
+      value_home->value_id == PreparedValueId{0} ||
+      value_home->value_name == kInvalidValueName ||
+      !branch_block_index.has_value() ||
+      !branch_terminator_instruction_index.has_value()) {
+    return false;
+  }
+  const PreparedValueFreshnessQuery query{
+      .value_id = value_home->value_id,
+      .value_name = value_home->value_name,
+      .use_kind = PreparedValueFreshnessUseKind::BranchStackLoadSource,
+      .block_index = branch_block_index,
+      .instruction_index = branch_terminator_instruction_index,
+      .candidates = candidates,
+  };
+  const auto selected = find_prepared_value_freshness_authority(query);
+  if (!prepared_value_freshness_query_selected(selected)) {
+    return false;
+  }
+  const auto& freshness = *selected.authority;
+  return freshness.source_kind ==
+             PreparedValueFreshnessSourceKind::BranchStackSlot &&
+         freshness.proof_kind ==
+             PreparedValueFreshnessProofKind::BranchTerminatorOrdering &&
+         freshness.rank == PreparedValueFreshnessSourceRank::BranchStackSlot &&
+         freshness.reference.home == value_home &&
+         freshness.reference.block_index == branch_block_index &&
+         freshness.reference.instruction_index ==
+             branch_terminator_instruction_index;
+}
+
+[[nodiscard]] bool prepared_memory_access_may_clobber_branch_stack_slot(
+    const PreparedMemoryAccess* access,
+    const PreparedFrameSlot* frame_slot,
+    const PreparedStackObject* stack_object) {
+  if (access == nullptr || frame_slot == nullptr || stack_object == nullptr) {
+    return true;
+  }
+  switch (access->address.base_kind) {
+    case PreparedAddressBaseKind::FrameSlot:
+      break;
+    case PreparedAddressBaseKind::GlobalSymbol:
+    case PreparedAddressBaseKind::StringConstant:
+      return false;
+    case PreparedAddressBaseKind::None:
+    case PreparedAddressBaseKind::PointerValue:
+      return true;
+  }
+  if (!access->address.frame_slot_id.has_value()) {
+    return true;
+  }
+  return *access->address.frame_slot_id == frame_slot->slot_id;
+}
+
+[[nodiscard]] bool prepared_store_publication_may_clobber_branch_stack_slot(
+    const PreparedStoreSourcePublicationRecord& record,
+    FunctionNameId function_name,
+    BlockLabelId block_label,
+    std::size_t branch_terminator_instruction_index,
+    const PreparedFrameSlot* frame_slot,
+    const PreparedStackObject* stack_object) {
+  if (record.function_name != function_name ||
+      record.block_label != block_label ||
+      record.instruction_index >= branch_terminator_instruction_index ||
+      !prepared_store_source_publication_available(record.plan)) {
+    return false;
+  }
+  if (frame_slot == nullptr || stack_object == nullptr) {
+    return true;
+  }
+  if (record.plan.destination_object_id.has_value() &&
+      *record.plan.destination_object_id == stack_object->object_id) {
+    return true;
+  }
+  if (record.plan.destination_frame_slot_id.has_value() &&
+      *record.plan.destination_frame_slot_id == frame_slot->slot_id) {
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_move_bundle_may_clobber_branch_stack_slot(
+    const PreparedMoveBundle& bundle,
+    FunctionNameId function_name,
+    std::size_t branch_block_index,
+    std::size_t branch_terminator_instruction_index,
+    const PreparedFrameSlot* frame_slot) {
+  if (bundle.function_name != function_name ||
+      bundle.block_index != branch_block_index ||
+      bundle.instruction_index > branch_terminator_instruction_index) {
+    return false;
+  }
+  for (const auto& move : bundle.moves) {
+    if (move.destination_storage_kind != PreparedMoveStorageKind::StackSlot) {
+      continue;
+    }
+    if (frame_slot == nullptr ||
+        !move.destination_stack_offset_bytes.has_value()) {
+      return true;
+    }
+    if (*move.destination_stack_offset_bytes == frame_slot->offset_bytes) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool branch_stack_load_intervening_instructions_clobber_safe(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    BlockLabelId block_label,
     const bir::Block* block,
-    std::optional<std::size_t> branch_terminator_instruction_index) {
-  return block != nullptr &&
-         branch_terminator_instruction_index.has_value() &&
-         *branch_terminator_instruction_index == 0U;
+    std::size_t branch_block_index,
+    std::size_t branch_terminator_instruction_index,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedFrameSlot* frame_slot,
+    const PreparedStackObject* stack_object) {
+  if (block == nullptr ||
+      branch_terminator_instruction_index > block->insts.size()) {
+    return false;
+  }
+
+  const auto* addressing = find_prepared_addressing(prepared, function_name);
+  for (const auto& record : prepared.store_source_publications.records) {
+    if (prepared_store_publication_may_clobber_branch_stack_slot(
+            record,
+            function_name,
+            block_label,
+            branch_terminator_instruction_index,
+            frame_slot,
+            stack_object)) {
+      return false;
+    }
+  }
+  if (value_locations != nullptr) {
+    for (const auto& bundle : value_locations->move_bundles) {
+      if (prepared_move_bundle_may_clobber_branch_stack_slot(
+              bundle,
+              function_name,
+              branch_block_index,
+              branch_terminator_instruction_index,
+              frame_slot)) {
+        return false;
+      }
+    }
+  }
+
+  for (std::size_t index = 0; index < branch_terminator_instruction_index;
+       ++index) {
+    const auto& inst = block->insts[index];
+    if (std::get_if<bir::CallInst>(&inst) != nullptr) {
+      return false;
+    }
+    const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst);
+    const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst);
+    if (store_local == nullptr && store_global == nullptr) {
+      continue;
+    }
+    const auto* access =
+        addressing != nullptr
+            ? find_prepared_memory_access(*addressing, block_label, index)
+            : nullptr;
+    if (prepared_memory_access_may_clobber_branch_stack_slot(
+            access, frame_slot, stack_object)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 [[nodiscard]] bool prepared_collected_branch_stack_load_clobber_safe(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    BlockLabelId block_label,
     PreparedBranchStackLoadRole role,
     bool pointer_operand_proven,
     const bir::Block* block,
-    std::optional<std::size_t> branch_terminator_instruction_index) {
+    std::optional<std::size_t> branch_block_index,
+    std::optional<std::size_t> branch_terminator_instruction_index,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHome* value_home,
+    const PreparedFrameSlot* frame_slot,
+    const PreparedStackObject* stack_object,
+    const std::vector<PreparedValueFreshnessAuthority>& source_freshness_authorities) {
   if (role == PreparedBranchStackLoadRole::Condition) {
     return true;
   }
-  return (role == PreparedBranchStackLoadRole::Lhs ||
-          role == PreparedBranchStackLoadRole::Rhs) &&
-         pointer_operand_proven &&
-         branch_stack_load_has_no_intervening_instructions(
-             block, branch_terminator_instruction_index);
+  if ((role != PreparedBranchStackLoadRole::Lhs &&
+       role != PreparedBranchStackLoadRole::Rhs) ||
+      !pointer_operand_proven ||
+      block == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      !branch_block_index.has_value() ||
+      !branch_terminator_instruction_index.has_value() ||
+      !branch_stack_load_source_freshness_bound_to_use(
+          value_home,
+          branch_block_index,
+          branch_terminator_instruction_index,
+          source_freshness_authorities)) {
+    return false;
+  }
+  return branch_stack_load_intervening_instructions_clobber_safe(
+      prepared,
+      function_name,
+      block_label,
+      block,
+      *branch_block_index,
+      *branch_terminator_instruction_index,
+      value_locations,
+      frame_slot,
+      stack_object);
 }
 
 void select_branch_stack_load_source_freshness_authority(
@@ -3177,10 +3372,19 @@ PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
               branch_terminator_instruction_index,
           .stack_slot_clobber_safe_at_branch =
               prepared_collected_branch_stack_load_clobber_safe(
+                  prepared,
+                  function_name,
+                  branch_condition.block_label,
                   role,
                   pointer_operand_proven,
                   block,
-                  branch_terminator_instruction_index),
+                  branch_block_index,
+                  branch_terminator_instruction_index,
+                  value_locations,
+                  value_home,
+                  frame_slot,
+                  stack_object,
+                  source_freshness_authorities),
           .source_freshness_authorities =
               source_freshness_authorities.empty()
                   ? nullptr

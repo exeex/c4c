@@ -8142,6 +8142,18 @@ int check_branch_stack_load_authority_contract() {
   bir::Block prepared_entry;
   prepared_entry.label = "entry";
   prepared_entry.label_id = c4c::kInvalidBlockLabel;
+  prepared_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%tmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  prepared_entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%tmp1"),
+      .operand = prepared_lhs,
+  });
   prepared_entry.terminator = bir::CondBranchTerminator{
       .condition = prepared_condition,
       .true_label = "is_true",
@@ -8295,7 +8307,7 @@ int check_branch_stack_load_authority_contract() {
       condition_record->authority.branch_block_index !=
           std::optional<std::size_t>{0} ||
       condition_record->authority.branch_terminator_instruction_index !=
-          std::optional<std::size_t>{0} ||
+          std::optional<std::size_t>{2} ||
       !condition_record->authority.stack_slot_fresh_at_branch ||
       condition_record->authority.source_freshness_status !=
           prepare::PreparedValueFreshnessQueryStatus::Selected ||
@@ -8335,7 +8347,7 @@ int check_branch_stack_load_authority_contract() {
       lhs_record->authority.source_freshness_authorities.front()
               .reference.block_index != std::optional<std::size_t>{0} ||
       lhs_record->authority.source_freshness_authorities.front()
-              .reference.instruction_index != std::optional<std::size_t>{0}) {
+              .reference.instruction_index != std::optional<std::size_t>{2}) {
     return fail("expected collected branch lhs stack-load row to require selected pointer freshness");
   }
   if (rhs_record->role != prepare::PreparedBranchStackLoadRole::Rhs ||
@@ -8370,7 +8382,7 @@ int check_branch_stack_load_authority_contract() {
       rhs_record->authority.source_freshness_authorities.front()
               .reference.block_index != std::optional<std::size_t>{0} ||
       rhs_record->authority.source_freshness_authorities.front()
-              .reference.instruction_index != std::optional<std::size_t>{0}) {
+              .reference.instruction_index != std::optional<std::size_t>{2}) {
     return fail("expected collected branch rhs stack-load row to require selected pointer freshness");
   }
 
@@ -8393,7 +8405,7 @@ int check_branch_stack_load_authority_contract() {
                 "source_freshness_proof=branch_terminator_ordering "
                 "source_freshness_rank=branch_stack_slot "
                 "source_freshness_ref_block=0 "
-                "source_freshness_ref_inst=0 slot=#11 "
+                "source_freshness_ref_inst=2 slot=#11 "
                 "object=#11 stack_offset=88 size=4 align=4") ==
       std::string::npos) {
     return fail("expected prepared dump to expose condition stack-load row");
@@ -8412,7 +8424,7 @@ int check_branch_stack_load_authority_contract() {
                 "source_freshness_proof=branch_terminator_ordering "
                 "source_freshness_rank=branch_stack_slot "
                 "source_freshness_ref_block=0 "
-                "source_freshness_ref_inst=0 slot=#10 "
+                "source_freshness_ref_inst=2 slot=#10 "
                 "object=#10 stack_offset=80 size=8 align=8") ==
       std::string::npos) {
     return fail("expected prepared dump to expose lhs stack-load row");
@@ -8431,10 +8443,53 @@ int check_branch_stack_load_authority_contract() {
                 "source_freshness_proof=branch_terminator_ordering "
                 "source_freshness_rank=branch_stack_slot "
                 "source_freshness_ref_block=0 "
-                "source_freshness_ref_inst=0 slot=#12 "
+                "source_freshness_ref_inst=2 slot=#12 "
                 "object=#12 stack_offset=72 size=8 align=8") ==
       std::string::npos) {
     return fail("expected prepared dump to expose rhs stack-load row");
+  }
+
+  auto same_slot_clobber = prepared;
+  same_slot_clobber.module.functions.front().blocks.front().insts.insert(
+      same_slot_clobber.module.functions.front().blocks.front().insts.begin(),
+      bir::StoreLocalInst{
+          .slot_name = "lhs.slot",
+          .slot_id = prepare::PreparedFrameSlotId{10},
+          .value = prepared_rhs,
+          .byte_offset = 0,
+          .align_bytes = 8,
+      });
+  prepare::PreparedAddressingFunction same_slot_addressing;
+  same_slot_addressing.function_name = prepared_function_name;
+  same_slot_addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = prepared_function_name,
+      .block_label = prepared_entry_label,
+      .inst_index = 0,
+      .stored_value_name = prepared_rhs_name,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = prepare::PreparedFrameSlotId{10},
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+          },
+  });
+  same_slot_clobber.addressing.functions.push_back(
+      std::move(same_slot_addressing));
+  const auto same_slot_records =
+      prepare::collect_prepared_branch_stack_load_authorities(same_slot_clobber);
+  if (same_slot_records.records.size() != 3 ||
+      same_slot_records.records[1].role !=
+          prepare::PreparedBranchStackLoadRole::Lhs ||
+      same_slot_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety ||
+      same_slot_records.records[2].role !=
+          prepare::PreparedBranchStackLoadRole::Rhs ||
+      same_slot_records.records[2].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::Available) {
+    return fail("expected exact same-slot intervening write to reject only the clobbered branch stack load");
   }
 
   return 0;
