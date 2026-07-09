@@ -1,43 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/643_rv64_scalar_call_boundary_freshness_after_call.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement One Complete-Authority Freshness Path
+Current Step ID: 4
+Current Step Title: Validate Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added producer-side complete-authority preservation for RV64
-register-homed scalar formals or scalar values consumed after an intervening
-call.
+Step 4 recorded the supervisor-run broader structural validation for active
+idea 643 after the Step 3 commits `9b0ff362f` and `6c65143d3`.
 
 Changed files:
-- `src/backend/prealloc/call_plans.cpp`
-- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
 - `todo.md`
 
 Completed work:
-- Prepared call plans now synthesize a preservation fact for a clobbered
-  direct-register scalar home when a same-block post-call consumer move proves
-  the scalar is needed after the call and a complete saved callee register is
-  available.
-- The route rejects incomplete authority: call-result values are not treated as
-  pre-call preservation candidates, and preservation destinations must not
-  overlap the current call result destination.
-- When the consumer move's preferred register would be overwritten by the call
-  result, the producer selects another saved callee register with complete frame
-  save authority.
-- Added focused positive/negative BIR contract coverage for RV64 formal
-  consumer-move preservation and for the no-post-call-consumer case.
-- `src/ipa-sra-2.c` now publishes `%p.argc` preservation from `a0` into `s2`
-  at the `calloc` boundary and passes the focused RV64 object torture row.
+- Accepted validation scope was the 22-test structural backend CTest subset
+  covering prepare, prealloc, prepared, RV64 object emission, call-boundary
+  effect planning, publication records, store-source publication plans, and
+  object-model records.
+- The focused RV64 torture probe for `src/ipa-sra-2.c` passed under the
+  existing Step 1 allowlist.
+- No implementation, expectation, allowlist, unsupported-marker, or pass/fail
+  accounting changes were made in this packet.
 
 ## Suggested Next
 
-Next packet should let the supervisor decide whether Step 3 is acceptance-ready
-for broader regression guard validation or whether another adjacent scalar
-freshness boundary needs review.
+Step 5 should be final lifecycle review and plan-owner close decision.
 
 ## Watchouts
 
@@ -46,19 +35,17 @@ freshness boundary needs review.
   call boundaries.
 - Do not treat a pre-call register home as fresh after a call without explicit
   preservation, republication, or rematerialization authority.
-- The producer path is currently same-block consumer-move preservation with a
-  complete saved callee-register destination; broader cross-block or stack-slot
-  producer paths remain separate route choices.
-- The focused torture row passed, so this packet did not leave a new
-  `src/ipa-sra-2.c` residual.
+- A broader `ctest -L backend` attempt was excluded from canonical proof because
+  it hit 17 existing RV64 route/runtime residual failures outside this accepted
+  validation scope.
 
 ## Proof
 
-Ran the delegated proof command exactly:
+Supervisor ran the accepted Step 4 proof command:
 
-`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_object_consumer_contract)$' && ALLOWLIST=build/agent_state/643_step1_ipa_sra_2.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
+`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_(prepare|prealloc|prepared|riscv_object_emission|call_boundary_effect_plan|publication_plan_record|store_source_publication_plan|object_model_records|rv64_roundtrip_contract))' && ALLOWLIST=build/agent_state/643_step1_ipa_sra_2.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
 
-Result: pass. The default build was up to date, all five focused CTests passed,
-and the one-row RV64 torture probe passed for `src/ipa-sra-2.c`.
+Result: pass. The default build was up to date, all 22 structural backend CTests
+passed, and the one-row RV64 torture probe passed for `src/ipa-sra-2.c`.
 
 Proof log: `test_after.log`.
