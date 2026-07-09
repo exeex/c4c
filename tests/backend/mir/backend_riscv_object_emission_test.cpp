@@ -25139,6 +25139,134 @@ make_prepared_string_constant_local_memory_load_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_direct_global_scalar_local_memory_module(bool publish_access = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%global.local");
+  const auto result_name = prepared.names.value_names.intern("%loaded");
+  const auto global_name = prepared.names.link_names.intern("global_scalar");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%global.local",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_i32(7),
+                  .align_bytes = 4,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                  .slot_name = "%global.local",
+                  .slot_id = slot_name,
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%loaded");
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global_scalar",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = bir::Value::immediate_i64(0),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .local_slots = {bir::LocalSlot{
+          .name = "%global.local",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 1,
+          .function_name = function_name,
+          .value_name = result_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"a0"},
+      }},
+  });
+  if (publish_access) {
+    auto direct_global_address = [&](std::int64_t byte_offset) {
+      return prepare::PreparedAddress{
+          .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+          .symbol_name = global_name,
+          .global_address_materialization_policy =
+              bir::GlobalAddressMaterializationPolicy::Direct,
+          .byte_offset = byte_offset,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .can_use_base_plus_offset = true,
+          .provenance = bir::MemoryAccessProvenance{
+              .base_identity = bir::MemoryProvenanceBaseIdentity{
+                  .kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+                  .spelling = "global_scalar",
+                  .link_name_id = global_name,
+              },
+              .object_extent = bir::MemoryObjectExtent{
+                  .completeness =
+                      bir::MemoryObjectExtentCompleteness::Complete,
+                  .size_bytes = 8,
+                  .size_known = true,
+              },
+              .requested_range = bir::make_memory_byte_range(byte_offset, 4),
+              .layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout,
+              .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+          },
+      };
+    };
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 0,
+                    .address = direct_global_address(4),
+                },
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 1,
+                    .result_value_name = result_name,
+                    .address = direct_global_address(4),
+                },
+            },
+    });
+  }
+  publish_prepared_object_data(prepared);
+  return prepared;
+}
+
 int emits_prepared_string_constant_object_storage() {
   auto prepared = make_prepared_direct_call_module();
   const auto text_name = prepared.module.names.texts.intern(".LC0");
@@ -25576,6 +25704,179 @@ int rejects_raw_load_local_global_address_lane_without_prepared_access() {
   return expect_prepared_rejection_diagnostic(
       make_raw_global_address_load_local_lane_module(),
       "unsupported_global_data: RV64 object route requires prepared global-symbol memory access facts for LoadLocalInst global-address lanes");
+}
+
+int builds_prepared_direct_global_scalar_local_memory_object() {
+  const auto prepared = make_prepared_direct_global_scalar_local_memory_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail("expected prepared scalar direct-global local memory to build: " +
+                build.diagnostic);
+  }
+  const auto& module = *build.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* function = object::find_symbol(module, "main");
+  const auto* global_symbol = object::find_symbol(module, "global_scalar");
+  if (text == nullptr || function == nullptr || global_symbol == nullptr) {
+    return fail("expected text, function, and direct-global object symbol");
+  }
+  bool saw_direct_global_store = false;
+  bool saw_direct_global_load = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == 2U &&
+        riscv_rs1(word) != 2U && riscv_s_imm(word) == 4) {
+      saw_direct_global_store = true;
+    }
+    if ((word & 0x7fU) == 0x03U && ((word >> 12) & 0x7U) == 2U &&
+        ((word >> 7) & 0x1fU) == 10U && riscv_rs1(word) == 10U &&
+        riscv_i_imm(word) == 4) {
+      saw_direct_global_load = true;
+    }
+  }
+  if (!saw_direct_global_store || !saw_direct_global_load) {
+    return fail("expected scalar local memory to emit direct-global sw/lw with selected offset");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      !global_symbol->section.has_value() ||
+      global_symbol->size_bytes != 8) {
+    return fail("expected direct-global local memory target to remain a defined object");
+  }
+  if (module.relocations.size() != 4 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module.relocations[0].symbol != global_symbol->id ||
+      module.relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module.relocations[2].type != R_RISCV_PCREL_HI20 ||
+      module.relocations[2].symbol != global_symbol->id ||
+      module.relocations[3].type != R_RISCV_PCREL_LO12_I) {
+    return fail("expected scalar direct-global local memory relocation pairs");
+  }
+  return 0;
+}
+
+int expect_direct_global_scalar_local_memory_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
+}
+
+int rejects_prepared_direct_global_scalar_local_memory_fail_closed_shapes() {
+  auto prepared = make_prepared_direct_global_scalar_local_memory_module(false);
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0].accesses[0].address.symbol_name = std::nullopt;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0].accesses[0].address.can_use_base_plus_offset =
+      false;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0].accesses[0].address_space =
+      bir::AddressSpace::Tls;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0].accesses[0].is_volatile = true;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .global_address_materialization_policy =
+      bir::GlobalAddressMaterializationPolicy::Unspecified;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .object_extent
+      .size_known = false;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .requested_range = bir::MemoryByteRange{};
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .layout_authority = bir::MemoryLayoutAuthorityKind::ByteStorageAggregate;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0].accesses[0].address.byte_offset = 4096;
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .object_extent
+      .size_bytes = 8192;
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .requested_range = bir::make_memory_byte_range(4096, 4);
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  prepared.addressing.functions[0].accesses[0].address.base_kind =
+      prepare::PreparedAddressBaseKind::StringConstant;
+  if (expect_direct_global_scalar_local_memory_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_scalar_local_memory_module();
+  auto* store =
+      std::get_if<bir::StoreLocalInst>(&prepared.module.functions[0].blocks[0].insts[0]);
+  if (store == nullptr) {
+    return fail("expected mutable direct-global local store fixture");
+  }
+  store->value = bir::Value::immediate_f128_bits(0, 0);
+  prepared.addressing.functions[0].accesses[0].address.size_bytes = 16;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int builds_prepared_i16_local_store_object() {
@@ -28411,6 +28712,8 @@ int main() {
   status |= emits_prepared_global_integer_aggregate_lane_frame_slot_flow();
   status |= rejects_prepared_global_frame_slot_consumer_fail_closed_shapes();
   status |= rejects_raw_load_local_global_address_lane_without_prepared_access();
+  status |= builds_prepared_direct_global_scalar_local_memory_object();
+  status |= rejects_prepared_direct_global_scalar_local_memory_fail_closed_shapes();
   status |= builds_prepared_i16_local_store_object();
   status |= builds_prepared_fpr_fpext_object();
   status |= builds_prepared_fpr_fptrunc_object();

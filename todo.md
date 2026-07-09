@@ -1,63 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/631_direct_global_symbol_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish Or Verify Prepared Direct-Global Facts
+Current Step ID: 4
+Current Step Title: Add Narrow RV64 Direct-Global Consumer Admission
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added focused prepared-layer coverage in
-`tests/backend/bir/backend_prepare_stack_layout_test.cpp` for explicit scalar
-`LoadLocalInst` and `StoreLocalInst` direct `GlobalSymbol` local-memory
-carriers. The fixture now proves an 8-byte `g.scalar.i64` carrier preserves
-result/stored-value metadata, default address space, non-volatile access state,
-`PreparedAddressBaseKind::GlobalSymbol`, link-name symbol identity, direct
-materialization policy, offset/size/alignment `0/8/8`,
-`can_use_base_plus_offset=true`, global provenance identity, complete known
-extent, complete requested range, `ScalarLayout`, `ProvenInBounds`, and
-`prepared_global_symbol_memory_has_publication_authority(...)` for both load
-and store carriers.
+Step 4 added narrow RV64 object-emission admission for scalar prepared
+`LoadLocalInst` and `StoreLocalInst` local-memory rows whose selected address
+carrier is `PreparedAddressBaseKind::GlobalSymbol`. The encoded fragment path
+now emits PC-relative direct-global address materialization plus 1/2/4/8-byte
+GPR load/store instructions only when the selected prepared access is default
+address space, non-volatile, direct materialization policy, scalar layout
+authority, publication-authorized, width-matched, alignment no larger than
+width, symbol-identified, base-plus-offset capable, and signed-12-bit offset
+encodable.
 
-Focused fail-closed prepared authority coverage now includes missing symbol
-identity, missing base-plus-offset, incomplete extent, missing requested range,
-and wrong layout authority using the same local scalar carrier. Existing
-prepared-layer coverage still covers raw/no-id structured global spelling
-rejection, out-of-range and missing-extent scalar globals, aggregate lane
-authority rejection, and TLS/extern/missing-extent array rejection. Volatile,
-non-default address space, and unsupported addressing-policy facts are
-represented as prepared access/materialization fields rather than part of the
-publication-authority predicate, so Step 4 must gate those fields explicitly at
-the RV64 consumer boundary.
+`object_emission.cpp` now admits the same fact shape before rejecting local
+memory as unsupported, while preserving the existing raw `LoadLocalInst`
+global-address diagnostic when no prepared direct-global facts are present.
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` adds a direct-global
+scalar local-memory fixture proving relocation-backed `sw`/`lw` emission and
+fail-closed coverage for missing prepared access, missing symbol identity,
+missing base-plus-offset, non-default address space, volatile access,
+unsupported addressing policy, incomplete extent, missing range, wrong layout
+authority, large/non-encodable offset, wrong base kind, and unsupported width.
 
 ## Suggested Next
 
-Step 4 consumer packet: add narrow RV64 admission and emission for scalar
-direct-global local memory. Consume only prepared carriers with
-`access != nullptr`, `address_space=Default`, `!is_volatile`,
-`address.base_kind=PreparedAddressBaseKind::GlobalSymbol`,
-`prepared_global_symbol_memory_has_publication_authority(access->address)`,
-direct materialization policy, supported 1/2/4/8-byte width, alignment not
-larger than width, and an encodable direct-global address+offset sequence.
-Include fail-closed RV64-side coverage for missing symbol identity, missing
-base-plus-offset, non-default address space, volatile access, unsupported
-addressing policy, incomplete extent/range, wrong layout authority, unsupported
-width, and large/non-encodable offsets.
+Step 5 evidence packet: re-run the focused direct global-symbol local-memory
+row probe/allowlist from Step 1 and classify the remaining rows after the RV64
+consumer admission. Record whether `src/pr46309.c` or adjacent direct
+global-symbol local-memory rows moved past `unsupported_local_memory_access`,
+whether any rows still fail due to direct-global policy gaps, and which
+residual rows belong to out-of-scope owners.
 
 ## Watchouts
 
-The prepared predicate does not decide volatile, address-space, addressing
-policy, width, or target encodability; Step 4 owns those RV64 gates. Keep the
-consumer packet limited to direct scalar global-symbol local memory. Do not
-admit aggregate byte-storage rows, large offsets without an explicit supported
-sequence, string constants, aggregate homes, move-bundle rows, runtime
-mismatches, or unsupported-width cases. Do not infer authority from final symbol
-spelling or assembly.
+The Step 4 consumer deliberately requires `ScalarLayout`; aggregate lane global
+memory remains on the existing global-memory path and byte-storage aggregate
+local-memory rows remain rejected. Large direct-global offsets still fail
+closed unless a future packet adds an explicit supported materialization
+sequence. The next packet should not widen this admission to string constants,
+aggregate homes, move bundles, runtime mismatch rows, or prepared global
+value-location rows owned by idea 621.
 
 ## Proof
 
 Ran exactly:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$' > test_after.log 2>&1`
 
 Result: passed. `test_after.log` is the preserved proof log.

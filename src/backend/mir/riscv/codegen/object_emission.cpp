@@ -12120,6 +12120,29 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
               : std::string_view{};
       return !label.empty();
     };
+    const auto scalar_direct_global_local_access_is_supported = [&]() {
+      if (access == nullptr ||
+          access->address_space != bir::AddressSpace::Default ||
+          access->is_volatile ||
+          access->address.base_kind !=
+              prepare::PreparedAddressBaseKind::GlobalSymbol ||
+          access->address.global_address_materialization_policy !=
+              bir::GlobalAddressMaterializationPolicy::Direct ||
+          access->address.size_bytes != *size_bytes ||
+          access->address.align_bytes > *size_bytes ||
+          access->address.provenance.layout_authority !=
+              bir::MemoryLayoutAuthorityKind::ScalarLayout ||
+          !fits_signed_12_bit_immediate(access->address.byte_offset) ||
+          !prepare::prepared_global_symbol_memory_has_publication_authority(
+              access->address)) {
+        return false;
+      }
+      const std::string_view label =
+          access->address.symbol_name.has_value()
+              ? names.link_names.spelling(*access->address.symbol_name)
+              : std::string_view{};
+      return !label.empty();
+    };
     if (!prepared_frame_slot_absolute_byte_offset(stack_layout,
                                                   access,
                                                   stack_frame_bytes,
@@ -12139,6 +12162,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                       stack_frame_bytes,
                                                       *size_bytes)
              .has_value() &&
+        !scalar_direct_global_local_access_is_supported() &&
         !string_constant_local_load_is_supported()) {
       return std::string{
           "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
@@ -12166,20 +12190,23 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
         size_bytes, access, rv64_floating_type(store->value.type));
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
+    const auto* access = prepared_memory_access_for_local_instruction(names,
+                                                                     &lookups,
+                                                                     prepared_block_label,
+                                                                     instruction_index,
+                                                                     *load);
+    const auto diagnostic = local_memory_diagnostic(
+        rv64_local_memory_size_for_type(load->result.type),
+        access,
+        rv64_floating_type(load->result.type),
+        load->result.type == bir::TypeKind::Ptr);
     if (load->address.has_value() &&
-        load->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol) {
+        load->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol &&
+        diagnostic.has_value()) {
       return std::string{
           "unsupported_global_data: RV64 object route requires prepared global-symbol memory access facts for LoadLocalInst global-address lanes"};
     }
-    return local_memory_diagnostic(
-        rv64_local_memory_size_for_type(load->result.type),
-        prepared_memory_access_for_local_instruction(names,
-                                                     &lookups,
-                                                     prepared_block_label,
-                                                     instruction_index,
-                                                     *load),
-        rv64_floating_type(load->result.type),
-        load->result.type == bir::TypeKind::Ptr);
+    return diagnostic;
   }
   if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
     const auto access = prepared_memory_access_for_instruction(&lookups,
