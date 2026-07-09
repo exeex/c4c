@@ -4,6 +4,7 @@ Status: Open
 Type: Implementation
 Parent: `ideas/closed/638_rv64_string_label_pointer_runtime_object_correctness.md`
 Related:
+- `ideas/closed/656_20000722_local_memory_access_object_route.md`
 - `ideas/closed/638_rv64_string_label_pointer_runtime_object_correctness.md`
 - `ideas/closed/630_string_constant_local_memory_policy.md`
 - `ideas/closed/618_runtime_mismatch_ownership_investigation.md`
@@ -14,12 +15,14 @@ source selection as `local_frame_address_materialization`.
 Proof Surface: `src/20000722-1.c` and a narrow backend assertion for
 `arg.source_selection=local_frame_address_materialization`
 
-Lifecycle Note: Parked after focused Step 3 coverage proved the call-argument
-consumer already emits the selected local frame-slot address in the RV64 text
-route. Fresh representative object-route evidence no longer reaches the stale
-`mv a0,s2` disassembly; it stops earlier at `unsupported_local_memory_access`.
-That object-route blocker is split to
-`ideas/open/656_20000722_local_memory_access_object_route.md`.
+Lifecycle Note: Reactivated after
+`ideas/closed/656_20000722_local_memory_access_object_route.md` repaired the
+earlier `unsupported_local_memory_access` blocker. The representative
+`src/20000722-1.c` object route now emits an object, and a fresh asm snapshot
+again reaches call-argument setup with a stale `mv a0, s1` copy. Focused
+text-route coverage for `arg.source_selection=local_frame_address_materialization`
+remains green, so the next work is to classify and repair the representative
+call-argument lowering mismatch without reopening local-memory policy.
 
 ## Goal
 
@@ -38,10 +41,10 @@ the local frame-slot address for `%lv._clit_` and record
 
 Fresh focused coverage now proves the RV64 text-route call-argument consumer
 sets up the ABI argument with a frame-slot address calculation rather than a
-stale register-home copy. The representative object route does not currently
-reach disassembly; it fails earlier with `unsupported_local_memory_access`.
-That earlier blocker is a separate lifecycle owner, not Step 4 implementation
-work for this call-argument consumer.
+stale register-home copy. The representative object route previously failed
+earlier with `unsupported_local_memory_access`; idea 656 repaired that blocker.
+The representative row now reaches call-argument setup again, where fresh asm
+evidence still shows a stale `mv a0, s1` copy.
 
 ## In Scope
 
@@ -54,9 +57,8 @@ work for this call-argument consumer.
 - Use `src/20000722-1.c` as the representative runtime/object proof surface.
 - Preserve fail-closed behavior when the prepared call plan lacks an explicit
   selected frame-slot address source.
-- Reactivate this idea only if the split object-route local-memory blocker
-  advances far enough to expose a renewed call-argument materialization
-  mismatch.
+- Continue this reactivated route only while the renewed representative owner
+  is call-argument frame-slot address materialization.
 
 ## Out Of Scope
 

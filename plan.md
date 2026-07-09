@@ -1,161 +1,187 @@
-# 20000722 Local Memory Access Object Route Runbook
+# RV64 Call-Argument Frame-Slot Address Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/656_20000722_local_memory_access_object_route.md
-Supersedes: parked active runbook for
-`ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md`
+Source Idea: ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md
+Reactivated after: ideas/closed/656_20000722_local_memory_access_object_route.md
 
 ## Purpose
 
-Own the fresh `src/20000722-1.c` RV64 object-route
-`unsupported_local_memory_access` blocker that prevents representative proof for
-idea 648.
+Repair the renewed RV64 representative call-argument lowering mismatch for a
+prepared call argument whose selected source is a local frame-slot address
+materialization.
 
 ## Goal
 
-Classify and repair, or split again, the first local-memory access owner that
-stops the representative object route before call-argument disassembly.
+Classify why `src/20000722-1.c` still emits a stale register-home argument copy
+after the local-memory object-route blocker was fixed, then repair only the
+semantic call-argument owner if the prepared call plan selects a local
+frame-slot address.
 
 ## Core Rule
 
-Do not use this route to change call-argument materialization. Idea 648 focused
-coverage already proves the RV64 text-route consumer for
-`arg.source_selection=local_frame_address_materialization`; this runbook owns
-only the earlier object-route local-memory blocker.
+RV64 may use the frame-slot address path only when the prepared call plan
+explicitly selects `local_frame_address_materialization`. Do not infer this
+from source spelling, stack offsets, final assembly, testcase identity, or
+diagnostic text.
 
 ## Read First
 
-- `ideas/open/656_20000722_local_memory_access_object_route.md`
 - `ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md`
+- `ideas/closed/656_20000722_local_memory_access_object_route.md`
 - `ideas/closed/638_rv64_string_label_pointer_runtime_object_correctness.md`
 - `ideas/closed/630_string_constant_local_memory_policy.md`
+- `ideas/closed/618_runtime_mismatch_ownership_investigation.md`
 
 ## Current Scope
 
 - Representative integration surface: `src/20000722-1.c`.
-- Fresh object-route diagnostics stop at `unsupported_local_memory_access`
-  before object emission/disassembly.
-- Focused idea 648 tests already pass for text-route call-argument
-  frame-slot address materialization.
+- The earlier object-route `unsupported_local_memory_access` blocker is closed
+  under idea 656.
+- Fresh post-656 object-route proof emits an object for `src/20000722-1.c`.
+- Fresh post-656 asm evidence reaches call-argument setup and still shows
+  `mv a0, s1`.
+- Existing focused coverage proves a narrow text-route
+  `arg.source_selection=local_frame_address_materialization` case emits
+  `addi a0, sp, ...` and forbids stale `mv a0, s1`.
 
 ## Non-Goals
 
-- Do not edit RV64 call-argument materialization for idea 648.
-- Do not reopen broad string-constant local-memory admission or
+- Do not reopen string-constant local-memory admission or broaden
   `StringConstantLabelPointer` policy.
-- Do not special-case `src/20000722-1.c`, `%lv._clit_`, `foo`, `s2`, or `a0`.
+- Do not change the idea 656 local-memory route except through a separate
+  lifecycle decision.
+- Do not change generic runtime support, branch/control-flow lowering, stack
+  layout, or ABI destination-register convention.
+- Do not special-case `src/20000722-1.c`, `%lv._clit_`, `foo`, `bar`, `s1`,
+  `s2`, or `a0`.
 - Do not edit expectations, unsupported markers, allowlists, timeouts,
   runtime-comparison policy, or pass/fail accounting as progress.
 
 ## Working Model
 
-The representative object route has an earlier local-memory access legality
-blocker than the call-argument setup originally assumed by idea 648. The first
-task is to name that blocker precisely. Only after the rejecting producer or
-consumer is understood should an implementation packet be selected.
+The local-memory blocker no longer prevents representative object emission.
+The renewed failure is now back at the call-argument boundary, but the focused
+text-route proof and the representative row may be exercising different
+prepared facts or lowering paths. First refresh the representative prepared
+call evidence after idea 656, then choose an implementation packet only if the
+semantic source selection is explicit and the stale copy is produced by the
+RV64 call-argument consumer.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Start with fresh focused diagnostics for `src/20000722-1.c`; do not rely on
-  the historical `mv a0,s2` disassembly as current evidence.
-- Add focused coverage before changing object-route local-memory behavior.
-- If the first owner is broad local-memory policy, create another split instead
-  of absorbing that family here.
-- If this route advances back to a call-argument mismatch, reactivate or hand
-  back to idea 648 rather than fixing it here.
+- Start with refreshed post-656 diagnostics for `src/20000722-1.c`; do not
+  rely on pre-split `mv a0, s2` evidence.
+- Compare the representative prepared call fact against the focused green test
+  before editing lowering code.
+- Preserve ordinary register-to-register GPR call-argument lowering when there
+  is no explicit `local_frame_address_materialization` source selection.
+- If the renewed row exposes a distinct owner outside call-argument
+  materialization, request lifecycle split or park instead of expanding this
+  runbook.
 
 ## Steps
 
-### Step 1: Refresh The Object-Route Local-Memory Evidence
+### Step 1: Refresh Post-656 Representative Call Evidence
 
-Goal: Identify the exact current `unsupported_local_memory_access` owner for
-`src/20000722-1.c`.
-
-Actions:
-
-- Run focused prepared-BIR, BIR, RV64 object-route, and any available backend
-  diagnostic dumps for `src/20000722-1.c`.
-- Record the rejected memory value, access kind, owning block/instruction, and
-  diagnostic producer in `todo.md`.
-- Confirm whether the failure occurs before any call-argument emission decision
-  is reachable.
-
-Completion check:
-
-- `todo.md` names the first unsupported local-memory access and the narrow
-  lowering or object-emission boundary to inspect next.
-
-### Step 2: Locate The Local-Memory Rejection Boundary
-
-Goal: Find the smallest RV64 object-route branch or helper that rejects the
-local-memory access.
+Goal: Confirm the current prepared call fact and emitted RV64 argument setup
+for `src/20000722-1.c` after idea 656.
 
 Actions:
 
-- Trace the diagnostic from object emission back to the prepared/BIR fact it
-  consumes.
-- Determine whether the access is an already-supported policy hole, a missing
-  materialization, or a deliberate fail-closed rejection.
-- Identify the narrow focused test that would fail on the current blocker.
+- Run focused prepared-BIR, prepared call-plan or prepared move diagnostics,
+  RV64 asm, and RV64 object diagnostics for `src/20000722-1.c`.
+- Record the call site, selected source value, frame slot if present, ABI
+  destination register, and stale emitted copy shape in `todo.md`.
+- Compare the representative prepared fact with the focused green
+  `riscv64_call_arg_local_frame_address_materialization` test.
+- Confirm whether the first current owner is RV64 consumption of
+  `arg.source_selection=local_frame_address_materialization` or a different
+  upstream/downstream owner.
 
 Completion check:
 
-- `todo.md` records the owned implementation surface, focused test target, and
-  preserved fail-closed behavior.
+- `todo.md` names the exact current prepared fact shape, emitted stale copy,
+  and the next boundary to inspect, with no implementation packet selected
+  from stale pre-656 evidence.
 
-### Step 3: Add Focused Local-Memory Route Coverage
+### Step 2: Locate The Representative Call-Argument Boundary
 
-Goal: Make the first blocker observable independently from the full GCC torture
-row.
+Goal: Find the narrow branch that handles the representative argument setup.
 
 Actions:
 
-- Add or update focused backend coverage for the rejected local-memory access
-  shape.
-- Assert the current diagnostic if the correct behavior is fail-closed, or
-  assert the desired object-route behavior if a narrow repair is justified.
-- Keep the coverage independent of `src/20000722-1.c` identifiers when
-  possible.
+- Trace how the representative prepared call source selection reaches
+  `src/backend/mir/riscv/codegen/prepared_call_emit.cpp` and
+  `src/backend/mir/riscv/codegen/object_emission.cpp`.
+- Determine why the focused green route emits `addi a0, sp, ...` while the
+  representative row still emits a stale `mv a0, s1`.
+- Identify the smallest positive test or existing test update that would fail
+  on the representative stale-copy behavior.
+- Identify the fail-closed behavior for missing, ambiguous, or non-frame-slot
+  argument sources.
 
 Completion check:
 
-- Focused coverage proves the first local-memory blocker and would catch a
-  regression to guessing, broad admission, or source-file special casing.
+- `todo.md` records the owned implementation surface, focused or
+  representative test target, and negative behavior that must be preserved.
 
-### Step 4: Implement Or Split The Narrow Owner
+### Step 3: Implement Or Split The Narrow Call-Argument Owner
 
-Goal: Repair the local-memory object-route blocker only when the focused owner
-is narrow and legitimate.
+Goal: Repair only a proven call-argument materialization owner, or split if the
+owner is not this idea.
 
 Actions:
 
-- If Step 2 proves a narrow supported access is missing, implement that support
-  and preserve negative/fail-closed cases.
-- If Step 2 proves the owner is broad policy, create a split idea and park this
-  runbook instead of broadening it.
-- Do not change call-argument lowering in this step.
+- If the representative row has explicit
+  `arg.source_selection=local_frame_address_materialization`, consume that fact
+  in the RV64 call-argument path and emit the selected frame-slot address into
+  the ABI argument register.
+- Preserve existing register-to-register lowering for ordinary register-backed
+  arguments.
+- Keep missing, ambiguous, or non-frame-slot source selections rejected rather
+  than guessed from stack offsets or source syntax.
+- If the stale copy comes from a distinct owner outside call-argument
+  materialization, request lifecycle split or park instead of fixing it here.
 
 Completion check:
 
-- Focused local-memory coverage passes after a fresh build, or lifecycle state
-  records the split owner and parks this route.
+- Focused positive and negative backend proof passes after a fresh build, or
+  lifecycle state records the split owner and parks this route.
 
-### Step 5: Reprobe The Representative Row
+### Step 4: Prove Representative Integration
 
-Goal: Determine what `src/20000722-1.c` exposes after the local-memory blocker
-is handled.
+Goal: Show that `src/20000722-1.c` advances through the stale call-argument
+copy failure mode.
 
 Actions:
 
-- Rerun the focused local-memory proof and the RV64 object route for
-  `src/20000722-1.c`.
-- If object/disassembly reaches call-argument setup and shows a renewed
-  materialization mismatch, hand back to idea 648.
-- If the row advances to a distinct downstream owner, record that owner in
-  `todo.md` and request lifecycle split or park.
+- Rerun the focused call-argument assertion and the RV64 GCC C torture backend
+  path for `src/20000722-1.c`.
+- Capture object/disassembly evidence showing the call receives the selected
+  local frame-slot address.
+- Record any remaining downstream owner in `todo.md` if the row advances but
+  does not fully pass.
 
 Completion check:
 
-- The lifecycle state identifies whether this idea can close, whether idea 648
-  should reactivate, or whether another distinct owner should be split.
+- `src/20000722-1.c` no longer fails because the call argument is copied from
+  a stale register home, and proof logs identify the exact validation commands.
+
+### Step 5: Run Broader Validation And Close Or Park
+
+Goal: Decide whether the source idea is complete after the focused repair.
+
+Actions:
+
+- Run the supervisor-selected broader validation for the affected backend
+  bucket after focused proof is green.
+- If the source idea acceptance criteria are satisfied, request plan-owner
+  close with regression-guard proof.
+- If a distinct downstream owner remains, record it in `todo.md` and request a
+  lifecycle split or park decision rather than expanding this runbook.
+
+Completion check:
+
+- Lifecycle state either closes the source idea with passing guard proof or
+  records a precise blocked or follow-up owner without broadening this idea.

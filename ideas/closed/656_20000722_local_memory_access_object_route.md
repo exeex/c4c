@@ -1,6 +1,6 @@
 # 20000722 Local Memory Access Object Route
 
-Status: Open
+Status: Complete
 Type: Investigation/Implementation
 Parent: `ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md`
 Related:
@@ -71,6 +71,18 @@ local-memory policy or claim representative proof from stale evidence.
   rather than fixed through this local-memory route.
 - No expectation, unsupported-marker, allowlist, timeout/accounting, or
   runtime-comparison change is claimed as capability progress.
+
+## Completion Note
+
+Closed after Step 4 repaired the narrow RV64 object-route local-memory blocker
+for prepared compound-literal string-label pointer frame-slot stores. Focused
+local-memory coverage passes, and the representative `src/20000722-1.c` object
+route now emits an object instead of stopping at `unsupported_local_memory_access`.
+
+The post-repair representative row reaches call-argument setup again. A fresh
+asm snapshot still contains the stale `mv a0, s1` argument copy, so the
+remaining owner is handed back to
+`ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md`.
 
 ## Reviewer Reject Signals
 
