@@ -1948,7 +1948,9 @@ bool prepared_before_instruction_move_bundle_requires_suppression_authority(
 
 bool prepared_move_has_matching_stack_destination_register_fan_in_authority(
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
-    const c4c::backend::prepare::PreparedMoveResolution& move);
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    const c4c::backend::prepare::PreparedStackDestinationFanInAuthorityFact*
+        authority);
 
 std::optional<RiscvEncodedFragment>
 fragment_for_predecessor_select_publication_immediate_to_gpr(
@@ -2473,6 +2475,8 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
     const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
     std::size_t stack_frame_bytes,
     const c4c::backend::prepare::PreparedParallelCopyBundle* parallel_copy_bundle,
+    const c4c::backend::prepare::PreparedStackDestinationFanInAuthorityFact*
+        stack_destination_fan_in_authority,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     const c4c::backend::prepare::PreparedValueHome& source_home,
@@ -2795,6 +2799,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     std::size_t stack_frame_bytes,
     prepare::PreparedObjectTraversalEventKind event_kind,
     const c4c::backend::prepare::PreparedParallelCopyBundle* parallel_copy_bundle,
+    const c4c::backend::prepare::PreparedStackDestinationFanInAuthorityFact*
+        stack_destination_fan_in_authority,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
   if (prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
           control_flow,
@@ -2892,7 +2898,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
         prepare::PreparedMoveStorageKind::StackSlot) {
       const bool stack_destination_register_fan_in_authorized =
           prepared_move_has_matching_stack_destination_register_fan_in_authority(
-              move_bundle, move);
+              move_bundle, move, stack_destination_fan_in_authority);
       if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
           (move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None &&
            move_bundle.authority_kind !=
@@ -3015,6 +3021,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
                                                               storage_plan,
                                                               stack_frame_bytes,
                                                               parallel_copy_bundle,
+                                                              stack_destination_fan_in_authority,
                                                               move_bundle,
                                                               move,
                                                               *source_home,
@@ -3170,6 +3177,8 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
     const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
     std::size_t stack_frame_bytes,
     const c4c::backend::prepare::PreparedParallelCopyBundle* parallel_copy_bundle,
+    const c4c::backend::prepare::PreparedStackDestinationFanInAuthorityFact*
+        stack_destination_fan_in_authority,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     const c4c::backend::prepare::PreparedValueHome& source_home,
@@ -3203,7 +3212,7 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
       move.authority_kind == prepare::PreparedMoveAuthorityKind::None;
   const bool stack_destination_register_fan_in_authority =
       prepared_move_has_matching_stack_destination_register_fan_in_authority(
-          move_bundle, move);
+          move_bundle, move, stack_destination_fan_in_authority);
   if (!explicit_widening_authority && !plain_stack_copy_authority &&
       !stack_destination_register_fan_in_authority) {
     return std::nullopt;
@@ -6792,11 +6801,52 @@ bool prepared_before_instruction_move_bundle_requires_suppression_authority(
 
 bool prepared_move_has_matching_stack_destination_register_fan_in_authority(
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
-    const c4c::backend::prepare::PreparedMoveResolution& move) {
-  return move_bundle.authority_kind ==
-             prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn &&
-         move.authority_kind ==
-             prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    const c4c::backend::prepare::PreparedStackDestinationFanInAuthorityFact*
+        authority) {
+  if (move_bundle.authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      move.authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      authority == nullptr) {
+    return false;
+  }
+  if (authority->authority_kind !=
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn ||
+      authority->owner != "prepared_stack_destination_register_fan_in" ||
+      authority->semantics != prepare::PreparedStackDestinationFanInSemantics::
+                                  SelectMaterializationPreservedStackFallback ||
+      authority->destination_value_id != move.to_value_id ||
+      authority->destination_home_kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      authority->source_homes.size() != move_bundle.moves.size()) {
+    return false;
+  }
+
+  std::size_t register_source_count = 0;
+  bool has_stack_source = false;
+  bool matched_move = false;
+  for (std::size_t index = 0; index < move_bundle.moves.size(); ++index) {
+    const auto& bundle_move = move_bundle.moves[index];
+    const auto& source = authority->source_homes[index];
+    if (source.candidate_order != index ||
+        source.source_value_id != bundle_move.from_value_id ||
+        bundle_move.to_value_id != authority->destination_value_id) {
+      return false;
+    }
+    if (source.source_home_kind == prepare::PreparedValueHomeKind::Register) {
+      ++register_source_count;
+    } else if (source.source_home_kind ==
+               prepare::PreparedValueHomeKind::StackSlot) {
+      has_stack_source = true;
+    } else {
+      return false;
+    }
+    if (&bundle_move == &move) {
+      matched_move = true;
+    }
+  }
+  return matched_move && register_source_count >= 2 && has_stack_source;
 }
 
 std::optional<std::string>
@@ -7017,6 +7067,81 @@ std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
   }
 
   std::ostringstream out;
+  const auto* move_bundle = classification.move_bundle;
+  if (move_bundle != nullptr &&
+      move_bundle->authority_kind == prepare::PreparedMoveAuthorityKind::None &&
+      rv64_prepared_move_bundle_has_register_fan_in_stack_destination(
+          lookups, *move_bundle)) {
+    out << "unsupported_prepared_move_bundle_classification: "
+           "stack-destination register fan-in requires explicit prepared "
+           "stack_destination_fan_in_authority fact";
+    out << " event_kind="
+        << prepare::prepared_object_traversal_event_kind_name(event.kind);
+    out << " function="
+        << rv64_prepared_function_name(names, control_flow.function_name);
+    out << " block_index=" << event.block_index;
+    if (event.prepared_block != nullptr) {
+      out << " block_label="
+          << rv64_prepared_block_label(names, event.prepared_block->block_label);
+    }
+    out << " instruction_index=" << event.instruction_index;
+    out << " phase=" << prepare::prepared_move_phase_name(move_bundle->phase);
+    out << " authority="
+        << prepare::prepared_move_authority_kind_name(move_bundle->authority_kind);
+    out << " move_count=" << move_bundle->moves.size();
+    out << " diagnostic_owner=rv64_prepared_move_bundle_consumer";
+    out << " fragment_status=missing_stack_destination_fan_in_authority_fact";
+    return out.str();
+  }
+  if (move_bundle != nullptr &&
+      move_bundle->authority_kind ==
+          prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn &&
+      classification.status ==
+          prepare::PreparedObjectMoveBundleConsumerStatus::Available) {
+    const bool has_explicit_fact =
+        classification.stack_destination_fan_in_authority.has_value();
+    const auto* fact =
+        has_explicit_fact ? &*classification.stack_destination_fan_in_authority
+                          : nullptr;
+    const bool all_moves_authorized =
+        has_explicit_fact &&
+        std::all_of(move_bundle->moves.begin(),
+                    move_bundle->moves.end(),
+                    [&](const prepare::PreparedMoveResolution& move) {
+                      return prepared_move_has_matching_stack_destination_register_fan_in_authority(
+                          *move_bundle, move, fact);
+                    });
+    if (!all_moves_authorized) {
+      out << "unsupported_prepared_move_bundle_classification: "
+             "stack-destination register fan-in authority requires explicit "
+             "prepared stack_destination_fan_in_authority fact";
+      out << " event_kind="
+          << prepare::prepared_object_traversal_event_kind_name(event.kind);
+      out << " function="
+          << rv64_prepared_function_name(names, control_flow.function_name);
+      out << " block_index=" << event.block_index;
+      if (event.prepared_block != nullptr) {
+        out << " block_label="
+            << rv64_prepared_block_label(names,
+                                         event.prepared_block->block_label);
+      }
+      out << " instruction_index=" << event.instruction_index;
+      out << " phase=" << prepare::prepared_move_phase_name(move_bundle->phase);
+      out << " authority="
+          << prepare::prepared_move_authority_kind_name(
+                 move_bundle->authority_kind);
+      out << " move_count=" << move_bundle->moves.size();
+      out << " diagnostic_owner=rv64_prepared_move_bundle_consumer";
+      out << " fragment_status="
+          << (has_explicit_fact
+                  ? "malformed_stack_destination_fan_in_authority_fact"
+                  : "missing_stack_destination_fan_in_authority_fact");
+      return out.str();
+    }
+    out.str("");
+    out.clear();
+  }
+
   out << "unsupported_move_bundle_target_shape: prepared move bundle requires "
          "unsupported RV64 moves";
   out << " event_kind="
@@ -7030,7 +7155,6 @@ std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
   }
   out << " instruction_index=" << event.instruction_index;
 
-  const auto* move_bundle = classification.move_bundle;
   if (move_bundle == nullptr) {
     out << " fragment_status=missing_move_bundle";
     return out.str();
@@ -11909,6 +12033,11 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 *stack_frame_bytes,
                                                 event.kind,
                                                 classification.parallel_copy_bundle,
+                                                classification
+                                                    .stack_destination_fan_in_authority
+                                                    ? &*classification
+                                                           .stack_destination_fan_in_authority
+                                                    : nullptr,
                                                 *classification.move_bundle);
           if (!fragment.has_value()) {
             return make_rv64_prepared_function_rejection(

@@ -8,42 +8,43 @@ Current Step Title: Consume Authority In RV64 Prepared Move Bundles
 
 ## Just Finished
 
-Step 2 publication slice completed for the
+Step 3 RV64 consumption slice completed for the
 `stack_destination_register_fan_in` authority family.
 
-Added a structured prepared move-bundle destination fan-in fact that is
-published only when the bundle and all moves already carry
-`PreparedMoveAuthorityKind::StackDestinationRegisterFanIn`. The fact exposes
-authority kind, prepared owner `prepared_stack_destination_register_fan_in`,
-select-materialization preserved-stack-fallback semantics, destination value,
-destination stack home/slot/offset, all source homes, and candidate order. The
-focused backend consumer contract now asserts that a legal authorized
-select-materialization stack-destination bundle publishes this fact for two
-register sources plus the preserved stack fallback.
+Threaded the prepared move-bundle consumer classification's explicit
+`stack_destination_fan_in_authority` fact into RV64 prepared move-bundle
+lowering. RV64 now accepts stack-destination register fan-in only when the
+bundle and move carry `StackDestinationRegisterFanIn` and the explicit fact has
+owner `prepared_stack_destination_register_fan_in`, authority kind
+`StackDestinationRegisterFanIn`, select-materialization
+preserved-stack-fallback semantics, the stack destination value/home, and
+source facts whose candidate order matches the move bundle rows. Tag-only
+authority no longer authorizes the RV64 stack-destination path.
 
-Fail-closed behavior is preserved: missing authority still reports
-`ambiguous_non_parallel_multi_source_stack_destination`, unsupported authority
-still reports
-`unsupported_non_parallel_multi_source_stack_destination_authority`, and
-bundle/move disagreement or malformed fan-in facts report
+Focused backend coverage now asserts the legal authorized select-shaped
+stack-destination fan-in emits, missing explicit prepared authority reports
+`missing_stack_destination_fan_in_authority_fact`, unsupported and unknown
+authority remain fail-closed, ambiguous non-parallel fan-in remains rejected,
+and malformed authority without the preserved stack fallback reports
 `mismatched_stack_destination_register_fan_in_move_authority`.
 
 ## Suggested Next
 
-Implement Step 3 RV64 consumption for the published
-`stack_destination_register_fan_in` fact. RV64 should accept only the explicit
-prepared fact shape and should continue to reject missing, malformed,
-unsupported, or ambiguous repeated stack-destination bundles without inferring
-order from move rows.
+Run the next focused coverage or closure packet for this plan: review whether
+the Step 3 RV64 consumer plus Step 2 producer fully covers the source idea's
+supported select-materialization preserved-stack-fallback shape, then either
+close the active runbook or delegate any remaining non-select producer fact as a
+separate packet.
 
 ## Watchouts
 
-This slice did not add RV64 acceptance and did not special-case
-`src/pr71631.c`. The currently published authority family is the legal
-select-materialization stack-destination shape with two or more register
-sources and one preserved stack fallback. Repeated stack destinations inside
-out-of-SSA parallel-copy bundles still need an explicit producer fact or a
-separate authority family before RV64 can consume them.
+This slice does not infer destination ordering from move rows or authority kind
+alone; RV64 consumes the source candidate order from the prepared fact. The
+only admitted family remains the legal select-materialization stack-destination
+shape with two or more register sources and one preserved stack fallback.
+Repeated stack destinations inside out-of-SSA parallel-copy bundles still need
+an explicit producer fact or a separate authority family before RV64 can
+consume them. No `src/pr71631.c` special-case was added.
 
 ## Proof
 
@@ -52,6 +53,3 @@ Ran:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 
 Result: passed. `test_after.log` is preserved as the proof log.
-
-Formatting note: attempted `clang-format -i` on the touched C++ files, but
-`clang-format` is not installed in this environment.

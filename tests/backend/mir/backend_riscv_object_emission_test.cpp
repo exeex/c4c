@@ -17862,14 +17862,36 @@ int publishes_legal_select_stack_destination_register_fan_in_authority() {
       rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
   if (unprepared_result.ok() || unprepared_result.module.has_value() ||
       unprepared_result.diagnostic.find(
-          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+          "unsupported_prepared_move_bundle_classification: "
+          "stack-destination register fan-in requires explicit prepared "
+          "stack_destination_fan_in_authority fact") !=
           0 ||
       unprepared_result.diagnostic.find("authority=none") ==
           std::string::npos ||
       unprepared_result.diagnostic.find(
-          "fragment_status=generic_move_bundle_materialization_failed") ==
+          "fragment_status=missing_stack_destination_fan_in_authority_fact") ==
           std::string::npos) {
     return fail("legal select-shaped stack-destination fan-in should still reject without prepared authority");
+  }
+
+  auto malformed_authority = prepared;
+  auto& malformed_bundle = malformed_authority.value_locations.functions[0]
+                               .move_bundles[0];
+  malformed_bundle.authority_kind =
+      prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+  malformed_bundle.moves.pop_back();
+  for (auto& move : malformed_bundle.moves) {
+    move.authority_kind =
+        prepare::PreparedMoveAuthorityKind::StackDestinationRegisterFanIn;
+  }
+  if (expect_prepared_consumer_rejection_diagnostic(
+          malformed_authority,
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              MismatchedStackDestinationRegisterFanInMoveAuthority,
+          "prepared move-bundle classifier rejected stack-destination "
+          "register fan-in authority because bundle and move facts disagree") !=
+      0) {
+    return fail("stack-destination fan-in authority without preserved stack fallback should reject as malformed");
   }
 
   auto unsupported_producer = prepared;
