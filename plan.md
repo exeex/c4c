@@ -197,3 +197,30 @@ Actions:
 Completion check:
 - `todo.md` contains row-by-row classification, proof results, and a clear
   close/split/continue recommendation for the supervisor.
+
+## Step 6: Trace String-Constant Extent/Range Authority
+
+Goal: identify why the remaining in-scope string-constant pointer
+materializations are marked `range_verdict=proven_out_of_bounds`.
+
+Actions:
+- Start from the eight Step 5 rows that still stop at
+  `unsupported_local_memory_access` because their prepared
+  string-constant accesses report `range_verdict=proven_out_of_bounds`.
+- Trace the prepared string/data extent and selected access range calculation
+  for the 8-byte base-plus-offset pointer materializations in those rows.
+- Identify the first producer or carrier boundary that loses, truncates,
+  mis-sizes, or refuses the string extent/range authority needed by the RV64
+  consumer.
+- Distinguish a real string-constant authority bug from secondary
+  out-of-scope owners already observed in Step 5: direct-global,
+  aggregate/block-entry stack-home publication, pointer-value byte access,
+  select-carrier publication, and prepared move-bundle fan-in.
+- Record the smallest next code-changing packet, or a precise split
+  recommendation if the first bad boundary is outside idea 630.
+
+Completion check:
+- `todo.md` names the first bad extent/range authority boundary, the affected
+  rows, the explicit facts that are missing or inconsistent, and the next
+  packet that can repair or split the issue without broadening into
+  out-of-scope owners.

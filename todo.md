@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/630_string_constant_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Reclassify Representative Rows
+Current Step ID: 6
+Current Step Title: Trace String-Constant Extent/Range Authority
 
 # Current Packet
 
@@ -127,10 +127,10 @@ or move-bundle owners in the next packet.
 
 ## Suggested Next
 
-Trace the prepared string-constant extent/range proof for the eight remaining
-`unsupported_local_memory_access` rows and identify the first producer boundary
-that marks their 8-byte string-constant pointer materialization as
-`proven_out_of_bounds`.
+Execute Step 6: trace the prepared string-constant extent/range proof for the
+eight remaining `unsupported_local_memory_access` rows and identify the first
+producer or carrier boundary that marks their 8-byte string-constant pointer
+materialization as `proven_out_of_bounds`.
 
 ## Watchouts
 
