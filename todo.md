@@ -8,107 +8,102 @@ Current Step Title: Trace Stack-Home Fallthrough After Authority Gate
 
 ## Just Finished
 
-Step 5 reran the aggregate stack-home residual probe after the Step 4 RV64
-consumer gate and copied the probed allowlist to
-`build/agent_state/633_step5_aggregate_stack_home.allowlist`.
+Step 6 traced the aggregate stack-home fallthrough after the Step 4 authority
+gate. Evidence is recorded in
+`build/agent_state/633_step6_fallthrough_trace.md`, with source extracts from
+the Step 5 prepared dumps and the current RV64 local-memory consumer helpers.
 
-Result stayed `total=35 passed=3 failed=32`. The refreshed probe did not move
-any whole row past the prior Step 1 classification: `src/20010123-1.c`,
-`src/20030920-1.c`, and `src/pr35800.c` still pass; the same 32 rows still
-fail or mismatch.
+Primary `src/pr38969.c` byval load:
+- Function/block/instruction: `foo`, `entry`, instruction `0`.
+- BIR: `%lv.param.p.x.aggregate.param.copy.0 = bir.load_local float %lv.param.p.x.0, addr %p.x`.
+- Prepared access: `base=pointer_value`, `result=%lv.param.p.x.aggregate.param.copy.0`,
+  `pointer=%p.x`, `offset=0`, `size=4`, `align=4`,
+  `base_plus_offset=yes`, `range_verdict=proven_in_bounds`.
+- Pointer value home: `%p.x` is a stack-slot home at slot `#1`, offset `8`.
+- Stack object: `%p.x` has `source_kind=byval_param`, size `8`, align `4`,
+  address-exposed and permanent home-slot facts.
 
-Fresh evidence written under `build/agent_state/633_step5_*`:
-- `633_step5_aggregate_stack_home.log`: exact focused residual probe output.
-- `633_step5_current_diagnostics.tsv`: current status and first diagnostic for
-  all 35 probed rows.
-- `633_step5_*.prepared.txt` / `.err`: prepared dumps for the Step 1
-  stack-home representatives and additional residual rows that still stop at
-  `unsupported_local_memory_access`.
+`prepared_stack_home_local_memory_has_authority(..., ByvalParam)` would accept
+that selected access with the current facts: the helper requires the pointer
+value stack-slot home, byval object role, complete/proven range, result-only
+access, default nonvolatile pointer-value address, and in-object byte range.
+It does not require `layout_authority=scalar_layout`.
 
-Row classification:
+Primary `src/pr38969.c` sret store:
+- Function/block/instruction: `foo`, `entry`, instruction `5`.
+- BIR: `bir.store_local %lv.param.p.x.0, float foo.ret.sret.copy.0, addr %ret.sret`.
+- Prepared access: `base=pointer_value`, `stored=foo.ret.sret.copy.0`,
+  `pointer=%ret.sret`, `offset=0`, `size=4`, `align=4`,
+  `base_plus_offset=yes`, `range_verdict=proven_in_bounds`.
+- Pointer value home: `%ret.sret` is a stack-slot home at slot `#0`, offset `0`.
+- Stack object: `%ret.sret` has `source_kind=sret_param`, pointer type,
+  address-exposed and permanent home-slot facts.
 
-| Row | Step 5 result | Current owner |
-| --- | --- | --- |
-| `src/20000722-1.c` | fail | Runtime mismatch: object builds and runs to a segmentation fault, not a current local-memory compile rejection. |
-| `src/20010123-1.c` | pass | Already clear. |
-| `src/20010605-2.c` | fail | F128/16-byte prepared local-memory width; outside idea 633. |
-| `src/20011109-2.c` | fail | Prepared move-bundle stack-destination fan-in authority. |
-| `src/20020215-1.c` | fail | In-scope aggregate stack-home local-memory still stops at the generic prepared frame-slot or pointer-value base-plus-offset gate. |
-| `src/20021204-1.c` | fail | Prepared move-bundle non-parallel register fan-in to stack destination. |
-| `src/20030920-1.c` | pass | Already clear. |
-| `src/20040208-1.c` | fail | F128/16-byte prepared local-memory width; outside idea 633. |
-| `src/920429-1.c` | fail | Prepared move-bundle non-parallel register fan-in to stack destination. |
-| `src/921117-1.c` | fail | Mixed byval stack-home plus global aggregate object materialization; first diagnostic remains generic local-memory gate. |
-| `src/930429-1.c` | fail | Prepared move-bundle non-parallel register fan-in to stack destination. |
-| `src/941110-1.c` | fail | Local-memory residual with no byval/sret stack-home representative evidence; split or classify outside idea 633. |
-| `src/950628-1.c` | fail | In-scope sret/aggregate stack-home local-memory still stops at the generic prepared frame-slot or pointer-value base-plus-offset gate. |
-| `src/complex-7.c` | fail | Byval aggregate stack-home with complex/F128-adjacent lanes; still stops at the generic local-memory gate. |
-| `src/ieee/inf-1.c` | fail | F128/16-byte prepared local-memory width; outside idea 633. |
-| `src/ipa-sra-2.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr30185.c` | fail | In-scope byval/sret stack-home local-memory still stops at the generic prepared frame-slot or pointer-value base-plus-offset gate. |
-| `src/pr34415.c` | fail | Prepared move-bundle non-parallel register fan-in to stack destination. |
-| `src/pr35800.c` | pass | Already clear. |
-| `src/pr38969.c` | fail | In-scope byval/sret stack-home local-memory still stops at the generic prepared frame-slot or pointer-value base-plus-offset gate. |
-| `src/pr46309.c` | fail | Pointer/global residual already split from direct global-symbol work; not a clean idea 633 stack-home lane. |
-| `src/pr49073.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr52129.c` | fail | Byval aggregate stack-home residual still stops at the generic local-memory gate. |
-| `src/pr57861.c` | fail | Mixed local/global publication authority and global-object traffic; not a clean idea 633 stack-home lane. |
-| `src/pr58431.c` | fail | Mixed local/global publication authority and global-object traffic; not a clean idea 633 stack-home lane. |
-| `src/pr58984.c` | fail | Mixed stack-home/register and aggregate copy residual; still stops at generic local-memory gate. |
-| `src/pr60017.c` | fail | Mixed global aggregate loads plus sret copy; not solely idea 633 stack-home consumer work. |
-| `src/pr60822.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr66556.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr68185.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr68321.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr70005.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/pr88739.c` | fail | Local-memory residual without a clean Step 1 stack-home authority lane; split or classify outside idea 633. |
-| `src/ptr-arith-1.c` | fail | Prepared move-bundle non-parallel register fan-in to stack destination. |
-| `src/struct-ret-1.c` | fail | Sret/byval aggregate stack-home local-memory still stops at the generic prepared frame-slot or pointer-value base-plus-offset gate. |
+`prepared_stack_home_local_memory_has_authority(..., SretParam)` would accept
+the selected store. The diagnostic path has an sret store precheck, but the
+actual floating store emission branch does not route through
+`prepared_sret_stack_slot_pointer_access(...)`.
 
-Representative prepared evidence:
-- `src/pr38969.c`: prepared dump still has byval and sret objects with
-  pointer-value accesses such as `pointer=%p.x offset=0/4` and sret stores
-  such as `pointer=%ret.sret offset=0/4`, all with `base_plus_offset=yes` and
-  proven ranges, but the full object route still rejects the row.
-- `src/pr30185.c`: prepared dump still exposes byte-sliced byval pointer-value
-  loads from `%p.x` and `%p.y` plus frame-slot stores with proven ranges, but
-  the row still rejects before object emission completes.
-- `src/950628-1.c`: prepared dump exposes sret pointer-value stores from
-  frame-slot aggregate copies, but the row still rejects at the same generic
-  local-memory diagnostic.
+Exact failing boundary:
+- `object_emission.cpp` uses a special `f64_memory` branch in
+  `local_memory_diagnostic` for floating loads/stores. That branch checks only
+  frame-slot, direct pointer-register, and generic pointer stack-home
+  addressing. It never calls the byval/sret stack-home helpers.
+- `fragment_for_prepared_load_local(...)` and
+  `fragment_for_prepared_store_local(...)` take their floating branches before
+  the scalar byval/sret helper routes. Those floating branches fall back to
+  `materialize_prepared_pointer_value_base_offset(...)`, whose generic
+  stack-home path excludes objects with `source_kind=byval_param` or
+  `source_kind=sret_param`.
+
+Cross-checks:
+- `src/pr30185.c` has byval pointer-value loads from `%p.x` and `%p.y` and
+  sret stores to `%ret.sret`, with `base_plus_offset=yes` and proven ranges.
+  Its byte-sliced lanes use sizes such as `1` with object alignment `8`; the
+  current byval/sret helper-local prechecks reject `align_bytes > size_bytes`
+  before authority evaluation.
+- `src/950628-1.c` is sret-only and shows the same shape for stores to
+  `%ret.sret`, including size-1 lanes with alignment `2`. Size-2 lanes match
+  the sret helper shape; size-1 lanes hit the same helper-local alignment gate.
+
+Classification: RV64 consumer-routing issue. The prepared-address shape is
+usable, and the authority predicate is not stale. The remaining miss is in the
+RV64 consumer helpers: floating byval/sret routes bypass the authority helpers,
+and integer byte-sliced lanes reject too early on stronger-than-width alignment.
 
 ## Suggested Next
 
-Step 6 is the current packet. Continue idea 633 with a narrow fallthrough
-trace for the remaining aggregate copy stack-home lane. Start from
-`src/pr38969.c` and cross-check `src/pr30185.c` and `src/950628-1.c`;
-determine why prepared accesses with `base=pointer_value`, byval/sret source
-objects, `base_plus_offset=yes`, complete extent, and
-`range_verdict=proven_in_bounds` still fall through to the generic
-`unsupported_local_memory_access` diagnostic instead of the Step 4
-`prepared_stack_home_local_memory_has_authority(...)` consumer.
-
-The Step 6 packet should record the exact rejecting branch, predicate, helper,
-or representation mismatch and then recommend the smallest non-overfit Step 7
-repair. It should not edit implementation files unless the supervisor
-delegates Step 7 after the trace.
+Step 7 should repair only the RV64 stack-home consumer route:
+- Add F32/F64 byval-load and sret-store routing in
+  `fragment_for_prepared_load_local(...)`,
+  `fragment_for_prepared_store_local(...)`, and the matching diagnostic
+  predicates, gated by the existing
+  `prepared_stack_home_local_memory_has_authority(...)` roles.
+- Relax the byval/sret helper-local `align_bytes > size_bytes` prechecks only
+  after authority proves the stack-home object, selected range, size, and RV64
+  width are valid.
+- Add focused RV64 object-emission coverage for the `pr38969`-shape F32 byval
+  load and sret store plus malformed-authority negatives, with an integer
+  byte-slice cross-check matching `pr30185` / `950628-1`.
 
 ## Watchouts
 
-Idea 633 is not close-ready: the clean byval/sret representative rows did not
-move past the compile-time local-memory gate. This should not be treated as a
-residual-only split yet.
+Idea 633 is not close-ready. The clean byval/sret rows still own a narrow RV64
+consumer-routing repair.
 
-Do not fold F128/16-byte local-memory rows, move-bundle rows, mixed
-local/global publication rows, or the runtime mismatch into the next packet.
-Those are separate owners or out-of-scope buckets.
+Do not repair this by treating all pointer-value stack homes as generic pointer
+homes. The existing generic helper intentionally excludes `byval_param` and
+`sret_param`; Step 7 should keep using explicit stack-home authority.
+
+Keep F128/16-byte local-memory rows, move-bundle rows, mixed local/global rows,
+runtime mismatches, and unrelated aggregate copies out of the Step 7 packet.
 
 ## Proof
 
-Proof command:
-`cmake --build --preset default && ALLOWLIST=build/agent_state/614_step3_residual_refresh/local_memory_candidates.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/633_step5_aggregate_stack_home.log 2>&1`
+Trace-only packet. No build proof was required and no root-level `.log` file
+was created.
 
-Result: build succeeded; focused probe returned nonzero for residual
-classification, `total=35 passed=3 failed=32`.
+Validation command:
+`git diff --check`
 
-No root-level `.log` file was created by this packet.
+Result: passed.
