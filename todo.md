@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/622_repeated_stack_destination_fan_in_order_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish Prepared/Prealloc Destination Authority Facts
+Current Step ID: 3
+Current Step Title: Consume Authority In RV64 Prepared Move Bundles
 
 # Current Packet
 
