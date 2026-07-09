@@ -1285,14 +1285,14 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 local_memory string_constant label_pointer compound direct_extern dump
 )
 
-c4c_add_backend_codegen_object_failure_test(
+c4c_add_backend_codegen_object_test(
   backend_cli_riscv64_local_string_constant_label_pointer_compound_arg
   SRC "${BACKEND_CASE_ROOT}/riscv64_local_string_constant_label_pointer_compound_arg.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_local_string_constant_label_pointer_compound_arg.o"
-  EXPECTED_DIAGNOSTICS "error: --codegen obj failed|unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"
+  EXPECTED_MACHINE_LE f300
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 object local_memory string_constant label_pointer compound direct_extern expected_failure cli
+  LABELS riscv64 object local_memory string_constant label_pointer compound direct_extern cli
 )
 
 c4c_add_backend_dump_flag_test(

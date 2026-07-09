@@ -1464,6 +1464,38 @@ std::optional<std::size_t> prepared_frame_slot_absolute_byte_offset(
   return offset;
 }
 
+std::optional<std::size_t> prepared_store_local_slot_absolute_byte_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::bir::StoreLocalInst& store,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  if (store.slot_id == c4c::kInvalidSlotName ||
+      store.align_bytes > size_bytes ||
+      store.byte_offset > static_cast<std::size_t>(
+                              std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == store.slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      store.byte_offset > slot_it->size_bytes ||
+      slot_it->size_bytes - store.byte_offset < size_bytes ||
+      slot_it->offset_bytes >
+          std::numeric_limits<std::size_t>::max() - store.byte_offset) {
+    return std::nullopt;
+  }
+  const auto offset = slot_it->offset_bytes + store.byte_offset;
+  if (offset > stack_frame_bytes || stack_frame_bytes - offset < size_bytes ||
+      offset > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  return offset;
+}
+
 std::optional<std::pair<std::uint32_t, std::int32_t>>
 prepared_pointer_value_base_offset(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -2123,7 +2155,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
                                                access,
                                                stack_frame_bytes,
                                                *size_bytes);
-  if (!offset.has_value()) {
+  const auto store_slot_offset =
+      offset.has_value()
+          ? std::optional<std::size_t>{}
+          : prepared_store_local_slot_absolute_byte_offset(stack_layout,
+                                                           store,
+                                                           stack_frame_bytes,
+                                                           *size_bytes);
+  if (!offset.has_value() && !store_slot_offset.has_value()) {
     const auto byval_offset =
         prepared_byval_stack_slot_pointer_access_offset(stack_layout,
                                                         lookups,
@@ -2222,7 +2261,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     return std::nullopt;
   }
   if (!append_rv64_store_register_to_stack_offset_local(
-          fragment, 6, *offset, *size_bytes)) {
+          fragment, 6, offset.value_or(*store_slot_offset), *size_bytes)) {
     return std::nullopt;
   }
   return fragment;
