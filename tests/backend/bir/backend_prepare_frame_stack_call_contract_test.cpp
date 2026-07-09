@@ -967,6 +967,93 @@ bir::Module make_fixed_frame_module() {
   return module;
 }
 
+bir::Module make_rv64_return_destination_home_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "rv64_return_destination_home_contract";
+  function.return_type = bir::TypeKind::Ptr;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.return.seed",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.return.home",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.return.home",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "p.return.seed"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "tmp.return.dummy"),
+      .slot_name = "lv.return.home",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "tmp.return.home"),
+      .slot_name = "lv.return.home",
+      .align_bytes = 8,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::Ptr, "tmp.return.home")};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+prepare::PreparedBirModule prepare_rv64_return_destination_home_contract_module() {
+  prepare::PreparedBirModule seeded;
+  seeded.module = make_rv64_return_destination_home_contract_module();
+  seeded.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  const auto function_name =
+      prepared.names.function_names.find("rv64_return_destination_home_contract");
+  const auto value_name = prepared.names.value_names.find("tmp.return.home");
+  for (auto& function_liveness : prepared.liveness.functions) {
+    if (function_liveness.function_name != function_name) {
+      continue;
+    }
+    for (auto& value : function_liveness.values) {
+      if (value.value_name == value_name) {
+        value.requires_home_slot = true;
+      }
+    }
+  }
+
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), {});
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
 bir::Module make_call_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4025,6 +4112,102 @@ int check_fixed_frame_contract() {
       frame_plan->frame_slot_order.size() != 1) {
     return fail("fixed-frame contract: frame_plan no longer publishes the fixed frame correctly");
   }
+  return 0;
+}
+
+int check_rv64_return_destination_home_contract() {
+  const auto prepared = prepare_rv64_return_destination_home_contract_module();
+  const auto* function = find_function(prepared.module, "rv64_return_destination_home_contract");
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared,
+                                                     "rv64_return_destination_home_contract");
+  const auto* source_home =
+      value_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_value_home(prepared.names, *value_locations, "tmp.return.home");
+  const auto* before_return_bundle =
+      value_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*value_locations,
+                                               prepare::PreparedMovePhase::BeforeReturn,
+                                               0,
+                                               3);
+  if (function == nullptr || function->return_type != bir::TypeKind::Ptr ||
+      function->blocks.size() != 1 ||
+      function->blocks.front().terminator.kind != bir::TerminatorKind::Return ||
+      !function->blocks.front().terminator.value.has_value() ||
+      function->blocks.front().terminator.value->type != bir::TypeKind::Ptr ||
+      value_locations == nullptr || source_home == nullptr || before_return_bundle == nullptr) {
+    return fail("RV64 return destination-home contract: missing prepared return carrier");
+  }
+  const auto frame_slot_it = std::find_if(
+      prepared.stack_layout.frame_slots.begin(),
+      prepared.stack_layout.frame_slots.end(),
+      [&](const prepare::PreparedFrameSlot& slot) {
+        return source_home->slot_id.has_value() && slot.slot_id == *source_home->slot_id;
+      });
+  if (source_home->function_name != value_locations->function_name ||
+      source_home->value_id == prepare::PreparedValueId{0} ||
+      source_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      source_home->value_name != prepared.names.value_names.find("tmp.return.home") ||
+      !source_home->slot_id.has_value() || !source_home->offset_bytes.has_value() ||
+      frame_slot_it == prepared.stack_layout.frame_slots.end() ||
+      source_home->offset_bytes != std::optional<std::size_t>{frame_slot_it->offset_bytes} ||
+      frame_slot_it->function_name != value_locations->function_name ||
+      frame_slot_it->size_bytes != 8 || frame_slot_it->align_bytes != 8) {
+    return fail("RV64 return destination-home contract: source stack home drifted");
+  }
+  if (before_return_bundle->function_name != value_locations->function_name ||
+      before_return_bundle->phase != prepare::PreparedMovePhase::BeforeReturn ||
+      before_return_bundle->authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      before_return_bundle->block_index != 0 || before_return_bundle->instruction_index != 3 ||
+      before_return_bundle->moves.size() != 1) {
+    return fail("RV64 return destination-home contract: before-return bundle drifted");
+  }
+
+  const auto& move = before_return_bundle->moves.front();
+  if (move.from_value_id != source_home->value_id ||
+      move.to_value_id != source_home->value_id ||
+      move.destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      move.reason != "return_stack_to_register" ||
+      move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      move.destination_abi_index.has_value() || move.destination_stack_offset_bytes.has_value() ||
+      move.uses_cycle_temp_source || move.coalesced_by_assigned_storage ||
+      move.source_parallel_copy_step_index.has_value() || move.source_immediate_i32.has_value() ||
+      move.block_index != 0 || move.instruction_index != 3) {
+    return fail("RV64 return destination-home contract: return move shape drifted");
+  }
+  if (move.destination_register_name != std::optional<std::string>{"a0"} ||
+      move.destination_contiguous_width != 1 ||
+      move.destination_occupied_register_names != std::vector<std::string>{"a0"} ||
+      !move.destination_register_placement.has_value() ||
+      move.destination_register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      move.destination_register_placement->pool != prepare::PreparedRegisterSlotPool::CallResult ||
+      move.destination_register_placement->slot_index != 0 ||
+      move.destination_register_placement->contiguous_width != 1 ||
+      !move.destination_target_register_identity.has_value() ||
+      move.destination_target_register_identity->target_arch != c4c::TargetArch::Riscv64 ||
+      move.destination_target_register_identity->bank != prepare::PreparedRegisterBank::Gpr ||
+      move.destination_target_register_identity->register_class !=
+          prepare::PreparedRegisterClass::General ||
+      move.destination_target_register_identity->physical_index != 10) {
+    return fail("RV64 return destination-home contract: return destination identity drifted");
+  }
+
+  const auto lookups = prepare::make_prepared_move_bundle_lookups(value_locations);
+  const auto* indexed_move =
+      prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          &lookups,
+          value_locations,
+          0,
+          source_home->value_id,
+          prepare::PreparedRegisterBank::Gpr);
+  if (indexed_move != &move) {
+    return fail("RV64 return destination-home contract: source/bank lookup lost the carrier");
+  }
+
   return 0;
 }
 
@@ -10586,6 +10769,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_fixed_frame_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_rv64_return_destination_home_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_call_contract(); rc != 0) {

@@ -1,54 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/629_prepared_return_destination_home_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Trace Return Producer Authority
+Current Step ID: 3
+Current Step Title: Publish Or Verify Prepared Return Destination Homes
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 traced the prepared return producer/carrier boundary for the in-scope `return_stack_to_register` before-return move bundles.
+Step 3 added focused prepared-layer coverage for one RV64 pointer-typed stack-slot-to-register function return before producer changes.
 
-Producer boundary:
+The new `check_rv64_return_destination_home_contract()` fixture proves:
 
-- `src/backend/prealloc/regalloc/call_moves.cpp:append_return_move_resolution(...)` creates the assigned return move records for named return terminator values. For stack-slot sources returning through a register ABI destination, it calls `append_move_resolution_record(...)` with `destination_kind=FunctionReturnAbi`, `destination_storage_kind=Register`, `destination_abi_index` from the explicit return lane when present, `destination_register_name`, `destination_contiguous_width`, `destination_occupied_register_names`, `destination_register_placement`, `destination_target_register_identity`, `block_index`, `instruction_index=block.insts.size()`, `from_value_id=to_value_id=source->value_id`, `op_kind=Move`, `reason=storage_transfer_reason("return", StackSlot, Register)` (`return_stack_to_register`), and `authority_kind=None`.
-- `append_unassigned_return_move_resolution_record(...)` is the sibling producer for unassigned return values; it also targets `FunctionReturnAbi` register destinations and currently publishes `authority_kind=None`, but the Step 1 rows are assigned stack-slot sources, not this unassigned path.
+- the selected return source has pointer type, a nonzero prepared value identity, value name `tmp.return.home`, and `PreparedValueHomeKind::StackSlot` with slot/offset tied to 8-byte pointer frame-slot metadata
+- the before-return move bundle is associated with `rv64_return_destination_home_contract`, block `0`, return instruction index `3`, phase `BeforeReturn`, and bundle `authority_kind=None`
+- the semantic function return and terminator value are pointer-typed, matching the representative `source_type=ptr`, `destination_type=ptr` blocker shape
+- the move has `from_value_id=to_value_id=tmp.return.home`, `destination_kind=FunctionReturnAbi`, `destination_storage_kind=Register`, `op_kind=Move`, `reason=return_stack_to_register`, no temp/parallel/immediate/destination-stack side channels, and `authority_kind=None`
+- the destination ABI register facts are explicit: register name `a0`, occupied register `a0`, width `1`, GPR call-result placement slot `0`, and RV64 GPR target identity with physical index `10`
+- `make_prepared_move_bundle_lookups(...)` and `find_prepared_before_return_abi_move_by_source_and_destination_bank(...)` recover the exact carrier by `(block_index, source_value_id, destination_bank)`
 
-Carrier fields already present:
-
-- `PreparedMoveResolution` carries the function-return ABI destination shape: `destination_kind`, `destination_storage_kind`, `destination_abi_index`, `destination_register_name`, `destination_contiguous_width`, `destination_occupied_register_names`, `destination_register_placement`, `destination_target_register_identity`, `block_index`, `instruction_index`, `from_value_id`, `to_value_id`, `reason`, and `authority_kind`.
-- `PreparedMoveBundle` carries `phase=BeforeReturn`, the bundle block/instruction position, the single move, and the bundle-level `authority_kind`.
-- `PreparedValueHome` carries the source value identity and source home (`value_id`, `value_name`, `kind=StackSlot`, slot/offset data). The object-route diagnostic's `destination_home_kind=stack_slot` is only the `to_value_id` value home, not an explicit return-ABI destination home.
-- `PreparedMoveBundleLookups::before_return_abi_moves_by_source_and_bank`, built by `make_prepared_move_bundle_lookups(...)`, indexes before-return `FunctionReturnAbi` register moves by `(block_index, source_value_id, destination_register_placement.bank)`. `find_prepared_before_return_abi_move_by_source_and_destination_bank(...)` is the consumer lookup for that carrier.
-
-Current consumer checks:
-
-- `prepared_move_is_before_return_stack_to_register_abi_move(...)` accepts only `phase=BeforeReturn`, bundle `authority_kind=None`, `destination_kind=FunctionReturnAbi`, `destination_storage_kind=Register`, `op_kind=Move`, `reason=return_stack_to_register`, no immediate/parallel-copy/temp source, no destination stack offset, width `1`, at most one occupied destination register, and a concrete destination register name/placement/target identity.
-- `fragment_for_prepared_before_return_stack_to_register_abi_move(...)` then requires a source `PreparedValueHome` with `kind=StackSlot`, rejects pointer-typed sources, derives the load size from the BIR source type, and emits a load from the source stack slot to the return register.
-- The pre-traversal guard in `build_rv64_prepared_text_object_module_with_diagnostics(...)` rejects any `return_stack_to_register` move that is not the accepted stack-slot shape or the separate direct-global pointer return shape, producing the Step 1 `unsupported_move_bundle_target_shape` diagnostic.
-
-First missing authority boundary:
-
-- The producer publishes destination register ABI facts but does not publish a return-specific authority that proves this stack-slot source home is the selected source for the function's return value and that the destination register placement is the prepared function-return ABI destination. `authority_kind=None` leaves RV64 with only raw shape checks plus ABI lookup, so pointer stack-slot returns remain fail-closed instead of being admitted by explicit prepared return destination-home authority.
-
-Required fail-closed conditions for the next code-changing packet:
-
-- Missing or non-stack `PreparedValueHome` for `from_value_id`.
-- Missing or mismatched `to_value_id`, `value_name`, BIR return terminator value, or function return association.
-- Missing, non-register, wrong-bank, duplicate, or mismatched `FunctionReturnAbi` destination placement/register/target identity.
-- Width mismatch between source value type, source stack slot size, destination width, and return ABI storage.
-- Missing or non-return move phase, destination kind, destination storage, reason, op kind, block index, instruction index, or return ABI storage.
-- Ambiguous duplicate lookup entries in `before_return_abi_moves_by_source_and_bank`.
+Coverage confirms the existing prepared carriers are sufficient for pointer source home, destination register placement, width, return ABI storage, function association, and lookup identity. It also confirms the first missing authority boundary remains explicit: both the bundle and move still publish `authority_kind=None`, so the next packet must add a narrow return-specific authority publication path before RV64 consumer admission.
 
 ## Suggested Next
 
-Execute Step 3 as a narrow prepared-layer coverage packet first: add focused tests proving the current `append_return_move_resolution(...)` output and lookup carriers for one stack-slot-to-register function return, including source home, destination register placement/target identity, width, return ABI storage, function-return association, and the currently missing `authority_kind=None` boundary. If the coverage confirms no existing explicit authority carrier beyond the raw move record, the next packet should be a narrow producer publication path that introduces return-specific prepared authority for this family before RV64 consumer admission.
+Execute the next Step 3 producer packet: add a narrow return-specific authority publication path for assigned before-return `return_stack_to_register` moves whose source has a concrete stack-slot `PreparedValueHome` and whose destination is an explicit `FunctionReturnAbi` register placement. Keep the existing prepared carrier test green and add focused coverage that the move or adjacent return-authority carrier no longer relies only on `authority_kind=None`.
 
 ## Watchouts
 
-The existing `plan_prepared_direct_global_return_authority(...)` helper is only for named global pointer constants already homed in a register; it is not the owner for these pointer stack-slot return rows. Do not infer destination homes from the RV64 return convention or final assembly. Keep scalar call/result transport, pointer stack-results, FPR policy, generic move-bundle authority, runtime triage, local/global repair, variadic/library policy, expectation changes, unsupported marker changes, allowlists, timeouts, and accounting outside this idea.
+The coverage fixture marks only the selected liveness value as home-slot required to exercise the existing stack-source carrier without changing producers; it should not become a production policy shortcut. The existing `plan_prepared_direct_global_return_authority(...)` helper is only for named global pointer constants already homed in a register; it is not the owner for these pointer stack-slot return rows. Do not infer destination homes from the RV64 return convention or final assembly. Keep scalar call/result transport, pointer stack-results, FPR policy, generic move-bundle authority, runtime triage, local/global repair, variadic/library policy, expectation changes, unsupported marker changes, allowlists, timeouts, and accounting outside this idea.
 
 ## Proof
 
-Evidence-only trace. No build was required by the delegated packet, and no root proof log was created or modified. Read-only diagnostics used AST-backed symbol inventory plus focused source reads of `src/backend/prealloc/regalloc/call_moves.cpp`, `src/backend/prealloc/regalloc.hpp`, `src/backend/prealloc/value_locations.hpp`, `src/backend/prealloc/prepared_lookups.cpp`, `src/backend/prealloc/publication_plans.cpp`, `src/backend/mir/riscv/codegen/prepared_call_emit.cpp`, `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`, and `src/backend/mir/riscv/codegen/object_emission.cpp`.
+Proof command:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+
+Result: passed, 347/347 backend tests.
+
+Log path: `test_after.log`.
