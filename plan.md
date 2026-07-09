@@ -259,3 +259,32 @@ Completion check:
   `range_verdict=proven_out_of_bounds` authority failure, while real
   string-byte loads and out-of-scope owners still fail closed without their own
   explicit authority.
+
+## Step 8: Reclassify Rows After String-Label Pointer Authority
+
+Goal: determine which idea-630 affected rows moved past the short-string
+pointer-materialization authority failure after Step 7, and split any
+remaining failures by owner family.
+
+Actions:
+- Re-run the idea-630 representative rows affected by Step 7, prioritizing
+  rows that were previously blocked only by short-string
+  `range_verdict=proven_out_of_bounds` pointer materializations.
+- Capture the current prepared access authority, selected base kind, object
+  emission diagnostic, and final owner bucket for each affected row.
+- Classify rows that now consume `StringConstantLabelPointer` authority
+  separately from rows that still stop before or after RV64 emission.
+- Split remaining failures by precise owner family instead of expanding the
+  Step 7 route: direct-global, aggregate/block-entry stack-home publication,
+  pointer-value byte access, select-carrier publication, prepared move-bundle
+  fan-in, `LoadGlobalInst` consumer support, or string-byte/trailing-NUL extent
+  authority.
+- Record whether idea 630 is close-ready, needs one more in-scope
+  string-constant local-memory packet, or should hand remaining rows to
+  separate source ideas.
+
+Completion check:
+- `todo.md` contains row-by-row classification for the affected idea-630 rows,
+  proof commands and results, and a close/split/continue recommendation that
+  does not weaken expectations or broaden string-label pointer authority into
+  unrelated owner families.

@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/630_string_constant_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Separate String-Label Pointer Authority
+Current Step ID: 8
+Current Step Title: Reclassify Rows After String-Label Pointer Authority
 
 # Current Packet
 
