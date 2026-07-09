@@ -1,31 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/628_fpr_abi_frame_policy_and_placement.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Narrow RV64 FPR Consumer Admission
+Current Step ID: 5
+Current Step Title: Reclassify Representative Rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added narrow RV64 object-emission admission in `fragment_for_prepared_call(...)` for explicit prepared F32/F64 immediate/literal FPR call arguments and prepared FPR callee-saved register-preservation effects.
+Step 5 re-ran the idea 628 representative RV64 gcc-torture rows with an exact five-row allowlist and classified the post-Step 3/4 results.
 
-The consumer now accepts only FPR immediate call arguments with an immediate F32/F64 source literal matching the BIR argument type, value bank `Fpr`, explicit destination bank `Fpr`, width 1, occupied destination register names matching the named ABI destination, a `PreparedRegisterSlotPool::CallArgument` FPR placement, and a destination target-register identity that maps to the same RV64 FPR as the destination name and placement. It materializes the literal bits through `t0` and moves them into the destination FPR with `fmv.w.x`/`fmv.d.x`.
+The scan passed three rows:
+- `src/ieee/compare-fp-2.c`
+- `src/ieee/unsafe-fp-assoc.c`
+- `src/pr39501.c`
 
-The consumer now accepts only register-to-register FPR callee-saved preservation effects with available classification, `CalleeSavedRegister` route, FPR register endpoints, matching occupied names, required target identities that agree with endpoint names, and a callee-saved FPR placement on the storage endpoint. It emits `fmv.d` before/after the call for the preservation population/republication path.
+The scan still failed two rows, both outside FPR ABI/frame authority:
+- `src/980605-1.c`: blocked by `unsupported_call_abi` for ordinary same-module call ABI/result lowering on `getval()` with scalar `i32` result and zero arguments. This is not an FPR home, FPR result, FPR save-slot placement, or FPR consumer-admission residual.
+- `src/ieee/unsafe-fp-assoc-1.c`: blocked by `ambiguous_non_parallel_multi_source_stack_destination` / `unsupported_prepared_move_bundle_classification`, where two register sources feed one stack destination without ordering or mutually-exclusive authority. This remains the prepared move bundle fan-in owner bucket, not FPR ABI/frame placement.
 
-Added focused RV64 object-emission coverage for positive F32/F64 immediate FPR call arguments, positive FPR callee-saved preservation around a call, and fail-closed mutations for missing/mismatched FPR placement, missing/mismatched target identity bank/class/index, GPR/FPR destination confusion, wrong width, missing/non-F32/F64 literal, explicit GPR source-bank confusion, type mismatch, malformed preservation endpoint storage/banks/placement/identity, missing preservation endpoint target identity, and occupied-register mismatch. Existing scalar GPR and pointer stack-result call tests remain in the same backend subset.
+Recommendation: treat idea 628 as close-ready from the executor perspective. The representative FPR ABI/frame rows that remain in this five-row probe either pass or are now blocked by non-FPR owner buckets. Split future work only for the scalar same-module call ABI/result bucket and the prepared move fan-in-to-stack bucket; do not broaden idea 628 for those residuals.
 
 ## Suggested Next
 
-Execute Step 5 by re-running the idea 628 representative-row probes and classifying the remaining failures. Decide whether the source idea is close-ready, needs another narrow FPR ABI/frame packet, or should split residual rows into separate owner initiatives.
+Ask the plan owner to decide whether to close idea 628 or record closure notes. No further FPR ABI/frame authority packet is recommended from this scan.
 
 ## Watchouts
 
-Dynamic FPR frame-slot publication, FPR stack results, FPR stack-slot arguments, `unsafe-fp-assoc-1.c` fan-in, floating comparisons/min/max/casts, local/global memory repair, runtime mismatch triage, variadic/library policy, unsupported markers, allowlists, timeouts, and `f128` remain outside this Step 4 slice. The FPR preservation consumer intentionally emits only register-to-register `fmv.d` for callee-saved FPR endpoints; it does not add FPR stack preservation or dynamic FPR frame-slot support.
+The delegated scan command returned nonzero because two representative rows still fail. That nonzero status is expected for this classification packet and is recorded in `build/agent_state/628_step5_fpr_representatives.log`. The allowlist and scan log are non-root artifacts under `build/agent_state/` as requested.
+
+Do not classify `src/980605-1.c` as FPR ABI/frame work just because it contains double arithmetic; the current object-route rejection is on ordinary scalar same-module calls before FPR frame placement is reached. Do not classify `src/ieee/unsafe-fp-assoc-1.c` as FPR frame work unless a later probe reaches an FPR-specific rejection; the present blocker is producer authority for non-parallel register-source fan-in to one stack destination.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
+Created `build/agent_state/628_step5_fpr_representatives.allowlist` with:
+- `src/980605-1.c`
+- `src/ieee/compare-fp-2.c`
+- `src/ieee/unsafe-fp-assoc.c`
+- `src/ieee/unsafe-fp-assoc-1.c`
+- `src/pr39501.c`
 
-Result: passed, 347/347 backend tests. Proof log: `test_after.log`.
+Ran `cmake --build --preset default && ALLOWLIST=build/agent_state/628_step5_fpr_representatives.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/628_step5_fpr_representatives.log 2>&1`.
+
+Result: build passed; focused scan returned nonzero with total=5, passed=3, failed=2. Log paths:
+- `build/agent_state/628_step5_fpr_representatives.log`
+- `build/rv64_gcc_c_torture_backend/src_980605-1.c/case.log`
+- `build/rv64_gcc_c_torture_backend/src_ieee_unsafe-fp-assoc-1.c/case.log`
