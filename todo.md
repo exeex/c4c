@@ -8,145 +8,121 @@ Current Step Title: Trace String-Constant Extent/Range Authority
 
 ## Just Finished
 
-Completed Step 5: re-ran the ten idea-630 representative rows after the Step 3
-prepared-authority and Step 4 RV64 consumer changes, then classified each row
-from the fresh result log plus focused prepared-access evidence.
+Completed Step 6: traced the first producer/carrier boundary that marks the
+remaining idea-630 string-constant pointer materializations
+`range_verdict=proven_out_of_bounds`.
 
-Proof summary:
+Exact boundary: `append_direct_frame_slot_accesses` calls
+`build_direct_symbol_backed_access` for `bir.load_local ptr ..., addr .strN`;
+the `LoadLocalInst` overload derives `size_bytes=8` from the pointer result
+type, then calls `build_direct_symbol_backed_address`. For string constants,
+`build_direct_symbol_backed_address` builds a `PreparedAddress` with
+`base_kind=StringConstant`, `byte_offset=0`, `size_bytes=8`, and
+`provenance=prepared_memory_provenance(...)`. When
+`publish_string_constant_local_memory_authority` runs, it sets
+`object_extent.size_bytes=string_constant.bytes.size()` and immediately calls
+`prove_memory_access_requested_range`. If the string byte payload is shorter
+than 8 bytes, `prove_memory_access_requested_range` sets
+`ProvenOutOfBounds`, so `publish_string_constant_local_memory_authority`
+returns before setting `layout_authority=StringConstantBytes`.
 
-- Total: 10
-- Passed: 1
-- Failed: 9
-- Fresh result log: `build/agent_state/630_step5_string_constant.log`
-- Focused access evidence:
-  `build/agent_state/630_step5_prepared_access_extract.txt`
+Representative code facts:
 
-Row classification after Step 4:
+- `prepared_memory_provenance` fills the requested range and calls
+  `prove_memory_access_requested_range` at
+  `src/backend/prealloc/stack_layout/coordinator.cpp:80`.
+- `build_direct_symbol_backed_address` constructs the string-constant
+  prepared address and calls the string authority publisher at
+  `src/backend/prealloc/stack_layout/coordinator.cpp:822`.
+- `publish_string_constant_local_memory_authority` uses
+  `string_constant.bytes.size()` as the complete extent, calls
+  `prove_memory_access_requested_range`, and refuses authority unless the
+  verdict is `ProvenInBounds` at
+  `src/backend/prealloc/stack_layout/coordinator.cpp:488`.
+- The range prover compares the requested end against
+  `object_extent.size_bytes` at
+  `src/backend/bir/bir_memory_provenance.hpp:150`.
+- RV64 later requires `prepared_string_constant_local_memory_has_authority`,
+  so the unknown authority plus out-of-bounds verdict is observed as
+  `unsupported_local_memory_access` at
+  `src/backend/mir/riscv/codegen/object_emission.cpp:12104` and in the
+  prepared emitter at
+  `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:1900`.
 
-- `src/20000722-1.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant authority/consumer policy: prepared access
-  `base=string_constant ... size=8 ... range_verdict=proven_out_of_bounds`
-  at `build/agent_state/630_step1_20000722-1.prepared.txt:318`, so the
-  authority-gated consumer correctly fails closed instead of treating the
-  string as an ordinary frame/global/pointer base. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_20000722-1.c/case.log`.
-- `src/20010123-1.c`: pass. This row moved past
-  `unsupported_local_memory_access` and is the representative row completed by
-  the Step 3/4 string-constant path. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_20010123-1.c/case.log`.
-- `src/20011109-2.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant producer/authority policy: string stores have
-  `source_producer=unknown` at
-  `build/agent_state/630_step1_20011109-2.prepared.txt:343` and `:345`, and
-  string accesses are `range_verdict=proven_out_of_bounds` at `:409` and
-  `:412`. Later byte reads through pointer values at `:420-:429` are a
-  separate pointer-value byte-access owner if the string authority issue is
-  fixed. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_20011109-2.c/case.log`.
-- `src/20021204-1.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant extent/range authority: the prepared string access is
-  `range_verdict=proven_out_of_bounds` at
-  `build/agent_state/630_step1_20021204-1.prepared.txt:371`. The row also has
-  out-of-scope direct-global work (`base=global_symbol ... symbol=z`) at
-  `:375` and aggregate/block-entry stack-home publication notes at `:183` and
-  `:185`, but the fresh stop is still local-memory admission. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_20021204-1.c/case.log`.
-- `src/20030920-1.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant extent/range authority: prepared string access is
-  `range_verdict=proven_out_of_bounds` at
-  `build/agent_state/630_step1_20030920-1.prepared.txt:229`. Later
-  pointer-value byte reads at `:234` and `:238` are out-of-scope if exposed
-  after string authority. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_20030920-1.c/case.log`.
-- `src/920429-1.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant extent/range authority at
-  `build/agent_state/630_step1_920429-1.prepared.txt:393`
-  (`range_verdict=proven_out_of_bounds`). Out-of-scope direct-global accesses
-  to `i`/`j` appear at `:387` and `:389`, and select-carrier publication gaps
-  appear at `:336-:337`. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_920429-1.c/case.log`.
-- `src/930429-1.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant extent/range authority at
-  `build/agent_state/630_step1_930429-1.prepared.txt:298`
-  (`range_verdict=proven_out_of_bounds`). The row also contains an out-of-scope
-  pointer-value byte access at `:293`. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_930429-1.c/case.log`.
-- `src/pr34415.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is still idea-630
-  string-constant extent/range authority at
-  `build/agent_state/630_step1_pr34415.prepared.txt:606`
-  (`range_verdict=proven_out_of_bounds`). Out-of-scope pointer-value byte
-  accesses are present at `:577`, `:587`, and `:600`, with select-carrier
-  publication gaps at `:501-:506`. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_pr34415.c/case.log`.
-- `src/pr35800.c`: fail; remains
-  `unsupported_local_memory_access`. Current owner is a mixed string-constant
-  authority bucket: many prepared string rows now have in-bounds authority, but
-  several still report `range_verdict=proven_out_of_bounds`, including
+This is not primarily missing string bytes. The prepared BIR operation is a
+pointer materialization, for example
+`@.str0 = bir.load_local ptr %lv.c1, addr .str0`, but the current prepared
+memory-access path treats it as an 8-byte load from the string object's byte
+payload. Short string literals therefore fail the string-byte range proof even
+though no eight string bytes are needed to materialize the string label
+address. There is also a real extent-size inconsistency to preserve as a
+follow-up check: `collect_lowered_string_constants` stores decoded raw bytes in
+`bir::StringConstant::bytes` without the trailing NUL, while
+`lower_string_constant_global` uses LIR `byte_length`, which includes the NUL.
+That inconsistency can change byte-load bounds near the terminator, but it
+does not explain the 8-byte pointer materialization failures by itself.
+
+Affected Step 5 rows and representative prepared facts:
+
+- `src/20000722-1.c`: literal `"hi"`; `bir.load_local ptr ..., addr .str0`
+  at `build/agent_state/630_step1_20000722-1.prepared.txt:41`; prepared
+  access `offset=0 size=8` is `proven_out_of_bounds` at `:318`.
+- `src/20011109-2.c`: literal `"foo"`; two pointer materializations at
+  `build/agent_state/630_step1_20011109-2.prepared.txt:22` and `:25`;
+  prepared accesses are `proven_out_of_bounds` at `:409` and `:412`.
+- `src/20021204-1.c`: literal `"test"`; pointer materialization at
+  `build/agent_state/630_step1_20021204-1.prepared.txt:35`; prepared access
+  is `proven_out_of_bounds` at `:371`.
+- `src/20030920-1.c`: literal `"\x7f\xff"`; pointer materialization at
+  `build/agent_state/630_step1_20030920-1.prepared.txt:21`; prepared access
+  is `proven_out_of_bounds` at `:229`.
+- `src/920429-1.c`: literal `"ab"`; pointer materialization at
+  `build/agent_state/630_step1_920429-1.prepared.txt:56`; prepared access is
+  `proven_out_of_bounds` at `:393`.
+- `src/930429-1.c`: literal `""`; pointer materialization at
+  `build/agent_state/630_step1_930429-1.prepared.txt:38`; prepared access is
+  `proven_out_of_bounds` at `:298`.
+- `src/pr34415.c`: literal `"Bbb:"`; pointer materialization at
+  `build/agent_state/630_step1_pr34415.prepared.txt:133`; prepared access is
+  `proven_out_of_bounds` at `:606`.
+- `src/pr35800.c`: mixed string lengths. Short literals such as `"int"`,
+  `"char"`, `"short"`, `"long"`, `"void"`, `"float"`, `"double"`, `"wchar"`,
+  and `"logical"` have `offset=0 size=8` pointer materializations marked
+  `proven_out_of_bounds` at
   `build/agent_state/630_step1_pr35800.prepared.txt:1880`, `:1883`, `:1886`,
-  `:1889`, `:1910`, `:1913`, `:1931`, and `:1967`. The row also has
-  out-of-scope stack-home publication at `:989-:990`. Evidence:
-  `build/rv64_gcc_c_torture_backend/src_pr35800.c/case.log`.
-- `src/ptr-arith-1.c`: fail, but moved past
-  `unsupported_local_memory_access`. Current owner is out of scope for idea
-  630: `rv64_prepared_move_bundle_consumer`, with
-  `unsupported_prepared_move_bundle_classification: non-parallel` and
-  `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`
-  in `build/rv64_gcc_c_torture_backend/src_ptr-arith-1.c/case.log`. Its
-  prepared string access was already in-bounds at
-  `build/agent_state/630_step1_ptr-arith-1.prepared.txt:278`.
+  `:1889`, `:1910`, `:1913`, `:1916`, `:1931`, and `:1967`. Longer literals
+  in the same file, such as `"unsigned char"`, are `proven_in_bounds`, which
+  confirms the current verdict is driven by string byte extent versus the
+  pointer-width access size.
 
-Rows moved past `unsupported_local_memory_access`: `src/20010123-1.c` and
-`src/ptr-arith-1.c`.
-
-Rows that remain string-constant authority/consumer gaps:
-`src/20000722-1.c`, `src/20011109-2.c`, `src/20021204-1.c`,
-`src/20030920-1.c`, `src/920429-1.c`, `src/930429-1.c`,
-`src/pr34415.c`, and `src/pr35800.c`.
-
-Out-of-scope owners observed but not counted as idea-630 completion:
-direct-global (`src/20021204-1.c`, `src/920429-1.c`), aggregate/block-entry
-stack-home publication (`src/20021204-1.c`, `src/pr35800.c`), pointer-value
-byte access (`src/20011109-2.c`, `src/20030920-1.c`, `src/930429-1.c`,
-`src/pr34415.c`), select-carrier publication (`src/920429-1.c`,
-`src/pr34415.c`), and RV64 prepared move-bundle fan-in
-(`src/ptr-arith-1.c`).
-
-Recommendation for idea 630: continue with one more narrow string-constant
-packet focused on why prepared string constants still get
-`range_verdict=proven_out_of_bounds` for 8-byte pointer loads even when the
-carrier is a string label and the access is base-plus-offset. Do not broaden
-into direct-global, aggregate-home, pointer-value byte access, select-carrier,
-or move-bundle owners in the next packet.
+Focused evidence extract:
+`build/agent_state/630_step6_string_range_extract.txt`.
 
 ## Suggested Next
 
-Execute Step 6: trace the prepared string-constant extent/range proof for the
-eight remaining `unsupported_local_memory_access` rows and identify the first
-producer or carrier boundary that marks their 8-byte string-constant pointer
-materialization as `proven_out_of_bounds`.
+Implement one narrow idea-630 code packet that separates string-label pointer
+materialization authority from real string-byte memory access range authority.
+The smallest candidate is in the prepared access/address construction path:
+for `bir.load_local ptr` / `bir.load_global ptr` whose address base is
+`StringConstant`, publish a string-label pointer materialization/access
+authority that RV64 can consume without requiring an 8-byte in-bounds range
+against the string byte payload. Keep real byte/char loads from string storage
+on the existing string-byte extent proof, and separately add or update focused
+coverage for the trailing-NUL extent mismatch.
 
 ## Watchouts
 
-`src/ptr-arith-1.c` should be split away from idea 630 if pursued further; it
-now fails in `rv64_prepared_move_bundle_consumer`, not string-constant local
-memory. `src/20010123-1.c` is the only row that fully passed. Several remaining
-rows have secondary out-of-scope blockers, so do not count them as idea-630
-complete unless they actually move past the string-constant local-memory stop.
+Fail closed when the string identity/text id is missing or ambiguous, the
+address space is non-default, the access is volatile, the requested pointer
+size/alignment is not the target pointer width, or RV64 lacks a label to
+relocate/materialize. Do not make all 8-byte string accesses automatically
+valid; only pointer-result string-label materializations should bypass the
+string-byte extent proof. The out-of-scope owners from Step 5 remain split:
+direct-global, aggregate/block-entry stack-home publication, pointer-value byte
+access, select-carrier publication, and prepared move-bundle fan-in.
 
 ## Proof
 
-Ran the delegated proof command exactly:
-
-`cmake --build --preset default && ALLOWLIST=build/agent_state/630_step1_string_constant.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/630_step5_string_constant.log 2>&1`
-
-Result: build succeeded; allowlist check exited nonzero because 9 of 10 rows
-still fail. Proof/result log:
-`build/agent_state/630_step5_string_constant.log`. Focused diagnostic extract:
-`build/agent_state/630_step5_prepared_access_extract.txt`.
+Evidence-only trace; no build or test run required by this packet. No root logs
+created or modified. Diagnostic artifact:
+`build/agent_state/630_step6_string_range_extract.txt`.
