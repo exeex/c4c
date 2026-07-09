@@ -2717,6 +2717,7 @@ std::optional<RiscvEncodedFragment>
 fragment_for_prepared_before_return_stack_to_register_abi_move(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     std::size_t stack_frame_bytes,
@@ -2731,6 +2732,34 @@ fragment_for_prepared_before_return_stack_to_register_abi_move(
                                                                   move)) {
     return std::nullopt;
   }
+  if (move.function_return_authority_kind !=
+          prepare::PreparedMoveAuthorityKind::FunctionReturnDestinationHome ||
+      move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      move.block_index != move_bundle.block_index ||
+      move.instruction_index != move_bundle.instruction_index ||
+      !move.destination_target_register_identity.has_value() ||
+      move.destination_occupied_register_names.size() != 1 ||
+      move.destination_occupied_register_names.front() !=
+          *move.destination_register_name) {
+    return std::nullopt;
+  }
+  const auto placement_identity =
+      prepare::target_register_identity_for_abi_register_placement(
+          target_profile,
+          *move.destination_register_placement);
+  const auto placement_register = placement_identity.has_value()
+                                      ? gpr_register_number_for_target_identity(
+                                            *placement_identity)
+                                      : std::optional<std::uint32_t>{};
+  const auto identity_register =
+      gpr_register_number_for_target_identity(*move.destination_target_register_identity);
+  const auto named_register = rv64_register_number(*move.destination_register_name);
+  if (!placement_identity.has_value() || !placement_register.has_value() ||
+      !identity_register.has_value() || !named_register.has_value() ||
+      *placement_register != *identity_register ||
+      *placement_register != *named_register) {
+    return std::nullopt;
+  }
   const auto* source_home = prepared_value_home_for_id(lookups, move.from_value_id);
   if (source_home == nullptr ||
       source_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
@@ -2738,13 +2767,11 @@ fragment_for_prepared_before_return_stack_to_register_abi_move(
   }
   const auto source_type =
       prepared_bir_value_type_for_name(names, function, source_home->value_name);
-  if (!source_type.has_value() ||
-      *source_type == c4c::backend::bir::TypeKind::Ptr) {
+  if (!source_type.has_value()) {
     return std::nullopt;
   }
   const auto size_bytes = rv64_scalar_memory_size_for_type(*source_type);
-  const auto destination = rv64_register_number(*move.destination_register_name);
-  if (!size_bytes.has_value() || !destination.has_value()) {
+  if (!size_bytes.has_value()) {
     return std::nullopt;
   }
   const auto stack_offset =
@@ -2755,11 +2782,63 @@ fragment_for_prepared_before_return_stack_to_register_abi_move(
   RiscvEncodedFragment fragment;
   if (!stack_offset.has_value() ||
       !append_rv64_load_stack_offset_to_register(fragment,
-                                                *destination,
+                                                *identity_register,
                                                 *stack_offset,
                                                 *size_bytes)) {
     return std::nullopt;
   }
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_authorized_pointer_return_already_loaded(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::bir::Terminator& terminator,
+    std::size_t block_index,
+    const std::unordered_set<PreparedBeforeReturnStackToRegisterKey,
+                             PreparedBeforeReturnStackToRegisterKeyHash>*
+        prepared_before_return_stack_to_register_values,
+    bool restore_return_address,
+    std::size_t stack_frame_bytes) {
+  if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !terminator.value.has_value() ||
+      terminator.value->type != c4c::backend::bir::TypeKind::Ptr ||
+      terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      terminator.value->name.empty() || lookups == nullptr ||
+      prepared_before_return_stack_to_register_values == nullptr) {
+    return std::nullopt;
+  }
+  const auto terminator_value_name =
+      names.value_names.find(terminator.value->name);
+  const auto terminator_value_id =
+      terminator_value_name == c4c::kInvalidValueName
+          ? lookups->value_homes.value_ids.end()
+          : lookups->value_homes.value_ids.find(terminator_value_name);
+  if (terminator_value_name == c4c::kInvalidValueName ||
+      terminator_value_id == lookups->value_homes.value_ids.end() ||
+      prepared_before_return_stack_to_register_values->count(
+          PreparedBeforeReturnStackToRegisterKey{
+              .block_index = block_index,
+              .value_id = terminator_value_id->second,
+          }) == 0) {
+    return std::nullopt;
+  }
+  RiscvEncodedFragment fragment;
+  if (restore_return_address) {
+    if (!append_rv64_prepared_call_frame_epilogue(
+            fragment,
+            frame_plan,
+            stack_frame_bytes)) {
+      return std::nullopt;
+    }
+  } else if (!append_rv64_prepared_stack_frame_epilogue(fragment,
+                                                       frame_plan,
+                                                       stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
   return fragment;
 }
 
@@ -3148,6 +3227,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
             fragment_for_prepared_before_return_stack_to_register_abi_move(
                 stack_layout,
                 names,
+                target_profile,
                 function,
                 lookups,
                 stack_frame_bytes,
@@ -12401,7 +12481,9 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
       if (prepared_move_is_before_return_stack_to_register_abi_move(move_bundle,
                                                                      move) &&
           source_home != nullptr &&
-          source_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+          source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+          move.function_return_authority_kind ==
+              prepare::PreparedMoveAuthorityKind::FunctionReturnDestinationHome) {
         prepared_before_return_stack_to_register_values.insert(
             PreparedBeforeReturnStackToRegisterKey{
                 .block_index = move_bundle.block_index,
@@ -12568,14 +12650,16 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                     &select_edge_source_producer_placements));
           }
           for (const auto& move : classification.move_bundle->moves) {
-            if (classification.move_bundle->phase ==
-                    prepare::PreparedMovePhase::BeforeReturn &&
-                move.destination_kind ==
-                    prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
-                move.destination_storage_kind ==
-                    prepare::PreparedMoveStorageKind::Register &&
-                move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-                move.reason == "return_stack_to_register") {
+            const auto* source_home =
+                prepared_value_home_for_id(&lookups, move.from_value_id);
+            if (prepared_move_is_before_return_stack_to_register_abi_move(
+                    *classification.move_bundle,
+                    move) &&
+                source_home != nullptr &&
+                source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+                move.function_return_authority_kind ==
+                    prepare::PreparedMoveAuthorityKind::
+                        FunctionReturnDestinationHome) {
               prepared_before_return_stack_to_register_values.insert(
                   PreparedBeforeReturnStackToRegisterKey{
                       .block_index = event.block_index,
@@ -12658,19 +12742,31 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         }
         case prepare::PreparedObjectTraversalEventKind::Terminator: {
           auto terminator_fragment =
-              fragment_for_prepared_terminator(prepared,
-                                               control_flow,
-                                               prepared.names,
-                                               &lookups,
-                                               *block,
-                                               prepared_block_label,
-                                               event.block_index,
-                                               function_name,
-                                               compares,
-                                               frame_plan,
-                                               &prepared_before_return_stack_to_register_values,
-                                               has_call,
-                                               *stack_frame_bytes);
+              fragment_for_prepared_authorized_pointer_return_already_loaded(
+                  prepared.names,
+                  &lookups,
+                  frame_plan,
+                  block->terminator,
+                  event.block_index,
+                  &prepared_before_return_stack_to_register_values,
+                  has_call,
+                  *stack_frame_bytes);
+          if (!terminator_fragment.has_value()) {
+            terminator_fragment =
+                fragment_for_prepared_terminator(prepared,
+                                                 control_flow,
+                                                 prepared.names,
+                                                 &lookups,
+                                                 *block,
+                                                 prepared_block_label,
+                                                 event.block_index,
+                                                 function_name,
+                                                 compares,
+                                                 frame_plan,
+                                                 &prepared_before_return_stack_to_register_values,
+                                                 has_call,
+                                                 *stack_frame_bytes);
+          }
           if (!terminator_fragment.has_value()) {
             if (auto diagnostic =
                     diagnose_unsupported_prepared_terminator_fragment(

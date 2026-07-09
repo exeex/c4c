@@ -9057,8 +9057,8 @@ prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() 
 
 prepare::PreparedBirModule
 make_prepared_before_return_stack_to_register_abi_move_module(
-    bir::TypeKind return_type = bir::TypeKind::I16,
-    std::size_t return_size = 2) {
+    bir::TypeKind return_type = bir::TypeKind::Ptr,
+    std::size_t return_size = 8) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -9126,6 +9126,7 @@ make_prepared_before_return_stack_to_register_abi_move_module(
                       prepare::PreparedMoveStorageKind::Register,
                   .destination_register_name = std::string{"a0"},
                   .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {std::string{"a0"}},
                   .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                   .reason = "return_stack_to_register",
                   .destination_register_placement =
@@ -9135,6 +9136,10 @@ make_prepared_before_return_stack_to_register_abi_move_module(
                           .slot_index = 0,
                           .contiguous_width = 1,
                       },
+                  .destination_target_register_identity = rv64_gpr_identity(10),
+                  .function_return_authority_kind =
+                      prepare::PreparedMoveAuthorityKind::
+                          FunctionReturnDestinationHome,
               }},
           }},
   });
@@ -18149,10 +18154,10 @@ int builds_prepared_before_return_stack_to_register_abi_move_object() {
     return fail("expected prepared stack-to-return-register text layout");
   }
   if (read_u32(text->bytes, 0) != 0xff010113 ||
-      read_u32(text->bytes, 4) != 0x00811503 ||
+      read_u32(text->bytes, 4) != 0x00813503 ||
       read_u32(text->bytes, 8) != 0x01010113 ||
       read_u32(text->bytes, 12) != 0x00008067) {
-    return fail("expected lh a0, 8(sp) before stack-frame epilogue and ret");
+    return fail("expected ld a0, 8(sp) before stack-frame epilogue and ret");
   }
   if (!module->relocations.empty()) {
     return fail("expected prepared stack-to-return-register object to need no relocations");
@@ -18230,19 +18235,49 @@ int rejects_prepared_before_return_stack_to_register_abi_move_fail_closed_shapes
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
 
+  auto expect_rejected = [&](prepare::PreparedBirModule prepared,
+                             std::string_view label) -> int {
+    if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+      return fail(std::string(label) + " should reject");
+    }
+    return 0;
+  };
+
   auto prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].value_homes.clear();
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("missing source home shape should reject");
+  if (expect_rejected(std::move(prepared), "missing source home shape") != 0) {
+    return 1;
   }
 
-  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module(
+      bir::TypeKind::I32, 4);
   const auto function_name = prepared.names.function_names.intern("stack_return_move");
   const auto source_name = prepared.names.value_names.intern("%ret");
   prepared.value_locations.functions[0].value_homes[0] =
       rv64_gpr_home(1, function_name, source_name, "t0", 5);
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("non-stack source shape should reject");
+  if (expect_rejected(std::move(prepared), "non-stack source shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .function_return_authority_kind = std::nullopt;
+  if (expect_rejected(std::move(prepared), "missing return authority shape") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .function_return_authority_kind =
+      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+  if (expect_rejected(std::move(prepared), "unrelated return authority shape") !=
+      0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
@@ -18252,60 +18287,177 @@ int rejects_prepared_before_return_stack_to_register_abi_move_fail_closed_shapes
   prepared.value_locations.functions[0].move_bundles[0]
       .moves[0]
       .destination_register_placement->bank = prepare::PreparedRegisterBank::Fpr;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("non-GPR destination bank shape should reject");
+  if (expect_rejected(std::move(prepared), "non-GPR destination bank shape") !=
+      0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].move_bundles[0]
       .moves[0]
       .destination_register_name = std::nullopt;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("missing destination register shape should reject");
+  if (expect_rejected(std::move(prepared),
+                      "missing destination register shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_target_register_identity = std::nullopt;
+  if (expect_rejected(std::move(prepared),
+                      "missing destination target identity shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_target_register_identity = rv64_gpr_identity(11);
+  if (expect_rejected(std::move(prepared),
+                      "mismatched destination target identity shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_occupied_register_names.clear();
+  if (expect_rejected(std::move(prepared),
+                      "missing occupied destination name shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_occupied_register_names = {std::string{"a1"}};
+  if (expect_rejected(std::move(prepared),
+                      "mismatched occupied destination name shape") != 0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module(
       bir::TypeKind::F128, 16);
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("unsupported source size shape should reject");
+  if (expect_rejected(std::move(prepared), "unsupported source size shape") !=
+      0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].move_bundles[0]
       .moves[0]
       .destination_kind = prepare::PreparedMoveDestinationKind::Value;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("destination kind confusion shape should reject");
+  if (expect_rejected(std::move(prepared),
+                      "destination kind confusion shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  if (expect_rejected(std::move(prepared),
+                      "destination storage confusion shape") != 0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].move_bundles[0].phase =
       prepare::PreparedMovePhase::BeforeInstruction;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("before-instruction phase shape should reject");
+  if (expect_rejected(std::move(prepared), "before-instruction phase shape") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .reason = "consumer_stack_to_register";
+  if (expect_rejected(std::move(prepared), "wrong reason shape") != 0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].move_bundles[0].authority_kind =
       prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("out-of-SSA authority shape should reject");
+  if (expect_rejected(std::move(prepared), "out-of-SSA bundle authority shape") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+  if (expect_rejected(std::move(prepared), "generic move authority shape") !=
+      0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].move_bundles[0]
       .moves[0]
       .source_immediate_i32 = 1;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("immediate source shape should reject");
+  if (expect_rejected(std::move(prepared), "immediate source shape") != 0) {
+    return 1;
   }
 
   prepared = make_prepared_before_return_stack_to_register_abi_move_module();
   prepared.value_locations.functions[0].move_bundles[0]
       .moves[0]
       .source_parallel_copy_step_index = 0;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return fail("parallel-copy step source shape should reject");
+  if (expect_rejected(std::move(prepared),
+                      "parallel-copy step source shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .uses_cycle_temp_source = true;
+  if (expect_rejected(std::move(prepared), "cycle-temp source shape") != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_stack_offset_bytes = 8;
+  if (expect_rejected(std::move(prepared), "destination stack side-channel shape") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_contiguous_width = 2;
+  if (expect_rejected(std::move(prepared), "wrong destination width shape") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves[0].block_index = 1;
+  if (expect_rejected(std::move(prepared), "mismatched block association shape") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .instruction_index = 1;
+  if (expect_rejected(std::move(prepared),
+                      "mismatched instruction association shape") != 0) {
+    return 1;
   }
 
   return 0;
