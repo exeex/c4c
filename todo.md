@@ -8,36 +8,48 @@ Current Step Title: Run Broader Validation And Close Or Park
 
 ## Just Finished
 
-Repaired the Step 5 RV64 regression-guard blocker from the Step 3 code slice.
+Recorded Step 5 broader RV64 validation for idea 649.
 
-The new failing test was
-`backend_cli_riscv64_local_string_constant_label_pointer_compound_arg`, which
-failed at `pass_compound_literal` instruction 0 with
-`unsupported_local_memory_access ... access_base=none`.
+The earlier Step 5 regression-guard blocker in
+`backend_cli_riscv64_local_string_constant_label_pointer_compound_arg` was
+repaired before this broader result was accepted. That local string-label
+compound case no longer appears as a new failure.
 
-Root cause: the Step 3 tightening of
-`prepared_memory_access_for_local_instruction(...)` required a named stored
-value before accepting the indexed `StoreLocalInst` access. That preserved
-pointer/global publication exactness for named stores, but accidentally dropped
-valid anonymous same-instruction frame-slot accesses used by existing
-string-label/compound local-memory support for zero-initializing compound
-literal fields.
+Focused and representative proof remain accepted:
 
-Repair: keep named stores exact, and restore the indexed access only when both
-the BIR store value and prepared access have no result/stored value identity.
-This lets anonymous compound-literal frame-slot stores find their prepared
-access without broadening unknown local-memory access or weakening the
-pointer/global publication checks.
+- The focused pointer/global local-publication dump and object tests passed.
+- The focused live-load expected-failure test passed, preserving fail-closed
+  behavior for reloaded pointer publications used as later memory-address
+  bases.
+- Representative `pr57861.c` emitted an RV64 object after the `%lv.l`
+  publication repair, proving the publication owner advanced past the prior
+  `unsupported_local_memory_access` boundary.
 
-The regressed compound string-label object test now passes again. The idea 649
-focused positive object route, focused dump route, live-load expected-failure
-negative route, and representative `pr57861.c` object emission all still pass.
+Broader matched RV64 regression guard passed using canonical logs for:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "riscv64"
+```
+
+The before log was captured at `50e1b8df1`; the after log was captured at
+current `main`. The supervisor guard command was:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
+```
+
+Guard result: passed. Counts were before passed=89 failed=18 total=107, after
+passed=92 failed=18 total=110, delta passed=+3 failed=0, new failing tests=0.
+
+Based on focused proof, representative proof, the repaired local-string
+compound regression, and the non-regressing matched RV64 guard, idea 649 appears
+ready for reviewer or lifecycle close consideration.
 
 ## Suggested Next
 
-Proceed with the supervisor-selected broader RV64 regression guard for Step 5.
-This blocker repair has a green focused proof, but it does not replace the
-matched before/after broader validation needed for lifecycle close.
+Proceed to reviewer or plan-owner close gate for idea 649. The executor-side
+evidence supports close, subject to the lifecycle owner validating the source
+idea completion criteria.
 
 ## Watchouts
 
@@ -49,29 +61,23 @@ matched before/after broader validation needed for lifecycle close.
 - Do not use the `main` call-argument direct-global select-chain evidence as
   the owner for this idea; the representative owner is inside `foo` around
   `%lv.l`.
-- Do not rewrite prepared provenance or mark all unknown local pointer slots as
-  supported. The discovered positive route depends on exact publication,
-  direct-global identity, slot identity, and ordering.
 - Keep named `StoreLocalInst` lookup exact for pointer/global publication; only
-  anonymous same-instruction accesses with no prepared value identity are
-  restored by this repair.
-- Keep the live-load expected-failure coverage intact; the representative dead
-  reload is safely elided, but arbitrary reloaded pointer publications are not
-  supported.
-- Do not infer authority from source spelling, final assembly order,
-  diagnostics, testcase identity, local/global names, or stack-slot shape.
+  anonymous same-instruction accesses with no prepared value identity were
+  restored for existing compound local-memory support.
+- Keep the live-load expected-failure coverage intact; arbitrary reloaded
+  pointer publications are not supported.
 - Do not edit expectations, unsupported markers, allowlists, timeouts,
   runtime-comparison policy, or pass/fail accounting.
 
 ## Proof
 
-Blocker repair proof passed and was written to `test_after.log`:
+No new proof command was run for this recording-only packet. The accepted proof
+is the canonical matched before/after RV64 regression guard using
+`test_before.log` and `test_after.log`:
 
 ```sh
-bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_cli_riscv64_local_string_constant_label_pointer_compound_arg|backend_(dump|cli|cli_failure)_riscv64_pointer_global_local_publication)" && mkdir -p build/agent_state/649_step4_representative_integration && build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o build/agent_state/649_step4_representative_integration/pr57861.o; } 2>&1 | tee test_after.log'
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
 ```
 
-Result: build succeeded, all four focused tests passed, including the
-previously regressed compound string-label object test, and representative
-`pr57861.c` still emitted
-`build/agent_state/649_step4_representative_integration/pr57861.o`.
+Result: passed with before passed=89 failed=18 total=107, after passed=92
+failed=18 total=110, delta passed=+3 failed=0, and new failing tests=0.
