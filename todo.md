@@ -1,76 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/649_pointer_global_local_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Locate The Publication Authority Boundary
+Current Step ID: 3
+Current Step Title: Implement Or Split The Narrow Publication Owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 boundary inspection for `%lv.l` using the Step 1 evidence and
-AST-backed symbol/callee queries before opening implementation slices.
+Completed Step 3 implementation for the narrow RV64 consumer/emission owner.
+The fix stayed in `src/backend/mir/riscv/codegen/object_emission.cpp`; the
+prepared producer and `prepared_local_memory_emit.cpp` did not need changes.
 
-Boundary decision: the missing owner is RV64 object-route consumer/emission
-admission, not a broad prepared-producer rewrite. The producer already emits
-the key facts for the representative:
+Implemented behavior:
 
-- `store_source function=foo block=block_3 inst=0 source=@f status=available
-  intent=store_local_publication`.
-- `address_materialization block=block_3 inst_index=0 kind=direct_global
-  result=@f symbol=f policy=direct`.
-- `%lv.l` is `object #1`, `frame_slot=#0`, offset 0, size 8, align 8, and the
-  prepared memory accesses are base-plus-offset and proven in bounds.
+- Added a strict pointer/global store-local publication fragment that consumes
+  an existing available `StoreLocalPublication` plus same-instruction
+  `DirectGlobal` address materialization and emits the global object's address
+  directly into the exact prepared frame slot.
+- Tightened `prepared_memory_access_for_local_instruction(...)` so an indexed
+  memory access is accepted only when its result/stored value identity matches
+  the `LoadLocalInst`/`StoreLocalInst`; otherwise it falls back to the unique
+  value-based lookup. This prevents memory-access index collisions from
+  selecting the following direct-global access for a local load.
+- Added nonvolatile dead `LoadLocalInst` elision based on an explicit BIR
+  use-after scan. This covers the representative `%t33 = bir.load_local ptr
+  %lv.l` after `*l = 0` has already been represented as direct
+  `bir.store_global @f, i16 0`, without accepting live unsupported local loads.
+- Refined the use-after scan so it also treats `MemoryAddress::base_value`
+  pointer operands on later `LoadLocalInst`, `LoadGlobalInst`,
+  `StoreLocalInst`, and `StoreGlobalInst` as uses. `PhiInst` incoming values are
+  checked too, although the prepared object route should have removed phi nodes
+  before this consumer.
+- Added focused fail-closed coverage for a live reload of a direct-global local
+  pointer publication: the negative case stores a direct global address into a
+  local pointer slot, reloads it, and uses that reloaded pointer as a later
+  memory-address base. RV64 object emission now rejects this live publication
+  reload instead of relying on dead-load elision.
+- Added focused coverage in
+  `tests/backend/case/riscv64_pointer_global_local_publication.c` plus
+  `backend_dump_riscv64_pointer_global_local_publication`,
+  `backend_cli_riscv64_pointer_global_local_publication`, and
+  `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`.
 
-Owned implementation surface for the next packet should stay narrow:
-
-- Consumer/admission: `src/backend/mir/riscv/codegen/object_emission.cpp`,
-  around `fragment_for_prepared_instruction(...)`,
-  `prepared_memory_access_for_local_instruction(...)`,
-  `prepared_store_source_publication_for_instruction(...)`, and the
-  `local_memory_diagnostic` branch for `StoreLocalInst`/`LoadLocalInst`.
-- Local emission helper surface:
-  `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`, around
-  `fragment_for_prepared_store_local(...)`,
-  `append_rv64_materialize_or_move_store_value_local(...)`, and
-  `fragment_for_prepared_load_local(...)`.
-- Producer facts to consume, not broaden:
-  `src/backend/prealloc/stack_layout/coordinator.cpp` already builds the direct
-  frame-slot access and store-source publication inputs through
-  `append_direct_frame_slot_accesses(...)`, `build_direct_frame_slot_access(...)`,
-  and the existing publication planning path.
-
-Focused positive test target shape: a small RV64 object-route case with a
-global object address stored into a local pointer slot, then reloaded/used via
-that slot, matching the representative shape `short *l = &f; *l = 0;`. The
-positive should require the direct-global materialization for `@f` to be tied to
-the exact `StoreLocalPublication` into `%lv.l`/frame slot #0 and should advance
-RV64 object emission for the representative `pr57861.c` route.
-
-Fail-closed behavior to preserve:
-
-- Reject stale pointer values: do not accept if the selected publication source
-  is not fresh at the local store/load use or if an intervening write invalidates
-  the global/pointer identity.
-- Reject missing global identity: require a direct global address
-  materialization with a concrete symbol matching the published source value.
-- Reject ambiguous publication order: require the publication/materialization
-  to be at the selected instruction or otherwise ordered before the accepted
-  use; do not search loosely across unrelated blocks/instructions.
-- Reject mismatched slots: require the `StoreLocalPublication` destination
-  access to be the exact prepared memory access/frame slot/offset/size/align
-  being emitted.
-- Reject scalar-only facts: scalar frame-slot layout authority and direct
-  global-symbol scalar memory authority are not sufficient without the
-  pointer/global local-publication fact.
+Fail-closed behavior preserved: the new publication fragment rejects missing or
+ambiguous publication records, non-direct or missing global identity, TLS or
+non-default address-space materializations, mismatched destination access,
+mismatched source value, non-frame-slot destinations, non-8-byte pointer stores,
+non-base-plus-offset frame slots, and scalar-only direct-global/local facts.
+Dead-load elision is limited to nonvolatile loads whose result has no later BIR
+value use or memory-address base use.
+Live reloads of direct-global local pointer publications remain fail-closed
+until a separate authority exists for consuming the reloaded pointer as a memory
+base.
 
 ## Suggested Next
 
-Proceed to Step 3 with a narrow RV64 consumer/emission change that consumes the
-existing `StoreLocalPublication` plus direct-global address materialization
-facts for the exact `%lv.l` frame slot. If Step 3 ownership excludes
-`prepared_local_memory_emit.cpp`, split the packet rather than broadening
-`object_emission.cpp` or the producer.
+Proceed to Step 4 representative integration proof. Use the new focused tests
+and inspect the representative `pr57861.c` object/disassembly to decide whether
+idea 649 is complete or whether a downstream non-publication owner remains.
 
 ## Watchouts
 
@@ -85,6 +73,9 @@ facts for the exact `%lv.l` frame slot. If Step 3 ownership excludes
 - Do not rewrite prepared provenance or mark all unknown local pointer slots as
   supported. The discovered positive route depends on exact publication,
   direct-global identity, slot identity, and ordering.
+- The object route now emits `pr57861.c` successfully as an object, but Step 4
+  should still inspect representative disassembly and avoid treating unrelated
+  downstream codegen quality as part of this publication slice.
 - Do not infer authority from source spelling, final assembly order,
   diagnostics, testcase identity, local/global names, or stack-slot shape.
 - Do not edit expectations, unsupported markers, allowlists, timeouts,
@@ -92,23 +83,15 @@ facts for the exact `%lv.l` frame slot. If Step 3 ownership excludes
 
 ## Proof
 
-No build or CTest proof was required for this diagnostic-only packet, and
-`test_after.log` was not overwritten.
+Proof passed and was written to `test_after.log`:
 
-Evidence source: Step 1 summary at
-`build/agent_state/649_step1_pointer_global_local_evidence/summary.md`.
+```sh
+bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|cli|cli_failure)_riscv64_pointer_global_local_publication" && mkdir -p build/agent_state/649_step3_pointer_global_local && build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o build/agent_state/649_step3_pointer_global_local/pr57861.o; } 2>&1 | tee test_after.log'
+```
 
-AST-backed inspection used:
-
-- `c4c-clang-tool-ccdb list-symbols` on
-  `src/backend/mir/riscv/codegen/object_emission.cpp`,
-  `src/backend/prealloc/stack_layout/coordinator.cpp`, and
-  `src/backend/prealloc/prepared_contract_verifier.cpp`.
-- `c4c-clang-tool-ccdb function-callees` for
-  `build_direct_frame_slot_access`,
-  `publish_pointer_loaded_from_global_local_memory_authority`,
-  `append_direct_frame_slot_accesses`,
-  `fragment_for_prepared_instruction`,
-  `fragment_for_prepared_store_local`, and
-  `fragment_for_prepared_load_local`.
-- Targeted source slices were then read only around the symbols listed above.
+Result: build succeeded, the positive dump/object tests and expected-failure
+object test passed, and representative
+`pr57861.c` emitted
+`build/agent_state/649_step3_pointer_global_local/pr57861.o`.
+The focused object test now also asserts the expected RV64 byte sequence for
+`auipc t1, 0; mv t1, t1; sd t1, 0(sp)` via `EXPECTED_HEX_CONTAINS`.

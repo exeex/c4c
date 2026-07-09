@@ -1144,6 +1144,38 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 pointer select pointer_local emission
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_pointer_global_local_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_global_local_publication.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.local, ptr @rv64_pointer_global_local_sink|store_source function=main block=entry inst=0 source=@rv64_pointer_global_local_sink status=available intent=store_local_publication|address_materialization block=entry inst_index=0 kind=direct_global result=@rv64_pointer_global_local_sink symbol=rv64_pointer_global_local_sink policy=direct|access block=entry inst_index=0 base=frame_slot stored=@rv64_pointer_global_local_sink"
+  FORBIDDEN_SNIPPETS "status=missing_destination_access|unsupported_local_memory_access|src/pr57861.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 pointer global local_publication dump
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_pointer_global_local_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_global_local_publication.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_global_local_publication.o"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "170300001303030023306100"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object pointer global local_publication cli
+)
+
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_global_local_publication_live_load_rejection.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_global_local_publication_live_load_rejection.o"
+  EXPECTED_DIAGNOSTICS "unsupported_local_memory_access|live direct-global local pointer publication reloads fail-closed"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object pointer global local_publication expected_failure cli
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_short_circuit_select_false_lhs
   SRC "${BACKEND_CASE_ROOT}/riscv64_short_circuit_select_false_lhs.c"
