@@ -1266,6 +1266,131 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   };
 }
 
+[[nodiscard]] bool same_global_symbol(const bir::LoadGlobalInst& load,
+                                      const bir::StoreGlobalInst& store) {
+  if (load.global_name_id != kInvalidLinkName &&
+      store.global_name_id != kInvalidLinkName) {
+    return load.global_name_id == store.global_name_id;
+  }
+  return !load.global_name.empty() && load.global_name == store.global_name;
+}
+
+[[nodiscard]] bool has_intervening_store_to_loaded_global(
+    const bir::Block& block,
+    std::size_t producer_instruction_index,
+    std::size_t selected_instruction_index,
+    const bir::LoadGlobalInst& producer) {
+  if (producer_instruction_index >= selected_instruction_index ||
+      selected_instruction_index > block.insts.size()) {
+    return true;
+  }
+  for (std::size_t inst_index = producer_instruction_index + 1;
+       inst_index < selected_instruction_index;
+       ++inst_index) {
+    const auto* store_global = std::get_if<bir::StoreGlobalInst>(&block.insts[inst_index]);
+    if (store_global != nullptr && same_global_symbol(producer, *store_global)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void publish_pointer_loaded_from_global_local_memory_authority(
+    PreparedNameTables& names,
+    const PreparedAddressingFunction& function_addressing,
+    const bir::Block& block,
+    PreparedMemoryAccess& selected_access) {
+  if (selected_access.address_space != bir::AddressSpace::Default ||
+      selected_access.is_volatile ||
+      selected_access.address.base_kind != PreparedAddressBaseKind::PointerValue ||
+      !selected_access.address.pointer_value_name.has_value() ||
+      !selected_access.address.can_use_base_plus_offset ||
+      selected_access.address.size_bytes == 0 ||
+      selected_access.address.align_bytes == 0 ||
+      selected_access.address.align_bytes > selected_access.address.size_bytes ||
+      selected_access.inst_index > block.insts.size()) {
+    return;
+  }
+
+  const bir::LoadGlobalInst* producer = nullptr;
+  std::size_t producer_instruction_index = 0;
+  const PreparedMemoryAccess* producer_access = nullptr;
+  for (std::size_t inst_index = 0; inst_index < selected_access.inst_index; ++inst_index) {
+    const auto* load_global = std::get_if<bir::LoadGlobalInst>(&block.insts[inst_index]);
+    if (load_global == nullptr ||
+        load_global->result.type != bir::TypeKind::Ptr ||
+        load_global->result.kind != bir::Value::Kind::Named ||
+        load_global->result.name.empty()) {
+      continue;
+    }
+    const auto producer_value_name = prepared_named_value_id(names, load_global->result);
+    if (!producer_value_name.has_value() ||
+        producer_value_name != selected_access.address.pointer_value_name) {
+      continue;
+    }
+    selected_access.pointer_loaded_from_global_authority_required = true;
+    const auto* access =
+        find_prepared_memory_access(function_addressing,
+                                    selected_access.block_label,
+                                    inst_index);
+    if (access == nullptr ||
+        access->function_name != selected_access.function_name ||
+        access->block_label != selected_access.block_label ||
+        access->inst_index != inst_index ||
+        access->result_value_name != producer_value_name ||
+        access->stored_value_name.has_value() ||
+        access->address_space != bir::AddressSpace::Default ||
+        access->is_volatile ||
+        access->address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+        !access->address.symbol_name.has_value() ||
+        access->address.size_bytes != 8 ||
+        access->address.align_bytes < 8 ||
+        !prepared_global_symbol_memory_has_publication_authority(access->address)) {
+      continue;
+    }
+    if (producer != nullptr) {
+      return;
+    }
+    producer = load_global;
+    producer_instruction_index = inst_index;
+    producer_access = access;
+  }
+  if (producer == nullptr ||
+      producer_access == nullptr ||
+      has_intervening_store_to_loaded_global(block,
+                                             producer_instruction_index,
+                                             selected_access.inst_index,
+                                             *producer)) {
+    return;
+  }
+
+  const auto& source_extent = producer_access->address.provenance.object_extent;
+  if (!source_extent.size_known ||
+      source_extent.completeness != bir::MemoryObjectExtentCompleteness::Complete ||
+      source_extent.size_bytes < producer_access->address.size_bytes ||
+      !producer_access->address.symbol_name.has_value()) {
+    return;
+  }
+
+  selected_access.pointer_loaded_from_global_authority =
+      PreparedPointerLoadedFromGlobalLocalMemoryAuthority{
+          .pointer_value_name = *selected_access.address.pointer_value_name,
+          .producer_block_label = selected_access.block_label,
+          .producer_instruction_index = producer_instruction_index,
+          .source_global_name = *producer_access->address.symbol_name,
+          .pointer_width_bytes = producer_access->address.size_bytes,
+          .source_extent_bytes = source_extent.size_bytes,
+          .source_byte_offset = producer_access->address.byte_offset,
+          .selected_block_label = selected_access.block_label,
+          .selected_instruction_index = selected_access.inst_index,
+          .selected_byte_offset = selected_access.address.byte_offset,
+          .selected_width_bytes = selected_access.address.size_bytes,
+          .producer_address_space = producer_access->address_space,
+          .selected_address_space = selected_access.address_space,
+          .pointer_value_fresh = true,
+      };
+}
+
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
@@ -1406,6 +1531,11 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
                     inst_index,
                     *load_local);
             access.has_value()) {
+          publish_pointer_loaded_from_global_local_memory_authority(
+              names,
+              function_addressing,
+              block,
+              *access);
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
@@ -1444,6 +1574,11 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
                     inst_index,
                     *store_local);
             access.has_value()) {
+          publish_pointer_loaded_from_global_local_memory_authority(
+              names,
+              function_addressing,
+              block,
+              *access);
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }

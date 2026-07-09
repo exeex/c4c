@@ -112,6 +112,23 @@ struct PreparedAddress {
   bir::MemoryAccessProvenance provenance;
 };
 
+struct PreparedPointerLoadedFromGlobalLocalMemoryAuthority {
+  ValueNameId pointer_value_name = kInvalidValueName;
+  BlockLabelId producer_block_label = kInvalidBlockLabel;
+  std::size_t producer_instruction_index = 0;
+  LinkNameId source_global_name = kInvalidLinkName;
+  std::size_t pointer_width_bytes = 0;
+  std::size_t source_extent_bytes = 0;
+  std::int64_t source_byte_offset = 0;
+  BlockLabelId selected_block_label = kInvalidBlockLabel;
+  std::size_t selected_instruction_index = 0;
+  std::int64_t selected_byte_offset = 0;
+  std::size_t selected_width_bytes = 0;
+  bir::AddressSpace producer_address_space = bir::AddressSpace::Default;
+  bir::AddressSpace selected_address_space = bir::AddressSpace::Default;
+  bool pointer_value_fresh = false;
+};
+
 [[nodiscard]] inline bool prepared_pointer_value_memory_has_proven_authority(
     const PreparedAddress& address) {
   if (address.base_kind != PreparedAddressBaseKind::PointerValue ||
@@ -443,7 +460,51 @@ struct PreparedMemoryAccess {
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_volatile = false;
   PreparedAddress address;
+  bool pointer_loaded_from_global_authority_required = false;
+  std::optional<PreparedPointerLoadedFromGlobalLocalMemoryAuthority>
+      pointer_loaded_from_global_authority;
 };
+
+[[nodiscard]] inline bool
+prepared_pointer_loaded_from_global_local_memory_has_authority(
+    const PreparedMemoryAccess& access) {
+  if (!access.pointer_loaded_from_global_authority.has_value() ||
+      access.function_name == kInvalidFunctionName ||
+      access.block_label == kInvalidBlockLabel ||
+      access.address_space != bir::AddressSpace::Default ||
+      access.is_volatile ||
+      access.address.base_kind != PreparedAddressBaseKind::PointerValue ||
+      !access.address.pointer_value_name.has_value() ||
+      !access.address.can_use_base_plus_offset ||
+      access.address.size_bytes == 0 ||
+      access.address.align_bytes == 0 ||
+      access.address.align_bytes > access.address.size_bytes) {
+    return false;
+  }
+  const auto& authority = *access.pointer_loaded_from_global_authority;
+  return authority.pointer_value_fresh &&
+         authority.pointer_value_name == *access.address.pointer_value_name &&
+         authority.producer_block_label == access.block_label &&
+         authority.producer_block_label != kInvalidBlockLabel &&
+         authority.producer_instruction_index < access.inst_index &&
+         authority.source_global_name != kInvalidLinkName &&
+         authority.pointer_width_bytes == 8 &&
+         authority.source_extent_bytes >= authority.pointer_width_bytes &&
+         authority.source_byte_offset == 0 &&
+         authority.selected_block_label == access.block_label &&
+         authority.selected_instruction_index == access.inst_index &&
+         authority.selected_byte_offset == access.address.byte_offset &&
+         authority.selected_width_bytes == access.address.size_bytes &&
+         authority.producer_address_space == bir::AddressSpace::Default &&
+         authority.selected_address_space == bir::AddressSpace::Default;
+}
+
+[[nodiscard]] inline bool
+prepared_pointer_value_local_memory_required_authority_available(
+    const PreparedMemoryAccess& access) {
+  return !access.pointer_loaded_from_global_authority_required ||
+         prepared_pointer_loaded_from_global_local_memory_has_authority(access);
+}
 
 enum class PreparedStackHomeLocalMemoryRole {
   ByvalParam,

@@ -3747,6 +3747,74 @@ prepare::PreparedBirModule prepare_global_pointer_addressed_local_slot_module() 
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_pointer_loaded_from_global_local_memory_module(
+    bool include_stale_global_store) {
+  bir::Module module;
+  const auto global_name = module.names.link_names.intern("g.loaded.ptr");
+  module.globals.push_back(bir::Global{
+      .name = "g.loaded.ptr",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::Ptr,
+      .has_scalar_layout_authority = true,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Function function;
+  function.name = include_stale_global_store
+                      ? "stack_layout_stale_pointer_loaded_from_global"
+                      : "stack_layout_pointer_loaded_from_global";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%loaded.ptr"),
+      .global_name = "g.loaded.ptr",
+      .global_name_id = global_name,
+      .align_bytes = 8,
+  });
+  if (include_stale_global_store) {
+    entry.insts.push_back(bir::StoreGlobalInst{
+        .global_name = "g.loaded.ptr",
+        .global_name_id = global_name,
+        .value = bir::Value::named(bir::TypeKind::Ptr, "%loaded.ptr"),
+        .align_bytes = 8,
+    });
+  }
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded.value"),
+      .slot_name = "from.loaded.ptr",
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "%loaded.ptr"),
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "%loaded.value"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_store_escaped_local_slot_module() {
   bir::Module module;
 
@@ -12894,6 +12962,72 @@ int check_inline_asm_metadata_stack_layout_activation(
   return 0;
 }
 
+int check_pointer_loaded_from_global_local_memory_authority(
+    const prepare::PreparedBirModule& prepared,
+    bool expect_authority) {
+  const auto function_name = find_function_name_id(
+      prepared,
+      expect_authority ? "stack_layout_pointer_loaded_from_global"
+                       : "stack_layout_stale_pointer_loaded_from_global");
+  const auto block_label = find_block_label_id(prepared, "entry");
+  const auto* addressing =
+      prepare::find_prepared_addressing(prepared, function_name);
+  if (addressing == nullptr) {
+    return fail("expected pointer-loaded-from-global fixture to publish addressing");
+  }
+  const auto selected_inst = expect_authority ? std::size_t{1} : std::size_t{2};
+  const auto* selected_access =
+      prepare::find_prepared_memory_access(*addressing, block_label, selected_inst);
+  if (selected_access == nullptr ||
+      selected_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !selected_access->address.pointer_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names,
+                                   *selected_access->address.pointer_value_name) !=
+          "%loaded.ptr") {
+    return fail("expected selected local-memory access through loaded pointer value");
+  }
+  if (expect_authority) {
+    if (!selected_access->pointer_loaded_from_global_authority_required) {
+      return fail("expected pointer-loaded-from-global access to require authority");
+    }
+    if (!prepare::prepared_pointer_loaded_from_global_local_memory_has_authority(
+            *selected_access) ||
+        !selected_access->pointer_loaded_from_global_authority.has_value()) {
+      return fail("expected complete pointer-loaded-from-global authority");
+    }
+    const auto& authority =
+        *selected_access->pointer_loaded_from_global_authority;
+    if (prepare::prepared_value_name(prepared.names, authority.pointer_value_name) !=
+            "%loaded.ptr" ||
+        prepare::prepared_block_label(prepared.names, authority.producer_block_label) !=
+            "entry" ||
+        authority.producer_instruction_index != 0 ||
+        prepare::prepared_link_name(prepared.names, authority.source_global_name) !=
+            "g.loaded.ptr" ||
+        authority.pointer_width_bytes != 8 ||
+        authority.source_extent_bytes != 8 ||
+        authority.selected_instruction_index != 1 ||
+        authority.selected_width_bytes != 4 ||
+        authority.producer_address_space != bir::AddressSpace::Default ||
+        authority.selected_address_space != bir::AddressSpace::Default ||
+        !authority.pointer_value_fresh) {
+      return fail("expected pointer-loaded-from-global authority payload to be complete");
+    }
+  } else {
+    if (!selected_access->pointer_loaded_from_global_authority_required) {
+      return fail("expected stale pointer-loaded-from-global row to require authority");
+    }
+    if (selected_access->pointer_loaded_from_global_authority.has_value() ||
+        prepare::prepared_pointer_loaded_from_global_local_memory_has_authority(
+            *selected_access) ||
+        prepare::prepared_pointer_value_local_memory_required_authority_available(
+            *selected_access)) {
+      return fail("expected stale pointer-loaded-from-global publication to fail closed");
+    }
+  }
+  return 0;
+}
+
 int check_prepared_addressing_contract_activation() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -13328,6 +13462,24 @@ int main() {
       prepare_global_pointer_addressed_local_slot_module();
   if (const int rc =
           check_global_pointer_addressed_local_slot_activation(global_pointer_addressed_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto pointer_loaded_from_global_prepared =
+      prepare_pointer_loaded_from_global_local_memory_module(false);
+  if (const int rc = check_pointer_loaded_from_global_local_memory_authority(
+          pointer_loaded_from_global_prepared,
+          true);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto stale_pointer_loaded_from_global_prepared =
+      prepare_pointer_loaded_from_global_local_memory_module(true);
+  if (const int rc = check_pointer_loaded_from_global_local_memory_authority(
+          stale_pointer_loaded_from_global_prepared,
+          false);
       rc != 0) {
     return rc;
   }

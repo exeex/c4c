@@ -249,6 +249,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 4 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -286,6 +287,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_f32_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 4 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -323,6 +325,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_ptr_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 8 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -364,6 +367,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 4 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -405,6 +409,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i16_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 2 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -442,6 +447,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i16_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 2 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -480,6 +486,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_f32_acce
       access->address.byte_offset < 0 ||
       access->address.byte_offset % 4 != 0 ||
       !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
   }
@@ -1395,6 +1402,7 @@ prepared_pointer_value_base_offset(
       !access->address.can_use_base_plus_offset ||
       access->address.size_bytes != size_bytes ||
       access->address.align_bytes > size_bytes ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return std::nullopt;
   }
@@ -1425,6 +1433,7 @@ rv64_large_selected_pointer_offset_materialization_status(
       !access->address.can_use_base_plus_offset ||
       access->address.size_bytes != size_bytes ||
       access->address.align_bytes > size_bytes ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return Rv64LargeSelectedPointerOffsetMaterializationStatus::NotApplicable;
   }

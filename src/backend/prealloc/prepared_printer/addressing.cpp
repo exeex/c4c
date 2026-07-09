@@ -73,6 +73,35 @@ void append_addressing(std::ostringstream& out, const PreparedBirModule& module)
       if (access.address.pointer_value_name.has_value()) {
         out << " pointer=" << prepared_value_name(module.names, *access.address.pointer_value_name);
       }
+      if (access.pointer_loaded_from_global_authority_required) {
+        out << " pointer_loaded_from_global_required=yes";
+      }
+      if (access.pointer_loaded_from_global_authority.has_value()) {
+        const auto& authority = *access.pointer_loaded_from_global_authority;
+        out << " pointer_loaded_from_global=yes"
+            << " pointer_authority="
+            << prepared_value_name(module.names, authority.pointer_value_name)
+            << " producer=load_global"
+            << " producer_block="
+            << maybe_block_label(module.names, authority.producer_block_label)
+            << " producer_inst=" << authority.producer_instruction_index
+            << " source_global="
+            << prepared_link_name(module.names, authority.source_global_name)
+            << " pointer_width=" << authority.pointer_width_bytes
+            << " source_extent=" << authority.source_extent_bytes
+            << " source_offset=" << authority.source_byte_offset
+            << " selected_block="
+            << maybe_block_label(module.names, authority.selected_block_label)
+            << " selected_inst=" << authority.selected_instruction_index
+            << " selected_offset=" << authority.selected_byte_offset
+            << " selected_width=" << authority.selected_width_bytes
+            << " producer_address_space="
+            << address_space_name(authority.producer_address_space)
+            << " selected_address_space="
+            << address_space_name(authority.selected_address_space)
+            << " pointer_fresh="
+            << (authority.pointer_value_fresh ? "yes" : "no");
+      }
       out << " offset=" << access.address.byte_offset
           << " size=" << access.address.size_bytes
           << " align=" << access.address.align_bytes
