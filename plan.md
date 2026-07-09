@@ -224,3 +224,38 @@ Completion check:
   rows, the explicit facts that are missing or inconsistent, and the next
   packet that can repair or split the issue without broadening into
   out-of-scope owners.
+
+## Step 7: Separate String-Label Pointer Authority
+
+Goal: repair the in-scope prepared authority bug where string-label pointer
+materializations are treated as byte loads from string storage.
+
+Actions:
+- In the prepared access/address construction path, distinguish
+  `bir.load_local ptr` and `bir.load_global ptr` pointer-result operations
+  whose address base is `StringConstant` from real memory reads of string
+  bytes.
+- Publish explicit string-label pointer materialization authority for the
+  string-constant base only when string identity, label, default address space,
+  non-volatile use, target pointer width/alignment, and selected local-memory
+  authority are all present.
+- Preserve the existing string-byte extent/range proof for real byte, char, or
+  non-pointer loads from string storage; do not make arbitrary 8-byte string
+  accesses valid.
+- Keep direct-global, aggregate/block-entry stack-home publication,
+  pointer-value byte access, select-carrier publication, prepared move-bundle
+  fan-in, and other Step 5 out-of-scope owners outside this packet.
+- Add focused positive and fail-closed backend/prepared coverage for short
+  string literals whose label pointer materialization should not require an
+  8-byte in-bounds string-byte range, plus coverage that byte/char string
+  loads still depend on byte extent authority.
+- Add or update a focused check for the trailing-NUL extent mismatch observed
+  in Step 6, without broadening this step into a full string-byte policy
+  rewrite unless the proof shows it is required for pointer materialization.
+
+Completion check:
+- Focused proof shows short-string pointer materializations receive explicit
+  string-label pointer authority and move past the prior
+  `range_verdict=proven_out_of_bounds` authority failure, while real
+  string-byte loads and out-of-scope owners still fail closed without their own
+  explicit authority.

@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/630_string_constant_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Trace String-Constant Extent/Range Authority
+Current Step ID: 7
+Current Step Title: Separate String-Label Pointer Authority
 
 # Current Packet
 
@@ -100,15 +100,16 @@ Focused evidence extract:
 
 ## Suggested Next
 
-Implement one narrow idea-630 code packet that separates string-label pointer
-materialization authority from real string-byte memory access range authority.
-The smallest candidate is in the prepared access/address construction path:
-for `bir.load_local ptr` / `bir.load_global ptr` whose address base is
-`StringConstant`, publish a string-label pointer materialization/access
-authority that RV64 can consume without requiring an 8-byte in-bounds range
-against the string byte payload. Keep real byte/char loads from string storage
-on the existing string-byte extent proof, and separately add or update focused
-coverage for the trailing-NUL extent mismatch.
+Execute Step 7: implement one narrow idea-630 code packet that separates
+string-label pointer materialization authority from real string-byte memory
+access range authority. The smallest candidate is in the prepared
+access/address construction path: for `bir.load_local ptr` /
+`bir.load_global ptr` whose address base is `StringConstant`, publish a
+string-label pointer materialization/access authority that RV64 can consume
+without requiring an 8-byte in-bounds range against the string byte payload.
+Keep real byte/char loads from string storage on the existing string-byte
+extent proof, and separately add or update focused coverage for the
+trailing-NUL extent mismatch.
 
 ## Watchouts
 
