@@ -8,49 +8,52 @@ Current Step Title: Validate Breadth And Guards
 
 ## Just Finished
 
-Step 4 validated the prepared-global consumer slice with fresh focused probes
-after the Step 3 implementation.
+Step 4 narrowly classified why `src/pr91137.c` still stops at the prepared
+global facts gate after the Step 3 consumer implementation.
 
-Focused probe results:
+Fresh diagnostics:
 
-- `src/pr36034-1.c`: `--dump-prepared-bir` succeeded and `--codegen obj`
-  progressed past the old prepared-global value-location stop. Current stop is
-  downstream move-bundle ownership:
-  `unsupported_move_bundle_target_shape` with stack-to-stack double moves and
-  `fragment_status=generic_move_bundle_materialization_failed`.
-- `src/pr91137.c`: `--dump-prepared-bir` succeeded, but `--codegen obj` still
-  stops at `unsupported_global_data: RV64 object route requires supported
-  prepared global memory facts`. The prepared dump shows many direct-global
-  select-chain `store_global_publication` sources, so this row is not proven
-  fixed by the current value-location consumer slice and should stay classified
-  to prepared/global producer or supported-access authority follow-up unless a
-  narrower refreshed probe identifies a complete prepared access.
-- `src/ieee/20001122-1.c`: guard row remains outside this route. It still
-  fails closed at `unsupported_global_data: RV64 object route supports only 1-,
-  2-, 4-, and 8-byte prepared global memory accesses`, so the width-policy
-  guard was not absorbed by the consumer slice.
-- `src/991030-1.c`: guard row remains outside this route because `--codegen
-  obj` succeeds and emits an object file.
+- `--dump-bir` and `--dump-prepared-bir` both succeed for
+  `tests/c/external/gcc_torture/src/pr91137.c`.
+- `--codegen obj` still fails with
+  `unsupported_global_data: RV64 object route requires supported prepared
+  global memory facts`.
+- The first relevant unsupported prepared-global fact is in `fn2`,
+  `block_6`, `inst_index=4`: `bir.store_global @c, i32
+  %t22.outer0.elt0.inner.store`.
+- The memory access fact for that store is complete/direct:
+  `base=global_symbol`, `stored=%t22.outer0.elt0.inner.store`, `symbol=c`,
+  `offset=0`, `size=4`, `align=4`, `base_plus_offset=yes`,
+  `layout_authority=byte_storage_aggregate`,
+  `range_verdict=proven_in_bounds`.
+- The unsupported part is the store source publication, not the global memory
+  access authority: `store_source function=fn2 block=block_6 inst=4` is
+  `status=available`, `intent=store_global_publication`,
+  `source_producer=select_materialization`, `source_freshness_status=selected`,
+  `direct_global_select_chain=yes`, `direct_global_root_is_select=yes`,
+  `direct_global_root_inst=3`.
+- The stored value has a prepared GPR home (`%t22.outer0.elt0.inner.store`
+  in `s2`), and the source load feeding the select also has complete direct
+  global facts (`block_6 inst_index=2`, `symbol=c`, `offset=0`, `size=4`).
 
-Close-readiness evidence: the slice has one representative row
-(`src/pr36034-1.c`) progressing to a downstream owner and preserves both guard
-classifications, but `src/pr91137.c` still needs supervisor classification
-before idea closure because the old `requires supported prepared global memory
-facts` stop remains for that row.
+Classification: `src/pr91137.c` is no longer blocked by missing prepared/global
+producer access facts for the first store. It belongs to selected/direct-global
+store-publication policy or downstream source-materialization ownership, not a
+producer/access-authority follow-up and not an unambiguous continuation of the
+active prepared-global value-location consumer route.
 
 ## Suggested Next
 
-Supervisor should either route a narrow follow-up classification packet for
-`src/pr91137.c` prepared-access completeness or ask plan-owner/reviewer whether
-the current evidence is sufficient to close/split idea 621 with `src/pr91137.c`
-assigned to a downstream producer/access-authority owner.
+Supervisor should route `src/pr91137.c` out of this consumer slice unless a
+reviewer finds that selected/direct-global `store_global_publication` source
+materialization is explicitly in scope for idea 621.
 
 ## Watchouts
 
-- Do not treat `src/pr91137.c` as fixed by the consumer slice yet; its current
-  object-route stop is still `requires supported prepared global memory facts`.
-- Do not widen Step 3 into direct-global select-chain or producer-authority
-  reconstruction inside RV64.
+- Do not treat `src/pr91137.c` as a producer/access-authority gap based only on
+  the generic object-route diagnostic; the first inspected access is complete.
+- Do not widen Step 3 into selected/direct-global store-publication source
+  materialization without supervisor/reviewer confirmation.
 - Keep `src/ieee/20001122-1.c` guard-only unless a separate width-policy owner
   resolves the unsupported access size.
 - Keep `src/991030-1.c` out of this route because it already emits an object
@@ -60,12 +63,15 @@ assigned to a downstream producer/access-authority owner.
 
 Focused probes run:
 
-`./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --dump-prepared-bir <row>`
+`./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --dump-bir tests/c/external/gcc_torture/src/pr91137.c`
 
-`./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj <row> -o /tmp/c4c_621_step4/<row>.o`
+`./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/pr91137.c`
 
-Rows probed: `src/pr36034-1.c`, `src/pr91137.c`,
-`src/ieee/20001122-1.c`, and `src/991030-1.c`.
+`./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr91137.c -o /tmp/c4c_pr91137_classify/pr91137.o`
+
+Focused diagnostic logs: `/tmp/c4c_pr91137_classify/pr91137.bir.txt`,
+`/tmp/c4c_pr91137_classify/pr91137.prepared.txt`, and
+`/tmp/c4c_pr91137_classify/pr91137.obj.err`.
 
 Delegated proof command run:
 
