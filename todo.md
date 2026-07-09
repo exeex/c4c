@@ -1,55 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/631_direct_global_symbol_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Narrow RV64 Direct-Global Consumer Admission
+Current Step ID: 5
+Current Step Title: Reclassify Direct-Global Rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added narrow RV64 object-emission admission for scalar prepared
-`LoadLocalInst` and `StoreLocalInst` local-memory rows whose selected address
-carrier is `PreparedAddressBaseKind::GlobalSymbol`. The encoded fragment path
-now emits PC-relative direct-global address materialization plus 1/2/4/8-byte
-GPR load/store instructions only when the selected prepared access is default
-address space, non-volatile, direct materialization policy, scalar layout
-authority, publication-authorized, width-matched, alignment no larger than
-width, symbol-identified, base-plus-offset capable, and signed-12-bit offset
-encodable.
+Step 5 re-ran the focused direct global-symbol row probe from Step 1 after the
+Step 4 RV64 consumer admission and generated fresh prepared dumps/extracts
+under `build/agent_state/631_step5_*`.
 
-`object_emission.cpp` now admits the same fact shape before rejecting local
-memory as unsupported, while preserving the existing raw `LoadLocalInst`
-global-address diagnostic when no prepared direct-global facts are present.
-`tests/backend/mir/backend_riscv_object_emission_test.cpp` adds a direct-global
-scalar local-memory fixture proving relocation-backed `sw`/`lw` emission and
-fail-closed coverage for missing prepared access, missing symbol identity,
-missing base-plus-offset, non-default address space, volatile access,
-unsupported addressing policy, incomplete extent, missing range, wrong layout
-authority, large/non-encodable offset, wrong base kind, and unsupported width.
+The focused probe still reports `total=18 passed=0 failed=18`, but the
+remaining failures do not justify another direct-global local-memory consumer
+packet:
+
+| Row | Step 5 result | Classification |
+| --- | --- | --- |
+| `src/20021204-1.c` | `unsupported_prepared_move_bundle_classification` | Out of scope: move-bundle authority remains the first owner. |
+| `src/920429-1.c` | `unsupported_prepared_move_bundle_classification` | Out of scope: move-bundle authority remains the first owner. |
+| `src/921117-1.c` | `unsupported_local_memory_access` | Out of scope: byval/aggregate local-memory copies; no direct `addr @symbol` local-memory row. |
+| `src/complex-7.c` | `unsupported_local_memory_access` | Out of scope: aggregate global-object materialization into locals. |
+| `src/pr46309.c` | `unsupported_local_memory_access` | Reclassified: pointer-loaded-from-global route. The refreshed dump has `%t15 = bir.load_global ptr @q` followed by `bir.load_local ... addr %t15`, not `addr @q`. |
+| `src/pr49073.c` | `unsupported_local_memory_access` | Out of scope: aggregate/select-materialized global-object and local publication rows. |
+| `src/pr57861.c` | `unsupported_local_memory_access` | Reclassified: scalar global-memory facts exist, but the stop is mixed ordinary local/pointer-global traffic, including `bir.store_local %lv.l, ptr @f` and `%t3 = bir.load_global ptr @g`; no direct-global local-memory consumer row remains proven. |
+| `src/pr58431.c` | `unsupported_local_memory_access` | Reclassified: scalar global-memory facts exist, but the local-memory stop is mixed local/pointer traffic such as `bir.store_local %lv.p, ptr @h`; no direct `addr @symbol` local-memory row remains proven. |
+| `src/pr58984.c` | `unsupported_local_memory_access` | Reclassified: pointer-loaded-from-global plus byval/local copies; dump includes `%t8 = bir.load_global ptr @c`, not direct local memory at `@c`. |
+| `src/pr60017.c` | `unsupported_local_memory_access` | Out of scope: aggregate global-object materialization into locals. |
+| `src/pr60822.c` | `unsupported_local_memory_access` | Out of scope: aggregate/byte-storage global-object rows with very large offsets. |
+| `src/pr66556.c` | `unsupported_local_memory_access` | Out of scope: aggregate/pointer-loaded-from-global mix, including `%t0 = bir.load_global ptr @k`. |
+| `src/pr68185.c` | `unsupported_local_memory_access` | Reclassified: scalar global-memory facts exist, but no direct `addr @symbol` local-memory row remains proven; residual is mixed local/global publication. |
+| `src/pr68321.c` | `unsupported_local_memory_access` | Reclassified: scalar global-memory facts plus one `layout_authority=unknown` aggregate lane; residual belongs to mixed local/global publication or aggregate owner, not this direct-local consumer. |
+| `src/pr70005.c` | `unsupported_local_memory_access` | Reclassified: scalar global-memory facts exist, but residual local stores are publication/freshness-shaped; no direct `addr @symbol` local-memory row remains proven. |
+| `src/pr88739.c` | `unsupported_local_memory_access` | Out of scope: aggregate/bitfield global-object and local aggregate traffic. |
+| `src/struct-ret-1.c` | `unsupported_local_memory_access` | Out of scope: byval/struct-return aggregate local copies. |
+| `src/pr79737-2.c` | `RV64_BACKEND_RUNTIME_MISMATCH` | Out of scope for this idea: already moved past object compile; runtime mismatch remains a separate owner. |
 
 ## Suggested Next
 
-Step 5 evidence packet: re-run the focused direct global-symbol local-memory
-row probe/allowlist from Step 1 and classify the remaining rows after the RV64
-consumer admission. Record whether `src/pr46309.c` or adjacent direct
-global-symbol local-memory rows moved past `unsupported_local_memory_access`,
-whether any rows still fail due to direct-global policy gaps, and which
-residual rows belong to out-of-scope owners.
+Plan-owner lifecycle packet: close idea 631 as exhausted/complete for the
+direct `PreparedAddressBaseKind::GlobalSymbol` local-memory consumer policy,
+then split any durable residuals that should continue outside this idea.
 
 ## Watchouts
 
-The Step 4 consumer deliberately requires `ScalarLayout`; aggregate lane global
-memory remains on the existing global-memory path and byte-storage aggregate
-local-memory rows remain rejected. Large direct-global offsets still fail
-closed unless a future packet adds an explicit supported materialization
-sequence. The next packet should not widen this admission to string constants,
-aggregate homes, move bundles, runtime mismatch rows, or prepared global
-value-location rows owned by idea 621.
+The Step 5 evidence separates prepared global-memory accesses whose metadata
+says `base=global_symbol` from local-memory instructions whose address operand
+is literally `addr @symbol`. The focused rows still contain many scalar
+`base=global_symbol` global accesses, but those are already global-memory
+consumer facts, not the direct-global local-memory shape admitted in Step 4.
+Do not widen idea 631 to pointer-loaded-from-global local memory, aggregate
+homes, byval copies, byte-storage aggregate global objects, move bundles, large
+aggregate offsets, runtime mismatches, or value-location rows owned by idea
+621.
 
 ## Proof
 
 Ran exactly:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$' > test_after.log 2>&1`
+`cmake --build --preset default && ALLOWLIST=build/agent_state/631_step1_global_symbol.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/631_step5_global_symbol.log 2>&1`
 
-Result: passed. `test_after.log` is the preserved proof log.
+Result: build succeeded and the focused probe returned nonzero because the
+allowlisted rows still fail as expected for classification evidence:
+`total=18 passed=0 failed=18`.
+
+Additional evidence artifacts:
+- `build/agent_state/631_step5_global_symbol.log`
+- `build/agent_state/631_step5_global_symbol_access_extract.tsv`
+- `build/agent_state/631_step5_*.prepared.txt`
+- `build/agent_state/631_step5_*.prepared.err`
