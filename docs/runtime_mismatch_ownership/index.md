@@ -12,11 +12,12 @@ rows:
 - `5` timeout rows.
 
 The investigation result is that runtime symptoms are not implementation
-owners by themselves. Only `src/990106-1.c` currently has direct first-owner
-evidence, pointing at call lowering through an `ld.so` relocation assertion.
-The generic abort, segfault, and timeout families remain mixed-owner evidence
-lanes that should be rerun after ABI, layout, local/global memory, call
-lowering, and control-flow prerequisites.
+owners by themselves. `src/990106-1.c` has direct first-owner evidence for
+call lowering through an `ld.so` relocation assertion, and `src/pr79737-2.c`
+now has direct first-owner evidence for packed bitfield/global-object layout
+and access lowering. The remaining generic abort, segfault, and timeout
+families remain mixed-owner evidence lanes that should be rerun after ABI,
+layout, local/global memory, call lowering, and control-flow prerequisites.
 
 ## Answer Files
 
@@ -28,6 +29,9 @@ lowering, and control-flow prerequisites.
 - [03_followup_implementation_queue.md](03_followup_implementation_queue.md):
   splits recommended follow-up work by owner and proof surface, while labeling
   discussion and policy issues.
+- [04_global_residual_runtime_mismatch.md](04_global_residual_runtime_mismatch.md):
+  classifies the residual `src/pr79737-2.c` runtime abort as packed
+  bitfield/global-object layout and access lowering, not true runtime support.
 
 ## Summary
 
@@ -40,6 +44,9 @@ Recommended follow-up work is owner-first:
   rows.
 - Local/global memory: evidence and reruns for string, alias, pointer,
   restrict, and global-buffer rows.
+- Packed bitfield/global layout: separate implementation follow-up for
+  `src/pr79737-2.c`, proving 9-byte packed globals and byte-lane bitfield
+  access before rerunning the row.
 - Branch/compare/control flow: timeout investigation without changing timeout
   policy.
 - True runtime support: only residual rows after the prerequisite owner lanes
