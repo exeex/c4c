@@ -1,78 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/619_bir_aggregate_global_store_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair BIR Or Prepared Aggregate Global Handoff
+Current Step ID: 4
+Current Step Title: Classify Residual Owners And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Repair BIR Or Prepared Aggregate Global Handoff completed as a BIR
-semantic producer repair.
+Step 4 - Classify Residual Owners And Close Readiness completed as a no-code
+classification packet after the Step 3 aggregate-global semantic repair.
 
-Changed files:
+Fresh targeted probes were written under
+`build/agent_state/619_step4_residual_classification/`:
 
-- `src/backend/bir/lir_to_bir/aggregate.cpp`
-- `src/backend/bir/lir_to_bir/lowering.hpp`
-- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
-- `tests/backend/CMakeLists.txt`
-- `tests/backend/case/aggregate_global_store_handoff.c`
-- `todo.md`
+| Row | `--dump-bir` | `--dump-prepared-bir` | Object/runtime probe | Residual owner |
+| --- | --- | --- | --- | --- |
+| `src/pr22141-1.c` | rc `0` | rc `0` | rc `1`, `RV64_BACKEND_RUNTIME_MISMATCH`, QEMU SIGSEGV at address `0x1` | RV64 consumer / ABI-runtime runtime mismatch after prepared aggregate/global facts are present. |
+| `src/compndlit-1.c` | rc `0` | rc `0` | rc `0`, `[PASS][rv64-gcc-torture-backend-obj]` | none; row is no longer residual for idea 619. |
+| `src/pr57344-1.c` | rc `0` | rc `0` | rc `0`, `[PASS][rv64-gcc-torture-backend-obj]` | none; row is no longer residual for idea 619. |
+| `src/pr39120.c` | rc `0` | rc `0` | rc `1`, `RV64_BACKEND_RUNTIME_MISMATCH`, QEMU SIGSEGV at `NULL` | RV64 consumer runtime mismatch after prepared `store_global @x` handoff; prepared facts show `store_source ... intent=store_global_publication` and `access ... base=global_symbol stored=x.aggregate.copy.0`. |
+| `src/ieee/20001122-1.c` | rc `0` | rc `0` | rc `1`, `unsupported_global_data` | prepared global-data/RV64 global memory access-width support; not aggregate-global semantic handoff. |
+| `src/991030-1.c` | rc `0` | rc `0` | rc `0`, `[PASS][rv64-gcc-torture-backend-obj]` | none; current targeted object/runtime probe passes. |
 
-The repair adds a general aggregate-copy-to-global helper and admits whole
-aggregate stores with direct global destinations or resolved global-pointer
-destinations. Source aggregate authority still comes from existing
-`aggregate_value_aliases_`/local aggregate slots, so the rule covers compound
-literals, local aggregate objects, and call-result aggregate slots without
-adding named-case shortcuts or widening ordinary local-memory store admission.
+No row remains blocked by the same aggregate/global handoff stop. The four
+original producer/handoff rows (`pr22141-1.c`, `compndlit-1.c`,
+`pr57344-1.c`, and `pr39120.c`) all reach semantic and prepared BIR now, and
+the two split-in rows also dump semantic/prepared BIR cleanly. No residual row
+is classified as terminator, global initializer bootstrap, or unresolved for
+this packet.
 
-Focused probes were refreshed under
-`build/agent_state/619_step3_repair_aggregate_global_handoff/`:
-
-| Row | `--dump-bir` | `--dump-prepared-bir` | Result |
-| --- | --- | --- | --- |
-| `src/pr22141-1.c` | rc `0` | rc `0` | Direct compound-literal-to-global assignment now emits leaf `bir.store_global @u` stores. |
-| `src/compndlit-1.c` | rc `0` | rc `0` | Bitfield compound-literal assignment now emits `bir.store_global @x`. |
-| `src/pr57344-1.c` | rc `0` | rc `0` | Local aggregate assignment to `s[1]` now emits offset `bir.store_global @s` stores. |
-| `src/pr39120.c` | rc `0` | rc `0` | Aggregate call result assignment now emits `bir.store_global @x` from the preserved sret slot. |
-| `src/20020225-2.c` | rc `0` | rc `0` | Local-only aggregate guard retained prior semantic/prepared BIR behavior. |
-| `src/ieee/mul-subnormal-single-1.c` | rc `0` | rc `0` | Local-only aggregate guard retained prior semantic/prepared BIR behavior. |
-
-Added focused backend test
-`backend_dump_riscv64_aggregate_global_store_handoff`, which checks semantic
-BIR leaf `store_global` facts for direct global, global array element, and call
-result aggregate handoff.
+No expectation files, unsupported markers, allowlists, timeout/accounting
+policy, implementation files, or tests were changed for Step 4.
 
 ## Suggested Next
 
-Execute Step 4 as a no-code classification packet: rerun or cite the refreshed
-backend object scan for the Step 1 row set and classify any residual stops now
-that semantic/prepared aggregate-global handoff is present.
+Ask the plan owner to decide lifecycle closure for idea 619. Based on this
+packet, the idea appears close-ready: the aggregate/global handoff producer
+stop is repaired, and remaining failures are already assignable to downstream
+RV64 consumer/ABI-runtime or prepared global-data ownership.
 
 ## Watchouts
 
-- The repair emits scalar leaf `StoreGlobalInst` facts into linear global
-  storage; it does not add aggregate-width store instructions or RV64 consumer
-  reconstruction.
-- `src/ieee/20001122-1.c` and any other residual prepared-global-data/RV64
-  consumer rows still need explicit owner classification instead of being
-  counted as semantic producer gaps.
-- Keep `src/20020225-2.c` and `src/ieee/mul-subnormal-single-1.c` in the guard
-  surface for follow-up validation because this packet intentionally reused
-  local aggregate source slots while changing only the destination handoff.
+- `src/pr22141-1.c` and `src/pr39120.c` still fail at runtime, but only after
+  object compilation/linking succeeds; do not count those as 619 producer or
+  prepared-handoff misses.
+- `src/ieee/20001122-1.c` is a prepared global-data/global memory access-width
+  rejection: `unsupported_global_data: RV64 object route supports only 1-, 2-,
+  4-, and 8-byte prepared global memory accesses`.
+- Existing full-scan summaries may still contain stale pre-Step-3 semantic
+  failures for the original rows; use the Step 4 targeted artifacts when
+  judging close readiness.
 
 ## Proof
 
-Focused diagnostic probes:
+Focused diagnostic probes, no root proof log:
 
 - `./build/c4cll --dump-bir --target riscv64-unknown-linux-gnu <case>`
 - `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu <case>`
-- `ctest --test-dir build -j --output-on-failure -R '^backend_dump_riscv64_aggregate_global_store_handoff$'`
+- `cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=clang -DQEMU_RISCV64=qemu-riscv64 -DSRC=<case> -DROOT=/workspaces/c4c -DOUT_CLANG_BIN=<artifact> -DOUT_OBJECT=<artifact> -DOUT_C4C_BIN=<artifact> -P tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`
 
-Delegated proof command:
+Result: semantic/prepared BIR rc `0` for all six named rows; object/runtime
+passes for `compndlit-1.c`, `pr57344-1.c`, and `991030-1.c`; downstream
+failures classified above for `pr22141-1.c`, `pr39120.c`, and
+`ieee/20001122-1.c`.
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
-
-Result: pass. `test_after.log` reports `100% tests passed, 0 tests failed out
-of 347`.
+No build/regression command was required for this no-code packet, and no
+`test_after.log` was produced.
