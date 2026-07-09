@@ -5807,8 +5807,10 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
   const auto block_label = prepared.names.block_labels.intern("entry");
   const auto slot_name = prepared.names.slot_names.intern("%ret.sret");
   const auto pointer_name = prepared.names.value_names.intern("%ret.sret");
+  const auto source_name = prepared.names.value_names.intern("%src");
   const auto object_id = prepare::PreparedObjectId{31};
   const auto slot_id = prepare::PreparedFrameSlotId{19};
+  const auto access_range = bir::make_memory_byte_range(4, 4);
 
   bir::Block entry{
       .label = "entry",
@@ -5816,7 +5818,7 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
           {
               bir::StoreLocalInst{
                   .slot_name = "%lv.result",
-                  .value = bir::Value::immediate_i32(42),
+                  .value = bir::Value::named(bir::TypeKind::I32, "%src"),
                   .align_bytes = 4,
                   .address =
                       bir::MemoryAddress{
@@ -5894,16 +5896,26 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
-      .value_homes = {prepare::PreparedValueHome{
-          .value_id = 1,
-          .function_name = function_name,
-          .value_name = pointer_name,
-          .kind = prepare::PreparedValueHomeKind::StackSlot,
-          .slot_id = slot_id,
-          .offset_bytes = std::size_t{0},
-          .size_bytes = std::size_t{8},
-          .align_bytes = std::size_t{8},
-      }},
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = pointer_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = slot_id,
+                  .offset_bytes = std::size_t{0},
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = source_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t1"},
+              },
+          },
   });
   prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
       .function_name = function_name,
@@ -5913,6 +5925,7 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
           .function_name = function_name,
           .block_label = block_label,
           .inst_index = 0,
+          .stored_value_name = source_name,
           .address = prepare::PreparedAddress{
               .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
               .pointer_value_name = pointer_name,
@@ -5920,6 +5933,25 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
               .size_bytes = 4,
               .align_bytes = 4,
               .can_use_base_plus_offset = true,
+              .provenance =
+                  bir::MemoryAccessProvenance{
+                      .base_identity =
+                          bir::MemoryProvenanceBaseIdentity{
+                              .kind =
+                                  bir::MemoryProvenanceBaseIdentityKind::SretParameter,
+                              .spelling = "%ret.sret",
+                          },
+                      .object_extent =
+                          bir::MemoryObjectExtent{
+                              .completeness =
+                                  bir::MemoryObjectExtentCompleteness::Complete,
+                              .size_bytes = 8,
+                              .size_known = true,
+                          },
+                      .requested_range = access_range,
+                      .layout_authority = bir::MemoryLayoutAuthorityKind::Unknown,
+                      .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+                  },
           },
       }},
   });
@@ -11396,6 +11428,7 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module(
   const auto result_name = prepared.names.value_names.intern("%t0");
   const auto object_id = prepare::PreparedObjectId{18};
   const auto slot_id = prepare::PreparedFrameSlotId{0};
+  const auto access_range = bir::make_memory_byte_range(access_byte_offset, 4);
 
   bir::Block entry{
       .label = "entry",
@@ -11501,6 +11534,25 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module(
               .size_bytes = 4,
               .align_bytes = 4,
               .can_use_base_plus_offset = true,
+              .provenance =
+                  bir::MemoryAccessProvenance{
+                      .base_identity =
+                          bir::MemoryProvenanceBaseIdentity{
+                              .kind =
+                                  bir::MemoryProvenanceBaseIdentityKind::ByvalParameter,
+                              .spelling = "%p.pa",
+                          },
+                      .object_extent =
+                          bir::MemoryObjectExtent{
+                              .completeness =
+                                  bir::MemoryObjectExtentCompleteness::Complete,
+                              .size_bytes = 72,
+                              .size_known = true,
+                          },
+                      .requested_range = access_range,
+                      .layout_authority = bir::MemoryLayoutAuthorityKind::Unknown,
+                      .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+                  },
           },
       }},
   });
@@ -16822,6 +16874,46 @@ int rejects_byval_stack_slot_pointer_access_fail_closed_shapes() {
   }
 
   prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].result_value_name = std::nullopt;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .base_identity
+      .kind = bir::MemoryProvenanceBaseIdentityKind::PointerValue;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .object_extent
+      .size_known = false;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .requested_range = bir::MemoryByteRange{};
+  prepared.addressing.functions[0].accesses[0].address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
   auto* load =
       std::get_if<bir::LoadLocalInst>(&prepared.module.functions[0].blocks[0].insts[0]);
   if (load == nullptr) {
@@ -17852,19 +17944,18 @@ int builds_prepared_sret_stack_pointer_store_object() {
   if (text == nullptr || function == nullptr) {
     return fail("expected prepared sret pointer store object to publish text/function");
   }
-  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
-      function->value != 0 || function->size_bytes != 28 ||
+  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
+      function->value != 0 || function->size_bytes != 24 ||
       function->section != std::optional<object::SectionId>{text->id}) {
     return fail("expected prepared sret pointer store object text layout");
   }
   if (read_u32(text->bytes, 0) != 0xff010113 ||
       read_u32(text->bytes, 4) != 0x00a13023 ||
       read_u32(text->bytes, 8) != 0x00013383 ||
-      read_u32(text->bytes, 12) != 0x02a00313 ||
-      read_u32(text->bytes, 16) != 0x0063a223 ||
-      read_u32(text->bytes, 20) != 0x01010113 ||
-      read_u32(text->bytes, 24) != 0x00008067) {
-    return fail("expected sret a0 home publication, pointer load, indirect store, and return sequence");
+      read_u32(text->bytes, 12) != 0x0063a223 ||
+      read_u32(text->bytes, 16) != 0x01010113 ||
+      read_u32(text->bytes, 20) != 0x00008067) {
+    return fail("expected sret a0 home publication, pointer load, named-source indirect store, and return sequence");
   }
   if (!module->relocations.empty()) {
     return fail("expected prepared sret pointer store object to need no relocations");
@@ -17994,6 +18085,35 @@ int rejects_prepared_sret_stack_pointer_store_fail_closed_shapes() {
 
   prepared = make_prepared_sret_stack_pointer_store_module();
   prepared.addressing.functions[0].accesses[0].address.align_bytes = 8;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0].accesses[0].stored_value_name = std::nullopt;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .object_extent
+      .size_known = false;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0]
+      .accesses[0]
+      .address
+      .provenance
+      .requested_range = bir::MemoryByteRange{};
+  prepared.addressing.functions[0].accesses[0].address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
   if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
     return 1;
   }

@@ -1516,6 +1516,13 @@ std::optional<std::int32_t> prepared_byval_stack_slot_pointer_access_offset(
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return std::nullopt;
   }
+  if (!prepare::prepared_stack_home_local_memory_has_authority(
+          stack_layout,
+          &lookups->value_homes,
+          *access,
+          prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return std::nullopt;
+  }
   const auto value_id_it =
       lookups->value_homes.value_ids.find(*access->address.pointer_value_name);
   if (value_id_it == lookups->value_homes.value_ids.end()) {
@@ -1597,6 +1604,13 @@ prepared_sret_stack_slot_pointer_access(
       access->address.size_bytes != size_bytes ||
       access->address.align_bytes > size_bytes ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return std::nullopt;
+  }
+  if (!prepare::prepared_stack_home_local_memory_has_authority(
+          stack_layout,
+          &lookups->value_homes,
+          *access,
+          prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return std::nullopt;
   }
   const auto value_id_it =
