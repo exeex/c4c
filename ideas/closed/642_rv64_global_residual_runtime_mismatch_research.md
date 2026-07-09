@@ -1,6 +1,6 @@
 # RV64 Global Residual Runtime Mismatch Research
 
-Status: Open
+Status: Closed
 Type: Research
 Parent: `ideas/closed/631_direct_global_symbol_local_memory_policy.md`
 Related:
@@ -70,3 +70,16 @@ ownership evidence rather than another local-memory admission change.
   and focused proof route.
 - Reject expectation, unsupported-marker, allowlist, timeout/accounting, or
   runtime-comparison changes as progress.
+
+## Completion Notes
+
+Closed after the research artifact
+`docs/runtime_mismatch_ownership/04_global_residual_runtime_mismatch.md`
+classified `src/pr79737-2.c` as packed bitfield/global-object layout and
+bitfield access lowering, not true runtime support. The row was refreshed,
+candidate owners were ruled in or out with object/link/runtime evidence, and
+the published artifact identified a single implementation owner.
+
+Follow-up implementation work has been split into
+`ideas/open/651_rv64_packed_bitfield_global_layout_access.md` so this research
+idea remains implementation-free.
