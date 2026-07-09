@@ -12140,6 +12140,26 @@ selected_rhs_branch_stack_load_source_freshness_status(
       terminator_instruction_index);
 }
 
+Rv64SelectedBranchStackLoadSourceFreshnessStatus
+selected_condition_branch_stack_load_source_freshness_status(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* condition_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  return selected_branch_stack_load_source_freshness_status(
+      names,
+      lookups,
+      &branch_condition.condition_value,
+      condition_home,
+      c4c::backend::prepare::PreparedBranchStackLoadRole::Condition,
+      block_label_id,
+      block_index,
+      terminator_instruction_index);
+}
+
 bool selected_lhs_branch_stack_load_source_freshness_available(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -12172,6 +12192,25 @@ bool selected_rhs_branch_stack_load_source_freshness_available(
              lookups,
              branch_condition,
              rhs_home,
+             block_label_id,
+             block_index,
+             terminator_instruction_index)
+      .available;
+}
+
+bool selected_condition_branch_stack_load_source_freshness_available(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* condition_home,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  return selected_condition_branch_stack_load_source_freshness_status(
+             names,
+             lookups,
+             branch_condition,
+             condition_home,
              block_label_id,
              block_index,
              terminator_instruction_index)
@@ -12224,6 +12263,49 @@ bool selected_rhs_stack_branch_freshness_allows_pointer_publication(
   return lhs.kind == c4c::backend::bir::Value::Kind::Named &&
          lhs_home != nullptr &&
          gpr_register_number_for_home(*lhs_home).has_value();
+}
+
+bool selected_condition_and_single_operand_stack_branch_freshness_allows_pointer_publication(
+    const c4c::backend::prepare::PreparedFusedPointerBranchPublication& publication,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedValueHome* condition_home,
+    const c4c::backend::prepare::PreparedValueHome* lhs_home,
+    const c4c::backend::prepare::PreparedValueHome* rhs_home) {
+  if (publication.status !=
+          c4c::backend::prepare::PreparedFusedPointerBranchPublicationStatus::
+              UnsupportedConditionHome ||
+      condition_home == nullptr ||
+      condition_home->kind !=
+          c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return false;
+  }
+
+  const bool lhs_stack =
+      lhs_home != nullptr &&
+      lhs_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot;
+  const bool rhs_stack =
+      rhs_home != nullptr &&
+      rhs_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot;
+  if (lhs_stack == rhs_stack) {
+    return false;
+  }
+
+  const auto other_operand_is_supported = [](
+      const c4c::backend::bir::Value& value,
+      const c4c::backend::prepare::PreparedValueHome* home) {
+    if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      return value.type == c4c::backend::bir::TypeKind::Ptr &&
+             value.immediate_bits == 0;
+    }
+    return value.kind == c4c::backend::bir::Value::Kind::Named &&
+           home != nullptr &&
+           gpr_register_number_for_home(*home).has_value();
+  };
+  return lhs_stack
+             ? other_operand_is_supported(*branch_condition.rhs, rhs_home)
+             : other_operand_is_supported(*branch_condition.lhs, lhs_home);
 }
 
 bool rv64_branch_stack_load_status_is_source_freshness_failure(
@@ -12308,6 +12390,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
       prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.lhs);
   const auto* rhs_home =
       prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.rhs);
+  if (!selected_condition_branch_stack_load_source_freshness_available(
+          names,
+          lookups,
+          branch_condition,
+          condition_home,
+          block_label_id,
+          block_index,
+          terminator_instruction_index)) {
+    return std::nullopt;
+  }
   if (!selected_lhs_branch_stack_load_source_freshness_available(
           names,
           lookups,
@@ -12342,7 +12434,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
       !selected_lhs_stack_branch_freshness_allows_pointer_publication(
           publication, branch_condition, lhs_home, rhs_home) &&
       !selected_rhs_stack_branch_freshness_allows_pointer_publication(
-          publication, branch_condition, lhs_home, rhs_home)) {
+          publication, branch_condition, lhs_home, rhs_home) &&
+      !selected_condition_and_single_operand_stack_branch_freshness_allows_pointer_publication(
+          publication, branch_condition, condition_home, lhs_home, rhs_home)) {
     return std::nullopt;
   }
   const auto normalized = normalize_prepared_pointer_branch_predicate(
@@ -12570,6 +12664,30 @@ diagnose_unsupported_prepared_terminator_fragment(
       !prepared_branch_condition_is_supported_pointer_branch(*branch_condition)) {
     return std::nullopt;
   }
+  const auto* condition_home =
+      prepared_value_home_for(names, &lookups, branch_condition->condition_value);
+  const auto condition_status =
+      selected_condition_branch_stack_load_source_freshness_status(
+          names,
+          &lookups,
+          *branch_condition,
+          condition_home,
+          block_label_id,
+          block_index,
+          block.insts.size());
+  if (condition_status.freshness_required && !condition_status.available) {
+    return rv64_branch_stack_load_freshness_diagnostic(
+        names,
+        function_name,
+        block_label_id,
+        block_index,
+        block.insts.size(),
+        "Condition",
+        "condition",
+        &branch_condition->condition_value,
+        condition_status);
+  }
+
   const auto* lhs_home =
       prepared_pointer_branch_operand_home_for(names,
                                                &lookups,

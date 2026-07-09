@@ -954,6 +954,43 @@ prepare::PreparedBirModule make_prepared_fused_pointer_rhs_stack_branch_module()
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_fused_pointer_condition_and_rhs_stack_branch_module() {
+  auto prepared = make_prepared_fused_pointer_rhs_stack_branch_module();
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  const auto condition_name = prepared.names.value_names.find("%cmp");
+  auto& condition_home =
+      prepared.value_locations.functions.front().value_homes.front();
+  condition_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  condition_home.register_name.reset();
+  condition_home.target_register_identity.reset();
+  condition_home.slot_id = prepare::PreparedFrameSlotId{12};
+  condition_home.offset_bytes = std::size_t{16};
+  condition_home.size_bytes = std::size_t{4};
+  condition_home.align_bytes = std::size_t{4};
+
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{12},
+      .function_name = function_name,
+      .value_name = condition_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{12},
+      .object_id = prepare::PreparedObjectId{12},
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 32;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -15470,6 +15507,53 @@ int builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object(
   return 0;
 }
 
+int builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object() {
+  const auto prepared =
+      make_prepared_fused_pointer_condition_and_rhs_stack_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected stack-homed fused condition plus rhs pointer branch to consume selected authorities and build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label =
+      object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected condition-plus-rhs stack fused pointer branch symbols and text");
+  }
+  bool saw_rhs_stack_load = false;
+  bool saw_condition_stack_load = false;
+  bool saw_branch_using_loaded_rhs = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (is_rv64_load_from_sp(word, 3U, 8) && riscv_rd(word) == 29) {
+      saw_rhs_stack_load = true;
+    }
+    if (is_rv64_load_from_sp(word, 2U, 16) ||
+        is_rv64_load_from_sp(word, 3U, 16)) {
+      saw_condition_stack_load = true;
+    }
+    if ((word & 0x7fU) == 0x63U && ((word >> 12) & 0x7U) == 6U &&
+        riscv_rs1(word) == 28 && riscv_rs2(word) == 29) {
+      saw_branch_using_loaded_rhs = true;
+    }
+  }
+  if (!saw_rhs_stack_load || !saw_branch_using_loaded_rhs) {
+    return fail("expected fused pointer branch to load rhs from selected branch stack slot");
+  }
+  if (saw_condition_stack_load) {
+    return fail("expected fused pointer branch to use condition authority as admission, not reload the folded bool");
+  }
+  return 0;
+}
+
 prepare::PreparedBranchStackLoadAuthorityRecord*
 find_lhs_branch_stack_load_authority_record(
     prepare::PreparedFunctionLookups& lookups) {
@@ -15492,6 +15576,21 @@ find_rhs_branch_stack_load_authority_record(
       lookups.branch_stack_load_authorities.records.end(),
       [](const prepare::PreparedBranchStackLoadAuthorityRecord& candidate) {
         return candidate.role == prepare::PreparedBranchStackLoadRole::Rhs;
+      });
+  return record == lookups.branch_stack_load_authorities.records.end()
+             ? nullptr
+             : &*record;
+}
+
+prepare::PreparedBranchStackLoadAuthorityRecord*
+find_condition_branch_stack_load_authority_record(
+    prepare::PreparedFunctionLookups& lookups) {
+  auto record = std::find_if(
+      lookups.branch_stack_load_authorities.records.begin(),
+      lookups.branch_stack_load_authorities.records.end(),
+      [](const prepare::PreparedBranchStackLoadAuthorityRecord& candidate) {
+        return candidate.role ==
+               prepare::PreparedBranchStackLoadRole::Condition;
       });
   return record == lookups.branch_stack_load_authorities.records.end()
              ? nullptr
@@ -15528,6 +15627,36 @@ int expect_lhs_stack_branch_authority_diagnostic(
   return 0;
 }
 
+int expect_condition_stack_branch_authority_diagnostic(
+    const prepare::PreparedBirModule& prepared,
+    prepare::PreparedFunctionLookups lookups,
+    const std::vector<std::string>& expected_fragments,
+    std::string_view case_name) {
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto& block = prepared.module.functions.front().blocks.front();
+  const auto diagnostic =
+      rv64::diagnose_rv64_prepared_terminator_fragment_for_authority_status(
+          prepared.names,
+          lookups,
+          control_flow,
+          block,
+          control_flow.function_name,
+          control_flow.blocks.front().block_label,
+          0);
+  if (!diagnostic.has_value()) {
+    return fail(std::string{"expected condition stack branch diagnostic for "} +
+                std::string{case_name});
+  }
+  for (const auto& fragment : expected_fragments) {
+    if (diagnostic->find(fragment) == std::string::npos) {
+      return fail(std::string{"expected condition stack branch diagnostic for "} +
+                  std::string{case_name} + " to contain `" + fragment +
+                  "`, got `" + *diagnostic + "`");
+    }
+  }
+  return 0;
+}
+
 int expect_rhs_stack_branch_authority_diagnostic(
     const prepare::PreparedBirModule& prepared,
     prepare::PreparedFunctionLookups lookups,
@@ -15555,6 +15684,90 @@ int expect_rhs_stack_branch_authority_diagnostic(
                   "`, got `" + *diagnostic + "`");
     }
   }
+  return 0;
+}
+
+int rejects_prepared_fused_pointer_condition_stack_branch_authority_statuses() {
+  const auto prepared =
+      make_prepared_fused_pointer_condition_and_rhs_stack_branch_module();
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto& block = prepared.module.functions.front().blocks.front();
+  const auto base_lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+  if (rv64::diagnose_rv64_prepared_terminator_fragment_for_authority_status(
+          prepared.names,
+          base_lookups,
+          control_flow,
+          block,
+          control_flow.function_name,
+          control_flow.blocks.front().block_label,
+          0)
+          .has_value()) {
+    return fail("expected selected condition and rhs branch stack-load authority to have no diagnostic");
+  }
+
+  auto expect_mutated =
+      [&](std::string_view case_name,
+          const auto& mutate,
+          const std::vector<std::string>& expected_fragments) -> int {
+    auto lookups = base_lookups;
+    auto* condition_record =
+        find_condition_branch_stack_load_authority_record(lookups);
+    if (condition_record == nullptr) {
+      return fail("expected condition branch stack-load authority record");
+    }
+    mutate(*condition_record, lookups);
+    return expect_condition_stack_branch_authority_diagnostic(
+        prepared, std::move(lookups), expected_fragments, case_name);
+  };
+
+  if (expect_mutated(
+          "missing condition authority",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record,
+             prepare::PreparedFunctionLookups& lookups) {
+            (void)record;
+            lookups.branch_stack_load_authorities.records.erase(
+                std::remove_if(
+                    lookups.branch_stack_load_authorities.records.begin(),
+                    lookups.branch_stack_load_authorities.records.end(),
+                    [&](const prepare::PreparedBranchStackLoadAuthorityRecord&
+                            candidate) {
+                      return candidate.role ==
+                             prepare::PreparedBranchStackLoadRole::Condition;
+                    }),
+                lookups.branch_stack_load_authorities.records.end());
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "role=condition",
+           "value=%cmp",
+           "authority_status=missing_source_freshness_authority",
+           "source_freshness_status=no_candidate",
+           "source_freshness_candidates=0"}) != 0) {
+    return 1;
+  }
+
+  if (expect_mutated(
+          "ambiguous condition source freshness",
+          [](prepare::PreparedBranchStackLoadAuthorityRecord& record,
+             prepare::PreparedFunctionLookups&) {
+            record.authority.status =
+                prepare::PreparedBranchStackLoadAuthorityStatus::
+                    AmbiguousSourceFreshnessAuthority;
+            record.authority.source_freshness_status =
+                prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
+            record.authority.source_freshness_authority.reset();
+            record.authority.source_freshness_authorities.push_back(
+                record.authority.source_freshness_authorities.front());
+          },
+          {"unsupported_branch_stack_load_source_freshness",
+           "role=condition",
+           "value=%cmp",
+           "authority_status=ambiguous_source_freshness_authority",
+           "source_freshness_status=ambiguous_candidate",
+           "source_freshness_candidates=2"}) != 0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -30833,6 +31046,10 @@ int main() {
   status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |=
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();
+  status |=
+      builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object();
+  status |=
+      rejects_prepared_fused_pointer_condition_stack_branch_authority_statuses();
   status |= rejects_prepared_fused_pointer_rhs_stack_branch_authority_statuses();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_register_condition_branch_object();
