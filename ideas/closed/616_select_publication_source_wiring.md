@@ -1,6 +1,6 @@
 # Select Publication Source Wiring
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -44,6 +44,44 @@ and `598`.
 - Multiple select publication rows progress when source freshness exists.
 - Rows relying only on alias evidence or destination legality remain rejected.
 - Proof demonstrates the source-freshness boundary from ideas `589` and `598`.
+
+## Closure Notes
+
+Closed after Step 4 classified the active runbook as complete for idea `616`.
+Step 2 wired a bounded prepared/RV64 select-publication source path and moved
+multiple complete-authority stack-offset select-publication rows past
+`unsupported_source_stack_offset`, while keeping rows without explicit source
+freshness rejected. The delegated backend proof passed with:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
+```
+
+The closure boundary remains the idea `589`/`598` contract: source freshness,
+alias evidence, and destination legality are separate facts. Alias evidence or
+destination legality alone was not accepted as source freshness.
+
+Residual rows are separate owners, not blockers for this idea:
+
+- `src/20000706-1.c`, `src/20000706-2.c`, `src/20000717-5.c`,
+  `src/20071213-1.c`, `src/20120427-1.c`, and `src/20120427-2.c` now reach
+  `[RV64_BACKEND_RUNTIME_MISMATCH]`; separate runtime/semantic owner.
+- `src/991216-1.c` now fails first on generic
+  `unsupported_move_bundle_target_shape`; separate generic move-bundle
+  target-shape owner.
+- `src/pr45034.c`, `src/pr53160.c`, `src/pr58726.c`, and `src/pr59221.c`
+  remain `intent_status_unsupported_source_home`; separate source-home/source
+  freshness owner.
+- `src/pr29695-1.c` and `src/pr29695-2.c` remain
+  `unsupported_source_immediate_i32_range`; separate large-immediate
+  materialization/range owner.
+- `src/921124-1.c` and `src/920710-1.c` remain
+  `unsupported_terminator_fragment`; separate terminator owner.
+
+Close-time regression guard used existing backend-scope `test_before.log`,
+regenerated matching `test_after.log`, and passed the monotonic checker with
+`--allow-non-decreasing-passed` because closure itself is lifecycle-only and
+does not change implementation behavior.
 
 ## Split-In From Idea 611
 
