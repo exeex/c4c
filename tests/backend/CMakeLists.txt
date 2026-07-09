@@ -1254,6 +1254,48 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_local_string_constant_label_pointer_load
+  SRC "${BACKEND_CASE_ROOT}/riscv64_local_string_constant_label_pointer_load.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32|@.str0 = bir.load_local ptr %lv.local, addr .str0|access block=entry inst_index=1 base=string_constant result=@.str0 symbol=.str0 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=string_constant_label_pointer range_verdict=unknown_compatible|address_materialization block=entry inst_index=1 kind=string_constant result=@.str0 text=.str0"
+  FORBIDDEN_SNIPPETS "unsupported_local_memory_access|src/20000722-1.c|%lv._clit_"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 local_memory string_constant label_pointer dump
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_local_string_constant_label_pointer_load
+  SRC "${BACKEND_CASE_ROOT}/riscv64_local_string_constant_label_pointer_load.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_local_string_constant_label_pointer_load.o"
+  EXPECTED_MACHINE_LE f300
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object local_memory string_constant label_pointer cli
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_local_string_constant_label_pointer_compound_arg
+  SRC "${BACKEND_CASE_ROOT}/riscv64_local_string_constant_label_pointer_compound_arg.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @pass_compound_literal() -> void|@.str0 = bir.load_local ptr %lv._clit_.0, addr .str0|bir.call void consume_payload(ptr %lv._clit_)|callsite block=0 inst=10 wrapper=direct_extern_fixed_arity callee=consume_payload|arg.source_selection=local_frame_address_materialization selection_source_value_id=3 selection_source_value=%lv._clit_|access block=entry inst_index=7 base=string_constant result=@.str0 symbol=.str0 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=string_constant_label_pointer range_verdict=unknown_compatible|address_materialization block=entry inst_index=7 kind=string_constant result=@.str0 text=.str0"
+  FORBIDDEN_SNIPPETS "src/20000722-1.c|bar|foo"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 local_memory string_constant label_pointer compound direct_extern dump
+)
+
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_riscv64_local_string_constant_label_pointer_compound_arg
+  SRC "${BACKEND_CASE_ROOT}/riscv64_local_string_constant_label_pointer_compound_arg.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_local_string_constant_label_pointer_compound_arg.o"
+  EXPECTED_DIAGNOSTICS "error: --codegen obj failed|unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object local_memory string_constant label_pointer compound direct_extern expected_failure cli
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_byval_formal_gpr_publication
   SRC "${BACKEND_CASE_ROOT}/riscv64_byval_formal_gpr_publication.c"
   TARGET_TRIPLE riscv64-linux-gnu
