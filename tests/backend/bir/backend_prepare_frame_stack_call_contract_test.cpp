@@ -1567,7 +1567,7 @@ bir::Module make_derived_local_frame_address_source_selection_contract_module() 
 
 bir::Module make_stack_cross_call_preservation_contract_module() {
   bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_triple = "riscv64-unknown-linux-gnu";
 
   bir::Function decl;
   decl.name = "stack_boundary_helper";
@@ -1643,15 +1643,18 @@ bir::Module make_stack_cross_call_preservation_contract_module() {
       .result = bir::Value::named(bir::TypeKind::I32, "stack.sum.0"),
       .operand_type = bir::TypeKind::I32,
       .lhs = bir::Value::named(bir::TypeKind::I32, "call.stack.out"),
-      .rhs = bir::Value::named(bir::TypeKind::I32, "carry.stack.0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p0"),
   });
   for (int index = 1; index < carry_count; ++index) {
+    const std::string rhs_name = index == 1   ? "p1"
+                                 : index == 2 ? "p2"
+                                              : "carry.stack." + std::to_string(index);
     entry.insts.push_back(bir::BinaryInst{
         .opcode = bir::BinaryOpcode::Add,
         .result = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(index)),
         .operand_type = bir::TypeKind::I32,
         .lhs = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(index - 1)),
-        .rhs = bir::Value::named(bir::TypeKind::I32, "carry.stack." + std::to_string(index)),
+        .rhs = bir::Value::named(bir::TypeKind::I32, rhs_name),
     });
   }
   entry.terminator = bir::ReturnTerminator{
@@ -7395,7 +7398,8 @@ int check_saved_register_slot_placement_carrier_contract() {
 }
 
 int check_stack_cross_call_preservation_contract() {
-  const auto prepared = prepare_module(make_stack_cross_call_preservation_contract_module());
+  const auto prepared =
+      prepare_riscv_module(make_stack_cross_call_preservation_contract_module());
   const auto function_id =
       prepared.names.function_names.find("stack_cross_call_preservation_contract");
   const auto* call_plans =
@@ -7414,12 +7418,14 @@ int check_stack_cross_call_preservation_contract() {
                                          call_plan.preserved_values.end(),
                                          [](const auto& value) {
                                            return value.route ==
-                                                  prepare::PreparedCallPreservationRoute::StackSlot;
+                                                      prepare::PreparedCallPreservationRoute::StackSlot &&
+                                                  value.preservation_source.storage_kind ==
+                                                      prepare::PreparedMoveStorageKind::Register;
                                          });
   const auto* preserved =
       preserved_it == call_plan.preserved_values.end() ? nullptr : &*preserved_it;
   if (preserved == nullptr) {
-    return fail("stack cross-call preservation contract: expected at least one stack-slot preserved scalar");
+    return fail("stack cross-call preservation contract: expected at least one stack-slot preserved scalar with concrete register source");
   }
 
   const auto* storage_value =
@@ -7428,17 +7434,43 @@ int check_stack_cross_call_preservation_contract() {
           : find_storage_value(
                 prepared, *storage_plan, prepare::prepared_value_name(prepared.names, preserved->value_name));
   if (storage_value == nullptr ||
-      storage_value->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-      preserved->slot_id != storage_value->slot_id ||
-      preserved->stack_offset_bytes != storage_value->stack_offset_bytes ||
+      storage_value->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      preserved->preservation_source.register_name != storage_value->register_name ||
+      preserved->preservation_source.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{storage_value->bank} ||
+      preserved->preservation_source.occupied_register_names !=
+          storage_value->occupied_register_names ||
       preserved->register_name.has_value() || preserved->register_bank.has_value() ||
       preserved->callee_saved_save_index.has_value()) {
-    return fail("stack cross-call preservation contract: call_plans lost direct frame-slot authority");
+    return fail("stack cross-call preservation contract: call_plans lost direct register-source authority");
   }
   if (preserved->preservation_source.value_id !=
           std::optional<prepare::PreparedValueId>{preserved->value_id} ||
-      preserved->preservation_source.value_name != preserved->value_name ||
-      preserved->preservation_destination.storage_kind !=
+      preserved->preservation_source.value_name != preserved->value_name) {
+    return fail("stack cross-call preservation contract: missing preservation source value identity");
+  }
+  if (preserved->preservation_source.encoding !=
+          prepare::PreparedStorageEncodingKind::Register ||
+      preserved->preservation_source.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register) {
+    return fail("stack cross-call preservation contract: missing preservation source register encoding");
+  }
+  if (!preserved->preservation_source.register_name.has_value() ||
+      preserved->preservation_source.register_name->empty()) {
+    return fail("stack cross-call preservation contract: missing preservation source register name");
+  }
+  if (preserved->preservation_source.register_bank !=
+      std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {
+    return fail("stack cross-call preservation contract: missing preservation source register bank");
+  }
+  if (preserved->preservation_source.contiguous_width == 0 ||
+      preserved->preservation_source.occupied_register_names.empty()) {
+    return fail("stack cross-call preservation contract: missing preservation source register units");
+  }
+  if (!preserved->preservation_source.target_register_identity.has_value()) {
+    return fail("stack cross-call preservation contract: missing preservation source target register identity");
+  }
+  if (preserved->preservation_destination.storage_kind !=
           prepare::PreparedMoveStorageKind::StackSlot ||
       preserved->preservation_destination.slot_id != preserved->slot_id ||
       preserved->preservation_destination.stack_offset_bytes !=
@@ -7448,7 +7480,7 @@ int check_stack_cross_call_preservation_contract() {
       preserved->preservation_destination.stack_align_bytes !=
           preserved->stack_align_bytes ||
       preserved->preservation_reason.empty()) {
-    return fail("stack cross-call preservation contract: missing explicit preservation source/destination facts");
+    return fail("stack cross-call preservation contract: missing explicit preservation stack destination facts");
   }
   if (frame_plan == nullptr || !preserved->slot_id.has_value() ||
       !preserved->stack_offset_bytes.has_value() ||

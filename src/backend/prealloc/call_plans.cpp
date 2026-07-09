@@ -738,6 +738,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
           value.register_class,
           endpoint.contiguous_width,
           endpoint.occupied_register_names);
+      endpoint.target_register_identity = value_home->target_register_identity;
       return endpoint;
     }
     if (value_home->kind == PreparedValueHomeKind::StackSlot) {
@@ -1683,12 +1684,17 @@ void append_call_clobbered_register_spans(
     }
 
     if (preserved.route != PreparedCallPreservationRoute::Unknown) {
+      const bool prefer_value_home_for_preservation_source =
+          preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister ||
+          (preserved.route == PreparedCallPreservationRoute::StackSlot &&
+           value_home != nullptr && value_home->kind == PreparedValueHomeKind::Register &&
+           value_home->register_name.has_value());
       preserved.preservation_source =
           make_preservation_value_source_endpoint(
               prepared.target_profile,
               value,
               value_home,
-              preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister);
+              prefer_value_home_for_preservation_source);
       preserved.preservation_destination =
           make_preservation_destination_endpoint(preserved);
       preserved.preservation_reason = make_preservation_reason(preserved);

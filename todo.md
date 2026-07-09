@@ -1,103 +1,97 @@
 Status: Active
 Source Idea Path: ideas/open/625_prepared_stack_slot_preservation_source_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Locate prepared preserve source authority production
+Current Step ID: 3
+Current Step Title: Publish prepared preserve source facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 authority inspection for prepared stack-slot preserve source
-publication. Used `c4c-clang-tool-ccdb` on
-`src/backend/prealloc/call_plans.cpp` before narrow text reads; AST lookup
-confirmed `build_call_preserved_values(...)` as the producer and
-`populate_call_plans(...)` as the ordinary call-plan caller.
+Completed Step 3 producer publication for prepared stack-slot preserve source
+facts. In `src/backend/prealloc/call_plans.cpp`,
+`build_call_preserved_values(...)` now asks the existing
+`make_preservation_value_source_endpoint(...)` helper to prefer a prepared
+register value-home for StackSlot preserves only when that home proves a
+concrete register name. The helper also copies the value-home
+`target_register_identity` into `PreparedCallBoundaryEffectEndpoint` for that
+register source. No RV64 consumer inference, ABI-index guessing, testcase-name
+matching, final layout lookup, or parallel carrier was added.
 
-Concrete producer target:
+The existing stack-slot source behavior is preserved: rows whose source is a
+real stack slot still publish `preservation_source=stack_slot:...` and keep
+`preservation_reason=stack_slot_preservation`.
 
-- `src/backend/prealloc/call_plans.cpp:1601`
-  `build_call_preserved_values(...)`, specifically the StackSlot preserve path
-  that calls `make_preservation_value_source_endpoint(...)` at lines
-  1686-1691 and `make_preservation_destination_endpoint(...)` at lines
-  1692-1693.
-- `src/backend/prealloc/call_plans.cpp:717`
-  `make_preservation_value_source_endpoint(...)` is the narrow endpoint
-  construction helper. It already knows how to publish concrete register homes
-  when `prefer_value_home` is true, but stack-slot preserves currently pass
-  `prefer_value_home=false`; that leaves ordinary ABI-home rows as
-  `preservation_source=register:value#N`.
-- `src/backend/prealloc/calls.hpp:790` / `:809` already provide the carrier:
-  `PreparedCallBoundaryEffectEndpoint preservation_source` and
-  `preservation_destination` on `PreparedCallPreservedValue`. No new RV64
-  inference carrier is needed for this route.
+Updated
+`tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+`check_stack_cross_call_preservation_contract()` to require a producer-level
+RV64 stack-slot preserved value with:
 
-Exact facts to publish for complete caller-saved stack-slot reuse preserves:
+- `preservation_source` encoded as a concrete register endpoint with value
+  identity, register name, GPR bank, register units, and target register
+  identity.
+- `preservation_destination` encoded as a stack-slot endpoint with slot id,
+  stack offset, size, and alignment.
+- no callee-saved preserve metadata on the StackSlot row.
 
-- Source endpoint: `encoding=Register`, `storage_kind=Register`,
-  `value_id`, `value_name`, `register_name`, `register_bank`,
-  `contiguous_width`, `occupied_register_names`, and `register_placement` when
-  the prepared value home or storage publication proves a concrete register.
-- Destination endpoint: keep the existing stack-slot facts from
-  `make_preservation_destination_endpoint(...)`: `slot_id`,
-  `stack_offset_bytes`, `stack_size_bytes`, `stack_align_bytes`, and
-  `spill_slot_placement`.
-- Preserve association: keep `preservation_reason=
-  caller_saved_clobber_reuse_stack_preservation`, value identity, route
-  `StackSlot`, and the current callsite association through
-  `PreparedCallPlan::block_index` / `instruction_index`.
+Diagnostic evidence from the delegated proof shows the expected producer rows:
 
-Expected Step 3 producer-level proof rows:
-
-- Extend `check_stack_cross_call_preservation_contract()` in
-  `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp` to
-  require a concrete register source endpoint for a stack-slot preserve before
-  RV64 object emission.
-- Reuse the Step 1 corpus rows as diagnostic confirmation after the producer
-  test goes green: `20020529-1.c` should expose `%p.b` from `a1`,
-  `20000412-4.c` should expose `%p.j` from `a1` and `%p.width` from `a3`, and
-  `pr51933.c` should expose `%p.y` from `a1` when the row reaches prepared
-  dumps.
-
-Rows that remain fail-closed or outside this owner:
-
-- Any stack-slot preserve whose source endpoint cannot be proven from prepared
-  home/storage publication remains fail-closed as `register:value#N`; RV64 must
-  not recover it from ABI parameter index, function storage summaries, source
-  filename, or final assembly shape.
-- `20000412-4.c` still has a downstream
-  `rv64_prepared_move_bundle_consumer` residual for an ambiguous move-bundle
-  path; that is not the producer authority target.
-- `20020529-1.c` still has an ordinary same-module call/result ABI residual
-  after preserve publication; that belongs to the call ABI/result owner.
-- `pr51933.c` still stops on `unsupported_inline_asm_fragment`; inline asm
-  carrier policy remains a non-goal.
+- `20020529-1.c`: `%p.b` publishes `preservation_source=register:a1:value#1`
+  with a stack-slot destination.
+- `20000412-4.c`: `%p.j` publishes `register:a1`; `%p.width` publishes
+  `register:a3`.
+- `pr51933.c`: `%p.y` publishes `register:a1`.
+- `pr51933.c` also keeps `@.str0` as
+  `preservation_source=stack_slot:slot#1100:value#2199`, confirming the
+  stack-slot source path remains separate and fail-closed.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: publish producer-side concrete source endpoint
-facts for complete caller-saved stack-slot preserves in the prepared call-plan
-surface, then add a focused producer-level contract before touching RV64
-consumers.
+Execute Step 4 from `plan.md`: wire RV64 preserve guards to require the
+prepared register source endpoint and stack-slot destination facts without
+manufacturing missing source authority in RV64.
 
 ## Watchouts
 
-- The source-name route must be producer-side prepared authority. Do not add an
-  RV64 fallback that guesses `a1`/`a3` from parameter position or target ABI
-  layout.
-- Prefer extending `make_preservation_value_source_endpoint(...)` or its call
-  site over adding a parallel carrier; the existing
-  `PreparedCallBoundaryEffectEndpoint` fields are already printed and consumed.
-- Keep stack-slot source preserves such as
-  `preservation_source=stack_slot:slot#1100:value#2199` separate from the
-  caller-saved register-source route.
-- Do not broaden into move-bundle ambiguity, ordinary call/result ABI policy,
-  inline asm policy, expectation rewrites, unsupported marker changes,
-  allowlists, timeouts, runtime mismatch, or accounting.
+- For ABI-home register sources, the prepared value-home proves
+  `target_register_identity`; it may not prove a regalloc pool
+  `register_placement`. Do not make RV64 infer missing placement from ABI
+  index.
+- Step 4 should consume the prepared `preservation_source` and
+  `preservation_destination` facts as authority and fail closed when either is
+  absent or contradictory.
+- Keep `preservation_source=stack_slot:...` rows such as `pr51933.c` `@.str0`
+  out of the caller-saved register-source route.
+- Residuals remain outside this producer packet: `20000412-4.c` downstream
+  move-bundle ambiguity, `20020529-1.c` ordinary call/result ABI residual, and
+  `pr51933.c` inline asm policy.
 
 ## Proof
 
-Ran exactly the supervisor-delegated Step 2 proof command from `/workspaces/c4c`.
-`test_after.log` contains the `cmake --build build --target c4cll` proof plus
-the appended authority summary. Artifacts are in
-`build/agent_state/625_step2_preserve_source_authority/`.
+Ran exactly the supervisor-delegated Step 3 proof command from
+`/workspaces/c4c`:
+
+```bash
+bash -lc 'set -euo pipefail
+cmake --build build --target backend_prepare_frame_stack_call_contract_test c4cll > test_after.log
+ctest --test-dir build -j --output-on-failure -R "^(backend_prepare_frame_stack_call_contract)$" >> test_after.log
+out=build/agent_state/625_step3_preserve_source_facts
+rm -rf "$out"
+mkdir -p "$out"
+for src in tests/c/external/gcc_torture/src/20020529-1.c tests/c/external/gcc_torture/src/20000412-4.c tests/c/external/gcc_torture/src/pr51933.c; do
+  name=$(basename "$src" .c)
+  ./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu "$src" > "$out/${name}.prepared.txt" 2> "$out/${name}.prepared.err" || true
+  rg -n "preserve value=.*route=stack_slot|preservation_source=register:|preservation_source=register:value|preservation_destination=stack_slot|caller_saved_clobber_reuse_stack_preservation" "$out/${name}.prepared.txt" > "$out/${name}.evidence.txt" || true
+done
+{
+  echo "# idea 625 step 3 diagnostic evidence"
+  rg -n "preservation_source=register:(a1|a3)|preservation_source=register:value|caller_saved_clobber_reuse_stack_preservation|preservation_destination=stack_slot" "$out"/*.evidence.txt || true
+} > "$out/summary.txt"
+cat "$out/summary.txt" >> test_after.log
+'
+```
+
+Result: build passed, `backend_prepare_frame_stack_call_contract` passed
+1/1, and diagnostic artifacts are under
+`build/agent_state/625_step3_preserve_source_facts/`. Canonical proof log:
+`test_after.log`.
