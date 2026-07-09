@@ -1254,6 +1254,21 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   CallArgumentDestinationPlan destination;
   const auto abi_register_index =
       regalloc_detail::call_arg_abi_register_index(target_profile, call, arg_index);
+  auto apply_stack_destination_from_abi = [&]() {
+    if (destination.stack_offset_bytes.has_value() ||
+        arg_index >= call.arg_abi.size() ||
+        regalloc_detail::call_arg_storage_kind(target_profile, call, arg_index) !=
+            PreparedMoveStorageKind::StackSlot) {
+      return;
+    }
+    destination.stack_offset_bytes =
+        regalloc_detail::call_arg_destination_stack_offset_bytes(
+            target_profile, call, arg_index);
+    if (destination.stack_offset_bytes.has_value()) {
+      destination.stack_size_bytes =
+          prepared_call_stack_argument_size_bytes(call.arg_abi[arg_index]);
+    }
+  };
 
   auto apply_register_binding = [&](const PreparedAbiBinding& binding) {
     destination.register_name = binding.destination_register_name;
@@ -1299,6 +1314,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
     if (binding->destination_register_name.has_value()) {
       apply_register_binding(*binding);
     }
+    apply_stack_destination_from_abi();
   }
   if (!destination.register_name.has_value()) {
     if (const auto* register_binding =
@@ -1380,6 +1396,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
       }
     }
   }
+  apply_stack_destination_from_abi();
 
   return destination;
 }

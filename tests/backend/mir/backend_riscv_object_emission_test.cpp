@@ -2660,6 +2660,8 @@ prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_modul
           .instruction_index = 0,
           .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
           .direct_callee_name = std::string{"consume_pair"},
+          .outgoing_stack_argument_area =
+              prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 24},
           .arguments =
               {
                   prepare::PreparedCallArgumentPlan{
@@ -2673,6 +2675,8 @@ prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_modul
                       .source_stack_offset_bytes = std::size_t{96},
                       .source_register_bank =
                           prepare::PreparedRegisterBank::Gpr,
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .destination_stack_size_bytes = std::size_t{24},
                       .source_selection =
                           prepare::PreparedCallArgumentSourceSelection{
                               .kind = prepare::PreparedCallArgumentSourceSelectionKind::
@@ -2701,6 +2705,8 @@ prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_modul
                               .copy_align_bytes = 8,
                               .source_slot_id = source_slot_id,
                               .source_stack_offset_bytes = std::size_t{96},
+                              .destination_stack_offset_bytes = std::size_t{0},
+                              .destination_stack_size_bytes = std::size_t{24},
                               .chunks =
                                   {
                                       prepare::PreparedAggregateTransportChunk{
@@ -14650,6 +14656,27 @@ int rejects_prepared_byval_stack_copy_call_fail_closed_shapes() {
   prepared.call_plans.functions[0].calls[0].arguments[0]
       .aggregate_transport->chunks.front().kind =
       prepare::PreparedAggregateTransportChunkKind::FallbackOnly;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .destination_stack_offset_bytes = std::nullopt;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .aggregate_transport->destination_stack_size_bytes = std::size_t{16};
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].outgoing_stack_argument_area =
+      prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 16};
   if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
     return 1;
   }

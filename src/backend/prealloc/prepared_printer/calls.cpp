@@ -432,14 +432,6 @@ void append_aggregate_transport_plan(
     out << " transport_source_stack_offset="
         << *plan.source_stack_offset_bytes;
   }
-  if (plan.destination_stack_offset_bytes.has_value()) {
-    out << " transport_dest_stack_offset="
-        << *plan.destination_stack_offset_bytes;
-  }
-  if (plan.destination_stack_size_bytes.has_value()) {
-    out << " transport_dest_stack_size="
-        << *plan.destination_stack_size_bytes;
-  }
   for (const auto& chunk : plan.chunks) {
     out << " chunk index=" << chunk.chunk_index
         << " kind=" << prepared_aggregate_transport_chunk_kind_name(chunk.kind)
@@ -491,6 +483,14 @@ void append_aggregate_transport_plan(
         << (scratch.may_overlap_source ? "yes" : "no")
         << " scratch_overlap_dest="
         << (scratch.may_overlap_destination ? "yes" : "no");
+  }
+  if (plan.destination_stack_offset_bytes.has_value()) {
+    out << " transport_dest_stack_offset="
+        << *plan.destination_stack_offset_bytes;
+  }
+  if (plan.destination_stack_size_bytes.has_value()) {
+    out << " transport_dest_stack_size="
+        << *plan.destination_stack_size_bytes;
   }
 }
 
@@ -570,10 +570,14 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
                                     arg.destination_occupied_register_names);
         }
         out << " dest_bank=" << maybe_register_bank(arg.destination_register_bank);
-        if (arg.destination_stack_offset_bytes.has_value()) {
+        const bool defer_stack_destination_fields =
+            arg.value_bank == PreparedRegisterBank::AggregateAddress;
+        if (!defer_stack_destination_fields &&
+            arg.destination_stack_offset_bytes.has_value()) {
           out << " dest_stack_offset=" << *arg.destination_stack_offset_bytes;
         }
-        if (arg.destination_stack_size_bytes.has_value()) {
+        if (!defer_stack_destination_fields &&
+            arg.destination_stack_size_bytes.has_value()) {
           out << " dest_stack_size=" << *arg.destination_stack_size_bytes;
         }
         if (arg.source_selection.has_value()) {
@@ -583,6 +587,14 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         append_missing_frame_slot_call_argument_publication_need(out, arg);
         if (arg.aggregate_transport.has_value()) {
           append_aggregate_transport_plan(out, *arg.aggregate_transport);
+        }
+        if (defer_stack_destination_fields &&
+            arg.destination_stack_offset_bytes.has_value()) {
+          out << " dest_stack_offset=" << *arg.destination_stack_offset_bytes;
+        }
+        if (defer_stack_destination_fields &&
+            arg.destination_stack_size_bytes.has_value()) {
+          out << " dest_stack_size=" << *arg.destination_stack_size_bytes;
         }
         append_call_argument_freshness_authorities(out, module.names, arg);
         out << "\n";

@@ -4452,8 +4452,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   }
 
   if (call_plan == nullptr || call.is_indirect || call.callee_value.has_value() ||
-      call_plan->is_indirect || call_plan->indirect_callee.has_value() ||
-      call_plan->outgoing_stack_argument_area.has_value()) {
+      call_plan->is_indirect || call_plan->indirect_callee.has_value()) {
     return std::nullopt;
   }
   switch (call_plan->wrapper_kind) {
@@ -4559,8 +4558,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
               prepare::PreparedRegisterBank::Gpr ||
           argument.destination_register_bank.has_value() ||
           argument.destination_register_name.has_value() ||
-          argument.destination_stack_offset_bytes.has_value() ||
-          argument.destination_stack_size_bytes.has_value() ||
+          argument.destination_stack_offset_bytes !=
+              std::optional<std::size_t>{0} ||
+          !argument.destination_stack_size_bytes.has_value() ||
           selection == nullptr ||
           selection->kind != prepare::PreparedCallArgumentSourceSelectionKind::
                                  LocalFrameAddressMaterialization ||
@@ -4570,8 +4570,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
           !transport->source_stack_offset_bytes.has_value() ||
           *transport->source_stack_offset_bytes !=
               local_materialization_route->source_stack_offset_bytes ||
-          transport->destination_stack_offset_bytes.has_value() ||
-          transport->destination_stack_size_bytes.has_value() ||
+          transport->destination_stack_offset_bytes !=
+              argument.destination_stack_offset_bytes ||
+          transport->destination_stack_size_bytes !=
+              argument.destination_stack_size_bytes ||
           transport->payload_size_bytes == 0 ||
           transport->copy_size_bytes == 0 ||
           transport->copy_align_bytes == 0 ||
@@ -4586,7 +4588,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
           !abi.byval_copy ||
           abi.primary_class != bir::AbiValueClass::Memory ||
           abi.size_bytes != transport->copy_size_bytes ||
-          abi.align_bytes != transport->copy_align_bytes) {
+          abi.align_bytes != transport->copy_align_bytes ||
+          *argument.destination_stack_size_bytes != transport->copy_size_bytes ||
+          !call_plan->outgoing_stack_argument_area.has_value() ||
+          call_plan->outgoing_stack_argument_area->size_bytes !=
+              *argument.destination_stack_size_bytes) {
         return std::nullopt;
       }
       const std::size_t stack_copy_size =

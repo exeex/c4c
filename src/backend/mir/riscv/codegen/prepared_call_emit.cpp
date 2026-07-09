@@ -465,6 +465,8 @@ bool emit_riscv_byval_aggregate_address_argument(
     std::string& out,
     const c4c::backend::prepare::PreparedCallArgumentPlan& plan,
     const c4c::backend::bir::CallArgAbiInfo* argument_abi,
+    const c4c::backend::prepare::PreparedOutgoingStackArgumentArea*
+        outgoing_stack_argument_area,
     std::size_t& active_stack_adjustment_bytes) {
   namespace prepare = c4c::backend::prepare;
 
@@ -488,8 +490,8 @@ bool emit_riscv_byval_aggregate_address_argument(
       plan.destination_register_bank.has_value() ||
       plan.destination_register_name.has_value() ||
       plan.destination_contiguous_width != 1 ||
-      plan.destination_stack_offset_bytes.has_value() ||
-      plan.destination_stack_size_bytes.has_value() ||
+      plan.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      !plan.destination_stack_size_bytes.has_value() ||
       selection == nullptr ||
       selection->kind !=
           prepare::PreparedCallArgumentSourceSelectionKind::
@@ -499,8 +501,8 @@ bool emit_riscv_byval_aggregate_address_argument(
       transport->kind != prepare::PreparedAggregateTransportKind::StackCopy ||
       !transport->source_stack_offset_bytes.has_value() ||
       *transport->source_stack_offset_bytes != route->source_stack_offset_bytes ||
-      transport->destination_stack_offset_bytes.has_value() ||
-      transport->destination_stack_size_bytes.has_value() ||
+      transport->destination_stack_offset_bytes != plan.destination_stack_offset_bytes ||
+      transport->destination_stack_size_bytes != plan.destination_stack_size_bytes ||
       transport->payload_size_bytes == 0 ||
       transport->copy_size_bytes == 0 ||
       transport->copy_align_bytes == 0 ||
@@ -516,7 +518,10 @@ bool emit_riscv_byval_aggregate_address_argument(
       !argument_abi->byval_copy ||
       argument_abi->primary_class != c4c::backend::bir::AbiValueClass::Memory ||
       argument_abi->size_bytes != transport->copy_size_bytes ||
-      argument_abi->align_bytes != transport->copy_align_bytes) {
+      argument_abi->align_bytes != transport->copy_align_bytes ||
+      *plan.destination_stack_size_bytes != transport->copy_size_bytes ||
+      outgoing_stack_argument_area == nullptr ||
+      outgoing_stack_argument_area->size_bytes != *plan.destination_stack_size_bytes) {
     return false;
   }
 
@@ -827,7 +832,6 @@ std::optional<std::string> emit_riscv_simple_call(
   if (call_plan == nullptr ||
       call_plan->variadic_fpr_arg_register_count != 0 ||
       call_plan->memory_return.has_value() ||
-      call_plan->outgoing_stack_argument_area.has_value() ||
       call_plan->arguments.size() != call.args.size() ||
       call_plan->result.has_value() != call.result.has_value()) {
     return std::nullopt;
@@ -900,6 +904,9 @@ std::optional<std::string> emit_riscv_simple_call(
             out,
             *plan,
             arg_index < call.arg_abi.size() ? &call.arg_abi[arg_index] : nullptr,
+            call_plan->outgoing_stack_argument_area.has_value()
+                ? &*call_plan->outgoing_stack_argument_area
+                : nullptr,
             active_stack_adjustment_bytes)) {
       continue;
     }

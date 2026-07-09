@@ -460,7 +460,8 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
                                          *arg.destination_register_name,
                                          arg.destination_contiguous_width,
                                          arg.destination_occupied_register_names);
-          } else if (arg.destination_stack_offset_bytes.has_value()) {
+          } else if (arg.value_bank != PreparedRegisterBank::AggregateAddress &&
+                     arg.destination_stack_offset_bytes.has_value()) {
             out << "stack+" << *arg.destination_stack_offset_bytes;
             if (arg.destination_stack_size_bytes.has_value()) {
               out << ":size=" << *arg.destination_stack_size_bytes;

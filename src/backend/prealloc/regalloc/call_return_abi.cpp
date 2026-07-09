@@ -140,7 +140,7 @@ template <std::size_t N>
          }();
 }
 
-[[nodiscard]] bool rv64_call_arg_has_ordinary_stack_destination(
+[[nodiscard]] bool rv64_call_arg_has_complete_stack_destination(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
@@ -150,11 +150,19 @@ template <std::size_t N>
     return false;
   }
   const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
-  return abi.has_value() &&
-         abi->passed_on_stack &&
-         !abi->byval_copy &&
-         !abi->sret_pointer &&
-         abi->primary_class != bir::AbiValueClass::Memory;
+  if (!abi.has_value() ||
+      !abi->passed_on_stack ||
+      abi->sret_pointer ||
+      abi->size_bytes == 0 ||
+      abi->align_bytes == 0) {
+    return false;
+  }
+  if (abi->byval_copy || abi->primary_class == bir::AbiValueClass::Memory) {
+    return abi->type == bir::TypeKind::Ptr &&
+           abi->byval_copy &&
+           abi->primary_class == bir::AbiValueClass::Memory;
+  }
+  return true;
 }
 
 [[nodiscard]] bool aarch64_register_passed_byval_aggregate(
@@ -499,7 +507,7 @@ std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
     return std::nullopt;
   }
   if (target_profile.arch == c4c::TargetArch::Riscv64 &&
-      !rv64_call_arg_has_ordinary_stack_destination(target_profile, call, arg_index)) {
+      !rv64_call_arg_has_complete_stack_destination(target_profile, call, arg_index)) {
     return std::nullopt;
   }
 

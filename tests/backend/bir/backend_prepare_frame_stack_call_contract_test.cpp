@@ -6667,9 +6667,10 @@ int check_rv64_same_module_byval_stack_copy_call_contract() {
   if (call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
       call.direct_callee_name !=
           std::optional<std::string>{"rv64_same_module_byval_callee"} ||
-      call.outgoing_stack_argument_area.has_value()) {
+      !call.outgoing_stack_argument_area.has_value() ||
+      call.outgoing_stack_argument_area->size_bytes != 24) {
     return fail(
-        "RV64 same-module byval stack-copy contract: lost direct same-module or static stack-copy boundary");
+        "RV64 same-module byval stack-copy contract: lost direct same-module or outgoing stack-copy boundary");
   }
   if (arg0.value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
       arg0.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
@@ -6678,11 +6679,12 @@ int check_rv64_same_module_byval_stack_copy_call_contract() {
           std::optional<prepare::PreparedRegisterBank>{
               prepare::PreparedRegisterBank::AggregateAddress} ||
       arg0.destination_register_name.has_value() ||
-      arg0.destination_stack_offset_bytes.has_value() ||
+      arg0.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      arg0.destination_stack_size_bytes != std::optional<std::size_t>{24} ||
       !arg0.source_selection.has_value() ||
       !arg0.aggregate_transport.has_value()) {
     return fail(
-        "RV64 same-module byval stack-copy contract: arg0 lost aggregate-address register-source payload authority");
+        "RV64 same-module byval stack-copy contract: arg0 lost aggregate-address register-source or stack-destination authority");
   }
   const auto& selection = *arg0.source_selection;
   const auto& transport = *arg0.aggregate_transport;
@@ -6698,7 +6700,8 @@ int check_rv64_same_module_byval_stack_copy_call_contract() {
       transport.copy_size_bytes != 24 ||
       transport.copy_align_bytes != 8 ||
       transport.source_stack_offset_bytes != std::optional<std::size_t>{96} ||
-      transport.destination_stack_offset_bytes.has_value() ||
+      transport.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      transport.destination_stack_size_bytes != std::optional<std::size_t>{24} ||
       transport.chunks.size() != 3 ||
       !transport.lanes.empty()) {
     return fail(
@@ -6734,6 +6737,9 @@ int check_rv64_same_module_byval_stack_copy_call_contract() {
   const std::string prepared_dump = prepare::print(prepared);
   if (prepared_dump.find("arg.aggregate_transport=stack_copy") ==
           std::string::npos ||
+      prepared_dump.find("outgoing_stack_argument_area=24") == std::string::npos ||
+      prepared_dump.find("dest_stack_offset=0") == std::string::npos ||
+      prepared_dump.find("dest_stack_size=24") == std::string::npos ||
       prepared_dump.find("payload_size=24") == std::string::npos ||
       prepared_dump.find("copy_align=8") == std::string::npos ||
       prepared_dump.find("chunk index=2") == std::string::npos) {
