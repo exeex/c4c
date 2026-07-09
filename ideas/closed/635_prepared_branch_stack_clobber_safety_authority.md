@@ -1,6 +1,6 @@
 # Prepared Branch Stack Clobber-Safety Authority
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/615_branch_stack_source_residual_audit.md`
 Related:
@@ -79,3 +79,19 @@ Representative rows:
   accounting changes as capability progress.
 - Reject helper renames or diagnostic wording changes that leave
   `missing_stack_clobber_safety` as the effective first owner.
+
+## Closure Notes
+
+Closed after Step 6 residual classification. The seven representative rows no
+longer report `missing_stack_clobber_safety` as their first owner after the
+prepared branch clobber-safety and call-preservation authority work.
+
+Current residual owners:
+- `src/20001017-1.c`: `unsupported_call_abi`
+- `src/loop-2e.c`, `src/pr39100.c`, `src/20000314-3.c`,
+  `src/20140828-1.c`, `src/20080519-1.c`, and `src/20050125-1.c`:
+  `unsupported_terminator_fragment`
+
+Follow-up ownership is split to:
+- `ideas/open/644_rv64_object_route_stack_parameter_abi_residual.md`
+- `ideas/open/645_rv64_branch_residual_terminator_fragment_lowering.md`
