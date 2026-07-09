@@ -14669,6 +14669,27 @@ int rejects_prepared_byval_stack_copy_call_fail_closed_shapes() {
 
   prepared = make_prepared_byval_stack_copy_same_module_call_module();
   prepared.call_plans.functions[0].calls[0].arguments[0]
+      .destination_stack_size_bytes = std::nullopt;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .aggregate_transport->destination_stack_offset_bytes = std::nullopt;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .aggregate_transport->destination_stack_offset_bytes = std::size_t{8};
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
       .aggregate_transport->destination_stack_size_bytes = std::size_t{16};
   if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
     return 1;
