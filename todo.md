@@ -1,64 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/649_pointer_global_local_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Split The Narrow Publication Owner
+Current Step ID: 4
+Current Step Title: Prove Representative Integration
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 implementation for the narrow RV64 consumer/emission owner.
-The fix stayed in `src/backend/mir/riscv/codegen/object_emission.cpp`; the
-prepared producer and `prepared_local_memory_emit.cpp` did not need changes.
+Completed Step 4 representative integration proof for `pr57861.c`.
 
-Implemented behavior:
+Focused proof remained green:
 
-- Added a strict pointer/global store-local publication fragment that consumes
-  an existing available `StoreLocalPublication` plus same-instruction
-  `DirectGlobal` address materialization and emits the global object's address
-  directly into the exact prepared frame slot.
-- Tightened `prepared_memory_access_for_local_instruction(...)` so an indexed
-  memory access is accepted only when its result/stored value identity matches
-  the `LoadLocalInst`/`StoreLocalInst`; otherwise it falls back to the unique
-  value-based lookup. This prevents memory-access index collisions from
-  selecting the following direct-global access for a local load.
-- Added nonvolatile dead `LoadLocalInst` elision based on an explicit BIR
-  use-after scan. This covers the representative `%t33 = bir.load_local ptr
-  %lv.l` after `*l = 0` has already been represented as direct
-  `bir.store_global @f, i16 0`, without accepting live unsupported local loads.
-- Refined the use-after scan so it also treats `MemoryAddress::base_value`
-  pointer operands on later `LoadLocalInst`, `LoadGlobalInst`,
-  `StoreLocalInst`, and `StoreGlobalInst` as uses. `PhiInst` incoming values are
-  checked too, although the prepared object route should have removed phi nodes
-  before this consumer.
-- Added focused fail-closed coverage for a live reload of a direct-global local
-  pointer publication: the negative case stores a direct global address into a
-  local pointer slot, reloads it, and uses that reloaded pointer as a later
-  memory-address base. RV64 object emission now rejects this live publication
-  reload instead of relying on dead-load elision.
-- Added focused coverage in
-  `tests/backend/case/riscv64_pointer_global_local_publication.c` plus
-  `backend_dump_riscv64_pointer_global_local_publication`,
-  `backend_cli_riscv64_pointer_global_local_publication`, and
-  `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`.
+- `backend_dump_riscv64_pointer_global_local_publication` passed.
+- `backend_cli_riscv64_pointer_global_local_publication` passed.
+- `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
+  passed, preserving the fail-closed live-load rejection.
 
-Fail-closed behavior preserved: the new publication fragment rejects missing or
-ambiguous publication records, non-direct or missing global identity, TLS or
-non-default address-space materializations, mismatched destination access,
-mismatched source value, non-frame-slot destinations, non-8-byte pointer stores,
-non-base-plus-offset frame slots, and scalar-only direct-global/local facts.
-Dead-load elision is limited to nonvolatile loads whose result has no later BIR
-value use or memory-address base use.
-Live reloads of direct-global local pointer publications remain fail-closed
-until a separate authority exists for consuming the reloaded pointer as a memory
-base.
+Representative evidence:
+
+- `tests/c/external/gcc_torture/src/pr57861.c` emitted an RV64 object at
+  `build/agent_state/649_step4_representative_integration/pr57861.o`.
+- Disassembly was captured at
+  `build/agent_state/649_step4_representative_integration/pr57861.objdump.txt`.
+- The `%lv.l` publication site advanced past the prior
+  `unsupported_local_memory_access` owner. The representative object contains
+  `.Lpcrel_hi_global_pointer_local_publication_2_10_0` with direct global
+  address materialization into `t1` followed by the local pointer-slot store:
+  `13c: auipc t1, 0x0`, `140: mv t1, t1`, `144: sd t1, 0x0(sp)`.
+- Later representative code continues through scalar global/local accesses,
+  including `lh`/`sh` sequences and returns; no separate downstream owner was
+  exposed by this Step 4 object/disassembly proof.
+
+Focused positive and negative coverage therefore still brackets the Step 3
+implementation: direct global-address publication into the exact local pointer
+slot is supported, while a reload used as a later memory-address base remains
+rejected.
 
 ## Suggested Next
 
-Proceed to Step 4 representative integration proof. Use the new focused tests
-and inspect the representative `pr57861.c` object/disassembly to decide whether
-idea 649 is complete or whether a downstream non-publication owner remains.
+Proceed to Step 5 broader RV64 validation and lifecycle recommendation. The
+focused and representative evidence both indicate the `%lv.l`
+pointer/global local-publication owner is repaired.
 
 ## Watchouts
 
@@ -73,9 +56,9 @@ idea 649 is complete or whether a downstream non-publication owner remains.
 - Do not rewrite prepared provenance or mark all unknown local pointer slots as
   supported. The discovered positive route depends on exact publication,
   direct-global identity, slot identity, and ordering.
-- The object route now emits `pr57861.c` successfully as an object, but Step 4
-  should still inspect representative disassembly and avoid treating unrelated
-  downstream codegen quality as part of this publication slice.
+- Keep the live-load expected-failure coverage intact; Step 4 proves the
+  representative dead reload is safely elided, not that arbitrary reloaded
+  pointer publications are supported.
 - Do not infer authority from source spelling, final assembly order,
   diagnostics, testcase identity, local/global names, or stack-slot shape.
 - Do not edit expectations, unsupported markers, allowlists, timeouts,
@@ -83,15 +66,13 @@ idea 649 is complete or whether a downstream non-publication owner remains.
 
 ## Proof
 
-Proof passed and was written to `test_after.log`:
+Step 4 proof passed and was written to `test_after.log`:
 
 ```sh
-bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|cli|cli_failure)_riscv64_pointer_global_local_publication" && mkdir -p build/agent_state/649_step3_pointer_global_local && build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o build/agent_state/649_step3_pointer_global_local/pr57861.o; } 2>&1 | tee test_after.log'
+bash -lc 'set -o pipefail; mkdir -p build/agent_state/649_step4_representative_integration && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|cli|cli_failure)_riscv64_pointer_global_local_publication" && build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr57861.c -o build/agent_state/649_step4_representative_integration/pr57861.o && llvm-objdump -d build/agent_state/649_step4_representative_integration/pr57861.o > build/agent_state/649_step4_representative_integration/pr57861.objdump.txt && rg -n "<foo>|global_pointer_local_publication|sd\s+t1|lh|sh|ret|auipc" build/agent_state/649_step4_representative_integration/pr57861.objdump.txt; } 2>&1 | tee test_after.log'
 ```
 
-Result: build succeeded, the positive dump/object tests and expected-failure
-object test passed, and representative
-`pr57861.c` emitted
-`build/agent_state/649_step3_pointer_global_local/pr57861.o`.
-The focused object test now also asserts the expected RV64 byte sequence for
-`auipc t1, 0; mv t1, t1; sd t1, 0(sp)` via `EXPECTED_HEX_CONTAINS`.
+Result: build succeeded, all three focused tests passed, representative
+`pr57861.c` emitted and disassembled successfully, and the evidence grep found
+the direct publication sequence plus later representative `lh`/`sh`/`ret`
+instructions.
