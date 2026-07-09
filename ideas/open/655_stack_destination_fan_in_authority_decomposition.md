@@ -110,3 +110,22 @@ be the first proof surface for a new authority family.
   visible on the bundle and participating moves.
 - Reject helper renames, classification-only edits, or diagnostic wording
   changes claimed as capability progress.
+
+## Parked Outcome
+
+The active decomposition runbook completed through the focused
+authority-rejection probe in commit `998a9f6d7`:
+
+- the blocked idea 647 baseline was recorded;
+- the residual non-637 rows were classified;
+- focused probe specs were written for ordered final-state, mutual-exclusion,
+  explicit merge, and authority rejection seams;
+- `tests/backend/case/riscv64_stack_destination_authority_rejection.c` was
+  added as the fail-closed RV64 object-route probe.
+
+The source idea is not closed. Ordered final-state, mutual-exclusion, and
+explicit merge positive producer seams remain blocked because no legal non-637
+producer authority fact is currently proven. Reactivate this idea only if new
+prepared/prealloc evidence identifies a positive producer seam outside idea
+637; otherwise leave it parked and continue broader lifecycle selection from
+the open idea inventory.
