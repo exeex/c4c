@@ -1,6 +1,6 @@
 # Mixed Local/Global Publication Authority
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/631_direct_global_symbol_local_memory_policy.md`
 Related:
@@ -61,6 +61,35 @@ still proved a direct `addr @symbol` local-memory consumer gap.
   source ideas.
 - Negative proof keeps direct global-symbol local-memory, ordinary global
   memory, aggregate homes, and runtime-only failures outside this idea.
+
+## Closure Notes
+
+Closed after the scalar frame-slot local-memory publication/consumer family
+was repaired by re-anchoring prepared memory-access position lookups after
+prepared BIR transformations. The accepted shape is limited to explicit
+prepared frame-slot base-plus-offset facts for the same `local_slot` stack
+object, integer scalar type, block, slot, and stored/result value. Pointer
+locals, global-symbol accesses, aggregate homes, volatile/TLS accesses,
+mismatched slots, missing frame slots, and duplicate or ambiguous remaps remain
+fail-closed.
+
+The representative probe moved `src/pr58431.c` to pass, proving one shared
+mixed-publication family advanced without reopening direct global-symbol
+local-memory policy.
+
+Residual routing:
+
+- `src/pr70005.c` advanced to
+  `unsupported_prepared_move_bundle_classification` for an ambiguous
+  non-parallel multi-source stack destination in `fn1` at `logic.end.73`; route
+  this to
+  `ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md`.
+- `src/pr57861.c` still carries a pointer-to-global local path after the scalar
+  local family; route this to
+  `ideas/open/649_pointer_global_local_publication_authority.md`.
+- `src/pr68185.c` and `src/pr68321.c` still carry edge-store-slot local
+  destination and local aggregate/publication-ordering evidence; route these to
+  `ideas/open/650_edge_store_local_aggregate_publication_ordering.md`.
 
 ## Reviewer Reject Signals
 

@@ -34,6 +34,10 @@ Residual rows:
   `src/pr34415.c`, and `src/ptr-arith-1.c`: non-parallel
   two-register-source stack-destination fan-ins with `authority=none` and
   `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
+- `src/pr70005.c`: routed from idea 640 after scalar frame-slot local-memory
+  publication advanced; current first owner is
+  `unsupported_prepared_move_bundle_classification` for an ambiguous
+  non-parallel multi-source stack destination in `fn1` at `logic.end.73`.
 
 These rows should be investigated as ordered final-state or mutual-exclusion
 producer authority, not as select-materialized semantic merge.
