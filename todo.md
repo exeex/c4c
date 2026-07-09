@@ -1,65 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/650_edge_store_local_aggregate_publication_ordering.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Representative Integration Proof
+Current Step ID: 5
+Current Step Title: Run Broader Validation And Close Or Park
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 representative integration proof for the existing RV64
+Completed Step 5 broader RV64 validation recording for the existing RV64
 `edge_store_slot` carrier implementation.
 
-Proof captured:
+Matched guard scope:
 
-- Focused CTest subset passed 2/2:
-  `backend_dump_riscv64_edge_store_local_publication_ordering` and
-  `backend_cli_riscv64_edge_store_local_publication_ordering`.
-- Representative object emission succeeded for
-  `tests/c/external/gcc_torture/src/pr68185.c`:
-  `build/agent_state/650_step4_representative_integration/pr68185.o`.
-- Representative object emission succeeded for
-  `tests/c/external/gcc_torture/src/pr68321.c`:
-  `build/agent_state/650_step4_representative_integration/pr68321.o`.
-- Disassembly evidence was captured in
-  `build/agent_state/650_step4_representative_integration/pr68185.objdump.txt`
-  and
-  `build/agent_state/650_step4_representative_integration/pr68321.objdump.txt`.
-- The disassembly grep found the representative function labels and RV64
-  control/data movement instructions, including `main`, `fn1`, `auipc`, `j`,
-  `mv`, `li`, and `ret` matches across the two generated objects.
+- `^(backend_.*riscv64|backend_.*rv64)`
 
-Downstream owner status: no new downstream owner was exposed by these two
-representatives after object emission advanced; both representatives compile to
-RV64 objects and disassemble successfully.
+Supervisor-produced regression guard result:
+
+- before: passed=133 failed=29 total=162
+- after: passed=141 failed=23 total=164
+- delta: +8 passed, -6 failed
+- resolved failing tests: 6
+- new failing tests: 0
+- new >30.00s tests: 0
+- result: PASS
+
+Resolved failing tests:
+
+- `backend_codegen_route_riscv64_external_no_storage_main_emits_return_path`
+- `backend_codegen_route_riscv64_external_string_literal_strlen_direct_call`
+- `backend_obj_runtime_rv64_cts_00001`
+- `backend_obj_runtime_rv64_cts_00002`
+- `backend_obj_runtime_rv64_cts_00011`
+- `backend_obj_runtime_rv64_cts_00012`
+
+Step 5 recommendation: focused proof, representative integration proof, and the
+matched RV64 backend guard satisfy the active runbook acceptance criteria. Ask
+the plan owner to close idea 650 unless supervisor review finds route drift.
 
 ## Suggested Next
 
-Proceed to Step 5 broader RV64 validation. Use the supervisor-selected matched
-regression guard or equivalent broader proof to verify that the Step 3 object
-route admission did not regress nearby RV64 backend coverage.
+Request plan-owner close for idea 650 with the Step 3 focused proof, Step 4
+representative integration proof, and Step 5 matched RV64 regression-guard
+evidence.
 
 ## Watchouts
 
-- Step 4 is evidence-only; it did not touch implementation files or test
-  definitions.
-- Broader validation should keep watching the out-of-SSA `loop_carry` move
-  reason admission and the fail-closed `edge_store_slot` carrier constraints
-  from Step 3.
-- The focused representative proof shows object/disassembly progress for
-  `pr68185.c` and `pr68321.c`; it does not replace the planned broader RV64
-  regression check.
+- This Step 5 packet is todo-only. It records already-produced supervisor logs
+  and does not rerun tests.
+- The guard shows zero new failures in the matched RV64 backend scope.
+- No distinct downstream owner is recorded for `pr68185.c` or `pr68321.c`
+  after the focused and representative object-emission proofs.
 
 ## Proof
 
-Passed:
+Recorded existing supervisor proof; no tests were rerun for this todo-only
+packet.
 
 ```sh
-bash -lc 'set -o pipefail; mkdir -p build/agent_state/650_step4_representative_integration && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|cli)_riscv64_edge_store_local_publication_ordering$" && build/c4cll --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr68185.c -o build/agent_state/650_step4_representative_integration/pr68185.o && build/c4cll --target riscv64-linux-gnu --codegen obj tests/c/external/gcc_torture/src/pr68321.c -o build/agent_state/650_step4_representative_integration/pr68321.o && llvm-objdump -d build/agent_state/650_step4_representative_integration/pr68185.o > build/agent_state/650_step4_representative_integration/pr68185.objdump.txt && llvm-objdump -d build/agent_state/650_step4_representative_integration/pr68321.o > build/agent_state/650_step4_representative_integration/pr68321.objdump.txt && rg -n "<main>|<fn1>|ret|auipc|j\\s|mv|li" build/agent_state/650_step4_representative_integration/pr68185.objdump.txt build/agent_state/650_step4_representative_integration/pr68321.objdump.txt; } 2>&1 | tee test_after.log'
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
 ```
 
-`test_after.log` contains the canonical proof log. The focused CTest subset
-passed 2/2, both representative object-emission commands exited 0, both
-`llvm-objdump` captures were written, and the delegated disassembly grep
-returned matches.
+`test_before.log` and `test_after.log` contain the matched broader RV64 backend
+logs. The guard summary passed with before 133/29/162, after 141/23/164, six
+resolved failures, and zero new failures.
