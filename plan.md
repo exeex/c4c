@@ -113,17 +113,28 @@ Completion check:
 - Each target row has refreshed evidence and a concise classification note in
   `todo.md` naming the observed owner and fan-in shape.
 
-### Step 2: Choose One Producer Authority Family
+### Step 2: Revise Producer Authority Family Selection
 
 Goal: Select exactly one first destination authority family that is supported
-by the refreshed evidence.
+by refreshed evidence after rejecting the attempted mutual-exclusion packet for
+`src/20021204-1.c`.
 
 Actions:
 
-- Classify candidate rows as ordered final-state authority,
-  mutual-exclusion authority, or another explicitly named family.
-- Choose one family for implementation and identify the minimal positive and
-  negative examples.
+- Reclassify candidate rows as ordered final-state authority,
+  mutual-exclusion authority, merge authority, or another explicitly named
+  family.
+- Treat `src/20021204-1.c` at `main:tern.end.12` before instruction 1 as
+  rejected for the attempted mutual-exclusion family: the failing
+  `%t20/%t21 -> %t22` stack-destination bundle has no acceptable predicate,
+  edge, selected-active-candidate, guarded-copy, or control-flow carrier at the
+  consumer point.
+- Do not reuse the unrelated `%t17/%t24 -> %t25` select edge/control-flow facts
+  as authority for `%t20/%t21 -> %t22`.
+- Choose one revised family for implementation only after naming the minimal
+  positive and negative examples. Ordered final-state authority is the likely
+  next candidate, but it still requires evidence that the producer designates a
+  final authoritative stack-slot state at the consumer point.
 - Leave other families fail-closed with durable notes in `todo.md`; create a
   separate open idea only if the residual family is distinct and ready for
   lifecycle tracking.
@@ -132,18 +143,24 @@ Actions:
 
 Completion check:
 
-- `todo.md` names the selected family, the first target row, the fact shape to
+- `todo.md` records the rejected `src/20021204-1.c` mutual-exclusion route,
+  names the revised selected family, the first target row, the fact shape to
   publish, and the residual rows intentionally left out of scope.
 
-### Step 3: Publish Selected Producer Authority
+### Step 3: Publish Revised Selected Producer Authority
 
 Goal: Add prepared/prealloc producer support for the selected family without
 guessing from incidental row shape.
 
 Actions:
 
-- Implement authority publication only where the selected semantic family is
-  proven.
+- Implement authority publication only where the revised selected semantic
+  family is proven by Step 2 evidence.
+- Do not implement the rejected `src/20021204-1.c` mutual-exclusion route unless
+  a later Step 2 revision finds new producer proof that is not source
+  availability, same-block order, arithmetic operand shape, value-id shape,
+  diagnostics, testcase identity, final assembly, or the unrelated `%t25`
+  select facts.
 - Preserve precise fail-closed states for missing authority, ambiguous
   authority, stale source or destination facts, and move-bundle versus
   individual-move mismatches.

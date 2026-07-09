@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish Selected Producer Authority
+Current Step ID: 2
+Current Step Title: Revise Producer Authority Family Selection
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 discovery packet completed for the selected row `src/20021204-1.c` at
+Route checkpoint after the Step 3 discovery packet for the selected row
+`src/20021204-1.c` at
 `main:tern.end.12` before instruction 1. Fresh evidence lives under
 `build/agent_state/647_step3_mutual_exclusion_probe/src_20021204-1.c/`.
 
@@ -53,12 +54,33 @@ same-block order, arithmetic operand shape, value-id shape, diagnostics,
 testcase identity, final assembly, or the unrelated `%t25` select edge facts
 would be overfit route drift.
 
+Lifecycle decision: return the active route to Step 2. The attempted
+mutual-exclusion family for `src/20021204-1.c` is not an executable Step 3
+implementation target. The source idea remains valid because its acceptance
+criteria allow recording precise producer evidence that no legal first packet
+is available.
+
 ## Suggested Next
 
-Return to Step 2 family revision or split a separate proof-discovery lifecycle
-before any new Step 3 implementation packet. The current selected
-mutual-exclusion family has no publishable producer proof for
-`src/20021204-1.c`.
+Execute Step 2 family revision before any new Step 3 implementation packet.
+
+Recommended next packet:
+
+- Re-open the residual classification and select a different first family only
+  if evidence supports it.
+- Treat ordered final-state authority as the likely next candidate to inspect,
+  but require proof that the producer designates a final authoritative
+  stack-slot state at the consumer point.
+- Keep `src/20021204-1.c` `%t20/%t21 -> %t22` out of scope for
+  mutual-exclusion publication unless new producer proof appears.
+- If no residual row can publish ordered final-state, merge, mutual-exclusion,
+  or another explicit prepared/prealloc destination-authority fact, stop Step 2
+  and create or request a separate proof-discovery lifecycle instead of
+  forcing implementation.
+
+Step 2 completion should update this file with the revised selected family,
+first target row, positive and negative examples, fact shape, owner label,
+negative statuses, and intentionally excluded residuals.
 
 ## Watchouts
 
@@ -73,10 +95,13 @@ mutual-exclusion family has no publishable producer proof for
 - Keep rejecting source availability, same-block order, source freshness,
   value-id shape, diagnostic wording, testcase identity, and final assembly as
   Step 3 authority.
+- Do not treat the phrase "likely ordered final-state" as selection. It is only
+  the next candidate family to inspect unless fresh evidence proves the
+  final-state authority contract.
 
 ## Proof
 
-No build/test proof was required for this evidence-only discovery packet. Did
+No build/test proof was required for this lifecycle-only route revision. Did
 not create or overwrite `test_after.log`.
 
 Commands/evidence:
