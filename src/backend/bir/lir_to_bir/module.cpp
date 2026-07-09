@@ -123,11 +123,37 @@ bool rv64_ordinary_c_stack_arg_candidate(const bir::CallArgAbiInfo& abi) {
           abi.primary_class == bir::AbiValueClass::X87);
 }
 
+enum class Rv64OrdinaryCArgLane {
+  None,
+  Gpr,
+  Fpr,
+};
+
+Rv64OrdinaryCArgLane rv64_ordinary_c_arg_lane(const bir::CallArgAbiInfo& abi) {
+  if ((abi.primary_class == bir::AbiValueClass::Sse ||
+       abi.primary_class == bir::AbiValueClass::X87) &&
+      (abi.type == bir::TypeKind::F32 || abi.type == bir::TypeKind::F64)) {
+    return Rv64OrdinaryCArgLane::Fpr;
+  }
+  if (abi.primary_class == bir::AbiValueClass::Integer) {
+    return Rv64OrdinaryCArgLane::Gpr;
+  }
+  return Rv64OrdinaryCArgLane::None;
+}
+
 void apply_rv64_ordinary_c_stack_pressure_to_abi(
     std::size_t count,
     const std::function<bir::CallArgAbiInfo*(std::size_t)>& abi_at) {
   constexpr std::size_t kRv64OrdinaryCAbiRegisterCount = 8;
-  std::size_t next_register = 0;
+  std::size_t next_gpr_register = 0;
+  std::size_t next_fpr_register = 0;
+  auto consume_register_lane = [&](Rv64OrdinaryCArgLane lane) {
+    if (lane == Rv64OrdinaryCArgLane::Fpr) {
+      ++next_fpr_register;
+      return;
+    }
+    ++next_gpr_register;
+  };
   for (std::size_t index = 0; index < count; ++index) {
     auto* abi = abi_at(index);
     if (abi == nullptr) {
@@ -135,15 +161,18 @@ void apply_rv64_ordinary_c_stack_pressure_to_abi(
     }
     if (!rv64_ordinary_c_stack_arg_candidate(*abi)) {
       if (abi->passed_in_register && !abi->passed_on_stack) {
-        ++next_register;
+        consume_register_lane(rv64_ordinary_c_arg_lane(*abi));
       }
       continue;
     }
+    const auto lane = rv64_ordinary_c_arg_lane(*abi);
+    const std::size_t next_register =
+        lane == Rv64OrdinaryCArgLane::Fpr ? next_fpr_register : next_gpr_register;
     if (next_register >= kRv64OrdinaryCAbiRegisterCount) {
       mark_rv64_stack_arg(*abi);
       continue;
     }
-    ++next_register;
+    consume_register_lane(lane);
   }
 }
 

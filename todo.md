@@ -8,43 +8,40 @@ Current Step Title: Implement One Prepared ABI/Home Path
 
 ## Just Finished
 
-Step 3 from `plan.md` repaired the RV64 object-route callee-side consumption
-path for stack-passed scalar formal homes after callee frame allocation.
+Step 3 from `plan.md` repaired RV64 fixed-arity scalar ABI lane assignment for
+mixed integer/FPR ordinary calls and matching formal homes.
 
-- Fused pointer/integer branch operands now validate stack-passed scalar formal
-  homes against prepared value-home, frame-slot, stack-object, and formal ABI
-  facts before reading from the incoming argument area adjusted by the callee
-  frame size.
-- Scalar `LoadLocalInst` formal reads gained the same fail-closed
-  stack-passed-formal path while ordinary local frame slots continue using their
-  prepared local frame offsets.
-- Focused object-emission coverage now proves a stack-passed pointer formal
-  branch operand reads from `frame_size + incoming_stack_offset`, and a separate
-  local-memory fixture proves ordinary local frame slots are not reclassified as
-  incoming arguments.
-- `src/20001017-1.c` advanced past the callee-side formal-home consumption
-  mismatch: `bug` now reads `%p.C` from `ld t3,120(sp)`, i.e. callee frame
-  `112` plus incoming formal stack offset `8`, instead of the old local home
-  `56(sp)`.
+- RV64 ordinary C stack-pressure assignment now tracks independent GPR and FPR
+  scalar lanes, so hard-float F32/F64 arguments do not consume GPR register or
+  outgoing stack lanes.
+- Prepared call destination and fixed formal register-index helpers now use the
+  same independent RV64 GPR/FPR lane rule for non-variadic scalar ABI facts.
+- Focused contract coverage now proves a mixed RV64 scalar call places the
+  eighth GPR argument in `a7`, keeps FPR scalars in `fa0`/`fa1`, publishes GPR
+  stack arguments at compact offsets `0` and `8`, and leaves a malformed
+  missing-ABI stack argument fail-closed.
+- `src/20001017-1.c` advanced past the caller/callee ABI placement mismatch:
+  prepared facts now place `%p.B` in `a7`, `fdB` at outgoing stack offset `0`,
+  `b` in `fa1`, `%p.C` at outgoing stack offset `8`, and `fdC` at offset `16`.
 
 ## Suggested Next
 
-Next packet should classify the remaining `src/20001017-1.c` runtime mismatch
-as a caller-side RV64 mixed integer/FPR stack-argument production issue: caller
-`main` still stores the pointer argument `%p.C` at outgoing stack offset `24`,
-while the callee-side ABI/formal path now expects it at incoming offset `8`.
+Next packet should repair RV64 object-emission call-argument materialization so
+FPR immediate construction does not clobber a later stack argument source
+register before that source is stored to the outgoing argument area.
 
 ## Watchouts
 
-- The accepted callee-side repair validates local homes but computes the
-  incoming stack offset from stack-passed formal ABI facts; do not revert it to
-  using the local spill-slot home offset.
-- The remaining caller-side residual appears to involve mixed integer/FPR
-  argument placement: the caller stores stack arguments at `0`, `8`, `16`,
-  `24`, and `32`, while the callee expects `%p.C` at incoming offset `8`.
-- Do not weaken the caller-side stack-argument path or rewrite expectations;
-  the next slice should repair the prepared caller destination facts/ABI
-  classification that placed `%p.C` at offset `24`.
+- The ABI placement is now correct for the 20001017-1 call: `main` allocates a
+  24-byte outgoing area and `bug` reads `%p.C` from callee frame size `96` plus
+  incoming offset `8`, i.e. `ld t3,88(sp)`.
+- The remaining runtime mismatch is not an offset disagreement. Current `main`
+  materializes `b` into `t0` for `fmv.d.x fa1,t0`, then stores `t0` to
+  `8(sp)` for `%p.C`; that writes the double bit-pattern instead of the `%p.C`
+  pointer.
+- Keep the next fix semantic: preserve or schedule call argument source
+  registers across scratch-based immediate/FPR materialization. Do not hard-code
+  `src/20001017-1.c`, `bug`, or argument indexes.
 
 ## Proof
 
@@ -53,7 +50,8 @@ Ran the exact supervisor proof command into `test_after.log`:
 `rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_object_consumer_contract|backend_call_boundary_effect_plan)$' && ALLOWLIST=build/agent_state/644_step1_20001017_1.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1`
 
 Proof status: build passed; all six focused CTests passed; the one-row torture
-probe still failed at runtime mismatch. New result remains
-`RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, `c4c_exit=Subprocess aborted`,
-but the callee-side offset moved from the old incorrect `ld t3,56(sp)` to
-`ld t3,120(sp)`. The exact proof log is `test_after.log`.
+probe still failed with `RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, and
+`c4c_exit=Subprocess aborted`. The fresh residual owner is RV64 object-emission
+call-argument source preservation during scratch-based FPR immediate
+materialization, not ABI lane placement. The exact proof log is
+`test_after.log`.

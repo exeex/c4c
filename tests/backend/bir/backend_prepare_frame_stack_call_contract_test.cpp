@@ -3927,6 +3927,131 @@ bir::Module make_riscv_explicit_stack_call_argument_offset_contract_module() {
   return module;
 }
 
+bir::Module make_rv64_mixed_scalar_call_lane_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64gc-unknown-linux-gnu";
+
+  auto gpr_abi = [](bir::TypeKind type, bool in_register) {
+    return bir::CallArgAbiInfo{
+        .type = type,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .primary_class = bir::AbiValueClass::Integer,
+        .passed_in_register = in_register,
+        .passed_on_stack = !in_register,
+    };
+  };
+  auto f64_abi = []() {
+    return bir::CallArgAbiInfo{
+        .type = bir::TypeKind::F64,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .primary_class = bir::AbiValueClass::Sse,
+        .passed_in_register = true,
+        .passed_on_stack = false,
+    };
+  };
+
+  bir::Function callee;
+  callee.name = "take_mixed_rv64_scalar_args";
+  callee.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 8; ++index) {
+    callee.params.push_back(bir::Param{
+        .type = bir::TypeKind::I64,
+        .name = "%p.gpr" + std::to_string(index),
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .abi = gpr_abi(bir::TypeKind::I64, true),
+    });
+  }
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "%p.f0",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = f64_abi(),
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.ptr.stack",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = gpr_abi(bir::TypeKind::Ptr, false),
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "%p.f1",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = f64_abi(),
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "%p.i64.stack",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = gpr_abi(bir::TypeKind::I64, false),
+  });
+  bir::Block callee_entry;
+  callee_entry.label = "entry";
+  callee_entry.terminator = bir::ReturnTerminator{};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  bir::Function malformed_callee;
+  malformed_callee.name = "take_missing_rv64_stack_abi";
+  malformed_callee.is_declaration = true;
+  malformed_callee.return_type = bir::TypeKind::Void;
+  module.functions.push_back(std::move(malformed_callee));
+
+  bir::Function caller;
+  caller.name = "rv64_mixed_scalar_call_lane_contract";
+  caller.return_type = bir::TypeKind::Void;
+
+  bir::CallInst mixed_call;
+  mixed_call.callee = "take_mixed_rv64_scalar_args";
+  mixed_call.return_type_name = "void";
+  mixed_call.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 8; ++index) {
+    mixed_call.arg_types.push_back(bir::TypeKind::I64);
+    mixed_call.arg_abi.push_back(gpr_abi(bir::TypeKind::I64, true));
+    mixed_call.args.push_back(bir::Value::immediate_i64(index + 1));
+  }
+  mixed_call.arg_types.push_back(bir::TypeKind::F64);
+  mixed_call.arg_abi.push_back(f64_abi());
+  mixed_call.args.push_back(bir::Value::immediate_f64_bits(0x4018000000000000ULL));
+  mixed_call.arg_types.push_back(bir::TypeKind::Ptr);
+  mixed_call.arg_abi.push_back(gpr_abi(bir::TypeKind::Ptr, false));
+  mixed_call.args.push_back(bir::Value::named(bir::TypeKind::Ptr, "%stack.ptr"));
+  mixed_call.arg_types.push_back(bir::TypeKind::F64);
+  mixed_call.arg_abi.push_back(f64_abi());
+  mixed_call.args.push_back(bir::Value::immediate_f64_bits(0x401c000000000000ULL));
+  mixed_call.arg_types.push_back(bir::TypeKind::I64);
+  mixed_call.arg_abi.push_back(gpr_abi(bir::TypeKind::I64, false));
+  mixed_call.args.push_back(bir::Value::immediate_i64(12));
+
+  bir::CallInst missing_abi_call;
+  missing_abi_call.callee = "take_missing_rv64_stack_abi";
+  missing_abi_call.return_type_name = "void";
+  missing_abi_call.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 9; ++index) {
+    missing_abi_call.arg_types.push_back(bir::TypeKind::I64);
+    missing_abi_call.args.push_back(bir::Value::immediate_i64(index + 20));
+    if (index < 8) {
+      missing_abi_call.arg_abi.push_back(gpr_abi(bir::TypeKind::I64, true));
+    }
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(mixed_call));
+  entry.insts.push_back(std::move(missing_abi_call));
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view target_triple) {
   const auto prepared =
       prepare_riscv_float_abi_module(
@@ -4118,6 +4243,157 @@ int check_riscv_explicit_stack_call_argument_offsets_require_producer_abi() {
   if (!found_arg8 || !found_arg9) {
     return fail("rv64 explicit stack call-arg contract: ABI bindings lost stack offsets");
   }
+  return 0;
+}
+
+int check_rv64_mixed_scalar_call_arguments_use_independent_abi_lanes() {
+  const auto prepared =
+      prepare_riscv_float_abi_module(make_rv64_mixed_scalar_call_lane_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "rv64_mixed_scalar_call_lane_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 2) {
+    return fail("rv64 mixed scalar call lane contract: missing prepared calls");
+  }
+
+  const prepare::PreparedCallPlan* mixed_call = nullptr;
+  const prepare::PreparedCallPlan* missing_abi_call = nullptr;
+  for (const auto& call : call_plans->calls) {
+    if (call.direct_callee_name ==
+        std::optional<std::string>{"take_mixed_rv64_scalar_args"}) {
+      mixed_call = &call;
+    }
+    if (call.direct_callee_name ==
+        std::optional<std::string>{"take_missing_rv64_stack_abi"}) {
+      missing_abi_call = &call;
+    }
+  }
+  if (mixed_call == nullptr || missing_abi_call == nullptr ||
+      mixed_call->arguments.size() != 12 ||
+      missing_abi_call->arguments.size() != 9) {
+    return fail("rv64 mixed scalar call lane contract: call-plan shape changed");
+  }
+
+  const auto* callee_locations =
+      prepare::find_prepared_value_location_function(prepared,
+                                                     "take_mixed_rv64_scalar_args");
+  const auto* gpr7_home =
+      callee_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_value_home(prepared.names, *callee_locations, "%p.gpr7");
+  const auto* fpr1_home =
+      callee_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_value_home(prepared.names, *callee_locations, "%p.f1");
+  const auto* ptr_stack_home =
+      callee_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_value_home(
+                prepared.names, *callee_locations, "%p.ptr.stack");
+  if (gpr7_home == nullptr || fpr1_home == nullptr || ptr_stack_home == nullptr) {
+    return fail("rv64 mixed scalar call lane contract: missing callee formal homes");
+  }
+  if (gpr7_home->kind != prepare::PreparedValueHomeKind::Register ||
+      gpr7_home->register_name != std::optional<std::string>{"a7"} ||
+      !gpr7_home->target_register_identity.has_value() ||
+      gpr7_home->target_register_identity->bank != prepare::PreparedRegisterBank::Gpr ||
+      fpr1_home->kind != prepare::PreparedValueHomeKind::Register ||
+      fpr1_home->register_name != std::optional<std::string>{"fa1"} ||
+      !fpr1_home->target_register_identity.has_value() ||
+      fpr1_home->target_register_identity->bank != prepare::PreparedRegisterBank::Fpr ||
+      ptr_stack_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !ptr_stack_home->offset_bytes.has_value()) {
+    return fail("rv64 mixed scalar call lane contract: callee formal lanes are incomplete");
+  }
+
+  const auto& fpr0 = mixed_call->arguments[8];
+  const auto& ptr_stack = mixed_call->arguments[9];
+  const auto& fpr1 = mixed_call->arguments[10];
+  const auto& i64_stack = mixed_call->arguments[11];
+  if (fpr0.destination_register_name != std::optional<std::string>{"fa0"} ||
+      fpr0.destination_stack_offset_bytes.has_value() ||
+      fpr0.destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Fpr} ||
+      !fpr0.destination_register_placement.has_value() ||
+      fpr0.destination_register_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      fpr0.destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      fpr0.destination_register_placement->slot_index != 0) {
+    return fail("rv64 mixed scalar call lane contract: first FPR arg did not use fa0 lane");
+  }
+  if (fpr1.destination_register_name != std::optional<std::string>{"fa1"} ||
+      fpr1.destination_stack_offset_bytes.has_value() ||
+      fpr1.destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Fpr} ||
+      !fpr1.destination_register_placement.has_value() ||
+      fpr1.destination_register_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      fpr1.destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      fpr1.destination_register_placement->slot_index != 1) {
+    return fail("rv64 mixed scalar call lane contract: second FPR arg did not use fa1 lane");
+  }
+  if (ptr_stack.destination_register_name.has_value() ||
+      ptr_stack.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      ptr_stack.destination_stack_size_bytes != std::optional<std::size_t>{8} ||
+      i64_stack.destination_register_name.has_value() ||
+      i64_stack.destination_stack_offset_bytes != std::optional<std::size_t>{8} ||
+      i64_stack.destination_stack_size_bytes != std::optional<std::size_t>{8}) {
+    return fail("rv64 mixed scalar call lane contract: FPR args consumed GPR stack lanes");
+  }
+  if (missing_abi_call->arguments[8].destination_stack_offset_bytes.has_value() ||
+      missing_abi_call->arguments[8].destination_register_name.has_value()) {
+    return fail("rv64 mixed scalar call lane contract: missing stack ABI did not fail closed");
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("rv64_mixed_scalar_call_lane_contract");
+  const auto* locations =
+      function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_value_location_function(prepared.value_locations, function_id);
+  const auto* mixed_bundle =
+      locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(
+                *locations, prepare::PreparedMovePhase::BeforeCall, 0, 0);
+  const auto* missing_bundle =
+      locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(
+                *locations, prepare::PreparedMovePhase::BeforeCall, 0, 1);
+  if (mixed_bundle == nullptr || missing_bundle == nullptr) {
+    return fail("rv64 mixed scalar call lane contract: missing before-call bundles");
+  }
+
+  bool found_fa0 = false;
+  bool found_fa1 = false;
+  bool found_ptr_stack = false;
+  bool found_i64_stack = false;
+  for (const auto& binding : mixed_bundle->abi_bindings) {
+    if (binding.destination_abi_index == std::optional<std::size_t>{8} &&
+        binding.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+        binding.destination_register_name == std::optional<std::string>{"fa0"}) {
+      found_fa0 = true;
+    }
+    if (binding.destination_abi_index == std::optional<std::size_t>{10} &&
+        binding.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+        binding.destination_register_name == std::optional<std::string>{"fa1"}) {
+      found_fa1 = true;
+    }
+    if (binding.destination_abi_index == std::optional<std::size_t>{9} &&
+        binding.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+        binding.destination_stack_offset_bytes == std::optional<std::size_t>{0}) {
+      found_ptr_stack = true;
+    }
+    if (binding.destination_abi_index == std::optional<std::size_t>{11} &&
+        binding.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+        binding.destination_stack_offset_bytes == std::optional<std::size_t>{8}) {
+      found_i64_stack = true;
+    }
+  }
+  if (!found_fa0 || !found_fa1 || !found_ptr_stack || !found_i64_stack) {
+    return fail("rv64 mixed scalar call lane contract: ABI bindings lost independent lanes");
+  }
+  (void)missing_bundle;
   return 0;
 }
 
@@ -11038,6 +11314,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_riscv_explicit_stack_call_argument_offsets_require_producer_abi();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_rv64_mixed_scalar_call_arguments_use_independent_abi_lanes();
       rc != 0) {
     return rc;
   }

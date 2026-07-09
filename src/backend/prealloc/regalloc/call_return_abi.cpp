@@ -224,6 +224,29 @@ template <std::size_t N>
          rhs.primary_class == bir::AbiValueClass::Integer;
 }
 
+[[nodiscard]] bool rv64_call_arg_uses_fpr_lane(const c4c::TargetProfile& target_profile,
+                                               const bir::CallArgAbiInfo& abi) {
+  return target_profile.has_float_arg_registers &&
+         (abi.primary_class == bir::AbiValueClass::Sse ||
+          abi.primary_class == bir::AbiValueClass::X87 ||
+          abi.type == bir::TypeKind::F32 ||
+          abi.type == bir::TypeKind::F64 ||
+          abi.type == bir::TypeKind::F128);
+}
+
+[[nodiscard]] bool rv64_same_call_arg_register_lane(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallArgAbiInfo& lhs,
+    const bir::CallArgAbiInfo& rhs) {
+  const bool lhs_fpr = rv64_call_arg_uses_fpr_lane(target_profile, lhs);
+  const bool rhs_fpr = rv64_call_arg_uses_fpr_lane(target_profile, rhs);
+  if (lhs_fpr || rhs_fpr) {
+    return lhs_fpr == rhs_fpr;
+  }
+  return lhs.primary_class == bir::AbiValueClass::Integer &&
+         rhs.primary_class == bir::AbiValueClass::Integer;
+}
+
 }  // namespace
 
 std::vector<std::string> call_arg_destination_register_names(
@@ -408,6 +431,19 @@ std::optional<std::size_t> call_arg_abi_register_index(
     return std::nullopt;
   }
   if (target_profile.arch != c4c::TargetArch::Aarch64) {
+    if (target_profile.arch == c4c::TargetArch::Riscv64 && !call.is_variadic) {
+      std::size_t register_index = 0;
+      for (std::size_t candidate_index = 0; candidate_index < arg_index; ++candidate_index) {
+        const auto candidate_abi = resolve_call_arg_abi(target_profile, call, candidate_index);
+        if (!candidate_abi.has_value() || !candidate_abi->passed_in_register) {
+          continue;
+        }
+        if (rv64_same_call_arg_register_lane(target_profile, *candidate_abi, *abi)) {
+          ++register_index;
+        }
+      }
+      return register_index;
+    }
     return arg_index;
   }
   if (abi->type == bir::TypeKind::Ptr && abi->sret_pointer) {

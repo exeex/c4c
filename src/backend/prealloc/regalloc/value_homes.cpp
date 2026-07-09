@@ -32,6 +32,28 @@ namespace {
          rhs.primary_class == bir::AbiValueClass::Integer;
 }
 
+[[nodiscard]] bool rv64_formal_uses_fpr_lane(const c4c::TargetProfile& target_profile,
+                                             const bir::CallArgAbiInfo& abi) {
+  return target_profile.has_float_arg_registers &&
+         (abi.primary_class == bir::AbiValueClass::Sse ||
+          abi.primary_class == bir::AbiValueClass::X87 ||
+          abi.type == bir::TypeKind::F32 ||
+          abi.type == bir::TypeKind::F64 ||
+          abi.type == bir::TypeKind::F128);
+}
+
+[[nodiscard]] bool same_rv64_formal_register_lane(const c4c::TargetProfile& target_profile,
+                                                  const bir::CallArgAbiInfo& lhs,
+                                                  const bir::CallArgAbiInfo& rhs) {
+  const bool lhs_fpr = rv64_formal_uses_fpr_lane(target_profile, lhs);
+  const bool rhs_fpr = rv64_formal_uses_fpr_lane(target_profile, rhs);
+  if (lhs_fpr || rhs_fpr) {
+    return lhs_fpr == rhs_fpr;
+  }
+  return lhs.primary_class == bir::AbiValueClass::Integer &&
+         rhs.primary_class == bir::AbiValueClass::Integer;
+}
+
 [[nodiscard]] std::optional<std::size_t> fixed_formal_abi_register_index(
     const c4c::TargetProfile& target_profile,
     const bir::Function& function,
@@ -50,6 +72,19 @@ namespace {
     return std::nullopt;
   }
   if (target_profile.arch != c4c::TargetArch::Aarch64) {
+    if (target_profile.arch == c4c::TargetArch::Riscv64 && !function.is_variadic) {
+      std::size_t register_index = 0;
+      for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
+        const auto& candidate = function.params[candidate_index];
+        if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
+          continue;
+        }
+        if (same_rv64_formal_register_lane(target_profile, *candidate.abi, *param.abi)) {
+          ++register_index;
+        }
+      }
+      return register_index;
+    }
     return param_index;
   }
   if (param.abi->type == bir::TypeKind::Ptr && param.abi->sret_pointer) {
