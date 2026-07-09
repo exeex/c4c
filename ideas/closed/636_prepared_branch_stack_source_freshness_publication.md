@@ -1,6 +1,6 @@
 # Prepared Branch Stack-Source Freshness Publication
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/615_branch_stack_source_residual_audit.md`
 Related:
@@ -80,3 +80,28 @@ Representative rows:
   accounting changes as capability progress.
 - Reject helper renames or diagnostic wording changes that leave
   `source_freshness_status=no_candidate` as the effective first owner.
+
+## Closure Notes
+
+Closed on 2026-07-09 after the representative rows no longer reported the
+original `missing_source_freshness_authority` / no-candidate blocker.
+
+Final residual routing:
+
+- `src/930930-1.c`: prepared `block_1` / `lhs` `%t1` freshness is selected;
+  current first owner is `unsupported_terminator_fragment`, routed to
+  `ideas/open/645_rv64_branch_residual_terminator_fragment_lowering.md`.
+- `src/990127-1.c`: original `block_1` / `lhs` `%t6` freshness is selected;
+  current first owner is a separate same-block RHS `%lv.a`
+  `home_value_mismatch` with `source_freshness_status=missing_value`, routed
+  to `ideas/open/646_rv64_branch_same_block_home_value_identity_reconciliation.md`.
+- `src/20060910-1.c`: prepared `check_header` `block_2` / `rhs` `%t9`
+  freshness is selected; current first owner is
+  `unsupported_terminator_fragment`, routed to
+  `ideas/open/645_rv64_branch_residual_terminator_fragment_lowering.md`.
+
+Close-time regression guard used the unchanged lifecycle close scope:
+`cmake --build --preset default` followed by matching
+`ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$'`
+before/after logs and
+`check_monotonic_regression.py --allow-non-decreasing-passed`; result `PASS`.
