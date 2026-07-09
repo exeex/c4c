@@ -1,153 +1,131 @@
-# RV64 Object Route Stack Parameter ABI Residual Runbook
+# Prepared Incoming Stack Formal Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/644_rv64_object_route_stack_parameter_abi_residual.md
+Source Idea: ideas/open/652_prepared_incoming_stack_formal_authority.md
 
 ## Purpose
 
-Classify and repair the RV64 object-route parameter ABI residual exposed by
-`src/20001017-1.c`, where the first owner is now `unsupported_call_abi` after
-branch stack clobber-safety is no longer the blocking authority.
+Publish the producer/prealloc authority that RV64 needs before it can consume
+stack-passed scalar formal homes on the object route.
 
 ## Goal
 
-Move one semantic RV64 object-route stack-parameter ABI/home path past
-`unsupported_call_abi`, or record the exact unsupported prepared ABI/home shape
-with current evidence.
+Make the caller-stack incoming byte offset/address for one stack-passed scalar
+formal an explicit prepared fact, or classify the smaller producer/prealloc
+owner that blocks publication.
 
 ## Core Rule
 
-Do not reconstruct parameter placement from source syntax, stack offsets, or
-final assembly; consume explicit prepared ABI/home facts and keep unsupported
-parameter homes fail-closed.
-
-Route repair checkpoint: `review/reviewA.md` rejected the current callee-side
-route because RV64 recomputed incoming stack-passed formal offsets from formal
-order, ABI size/alignment, and `stack_frame_bytes`. Step 3 must replace that
-route with explicit prepared incoming stack-parameter/home authority, or
-classify the missing authority as a producer/prealloc publication gap before
-more RV64 consumer support lands.
+Do not reconstruct incoming formal locations in RV64 from formal order, ABI
+size/alignment, source syntax, final assembly, or `stack_frame_bytes`. The
+incoming caller-stack authority must be explicit and distinct from the callee
+local spill-slot/home.
 
 ## Read First
 
-- ideas/open/644_rv64_object_route_stack_parameter_abi_residual.md
-- ideas/closed/374_rv64_object_route_non_register_param_homes.md
+- ideas/open/652_prepared_incoming_stack_formal_authority.md
+- ideas/closed/644_rv64_object_route_stack_parameter_abi_residual.md
 - ideas/closed/512_stack_passed_parameter_home_publication.md
-- ideas/closed/635_prepared_branch_stack_clobber_safety_authority.md
-- docs/rv64_gcc_torture_post_contract/infrastructure_bucket_evidence.md
+- review/reviewA.md
 
 ## Current Scope
 
-- Refresh the `src/20001017-1.c` RV64 residual and identify the exact
-  unsupported parameter ABI/home shape.
-- Compare the observed shape against closed stack-parameter and non-register
-  parameter-home work before editing producer or RV64 consumer code.
-- Add support only from explicit prepared ABI/home facts.
-- Preserve fail-closed diagnostics for unsupported, missing, ambiguous, or
-  layout-only parameter homes.
+- Refresh the prepared facts for `src/20001017-1.c` after idea 644.
+- Identify where stack-passed formal publication is produced.
+- Add or expose explicit incoming caller-stack formal authority in
+  producer/prealloc data.
+- Keep RV64 consumers fail-closed until that authority is present.
 
 ## Non-Goals
 
-- Do not reopen branch stack-source freshness or clobber-safety authority.
-- Do not handle RV64 terminator fragment lowering in this runbook.
-- Do not perform generic call lowering rewrites.
-- Do not change runtime behavior, expectations, unsupported markers,
-  allowlists, timeouts, or pass/fail accounting.
+- Do not rebuild RV64 incoming offset inference.
+- Do not treat `IncomingStackToHome` plus callee local home as the incoming
+  caller-stack authority.
+- Do not reopen branch clobber-safety, terminator fragments, runtime policy,
+  expectation files, unsupported markers, allowlists, timeouts, or accounting.
 - Do not add named-case handling for `src/20001017-1.c`.
 
 ## Working Model
 
-The current residual is expected to be an RV64 object-route parameter admission
-failure. The backend object route can currently consume supported GPR homes and
-prepared FPR register homes, but the selected row needs a non-register or stack
-parameter home to be represented through explicit prepared facts rather than
-layout inference.
+`src/20001017-1.c` now stops at
+`unsupported_param_home: RV64 object route requires explicit prepared incoming
+stack formal authority before consuming stack-passed scalar formal homes`.
+The missing fact belongs before RV64 consumption: it must name the incoming
+caller-stack location for a stack-passed formal separately from the callee's
+local home.
 
 ## Execution Rules
 
 - Keep routine execution notes in `todo.md`.
-- Start with a fresh one-row probe before changing code.
-- Treat a changed first owner as lifecycle evidence, not automatic progress.
-- Any code slice must include positive coverage for the repaired prepared
-  ABI/home path and negative coverage for unsupported parameter homes.
-- A code-changing acceptance slice needs fresh build proof and a matching
-  before/after regression comparison chosen by the supervisor.
-- Stop for supervisor routing if the first owner moves outside RV64 object-route
-  parameter ABI admission.
+- Start by proving whether the producer/prealloc layer already has a latent
+  incoming stack formal offset/address that is not published to RV64.
+- Prefer producer/prealloc focused tests before RV64 positive consumer tests.
+- Add negative coverage for local-home-only facts, missing authority, and
+  ambiguous incoming formal authority.
+- Any code-changing acceptance slice needs fresh build proof and the
+  supervisor-selected regression comparison.
 
 ## Steps
 
-### Step 1: Refresh The Residual Row
+### Step 1: Locate The Producer Authority Boundary
 
-Goal: confirm the current first observable owner for `src/20001017-1.c`.
+Goal: identify the current producer/prealloc representation for stack-passed
+scalar formals.
 
 Actions:
-- Run the supervisor-selected one-row RV64 torture probe for `src/20001017-1.c`.
-- Record whether object compile, ELF sanity, link, and runtime stages complete.
-- Capture the current diagnostic text, case logs, and any prepared dump needed
-  to identify the unsupported ABI/home shape.
+- Inspect prepared dumps and producer/prealloc data for the failing
+  stack-passed formal family in `src/20001017-1.c`.
+- Distinguish `IncomingStackToHome`, callee local home, and any latent
+  caller-stack incoming offset/address.
+- Record whether the missing fact is a publication gap or an upstream
+  computation gap.
 
 Completion check:
-- `todo.md` records the refreshed first owner and states whether
-  `unsupported_call_abi` remains the active boundary.
+- `todo.md` names the exact producer/prealloc owner and whether a latent
+  explicit incoming authority already exists.
 
-### Step 2: Classify The Parameter Home Shape
+### Step 2: Publish One Explicit Incoming Stack Formal Fact
 
-Goal: identify the exact prepared parameter home shape that RV64 object-route
-admission rejects.
+Goal: make one stack-passed scalar formal's caller-stack incoming location an
+explicit prepared authority.
 
 Actions:
-- Inspect prepared call/value/storage/frame facts for the affected function and
-  parameter.
-- Compare the shape with the closed non-register parameter-home and
-  stack-passed parameter publication work.
-- Distinguish explicit prepared ABI/home facts from stack layout, source syntax,
-  MIR-only, or final assembly inference.
+- Add the smallest producer/prealloc representation that records the incoming
+  caller-stack offset/address for the formal.
+- Keep the fact separate from local spill-slot/home records.
+- Expose the fact through focused dumps, lookup helpers, or contract tests
+  used by downstream consumers.
+- Preserve fail-closed behavior for missing or ambiguous authority.
 
 Completion check:
-- `todo.md` names the rejected parameter, prepared home facts, missing producer
-  or RV64 consumer authority, and the smallest complete repair family.
+- Focused producer/prealloc coverage proves complete explicit authority and
+  negative local-home-only coverage.
 
-### Step 3: Implement One Prepared Incoming Stack Formal Authority Path
+### Step 3: Wire RV64 To Consume The Explicit Authority
 
-Goal: repair one semantic RV64 object-route parameter ABI/home path without
-weakening fail-closed behavior.
+Goal: let RV64 load stack-passed scalar formals only from the explicit
+incoming authority.
 
 Actions:
-- Add producer or RV64 consumer support only where prepared facts explicitly
-  describe the parameter home.
-- Remove or replace any RV64 consumer path that derives incoming stack-passed
-  formal load offsets from formal order, ABI size/alignment, source layout, or
-  `stack_frame_bytes + incoming_offset`.
-- Require an explicit prepared incoming stack-parameter/home fact for the
-  caller-stack address consumed by callee-side formal loads. If no such fact is
-  published, stop and route the packet to the producer/prealloc publication
-  gap instead of reconstructing the offset in RV64.
-- Keep local spill-slot/home coherence checks as fail-closed validation only;
-  do not treat a callee local home as authority for the incoming caller-stack
-  ABI offset.
-- Keep unsupported diagnostics for missing, ambiguous, layout-only, or
-  unsupported parameter homes.
-- Add focused positive coverage for explicit incoming stack formal authority
-  and negative coverage for missing or ambiguous incoming-stack authority.
+- Replace any remaining RV64 consumer expectation with consumption of the new
+  prepared fact.
+- Keep diagnostics for missing, ambiguous, or local-home-only authority.
+- Add focused RV64 object coverage that traces the load source to the explicit
+  prepared fact, not to a literal inferred offset.
 
 Completion check:
-- The narrow build/test proof passes, and `src/20001017-1.c` no longer stops at
-- the repaired `unsupported_call_abi` boundary because of explicit prepared
-  incoming stack formal authority, or `todo.md` records the precise
-  producer/prealloc publication gap that blocks such authority.
+- The narrow build/test proof passes, and `src/20001017-1.c` advances past the
+  missing explicit incoming stack formal authority diagnostic.
 
-### Step 4: Validate Boundaries
+### Step 4: Validate And Review Boundaries
 
-Goal: prove the slice is not named-case overfit and does not weaken parameter
-ABI admission policy.
+Goal: prove the route is not testcase overfit or a revived RV64 inference.
 
 Actions:
-- Re-run the supervisor-selected RV64 torture subset or allowlist.
-- Compare before/after logs with the regression guard when a code slice is
-  ready.
-- Inspect nearby stack/non-register parameter-home cases if the diff affects
-  shared call, prepared home, or RV64 object-route logic.
+- Re-run the supervisor-selected RV64 object and producer/prealloc subsets.
+- Compare before/after logs with the regression guard.
+- Inspect nearby stack-passed scalar formal cases if shared ABI publication or
+  RV64 consumer code changed.
 
 Completion check:
 - Regression proof is non-regressing, and `todo.md` records any remaining rows
@@ -155,16 +133,14 @@ Completion check:
 
 ### Step 5: Final Lifecycle Review
 
-Goal: decide whether the source idea is complete or needs a follow-up split.
+Goal: decide whether the producer/prealloc authority idea is complete.
 
 Actions:
 - Compare final behavior against the source idea acceptance criteria and
   reviewer reject signals.
-- Close the idea only if the selected row advanced through a semantic prepared
-  ABI/home repair or was reclassified to a more precise existing owner with
-  current evidence.
-- Create a follow-up idea for any separate initiative discovered during the
-  run.
+- Close only if explicit incoming stack formal authority is published and
+  consumed without RV64 reconstruction, or if a more precise owner has been
+  recorded with current evidence.
 
 Completion check:
 - Plan owner can close, deactivate, or split the lifecycle state with matching

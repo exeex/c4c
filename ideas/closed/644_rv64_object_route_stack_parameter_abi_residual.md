@@ -1,6 +1,6 @@
 # RV64 Object Route Stack Parameter ABI Residual
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/635_prepared_branch_stack_clobber_safety_authority.md`
 Related:
@@ -10,8 +10,26 @@ Related:
 - `docs/rv64_gcc_torture_post_contract/infrastructure_bucket_evidence.md`
 Owning Layer: RV64 object-route parameter ABI admission
 Queue Order: 44
-Proof Surface: `src/20001017-1.c` currently stops at `unsupported_call_abi`
-after branch clobber-safety authority is no longer first owner.
+Proof Surface: `src/20001017-1.c` was reclassified from
+`unsupported_call_abi` to a missing explicit incoming stack formal authority
+diagnostic after branch clobber-safety authority stopped being first owner.
+
+## Completion Notes
+
+Closed after `cf784a80c` classified the RV64 object-route residual more
+precisely. The row no longer relies on RV64 consumer-side reconstruction of an
+incoming stack formal offset; that rejected route was removed from
+`object_emission.cpp` and `prepared_local_memory_emit.cpp`.
+
+Current evidence shows that prepared formal publication provides
+`IncomingStackToHome` plus the callee local stack-slot home, but does not
+publish an explicit caller-stack incoming offset/address authority distinct
+from the local spill-slot home. `src/20001017-1.c` now fails closed at:
+
+`unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes`
+
+The remaining work is a separate producer/prealloc publication initiative,
+recorded as `ideas/open/652_prepared_incoming_stack_formal_authority.md`.
 
 ## Goal
 
