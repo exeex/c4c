@@ -1,214 +1,169 @@
-# Ordered Or Exclusive Stack-Destination Fan-In Authority Runbook
+# Stack-Destination Fan-In Authority Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md
+Source Idea: ideas/open/655_stack_destination_fan_in_authority_decomposition.md
+Supersedes Active Route: ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md Step 2
 
 ## Purpose
 
-Define the next prepared/prealloc destination authority family for
-stack-destination register fan-in residuals that are outside the
-select-materialized semantic-merge contract closed by idea 637.
+Replace the blocked idea 647 Step 2 family search with focused decomposition
+probes for non-637 stack-destination register fan-in authority.
 
 ## Goal
 
-Classify the remaining stack-destination fan-in residuals, choose one
-ordered-final-state or mutual-exclusion producer authority family, and prove
-that family through explicit prepared/prealloc facts with fail-closed negative
-states.
+Split the residual family into owned authority seams, define focused probes,
+and select the first legal implementation follow-up only after producer
+evidence exists for one seam.
 
 ## Core Rule
 
-Do not infer stack-destination fan-in authority from testcase identity, source
-order, move-vector order, diagnostics, source freshness, final assembly, ABI
-behavior, or expectation changes. Progress requires semantic producer
-authority facts at the consumer program point.
+Do not implement destination fan-in authority or RV64 materialization from GCC
+torture testcase identity, move order, source freshness, final assembly,
+diagnostic wording, or unrelated select/join facts. Progress requires a named
+producer authority fact at the consumer point.
 
 ## Read First
 
+- `ideas/open/655_stack_destination_fan_in_authority_decomposition.md`
 - `ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md`
 - `docs/destination_fan_in_authority/03_implementation_split.md`
-- Prior related context when needed:
-  - `ideas/closed/607_destination_fan_in_authority_research.md`
-  - `ideas/closed/637_prepared_stack_destination_fan_in_authority_producer.md`
+- Refreshed idea 647 evidence under `build/agent_state/647_step2_family_revision/`
 
-## Current Targets
+## Current Scope
 
-- `src/20011109-2.c`
-- `src/20021204-1.c`
-- `src/920429-1.c`
-- `src/930429-1.c`
-- `src/pr34415.c`
-- `src/ptr-arith-1.c`
-- `src/pr70005.c`
-
-These rows are candidates only. The route must classify them first and then
-select exactly one first producer family before implementation.
+- Decompose residual stack-destination register fan-in rows that are outside
+  idea 637's select-materialized preserved-stack-fallback contract.
+- Create focused probe definitions under `tests/backend/case/` before more
+  producer implementation.
+- Preserve the rejected `src/20021204-1.c` mutual-exclusion route and the
+  rejected `src/20011109-2.c` idea 637 route as negative route evidence.
 
 ## Non-Goals
 
-- Do not reopen idea 637's select-materialized semantic-merge contract.
-- Do not implement RV64 target materialization for a newly authorized family
-  unless a downstream consumer idea is separately activated.
-- Do not broaden string-constant local-memory policy.
+- Do not reopen idea 637.
+- Do not implement RV64 consumption before prepared/prealloc producer facts
+  exist.
 - Do not rewrite expectations, unsupported markers, allowlists, timeouts, or
-  pass/fail accounting as capability progress.
-- Do not add named-case shortcuts for the listed residuals.
+  pass/fail accounting.
+- Do not use the original GCC torture rows as narrow named-case proof for a
+  new family.
 
 ## Working Model
 
-Idea 637 proved one destination-authority family:
-select-materialized semantic merge with preserved stack fallback. The current
-residuals remain fail-closed because their fan-in shapes require a different
-authority family, likely ordered final-state authority, mutual-exclusion
-authority, or another explicitly named prepared/prealloc destination authority.
+The old idea 647 route is parked, not closed. It still describes the desired
+non-637 destination-authority capability, but the current first-family search
+is too broad. This runbook should turn the residuals into smaller seams:
+ordered final-state authority, mutual-exclusion authority, explicit merge
+authority, and rejection authority for missing or mismatched facts.
 
-The route should produce facts only when the producer can prove the selected
-family for a stack destination at the consumer point. Unsupported, missing,
-ambiguous, stale, bundle-versus-move mismatched, and unrelated fan-in shapes
-must keep precise fail-closed diagnostics.
+Focused probes should make each seam observable before implementation touches
+shared producer code.
 
 ## Execution Rules
 
-- Keep routine investigation notes and packet progress in `todo.md`.
-- Prefer focused probes and narrow tests before touching shared producer code.
-- Select only one first producer family for implementation under this plan.
-- If refreshed evidence proves a separate initiative is needed, record that as
-  lifecycle state instead of silently expanding this plan.
-- For each code-changing step, run a fresh build proof and the focused backend
-  or prepared/prealloc subset selected by the supervisor.
-- Escalate to broader backend validation before accepting a capability slice
-  if producer changes affect shared prepared/prealloc authority behavior.
+- Keep routine progress in `todo.md`.
+- Prefer probe design and focused diagnostics before implementation changes.
+- Name producer fact shape, owner label, negative statuses, and consumer
+  program point for every seam.
+- Keep source freshness separate from destination authority.
+- Escalate to reviewer scrutiny if a route tries to claim progress through
+  classification-only changes or testcase-shaped behavior.
 
 ## Steps
 
-### Step 1: Refresh Residual Evidence
+### Step 1: Establish The Blocked Failure-Family Baseline
 
-Goal: Reproduce the current first-owner diagnostics for the residual rows and
-capture enough prepared/prealloc detail to classify their fan-in shapes.
-
-Primary targets:
-
-- `src/20011109-2.c`
-- `src/20021204-1.c`
-- `src/920429-1.c`
-- `src/930429-1.c`
-- `src/pr34415.c`
-- `src/ptr-arith-1.c`
-- `src/pr70005.c`
+Goal: Preserve the useful idea 647 evidence as the baseline for decomposition.
 
 Actions:
 
-- Run focused diagnostics for each target through the existing backend or
-  prepared/prealloc route used for destination fan-in authority evidence.
-- Record the block, destination, source values, move bundle classification,
-  predecessor context, and current authority or fragment status.
-- Distinguish `missing_stack_destination_fan_in_authority_fact`,
-  `producer_authority_missing_for_register_fan_in_stack_destination`, and
-  `unsupported_prepared_move_bundle_classification` rows.
-- Store durable evidence under `build/agent_state/` rather than root-level
-  ad hoc logs.
+- Read `build/agent_state/647_step2_family_revision/summary.md`.
+- Record the rejected `src/20021204-1.c` mutual-exclusion route and the
+  rejected `src/20011109-2.c` idea 637 route in `todo.md`.
+- List the remaining residual row shapes by consumer point, destination, source
+  homes, current authority, and fragment status.
+- Do not rerun broad diagnostics unless the supervisor requests fresh proof.
 
 Completion check:
 
-- Each target row has refreshed evidence and a concise classification note in
-  `todo.md` naming the observed owner and fan-in shape.
+- `todo.md` names the blocked baseline and confirms that no Step 3
+  implementation packet is currently selected.
 
-### Step 2: Revise Producer Authority Family Selection
+### Step 2: Split Residuals Into Authority Seams
 
-Goal: Select exactly one first destination authority family that is supported
-by refreshed evidence after rejecting the attempted mutual-exclusion packet for
-`src/20021204-1.c`.
+Goal: Turn the residual family into independently owned producer seams.
 
 Actions:
 
-- Reclassify candidate rows as ordered final-state authority,
-  mutual-exclusion authority, merge authority, or another explicitly named
-  family.
-- Treat `src/20021204-1.c` at `main:tern.end.12` before instruction 1 as
-  rejected for the attempted mutual-exclusion family: the failing
-  `%t20/%t21 -> %t22` stack-destination bundle has no acceptable predicate,
-  edge, selected-active-candidate, guarded-copy, or control-flow carrier at the
-  consumer point.
-- Do not reuse the unrelated `%t17/%t24 -> %t25` select edge/control-flow facts
-  as authority for `%t20/%t21 -> %t22`.
-- Choose one revised family for implementation only after naming the minimal
-  positive and negative examples. Ordered final-state authority is the likely
-  next candidate, but it still requires evidence that the producer designates a
-  final authoritative stack-slot state at the consumer point.
-- Leave other families fail-closed with durable notes in `todo.md`; create a
-  separate open idea only if the residual family is distinct and ready for
-  lifecycle tracking.
-- Identify the prepared/prealloc fact shape, owner label, negative statuses,
-  and consumer program point required for the selected family.
+- Classify each residual shape as ordered final-state, mutual-exclusion,
+  explicit merge, rejection-only, or unknown.
+- For each non-unknown seam, name the producer fact that would prove authority
+  at the consumer point.
+- For each seam, name at least one negative state that must remain fail-closed.
+- Mark any row that only fits idea 637's selected contract as out of scope for
+  this decomposition.
 
 Completion check:
 
-- `todo.md` records the rejected `src/20021204-1.c` mutual-exclusion route,
-  names the revised selected family, the first target row, the fact shape to
-  publish, and the residual rows intentionally left out of scope.
+- `todo.md` contains a seam inventory with positive and negative evidence needs
+  for each seam.
 
-### Step 3: Publish Revised Selected Producer Authority
+### Step 3: Define Focused Probe Files
 
-Goal: Add prepared/prealloc producer support for the selected family without
-guessing from incidental row shape.
+Goal: Create probe specifications before shared producer implementation.
 
 Actions:
 
-- Implement authority publication only where the revised selected semantic
-  family is proven by Step 2 evidence.
-- Do not implement the rejected `src/20021204-1.c` mutual-exclusion route unless
-  a later Step 2 revision finds new producer proof that is not source
-  availability, same-block order, arithmetic operand shape, value-id shape,
-  diagnostics, testcase identity, final assembly, or the unrelated `%t25`
-  select facts.
-- Preserve precise fail-closed states for missing authority, ambiguous
-  authority, stale source or destination facts, and move-bundle versus
-  individual-move mismatches.
-- Avoid RV64 consumption or materialization changes unless they are strictly
-  required to observe the prepared/prealloc fact and remain inside the source
-  idea boundary.
+- Draft focused backend/prepared probe intent for:
+  - ordered final-state authority
+  - mutual-exclusion authority
+  - explicit merge authority
+  - authority rejection
+- Prefer files under `tests/backend/case/` with descriptive names such as:
+  - `riscv64_stack_destination_ordered_final_state_authority.c`
+  - `riscv64_stack_destination_mutual_exclusion_authority.c`
+  - `riscv64_stack_destination_explicit_merge_authority.c`
+  - `riscv64_stack_destination_authority_rejection.c`
+- Keep each probe tied to one authority contract.
 
 Completion check:
 
-- A focused positive case publishes the selected authority fact, and focused
-  negative evidence still rejects unsupported or mismatched fan-in shapes.
+- The next implementation agent can add or update focused probes without
+  reverse-engineering the GCC torture rows.
 
-### Step 4: Add Focused Coverage
+### Step 4: Select The First Follow-Up Implementation Seam
 
-Goal: Lock the selected authority family and its rejection behavior with
-targeted tests.
+Goal: Pick one legal implementation follow-up after the focused seams are
+observable.
 
 Actions:
 
-- Add or update focused prepared/prealloc or backend assertions for one legal
-  selected-family shape.
-- Add or update at least one missing-authority or mismatched-authority
-  rejection assertion.
-- Keep residual rows outside the selected family fail-closed unless explicitly
-  split into a new idea.
+- Choose one seam only when it has a positive producer fact shape and a
+  fail-closed negative probe.
+- Record why the selected seam is outside idea 637.
+- Record residual seams left out of scope.
+- If no seam has positive evidence, leave implementation blocked and request a
+  lifecycle decision instead of forcing a packet.
 
 Completion check:
 
-- Focused tests prove both selected-family publication and negative rejection
-  without expectation weakening.
+- `todo.md` names exactly one follow-up seam, its first probe, its negative
+  proof, and the residual seams intentionally left blocked.
 
-### Step 5: Validate And Classify Leftovers
+### Step 5: Prepare The Follow-Up Lifecycle Handoff
 
-Goal: Prove the implemented authority family and record the disposition of
-residuals outside the selected family.
+Goal: Convert the selected seam into the next executable implementation unit.
 
 Actions:
 
-- Run the fresh build proof and the focused test subset selected for this
-  plan.
-- Run broader backend validation if producer changes touch shared
-  prepared/prealloc authority paths.
-- Refresh target residuals enough to confirm that selected-family rows
-  advanced and unrelated rows remain precise, fail-closed diagnostics.
-- Record any separate residual family as a follow-up lifecycle candidate
-  rather than expanding this plan.
+- If the selected seam fits this decomposition idea, update `todo.md` with the
+  precise executor packet.
+- If the selected seam should become its own implementation idea, request
+  plan-owner lifecycle work to create or switch to that idea.
+- Do not claim backend/compiler progress from this decomposition until focused
+  probes or producer facts are implemented and validated.
 
 Completion check:
 
-- The selected authority family has green focused proof, no testcase-overfit
-  signs, and `todo.md` records accepted leftovers or follow-up idea needs.
+- Lifecycle state points to one executable implementation seam or explicitly
+  records why implementation remains blocked.
