@@ -1,6 +1,6 @@
 # Prepared Return Destination Home Authority
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
@@ -61,6 +61,19 @@ semantically.
 - Negative proof keeps non-return move-bundles, pointer stack-results, FPR
   policy, runtime, variadic/library, local/global, and generic producer gaps
   outside this idea.
+
+## Closure Notes
+
+Closed after the Step 5 representative scan showed both target rows moved past
+return destination-home authority admission and now fail later as linked
+executable runtime mismatches. The remaining residuals are local/global
+literal or table address publication and address-value preservation, which are
+outside this idea's return-authority boundary.
+
+Close gate passed against the backend CTest subset:
+
+- before: `passed=347 failed=0 total=347`
+- after: `passed=347 failed=0 total=347`
 
 ## Reviewer Reject Signals
 
