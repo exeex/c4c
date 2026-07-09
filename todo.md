@@ -1,58 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/639_pointer_loaded_from_global_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh and classify pointer-loaded-from-global rows
+Current Step ID: 2
+Current Step Title: Locate the missing authority boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed the three representative rows with the supervisor-selected
-allowlist and classified their current owners.
+Step 2 located the missing authority boundary for `src/pr46309.c` without
+implementation edits. The clean row remains `%t15 = bir.load_global ptr @q`
+followed by `%t16 = bir.load_local i32 %t16.addr, addr %t15`.
 
-Evidence artifacts are under
-`build/agent_state/639_step1_pointer_loaded_from_global/`; the fixed allowlist
-is `build/agent_state/639_step1_pointer_loaded_from_global.allowlist`.
+Boundary artifact:
+`build/agent_state/639_step2_missing_authority_boundary/pr46309_boundary.md`.
 
-| Row | First owner now | Policy bucket | Refreshed evidence |
-| --- | --- | --- | --- |
-| `src/pr46309.c` | `unsupported_local_memory_access` in the RV64 object route. | Genuine pointer-loaded-from-global local-memory candidate. | `bar`: `%t15 = bir.load_global ptr @q`, then `%t16 = bir.load_local i32 %t16.addr, addr %t15`. Prepared addressing has global-source load `symbol=q` with offset `0`, width `8`, align `8`, scalar layout, then pointer-value local load via `%t15` with selected offset `0`, width `4`, align `4`, unknown-compatible range. `main` publishes `@q` from `%lv.y`, but `store_source` for that global publication still reports `source_producer=unknown` and `source_freshness_status=no_candidate`. `%t15` is stored in a GPR, address space is default by absence of TLS/address-space markers on this access. |
-| `src/pr58984.c` | `unsupported_call_abi` before the local-memory row is reached: `function=main; block=entry; instruction_index=23; callee=foo; args=1; planned_args=1; result=i32 %t7`. | Route out of idea 639 for the next packet: aggregate/byval call ABI first, with a later ordinary frame-slot pointer consumer behind it. | `foo` and `bar` contain `%t8 = bir.load_global ptr @c`, but the later local-memory store uses `%t14 = bir.load_local ptr %lv.i` followed by `bir.store_local ..., addr %t14`; `%lv.i` is populated from `%t7 = bir.add ptr %lv.f.0, 0`, not from `%t8`. Prepared addressing classifies the consumers as pointer-value accesses with selected offset `0`, width `8`, align `8`, bounded-by-element-count, while call plans show byval aggregate stack-copy transport for `foo`/`bar`. |
-| `src/pr66556.c` | `unsupported_local_memory_access` in the RV64 object route. | Route out of direct pointer-loaded-from-global policy as currently evidenced: ordinary local pointer slot/global-array address-publication boundary. | HIR says `short *n = &i[4]` and global `i` is `short[5]`; BIR later has `%t23 = bir.load_local ptr %lv.n` and `bir.store_local ..., addr %t23`. Prepared addressing records `%lv.n` as a frame slot, then a pointer-value access through `%t23` with selected offset `0`, width `2`, align `2`, unknown-compatible range. There are unrelated `bir.load_global ptr @k`/`@f` rows in `fn3`, but the later local-memory consumer in `main` is not directly fed by them. Store-source evidence for `%lv.n` reports `source=%t1`, `source_producer=unknown`, and `source_freshness_status=no_candidate`, so global source identity/extent for the `&i[4]` publication is not available to RV64. |
+Findings:
+
+- Prepared addressing already has the selected local-memory use:
+  `block_1 inst=1`, pointer `%t15`, offset `0`, width `4`, align `4`,
+  default address space by absence of non-default markers.
+- Prepared addressing already has the global load access:
+  `block_1 inst=0`, symbol `q`, offset `0`, width `8`, align `8`, scalar
+  layout, proven in bounds.
+- `%t15` has only `home %t15 value_id=7 kind=register reg=s1`; it is not a
+  `pointer_base_plus_offset` home and has no complete loaded-pointer source
+  authority.
+- Existing pointer-value memory freshness can validate a selected pointer
+  memory use, but it cannot publish the pointer's global source identity,
+  object extent, or pointer-value home. RV64 therefore correctly remains
+  fail-closed at `unsupported_local_memory_access`.
+- The first repair belongs in prepared/prealloc producer fact publication for
+  pointer-loaded-from-global local-memory authority, with RV64 as a strict
+  consumer of that complete fact. It should not be reclassified into direct
+  global-symbol local memory, prepared global value-location, aggregate
+  stack-home, or ordinary frame-slot policy.
 
 ## Suggested Next
 
-Proceed to Step 2 using `src/pr46309.c` as the clean candidate: locate the
-authority boundary that can legally carry `@q -> %t15` pointer identity,
-freshness, extent, selected offset, width, and default address-space facts from
-the producer side into the RV64 local-memory consumer without admitting
-ordinary frame-slot, aggregate/byval, prepared value-location, or direct
-global-symbol rows.
+Implement Step 3 as a narrow prepared/prealloc producer packet: publish and
+print one complete `pointer_loaded_from_global` local-memory authority for the
+same-block `@q -> %t15 -> load_local addr %t15` shape, then have the RV64
+pointer-value base-plus-offset consumer accept only that complete authority.
+The implementation proof should include one accepted `pr46309`-style shape and
+one missing-authority rejection.
 
 ## Watchouts
 
-- `pr58984` should not drive idea 639 while its first owner is the byval
-  same-module call ABI. Its later `%lv.i` consumer is a frame-slot pointer
-  publication, not a `%t8 = bir.load_global ptr @c` consumer.
-- `pr66556` currently needs a producer/value-location audit for the `&i[4]`
-  local pointer publication before it can be treated as a complete-authority
-  pointer source. Do not infer the missing global-array identity from source
-  text or the reused `%t1` name.
-- For `pr46309`, the missing fact is not direct `addr @q` support: the local
-  memory address is the pointer value `%t15` loaded from `@q`, and the current
-  rejection remains fail-closed at `unsupported_local_memory_access`.
+- Keep direct `addr @symbol` local-memory rows under idea 631 and prepared
+  global value-location rows under idea 621.
+- Keep aggregate/byval/sret/stack-home rows under idea 633 and related ABI
+  policy; `pr58984` and `pr66556` should not drive this packet.
+- Missing producer, missing freshness, non-default address space, volatile
+  access, incomplete global source identity, incomplete extent/width,
+  ambiguous multiple producers, and stale cross-call/global publication must
+  remain fail-closed.
+- Do not infer loaded-pointer authority from source filenames, final symbol
+  names, final assembly layout, register assignment, or BIR adjacency alone.
 
 ## Proof
 
-Command:
-
-```bash
-cmake --build --preset default && ALLOWLIST=build/agent_state/639_step1_pointer_loaded_from_global.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1
-```
-
-Result: build succeeded; narrow probe failed all three refreshed rows as
-expected for this evidence-only packet. `test_after.log` is the canonical proof
-log. Focused `--dump-bir`, `--dump-prepared-bir`, `--dump-hir`, and
-`--codegen obj` diagnostics for each target row are preserved under
-`build/agent_state/639_step1_pointer_loaded_from_global/`.
+No refresh proof was run for Step 2. This was a boundary-tracing packet only,
+using Step 1 artifacts under
+`build/agent_state/639_step1_pointer_loaded_from_global/` plus source
+inspection. The canonical Step 1 proof log remains `test_after.log`; Step 2
+artifact path is
+`build/agent_state/639_step2_missing_authority_boundary/pr46309_boundary.md`.
