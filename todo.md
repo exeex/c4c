@@ -1,15 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/621_rv64_prepared_global_value_location_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Validate Breadth And Guards
+Current Step ID: 5
+Current Step Title: Close-Readiness Classification
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 narrowly classified why `src/pr91137.c` still stops at the prepared
-global facts gate after the Step 3 consumer implementation.
+Step 5 close-readiness classification after Steps 1-4 evidence:
+
+- `src/pr36034-1.c` progressed past the old prepared-global value-location
+  consumer stop and is now classified to downstream move-bundle ownership.
+- `src/pr91137.c` is not blocked by missing prepared/global access authority
+  for the first inspected store. It is classified to selected/direct-global
+  `store_global_publication` source-materialization ownership instead of an
+  unambiguous continuation of this prepared-global value-location consumer
+  route.
+- Guard rows remain outside this route: `src/ieee/20001122-1.c` remains
+  guard-only pending separate width-policy ownership, and `src/991030-1.c`
+  already emits an object successfully.
+- Source-idea acceptance is substantively close-ready: the representative rows
+  either progressed beyond the old RV64 prepared-global consumer stop or were
+  narrowed to separate downstream owners, while producer/access authority gates
+  remain preserved.
+- Actual lifecycle closure is not accepted in this packet because the close
+  gate requires matching canonical regression logs and only `test_before.log`
+  is present at the repo root. The delegated instruction also forbids touching
+  proof logs, so plan-owner did not regenerate `test_after.log`.
+
+Step 4 evidence for `src/pr91137.c`:
 
 Fresh diagnostics:
 
@@ -44,9 +64,17 @@ active prepared-global value-location consumer route.
 
 ## Suggested Next
 
-Supervisor should route `src/pr91137.c` out of this consumer slice unless a
-reviewer finds that selected/direct-global `store_global_publication` source
-materialization is explicitly in scope for idea 621.
+Supervisor should either:
+
+- restore or regenerate the matching canonical `test_after.log` for the
+  existing `test_before.log`, then re-delegate close for idea 621; or
+- create a separate source idea for selected/direct-global
+  `store_global_publication` source materialization if `src/pr91137.c` should
+  become active work next.
+
+Do not route more implementation through idea 621 unless a reviewer finds that
+selected/direct-global `store_global_publication` source materialization is
+explicitly in scope for this source idea.
 
 ## Watchouts
 
