@@ -1,6 +1,6 @@
 # Prepared Incoming Stack Formal Authority
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/644_rv64_object_route_stack_parameter_abi_residual.md`
 Related:
@@ -12,8 +12,8 @@ authority
 Queue Order: 52
 Prerequisites: callee local stack-slot homes must remain distinct from caller
 incoming stack ABI offsets.
-Proof Surface: `src/20001017-1.c` now stops at missing explicit incoming stack
-formal authority after RV64 consumer-side offset reconstruction was removed.
+Proof Surface: `src/20001017-1.c` now passes the allowlisted RV64 backend
+object progress check using explicit incoming stack formal authority.
 
 ## Goal
 
@@ -69,6 +69,26 @@ publishes that authority.
 - `src/20001017-1.c` advances past the missing explicit incoming stack formal
   authority diagnostic, or the route records a more precise producer/prealloc
   owner with current evidence.
+
+## Completion Notes
+
+Closed after the producer/prealloc model published explicit incoming stack
+formal authority as `bir::CallArgAbiInfo::incoming_stack_offset_bytes` and
+`PreparedFormalPublicationPlan::incoming_stack_offset_bytes`.
+
+RV64 object consumers now load stack-passed scalar formals from that explicit
+formal-publication fact. `PreparedValueHome::offset_bytes` remains the callee
+local home/spill-slot offset and is used only for coherence or local
+validation, not as incoming caller-stack authority.
+
+Focused negative coverage rejects missing, local-home-only, and duplicate
+branch-formal ambiguity cases. `review/reviewB.md` found no blocking drift or
+testcase overfit; its ambiguity-coverage note was addressed before closure.
+
+Close validation used the existing focused before/after logs:
+`passed=8 failed=0 total=8` before and after. The proof includes the focused
+producer/prealloc and RV64 object subsets plus the allowlisted
+`src/20001017-1.c` RV64 backend object progress check.
 
 ## Reviewer Reject Signals
 
