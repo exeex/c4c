@@ -1176,6 +1176,28 @@ c4c_add_backend_codegen_object_failure_test(
   LABELS riscv64 object pointer global local_publication expected_failure cli
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_edge_store_local_publication_ordering
+  SRC "${BACKEND_CASE_ROOT}/riscv64_edge_store_local_publication_ordering.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "join_transfer logic.end.21 result=%t24 kind=loop_carry carrier=edge_store_slot ownership=authoritative_branch_pair|storage=%t24.phi|move[0] %t22 -> %t24 join_transfer_index=0 edge_transfer_index=0 carrier=edge_store_slot storage=%t24.phi|move[0] 0 -> %t24 join_transfer_index=0 edge_transfer_index=1 carrier=edge_store_slot storage=%t24.phi|store_source function=main block=logic.rhs.end.20 inst=0 source=<none> status=missing_destination_access intent=store_local_publication|store_source function=main block=logic.skip.19 inst=0 source=<none> status=missing_destination_access intent=store_local_publication|home %t24 value_id=17 kind=register reg=t0"
+  FORBIDDEN_SNIPPETS "access block=logic.rhs.end.20 inst_index=0|access block=logic.skip.19 inst_index=0|access block=logic.end.21 inst_index=0|unsupported_local_memory_access"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 edge_store local_publication dump
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_edge_store_local_publication_ordering
+  SRC "${BACKEND_CASE_ROOT}/riscv64_edge_store_local_publication_ordering.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_edge_store_local_publication_ordering.o"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "13031000970200009382020023a06200130e1000"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object edge_store local_publication cli
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_short_circuit_select_false_lhs
   SRC "${BACKEND_CASE_ROOT}/riscv64_short_circuit_select_false_lhs.c"

@@ -3158,9 +3158,11 @@ fragment_for_prepared_out_of_ssa_moves(
   std::size_t next_step_index = 0;
   for (const auto& move : move_bundle.moves) {
     const bool phi_join_move =
-        move.reason == "phi_join_register_to_register";
+        move.reason == "phi_join_register_to_register" ||
+        move.reason == "phi_loop_carry_register_to_register";
     const bool phi_join_immediate_move =
-        move.reason == "phi_join_immediate_materialization";
+        move.reason == "phi_join_immediate_materialization" ||
+        move.reason == "phi_loop_carry_immediate_materialization";
     const bool preservation_move =
         move.reason == "edge_consumer_preservation_register_to_register";
     const bool stack_preservation_move =
@@ -11023,6 +11025,154 @@ bool prepared_join_transfer_edge_copies_are_published(
       });
 }
 
+bool prepared_local_slot_matches_storage_name(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::SlotNameId slot_id,
+    std::string_view slot_name,
+    c4c::SlotNameId storage_name) {
+  if (storage_name == c4c::kInvalidSlotName) {
+    return false;
+  }
+  if (slot_id == storage_name) {
+    return true;
+  }
+  const auto resolved = names.slot_names.find(slot_name);
+  if (resolved == storage_name) {
+    return true;
+  }
+  const auto storage_spelling = names.slot_names.spelling(storage_name);
+  if (slot_name == storage_spelling) {
+    return true;
+  }
+  return !slot_name.empty() && slot_name.front() == '%' &&
+         slot_name.substr(1) == storage_spelling;
+}
+
+bool prepared_edge_store_carrier_value_matches(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs) {
+  if (prepared_bir_values_have_same_name(names, lhs, rhs)) {
+    return true;
+  }
+  return lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+         rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+         lhs.type == rhs.type && lhs.immediate == rhs.immediate &&
+         lhs.immediate_bits == rhs.immediate_bits;
+}
+
+bool prepared_edge_store_slot_join_transfer_is_rv64_object_admitted(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+    c4c::SlotNameId slot_id,
+    std::string_view slot_name) {
+  if (prepare::effective_prepared_join_transfer_carrier_kind(join_transfer) !=
+          prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      !join_transfer.storage_name.has_value() ||
+      !prepared_local_slot_matches_storage_name(names,
+                                                slot_id,
+                                                slot_name,
+                                                *join_transfer.storage_name) ||
+      !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value() ||
+      !prepared_join_transfer_edge_copies_are_published(control_flow,
+                                                        join_transfer)) {
+    return false;
+  }
+  const auto true_index = *join_transfer.source_true_transfer_index;
+  const auto false_index = *join_transfer.source_false_transfer_index;
+  if (true_index >= join_transfer.edge_transfers.size() ||
+      false_index >= join_transfer.edge_transfers.size() ||
+      true_index == false_index) {
+    return false;
+  }
+  const auto* destination_home =
+      prepared_value_home_for(names, lookups, join_transfer.result);
+  if (destination_home == nullptr ||
+      !gpr_register_number_for_home(*destination_home).has_value()) {
+    return false;
+  }
+  const auto storage_matches = [&](std::size_t index) {
+    const auto& transfer = join_transfer.edge_transfers.at(index);
+    return transfer.successor_label == join_transfer.join_block_label &&
+           transfer.storage_name.has_value() &&
+           *transfer.storage_name == *join_transfer.storage_name;
+  };
+  return storage_matches(true_index) && storage_matches(false_index);
+}
+
+const c4c::backend::prepare::PreparedJoinTransfer*
+find_admitted_edge_store_slot_join_transfer_for_store(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  const prepare::PreparedJoinTransfer* selected = nullptr;
+  for (const auto& join_transfer : control_flow.join_transfers) {
+    if (!prepared_edge_store_slot_join_transfer_is_rv64_object_admitted(
+            names, lookups, control_flow, join_transfer, store.slot_id,
+            store.slot_name)) {
+      continue;
+    }
+    const prepare::PreparedEdgeValueTransfer* matching_transfer = nullptr;
+    for (const auto& transfer : join_transfer.edge_transfers) {
+      if (transfer.successor_label != join_transfer.join_block_label ||
+          !transfer.storage_name.has_value() ||
+          *transfer.storage_name != *join_transfer.storage_name ||
+          !prepared_edge_store_carrier_value_matches(names,
+                                                     transfer.incoming_value,
+                                                     store.value)) {
+        continue;
+      }
+      if (matching_transfer != nullptr) {
+        return nullptr;
+      }
+      matching_transfer = &transfer;
+    }
+    if (matching_transfer == nullptr) {
+      continue;
+    }
+    if (block_label != c4c::kInvalidBlockLabel &&
+        matching_transfer->predecessor_label != block_label) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &join_transfer;
+  }
+  return selected;
+}
+
+const c4c::backend::prepare::PreparedJoinTransfer*
+find_admitted_edge_store_slot_join_transfer_for_load(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  const prepare::PreparedJoinTransfer* selected = nullptr;
+  for (const auto& join_transfer : control_flow.join_transfers) {
+    if (join_transfer.join_block_label != block_label ||
+        !prepared_bir_values_have_same_name(names,
+                                            load.result,
+                                            join_transfer.result) ||
+        !prepared_edge_store_slot_join_transfer_is_rv64_object_admitted(
+            names, lookups, control_flow, join_transfer, load.slot_id,
+            load.slot_name)) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &join_transfer;
+  }
+  return selected;
+}
+
 std::optional<prepare::PreparedValueId> prepared_value_id_for_named_value(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedFunctionLookups* lookups,
@@ -13320,6 +13470,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       if (c4c::backend::bir::is_vrm_register_type(store->value.type)) {
         return RiscvEncodedFragment{};
       }
+      if (find_admitted_edge_store_slot_join_transfer_for_store(prepared.names,
+                                                                &lookups,
+                                                                control_flow,
+                                                                prepared_block_label,
+                                                                *store) != nullptr) {
+        return RiscvEncodedFragment{};
+      }
       const auto* access = prepared_memory_access_for_local_instruction(
           prepared.names,
           &lookups,
@@ -13371,6 +13528,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       }
       if ((!load->address.has_value() || !load->address->is_volatile) &&
           !bir_value_is_used_after(function, block_index, instruction_index, load->result)) {
+        return RiscvEncodedFragment{};
+      }
+      if (find_admitted_edge_store_slot_join_transfer_for_load(prepared.names,
+                                                               &lookups,
+                                                               control_flow,
+                                                               prepared_block_label,
+                                                               *load) != nullptr) {
         return RiscvEncodedFragment{};
       }
       const auto* access = prepared_memory_access_for_local_instruction(
