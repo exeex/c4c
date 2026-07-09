@@ -1483,6 +1483,23 @@ bool prepared_global_byte_storage_access_has_fact_authority(
          access->address.byte_offset >= 0;
 }
 
+bool prepared_global_i32_byte_storage_access_has_authority(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::optional<c4c::ValueNameId> result_value_name,
+    std::optional<c4c::ValueNameId> stored_value_name) {
+  return prepared_global_byte_storage_access_has_authority(
+      prepared, access, result_value_name, stored_value_name, 4, 4);
+}
+
+bool prepared_global_i32_byte_storage_access_has_fact_authority(
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::optional<c4c::ValueNameId> result_value_name,
+    std::optional<c4c::ValueNameId> stored_value_name) {
+  return prepared_global_byte_storage_access_has_fact_authority(
+      access, result_value_name, stored_value_name, 4, 4);
+}
+
 bool prepared_global_16_byte_byte_storage_access_has_authority(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
@@ -1498,6 +1515,73 @@ bool prepared_global_16_byte_byte_storage_access_has_fact_authority(
     std::optional<c4c::ValueNameId> stored_value_name) {
   return prepared_global_byte_storage_access_has_fact_authority(
       access, result_value_name, stored_value_name, 16, 16);
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_i32_byte_storage_global_load(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::LoadGlobalInst& load,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+  if (load.result.kind != bir::Value::Kind::Named ||
+      load.result.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto result_value_name = names.value_names.find(load.result.name);
+  if (result_value_name == c4c::kInvalidValueName ||
+      !prepared_global_i32_byte_storage_access_has_authority(
+          prepared, access, result_value_name, std::nullopt)) {
+    return std::nullopt;
+  }
+  const std::string_view symbol =
+      c4c::backend::prepare::prepared_link_name(prepared.names,
+                                                *access->address.symbol_name);
+  if (symbol.empty()) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for(names, lookups, load.result);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  const auto destination = gpr_register_number_for_home(*home);
+  const auto destination_offset =
+      rv64_prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                    *home,
+                                                    stack_frame_bytes,
+                                                    4);
+  if (!destination.has_value() && !destination_offset.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::uint32_t destination_register = destination.value_or(6);
+  RiscvEncodedFragment fragment = make_rv64_pcrel_address_fragment(
+      destination_register,
+      std::string{symbol},
+      ".Lpcrel_hi_global_load_i32_byte_storage_" +
+          std::to_string(access->function_name) + "_" +
+          std::to_string(access->block_label) + "_" +
+          std::to_string(access->inst_index),
+      RiscvObjectFixupTargetKind::Object,
+      0);
+  append_le32(fragment.bytes,
+              encode_i_type(0x03,
+                            destination_register,
+                            2,
+                            destination_register,
+                            static_cast<std::int32_t>(
+                                access->address.byte_offset)));
+  if (destination_offset.has_value() &&
+      !append_rv64_store_register_to_stack_offset(fragment,
+                                                 destination_register,
+                                                 *destination_offset,
+                                                 4)) {
+    return std::nullopt;
+  }
+  return fragment;
 }
 
 std::optional<RiscvEncodedFragment>
@@ -1680,6 +1764,72 @@ fragment_for_prepared_16_byte_byte_storage_global_load(
                                                    8)) {
     return std::nullopt;
   }
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_i32_byte_storage_global_store(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::StoreGlobalInst& store,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+  if (store.value.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  std::optional<c4c::ValueNameId> stored_value_name;
+  if (store.value.kind == bir::Value::Kind::Named) {
+    stored_value_name = names.value_names.find(store.value.name);
+    if (*stored_value_name == c4c::kInvalidValueName) {
+      return std::nullopt;
+    }
+  } else if (store.value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  if (!prepared_global_i32_byte_storage_access_has_authority(
+          prepared, access, std::nullopt, stored_value_name)) {
+    return std::nullopt;
+  }
+  const std::string_view symbol =
+      c4c::backend::prepare::prepared_link_name(prepared.names,
+                                                *access->address.symbol_name);
+  if (symbol.empty()) {
+    return std::nullopt;
+  }
+
+  constexpr std::uint32_t address_register = 5;  // t0
+  constexpr std::uint32_t source_register = 6;   // t1
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          source_register,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          store.value,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_fragment(
+      fragment,
+      make_rv64_pcrel_address_fragment(
+          address_register,
+          std::string{symbol},
+          ".Lpcrel_hi_global_store_i32_byte_storage_" +
+              std::to_string(access->function_name) + "_" +
+              std::to_string(access->block_label) + "_" +
+              std::to_string(access->inst_index),
+          RiscvObjectFixupTargetKind::Object,
+          0));
+  append_le32(fragment.bytes,
+              encode_s_type(0x23,
+                            2,
+                            address_register,
+                            source_register,
+                            static_cast<std::int32_t>(
+                                access->address.byte_offset)));
   return fragment;
 }
 
@@ -7795,6 +7945,258 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_narrow_bitfield_binary
   return fragment;
 }
 
+bool rv64_packed_global_i32_bitfield_opcode_is_supported(
+    c4c::backend::bir::BinaryOpcode opcode,
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  namespace bir = c4c::backend::bir;
+  switch (opcode) {
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+      return true;
+    case bir::BinaryOpcode::Add: {
+      const auto lhs_immediate = integer_immediate_for_value(names, lookups, lhs);
+      const auto rhs_immediate = integer_immediate_for_value(names, lookups, rhs);
+      return lhs_immediate == std::optional<std::int64_t>{0} ||
+             rhs_immediate == std::optional<std::int64_t>{0};
+    }
+    default:
+      return false;
+  }
+}
+
+std::optional<bool> prepared_packed_global_i32_operand_chain_rooted(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth);
+
+std::optional<bool> prepared_packed_global_i32_binary_chain_rooted(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::BinaryInst& binary,
+    std::size_t before_instruction_index,
+    unsigned depth) {
+  namespace bir = c4c::backend::bir;
+  if (binary.result.type != bir::TypeKind::I32 ||
+      binary.operand_type != bir::TypeKind::I32 ||
+      binary.lhs.type != bir::TypeKind::I32 ||
+      binary.rhs.type != bir::TypeKind::I32 ||
+      !rv64_packed_global_i32_bitfield_opcode_is_supported(
+          binary.opcode, binary.lhs, binary.rhs, names, lookups)) {
+    return std::nullopt;
+  }
+  const auto lhs_root = prepared_packed_global_i32_operand_chain_rooted(
+      prepared, names, lookups, block_label, block, binary.lhs,
+      before_instruction_index, depth + 1);
+  const auto rhs_root = prepared_packed_global_i32_operand_chain_rooted(
+      prepared, names, lookups, block_label, block, binary.rhs,
+      before_instruction_index, depth + 1);
+  if (!lhs_root.has_value() || !rhs_root.has_value()) {
+    return std::nullopt;
+  }
+  return *lhs_root || *rhs_root;
+}
+
+std::optional<bool> prepared_packed_global_i32_operand_chain_rooted(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth) {
+  namespace bir = c4c::backend::bir;
+  if (depth > 32U) {
+    return std::nullopt;
+  }
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return value.type == bir::TypeKind::I32 ? std::optional<bool>{false}
+                                            : std::nullopt;
+  }
+  if (value.kind != bir::Value::Kind::Named || value.name.empty() ||
+      value.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const std::size_t limit =
+      std::min(before_instruction_index, block.insts.size());
+  for (std::size_t index = limit; index > 0; --index) {
+    const auto producer_index = index - 1;
+    const auto& inst = block.insts.at(producer_index);
+    if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
+      if (!prepared_bir_value_has_name(names, load->result, value_name)) {
+        continue;
+      }
+      const auto* access = prepared_memory_access_for_instruction(
+          lookups, block_label, producer_index);
+      return prepared_global_i32_byte_storage_access_has_authority(
+          prepared, access, value_name, std::nullopt);
+    }
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+      if (!prepared_bir_value_has_name(names, binary->result, value_name)) {
+        continue;
+      }
+      return prepared_packed_global_i32_binary_chain_rooted(
+          prepared, names, lookups, block_label, block, *binary,
+          producer_index, depth + 1);
+    }
+  }
+  return prepared_value_home_for(names, lookups, value) != nullptr
+             ? std::optional<bool>{false}
+             : std::nullopt;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_packed_global_i32_bitfield_binary(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::bir::Block& block,
+    std::size_t instruction_index,
+    const c4c::backend::bir::BinaryInst& binary,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+  const auto rooted = prepared_packed_global_i32_binary_chain_rooted(
+      prepared, names, lookups, block_label, block, binary, instruction_index, 0);
+  if (!rooted.has_value() || !*rooted) {
+    return std::nullopt;
+  }
+  const auto* destination_home = prepared_value_home_for(names, lookups, binary.result);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  const auto destination_stack_offset =
+      destination_home == nullptr
+          ? std::nullopt
+          : rv64_prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                          *destination_home,
+                                                          stack_frame_bytes,
+                                                          4);
+  if (!destination.has_value() && !destination_stack_offset.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::uint32_t destination_register = destination.value_or(28);
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          destination_register,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          binary.lhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  const auto rhs_immediate = integer_immediate_for_value(names, lookups, binary.rhs);
+  const auto finish = [&]() -> std::optional<RiscvEncodedFragment> {
+    if (destination_stack_offset.has_value() &&
+        !append_rv64_store_register_to_stack_offset(fragment,
+                                                   destination_register,
+                                                   *destination_stack_offset,
+                                                   4)) {
+      return std::nullopt;
+    }
+    return fragment;
+  };
+  switch (binary.opcode) {
+    case bir::BinaryOpcode::Add:
+      if (rhs_immediate == std::optional<std::int64_t>{0}) {
+        return finish();
+      }
+      break;
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+      if (!rhs_immediate.has_value() || *rhs_immediate < 0 ||
+          *rhs_immediate >= 32) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_i_type(0x1b,
+                                destination_register,
+                                binary.opcode == bir::BinaryOpcode::Shl ? 1 : 5,
+                                destination_register,
+                                static_cast<std::int32_t>(
+                                    (binary.opcode == bir::BinaryOpcode::AShr
+                                         ? 0x400
+                                         : 0) |
+                                    *rhs_immediate)));
+      return finish();
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or: {
+      const auto funct3 = binary.opcode == bir::BinaryOpcode::And ? 7U : 6U;
+      if (rhs_immediate.has_value() &&
+          fits_signed_12_bit_immediate(*rhs_immediate)) {
+        append_le32(fragment.bytes,
+                    encode_i_type(0x13,
+                                  destination_register,
+                                  funct3,
+                                  destination_register,
+                                  static_cast<std::int32_t>(*rhs_immediate)));
+        return finish();
+      }
+      const auto rhs_register =
+          rv64_unoccupied_temporary_gpr_avoiding(lookups, destination_register);
+      if (!rhs_register.has_value() ||
+          !append_rv64_move_value_to_register(fragment,
+                                             *rhs_register,
+                                             stack_layout,
+                                             names,
+                                             lookups,
+                                             binary.rhs,
+                                             stack_frame_bytes)) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                funct3,
+                                destination_register,
+                                *rhs_register,
+                                0));
+      return finish();
+    }
+    default:
+      break;
+  }
+  const auto lhs_immediate = integer_immediate_for_value(names, lookups, binary.lhs);
+  if (binary.opcode == bir::BinaryOpcode::Add &&
+      lhs_immediate == std::optional<std::int64_t>{0}) {
+    fragment.bytes.clear();
+    fragment.labels.clear();
+    fragment.fixups.clear();
+    if (!append_rv64_move_value_to_register(fragment,
+                                            destination_register,
+                                            stack_layout,
+                                            names,
+                                            lookups,
+                                            binary.rhs,
+                                            stack_frame_bytes)) {
+      return std::nullopt;
+    }
+    return finish();
+  }
+  return std::nullopt;
+}
+
 
 bool rv64_select_edge_binary_operand_is_register_or_immediate(
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -13357,6 +13759,20 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
           fragment.has_value()) {
         return fragment;
       }
+      if (auto fragment =
+              fragment_for_prepared_packed_global_i32_bitfield_binary(
+                  prepared,
+                  prepared.stack_layout,
+                  prepared.names,
+                  &lookups,
+                  prepared_block_label,
+                  block,
+                  instruction_index,
+                  *binary,
+                  stack_frame_bytes);
+          fragment.has_value()) {
+        return fragment;
+      }
       if (auto fragment = fragment_for_prepared_pointer_add(prepared.stack_layout,
                                                             prepared.target_profile,
                                                             prepared.names,
@@ -13572,6 +13988,20 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     }
     if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
       if (auto fragment =
+              fragment_for_prepared_i32_byte_storage_global_store(
+                  prepared,
+                  prepared.stack_layout,
+                  prepared.names,
+                  &lookups,
+                  *store,
+                  prepared_memory_access_for_instruction(
+                      &lookups,
+                      prepared_block_label,
+                      instruction_index),
+                  stack_frame_bytes)) {
+        return fragment;
+      }
+      if (auto fragment =
               fragment_for_prepared_16_byte_byte_storage_global_store(
                   prepared,
                   prepared.stack_layout,
@@ -13601,6 +14031,20 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       }
     }
     if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+      if (auto fragment =
+              fragment_for_prepared_i32_byte_storage_global_load(
+                  prepared,
+                  prepared.stack_layout,
+                  prepared.names,
+                  &lookups,
+                  *load,
+                  prepared_memory_access_for_instruction(
+                      &lookups,
+                      prepared_block_label,
+                      instruction_index),
+                  stack_frame_bytes)) {
+        return fragment;
+      }
       if (auto fragment =
               fragment_for_prepared_f32_byte_storage_global_load(
                   prepared,
@@ -14079,6 +14523,18 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       return std::string{
           "unsupported_global_data: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared global memory accesses"};
     }
+    if (load->result.type == bir::TypeKind::I32) {
+      std::optional<c4c::ValueNameId> result_value_name;
+      if (load->result.kind == bir::Value::Kind::Named) {
+        result_value_name = names.value_names.find(load->result.name);
+      }
+      if (result_value_name.has_value() &&
+          *result_value_name != c4c::kInvalidValueName &&
+          prepared_global_i32_byte_storage_access_has_fact_authority(
+              access, *result_value_name, std::nullopt)) {
+        return std::nullopt;
+      }
+    }
     return std::string{
         access == nullptr
             ? "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing"
@@ -14098,6 +14554,19 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       }
       return std::string{
           "unsupported_global_data: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared global memory accesses"};
+    }
+    if (store->value.type == bir::TypeKind::I32) {
+      std::optional<c4c::ValueNameId> stored_value_name;
+      if (store->value.kind == bir::Value::Kind::Named) {
+        stored_value_name = names.value_names.find(store->value.name);
+      }
+      if ((store->value.kind == bir::Value::Kind::Immediate ||
+           (stored_value_name.has_value() &&
+            *stored_value_name != c4c::kInvalidValueName)) &&
+          prepared_global_i32_byte_storage_access_has_fact_authority(
+              access, std::nullopt, stored_value_name)) {
+        return std::nullopt;
+      }
     }
     return std::string{
         access == nullptr

@@ -1198,6 +1198,28 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object edge_store local_publication cli
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_packed_global_bitfield_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_packed_global_bitfield_access.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.load_global i32 @rv64_packed_global_left|bir.store_global @rv64_packed_global_left|bir.load_global i32 @rv64_packed_global_right|base=global_symbol result=%t1.bf.unit symbol=rv64_packed_global_left offset=0 size=4 align=4 base_plus_offset=yes layout_authority=byte_storage_aggregate range_verdict=proven_in_bounds"
+  FORBIDDEN_SNIPPETS "unsupported_global_data|src/pr79737-2.c|symbol=i|symbol=j"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 packed_global bitfield dump
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_packed_global_bitfield_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_packed_global_bitfield_access.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_packed_global_bitfield_access.o"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "970400009384040083a40400"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object packed_global bitfield cli
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_short_circuit_select_false_lhs
   SRC "${BACKEND_CASE_ROOT}/riscv64_short_circuit_select_false_lhs.c"
