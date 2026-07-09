@@ -1,66 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/624_prepared_outgoing_stack_argument_destination_offsets.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Wire consumer guards without inference
+Current Step ID: 5
+Current Step Title: Prove breadth and close-readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 consumer guard proof: RV64 text/object byval stack-copy call
-consumers require prepared destination offset/size facts, matching transport
-destination facts, and matching outgoing stack-area authority without deriving
-destination offsets locally.
+Completed Step 5 breadth and close-readiness proof by rerunning the Step 1
+outgoing-stack argument diagnostic row set and comparing first-owner buckets
+before and after the producer/consumer changes.
 
 Artifact:
-`build/agent_state/624_step4_consumer_guards/`
+`build/agent_state/624_step5_breadth_close_readiness/`
 
 Result:
 
-- Verified `emit_riscv_byval_aggregate_address_argument(...)` and the RV64
-  prepared object call path consume existing prepared facts rather than
-  deriving offsets from ABI index, assembly shape, object layout, filenames, or
-  testcase shape.
-- Added object-emission fail-closed coverage for missing argument destination
-  size, missing transport destination offset, and mismatched transport
-  destination offset, complementing the existing missing argument destination
-  offset, mismatched transport destination size, and mismatched outgoing-area
-  guards.
-- Refreshed prepared-BIR probes for `20000808-1.c`, the `931004-*` family,
-  `931031-1.c`, `950607-2.c`, and `pr69447.c` under the Step 4 artifact
-  directory.
-- `20000808-1.c`, odd `931004-*`, `931031-1.c`, `950607-2.c`, and
-  `pr69447.c` now expose prepared destination facts where the row reaches the
-  prepared call boundary; even `931004-*` rows remain earlier semantic
-  local-memory rejections, not consumer guard blockers.
+- Step 1 producer-owned rows now expose explicit prepared destination facts:
+  `20000808-1.c`, odd `931004-*`, `931031-1.c`, and `950607-2.c` publish
+  `dest_stack_offset` and `dest_stack_size` when they reach the prepared call
+  boundary.
+- Stack-copy aggregate rows also publish matching transport destination facts:
+  `transport_dest_stack_offset` and `transport_dest_stack_size` are present for
+  the byval stack-copy arguments in `20000808-1.c` and `950607-2.c`.
+- Current RV64 object diagnostics for the former producer-owned rows now remain
+  at the broader `unsupported_call_abi` ordinary same-module call ABI/result
+  gate, not at missing outgoing destination authority.
+- Even `931004-*` rows remain semantic local-memory guards before prepared
+  handoff, and `pr69447.c` remains the scalar outgoing-stack guard with
+  `dest_stack_offset=0` and `dest_stack_size=8`.
+- No expectation, unsupported-marker, allowlist, timeout, runtime, or
+  accounting change was used as progress.
 
 ## Suggested Next
 
-Proceed to Step 5: rerun the Step 1 diagnostic breadth set, compare first-owner
-buckets before and after Steps 3 and 4, and decide whether idea 624 is
-close-ready or needs a narrower follow-up for remaining non-consumer residuals.
+Recommend supervisor close-readiness review for idea 624. The prepared
+outgoing-stack destination-offset route is complete; any next implementation
+should be a narrower follow-up owned by the residual bucket rather than an
+expansion of this idea.
 
 ## Watchouts
 
-- Keep Step 5 focused on breadth/reclassification. Do not expand idea 624 into
-  semantic local-memory repair for even `931004-*` rows or carrier alias
-  publication residuals observed in `20000808-1.c`.
-- The consumer guard shape is intentionally strict: argument destination offset
-  must be zero for the byval stack-copy address consumer, argument destination
-  size must equal the transport copy size, transport destination facts must
-  match argument destination facts, and the call outgoing area must exactly
-  cover the prepared destination size.
+- Residual RV64 object failures for `20000808-1.c`, odd `931004-*`,
+  `931031-1.c`, `950607-2.c`, and `pr69447.c` are classified as ordinary
+  same-module call ABI/result support, outside idea 624.
+- Even `931004-*` rows remain semantic local-memory guards and should stay out
+  of an outgoing-stack destination implementation route.
+- `20000808-1.c` still exposes carrier-alias/select residuals in prepared
+  diagnostics; keep that out of this implementation route unless a separate
+  source idea owns it.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test c4cll > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission|backend_dump_riscv64_byval_aggregate_fixed_call|backend_codegen_route_riscv64_byval_aggregate_fixed_call|backend_dump_riscv64_byval_preserved_pointer_args|backend_codegen_route_riscv64_byval_preserved_pointer_args|backend_codegen_route_riscv64_byval_formal_gpr_publication|backend_rv64_runtime_riscv64_byval_aggregate_fixed_call|backend_rv64_runtime_riscv64_byval_preserved_pointer_args|backend_rv64_runtime_riscv64_byval_formal_gpr_publication)$' >> test_after.log 2>&1`
+`cmake --build build --target c4cll > test_after.log 2>&1`
 
-Result: passed, 11/11 tests passed, preserved in `test_after.log`.
+Result: passed, preserved in `test_after.log`.
 
 Diagnostic refresh command:
-`./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu <gcc torture row>`
+`./build/c4cll -I tests/c/external/gcc_torture --dump-bir --target riscv64-linux-gnu <gcc torture row>`
+`./build/c4cll -I tests/c/external/gcc_torture --dump-prepared-bir --target riscv64-linux-gnu <gcc torture row>`
+`./build/c4cll -I tests/c/external/gcc_torture --codegen asm --target riscv64-linux-gnu <gcc torture row> -o <artifact>/asm/<row>/out.s`
+`cmake -P tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake ...`
 
 Representative diagnostic output:
-`build/agent_state/624_step4_consumer_guards/*.prepared.txt`
+`build/agent_state/624_step5_breadth_close_readiness/`
