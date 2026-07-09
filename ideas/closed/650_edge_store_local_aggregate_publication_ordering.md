@@ -1,6 +1,6 @@
 # Edge-Store Local Aggregate Publication Ordering
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/640_mixed_local_global_publication_authority.md`
 Related:
@@ -62,6 +62,16 @@ that idea 640 closed.
   producer or RV64 consumer authority that blocks it.
 - Negative proof keeps ambiguous order, missing destination ownership,
   aggregate-lane mismatches, and scalar-only frame-slot cases fail-closed.
+
+## Closure Summary
+
+Closed after RV64 object-route admission was added for authoritative
+`edge_store_slot` carriers without synthesizing fake destination access.
+Focused coverage and representative proof showed both `src/pr68185.c` and
+`src/pr68321.c` emit RV64 objects and disassemble through the selected
+publication-ordering owner. The matched RV64 backend regression guard passed
+with before 133/29/162, after 141/23/164, six resolved failures, and zero new
+failures.
 
 ## Reviewer Reject Signals
 
