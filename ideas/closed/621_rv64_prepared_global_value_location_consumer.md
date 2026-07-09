@@ -1,6 +1,6 @@
 # RV64 Prepared Global Value-Location Consumer
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -56,6 +56,22 @@ consumer code still rejects or mishandles the prepared value-location sequence.
   `src/pr36034-1.c` and the integer/aggregate load-store sequence from
   `src/pr91137.c`, unless refreshed diagnostics prove one belongs to a separate
   named owner.
+
+## Completion Notes
+
+Closed after Step 5 classification. `src/pr36034-1.c` progressed beyond the
+old prepared-global value-location consumer stop and is now classified to
+downstream move-bundle ownership. `src/pr91137.c` has complete direct prepared
+global access authority for the inspected store and is classified to
+selected/direct-global `store_global_publication` source-materialization
+ownership rather than this value-location consumer route. Guard rows remain
+outside this idea: `src/ieee/20001122-1.c` belongs to separate width-policy
+ownership, and `src/991030-1.c` already emits an object successfully.
+
+Close proof used canonical backend regression logs:
+`test_before.log` and `test_after.log` both reported 347 passed, 0 failed, 347
+total, and `c4c-regression-guard` passed with
+`--allow-non-decreasing-passed`.
 
 ## Split-In From Idea 611
 
