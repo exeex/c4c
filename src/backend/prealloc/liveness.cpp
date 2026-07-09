@@ -908,7 +908,7 @@ void BirPreAlloc::run_liveness() {
   prepared_.liveness.functions.clear();
   prepared_.liveness.functions.reserve(prepared_.module.functions.size());
 
-  PreparedValueId next_value_id = 0;
+  PreparedValueId next_value_id = 1;
   for (const auto& function : prepared_.module.functions) {
     if (function.is_declaration) {
       continue;
