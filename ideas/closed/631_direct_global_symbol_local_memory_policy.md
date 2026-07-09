@@ -1,6 +1,6 @@
 # Direct Global-Symbol Local-Memory Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/614_rv64_pointer_local_memory_consumption.md`
 Related:
@@ -61,6 +61,51 @@ fresh diagnostic refresh proves they now match idea `621`.
 - Negative proof keeps prepared value-location rows, string constants,
   unsupported widths, aggregate homes, and unrelated local-memory rows outside
   this idea.
+
+## Closure Notes
+
+Closed on 2026-07-09 after Step 5 reclassified the refreshed direct
+global-symbol row set.
+
+The accepted route added focused prepared-layer coverage for explicit scalar
+direct `PreparedAddressBaseKind::GlobalSymbol` local-memory facts, then added
+narrow RV64 scalar load/store admission for prepared direct-global local-memory
+accesses. The RV64 consumer now requires explicit global-symbol authority,
+direct policy, default address space, non-volatile access, scalar layout
+authority, width/alignment agreement, symbol identity, base-plus-offset facts,
+and signed-12-bit offset encodability.
+
+Step 5 reran the focused allowlist from Step 1 with:
+
+`cmake --build --preset default && ALLOWLIST=build/agent_state/631_step1_global_symbol.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/631_step5_global_symbol.log 2>&1`
+
+The probe still reported `total=18 passed=0 failed=18`, but no remaining row
+proved another direct `addr @symbol` local-memory consumer gap for this idea.
+Residual owners were classified as prepared move-bundle authority,
+pointer-loaded-from-global local-memory, aggregate/global-object
+materialization, byval/struct-return aggregate copies, mixed local/global
+publication, large aggregate offsets, or runtime mismatch.
+
+Existing open ideas already cover several residual owners:
+
+- `ideas/open/633_aggregate_stack_home_local_memory_policy.md`
+- `ideas/open/634_large_selected_pointer_offset_local_memory_policy.md`
+- `ideas/open/637_prepared_stack_destination_fan_in_authority_producer.md`
+- `ideas/open/638_rv64_string_label_pointer_runtime_object_correctness.md`
+
+Follow-up split ideas created for residual owners not already represented by a
+specific open idea:
+
+- `ideas/open/639_pointer_loaded_from_global_local_memory_policy.md`
+- `ideas/open/640_mixed_local_global_publication_authority.md`
+- `ideas/open/641_aggregate_global_object_materialization_policy.md`
+- `ideas/open/642_rv64_global_residual_runtime_mismatch_research.md`
+
+The close gate used matching focused backend CTest logs:
+`test_before.log` and `test_after.log` both ran
+`ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'`.
+The c4c regression guard passed in non-decreasing mode with 1/1 tests passing
+before and after and no new failures.
 
 ## Reviewer Reject Signals
 
