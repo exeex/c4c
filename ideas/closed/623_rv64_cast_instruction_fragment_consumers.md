@@ -1,6 +1,6 @@
 # RV64 Cast Instruction Fragment Consumers
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Split From: `ideas/closed/612_rv64_instruction_fragment_consumers.md`
@@ -55,6 +55,26 @@ ownership split before any implementation.
   no-breadth blocker.
 - Non-implemented cast rows keep accurate unsupported or owner diagnostics.
 - Nearby non-cast guard rows from idea 612 remain outside this route.
+
+## Closure Notes
+
+Closed after the Step 7 zext consumer slice at `132ae8871`. The runbook
+refreshed and classified the residual cast rows, selected the 18-row
+`rv64-consumer:width-preserving-zext-i32-to-i32` family as the coherent
+multi-row cast-consumer packet, and implemented that packet without expectation,
+unsupported-marker, allowlist, timeout, or accounting changes.
+
+The corrected Step 7 proof split no longer has `instruction_kind=CastInst`
+failures for the 18 zext rows. Remaining proof-visible rows from that selected
+set are runtime mismatches, C4C link failures, and non-cast object compile
+failures, including `CallInst` object compile rows; those are out of scope for
+idea 623 and should be handled by separate owner routes if pursued.
+
+Step 5 also preserved the lower-breadth trunc classification: two compile-time
+trunc `CastInst` rows and one trunc-family runtime mismatch. They were not the
+selected Step 7 route and should not be silently folded into this closed
+runbook; a future trunc-specific continuation should be opened explicitly if
+the supervisor wants that work.
 
 ## Reviewer Reject Signals
 
