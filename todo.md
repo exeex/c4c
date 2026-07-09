@@ -1,62 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/623_rv64_cast_instruction_fragment_consumers.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Split ownership by first missing fact
+Current Step ID: 3
+Current Step Title: Implement one verified cast consumer sub-family
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified the 28 refreshed CastInst residual rows from
-`build/agent_state/623_step1_cast_residuals.tsv` by first missing or
-responsible owner without implementation, test, unsupported-marker, allowlist,
-runtime/accounting, plan, or idea changes.
+Step 3 implemented semantic RV64/MIR object-route consumption for the
+width-preserving i32-to-i32 CastInst GPR-copy family:
+`rv64-consumer:width-preserving-zext-i32-to-i32` and the naturally covered
+`rv64-consumer:width-preserving-trunc-i32-to-i32`.
 
-Artifacts written:
-- `build/agent_state/623_step2_cast_owner_buckets.tsv`: row-level ownership
-  classification, prepared cast line, source kind, and producer/move evidence.
-- `build/agent_state/623_step2_cast_owner_notes.md`: summary counts,
-  multi-row RV64 consumer sub-families, outside-route guardrails, and row
-  details.
+The object emission route now recognizes prepared register-home
+`zext i32 -> i32` and `trunc i32 -> i32` CastInst rows as a width-preserving
+GPR copy before falling through to the existing generic cast helper. The same
+consumer is used for normal instruction emission and select-edge dependency
+producer emission. Non-i32, non-zext/trunc, missing-home, and stack-result
+shapes continue to reject through the existing unsupported-instruction
+diagnostic path.
 
-Ownership result:
-- `RV64 consumer`: 26 ordinary i32 rows. BIR producer facts are complete for
-  these rows: each row has a typed prepared `CastInst` line and a matching
-  before-instruction prepared move bundle. The first missing fact is RV64
-  object-route consumption of the CastInst.
-- `policy`: 2 f128/floating rows, `src/930622-2.c` and
-  `src/ieee/pr29302-1.c`, kept outside the ordinary RV64 GPR cast-consumer
-  route.
-
-Multi-row RV64 consumer sub-families with complete producer facts:
-- `rv64-consumer:width-preserving-zext-i32-to-i32`: 18 rows.
-- `rv64-consumer:width-preserving-trunc-i32-to-i32`: 4 rows.
-- `rv64-consumer:ptrtoint-*-ptr-to-i32`: 4 rows split by value, global, and
-  local-memory pointer source kind.
-
-No refreshed CastInst row was assigned to BIR producer, semantic cast, ABI,
-global, local-memory, select, branch, move-bundle, runtime, width, signedness,
-source-kind, or authority as the first missing owner. Source kind only refines
-the ptrtoint RV64-consumer sub-family. The nearby 60 non-cast guard rows remain
-outside this route.
+Focused backend coverage now proves both accepted rows encode the same
+prepared GPR copy and keeps nearby rejected shapes closed: `sext`, pointer
+same-width casts, stack-source parameter rejection, and stack-result zext/trunc
+guards. No unsupported markers, allowlists, BIR producer/lowering files,
+runtime/accounting files, or ptrtoint behavior were changed.
 
 ## Suggested Next
 
-Execute the first implementation packet for the ordinary RV64 consumer family:
-add semantic RV64 object-route consumption for width-preserving i32-to-i32
-CastInst rows, starting with the 18-row `zext i32 ... to i32` sub-family and
-keeping f128/floating-policy rows out of scope.
+Execute Step 4 breadth and guardrails: rerun the refreshed cast diagnostic
+subset from Step 1, compare against the Step 2 owner buckets, include the nearby
+non-cast guard rows, and record the remaining cast residuals by owner after the
+width-preserving i32 GPR-copy consumer is active.
 
 ## Watchouts
 
-- Do not include the 2 `sitofp -> f128` rows in the ordinary GPR cast-consumer
-  packet; they remain policy/floating work.
-- Do not use the 60 Step 1 non-cast guard rows as acceptance for this route.
-- Keep ptrtoint source-kind differences as a separate RV64 consumer sub-family
-  if width-preserving i32 cast consumption is split first.
-- Reject any route that rewrites expectations or unsupported markers instead
-  of lowering the RV64 CastInst consumer path.
+- Residual cast buckets expected for Step 4: 4 `ptrtoint-*-ptr-to-i32` RV64
+  consumer rows remain deliberately out of this packet, and the 2
+  `sitofp -> f128` policy/floating rows remain out of the ordinary GPR cast
+  consumer route.
+- The nearby 60 non-cast guard rows remain guards only; they are not acceptance
+  evidence for this route.
+- If Step 4 finds remaining width-preserving i32 zext/trunc residual rows,
+  inspect producer/home facts before widening the object consumer. Do not patch
+  expectations, unsupported markers, allowlists, or named testcase shapes.
 
 ## Proof
 
@@ -67,4 +55,4 @@ cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -
 ```
 
 Result: passed. `test_after.log` is the canonical proof artifact; the backend
-CTest subset completed successfully.
+CTest subset completed successfully after the Step 3 code and test updates.

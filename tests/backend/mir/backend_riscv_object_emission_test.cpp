@@ -26039,30 +26039,33 @@ int emits_prepared_global_scalar_load_widths_from_explicit_facts() {
   return 0;
 }
 
-int emits_prepared_same_width_i32_zext_gpr_copy() {
-  const auto prepared = make_prepared_same_width_integer_zext_module();
-  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
-  if (!module.has_value()) {
-    return fail("expected prepared same-width i32 zext GPR cast to build");
-  }
-  const auto* text = object::find_section(*module, ".text");
-  if (text == nullptr || text->bytes.size() < 8) {
-    return fail("expected same-width zext copy and return text");
-  }
-  const auto copy = read_u32(text->bytes, 0);
-  if ((copy & 0x7fU) != 0x13U || ((copy >> 7) & 0x1fU) != 18U ||
-      ((copy >> 12) & 0x7U) != 0U || ((copy >> 15) & 0x1fU) != 5U ||
-      ((copy >> 20) & 0xfffU) != 0U) {
-    return fail("expected same-width zext to publish prepared GPR copy");
-  }
-  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
-  if (!image.has_value()) {
-    return fail("expected RV64 ELF writer to serialize same-width zext object");
+int emits_prepared_same_width_i32_cast_gpr_copy_family() {
+  for (const auto opcode :
+       {bir::CastOpcode::ZExt, bir::CastOpcode::Trunc}) {
+    const auto prepared = make_prepared_same_width_integer_zext_module(opcode);
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      return fail("expected prepared same-width i32 GPR cast to build");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    if (text == nullptr || text->bytes.size() < 8) {
+      return fail("expected same-width i32 cast copy and return text");
+    }
+    const auto copy = read_u32(text->bytes, 0);
+    if ((copy & 0x7fU) != 0x13U || ((copy >> 7) & 0x1fU) != 18U ||
+        ((copy >> 12) & 0x7U) != 0U || ((copy >> 15) & 0x1fU) != 5U ||
+        ((copy >> 20) & 0xfffU) != 0U) {
+      return fail("expected same-width i32 cast to publish prepared GPR copy");
+    }
+    const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+    if (!image.has_value()) {
+      return fail("expected RV64 ELF writer to serialize same-width i32 cast object");
+    }
   }
   return 0;
 }
 
-int rejects_prepared_same_width_zext_fail_closed_shapes() {
+int rejects_prepared_same_width_i32_cast_fail_closed_shapes() {
   const std::string unsupported_instruction =
       "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
   if (expect_prepared_rejection_diagnostic(
@@ -26090,6 +26093,16 @@ int rejects_prepared_same_width_zext_fail_closed_shapes() {
   if (expect_prepared_rejection_diagnostic(
           make_prepared_same_width_integer_zext_module(
               bir::CastOpcode::ZExt,
+              bir::TypeKind::I32,
+              bir::TypeKind::I32,
+              prepare::PreparedValueHomeKind::Register,
+              prepare::PreparedValueHomeKind::StackSlot),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_same_width_integer_zext_module(
+              bir::CastOpcode::Trunc,
               bir::TypeKind::I32,
               bir::TypeKind::I32,
               prepare::PreparedValueHomeKind::Register,
@@ -27015,8 +27028,8 @@ int main() {
   status |= emits_prepared_global_load_relocations_and_instruction();
   status |= emits_prepared_global_i8_load_and_zext_instruction();
   status |= emits_prepared_global_scalar_load_widths_from_explicit_facts();
-  status |= emits_prepared_same_width_i32_zext_gpr_copy();
-  status |= rejects_prepared_same_width_zext_fail_closed_shapes();
+  status |= emits_prepared_same_width_i32_cast_gpr_copy_family();
+  status |= rejects_prepared_same_width_i32_cast_fail_closed_shapes();
   status |= emits_prepared_pointer_cast_gpr_movement_object();
   status |= emits_prepared_pointer_cast_rematerialized_source_object();
   status |= rejects_prepared_pointer_cast_fail_closed_shapes();

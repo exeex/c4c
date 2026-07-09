@@ -7964,6 +7964,12 @@ find_prepared_parallel_copy_bundle_for_edge(
 }
 
 std::optional<RiscvEncodedFragment>
+fragment_for_prepared_width_preserving_i32_cast(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::CastInst& cast);
+
+std::optional<RiscvEncodedFragment>
 fragment_for_prepared_select_edge_source_dependencies(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -8113,11 +8119,15 @@ fragment_for_prepared_select_edge_source_dependencies(
     }
     active_casts.pop_back();
 
-    auto cast_fragment = fragment_for_prepared_cast(stack_layout,
-                                                    names,
-                                                    lookups,
-                                                    *cast,
-                                                    stack_frame_bytes);
+    auto cast_fragment =
+        fragment_for_prepared_width_preserving_i32_cast(names, lookups, *cast);
+    if (!cast_fragment.has_value()) {
+      cast_fragment = fragment_for_prepared_cast(stack_layout,
+                                                 names,
+                                                 lookups,
+                                                 *cast,
+                                                 stack_frame_bytes);
+    }
     if (!cast_fragment.has_value()) {
       return false;
     }
@@ -8156,6 +8166,32 @@ fragment_for_prepared_select_edge_source_dependencies(
   if (!operand_ready(source_binary.lhs) || !operand_ready(source_binary.rhs)) {
     return std::nullopt;
   }
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_width_preserving_i32_cast(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::CastInst& cast) {
+  if ((cast.opcode != c4c::backend::bir::CastOpcode::ZExt &&
+       cast.opcode != c4c::backend::bir::CastOpcode::Trunc) ||
+      cast.operand.type != c4c::backend::bir::TypeKind::I32 ||
+      cast.result.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  const auto* source_home = prepared_value_home_for(names, lookups, cast.operand);
+  const auto source =
+      source_home == nullptr ? std::nullopt : gpr_register_number_for_home(*source_home);
+  if (!destination.has_value() || !source.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  append_rv64_move(fragment, *destination, *source);
   return fragment;
 }
 
@@ -11202,11 +11238,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       }
     }
     if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
-      auto fragment = fragment_for_prepared_cast(prepared.stack_layout,
-                                                 prepared.names,
-                                                 &lookups,
-                                                 *cast,
-                                                 stack_frame_bytes);
+      auto fragment =
+          fragment_for_prepared_width_preserving_i32_cast(prepared.names,
+                                                          &lookups,
+                                                          *cast);
+      if (!fragment.has_value()) {
+        fragment = fragment_for_prepared_cast(prepared.stack_layout,
+                                              prepared.names,
+                                              &lookups,
+                                              *cast,
+                                              stack_frame_bytes);
+      }
       if (fragment.has_value()) {
         return fragment;
       }
