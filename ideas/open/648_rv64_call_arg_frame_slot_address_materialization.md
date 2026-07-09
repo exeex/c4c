@@ -14,6 +14,13 @@ source selection as `local_frame_address_materialization`.
 Proof Surface: `src/20000722-1.c` and a narrow backend assertion for
 `arg.source_selection=local_frame_address_materialization`
 
+Lifecycle Note: Parked after focused Step 3 coverage proved the call-argument
+consumer already emits the selected local frame-slot address in the RV64 text
+route. Fresh representative object-route evidence no longer reaches the stale
+`mv a0,s2` disassembly; it stops earlier at `unsupported_local_memory_access`.
+That object-route blocker is split to
+`ideas/open/656_20000722_local_memory_access_object_route.md`.
+
 ## Goal
 
 Repair RV64 call-argument lowering so a call argument whose prepared source is
@@ -22,15 +29,19 @@ frame-slot address calculation, not to a stale register-home copy.
 
 ## Why This Exists
 
-Research idea 638 proved that `src/20000722-1.c` no longer belongs to
-string-label pointer admission, local/global memory, stack layout, ABI
-destination convention, branch/control flow, or true runtime support. Prepared
-BIR and the prepared call plan already select the local frame-slot address for
-`%lv._clit_` and record
-`arg.source_selection=local_frame_address_materialization`, but RV64 lowers the
-argument as `reason=call_arg_register_to_register` and copies register home
-`s2` into `a0`. The linked c4c binary therefore calls `foo` with `mv a0,s2`;
-clang passes the frame-slot address with `addi a0,s0,-32`.
+Research idea 638 originally indicated that `src/20000722-1.c` had advanced
+past string-label pointer admission, local/global memory, stack layout, ABI
+destination convention, branch/control flow, and true runtime support into a
+call-argument lowering mismatch. Prepared BIR and the prepared call plan select
+the local frame-slot address for `%lv._clit_` and record
+`arg.source_selection=local_frame_address_materialization`.
+
+Fresh focused coverage now proves the RV64 text-route call-argument consumer
+sets up the ABI argument with a frame-slot address calculation rather than a
+stale register-home copy. The representative object route does not currently
+reach disassembly; it fails earlier with `unsupported_local_memory_access`.
+That earlier blocker is a separate lifecycle owner, not Step 4 implementation
+work for this call-argument consumer.
 
 ## In Scope
 
@@ -43,6 +54,9 @@ clang passes the frame-slot address with `addi a0,s0,-32`.
 - Use `src/20000722-1.c` as the representative runtime/object proof surface.
 - Preserve fail-closed behavior when the prepared call plan lacks an explicit
   selected frame-slot address source.
+- Reactivate this idea only if the split object-route local-memory blocker
+  advances far enough to expose a renewed call-argument materialization
+  mismatch.
 
 ## Out Of Scope
 
