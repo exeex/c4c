@@ -3946,6 +3946,14 @@ std::optional<std::string> diagnose_unsupported_prepared_saved_register_bank(
     return std::nullopt;
   }
   for (const auto& saved : frame_plan->saved_callee_registers) {
+    if (frame_plan->has_dynamic_stack &&
+        saved.bank != prepare::PreparedRegisterBank::Gpr) {
+      return "unsupported_stack_frame: RV64 object route requires producer-"
+             "published GPR callee-saved save-slot placement for dynamic "
+             "stack frames (" +
+             std::string(prepare::prepared_register_bank_name(saved.bank)) +
+             ":" + saved.register_name + ")";
+    }
     if (saved.bank != prepare::PreparedRegisterBank::Gpr &&
         saved.bank != prepare::PreparedRegisterBank::Fpr) {
       return "unsupported_stack_frame: RV64 object route does not support "

@@ -16445,6 +16445,102 @@ int materializes_large_offset_prepared_gpr_callee_saved_frame_slots() {
   return 0;
 }
 
+prepare::PreparedBirModule make_prepared_dynamic_gpr_callee_saved_frame_module() {
+  auto prepared = make_prepared_gpr_callee_saved_frame_module(24, 24);
+  prepared.frame_plan.functions[0].has_dynamic_stack = true;
+  prepared.stack_layout.frame_size_bytes = 24;
+  return prepared;
+}
+
+int materializes_dynamic_stack_prepared_gpr_callee_saved_frame_slots() {
+  const auto prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected dynamic-stack prepared GPR callee-saved frame object "
+                "to build from producer-published slot placement, got `" +
+                result.diagnostic + "`");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected dynamic-stack prepared GPR callee-saved object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_dynamic_stack_malformed_prepared_gpr_callee_saved_frame_slots() {
+  constexpr const char* kSavedSlotDiagnostic =
+      "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved save slots";
+
+  auto prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  prepared.frame_plan.functions[0].saved_callee_registers[0].slot_placement =
+      std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, kSavedSlotDiagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  prepared.frame_plan.functions[0]
+      .saved_callee_registers[0]
+      .slot_placement
+      ->register_name = "s2";
+  if (expect_prepared_rejection_diagnostic(prepared, kSavedSlotDiagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  prepared.frame_plan.functions[0]
+      .saved_callee_registers[0]
+      .slot_placement
+      ->size_bytes = std::size_t{4};
+  if (expect_prepared_rejection_diagnostic(prepared, kSavedSlotDiagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  prepared.frame_plan.functions[0]
+      .saved_callee_registers[0]
+      .slot_placement
+      ->align_bytes = std::size_t{4};
+  if (expect_prepared_rejection_diagnostic(prepared, kSavedSlotDiagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  prepared.frame_plan.functions[0]
+      .saved_callee_registers[0]
+      .slot_placement
+      ->fixed_location = false;
+  if (expect_prepared_rejection_diagnostic(prepared, kSavedSlotDiagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_dynamic_gpr_callee_saved_frame_module();
+  auto& saved = prepared.frame_plan.functions[0].saved_callee_registers[0];
+  saved.bank = prepare::PreparedRegisterBank::Fpr;
+  saved.register_name = "fs1";
+  saved.occupied_register_names = {"fs1"};
+  saved.placement->bank = prepare::PreparedRegisterBank::Fpr;
+  saved.slot_placement->bank = prepare::PreparedRegisterBank::Fpr;
+  saved.slot_placement->register_name = "fs1";
+  saved.slot_placement->occupied_register_names = {"fs1"};
+  saved.slot_placement->register_placement = saved.placement;
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_stack_frame: RV64 object route requires producer-"
+           "published GPR callee-saved save-slot placement for dynamic stack "
+           "frames",
+           "fpr:fs1"}) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int materializes_prepared_fpr_callee_saved_frame_slots() {
   const auto prepared = make_prepared_fpr_callee_saved_frame_module();
   const auto result =
@@ -27114,6 +27210,10 @@ int main() {
   status |= records_prepared_gpr_callee_saved_frame_slot_facts();
   status |= rejects_malformed_prepared_gpr_callee_saved_frame_slot_facts();
   status |= materializes_large_offset_prepared_gpr_callee_saved_frame_slots();
+  status |=
+      materializes_dynamic_stack_prepared_gpr_callee_saved_frame_slots();
+  status |=
+      rejects_dynamic_stack_malformed_prepared_gpr_callee_saved_frame_slots();
   status |= materializes_prepared_fpr_callee_saved_frame_slots();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_i64_local_frame_object();

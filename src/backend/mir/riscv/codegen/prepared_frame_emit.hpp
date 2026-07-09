@@ -45,6 +45,12 @@ rv64_prepared_validated_fixed_frame_size(
     const c4c::backend::prepare::PreparedFramePlanFunction& frame_plan,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout);
 
+[[nodiscard]] std::optional<std::size_t>
+rv64_prepared_validated_dynamic_saved_gpr_frame_size(
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedFramePlanFunction& frame_plan,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout);
+
 [[nodiscard]] std::optional<std::size_t> rv64_prepared_object_stack_frame_size(
     const c4c::backend::prepare::PreparedAddressingFunction* addressing,
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,

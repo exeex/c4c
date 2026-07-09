@@ -272,11 +272,66 @@ std::optional<std::size_t> rv64_prepared_validated_fixed_frame_size(
   return align_rv64_prepared_object_stack_frame_size(frame_size);
 }
 
+std::optional<std::size_t> rv64_prepared_validated_dynamic_saved_gpr_frame_size(
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedFramePlanFunction& frame_plan,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (frame_plan.function_name == c4c::kInvalidFunctionName ||
+      !frame_plan.has_dynamic_stack ||
+      frame_plan.uses_frame_pointer_for_fixed_slots ||
+      !rv64_prepared_supported_fixed_frame_alignment(
+          frame_plan.frame_alignment_bytes) ||
+      !frame_plan.frame_slot_order.empty()) {
+    return std::nullopt;
+  }
+  if (addressing != nullptr &&
+      (addressing->function_name != frame_plan.function_name ||
+       !addressing->accesses.empty() ||
+       !rv64_prepared_supported_fixed_frame_alignment(
+           addressing->frame_alignment_bytes) ||
+       addressing->frame_alignment_bytes > frame_plan.frame_alignment_bytes ||
+       addressing->frame_size_bytes > frame_plan.frame_size_bytes)) {
+    return std::nullopt;
+  }
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.function_name == frame_plan.function_name) {
+      return std::nullopt;
+    }
+  }
+
+  std::size_t frame_size = frame_plan.frame_size_bytes;
+  for (const auto& saved : frame_plan.saved_callee_registers) {
+    if (saved.bank != prepare::PreparedRegisterBank::Gpr ||
+        !saved.slot_placement.has_value() ||
+        !prepare::has_complete_prepared_saved_register_slot_placement(
+            *saved.slot_placement)) {
+      continue;
+    }
+    const auto& slot = *saved.slot_placement;
+    if (!slot.stack_offset_bytes.has_value() ||
+        !slot.size_bytes.has_value() ||
+        *slot.stack_offset_bytes >
+            std::numeric_limits<std::size_t>::max() - *slot.size_bytes) {
+      continue;
+    }
+    frame_size = std::max(frame_size,
+                          *slot.stack_offset_bytes + *slot.size_bytes);
+  }
+
+  return align_rv64_prepared_object_stack_frame_size(frame_size);
+}
+
 std::optional<std::size_t> rv64_prepared_object_stack_frame_size(
     const c4c::backend::prepare::PreparedAddressingFunction* addressing,
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout) {
   if (frame_plan != nullptr) {
+    if (frame_plan->has_dynamic_stack) {
+      return rv64_prepared_validated_dynamic_saved_gpr_frame_size(
+          addressing, *frame_plan, stack_layout);
+    }
     return rv64_prepared_validated_fixed_frame_size(
         addressing, *frame_plan, stack_layout);
   }
