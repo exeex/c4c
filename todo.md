@@ -1,29 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/623_rv64_cast_instruction_fragment_consumers.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Classify Step 4 no-breadth residuals
+Current Step ID: 6
+Current Step Title: Choose the next route from classification
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 classification is complete. The residual table is
-`build/agent_state/623_step5_residual_classification.tsv`, with supporting
-notes in `build/agent_state/623_step5_residual_classification_notes.md`.
+Step 6 route selection is complete from the committed Step 5 classification.
+The selected next route is the shared 18-row
+`rv64-consumer:width-preserving-zext-i32-to-i32` compile-time `CastInst`
+consumer family recorded in
+`build/agent_state/623_step5_residual_classification.tsv` and summarized in
+`build/agent_state/623_step5_residual_classification_notes.md`.
 
-Coverage recorded:
+Selection basis:
 
-- 18/18 `rv64-consumer:width-preserving-zext-i32-to-i32` rows remain
-  compile-time `RV64_C4C_OBJ_COMPILE_FAIL` / `CastInst` unsupported residuals.
-- 3/3 remaining `rv64-consumer:width-preserving-trunc-i32-to-i32` rows are
-  classified: `src/20030714-1.c` and `src/pr81555.c` remain compile-time
-  `CastInst` unsupported residuals; `src/pr81556.c` has moved to
-  `RV64_BACKEND_RUNTIME_MISMATCH` after object/binary emission.
-- `src/p18298.c` is retained only as the Step 4 passing trunc contrast.
-- The 60 non-cast guard rows are explicitly retained as boundary evidence only:
-  10 `BinaryInst`, 39 `CallInst`, 1 `LoadLocalInst`, 7 `SelectInst`, and 3
-  `StoreLocalInst` rows all remained failed in non-cast owner classes.
+- All 18 zext rows remain compile-time `RV64_C4C_OBJ_COMPILE_FAIL` /
+  `CastInst` unsupported residuals.
+- The 18-row zext family has complete BIR producer/prepared move evidence and
+  no Step 4 pass-through row, making it the broadest coherent next consumer
+  packet.
+- Trunc rows are intentionally separate: `src/20030714-1.c` and
+  `src/pr81555.c` remain compile-time trunc `CastInst` residuals, while
+  `src/pr81556.c` is a runtime-mismatch row after object/binary emission.
+- The 60 non-cast guard rows remain boundary evidence only and do not drive the
+  next implementation packet.
 
 ## Suggested Next
 
@@ -44,7 +47,7 @@ consumption. Use the Step 5 table as the row authority and prove against the
 
 ## Proof
 
-No build proof was required for this classification-only Step 5 packet.
-Classification artifacts were generated from existing Step 1, Step 2, and Step
-4 artifacts. No `test_after.log` was produced because the delegated proof
-explicitly required no build proof.
+No build proof was required for this Step 6 route-selection packet. The route
+was selected by inspecting the committed Step 5 classification artifacts. No
+`test_after.log` was produced because the delegated proof explicitly required
+no build proof.
