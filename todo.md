@@ -1,74 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/623_rv64_cast_instruction_fragment_consumers.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove breadth and guardrails
+Current Step ID: 5
+Current Step Title: Classify Step 4 no-breadth residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 reran the 28 saved cast residual rows from
-`build/agent_state/623_step1_cast_residuals.tsv` and the 60 non-cast guard
-rows from `build/agent_state/623_step1_non_cast_guard_rows.tsv` through the
-RV64 gcc torture backend-object CMake runner into isolated Step 4 artifacts:
-`build/agent_state/623_step4_cast_guard.allowlist`,
-`build/agent_state/623_step4_cast_guard_summary.tsv`,
-`build/agent_state/623_step4_cast_guard_failed.txt`,
-`build/agent_state/623_step4_cast_guard_notes.md`, and
-`build/agent_state/623_step4_rerun_logs/`.
+Step 4 is complete with a no-breadth blocker. The saved cast rerun produced
+one passing cast row (`src/p18298.c`). The narrowed width-preserving follow-up
+set is 18 remaining `rv64-consumer:width-preserving-zext-i32-to-i32` rows, 3
+remaining `rv64-consumer:width-preserving-trunc-i32-to-i32` rows, and separate
+`src/pr81556.c` `RV64_BACKEND_RUNTIME_MISMATCH` evidence. Other cast residuals
+remain in ptrtoint and floating-policy buckets. The 60 nearby non-cast guard
+rows remained failed in non-cast owner classes.
 
-The rerun did not clobber the main mutable scan summary/failed artifacts.
-Cast results were 1 pass and 27 fail. The only passing saved cast row was
-`src/p18298.c` in `rv64-consumer:width-preserving-trunc-i32-to-i32`.
-Remaining cast rows by Step 2 owner bucket:
-18 `rv64-consumer:width-preserving-zext-i32-to-i32`, 3
-`rv64-consumer:width-preserving-trunc-i32-to-i32`, 2
-`rv64-consumer:ptrtoint-value-ptr-to-i32`, 1
-`rv64-consumer:ptrtoint-global-ptr-to-i32`, 1
-`rv64-consumer:ptrtoint-local-memory-ptr-to-i32`, and 2
-`floating-policy:f128-sitofp`.
-
-The non-cast guard rows remained closed: all 60 failed with
-`RV64_C4C_OBJ_COMPILE_FAIL`, split as 10 `BinaryInst`, 39 `CallInst`, 1
-`LoadLocalInst`, 7 `SelectInst`, and 3 `StoreLocalInst` rows. This preserves
-the intended no-code guardrail boundary, but the cast rerun is a justified
-no-breadth blocker for treating the current width-preserving implementation as
-a broad Step 2 bucket repair.
+Reviewer report `review/idea623_cast_breadth_review.md` says the Step 3
+same-width i32 GPR move helper is narrow semantic progress and not
+testcase-overfit, but the route must be narrowed before more implementation.
 
 ## Suggested Next
 
-Route a supervisor review/plan-owner decision before more code work. The next
-coherent packet should classify why the remaining width-preserving rows still
-reject as `CastInst` unsupported, and why `src/pr81556.c` reaches
-`RV64_BACKEND_RUNTIME_MISMATCH`, before widening the RV64 cast consumer.
+Execute Step 5 as a classification-only packet. Build a residual table or
+artifact covering all 18 zext rows, all 3 trunc rows, and `src/pr81556.c`.
+For each residual, record the source file, operation, Step 2 owner bucket,
+Step 4 failure class, emitted diagnostic, first still-missing owner fact, and
+why it did not follow the passing `src/p18298.c` path.
+
+Do not edit implementation files in this packet.
 
 ## Watchouts
 
-- This packet made no code, expectation, unsupported-marker, allowlist, or main
-  scan-artifact changes.
-- `src/pr81556.c` no longer stops at object compile in the Step 4 rerun, but it
-  aborts at runtime against clang's expected zero exit. Treat that separately
-  from the still-unsupported `CastInst` rows.
-- Do not accept testcase-shaped widening. The next packet should classify the
-  shared semantic/home facts for the remaining 18 zext and 3 trunc rows before
-  implementation.
+- Do not add or widen RV64 cast consumer lowering before the Step 5
+  classification is complete.
+- Treat `src/pr81556.c` separately from the still-unsupported `CastInst` rows:
+  it has moved to runtime mismatch evidence.
+- Keep the 60 non-cast guard rows as boundary evidence only.
+- Do not use expectation, unsupported-marker, allowlist, timeout, accounting,
+  or named-case-only changes as progress.
 
 ## Proof
 
-Supervisor-selected proof command:
+This lifecycle rewrite is plan/todo-only and requires no build proof.
 
-```sh
-cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1
-```
-
-Step 4 rerun command shape:
-
-```sh
-cmake --build "$(realpath -m build)" --target c4cll
-cmake -DCOMPILER="$(realpath -m build)/c4cll" -DCLANG="$(command -v clang)" -DQEMU_RISCV64="$(command -v qemu-riscv64)" -DSRC="tests/c/external/gcc_torture/<case>" -DROOT="$(realpath -m tests/c/external/gcc_torture)" -DTARGET_TRIPLE=riscv64-linux-gnu -DSYSROOT=/usr/riscv64-linux-gnu -DOUT_CLANG_BIN="build/agent_state/623_step4_rerun_logs/<row>/clang.bin" -DOUT_OBJECT="build/agent_state/623_step4_rerun_logs/<row>/c4c.o" -DOUT_C4C_BIN="build/agent_state/623_step4_rerun_logs/<row>/c4c.bin" -DCASE_TIMEOUT_SEC=20 -P tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake
-```
-
-Result: passed for the delegated proof. `test_after.log` is the canonical proof
-artifact; the backend CTest subset completed successfully after the isolated
-Step 4 rerun/classification.
+Next executor proof should be classification evidence, preferably recorded in
+`todo.md` with any generated artifact paths. If the supervisor delegates a
+command, write the result to `test_after.log` unless another artifact is
+explicitly chosen.
