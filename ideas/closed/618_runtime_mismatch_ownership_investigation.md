@@ -1,6 +1,6 @@
 # Runtime Mismatch Ownership Investigation
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -109,3 +109,28 @@ Required files:
 - Reject broad runtime recommendations that do not separate ABI, layout,
   memory, call, and true runtime support owners.
 - Reject claims that lack concrete current log or execution evidence.
+
+## Closure Notes
+
+Closed on 2026-07-09 after completing the documentation-only investigation.
+The accepted evidence baseline is the July 9 RV64 gcc torture backend scan:
+`217` runtime symptom rows, split as `110` abort or assertion rows, `102`
+segfault rows, `0` wrong-output rows, and `5` timeout rows.
+
+Required documentation was produced under `docs/runtime_mismatch_ownership/`:
+
+- `index.md`
+- `01_runtime_symptom_map.md`
+- `02_likely_first_owner_map.md`
+- `03_followup_implementation_queue.md`
+
+The owner-first result is preserved there: `src/990106-1.c` is the only direct
+implementation candidate from current evidence, owned by call lowering through
+the dynamic-loader relocation assertion. Generic abort, segfault, and timeout
+rows remain split into ABI, layout, local/global memory, call lowering,
+branch/compare/control-flow, true runtime-support, and unresolved rerun lanes.
+
+This closure intentionally made no implementation, expectation,
+unsupported-marker, allowlist, timeout-policy, runtime-comparison, or pass/fail
+accounting changes. Future implementation work should be opened as separate
+single-owner ideas or explicit policy/discussion items.
