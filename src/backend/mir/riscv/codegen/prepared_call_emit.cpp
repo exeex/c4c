@@ -592,13 +592,24 @@ bool emit_riscv_byval_aggregate_address_argument(
 }  // namespace
 
 std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
-    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection) {
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    const c4c::backend::prepare::PreparedCallPreservedValue* preserved) {
   namespace prepare = c4c::backend::prepare;
 
-  if (selection.kind !=
+  if (preserved == nullptr ||
+      selection.kind !=
           prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
       selection.preservation_route !=
           prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved->route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      selection.source_value_id != std::optional<prepare::PreparedValueId>{preserved->value_id} ||
+      selection.source_value_name != std::optional<c4c::ValueNameId>{preserved->value_name} ||
+      selection.preserved_register_name != preserved->register_name ||
+      selection.preserved_register_bank != preserved->register_bank ||
+      selection.preserved_register_contiguous_width !=
+          std::optional<std::size_t>{preserved->contiguous_width} ||
+      selection.preserved_occupied_register_names != preserved->occupied_register_names ||
+      selection.preserved_register_placement != preserved->register_placement ||
       selection.preserved_register_bank !=
           std::optional<prepare::PreparedRegisterBank>{
               prepare::PreparedRegisterBank::Gpr} ||
@@ -609,7 +620,33 @@ std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
       !selection.preserved_register_placement.has_value()) {
     return std::nullopt;
   }
-  return rv64_prepared_register_number(*selection.preserved_register_name);
+  const auto& source = preserved->preservation_source;
+  const auto& destination = preserved->preservation_destination;
+  if (source.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      source.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      source.value_id != std::optional<prepare::PreparedValueId>{preserved->value_id} ||
+      source.value_name != preserved->value_name ||
+      !source.register_name.has_value() ||
+      source.register_name->empty() ||
+      source.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Gpr} ||
+      source.contiguous_width != 1 ||
+      source.occupied_register_names.empty() ||
+      !source.target_register_identity.has_value() ||
+      destination.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      destination.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      destination.value_id != std::optional<prepare::PreparedValueId>{preserved->value_id} ||
+      destination.value_name != preserved->value_name ||
+      destination.register_name != preserved->register_name ||
+      destination.register_bank != preserved->register_bank ||
+      destination.contiguous_width != preserved->contiguous_width ||
+      destination.occupied_register_names != preserved->occupied_register_names ||
+      destination.callee_saved_save_index != preserved->callee_saved_save_index ||
+      destination.register_placement != preserved->register_placement) {
+    return std::nullopt;
+  }
+  return rv64_prepared_register_number(*destination.register_name);
 }
 
 const c4c::backend::prepare::PreparedVariadicVaListField*
@@ -759,35 +796,78 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
 std::optional<std::int32_t> stack_slot_offset_for_prior_preserved_gpr_selection(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    const c4c::backend::prepare::PreparedCallPreservedValue* preserved,
     c4c::backend::bir::TypeKind argument_type,
     std::size_t stack_frame_bytes) {
   namespace prepare = c4c::backend::prepare;
 
   const auto size_bytes =
       rv64_prepared_call_scalar_memory_size_for_type(argument_type);
-  if (selection.kind !=
+  if (preserved == nullptr ||
+      selection.kind !=
           prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
       selection.preservation_route != prepare::PreparedCallPreservationRoute::StackSlot ||
-      selection.source_home_kind !=
-          std::optional<prepare::PreparedValueHomeKind>{
-              prepare::PreparedValueHomeKind::StackSlot} ||
+      preserved->route != prepare::PreparedCallPreservationRoute::StackSlot ||
+      selection.source_value_id != std::optional<prepare::PreparedValueId>{preserved->value_id} ||
+      selection.source_value_name != std::optional<c4c::ValueNameId>{preserved->value_name} ||
       (selection.preserved_register_bank.has_value() &&
        *selection.preserved_register_bank != prepare::PreparedRegisterBank::None &&
        *selection.preserved_register_bank != prepare::PreparedRegisterBank::Gpr) ||
-      !selection.source_slot_id.has_value() ||
-      !selection.source_stack_offset_bytes.has_value() ||
-      !selection.source_size_bytes.has_value() ||
-      !selection.preserved_stack_slot_id.has_value() ||
-      !selection.preserved_stack_offset_bytes.has_value() ||
-      !selection.preserved_stack_size_bytes.has_value() ||
-      !selection.preserved_stack_align_bytes.has_value() ||
+      selection.preserved_stack_slot_id != preserved->slot_id ||
+      selection.preserved_stack_offset_bytes != preserved->stack_offset_bytes ||
+      selection.preserved_stack_size_bytes != preserved->stack_size_bytes ||
+      selection.preserved_stack_align_bytes != preserved->stack_align_bytes ||
+      !preserved->slot_id.has_value() ||
+      !preserved->stack_offset_bytes.has_value() ||
+      !preserved->stack_size_bytes.has_value() ||
+      !preserved->stack_align_bytes.has_value() ||
       !size_bytes.has_value() ||
-      *selection.source_slot_id != *selection.preserved_stack_slot_id ||
-      *selection.source_stack_offset_bytes !=
-          *selection.preserved_stack_offset_bytes ||
-      *selection.source_size_bytes != *size_bytes ||
-      *selection.preserved_stack_size_bytes != *size_bytes ||
-      *selection.preserved_stack_align_bytes > *size_bytes) {
+      *preserved->stack_size_bytes != *size_bytes ||
+      *preserved->stack_align_bytes > *size_bytes) {
+    return std::nullopt;
+  }
+  const auto& source = preserved->preservation_source;
+  const auto& destination = preserved->preservation_destination;
+  const bool concrete_register_source =
+      source.encoding == prepare::PreparedStorageEncodingKind::Register &&
+      source.storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      source.value_id == std::optional<prepare::PreparedValueId>{preserved->value_id} &&
+      source.value_name == preserved->value_name &&
+      source.register_name.has_value() &&
+      !source.register_name->empty() &&
+      source.register_bank ==
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Gpr} &&
+      source.contiguous_width == 1 &&
+      !source.occupied_register_names.empty() &&
+      source.target_register_identity.has_value();
+  const bool coherent_stack_slot_source =
+      selection.source_home_kind ==
+          std::optional<prepare::PreparedValueHomeKind>{
+              prepare::PreparedValueHomeKind::StackSlot} &&
+      selection.source_slot_id == preserved->slot_id &&
+      selection.source_stack_offset_bytes == preserved->stack_offset_bytes &&
+      selection.source_size_bytes == preserved->stack_size_bytes &&
+      source.encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      source.storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+      source.value_id == std::optional<prepare::PreparedValueId>{preserved->value_id} &&
+      source.value_name == preserved->value_name &&
+      source.slot_id == preserved->slot_id &&
+      source.stack_offset_bytes == preserved->stack_offset_bytes &&
+      source.stack_size_bytes == preserved->stack_size_bytes &&
+      source.stack_align_bytes == preserved->stack_align_bytes;
+  if (!concrete_register_source && !coherent_stack_slot_source) {
+    return std::nullopt;
+  }
+  if (destination.encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      destination.storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      destination.value_id !=
+          std::optional<prepare::PreparedValueId>{preserved->value_id} ||
+      destination.value_name != preserved->value_name ||
+      destination.slot_id != preserved->slot_id ||
+      destination.stack_offset_bytes != preserved->stack_offset_bytes ||
+      destination.stack_size_bytes != preserved->stack_size_bytes ||
+      destination.stack_align_bytes != preserved->stack_align_bytes) {
     return std::nullopt;
   }
 
@@ -795,16 +875,16 @@ std::optional<std::int32_t> stack_slot_offset_for_prior_preserved_gpr_selection(
       std::find_if(stack_layout.frame_slots.begin(),
                    stack_layout.frame_slots.end(),
                    [&](const prepare::PreparedFrameSlot& slot) {
-                     return slot.slot_id == *selection.preserved_stack_slot_id;
+                     return slot.slot_id == *preserved->slot_id;
                    });
   if (slot_it == stack_layout.frame_slots.end() ||
-      slot_it->offset_bytes != *selection.preserved_stack_offset_bytes ||
+      slot_it->offset_bytes != *preserved->stack_offset_bytes ||
       slot_it->size_bytes < *size_bytes ||
       slot_it->align_bytes > *size_bytes) {
     return std::nullopt;
   }
 
-  const std::size_t offset = *selection.preserved_stack_offset_bytes;
+  const std::size_t offset = *preserved->stack_offset_bytes;
   if (offset > stack_frame_bytes || stack_frame_bytes - offset < *size_bytes ||
       !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
     return std::nullopt;

@@ -345,6 +345,16 @@ constexpr const char* kGenericUnsupportedInstructionFragmentDiagnostic =
 constexpr const char* kUnsupportedSameModuleCallAbiDiagnostic =
     "unsupported_call_abi: RV64 object route requires supported ordinary same-module call ABI/result lowering";
 
+prepare::PreparedTargetRegisterIdentity rv64_gpr_identity(
+    std::size_t physical_index) {
+  return prepare::PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .physical_index = physical_index,
+  };
+}
+
 bool prepared_rejection_diagnostic_matches(const std::string& actual,
                                            const std::string& expected) {
   if (actual == expected) {
@@ -1918,6 +1928,7 @@ make_prepared_global_symbol_address_prior_preserved_call_module() {
                               .register_bank = prepare::PreparedRegisterBank::Gpr,
                               .contiguous_width = 1,
                               .occupied_register_names = {std::string{"a0"}},
+                              .target_register_identity = rv64_gpr_identity(10),
                           },
                       .preservation_destination =
                           prepare::PreparedCallBoundaryEffectEndpoint{
@@ -3517,6 +3528,7 @@ prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
                               .register_bank = prepare::PreparedRegisterBank::Gpr,
                               .contiguous_width = 1,
                               .occupied_register_names = {std::string{"a0"}},
+                              .target_register_identity = rv64_gpr_identity(10),
                           },
                       .preservation_destination =
                           prepare::PreparedCallBoundaryEffectEndpoint{
@@ -3830,6 +3842,7 @@ make_prepared_ptrtoint_param_survives_nested_same_module_call_module() {
                               .register_bank = prepare::PreparedRegisterBank::Gpr,
                               .contiguous_width = 1,
                               .occupied_register_names = {std::string{"s1"}},
+                              .target_register_identity = rv64_gpr_identity(9),
                           },
                       .preservation_destination =
                           prepare::PreparedCallBoundaryEffectEndpoint{
@@ -12377,6 +12390,7 @@ make_prepared_frame_slot_value_and_prior_preserved_arg_call_module() {
                   .register_bank = prepare::PreparedRegisterBank::Gpr,
                   .contiguous_width = 1,
                   .occupied_register_names = {std::string{"a1"}},
+                  .target_register_identity = rv64_gpr_identity(11),
               },
           .preservation_destination =
               prepare::PreparedCallBoundaryEffectEndpoint{
@@ -12432,6 +12446,80 @@ make_prepared_frame_slot_value_and_prior_preserved_arg_call_module() {
       .slot_id = prepare::PreparedFrameSlotId{4},
       .function_name = main_name,
       .offset_bytes = 24,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule
+make_prepared_stack_slot_prior_preserved_arg_call_module() {
+  auto prepared = make_prepared_frame_slot_value_and_prior_preserved_arg_call_module();
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto prior_name = prepared.names.value_names.intern("%p.b");
+
+  auto& keep_call = prepared.call_plans.functions[0].calls[0];
+  auto& preserved = keep_call.preserved_values[0];
+  preserved.route = prepare::PreparedCallPreservationRoute::StackSlot;
+  preserved.callee_saved_save_index = std::nullopt;
+  preserved.register_name = std::nullopt;
+  preserved.register_bank = std::nullopt;
+  preserved.occupied_register_names.clear();
+  preserved.register_placement = std::nullopt;
+  preserved.slot_id = prepare::PreparedFrameSlotId{5};
+  preserved.stack_offset_bytes = std::size_t{32};
+  preserved.stack_size_bytes = std::size_t{8};
+  preserved.stack_align_bytes = std::size_t{8};
+  preserved.preservation_source =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .value_id = prepare::PreparedValueId{5},
+          .value_name = prior_name,
+          .register_name = std::string{"a1"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .occupied_register_names = {std::string{"a1"}},
+          .target_register_identity = rv64_gpr_identity(11),
+      };
+  preserved.preservation_destination =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+          .storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .value_id = prepare::PreparedValueId{5},
+          .value_name = prior_name,
+          .slot_id = prepare::PreparedFrameSlotId{5},
+          .stack_offset_bytes = std::size_t{32},
+          .stack_size_bytes = std::size_t{8},
+          .stack_align_bytes = std::size_t{8},
+      };
+
+  auto& sink_arg = prepared.call_plans.functions[0].calls[1].arguments[2];
+  sink_arg.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = prepare::PreparedValueId{5},
+          .source_value_name = prior_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .source_size_bytes = std::size_t{8},
+          .source_align_bytes = std::size_t{8},
+          .preserved_call_block_index = std::size_t{0},
+          .preserved_call_instruction_index = std::size_t{1},
+          .preservation_route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .preserved_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .preserved_stack_slot_id = prepare::PreparedFrameSlotId{5},
+          .preserved_stack_offset_bytes = std::size_t{32},
+          .preserved_stack_size_bytes = std::size_t{8},
+          .preserved_stack_align_bytes = std::size_t{8},
+      };
+
+  auto& main_frame = prepared.frame_plan.functions[1];
+  main_frame.saved_callee_registers.clear();
+  main_frame.frame_slot_order.push_back(prepare::PreparedFrameSlotId{5});
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{5},
+      .function_name = main_name,
+      .offset_bytes = 32,
       .size_bytes = 8,
       .align_bytes = 8,
   });
@@ -22389,10 +22477,104 @@ int builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object() {
   return 0;
 }
 
+int builds_prepared_stack_slot_prior_preserved_arg_call_object() {
+  const auto prepared =
+      make_prepared_stack_slot_prior_preserved_arg_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared stack-slot prior-preserved arg call RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* sink = object::find_symbol(module, "sink");
+  const auto* keep = object::find_symbol(module, "keep");
+  if (text == nullptr || sink == nullptr || keep == nullptr ||
+      module.relocations.size() != 2 ||
+      module.relocations[0].symbol != keep->id ||
+      module.relocations[1].symbol != sink->id) {
+    return fail("expected stack-slot prior-preserved arg call relocations");
+  }
+  const auto sink_call_offset = module.relocations[1].offset;
+  if (read_u32(text->bytes, sink_call_offset - 12) != 0x01013503 ||
+      read_u32(text->bytes, sink_call_offset - 8) != 0x01813583 ||
+      read_u32(text->bytes, sink_call_offset - 4) != 0x02013603) {
+    return fail("expected prior-preserved stack slot destination to reload into a2");
+  }
+  return 0;
+}
+
 int expect_frame_slot_value_arg_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
       prepared, kUnsupportedSameModuleCallAbiDiagnostic);
+}
+
+int expect_stack_slot_prior_preserved_arg_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
+}
+
+int rejects_prepared_stack_slot_prior_preserved_arg_call_fail_closed_shapes() {
+  auto prepared = make_prepared_stack_slot_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_source
+      .target_register_identity = std::nullopt;
+  if (expect_stack_slot_prior_preserved_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_prior_preserved_arg_call_module();
+  auto& non_register_source = prepared.call_plans.functions[0]
+                                  .calls[0]
+                                  .preserved_values[0]
+                                  .preservation_source;
+  non_register_source.encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  non_register_source.storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  non_register_source.register_name = std::nullopt;
+  non_register_source.target_register_identity = std::nullopt;
+  non_register_source.slot_id = prepare::PreparedFrameSlotId{5};
+  non_register_source.stack_offset_bytes = std::size_t{32};
+  non_register_source.stack_size_bytes = std::size_t{8};
+  non_register_source.stack_align_bytes = std::size_t{8};
+  if (expect_stack_slot_prior_preserved_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[1]
+      .arguments[2]
+      .source_selection->preserved_call_instruction_index = std::size_t{0};
+  if (expect_stack_slot_prior_preserved_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination
+      .stack_offset_bytes = std::nullopt;
+  if (expect_stack_slot_prior_preserved_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination
+      .stack_offset_bytes = std::size_t{24};
+  if (expect_stack_slot_prior_preserved_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
@@ -27065,6 +27247,8 @@ int main() {
       builds_prepared_frame_slot_value_arg_call_with_address_provenance_object();
   status |=
       builds_prepared_frame_slot_value_and_prior_preserved_arg_call_object();
+  status |= builds_prepared_stack_slot_prior_preserved_arg_call_object();
+  status |= rejects_prepared_stack_slot_prior_preserved_arg_call_fail_closed_shapes();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
   status |= builds_prepared_frame_slot_address_arg_call_object();
   status |= builds_prepared_pointer_base_plus_offset_arg_call_object();

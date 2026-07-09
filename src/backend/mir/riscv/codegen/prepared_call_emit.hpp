@@ -15,7 +15,8 @@ struct PreparedCurrentInstructionContext;
 
 [[nodiscard]] std::optional<std::uint32_t>
 gpr_register_number_for_prior_preserved_selection(
-    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection);
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    const c4c::backend::prepare::PreparedCallPreservedValue* preserved);
 
 [[nodiscard]] const c4c::backend::prepare::PreparedVariadicVaListField*
 rv64_variadic_va_list_overflow_arg_area_field(
@@ -40,6 +41,7 @@ prepared_frame_slot_call_argument_offset(
 stack_slot_offset_for_prior_preserved_gpr_selection(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    const c4c::backend::prepare::PreparedCallPreservedValue* preserved,
     c4c::backend::bir::TypeKind argument_type,
     std::size_t stack_frame_bytes);
 
