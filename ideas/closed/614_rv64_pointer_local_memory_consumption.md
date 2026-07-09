@@ -1,6 +1,6 @@
 # RV64 Pointer Local-Memory Consumption
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -25,6 +25,39 @@ exists.
 The current scan has `27` rows close to the recent pointer/address architecture
 work. They should be repaired as target consumption of selected authority, not
 as fresh pointer semantics.
+
+## Closure Summary
+
+Closed after Step 4 residual split/close-readiness classification. The route
+landed bounded RV64 consumer support for explicit prepared frame-slot
+local-memory accesses with supported scalar/floating widths, while keeping
+missing frame-slot ids, missing base-plus-offset authority, non-default address
+spaces, and unsupported 16-byte widths fail-closed.
+
+The final residual refresh found no additional selected pointer/local-memory
+consumer family with complete authority and meaningful breadth. The remaining
+`unsupported_local_memory_access` rows need policy decisions or producer
+authority before RV64 object emission can consume them semantically.
+
+Durable residual work was split instead of folded into this closed consumer
+route:
+
+- `ideas/open/630_string_constant_local_memory_policy.md` covers local-memory
+  rows whose selected base is a string constant.
+- `ideas/open/631_direct_global_symbol_local_memory_policy.md` covers direct
+  global-symbol base-plus-offset local-memory policy distinct from prepared
+  global value-location consumption in idea `621`.
+- `ideas/open/632_f128_and_16_byte_local_memory_width_policy.md` covers
+  unsupported 16-byte/F128 local-memory width policy.
+- `ideas/open/633_aggregate_stack_home_local_memory_policy.md` covers
+  sret/byval or aggregate pointer stack-home local-memory policy.
+- `ideas/open/634_large_selected_pointer_offset_local_memory_policy.md`
+  covers large selected pointer-offset materialization policy.
+
+Do not reopen this idea merely because residual rows still carry
+`unsupported_local_memory_access`. Reopen only if refreshed diagnostics show a
+new broad row family already has complete selected local-memory authority and
+is rejected solely at the same RV64 consumer boundary.
 
 ## In Scope
 
