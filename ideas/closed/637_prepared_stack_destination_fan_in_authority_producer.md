@@ -1,6 +1,6 @@
 # Prepared Stack-Destination Fan-In Authority Producer
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/607_destination_fan_in_authority_research.md`
 Related:
@@ -72,6 +72,42 @@ program point.
   legal first packet exists under the selected contract.
 - Missing, unsupported, ambiguous, stale, or mismatched destination authority
   remains fail-closed with precise diagnostics.
+
+## Closure Notes
+
+Closed after selecting exactly one producer authority family:
+semantic merge / select-materialized destination fan-in, represented by
+`PreparedMoveAuthorityKind::StackDestinationRegisterFanIn` plus
+`PreparedStackDestinationFanInSemantics::SelectMaterializationPreservedStackFallback`.
+
+Current code already publishes and consumes that producer-side fact for the
+selected shape. Focused legal coverage verifies the prepared authority owner
+`prepared_stack_destination_register_fan_in` and RV64 object emission for the
+authorized fixture. Focused negative coverage verifies missing, malformed,
+bundle-only, unsupported, unknown, ambiguous, and non-select fan-in authority
+states remain fail-closed rather than inferred from source freshness,
+diagnostics, ordering, or final assembly.
+
+The six original spillover rows are not part of the selected semantic-merge
+contract and should not reopen this idea:
+
+- `src/20011109-2.c`: `authority=none`, `move_count=3`, and
+  `fragment_status=missing_stack_destination_fan_in_authority_fact`.
+- `src/20021204-1.c`, `src/920429-1.c`, `src/930429-1.c`,
+  `src/pr34415.c`, and `src/ptr-arith-1.c`: non-parallel
+  two-register-source stack-destination fan-ins with `authority=none` and
+  `fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
+
+Those residuals moved to
+`ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md`,
+which owns the different destination-authority family question: ordered
+final-state or mutual-exclusion producer authority.
+
+Close validation used the existing matching canonical focused logs:
+`test_before.log` and `test_after.log` for `backend_prepare_stack_layout`.
+Both logs pass the same one-test scope. Because this closure is lifecycle-only
+and introduced no implementation diff, the regression comparison was accepted
+with non-decreasing pass count.
 
 ## Reviewer Reject Signals
 
