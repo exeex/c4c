@@ -8,40 +8,44 @@ Current Step Title: Implement One Prepared ABI/Home Path
 
 ## Just Finished
 
-Step 3 from `plan.md` repaired RV64 fixed-arity scalar ABI lane assignment for
-mixed integer/FPR ordinary calls and matching formal homes.
+Step 3 from `plan.md` repaired RV64 object-emission call-argument scheduling
+for scratch-based FPR immediate materialization versus pending scalar stack
+arguments.
 
-- RV64 ordinary C stack-pressure assignment now tracks independent GPR and FPR
-  scalar lanes, so hard-float F32/F64 arguments do not consume GPR register or
-  outgoing stack lanes.
-- Prepared call destination and fixed formal register-index helpers now use the
-  same independent RV64 GPR/FPR lane rule for non-variadic scalar ABI facts.
-- Focused contract coverage now proves a mixed RV64 scalar call places the
-  eighth GPR argument in `a7`, keeps FPR scalars in `fa0`/`fa1`, publishes GPR
-  stack arguments at compact offsets `0` and `8`, and leaves a malformed
-  missing-ABI stack argument fail-closed.
-- `src/20001017-1.c` advanced past the caller/callee ABI placement mismatch:
-  prepared facts now place `%p.B` in `a7`, `fdB` at outgoing stack offset `0`,
-  `b` in `fa1`, `%p.C` at outgoing stack offset `8`, and `fdC` at offset `16`.
+- `fragment_for_prepared_call` now flushes pending scalar stack arguments that
+  use the FPR-immediate helper scratch GPR before materializing that FPR
+  immediate, instead of letting `fmv.[wd].x` setup clobber a still-needed stack
+  argument source.
+- The flush is local to the proven scratch path and leaves sret, byval/aggregate
+  stack-copy sequencing, ordinary register moves, and ABI lane placement
+  unchanged.
+- Focused object-emission coverage now builds an F64 immediate register
+  argument followed by an I64 stack argument sourced from `t0`, and proves the
+  stack source is stored before `t0` is reused for `fmv.d.x`.
+- `src/20001017-1.c` advanced past the prior `%p.C` clobber: `main` now stores
+  `%p.C` from `t0` to outgoing stack offset `8` before reusing `t0` for the
+  `b` F64 immediate.
 
 ## Suggested Next
 
-Next packet should repair RV64 object-emission call-argument materialization so
-FPR immediate construction does not clobber a later stack argument source
-register before that source is stored to the outgoing argument area.
+Next packet should repair the remaining RV64 local frame-address argument source
+materialization gap for `src/20001017-1.c`: `main` consumes pointer argument
+source registers `t0`, `s1`, and `s2` for `C`, `A`, and `B` without visible
+materialization of those local array frame addresses before the call.
 
 ## Watchouts
 
-- The ABI placement is now correct for the 20001017-1 call: `main` allocates a
-  24-byte outgoing area and `bug` reads `%p.C` from callee frame size `96` plus
-  incoming offset `8`, i.e. `ld t3,88(sp)`.
-- The remaining runtime mismatch is not an offset disagreement. Current `main`
-  materializes `b` into `t0` for `fmv.d.x fa1,t0`, then stores `t0` to
-  `8(sp)` for `%p.C`; that writes the double bit-pattern instead of the `%p.C`
-  pointer.
-- Keep the next fix semantic: preserve or schedule call argument source
-  registers across scratch-based immediate/FPR materialization. Do not hard-code
-  `src/20001017-1.c`, `bug`, or argument indexes.
+- The prior scratch-clobber residual is gone. In the fresh disassembly, `main`
+  emits `mv t3,t0; sd t3,8(sp)` before the `fmv.d.x fa1,t0` materialization for
+  `b`.
+- The remaining runtime mismatch is not ABI lane placement or the FPR-immediate
+  stack-source clobber. The fresh `main` still starts the call setup with
+  `mv a0,t0`, later uses `mv a5,s1`, `mv a7,s2`, and stores `t0` to `8(sp)`,
+  but there is no visible setup making `t0`/`s1`/`s2` point at the local arrays
+  `C`/`A`/`B` before those uses.
+- Keep the next fix semantic: repair local frame-address argument source
+  materialization/publication for prepared register-source call arguments. Do
+  not hard-code `src/20001017-1.c`, `bug`, register names, or argument indexes.
 
 ## Proof
 
@@ -51,7 +55,7 @@ Ran the exact supervisor proof command into `test_after.log`:
 
 Proof status: build passed; all six focused CTests passed; the one-row torture
 probe still failed with `RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, and
-`c4c_exit=Subprocess aborted`. The fresh residual owner is RV64 object-emission
-call-argument source preservation during scratch-based FPR immediate
-materialization, not ABI lane placement. The exact proof log is
-`test_after.log`.
+`c4c_exit=Subprocess aborted`. The fresh residual owner is RV64 local
+frame-address call-argument source materialization/publication for the pointer
+arguments, not ABI lane placement or scratch-based FPR immediate clobbering.
+The exact proof log is `test_after.log`.

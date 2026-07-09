@@ -3237,6 +3237,102 @@ prepare::PreparedBirModule make_prepared_fpr_immediate_call_module(
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_fpr_immediate_then_stack_source_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("fpr_immediate_then_stack_source_call");
+  const auto stack_source_name = prepared.names.value_names.intern("%stack.source");
+
+  bir::CallInst call;
+  call.callee = "sink";
+  call.args = {
+      bir::Value::immediate_f64_bits(0x4010000000000000ull),
+      bir::Value::named(bir::TypeKind::I64, "%stack.source"),
+  };
+  call.arg_types = {bir::TypeKind::F64, bir::TypeKind::I64};
+  call.return_type = bir::TypeKind::Void;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fpr_immediate_then_stack_source_call",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{1},
+          .function_name = function_name,
+          .value_name = stack_source_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"t0"},
+          .target_register_identity = rv64_gpr_identity(5),
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"sink"},
+          .outgoing_stack_argument_area =
+              prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 8},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Fpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal =
+                          bir::Value::immediate_f64_bits(0x4010000000000000ull),
+                      .destination_register_name = std::string{"fa0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {std::string{"fa0"}},
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Fpr,
+                      .destination_register_placement =
+                          prepare::PreparedRegisterPlacement{
+                              .bank = prepare::PreparedRegisterBank::Fpr,
+                              .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                              .slot_index = 0,
+                              .contiguous_width = 1,
+                          },
+                      .destination_target_register_identity = rv64_fpr_identity(10),
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{1},
+                      .source_register_name = std::string{"t0"},
+                      .source_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .destination_contiguous_width = 1,
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .destination_stack_size_bytes = std::size_t{8},
+                  },
+              },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_two_arg_scalar_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -16834,6 +16930,50 @@ int builds_prepared_fpr_immediate_call_objects() {
             type)) {
       return fail("expected prepared FPR immediate argument to materialize through t0 into fa0");
     }
+  }
+  return 0;
+}
+
+int preserves_later_stack_source_across_fpr_immediate_call_materialization() {
+  const auto prepared =
+      make_prepared_fpr_immediate_then_stack_source_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared FPR-immediate plus stack-source call object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* caller =
+      object::find_symbol(module, "fpr_immediate_then_stack_source_call");
+  if (text == nullptr || caller == nullptr || module.relocations.size() != 1) {
+    return fail("expected FPR-immediate stack-source call text and relocation");
+  }
+
+  const std::size_t call_offset = module.relocations[0].offset;
+  std::optional<std::size_t> stack_store_offset;
+  std::optional<std::size_t> fpr_materialization_offset;
+  for (std::size_t offset = caller->value; offset + 4 <= call_offset; offset += 4) {
+    const auto insn = read_u32(text->bytes, offset);
+    if (insn == 0x01c13023 && offset >= 4 &&
+        read_u32(text->bytes, offset - 4) == 0x00028e13) {
+      // mv t3, t0; sd t3, 0(sp)
+      stack_store_offset = offset;
+    }
+    if (is_rv64_gpr_to_fpr_move(insn, 10, 5, bir::TypeKind::F64)) {
+      fpr_materialization_offset = offset;
+    }
+  }
+  if (!stack_store_offset.has_value() ||
+      !fpr_materialization_offset.has_value()) {
+    return fail("expected stack source store and FPR immediate materialization before call");
+  }
+  if (*stack_store_offset > *fpr_materialization_offset) {
+    return fail("expected stack argument source to be stored before t0 is reused for FPR immediate materialization");
+  }
+  if (read_u32(text->bytes, call_offset + 8) != 0x00810113) {
+    return fail("expected call to restore 8-byte outgoing stack area");
   }
   return 0;
 }
@@ -30553,6 +30693,7 @@ int main() {
   status |= rejects_prepared_pointer_stack_result_call_fail_closed_shapes();
   status |= builds_prepared_fpr_same_module_call_object();
   status |= builds_prepared_fpr_immediate_call_objects();
+  status |= preserves_later_stack_source_across_fpr_immediate_call_materialization();
   status |= rejects_prepared_fpr_immediate_call_fail_closed_shapes();
   status |= builds_prepared_fpr_callee_saved_call_preservation_object();
   status |= rejects_prepared_fpr_callee_saved_call_preservation_fail_closed_shapes();

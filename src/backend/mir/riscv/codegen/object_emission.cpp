@@ -1235,6 +1235,8 @@ bool append_rv64_gpr_to_fpr_move(RiscvEncodedFragment& fragment,
   return true;
 }
 
+constexpr std::uint32_t kRv64FprImmediateCallArgumentScratchGpr = 5;  // t0
+
 bool append_rv64_fpr_immediate_call_argument(
     RiscvEncodedFragment& fragment,
     const c4c::TargetProfile& target_profile,
@@ -1282,11 +1284,15 @@ bool append_rv64_fpr_immediate_call_argument(
     return false;
   }
 
-  constexpr std::uint32_t scratch = 5;  // t0
   append_rv64_load_immediate(
-      fragment, scratch, static_cast<std::int64_t>(argument.source_literal->immediate_bits));
+      fragment,
+      kRv64FprImmediateCallArgumentScratchGpr,
+      static_cast<std::int64_t>(argument.source_literal->immediate_bits));
   return append_rv64_gpr_to_fpr_move(
-      fragment, *destination_by_placement, scratch, arg_type);
+      fragment,
+      *destination_by_placement,
+      kRv64FprImmediateCallArgumentScratchGpr,
+      arg_type);
 }
 
 const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
@@ -5716,6 +5722,72 @@ bool append_rv64_prepared_scalar_stack_call_argument(
                                             destination_size);
 }
 
+bool prepared_call_argument_uses_gpr_source_register(
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    std::uint32_t source_register) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+      argument.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      !argument.source_register_name.has_value()) {
+    return false;
+  }
+  const auto source = rv64_register_number(*argument.source_register_name);
+  return source.has_value() && *source == source_register;
+}
+
+bool append_pending_rv64_prepared_scalar_stack_call_arguments_using_gpr_source(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedCallPlan& call_plan,
+    const c4c::backend::bir::CallInst& call,
+    c4c::backend::bir::TypeKind current_argument_type,
+    std::size_t current_arg_index,
+    std::uint32_t source_register,
+    std::size_t stack_frame_bytes,
+    std::size_t* active_call_stack_adjustment,
+    std::vector<bool>& emitted_stack_arguments) {
+  for (std::size_t arg_index = 0; arg_index < call_plan.arguments.size();
+       ++arg_index) {
+    if (arg_index < emitted_stack_arguments.size() &&
+        emitted_stack_arguments[arg_index]) {
+      continue;
+    }
+    const auto& argument = call_plan.arguments[arg_index];
+    if (!argument.destination_stack_offset_bytes.has_value() &&
+        !argument.destination_stack_size_bytes.has_value()) {
+      continue;
+    }
+    if (!prepared_call_argument_uses_gpr_source_register(argument,
+                                                        source_register)) {
+      continue;
+    }
+    if (argument.arg_index != arg_index ||
+        argument.destination_contiguous_width != 1 ||
+        arg_index >= call.arg_types.size() ||
+        (arg_index == current_arg_index &&
+         call.arg_types[arg_index] != current_argument_type) ||
+        !append_rv64_prepared_scalar_stack_call_argument(
+            fragment,
+            prepared,
+            stack_layout,
+            lookups,
+            call_plan,
+            argument,
+            call.arg_types[arg_index],
+            stack_frame_bytes,
+            active_call_stack_adjustment)) {
+      return false;
+    }
+    if (arg_index < emitted_stack_arguments.size()) {
+      emitted_stack_arguments[arg_index] = true;
+    }
+  }
+  return true;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -5819,6 +5891,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
 
   std::size_t active_call_stack_adjustment = 0;
   bool emitted_memory_return_argument = false;
+  std::vector<bool> emitted_stack_arguments(call_plan->arguments.size(), false);
   for (std::size_t arg_index = 0; arg_index < call_plan->arguments.size();
        ++arg_index) {
     const auto& argument = call_plan->arguments[arg_index];
@@ -6006,6 +6079,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
     if (argument.destination_stack_offset_bytes.has_value() ||
         argument.destination_stack_size_bytes.has_value()) {
+      if (arg_index < emitted_stack_arguments.size() &&
+          emitted_stack_arguments[arg_index]) {
+        continue;
+      }
       if (arg_index >= call.arg_types.size() ||
           !append_rv64_prepared_scalar_stack_call_argument(
               fragment,
@@ -6019,18 +6096,42 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
               &active_call_stack_adjustment)) {
         return std::nullopt;
       }
+      if (arg_index < emitted_stack_arguments.size()) {
+        emitted_stack_arguments[arg_index] = true;
+      }
       continue;
     }
     if (!argument.destination_register_bank.has_value()) {
       return std::nullopt;
     }
     if (*argument.destination_register_bank == prepare::PreparedRegisterBank::Fpr) {
-      if (arg_index < call.arg_types.size() &&
-          append_rv64_fpr_immediate_call_argument(fragment,
-                                                  prepared.target_profile,
-                                                  argument,
-                                                  call.arg_types[arg_index])) {
-        continue;
+      if (arg_index < call.arg_types.size()) {
+        RiscvEncodedFragment fpr_immediate_probe;
+        if (append_rv64_fpr_immediate_call_argument(fpr_immediate_probe,
+                                                    prepared.target_profile,
+                                                    argument,
+                                                    call.arg_types[arg_index])) {
+          if (!append_pending_rv64_prepared_scalar_stack_call_arguments_using_gpr_source(
+                  fragment,
+                  prepared,
+                  stack_layout,
+                  lookups,
+                  *call_plan,
+                  call,
+                  call.arg_types[arg_index],
+                  arg_index,
+                  kRv64FprImmediateCallArgumentScratchGpr,
+                  stack_frame_bytes,
+                  &active_call_stack_adjustment,
+                  emitted_stack_arguments) ||
+              !append_rv64_fpr_immediate_call_argument(fragment,
+                                                       prepared.target_profile,
+                                                       argument,
+                                                       call.arg_types[arg_index])) {
+            return std::nullopt;
+          }
+          continue;
+        }
       }
       if (argument.value_bank != prepare::PreparedRegisterBank::Fpr ||
           argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
