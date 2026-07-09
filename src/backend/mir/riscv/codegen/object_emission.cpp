@@ -20,6 +20,7 @@
 #include <charconv>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -6248,13 +6249,29 @@ bool is_rv64_zero_floating_immediate(const c4c::backend::bir::Value& value) {
          value.immediate == 0 && value.immediate_bits == 0;
 }
 
-std::optional<std::uint32_t> rv64_fpr_compare_operand_register(
-    RiscvEncodedFragment& fragment,
+std::optional<std::int64_t> rv64_fp_immediate_bits_as_i64(
+    const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      (value.type != c4c::backend::bir::TypeKind::F32 &&
+       value.type != c4c::backend::bir::TypeKind::F64)) {
+    return std::nullopt;
+  }
+  std::int64_t bits = 0;
+  if (value.type == c4c::backend::bir::TypeKind::F32) {
+    std::int32_t f32_bits = 0;
+    const auto raw_bits = static_cast<std::uint32_t>(value.immediate_bits);
+    std::memcpy(&f32_bits, &raw_bits, sizeof(f32_bits));
+    bits = f32_bits;
+  } else {
+    std::memcpy(&bits, &value.immediate_bits, sizeof(bits));
+  }
+  return bits;
+}
+
+std::optional<std::uint32_t> rv64_fpr_compare_operand_existing_register(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value,
-    std::uint32_t scratch_fpr,
-    std::optional<std::uint32_t> scratch_gpr) {
+    const c4c::backend::bir::Value& value) {
   if (const auto reg = fpr_register_number_for_value(names, lookups, value);
       reg.has_value()) {
     return reg;
@@ -6266,18 +6283,70 @@ std::optional<std::uint32_t> rv64_fpr_compare_operand_register(
       return reg;
     }
   }
-  if (!is_rv64_zero_floating_immediate(value)) {
+  return std::nullopt;
+}
+
+std::optional<std::uint32_t> rv64_fpr_compare_operand_register(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::uint32_t scratch_fpr,
+    std::optional<std::uint32_t> scratch_gpr) {
+  if (const auto reg = rv64_fpr_compare_operand_existing_register(names,
+                                                                  lookups,
+                                                                  value);
+      reg.has_value()) {
+    return reg;
+  }
+  const auto bits = rv64_fp_immediate_bits_as_i64(value);
+  if (!bits.has_value()) {
     return std::nullopt;
   }
-  const std::uint32_t zero_source = scratch_gpr.value_or(0);
-  if (scratch_gpr.has_value()) {
-    append_rv64_load_immediate(fragment, *scratch_gpr, 0);
+  if (*bits == 0 && !scratch_gpr.has_value()) {
+    if (!append_rv64_gpr_to_fpr_move(fragment, scratch_fpr, 0, value.type)) {
+      return std::nullopt;
+    }
+    return scratch_fpr;
   }
-  if (!append_rv64_gpr_to_fpr_move(fragment, scratch_fpr, zero_source, value.type)) {
+  if (!scratch_gpr.has_value()) {
+    return std::nullopt;
+  }
+  append_rv64_load_immediate(fragment, *scratch_gpr, *bits);
+  if (!append_rv64_gpr_to_fpr_move(fragment, scratch_fpr, *scratch_gpr, value.type)) {
     return std::nullopt;
   }
   return scratch_fpr;
 }
+
+std::optional<std::uint32_t> rv64_compare_scratch_fpr_avoiding(
+    std::optional<std::uint32_t> lhs_home_reg,
+    std::optional<std::uint32_t> rhs_home_reg,
+    std::optional<std::uint32_t> first_scratch = std::nullopt) {
+  constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
+  const auto scratch_fpr_it =
+      std::find_if(scratch_fpr_candidates.begin(),
+                   scratch_fpr_candidates.end(),
+                   [&](std::uint32_t candidate) {
+                     return (!lhs_home_reg.has_value() || *lhs_home_reg != candidate) &&
+                            (!rhs_home_reg.has_value() || *rhs_home_reg != candidate) &&
+                            (!first_scratch.has_value() || *first_scratch != candidate);
+                   });
+  if (scratch_fpr_it == scratch_fpr_candidates.end()) {
+    return std::nullopt;
+  }
+  return *scratch_fpr_it;
+}
+
+bool append_rv64_fp_compare_to_register(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::backend::bir::BinaryOpcode opcode,
+    c4c::backend::bir::TypeKind operand_type,
+    const c4c::backend::bir::Value& lhs_value,
+    const c4c::backend::bir::Value& rhs_value,
+    std::uint32_t destination_register);
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication(
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -6285,13 +6354,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication
     const c4c::backend::bir::BinaryInst& binary) {
   if (binary.result.type != c4c::backend::bir::TypeKind::I32 ||
       binary.operand_type != binary.lhs.type ||
-      binary.operand_type != binary.rhs.type ||
-      (binary.opcode != c4c::backend::bir::BinaryOpcode::Eq &&
-       binary.opcode != c4c::backend::bir::BinaryOpcode::Ne)) {
-    return std::nullopt;
-  }
-  const auto funct7 = rv64_fp_compare_funct7(binary.operand_type);
-  if (!funct7.has_value()) {
+      binary.operand_type != binary.rhs.type) {
     return std::nullopt;
   }
 
@@ -6301,39 +6364,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_compare_publication
   if (!destination.has_value()) {
     return std::nullopt;
   }
-  const bool needs_zero_materialization =
-      is_rv64_zero_floating_immediate(binary.lhs) ||
-      is_rv64_zero_floating_immediate(binary.rhs);
-  const auto scratch_gpr =
-      needs_zero_materialization ? rv64_unoccupied_temporary_gpr(lookups)
-                                 : std::optional<std::uint32_t>{};
-  const auto lhs_home_reg = fpr_register_number_for_value(names, lookups, binary.lhs);
-  const auto rhs_home_reg = fpr_register_number_for_value(names, lookups, binary.rhs);
-  constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
-  const auto scratch_fpr_it =
-      std::find_if(scratch_fpr_candidates.begin(),
-                   scratch_fpr_candidates.end(),
-                   [&](std::uint32_t candidate) {
-                     return (!lhs_home_reg.has_value() || *lhs_home_reg != candidate) &&
-                            (!rhs_home_reg.has_value() || *rhs_home_reg != candidate);
-                   });
-  if (scratch_fpr_it == scratch_fpr_candidates.end()) {
-    return std::nullopt;
-  }
 
   RiscvEncodedFragment fragment;
-  const auto lhs = rv64_fpr_compare_operand_register(
-      fragment, names, lookups, binary.lhs, *scratch_fpr_it, scratch_gpr);
-  const auto rhs = rv64_fpr_compare_operand_register(
-      fragment, names, lookups, binary.rhs, *scratch_fpr_it, scratch_gpr);
-  if (!lhs.has_value() || !rhs.has_value()) {
+  if (!append_rv64_fp_compare_to_register(fragment,
+                                          names,
+                                          lookups,
+                                          binary.opcode,
+                                          binary.operand_type,
+                                          binary.lhs,
+                                          binary.rhs,
+                                          *destination)) {
     return std::nullopt;
-  }
-  append_le32(fragment.bytes,
-              encode_r_type(0x53, *destination, 2, *lhs, *rhs, *funct7));
-  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Ne) {
-    append_le32(fragment.bytes,
-                encode_i_type(0x13, *destination, 4, *destination, 1));
   }
   return fragment;
 }
@@ -6355,31 +6396,39 @@ bool append_rv64_fp_compare_to_register(
     return false;
   }
 
-  const auto lhs_home_reg = fpr_register_number_for_value(names, lookups, lhs_value);
-  const auto rhs_home_reg = fpr_register_number_for_value(names, lookups, rhs_value);
-  constexpr std::array<std::uint32_t, 3> scratch_fpr_candidates = {31, 30, 29};
-  const auto scratch_fpr_it =
-      std::find_if(scratch_fpr_candidates.begin(),
-                   scratch_fpr_candidates.end(),
-                   [&](std::uint32_t candidate) {
-                     return (!lhs_home_reg.has_value() || *lhs_home_reg != candidate) &&
-                            (!rhs_home_reg.has_value() || *rhs_home_reg != candidate);
-                   });
-  if (scratch_fpr_it == scratch_fpr_candidates.end()) {
+  const auto lhs_home_reg =
+      rv64_fpr_compare_operand_existing_register(names, lookups, lhs_value);
+  const auto rhs_home_reg =
+      rv64_fpr_compare_operand_existing_register(names, lookups, rhs_value);
+  const bool lhs_needs_materialization =
+      !lhs_home_reg.has_value() &&
+      rv64_fp_immediate_bits_as_i64(lhs_value).has_value();
+  const bool rhs_needs_materialization =
+      !rhs_home_reg.has_value() &&
+      rv64_fp_immediate_bits_as_i64(rhs_value).has_value();
+  const auto scratch_gpr =
+      (lhs_needs_materialization || rhs_needs_materialization)
+          ? rv64_unoccupied_temporary_gpr(lookups)
+          : std::optional<std::uint32_t>{};
+  const auto lhs_scratch_fpr =
+      rv64_compare_scratch_fpr_avoiding(lhs_home_reg, rhs_home_reg);
+  if (!lhs_scratch_fpr.has_value()) {
+    return false;
+  }
+  const auto rhs_scratch_fpr =
+      (lhs_needs_materialization && rhs_needs_materialization)
+          ? rv64_compare_scratch_fpr_avoiding(lhs_home_reg,
+                                              rhs_home_reg,
+                                              lhs_scratch_fpr)
+          : lhs_scratch_fpr;
+  if (!rhs_scratch_fpr.has_value()) {
     return false;
   }
 
-  const bool needs_zero_materialization =
-      is_rv64_zero_floating_immediate(lhs_value) ||
-      is_rv64_zero_floating_immediate(rhs_value);
-  const auto scratch_gpr =
-      needs_zero_materialization ? rv64_unoccupied_temporary_gpr(lookups)
-                                 : std::optional<std::uint32_t>{};
-
   const auto lhs = rv64_fpr_compare_operand_register(
-      fragment, names, lookups, lhs_value, *scratch_fpr_it, scratch_gpr);
+      fragment, names, lookups, lhs_value, *lhs_scratch_fpr, scratch_gpr);
   const auto rhs = rv64_fpr_compare_operand_register(
-      fragment, names, lookups, rhs_value, *scratch_fpr_it, scratch_gpr);
+      fragment, names, lookups, rhs_value, *rhs_scratch_fpr, scratch_gpr);
   if (!lhs.has_value() || !rhs.has_value()) {
     return false;
   }

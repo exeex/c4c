@@ -1,51 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/617_scalar_compare_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Locate Prepared Scalar Compare Publication Authority
+Current Step ID: 3
+Current Step Title: Repair Scalar Compare Publication Semantics
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 (`Locate Prepared Scalar Compare Publication Authority`) as a localization-only packet. The seven fresh rows remain mapped to the same object-route diagnostic from Step 1: `unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands`.
+Completed Step 3 (`Repair Scalar Compare Publication Semantics`) as a bounded RV64 object-emission repair.
 
-Concrete prepared/RV64 authority map:
+Changed files:
 
-- Producer point: non-terminator BIR `BinaryInst` compare values enter RV64 object emission through `fragment_for_prepared_instruction(...)` in `src/backend/mir/riscv/codegen/object_emission.cpp`; the compare is recorded in the local `compares` map, then direct branch-condition uses are skipped by `terminator_uses_value_as_condition(...)`.
-- Carrier point: compare publication relies on `PreparedFunctionLookups::value_homes` via `prepared_value_home_for(...)`; the result must have a GPR home through `gpr_register_number_for_home(...)`, and FP operands must be available through FPR homes or materializable FP immediate operands.
-- Consumer point: `fragment_for_prepared_fp_compare_publication(...)` is the object consumer for materialized FP compare result publication. It currently admits only F32/F64 `Eq` and `Ne`, requires a prepared GPR result home, and materializes only FP zero immediates through `rv64_fpr_compare_operand_register(...)`.
-- Existing adjacent consumer: `append_rv64_fp_compare_to_register(...)` already knows how to encode F32/F64 `Eq`, `Ne`, `Slt`, `Sgt`, `Sle`, and `Sge`; it is used by floating select and fused floating branch paths, so the missing authority is not compare encoding itself.
-- Existing adjacent materialization: FP arithmetic in `prepared_scalar_emit.cpp` already materializes non-zero FP immediates by loading their raw bits into a GPR and moving to an FPR; compare publication has a narrower zero-only operand helper.
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+- `test_after.log`
 
-Seven-row classification:
+Implementation summary:
 
-- `src/20000731-1.c`: materialized ordered FP compare around `x >= 10.0`; source loses publication as a scalar compare value with a non-zero FP immediate operand, not as a direct terminator branch.
-- `src/20011217-1.c`: materialized ordered FP compare from `(y > x--) != 1`; the FP `Sgt` value becomes a scalar source for a later integer compare, so this is source/value publication.
-- `src/930603-1.c`: materialized float compare values in an OR chain, including ordered comparisons against non-zero FP constants; source publication/operand materialization, not select ownership.
-- `src/990117-1.c`: materialized ordered FP compare returned from `foo`; destination publication to the prepared GPR result home is required before return handling can consume it.
-- `src/gofast.c`: small compare helper functions return FP relational results as `int`; `Eq`/`Ne` are already covered by the existing helper, while ordered `>`, `>=`, `<`, and `<=` require the same scalar publication path.
-- `src/loop-8.c`: materialized ordered FP compare against zero in loop control; operand zero materialization is already supported, but ordered FP result publication is not.
-- `src/strct-pack-1.c`: materialized FP `Ne`/comparison against a non-zero packed-struct double constant; this is the operand-materialization half of the same compare publication gap.
+- `fragment_for_prepared_fp_compare_publication(...)` keeps the existing fail-closed prepared GPR result-home requirement, then delegates compare encoding to `append_rv64_fp_compare_to_register(...)`.
+- The shared FP compare operand helper now accepts materializable F32/F64 immediates by loading raw bits into a scratch GPR and moving them to a scratch FPR, including non-zero immediates.
+- Scratch FPR selection avoids occupied operand homes and uses distinct scratch FPRs when both compare operands require materialization.
+- Branch, select, join-carrier, unsupported marker, allowlist, expectation, runtime/accounting, and broad failure-map code were not changed.
+- Focused RV64 object-emission tests now cover F32/F64 `Eq`, `Ne`, `Slt`, `Sgt`, `Sle`, and `Sge` scalar compare publication, non-zero F64 immediate compare operands, zero immediate operands, and the existing missing-result-home fail-closed shape.
 
-Boundary finding:
+Seven-row probe under `/tmp/c4c_617_step3_probe` after rebuilding `build/c4cll`:
 
-- Branch publication remains separate because `terminator_uses_value_as_condition(...)` prevents direct branch-condition compares from entering this diagnostic, and fused floating branches already consume `append_rv64_fp_compare_to_register(...)`.
-- Select publication remains separate because floating select consumers already call `append_rv64_fp_compare_to_register(...)` for their predicate and use their own select-result/source publication paths.
-- Join-carrier/select-edge publication remains separate; existing carrier-alias/select-edge code is only adjacent when the compare result is being copied across edges, not for these first-owner object compile failures.
-- RV64 materializable operands are part of the owned gap only for scalar compare publication operands: zero immediate is already supported; non-zero F32/F64 immediates need the same raw-bits materialization style already used for FP binary operands.
+- `src/20000731-1.c`: pass.
+- `src/20011217-1.c`: pass.
+- `src/930603-1.c`: pass.
+- `src/990117-1.c`: pass.
+- `src/gofast.c`: moved to `unsupported_instruction_fragment` at `function=fail`, `instruction_kind=CallInst`, `owner=i32 %t4`.
+- `src/loop-8.c`: moved to `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
+- `src/strct-pack-1.c`: moved to `[RV64_BACKEND_RUNTIME_MISMATCH]` with `c4c_exit=Segmentation fault`.
 
 ## Suggested Next
 
-Proceed to Step 3 with one bounded implementation packet: extend the RV64 prepared scalar compare publication path, not branch/select lowering. Add or refactor a helper used by `fragment_for_prepared_fp_compare_publication(...)` so it admits F32/F64 `Eq`, `Ne`, `Slt`, `Sgt`, `Sle`, and `Sge`; requires a prepared GPR result home; reuses existing FPR home lookup; and materializes FP immediates by raw bits using a scratch GPR/FPR policy consistent with existing FP binary materialization. Add focused object-emission tests for ordered FP compare publication and non-zero FP immediate operand publication, then probe all seven rows.
+Proceed to Step 4 close-readiness classification: confirm no current row still has scalar compare publication as first owner, record residual owners, and decide whether idea `617` is close-ready or needs a separate follow-up.
 
 ## Watchouts
 
-- Keep the Step 3 repair in scalar compare publication. Do not alter branch, select, join-carrier, unsupported-marker, allowlist, expectation, runtime/accounting, or broad failure-map code.
-- Do not satisfy this by named source-file checks. The semantic shape is materialized FP compare result publication to a prepared GPR home, plus materializable FP operands.
-- Preserve the fail-closed destination rule: if the compare result has no prepared GPR home, it should still reject as scalar compare publication.
-- The static recovery docs still say `3` scalar compare publication rows; the accepted current row set for this plan remains the seven logs under `/tmp/c4c_617_step1_probe`.
+- Rebuild `build/c4cll` before row probes; the focused object-emission test rebuilds the backend library/test binary but not necessarily the compiler driver used by the C torture runner.
+- `src/gofast.c`, `src/loop-8.c`, and `src/strct-pack-1.c` are residuals with separate first owners after this repair, not remaining scalar compare publication rows.
+- `test_after.log` is the canonical backend proof log for this packet.
 
 ## Proof
 
-Localization-only packet. Used existing `/tmp/c4c_617_step1_probe` logs, source inspection of the seven rows, and AST-backed lookup with `c4c-clang-tool-ccdb` for the RV64 prepared compare/publication functions. No build or test command was run, and `test_after.log` was not created or modified.
+Focused proof:
+
+- `cmake --build --preset default --target backend_riscv_object_emission_test && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'` passed.
+
+Delegated proof:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log` passed.
+- `test_after.log`: `346/346` backend tests passed.

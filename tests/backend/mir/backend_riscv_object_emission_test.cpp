@@ -7603,14 +7603,17 @@ prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
 prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
     bir::TypeKind operand_type,
     bool with_select_consumer,
-    bool rhs_zero_immediate = false) {
+    bool rhs_zero_immediate = false,
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Ne,
+    std::optional<std::uint64_t> rhs_immediate_bits = std::nullopt) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
 
   const auto function_name =
       prepared.names.function_names.intern(
-          rhs_zero_immediate ? "fpr_compare_zero_publication"
+          rhs_immediate_bits.has_value() ? "fpr_compare_immediate_publication"
+          : rhs_zero_immediate ? "fpr_compare_zero_publication"
           : with_select_consumer ? "fpr_compare_select_publication"
                                  : "fpr_compare_publication");
   const auto block_label = prepared.names.block_labels.intern("entry");
@@ -7619,12 +7622,17 @@ prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
   const auto compare_name = prepared.names.value_names.intern("%cmp");
   const auto selected_name = prepared.names.value_names.intern("%selected");
   const char* function = rhs_zero_immediate ? "fpr_compare_zero_publication"
+                         : rhs_immediate_bits.has_value()
+                             ? "fpr_compare_immediate_publication"
                          : with_select_consumer ? "fpr_compare_select_publication"
                                                 : "fpr_compare_publication";
-  const auto rhs_value = rhs_zero_immediate
+  const auto rhs_value = (rhs_zero_immediate || rhs_immediate_bits.has_value())
                              ? (operand_type == bir::TypeKind::F32
-                                    ? bir::Value::immediate_f32_bits(0)
-                                    : bir::Value::immediate_f64_bits(0))
+                                    ? bir::Value::immediate_f32_bits(
+                                          static_cast<std::uint32_t>(
+                                              rhs_immediate_bits.value_or(0)))
+                                    : bir::Value::immediate_f64_bits(
+                                          rhs_immediate_bits.value_or(0)))
                              : bir::Value::named(operand_type, "%rhs");
 
   bir::Block entry{
@@ -7632,7 +7640,7 @@ prepare::PreparedBirModule make_prepared_fpr_compare_publication_module(
       .insts =
           {
               bir::BinaryInst{
-                  .opcode = bir::BinaryOpcode::Ne,
+                  .opcode = opcode,
                   .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
                   .operand_type = operand_type,
                   .lhs = bir::Value::named(operand_type, "%lhs"),
@@ -19888,6 +19896,105 @@ int builds_prepared_f32_scalar_compare_zero_publication_object() {
   return 0;
 }
 
+int builds_prepared_ordered_scalar_compare_publication_objects() {
+  const std::vector<bir::BinaryOpcode> opcodes = {
+      bir::BinaryOpcode::Eq,
+      bir::BinaryOpcode::Ne,
+      bir::BinaryOpcode::Slt,
+      bir::BinaryOpcode::Sgt,
+      bir::BinaryOpcode::Sle,
+      bir::BinaryOpcode::Sge,
+  };
+  for (const auto type : {bir::TypeKind::F32, bir::TypeKind::F64}) {
+    for (const auto opcode : opcodes) {
+      const auto prepared =
+          make_prepared_fpr_compare_publication_module(type,
+                                                       false,
+                                                       false,
+                                                       opcode);
+      const auto result =
+          rv64::build_rv64_prepared_text_object_module_with_diagnostics(
+              prepared);
+      if (!result.module.has_value()) {
+        return fail("expected prepared ordered scalar FP compare publication to build, got `" +
+                    result.diagnostic + "`");
+      }
+      const auto* text = object::find_section(*result.module, ".text");
+      const auto* function =
+          object::find_symbol(*result.module, "fpr_compare_publication");
+      if (text == nullptr || function == nullptr || text->bytes.empty() ||
+          function->size_bytes != text->bytes.size()) {
+        return fail("expected ordered scalar FP compare publication object layout");
+      }
+      if (!result.module->relocations.empty()) {
+        return fail("expected ordered scalar FP compare publication to need no relocations");
+      }
+    }
+  }
+
+  const auto f32_slt =
+      make_prepared_fpr_compare_publication_module(bir::TypeKind::F32,
+                                                  false,
+                                                  false,
+                                                  bir::BinaryOpcode::Slt);
+  const auto f32_result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(f32_slt);
+  const auto* f32_text = f32_result.module.has_value()
+                             ? object::find_section(*f32_result.module, ".text")
+                             : nullptr;
+  if (f32_text == nullptr || !contains_u32(f32_text->bytes, 0xa0b514d3)) {
+    return fail("expected F32 scalar Slt publication to emit flt.s into prepared GPR home");
+  }
+
+  const auto f64_sge =
+      make_prepared_fpr_compare_publication_module(bir::TypeKind::F64,
+                                                  false,
+                                                  false,
+                                                  bir::BinaryOpcode::Sge);
+  const auto f64_result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(f64_sge);
+  const auto* f64_text = f64_result.module.has_value()
+                             ? object::find_section(*f64_result.module, ".text")
+                             : nullptr;
+  if (f64_text == nullptr || !contains_u32(f64_text->bytes, 0xa2a584d3)) {
+    return fail("expected F64 scalar Sge publication to emit reversed fle.d into prepared GPR home");
+  }
+  return 0;
+}
+
+int builds_prepared_scalar_compare_nonzero_immediate_publication_object() {
+  const auto prepared =
+      make_prepared_fpr_compare_publication_module(bir::TypeKind::F64,
+                                                  false,
+                                                  false,
+                                                  bir::BinaryOpcode::Slt,
+                                                  0x4024000000000000ULL);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared F64 scalar compare non-zero immediate publication to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* function =
+      object::find_symbol(*result.module, "fpr_compare_immediate_publication");
+  if (text == nullptr || function == nullptr || text->bytes.empty() ||
+      function->size_bytes != text->bytes.size()) {
+    return fail("expected F64 scalar compare non-zero immediate publication layout");
+  }
+  if (!contains_u32_sequence(text->bytes,
+                             {
+                                 0xf2030fd3,  // fmv.d.x ft11, t1
+                                 0xa3f514d3,  // flt.d s1, fa0, ft11
+                             })) {
+    return fail("expected F64 scalar compare to materialize non-zero immediate before publication");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected F64 scalar compare non-zero immediate publication to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_f64_scalar_compare_select_consumer_publication_object() {
   const auto prepared =
       make_prepared_fpr_compare_publication_module(bir::TypeKind::F64, true);
@@ -26372,6 +26479,9 @@ int main() {
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_f32_scalar_compare_publication_object();
   status |= builds_prepared_f32_scalar_compare_zero_publication_object();
+  status |= builds_prepared_ordered_scalar_compare_publication_objects();
+  status |=
+      builds_prepared_scalar_compare_nonzero_immediate_publication_object();
   status |= builds_prepared_f64_scalar_compare_select_consumer_publication_object();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();
