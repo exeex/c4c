@@ -1,12 +1,12 @@
 # Pointer-Loaded-From-Global Local-Memory Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/631_direct_global_symbol_local_memory_policy.md`
 Related:
 - `ideas/closed/631_direct_global_symbol_local_memory_policy.md`
 - `ideas/open/621_rv64_prepared_global_value_location_consumer.md`
-- `ideas/open/633_aggregate_stack_home_local_memory_policy.md`
+- `ideas/closed/633_aggregate_stack_home_local_memory_policy.md`
 - `docs/rv64_gcc_torture_1000_pass_recovery/failure_bucket_map.md`
 Owning Layer: RV64 pointer-loaded-from-global local-memory policy
 Queue Order: 39
@@ -62,6 +62,52 @@ direct global-symbol local-memory address.
 - Negative proof keeps direct global-symbol rows, prepared value-location rows,
   aggregate homes, string constants, and missing-freshness pointer values out
   of this policy.
+
+## Closure Notes
+
+Closed after Step 3 implemented explicit
+`pointer_loaded_from_global` local-memory authority and Step 4 validated the
+representative residuals.
+
+Completed:
+- `src/pr46309.c` now has complete authority for the accepted row:
+  `%t15 = bir.load_global ptr @q` followed by
+  `bir.load_local i32 ... addr %t15`.
+- The prepared dump records `pointer_loaded_from_global_required=yes`,
+  `pointer_loaded_from_global=yes`, pointer `%t15`, source global `q`,
+  pointer width/extent `8/8`, selected use at `block_1 inst=1`, default
+  producer and selected address spaces, and `pointer_fresh=yes`.
+- The row therefore moved past the prior `block_1 inst=1` loaded-global
+  authority boundary.
+- Focused negative proof preserves fail-closed behavior for stale
+  loaded-global pointer values.
+
+Residual classifications:
+- `src/pr46309.c` still reports `unsupported_local_memory_access`, but current
+  residuals are later ordinary pointer/local-memory and publication rows,
+  including `%p.p` local-memory ownership and `%t34` missing-publication rows.
+  They are not the prior loaded-global `%t15` authority gap and are covered by
+  mixed local/global publication follow-up scope.
+- `src/pr58984.c` currently stops at `unsupported_call_abi` for the byval /
+  aggregate call to `foo`, outside this idea and covered by call ABI residual
+  work.
+- `src/pr66556.c` still reports `unsupported_local_memory_access`; visible
+  residuals are mixed aggregate/global bitfield and ordinary pointer
+  local-memory ownership, outside the accepted pointer-loaded-from-global
+  packet and covered by existing aggregate/global materialization and
+  publication residual scope.
+
+No new residual idea was created during closure. The remaining owners are
+already represented by existing open ideas, including mixed local/global
+publication, aggregate global-object materialization, and call ABI residual
+work.
+
+Close gate:
+- `cmake --build --preset default --target backend_prepare_stack_layout_test -j1`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_prepare_stack_layout$'`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, before `passed=1 failed=0 total=1`, after
+  `passed=1 failed=0 total=1`.
 
 ## Reviewer Reject Signals
 
