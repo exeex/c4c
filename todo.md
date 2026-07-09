@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/614_rv64_pointer_local_memory_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Broaden Within Selected Pointer Authority
+Current Step ID: 4
+Current Step Title: Residual Split Or Close-Readiness Classification
 
 # Current Packet
 
