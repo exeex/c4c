@@ -70,6 +70,8 @@ enum class PreparedAddressBaseKind {
       return "scalar_layout";
     case bir::MemoryLayoutAuthorityKind::ByteStorageAggregate:
       return "byte_storage_aggregate";
+    case bir::MemoryLayoutAuthorityKind::StringConstantBytes:
+      return "string_constant_bytes";
     case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
       return "rendered_type_fallback";
     case bir::MemoryLayoutAuthorityKind::OpaqueCompatibility:
@@ -141,6 +143,8 @@ struct PreparedAddress {
     case bir::MemoryLayoutAuthorityKind::ByteStorageAggregate:
     case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
       break;
+    case bir::MemoryLayoutAuthorityKind::StringConstantBytes:
+      return false;
   }
 
   const auto& extent = provenance.object_extent;
@@ -192,6 +196,51 @@ struct PreparedAddress {
     case bir::MemoryLayoutAuthorityKind::ByteStorageAggregate:
     case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
       break;
+    case bir::MemoryLayoutAuthorityKind::StringConstantBytes:
+      return false;
+  }
+
+  const auto& extent = provenance.object_extent;
+  if (!extent.size_known ||
+      extent.completeness != bir::MemoryObjectExtentCompleteness::Complete ||
+      extent.size_bytes == 0) {
+    return false;
+  }
+
+  const auto& range = provenance.requested_range;
+  if (!range.available ||
+      range.overflowed ||
+      !range.end_available ||
+      range.begin != address.byte_offset ||
+      range.size_bytes != address.size_bytes ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return false;
+  }
+  if (range.begin < 0 || range.end < range.begin) {
+    return false;
+  }
+  return static_cast<std::size_t>(range.end - range.begin) == address.size_bytes &&
+         static_cast<std::size_t>(range.end) <= extent.size_bytes;
+}
+
+[[nodiscard]] inline bool prepared_string_constant_local_memory_has_authority(
+    const PreparedAddress& address) {
+  if (address.base_kind != PreparedAddressBaseKind::StringConstant ||
+      !address.symbol_name.has_value() ||
+      !address.can_use_base_plus_offset ||
+      address.size_bytes == 0 ||
+      address.align_bytes == 0 ||
+      address.align_bytes > address.size_bytes) {
+    return false;
+  }
+
+  const auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::StringConstant ||
+      provenance.base_identity.spelling.empty() ||
+      provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::StringConstantBytes) {
+    return false;
   }
 
   const auto& extent = provenance.object_extent;

@@ -195,6 +195,27 @@ struct ProvenanceBaseIdentityFacts {
   return nullptr;
 }
 
+[[nodiscard]] const bir::StringConstant* find_unique_string_constant_by_text_name(
+    const bir::Module& module,
+    std::string_view text_name) {
+  if (text_name.empty()) {
+    return nullptr;
+  }
+
+  const bir::StringConstant* found = nullptr;
+  for (const auto& string_constant : module.string_constants) {
+    if (string_constant.name_id == kInvalidText ||
+        module.names.texts.lookup(string_constant.name_id) != text_name) {
+      continue;
+    }
+    if (found != nullptr) {
+      return nullptr;
+    }
+    found = &string_constant;
+  }
+  return found;
+}
+
 struct ResolvedPreparedGlobalSymbolAddress {
   const bir::Global* global = nullptr;
   LinkNameId prepared_symbol_name = kInvalidLinkName;
@@ -462,6 +483,43 @@ void publish_byte_storage_global_layout_authority(PreparedAddress& address,
   }
 
   provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ByteStorageAggregate;
+}
+
+void publish_string_constant_local_memory_authority(
+    PreparedAddress& address,
+    const bir::MemoryAddress& source_address,
+    const bir::StringConstant& string_constant) {
+  if (source_address.address_space != bir::AddressSpace::Default ||
+      source_address.is_volatile ||
+      string_constant.name_id == kInvalidText ||
+      string_constant.bytes.empty()) {
+    return;
+  }
+
+  auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::StringConstant ||
+      provenance.base_identity.spelling.empty() ||
+      provenance.object_extent.size_known ||
+      provenance.layout_authority != bir::MemoryLayoutAuthorityKind::Unknown) {
+    return;
+  }
+
+  provenance.object_extent = bir::MemoryObjectExtent{
+      .completeness = bir::MemoryObjectExtentCompleteness::Complete,
+      .size_bytes = string_constant.bytes.size(),
+      .size_known = true,
+  };
+  if (!provenance.requested_range.available) {
+    provenance.requested_range =
+        bir::make_memory_byte_range(address.byte_offset, address.size_bytes);
+  }
+  bir::prove_memory_access_requested_range(provenance);
+  if (provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return;
+  }
+  provenance.layout_authority =
+      bir::MemoryLayoutAuthorityKind::StringConstantBytes;
 }
 
 [[nodiscard]] std::optional<TextId> resolve_prepared_text_id(
@@ -838,6 +896,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   std::optional<LinkNameId> prepared_symbol_name;
   std::optional<bir::GlobalAddressMaterializationPolicy> global_policy;
   const bir::Global* resolved_base_global = nullptr;
+  const bir::StringConstant* resolved_string_constant = nullptr;
   if (base_kind == PreparedAddressBaseKind::GlobalSymbol) {
     const auto resolved_global = resolve_prepared_global_symbol_address(
         names,
@@ -860,7 +919,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       return std::nullopt;
     }
     prepared_symbol_name = names.link_names.intern(symbol_name);
-    resolved_base_global = find_raw_no_id_global_address_compatibility(module, symbol_name);
+    resolved_string_constant =
+        find_unique_string_constant_by_text_name(module, symbol_name);
   }
 
   PreparedAddress prepared{
@@ -893,6 +953,10 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     publish_scalar_global_layout_authority(prepared, *resolved_base_global);
     publish_integer_array_global_layout_authority(prepared, *resolved_base_global);
     publish_byte_storage_global_layout_authority(prepared, *resolved_base_global);
+  }
+  if (resolved_string_constant != nullptr) {
+    publish_string_constant_local_memory_authority(
+        prepared, *address, *resolved_string_constant);
   }
   return prepared;
 }

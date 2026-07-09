@@ -33,6 +33,7 @@ enum class MemoryLayoutAuthorityKind : unsigned char {
   StructuredLayout,
   ScalarLayout,
   ByteStorageAggregate,
+  StringConstantBytes,
   RenderedTypeFallback,
   OpaqueCompatibility,
 };

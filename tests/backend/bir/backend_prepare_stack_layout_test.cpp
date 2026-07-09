@@ -6168,6 +6168,206 @@ int check_global_memory_publication_authority_contract() {
   return 0;
 }
 
+prepare::PreparedBirModule prepare_string_constant_local_memory_authority_module() {
+  bir::Module module;
+  const auto ok_text = module.names.texts.intern(".L.str.ok");
+  const auto empty_text = module.names.texts.intern(".L.str.empty");
+  const auto short_text = module.names.texts.intern(".L.str.short");
+  const auto gs_text = module.names.texts.intern(".L.str.gs");
+  const auto ambig_text = module.names.texts.intern(".L.str.ambig");
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.ok",
+      .name_id = ok_text,
+      .bytes = "0123456789",
+      .align_bytes = 1,
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.empty",
+      .name_id = empty_text,
+      .bytes = "",
+      .align_bytes = 1,
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.short",
+      .name_id = short_text,
+      .bytes = "abcd",
+      .align_bytes = 1,
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.gs",
+      .name_id = gs_text,
+      .bytes = "0123456789",
+      .align_bytes = 1,
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.ambig",
+      .name_id = ambig_text,
+      .bytes = "0123456789",
+      .align_bytes = 1,
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.ambig.alias",
+      .name_id = ambig_text,
+      .bytes = "0123456789",
+      .align_bytes = 1,
+  });
+
+  bir::Function function;
+  function.name = "string_constant_local_memory_authority";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  const auto add_string_load =
+      [&](std::string result_name,
+          std::string base_name,
+          bir::AddressSpace address_space = bir::AddressSpace::Default) {
+        entry.insts.push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(bir::TypeKind::Ptr, std::move(result_name)),
+            .slot_name = "lv.root",
+            .align_bytes = 8,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+                    .base_name = std::move(base_name),
+                    .size_bytes = 8,
+                    .align_bytes = 8,
+                    .address_space = address_space,
+                },
+        });
+      };
+  add_string_load("%ok", ".L.str.ok");
+  add_string_load("%missing", ".L.str.missing");
+  add_string_load("%empty", ".L.str.empty");
+  add_string_load("%oob", ".L.str.short");
+  add_string_load("%gs", ".L.str.gs", bir::AddressSpace::Gs);
+  add_string_load("%ambig", ".L.str.ambig");
+  add_string_load("%no_identity", "");
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(0),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+int check_string_constant_local_memory_authority_contract(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* function_addressing = prepare::find_prepared_addressing(
+      prepared,
+      find_function_name_id(prepared, "string_constant_local_memory_authority"));
+  const c4c::BlockLabelId entry_block_label_id =
+      find_block_label_id(prepared, "entry");
+  if (function_addressing == nullptr) {
+    return fail("expected string-constant authority fixture addressing");
+  }
+
+  const auto* ok_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0);
+  if (ok_access == nullptr ||
+      ok_access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
+      !ok_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *ok_access->address.symbol_name) !=
+          ".L.str.ok" ||
+      ok_access->address.byte_offset != 0 ||
+      ok_access->address.size_bytes != 8 ||
+      ok_access->address.align_bytes != 8 ||
+      !prepare::prepared_string_constant_local_memory_has_authority(ok_access->address)) {
+    return fail("expected in-bounds default string access to publish local-memory authority");
+  }
+  const auto& ok_provenance = ok_access->address.provenance;
+  if (ok_provenance.object_extent.size_bytes != 10 ||
+      ok_provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::StringConstantBytes ||
+      ok_provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds ||
+      ok_provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::StringConstant ||
+      ok_provenance.base_identity.spelling != ".L.str.ok" ||
+      prepare::prepared_memory_layout_authority_name(
+          bir::MemoryLayoutAuthorityKind::StringConstantBytes) !=
+          "string_constant_bytes") {
+    return fail("expected string authority to carry identity, bytes extent, and in-bounds range");
+  }
+
+  const auto expect_recorded_without_authority =
+      [&](std::size_t inst_index, const char* failure) -> int {
+    const auto* access = prepare::find_prepared_memory_access(
+        *function_addressing, entry_block_label_id, inst_index);
+    if (access == nullptr ||
+        access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
+        prepare::prepared_string_constant_local_memory_has_authority(access->address)) {
+      return fail(failure);
+    }
+    return 0;
+  };
+  if (const int rc = expect_recorded_without_authority(
+          1, "expected missing string identity to stay fail-closed");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_recorded_without_authority(
+          2, "expected missing string bytes to stay fail-closed");
+      rc != 0) {
+    return rc;
+  }
+  const auto* oob_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 3);
+  if (oob_access == nullptr ||
+      prepare::prepared_string_constant_local_memory_has_authority(oob_access->address) ||
+      !oob_access->address.provenance.object_extent.size_known ||
+      oob_access->address.provenance.object_extent.size_bytes != 4 ||
+      oob_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenOutOfBounds ||
+      oob_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown) {
+    return fail("expected out-of-bounds string access to publish extent but stay fail-closed");
+  }
+  if (const int rc = expect_recorded_without_authority(
+          4, "expected non-default string address space to stay fail-closed");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_recorded_without_authority(
+          5, "expected ambiguous string identity to stay fail-closed");
+      rc != 0) {
+    return rc;
+  }
+  if (prepare::find_prepared_memory_access(
+          *function_addressing, entry_block_label_id, 6) != nullptr) {
+    return fail("expected empty string identity to suppress prepared access");
+  }
+
+  prepare::PreparedNameTables names;
+  if (prepare::prepared_string_constant_local_memory_has_authority(
+          make_proven_global_symbol_memory_address(names.link_names.intern("g.counter"))) ||
+      prepare::prepared_string_constant_local_memory_has_authority(
+          make_proven_pointer_value_memory_address(names.value_names.intern("%ptr")))) {
+    return fail("expected non-string prepared address bases to stay out of string authority");
+  }
+
+  return 0;
+}
+
 int check_direct_global_return_authority_contract() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("direct_global_return");
@@ -12451,6 +12651,13 @@ int main() {
   }
 
   if (const int rc = check_global_memory_publication_authority_contract(); rc != 0) {
+    return rc;
+  }
+  const auto string_constant_authority_prepared =
+      prepare_string_constant_local_memory_authority_module();
+  if (const int rc = check_string_constant_local_memory_authority_contract(
+          string_constant_authority_prepared);
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_direct_global_return_authority_contract(); rc != 0) {
