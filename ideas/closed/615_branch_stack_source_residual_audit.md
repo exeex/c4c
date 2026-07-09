@@ -1,6 +1,6 @@
 # Branch Stack-Source Residual Audit And Repair
 
-Status: Open
+Status: Closed
 Type: Implementation with required audit first
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -56,6 +56,33 @@ join/select plus stack-backed condition/freshness residual. This idea owns only
 the stack-source audit portion: a future runbook must first prove whether the
 row's first owner is branch stack-source freshness instead of select
 publication before making code changes.
+
+## Closure Summary
+
+Closed after the required Step 1 audit. The audit found no complete-authority
+RV64 branch stack-source consumer repair to implement under this idea.
+
+Current residual classification:
+
+- `7` `unsupported_branch_stack_load_authority` rows have selected freshness
+  evidence but stop first at `missing_stack_clobber_safety`:
+  `src/20001017-1.c`, `src/loop-2e.c`, `src/pr39100.c`,
+  `src/20000314-3.c`, `src/20140828-1.c`, `src/20080519-1.c`, and
+  `src/20050125-1.c`.
+- `3` `unsupported_branch_stack_load_source_freshness` rows stop at
+  `missing_source_freshness_authority` / `no_candidate`:
+  `src/930930-1.c`, `src/990127-1.c`, and `src/20060910-1.c`.
+- `src/921124-1.c` currently stops at `unsupported_terminator_fragment`, not
+  branch stack-source freshness or select publication.
+
+Durable follow-up scope was split to:
+
+- `ideas/open/635_prepared_branch_stack_clobber_safety_authority.md`
+- `ideas/open/636_prepared_branch_stack_source_freshness_publication.md`
+
+The `src/921124-1.c` split-in note remains covered by existing open
+publication follow-ups (`616` and `617`) when refreshed diagnostics prove one
+of those owners. No duplicate terminator idea was created from this audit.
 
 ## Reviewer Reject Signals
 
