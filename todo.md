@@ -1,72 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/648_rv64_call_arg_frame_slot_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Locate The RV64 Call-Argument Lowering Boundary
+Current Step ID: 3
+Current Step Title: Add Focused Positive And Negative Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 boundary inspection completed for prepared
-`arg.source_selection=local_frame_address_materialization` using the Step 1
-evidence summary at
-`build/agent_state/648_step1_call_arg_frame_slot_evidence/summary.md` and
-AST-backed lookup over the RV64 call emission files.
+Step 3 focused backend coverage completed for
+`arg.source_selection=local_frame_address_materialization` without
+implementation changes.
 
-The owned implementation surface is the RV64 prepared call-argument consumer:
+Added `tests/backend/case/riscv64_call_arg_local_frame_address_materialization.c`
+and wired two RV64 backend CTests in `tests/backend/CMakeLists.txt`:
 
-- text asm path:
-  `src/backend/mir/riscv/codegen/prepared_call_emit.cpp`,
-  `emit_riscv_simple_call` and the helper
-  `emit_riscv_frame_slot_address_argument`
-- object path:
-  `src/backend/mir/riscv/codegen/object_emission.cpp`,
-  `fragment_for_prepared_call`,
-  `append_rv64_prepared_local_frame_address_call_argument_source`, and
-  `prepared_frame_slot_address_call_argument_offset`
+- `backend_dump_riscv64_call_arg_local_frame_address_materialization` observes
+  `bir.call i32 read_local_address(ptr %lv.value)` with
+  `arg.source_selection=local_frame_address_materialization`,
+  `dest_reg=a0`, `selection_source_value=%lv.value`, and the matching
+  `address_materialization block=entry` prepared fact.
+- `backend_codegen_route_riscv64_call_arg_local_frame_address_materialization`
+  observes text lowering that sets up the ABI GPR argument with
+  `addi a0, sp, ...` and forbids the stale emitted `mv a0, s1` copy shape.
 
-The stale register-copy path is the final ordinary GPR register-source fallback
-in both consumers. In the text path, `emit_riscv_simple_call` first probes
-`as_local_frame_address_materialization_route` and emits `addi <arg>, sp, off`;
-if the source selection is malformed but still
-`LocalFrameAddressMaterialization`, it fails closed before the ordinary
-register copy. In the object path, `fragment_for_prepared_call` has a matching
-`LocalFrameAddressMaterialization` branch before the ordinary
-`append_rv64_move` register-source fallback.
-
-The narrow implementation surface for Step 4 should stay inside those branches
-and their shared contract/offset helper logic. Do not repair this by changing
-generic move-bundle production, stack layout, ABI register assignment, source
-syntax handling, string-label pointer admission, or testcase expectations.
-
-The fresh `unsupported_local_memory_access` object-route blocker for
-`tests/c/external/gcc_torture/src/20000722-1.c` is not the same
-call-argument consumption boundary. It is produced by
-`diagnose_unsupported_prepared_instruction_fragment` while rejecting a local
-load/store instruction before object emission reaches a fresh disassembly
-proof for the call setup. Treat it as a representative-row integration blocker
-that must be split or handled before Step 5 object/disassembly proof; it should
-not block focused Step 3 coverage of the call-argument consumer.
+The prepared dump still contains the legacy move-bundle diagnostic line
+`reason=call_arg_register_to_register` before the detailed prepared call
+contract. The focused negative assertion is therefore on the emitted RV64
+argument setup rather than that diagnostic artifact.
 
 ## Suggested Next
 
-Execute Step 3 by adding focused backend coverage for the prepared
-call-argument consumer, not the GCC torture row. Recommended narrow target:
-`tests/backend/case/riscv64_call_arg_local_frame_address_materialization.c`,
-wired to a CTest that observes prepared/RV64 lowering for a call argument with
-`arg.source_selection=local_frame_address_materialization`.
-
-The positive assertion should fail on the old stale register-home-copy shape:
-the selected frame-slot address must be materialized into the ABI GPR argument
-register with an `addi <dest>, sp, <selected offset>`-style setup, and the
-focused observable must not accept a `call_arg_register_to_register` or plain
-source-register `mv` as satisfying that selected-source contract.
-
-The negative assertion should preserve fail-closed behavior for malformed,
-missing, ambiguous, or non-frame-slot source selections: they must not fall
-through to an inferred stack offset or source-register copy merely because the
-value happens to have a register home or stack-looking metadata.
+Proceed to Step 4 only if the supervisor wants an implementation or audit packet
+for a remaining focused failure. The new text-route focused test is already
+green with no implementation changes, so the next likely packet is a
+representative Step 5 probe or split decision for the known
+`src/20000722-1.c` object-route `unsupported_local_memory_access` blocker.
 
 ## Watchouts
 
@@ -74,9 +43,9 @@ value happens to have a register home or stack-looking metadata.
 - Do not special-case `src/20000722-1.c`, `%lv._clit_`, `foo`, `s2`, or `a0`.
 - Do not infer frame-slot address materialization from source spelling, stack
   offsets, final assembly, testcase identity, or diagnostics.
-- Treat `reason=call_arg_register_to_register` as the stale prepared
-  move-bundle path, but do not claim a fresh emitted `mv a0,s2` unless the
-  object route reaches disassembly again.
+- Treat `reason=call_arg_register_to_register` in the focused prepared dump as
+  a pre-contract move-bundle diagnostic artifact, not as the assertion target
+  for this Step 3 route test.
 - The fresh representative object route currently stops at
   `unsupported_local_memory_access` outside the call-argument consumer. Do not
   broaden Step 3/4 into local-memory admission just to get
@@ -88,8 +57,11 @@ value happens to have a register home or stack-looking metadata.
 
 ## Proof
 
-No build/ctest proof was required for this read-only boundary-location packet.
-Read `build/agent_state/648_step1_call_arg_frame_slot_evidence/summary.md` and
-inspected `prepared_call_emit.cpp`, `object_emission.cpp`, and directly related
-helpers using `c4c-clang-tool-ccdb` plus focused source reads. Did not create
-or overwrite `test_after.log`.
+Ran the delegated proof exactly:
+
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_(dump|codegen_route)_riscv64_call_arg_local_frame_address_materialization$"; } 2>&1 | tee test_after.log'`
+
+Result: passed. Both
+`backend_dump_riscv64_call_arg_local_frame_address_materialization` and
+`backend_codegen_route_riscv64_call_arg_local_frame_address_materialization`
+passed. Proof log: `test_after.log`.

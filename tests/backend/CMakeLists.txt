@@ -1233,6 +1233,27 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_call_arg_local_frame_address_materialization
+  SRC "${BACKEND_CASE_ROOT}/riscv64_call_arg_local_frame_address_materialization.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.call i32 read_local_address(ptr %lv.value)|arg index=0 value_bank=gpr|dest_reg=a0|arg.source_selection=local_frame_address_materialization|selection_source_value=%lv.value|selection_source_home=register|selection_materialization_block=entry|address_materialization block=entry"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 call pointer prepared_call_boundary dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_call_arg_local_frame_address_materialization
+  SRC "${BACKEND_CASE_ROOT}/riscv64_call_arg_local_frame_address_materialization.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_call_arg_local_frame_address_materialization.s"
+  REQUIRED_SNIPPETS "main:|addi a0, sp,"
+  FORBIDDEN_SNIPPETS "mv a0, s1|call_arg_register_to_register"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 call pointer prepared_call_boundary emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_byval_formal_gpr_publication
   SRC "${BACKEND_CASE_ROOT}/riscv64_byval_formal_gpr_publication.c"
   TARGET_TRIPLE riscv64-linux-gnu
