@@ -12110,7 +12110,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
           access->address.size_bytes != 8 ||
           access->address.align_bytes != 8 ||
           !fits_signed_12_bit_immediate(access->address.byte_offset) ||
-          !prepare::prepared_string_constant_local_memory_has_authority(
+          !prepare::prepared_string_constant_label_pointer_has_authority(
               access->address)) {
         return false;
       }

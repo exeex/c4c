@@ -1917,7 +1917,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
       access->address.size_bytes == 8 &&
       access->address.align_bytes == 8 &&
       fits_signed_12_bit_immediate(access->address.byte_offset) &&
-      c4c::backend::prepare::prepared_string_constant_local_memory_has_authority(
+      c4c::backend::prepare::prepared_string_constant_label_pointer_has_authority(
           access->address)) {
     const auto destination =
         gpr_register_number_for_value_local(names, lookups, load.result);

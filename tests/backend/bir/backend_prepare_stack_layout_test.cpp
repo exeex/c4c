@@ -6227,26 +6227,34 @@ prepare::PreparedBirModule prepare_string_constant_local_memory_authority_module
   const auto add_string_load =
       [&](std::string result_name,
           std::string base_name,
-          bir::AddressSpace address_space = bir::AddressSpace::Default) {
+          bir::AddressSpace address_space = bir::AddressSpace::Default,
+          bool is_volatile = false,
+          bir::TypeKind result_type = bir::TypeKind::Ptr,
+          std::size_t size_bytes = 8,
+          std::size_t align_bytes = 8) {
         entry.insts.push_back(bir::LoadLocalInst{
-            .result = bir::Value::named(bir::TypeKind::Ptr, std::move(result_name)),
+            .result = bir::Value::named(result_type, std::move(result_name)),
             .slot_name = "lv.root",
-            .align_bytes = 8,
+            .align_bytes = align_bytes,
             .address =
                 bir::MemoryAddress{
                     .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
                     .base_name = std::move(base_name),
-                    .size_bytes = 8,
-                    .align_bytes = 8,
+                    .size_bytes = size_bytes,
+                    .align_bytes = align_bytes,
                     .address_space = address_space,
+                    .is_volatile = is_volatile,
                 },
         });
       };
   add_string_load("%ok", ".L.str.ok");
   add_string_load("%missing", ".L.str.missing");
   add_string_load("%empty", ".L.str.empty");
-  add_string_load("%oob", ".L.str.short");
+  add_string_load("%short_ptr", ".L.str.short");
+  add_string_load("%i64_oob", ".L.str.short", bir::AddressSpace::Default, false,
+                  bir::TypeKind::I64, 8, 8);
   add_string_load("%gs", ".L.str.gs", bir::AddressSpace::Gs);
+  add_string_load("%volatile", ".L.str.ok", bir::AddressSpace::Default, true);
   add_string_load("%ambig", ".L.str.ambig");
   add_string_load("%no_identity", "");
   entry.terminator = bir::ReturnTerminator{
@@ -6292,21 +6300,24 @@ int check_string_constant_local_memory_authority_contract(
       ok_access->address.byte_offset != 0 ||
       ok_access->address.size_bytes != 8 ||
       ok_access->address.align_bytes != 8 ||
-      !prepare::prepared_string_constant_local_memory_has_authority(ok_access->address)) {
-    return fail("expected in-bounds default string access to publish local-memory authority");
+      !prepare::prepared_string_constant_label_pointer_has_authority(ok_access->address)) {
+    return fail("expected default string pointer access to publish label-pointer authority");
   }
   const auto& ok_provenance = ok_access->address.provenance;
   if (ok_provenance.object_extent.size_bytes != 10 ||
       ok_provenance.layout_authority !=
-          bir::MemoryLayoutAuthorityKind::StringConstantBytes ||
-      ok_provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds ||
+          bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer ||
+      ok_provenance.range_verdict != bir::MemoryRangeVerdict::UnknownCompatible ||
       ok_provenance.base_identity.kind !=
           bir::MemoryProvenanceBaseIdentityKind::StringConstant ||
       ok_provenance.base_identity.spelling != ".L.str.ok" ||
       prepare::prepared_memory_layout_authority_name(
-          bir::MemoryLayoutAuthorityKind::StringConstantBytes) !=
-          "string_constant_bytes") {
-    return fail("expected string authority to carry identity, bytes extent, and in-bounds range");
+          bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer) !=
+          "string_constant_label_pointer") {
+    return fail("expected pointer string authority to carry identity, label extent, and no byte-range proof");
+  }
+  if (prepare::prepared_string_constant_local_memory_has_authority(ok_access->address)) {
+    return fail("expected pointer string authority to stay separate from byte authority");
   }
 
   const auto expect_recorded_without_authority =
@@ -6325,35 +6336,49 @@ int check_string_constant_local_memory_authority_contract(
       rc != 0) {
     return rc;
   }
-  if (const int rc = expect_recorded_without_authority(
-          2, "expected missing string bytes to stay fail-closed");
-      rc != 0) {
-    return rc;
+  for (std::size_t inst_index : {std::size_t{2}, std::size_t{3}}) {
+    const auto* pointer_access = prepare::find_prepared_memory_access(
+        *function_addressing, entry_block_label_id, inst_index);
+    if (pointer_access == nullptr ||
+        !prepare::prepared_string_constant_label_pointer_has_authority(
+            pointer_access->address) ||
+        pointer_access->address.provenance.layout_authority !=
+            bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer ||
+        pointer_access->address.provenance.range_verdict !=
+            bir::MemoryRangeVerdict::UnknownCompatible) {
+      return fail("expected empty and short string pointer materializations to publish label-pointer authority");
+    }
   }
-  const auto* oob_access =
-      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 3);
-  if (oob_access == nullptr ||
-      prepare::prepared_string_constant_local_memory_has_authority(oob_access->address) ||
-      !oob_access->address.provenance.object_extent.size_known ||
-      oob_access->address.provenance.object_extent.size_bytes != 4 ||
-      oob_access->address.provenance.range_verdict !=
+  const auto* i64_oob_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 4);
+  if (i64_oob_access == nullptr ||
+      prepare::prepared_string_constant_label_pointer_has_authority(i64_oob_access->address) ||
+      prepare::prepared_string_constant_local_memory_has_authority(i64_oob_access->address) ||
+      !i64_oob_access->address.provenance.object_extent.size_known ||
+      i64_oob_access->address.provenance.object_extent.size_bytes != 4 ||
+      i64_oob_access->address.provenance.range_verdict !=
           bir::MemoryRangeVerdict::ProvenOutOfBounds ||
-      oob_access->address.provenance.layout_authority !=
+      i64_oob_access->address.provenance.layout_authority !=
           bir::MemoryLayoutAuthorityKind::Unknown) {
-    return fail("expected out-of-bounds string access to publish extent but stay fail-closed");
+    return fail("expected non-pointer out-of-bounds string bytes access to stay fail-closed");
   }
   if (const int rc = expect_recorded_without_authority(
-          4, "expected non-default string address space to stay fail-closed");
+          5, "expected non-default string address space to stay fail-closed");
       rc != 0) {
     return rc;
   }
   if (const int rc = expect_recorded_without_authority(
-          5, "expected ambiguous string identity to stay fail-closed");
+          6, "expected volatile string address to stay fail-closed");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_recorded_without_authority(
+          7, "expected ambiguous string identity to stay fail-closed");
       rc != 0) {
     return rc;
   }
   if (prepare::find_prepared_memory_access(
-          *function_addressing, entry_block_label_id, 6) != nullptr) {
+          *function_addressing, entry_block_label_id, 8) != nullptr) {
     return fail("expected empty string identity to suppress prepared access");
   }
 

@@ -72,6 +72,8 @@ enum class PreparedAddressBaseKind {
       return "byte_storage_aggregate";
     case bir::MemoryLayoutAuthorityKind::StringConstantBytes:
       return "string_constant_bytes";
+    case bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer:
+      return "string_constant_label_pointer";
     case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
       return "rendered_type_fallback";
     case bir::MemoryLayoutAuthorityKind::OpaqueCompatibility:
@@ -144,6 +146,7 @@ struct PreparedAddress {
     case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
       break;
     case bir::MemoryLayoutAuthorityKind::StringConstantBytes:
+    case bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer:
       return false;
   }
 
@@ -197,6 +200,7 @@ struct PreparedAddress {
     case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
       break;
     case bir::MemoryLayoutAuthorityKind::StringConstantBytes:
+    case bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer:
       return false;
   }
 
@@ -264,6 +268,42 @@ struct PreparedAddress {
   }
   return static_cast<std::size_t>(range.end - range.begin) == address.size_bytes &&
          static_cast<std::size_t>(range.end) <= extent.size_bytes;
+}
+
+[[nodiscard]] inline bool prepared_string_constant_label_pointer_has_authority(
+    const PreparedAddress& address) {
+  if (address.base_kind != PreparedAddressBaseKind::StringConstant ||
+      !address.symbol_name.has_value() ||
+      !address.can_use_base_plus_offset ||
+      address.byte_offset != 0 ||
+      address.size_bytes != 8 ||
+      address.align_bytes != 8) {
+    return false;
+  }
+
+  const auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::StringConstant ||
+      provenance.base_identity.spelling.empty() ||
+      provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::UnknownCompatible) {
+    return false;
+  }
+
+  const auto& extent = provenance.object_extent;
+  if (!extent.size_known ||
+      extent.completeness != bir::MemoryObjectExtentCompleteness::Complete) {
+    return false;
+  }
+
+  const auto& range = provenance.requested_range;
+  return range.available &&
+         !range.overflowed &&
+         range.end_available &&
+         range.begin == 0 &&
+         range.size_bytes == address.size_bytes &&
+         range.end == static_cast<std::int64_t>(address.size_bytes);
 }
 
 [[nodiscard]] inline std::optional<bir::GlobalAddressMaterializationPolicy>

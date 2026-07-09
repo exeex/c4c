@@ -488,11 +488,11 @@ void publish_byte_storage_global_layout_authority(PreparedAddress& address,
 void publish_string_constant_local_memory_authority(
     PreparedAddress& address,
     const bir::MemoryAddress& source_address,
-    const bir::StringConstant& string_constant) {
+    const bir::StringConstant& string_constant,
+    bool allow_label_pointer_authority) {
   if (source_address.address_space != bir::AddressSpace::Default ||
       source_address.is_volatile ||
-      string_constant.name_id == kInvalidText ||
-      string_constant.bytes.empty()) {
+      string_constant.name_id == kInvalidText) {
     return;
   }
 
@@ -513,6 +513,24 @@ void publish_string_constant_local_memory_authority(
   if (!provenance.requested_range.available) {
     provenance.requested_range =
         bir::make_memory_byte_range(address.byte_offset, address.size_bytes);
+  }
+  if (allow_label_pointer_authority &&
+      address.byte_offset == 0 &&
+      address.size_bytes == 8 &&
+      address.align_bytes == 8 &&
+      provenance.requested_range.available &&
+      !provenance.requested_range.overflowed &&
+      provenance.requested_range.end_available &&
+      provenance.requested_range.begin == 0 &&
+      provenance.requested_range.size_bytes == 8 &&
+      provenance.requested_range.end == 8) {
+    provenance.layout_authority =
+        bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer;
+    provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+    return;
+  }
+  if (string_constant.bytes.empty()) {
+    return;
   }
   bir::prove_memory_access_requested_range(provenance);
   if (provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
@@ -830,6 +848,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     std::int64_t fallback_byte_offset,
     std::size_t size_bytes,
     std::size_t align_bytes,
+    bool allow_string_label_pointer_authority,
     bool allow_link_name_spelling_resolution = false) {
   if (!address.has_value()) {
     const auto resolved_global = resolve_prepared_global_symbol_address(
@@ -956,7 +975,10 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   }
   if (resolved_string_constant != nullptr) {
     publish_string_constant_local_memory_authority(
-        prepared, *address, *resolved_string_constant);
+        prepared,
+        *address,
+        *resolved_string_constant,
+        allow_string_label_pointer_authority);
   }
   return prepared;
 }
@@ -1001,6 +1023,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       static_cast<std::int64_t>(inst.byte_offset),
       size_bytes,
       align_bytes,
+      inst.result.type == bir::TypeKind::Ptr,
       inst.result.type == bir::TypeKind::F128);
   if (!address.has_value()) {
     return std::nullopt;
@@ -1045,7 +1068,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       kInvalidLinkName,
       static_cast<std::int64_t>(inst.byte_offset),
       size_bytes,
-      align_bytes);
+      align_bytes,
+      false);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -1093,7 +1117,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       inst.global_name_id,
       prepared_global_instruction_fallback_byte_offset(inst.address, inst.byte_offset),
       size_bytes,
-      align_bytes);
+      align_bytes,
+      inst.result.type == bir::TypeKind::Ptr);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -1141,7 +1166,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       inst.global_name_id,
       prepared_global_instruction_fallback_byte_offset(inst.address, inst.byte_offset),
       size_bytes,
-      align_bytes);
+      align_bytes,
+      false);
   if (!address.has_value()) {
     return std::nullopt;
   }

@@ -25067,7 +25067,7 @@ make_prepared_string_constant_local_memory_load_module() {
   prepared.module.string_constants.push_back(bir::StringConstant{
       .name = ".LC_string_local",
       .name_id = text_name,
-      .bytes = "0123456789abcdef",
+      .bytes = "abcd",
       .align_bytes = 1,
   });
   prepared.module.functions.push_back(bir::Function{
@@ -25111,7 +25111,7 @@ make_prepared_string_constant_local_memory_load_module() {
           .address = prepare::PreparedAddress{
               .base_kind = prepare::PreparedAddressBaseKind::StringConstant,
               .symbol_name = link_name,
-              .byte_offset = 4,
+              .byte_offset = 0,
               .size_bytes = 8,
               .align_bytes = 8,
               .can_use_base_plus_offset = true,
@@ -25125,13 +25125,13 @@ make_prepared_string_constant_local_memory_load_module() {
                   .object_extent = bir::MemoryObjectExtent{
                       .completeness =
                           bir::MemoryObjectExtentCompleteness::Complete,
-                      .size_bytes = 16,
+                      .size_bytes = 4,
                       .size_known = true,
                   },
-                  .requested_range = bir::make_memory_byte_range(4, 8),
+                  .requested_range = bir::make_memory_byte_range(0, 8),
                   .layout_authority =
-                      bir::MemoryLayoutAuthorityKind::StringConstantBytes,
-                  .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+                      bir::MemoryLayoutAuthorityKind::StringConstantLabelPointer,
+                  .range_verdict = bir::MemoryRangeVerdict::UnknownCompatible,
               },
           },
       }},
@@ -25191,7 +25191,7 @@ int builds_prepared_string_constant_local_memory_load_object() {
   }
   if (symbol->kind != object::SymbolKind::Object ||
       symbol->section != std::optional<object::SectionId>{rodata->id} ||
-      symbol->size_bytes != 17) {
+      symbol->size_bytes != 5) {
     return fail("expected prepared string local-memory load target to remain a string object");
   }
   return 0;
@@ -25213,7 +25213,7 @@ int rejects_prepared_string_constant_local_memory_load_fail_closed_shapes() {
 
   prepared = make_prepared_string_constant_local_memory_load_module();
   prepared.addressing.functions[0].accesses[0].address.provenance.requested_range =
-      bir::make_memory_byte_range(12, 8);
+      bir::make_memory_byte_range(0, 8);
   prepared.addressing.functions[0].accesses[0].address.provenance.range_verdict =
       bir::MemoryRangeVerdict::ProvenOutOfBounds;
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
@@ -25223,6 +25223,53 @@ int rejects_prepared_string_constant_local_memory_load_fail_closed_shapes() {
   prepared = make_prepared_string_constant_local_memory_load_module();
   prepared.addressing.functions[0].accesses[0].address_space =
       bir::AddressSpace::Tls;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].is_volatile = true;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.size_bytes = 4;
+  prepared.addressing.functions[0].accesses[0].address.provenance.requested_range =
+      bir::make_memory_byte_range(0, 4);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 4;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  prepared.addressing.functions[0].accesses[0].address.symbol_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_string_constant_local_memory_load_module();
+  auto& byte_inst = prepared.module.functions[0].blocks[0].insts[0];
+  byte_inst = bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I8, "%result"),
+      .slot_name = "%str",
+      .slot_id = prepared.names.slot_names.find("%str"),
+      .align_bytes = 1,
+  };
+  prepared.module.functions[0].return_type = bir::TypeKind::I8;
+  prepared.module.functions[0].return_size_bytes = 1;
+  prepared.module.functions[0].return_align_bytes = 1;
+  prepared.module.functions[0].blocks[0].terminator.value =
+      bir::Value::named(bir::TypeKind::I8, "%result");
+  prepared.addressing.functions[0].accesses[0].address.size_bytes = 1;
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 1;
+  prepared.addressing.functions[0].accesses[0].address.provenance.requested_range =
+      bir::make_memory_byte_range(0, 1);
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
