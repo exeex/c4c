@@ -1,6 +1,6 @@
 # Pointer Stack-Result Call Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/613_abi_call_result_stack_frame_lowering.md`
 Related:
@@ -59,6 +59,17 @@ result destination facts.
   remain fail-closed when those facts are absent.
 - Negative proof keeps scalar-only, aggregate outgoing-stack, FPR, variadic,
   library, runtime, local/global, and missing-authority rows outside this idea.
+
+## Completion Notes
+
+Closed after Step 5 reclassification. The ordinary same-module pointer
+stack-result authority blocker is gone across the representative row set:
+prepared facts now expose explicit GPR call-result source placement,
+destination stack homes, width, and matching value-home authority, and RV64
+object emission admits only that explicit shape. Remaining representative-row
+failures are out-of-scope owner buckets: terminator/branch lowering,
+return stack-to-GPR pointer moves, local-memory/addressing, and ambiguous
+register fan-in to one stack destination.
 
 ## Reviewer Reject Signals
 
