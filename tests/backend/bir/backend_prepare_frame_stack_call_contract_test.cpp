@@ -4173,6 +4173,9 @@ int check_rv64_return_destination_home_contract() {
       move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
       move.reason != "return_stack_to_register" ||
       move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      move.function_return_authority_kind !=
+          std::optional<prepare::PreparedMoveAuthorityKind>{
+              prepare::PreparedMoveAuthorityKind::FunctionReturnDestinationHome} ||
       move.destination_abi_index.has_value() || move.destination_stack_offset_bytes.has_value() ||
       move.uses_cycle_temp_source || move.coalesced_by_assigned_storage ||
       move.source_parallel_copy_step_index.has_value() || move.source_immediate_i32.has_value() ||

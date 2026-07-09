@@ -597,6 +597,21 @@ void append_return_move_resolution(const PreparedNameTables& names,
           same_register_destination(destination_register_placement,
                                     *source->assigned_register,
                                     destination_register_name);
+      const auto destination_target_register_identity =
+          abi_target_register_identity(target_profile,
+                                       consumed_kind,
+                                       destination_register_placement);
+      const bool has_explicit_return_register_destination =
+          consumed_kind == PreparedMoveStorageKind::Register &&
+          destination_register_name.has_value() &&
+          destination_register_placement.has_value() &&
+          destination_target_register_identity.has_value();
+      const std::optional<PreparedMoveAuthorityKind> function_return_authority_kind =
+          source_kind == PreparedMoveStorageKind::StackSlot &&
+                  has_explicit_return_register_destination
+              ? std::optional<PreparedMoveAuthorityKind>{
+                    PreparedMoveAuthorityKind::FunctionReturnDestinationHome}
+              : std::nullopt;
       if (source_kind == PreparedMoveStorageKind::None) {
         append_unassigned_return_move_resolution_record(
             regalloc_function,
@@ -638,9 +653,42 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                     std::nullopt,
                                     std::nullopt,
                                     destination_register_placement,
-                                    abi_target_register_identity(target_profile,
-                                                                 consumed_kind,
-                                                                 destination_register_placement));
+                                    destination_target_register_identity);
+      if (function_return_authority_kind.has_value()) {
+        for (auto& move : regalloc_function.move_resolution) {
+          if (move.from_value_id == source->value_id &&
+              move.to_value_id == source->value_id &&
+              move.destination_kind ==
+                  PreparedMoveDestinationKind::FunctionReturnAbi &&
+              move.destination_storage_kind == consumed_kind &&
+              move.destination_abi_index ==
+                  (uses_explicit_return_lanes
+                       ? std::optional<std::size_t>{lane_index}
+                       : std::nullopt) &&
+              move.destination_register_name == destination_register_name &&
+              move.destination_contiguous_width == destination_contiguous_width &&
+              move.destination_occupied_register_names ==
+                  destination_occupied_register_names &&
+              !move.destination_stack_offset_bytes.has_value() &&
+              move.block_index == block_index &&
+              move.instruction_index == block.insts.size() &&
+              !move.uses_cycle_temp_source &&
+              move.coalesced_by_assigned_storage == coalesced_by_assigned_storage &&
+              !move.source_parallel_copy_step_index.has_value() &&
+              !move.source_immediate_i32.has_value() &&
+              move.op_kind == PreparedMoveResolutionOpKind::Move &&
+              move.authority_kind == PreparedMoveAuthorityKind::None &&
+              move.reason == storage_transfer_reason("return",
+                                                      source_kind,
+                                                      consumed_kind) &&
+              move.destination_register_placement == destination_register_placement &&
+              move.destination_target_register_identity ==
+                  destination_target_register_identity) {
+            move.function_return_authority_kind =
+                function_return_authority_kind;
+          }
+        }
+      }
     }
   }
 }

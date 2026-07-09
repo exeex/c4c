@@ -185,6 +185,7 @@ enum class PreparedMoveAuthorityKind {
   OutOfSsaParallelCopy,
   StackSlotWideningConversion,
   StackDestinationRegisterFanIn,
+  FunctionReturnDestinationHome,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_move_authority_kind_name(
@@ -198,6 +199,8 @@ enum class PreparedMoveAuthorityKind {
       return "stack_slot_widening_conversion";
     case PreparedMoveAuthorityKind::StackDestinationRegisterFanIn:
       return "stack_destination_register_fan_in";
+    case PreparedMoveAuthorityKind::FunctionReturnDestinationHome:
+      return "function_return_destination_home";
   }
   return "unknown";
 }
@@ -225,6 +228,7 @@ struct PreparedMoveResolution {
   std::string reason;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
   std::optional<PreparedTargetRegisterIdentity> destination_target_register_identity;
+  std::optional<PreparedMoveAuthorityKind> function_return_authority_kind;
 };
 
 struct PreparedAbiBinding {
