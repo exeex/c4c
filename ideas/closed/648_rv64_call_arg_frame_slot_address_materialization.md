@@ -1,6 +1,6 @@
 # RV64 Call-Argument Frame-Slot Address Materialization
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/638_rv64_string_label_pointer_runtime_object_correctness.md`
 Related:
@@ -23,6 +23,15 @@ again reaches call-argument setup with a stale `mv a0, s1` copy. Focused
 text-route coverage for `arg.source_selection=local_frame_address_materialization`
 remains green, so the next work is to classify and repair the representative
 call-argument lowering mismatch without reopening local-memory policy.
+
+Completion Note: Closed after repairing the RV64 object-route call-argument
+consumer for explicit `local_frame_address_materialization` source selections.
+Focused dump/text/object coverage proved direct frame-slot address
+materialization into `a0`; representative `src/20000722-1.c` object evidence
+showed the `bar` call now passes `mv a0, sp` instead of the stale source-home
+copy. Close guard passed on matched RV64 before/after logs:
+before passed=88 failed=18 total=106, after passed=89 failed=18 total=107,
+new failing tests=0.
 
 ## Goal
 
