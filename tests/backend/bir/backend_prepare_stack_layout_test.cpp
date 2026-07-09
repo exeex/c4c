@@ -6012,7 +6012,10 @@ struct StackHomeLocalMemoryAuthorityFixture {
 };
 
 StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixture(
-    prepare::PreparedStackHomeLocalMemoryRole role) {
+    prepare::PreparedStackHomeLocalMemoryRole role,
+    std::size_t pointee_extent_size_bytes = 24,
+    std::size_t byte_offset = 8,
+    std::size_t size_bytes = 4) {
   StackHomeLocalMemoryAuthorityFixture fixture;
   fixture.function_name = fixture.names.function_names.intern("stack_home.authority");
   fixture.pointer_value_name =
@@ -6027,7 +6030,13 @@ StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixt
           : bir::MemoryProvenanceBaseIdentityKind::SretParameter;
   const std::string source_kind =
       std::string{prepare::prepared_stack_home_local_memory_role_name(role)};
-  auto requested_range = bir::make_memory_byte_range(8, 4);
+  auto requested_range =
+      bir::make_memory_byte_range(static_cast<std::int64_t>(byte_offset),
+                                  size_bytes);
+  const auto pointer_home_size =
+      role == prepare::PreparedStackHomeLocalMemoryRole::SretParam
+          ? std::size_t{8}
+          : pointee_extent_size_bytes;
 
   fixture.stack_layout.objects.push_back(prepare::PreparedStackObject{
       .object_id = 41,
@@ -6035,7 +6044,7 @@ StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixt
       .value_name = fixture.pointer_value_name,
       .source_kind = source_kind,
       .type = bir::TypeKind::Ptr,
-      .size_bytes = 24,
+      .size_bytes = pointer_home_size,
       .align_bytes = 8,
       .address_exposed = true,
       .requires_home_slot = true,
@@ -6046,7 +6055,7 @@ StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixt
       .object_id = 41,
       .function_name = fixture.function_name,
       .offset_bytes = 32,
-      .size_bytes = 24,
+      .size_bytes = pointer_home_size,
       .align_bytes = 8,
       .fixed_location = true,
   });
@@ -6061,7 +6070,7 @@ StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixt
       .kind = prepare::PreparedValueHomeKind::StackSlot,
       .slot_id = prepare::PreparedFrameSlotId{17},
       .offset_bytes = std::size_t{32},
-      .size_bytes = std::size_t{24},
+      .size_bytes = pointer_home_size,
       .align_bytes = std::size_t{8},
   });
 
@@ -6085,8 +6094,8 @@ StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixt
           prepare::PreparedAddress{
               .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
               .pointer_value_name = fixture.pointer_value_name,
-              .byte_offset = 8,
-              .size_bytes = 4,
+              .byte_offset = static_cast<std::int64_t>(byte_offset),
+              .size_bytes = size_bytes,
               .align_bytes = 8,
               .can_use_base_plus_offset = true,
               .provenance =
@@ -6103,7 +6112,7 @@ StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixt
                           bir::MemoryObjectExtent{
                               .completeness =
                                   bir::MemoryObjectExtentCompleteness::Complete,
-                              .size_bytes = 24,
+                              .size_bytes = pointee_extent_size_bytes,
                               .size_known = true,
                           },
                       .requested_range = requested_range,
@@ -6138,6 +6147,24 @@ int check_stack_home_local_memory_authority_contract() {
           sret_fixture, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return fail("expected prepared sret stack-home local-memory authority");
   }
+  for (const auto extent_size : {std::size_t{6}, std::size_t{16}, std::size_t{24}}) {
+    auto non_pointer_sized_sret_fixture =
+        make_stack_home_local_memory_authority_fixture(
+            prepare::PreparedStackHomeLocalMemoryRole::SretParam,
+            extent_size,
+            std::size_t{0},
+            extent_size >= 8 ? std::size_t{8} : std::size_t{2});
+    if (!stack_home_local_memory_has_authority(
+            non_pointer_sized_sret_fixture,
+            prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
+      return fail("expected sret authority to use the return-pointee extent instead of the 8-byte pointer home");
+    }
+    if (non_pointer_sized_sret_fixture.stack_layout.objects.front().size_bytes != 8 ||
+        non_pointer_sized_sret_fixture.stack_layout.frame_slots.front().size_bytes != 8 ||
+        *non_pointer_sized_sret_fixture.value_locations.value_homes.front().size_bytes != 8) {
+      return fail("expected sret fixture to keep an 8-byte pointer home while varying the return-pointee extent");
+    }
+  }
   if (stack_home_local_memory_has_authority(
           byval_fixture, prepare::PreparedStackHomeLocalMemoryRole::SretParam) ||
       stack_home_local_memory_has_authority(
@@ -6160,41 +6187,73 @@ int check_stack_home_local_memory_authority_contract() {
   }
 
   rejected = byval_fixture;
-  rejected.value_locations.value_homes.clear();
+  rejected.access.address.provenance.object_extent.size_bytes = 16;
   if (stack_home_local_memory_has_authority(
           rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected byval authority to keep matching the stack object extent");
+  }
+
+  rejected = sret_fixture;
+  rejected.value_locations.value_homes.clear();
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return fail("expected missing stack-home value identity to stay fail-closed");
   }
 
-  rejected = byval_fixture;
+  rejected = sret_fixture;
   rejected.stack_layout.frame_slots.clear();
   if (stack_home_local_memory_has_authority(
-          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return fail("expected missing stack-home frame slot to stay fail-closed");
   }
 
-  rejected = byval_fixture;
+  rejected = sret_fixture;
   rejected.stack_layout.objects.front().source_kind = "local_slot";
   if (stack_home_local_memory_has_authority(
-          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return fail("expected mismatched stack-home source kind to stay fail-closed");
   }
 
-  rejected = byval_fixture;
+  rejected = sret_fixture;
+  rejected.stack_layout.objects.front().value_name =
+      rejected.names.value_names.intern("%ret.stale");
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
+    return fail("expected stale sret stack-home source identity to stay fail-closed");
+  }
+
+  rejected = sret_fixture;
+  rejected.access.address.provenance.base_identity.kind =
+      bir::MemoryProvenanceBaseIdentityKind::PointerValue;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
+    return fail("expected missing sret provenance identity to stay fail-closed");
+  }
+
+  rejected = sret_fixture;
   rejected.access.address.provenance.object_extent.size_known = false;
   if (stack_home_local_memory_has_authority(
-          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return fail("expected incomplete stack-home extent to stay fail-closed");
   }
 
-  rejected = byval_fixture;
+  rejected = sret_fixture;
+  rejected.access.address.byte_offset = 22;
   rejected.access.address.provenance.requested_range =
-      bir::make_memory_byte_range(12, 8);
+      bir::make_memory_byte_range(22, 4);
   rejected.access.address.provenance.range_verdict =
       bir::MemoryRangeVerdict::ProvenOutOfBounds;
   if (stack_home_local_memory_has_authority(
-          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
     return fail("expected rejected stack-home range to stay fail-closed");
+  }
+
+  rejected = sret_fixture;
+  rejected.access.address.provenance.requested_range =
+      bir::MemoryByteRange{};
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
+    return fail("expected malformed sret requested range to stay fail-closed");
   }
 
   rejected = byval_fixture;

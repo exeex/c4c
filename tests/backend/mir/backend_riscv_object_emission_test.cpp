@@ -5797,7 +5797,12 @@ prepare::PreparedBirModule make_prepared_pointer_value_f64_local_module() {
   return prepared;
 }
 
-prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
+prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module(
+    bir::TypeKind store_type = bir::TypeKind::I32,
+    std::int64_t byte_offset = 4,
+    std::size_t access_size_bytes = 4,
+    std::size_t sret_pointee_extent_bytes = 8,
+    std::size_t access_align_bytes = 4) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -5810,7 +5815,8 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
   const auto source_name = prepared.names.value_names.intern("%src");
   const auto object_id = prepare::PreparedObjectId{31};
   const auto slot_id = prepare::PreparedFrameSlotId{19};
-  const auto access_range = bir::make_memory_byte_range(4, 4);
+  const auto access_range =
+      bir::make_memory_byte_range(byte_offset, access_size_bytes);
 
   bir::Block entry{
       .label = "entry",
@@ -5818,8 +5824,8 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
           {
               bir::StoreLocalInst{
                   .slot_name = "%lv.result",
-                  .value = bir::Value::named(bir::TypeKind::I32, "%src"),
-                  .align_bytes = 4,
+                  .value = bir::Value::named(store_type, "%src"),
+                  .align_bytes = access_align_bytes,
                   .address =
                       bir::MemoryAddress{
                           .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
@@ -5929,9 +5935,9 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
           .address = prepare::PreparedAddress{
               .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
               .pointer_value_name = pointer_name,
-              .byte_offset = 4,
-              .size_bytes = 4,
-              .align_bytes = 4,
+              .byte_offset = byte_offset,
+              .size_bytes = access_size_bytes,
+              .align_bytes = access_align_bytes,
               .can_use_base_plus_offset = true,
               .provenance =
                   bir::MemoryAccessProvenance{
@@ -5945,7 +5951,7 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
                           bir::MemoryObjectExtent{
                               .completeness =
                                   bir::MemoryObjectExtentCompleteness::Complete,
-                              .size_bytes = 8,
+                              .size_bytes = sret_pointee_extent_bytes,
                               .size_known = true,
                           },
                       .requested_range = access_range,
@@ -18095,6 +18101,72 @@ int builds_prepared_sret_stack_pointer_store_object() {
   return 0;
 }
 
+int expect_prepared_sret_stack_pointer_lane_store_object(
+    bir::TypeKind store_type,
+    std::int64_t byte_offset,
+    std::size_t access_size_bytes,
+    std::size_t sret_pointee_extent_bytes,
+    std::uint32_t expected_store_instruction,
+    std::string_view label) {
+  const auto prepared =
+      make_prepared_sret_stack_pointer_store_module(store_type,
+                                                    byte_offset,
+                                                    access_size_bytes,
+                                                    sret_pointee_extent_bytes,
+                                                    access_size_bytes);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail(std::string{"expected prepared sret stack-homed "} +
+                std::string{label} + " store to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "sret_stack_pointer_store");
+  if (text == nullptr || function == nullptr) {
+    return fail(std::string{"expected prepared sret "} + std::string{label} +
+                " store object to publish text/function");
+  }
+  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
+      function->value != 0 || function->size_bytes != 24 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail(std::string{"expected prepared sret "} + std::string{label} +
+                " store object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00a13023 ||
+      read_u32(text->bytes, 8) != 0x00013383 ||
+      read_u32(text->bytes, 12) != expected_store_instruction ||
+      read_u32(text->bytes, 16) != 0x01010113 ||
+      read_u32(text->bytes, 20) != 0x00008067) {
+    return fail(std::string{"expected sret "} + std::string{label} +
+                " lane to load the pointer home and store through the return pointee");
+  }
+  if (!module->relocations.empty()) {
+    return fail(std::string{"expected prepared sret "} + std::string{label} +
+                " store object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_sret_stack_pointer_integer_lane_store_objects() {
+  if (expect_prepared_sret_stack_pointer_lane_store_object(
+          bir::TypeKind::I8, 0, 1, 6, 0x00638023, "I8 extent-6") != 0) {
+    return 1;
+  }
+  if (expect_prepared_sret_stack_pointer_lane_store_object(
+          bir::TypeKind::I16, 2, 2, 6, 0x00639123, "I16 extent-6") != 0) {
+    return 1;
+  }
+  if (expect_prepared_sret_stack_pointer_lane_store_object(
+          bir::TypeKind::I32, 8, 4, 16, 0x0063a423, "I32 extent-16") != 0) {
+    return 1;
+  }
+  if (expect_prepared_sret_stack_pointer_lane_store_object(
+          bir::TypeKind::I64, 16, 8, 24, 0x0063b823, "I64 extent-24") != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int builds_prepared_sret_stack_pointer_f32_store_object() {
   const auto prepared = make_prepared_sret_stack_pointer_f32_store_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -28827,6 +28899,7 @@ int main() {
   status |= builds_prepared_pointer_value_i8_local_store_object();
   status |= builds_prepared_pointer_value_f64_local_object();
   status |= builds_prepared_sret_stack_pointer_store_object();
+  status |= builds_prepared_sret_stack_pointer_integer_lane_store_objects();
   status |= builds_prepared_sret_stack_pointer_f32_store_object();
   status |= rejects_prepared_sret_stack_pointer_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_i8_local_store_fail_closed_shapes();

@@ -580,8 +580,11 @@ prepared_stack_home_local_memory_base_identity(
   const auto& extent = provenance.object_extent;
   if (!extent.size_known ||
       extent.completeness != bir::MemoryObjectExtentCompleteness::Complete ||
-      extent.size_bytes != stack_object->size_bytes ||
       extent.size_bytes == 0) {
+    return false;
+  }
+  if (role == PreparedStackHomeLocalMemoryRole::ByvalParam &&
+      extent.size_bytes != stack_object->size_bytes) {
     return false;
   }
   const auto& range = provenance.requested_range;
@@ -597,10 +600,11 @@ prepared_stack_home_local_memory_base_identity(
 
   const auto byte_offset =
       static_cast<std::size_t>(access.address.byte_offset);
-  if (byte_offset > stack_object->size_bytes ||
-      stack_object->size_bytes - byte_offset < access.address.size_bytes ||
+  const auto authority_extent_size = extent.size_bytes;
+  if (byte_offset > authority_extent_size ||
+      authority_extent_size - byte_offset < access.address.size_bytes ||
       static_cast<std::size_t>(range.end - range.begin) != access.address.size_bytes ||
-      static_cast<std::size_t>(range.end) > stack_object->size_bytes) {
+      static_cast<std::size_t>(range.end) > authority_extent_size) {
     return false;
   }
 
