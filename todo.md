@@ -1,119 +1,120 @@
 Status: Active
 Source Idea Path: ideas/open/650_edge_store_local_aggregate_publication_ordering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Representative Edge-Store Evidence
+Current Step ID: 2
+Current Step Title: Locate The Publication-Ordering Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 diagnostic refresh for `pr68185.c` and `pr68321.c`.
+Completed Step 2 boundary location for the `%t38.phi` / `%t17.phi`
+edge-store carrier failures in `pr68185.c` and `pr68321.c`.
 
-Artifacts were written under
-`build/agent_state/650_step1_edge_store_evidence/`, including semantic BIR,
-prepared BIR, MIR, MIR trace, RV64 asm/object diagnostics, focused summaries,
-and `summary.md`.
+Classification: the narrow missing owner is RV64 consumer admission for
+authoritative `edge_store_slot` join-transfer carriers, not producer
+destination-access publication and not a split owner at this point.
 
-Current classification: both representatives still point at the idea 650
-family for the RV64 object route. The first object-route owner is edge-store
-local publication ordering / destination-access authority for out-of-SSA
-edge-store carriers, not scalar frame-slot lookup, direct global-symbol local
-memory, aggregate global-object materialization, or stack-home policy.
+The producer side already has the facts needed to distinguish the route:
 
-`pr68185.c` evidence:
+- `pr68185.c`: `%t38` is register-homed in `t0`; the join transfer for
+  `logic.end.34` has `carrier=edge_store_slot`,
+  `ownership=authoritative_branch_pair`, storage `%t38.phi`, and two
+  published predecessor move bundles for `%t36 -> %t38` and `0 -> %t38`.
+- `pr68321.c`: `%t17` is register-homed in `t0`; the join transfer for
+  `logic.end.13` has `carrier=edge_store_slot`,
+  `ownership=authoritative_branch_pair`, storage `%t17.phi`, and two
+  published predecessor move bundles for `%t15 -> %t17` and `1 -> %t17`.
+- `find_store_source_publication_access(...)` cannot find a
+  `PreparedMemoryAccess` for `%t38.phi` / `%t17.phi`, so
+  `plan_prepared_store_source_publication(...)` reports
+  `MissingDestinationAccess`. That status is a symptom of sending the virtual
+  phi carrier through local-memory publication, not proof that a real frame
+  access is missing.
+- The prepared stack/value-home evidence has ordinary scalar frame slots for
+  `%lv.*` locals and register homes for the phi results; there is no real stack
+  object for `%t38.phi` or `%t17.phi` in the focused object route.
 
-- Object diagnostic:
-  `unsupported_local_memory_access ... function=main; block=logic.rhs.end.33; block_index=23; instruction_index=0; access_base=none`.
-- Predecessor edges: `logic.rhs.end.33 -> logic.end.34` and
-  `logic.skip.32 -> logic.end.34`.
-- Edge-store destination/carrier: `%t38.phi`.
-- Consumer point: `%t38 = bir.load_local i32 %t38.phi` in `logic.end.34`.
-- Source values: `%t36` on `logic.rhs.end.33`, immediate `0` on
-  `logic.skip.32`.
-- Available authority: prepared join transfer reports `carrier=edge_store_slot`
-  with `ownership=authoritative_branch_pair`; parallel-copy records exist for
-  both predecessor edges.
-- Missing authority: store-source publications for both edge stores report
-  `status=missing_destination_access` with `intent=store_local_publication`,
-  so RV64 local-memory lookup sees `access_base=none`.
-- Non-owner local slots: `%lv.h` and `%lv.g` already have scalar frame-slot
-  accesses and same-block source freshness where relevant.
+RV64 currently fails because `fragment_for_prepared_instruction(...)` handles
+the carrier `StoreLocalInst` and later carrier `LoadLocalInst` through
+`prepared_memory_access_for_local_instruction(...)` and then
+`fragment_for_prepared_store_local(...)` /
+`fragment_for_prepared_load_local(...)`. With no prepared memory access for the
+virtual carrier, diagnostics report `unsupported_local_memory_access` with
+`access_base=none`.
 
-`pr68321.c` evidence:
+Owned implementation surface for Step 3 should stay in
+`src/backend/mir/riscv/codegen/object_emission.cpp`, around:
 
-- Object diagnostic:
-  `unsupported_local_memory_access ... function=fn1; block=logic.rhs.end.12; block_index=11; instruction_index=0; access_base=none`.
-- Predecessor edges: `logic.rhs.end.12 -> logic.end.13` and
-  `logic.skip.11 -> logic.end.13`.
-- Edge-store destination/carrier: `%t17.phi`.
-- Consumer point: `%t17 = bir.load_local i32 %t17.phi` in `logic.end.13`.
-- Source values: `%t15` on `logic.rhs.end.12`, immediate `1` on
-  `logic.skip.11`.
-- Available authority: prepared join transfer reports `carrier=edge_store_slot`
-  with `ownership=authoritative_branch_pair`; parallel-copy records exist for
-  both predecessor edges.
-- Missing authority: store-source publications for both edge stores report
-  `status=missing_destination_access` with `intent=store_local_publication`,
-  so RV64 local-memory lookup sees `access_base=none`.
-- Non-owner local aggregate/frame-slot read: `%t20 = bir.load_local i32
-  %lv.g.0, addr %lv.g.0` has a scalar frame-slot access; it is downstream of
-  the edge-store owner and is not the first missing authority.
+- the `StoreLocalInst` and `LoadLocalInst` branches in
+  `fragment_for_prepared_instruction(...)`;
+- existing edge-publication helpers such as
+  `prepared_join_transfer_edge_copies_are_published(...)`,
+  `consume_edge_publication_move_intent(...)`, and the
+  `prepared_predecessor_select_publication_bundle_*` admission/materialization
+  helpers;
+- a narrow helper if needed to identify a `StoreLocalInst` / `LoadLocalInst`
+  whose local slot name exactly matches an authoritative
+  `PreparedJoinTransfer` with `carrier_kind=EdgeStoreSlot`, published
+  predecessor edge copies, and a register-homed destination value.
 
-The RV64 asm route for both representatives also reports
-`riscv prepared module emitter does not support this prepared global storage
-layout`; the object-route diagnostic reaches the edge-store local-memory
-boundary above and is the focused Step 1 owner.
+Do not repair this by synthesizing a fake `PreparedMemoryAccess` for
+`%t38.phi` or `%t17.phi`; that would misclassify an out-of-SSA edge carrier as
+ordinary scalar frame-slot local memory.
+
+Focused positive test target shape: a backend RV64 object case with an `i32`
+phi lowered to an `edge_store_slot` carrier where one predecessor stores a
+register-produced value and the other stores an immediate into the carrier
+slot, the phi result is GPR-homed, and the object route emits/materializes the
+predecessor edge moves into the destination register while suppressing the
+carrier `store_local %*.phi` and `load_local %*.phi`. The test should reject
+the current `unsupported_local_memory_access` path and should not require a
+real frame-slot access for the carrier.
 
 ## Suggested Next
 
-Proceed to Step 2 by locating the narrow producer or consumer boundary for
-edge-store carrier destination-access authority. Start from
-`build/agent_state/650_step1_edge_store_evidence/summary.md`, then inspect
-prepared publication production for `%t38.phi` / `%t17.phi` and the RV64
-`StoreLocalInst` access admission path.
+Proceed to Step 3 by implementing the narrow RV64 consumer admission for
+authoritative `edge_store_slot` carriers in `object_emission.cpp`, or stop and
+split only if implementation proves the current prepared control-flow facts do
+not identify the carrier store/load and destination register precisely enough.
 
 ## Watchouts
 
-- Preserve the distinction between authoritative branch-pair join-transfer
-  facts and a usable RV64 local-memory destination access; the former exists,
-  the latter is missing for the edge-store carrier stores.
-- Do not treat ordinary scalar frame-slot accesses for `%lv.g`, `%lv.h`,
-  `%lv.g.0`, or `%lv.c` as the missing edge-store authority.
-- Do not reopen direct global-symbol local memory from idea 631.
-- Do not absorb aggregate global-object materialization from idea 641 or
-  aggregate/sret/byval stack-home policy from idea 633 unless later evidence
-  proves a distinct downstream owner.
-- The initial `commands.log` entries with `rc=127` came from a broken capture
-  wrapper and were immediately rerun with the fixed wrapper; use the second
-  command set as evidence.
-- Do not edit expectations, unsupported markers, allowlists, timeouts,
-  runtime-comparison policy, or pass/fail accounting.
+- Preserve fail-closed behavior for ambiguous predecessor order, missing
+  source-branch/source-transfer indexes, or non-authoritative join-transfer
+  ownership.
+- Reject missing destination ownership or missing/non-register destination
+  homes unless a separately owned stack-destination route is explicitly in
+  scope.
+- Require the carrier `StoreLocalInst` / `LoadLocalInst` slot name to match
+  the join-transfer storage name; lane, slot, or result mismatches must remain
+  unsupported.
+- Require published predecessor edge-copy facts and fresh source intent; stale
+  source values or unavailable edge-publication move intents must remain
+  fail-closed.
+- Scalar-only frame-slot facts for `%lv.*` locals must not authorize
+  edge-store carrier elision, and edge-store carrier authority must not broaden
+  ordinary `StoreLocalInst` / `LoadLocalInst` support.
+- Keep direct global-symbol local memory, aggregate global-object
+  materialization, string-label local memory, and stack-home aggregate policy
+  out of this packet unless a later diagnostic shows a distinct downstream
+  owner.
 
 ## Proof
 
-No pass/fail proof was required or run for this diagnostic packet, and
-`test_after.log` was not overwritten.
+No build or CTest proof was required or run for this diagnostic-only packet,
+and `test_after.log` was not overwritten.
 
-Diagnostic commands and outputs were captured under
-`build/agent_state/650_step1_edge_store_evidence/`. The fixed diagnostic set
-ran:
+Boundary evidence came from:
 
 ```sh
-build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68185.c
-build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68185.c
-build/c4cll --dump-mir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68185.c
-build/c4cll --trace-mir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68185.c
-build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68185.c -o build/agent_state/650_step1_edge_store_evidence/pr68185.s
-build/c4cll --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68185.c -o build/agent_state/650_step1_edge_store_evidence/pr68185.o
-build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68321.c
-build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68321.c
-build/c4cll --dump-mir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68321.c
-build/c4cll --trace-mir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68321.c
-build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68321.c -o build/agent_state/650_step1_edge_store_evidence/pr68321.s
-build/c4cll --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr68321.c -o build/agent_state/650_step1_edge_store_evidence/pr68321.o
+c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/prealloc/publication_plans.cpp build/compile_commands.json
+c4c-clang-tool-ccdb find-definition /workspaces/c4c/src/backend/prealloc/publication_plans.cpp find_store_source_publication_access build/compile_commands.json
+c4c-clang-tool-ccdb find-definition /workspaces/c4c/src/backend/prealloc/publication_plans.cpp plan_prepared_store_source_publication build/compile_commands.json
+c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/riscv/codegen/object_emission.cpp build/compile_commands.json
+c4c-clang-tool-ccdb find-definition /workspaces/c4c/src/backend/mir/riscv/codegen/object_emission.cpp prepared_memory_access_for_local_instruction build/compile_commands.json
 ```
 
-The BIR/prepared/MIR diagnostics exited 0. The asm/object commands exited
-nonzero as expected diagnostic evidence and captured the current RV64 route
-blockers.
+The Step 1 artifacts under
+`build/agent_state/650_step1_edge_store_evidence/` remain the representative
+diagnostic packet for this boundary.
