@@ -8,13 +8,42 @@ Current Step Title: Refresh The Residual Row
 
 ## Just Finished
 
-Activation packet created the active runbook and initialized execution state
-for Step 1.
+Step 1 refreshed the `src/ipa-sra-2.c` RV64 torture residual from the current
+tree with the exact delegated command:
+
+```sh
+(cmake --build --preset default && ALLOWLIST=build/agent_state/643_step1_ipa_sra_2.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1
+```
+
+Result: build completed, the one-row allowlist probe returned nonzero, and the
+row remains failing: `total=1 passed=0 failed=1`.
+
+Artifacts:
+- case log: `build/rv64_gcc_c_torture_backend/src_ipa-sra-2.c/case.log`
+- summary: `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
+- failed list: `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+- work dir: `build/rv64_gcc_c_torture_backend/src_ipa-sra-2.c`
+- C4C object: `build/rv64_gcc_c_torture_backend/src_ipa-sra-2.c/c4c.o`
+- C4C binary: `build/rv64_gcc_c_torture_backend/src_ipa-sra-2.c/c4c.bin`
+- clang control binary:
+  `build/rv64_gcc_c_torture_backend/src_ipa-sra-2.c/clang.bin`
+
+Stage boundary:
+- C4C object compile completed and produced `c4c.o`.
+- ELF sanity completed; the object is ELF64 little-endian RISC-V relocatable
+  with machine `RISC-V`.
+- clang control build completed and the clang binary exited `0`.
+- C4C link completed and produced `c4c.bin`.
+- First observable failure is C4C runtime under QEMU: the comparison reports
+  `clang_exit=0 c4c_exit=Segmentation fault`, with no stdout/stderr payload
+  from either binary.
 
 ## Suggested Next
 
-Execute Step 1: refresh the `src/ipa-sra-2.c` RV64 residual row and record the
-current first owner with artifact paths.
+Execute Step 2: trace the scalar freshness boundary for `src/ipa-sra-2.c`,
+starting from the generated `c4c.o`/`c4c.bin` and case log, and identify the
+prepared value, call instruction, post-call consumed home, clobber facts, and
+expected fresh source.
 
 ## Watchouts
 
@@ -25,7 +54,20 @@ current first owner with artifact paths.
 - Do not weaken call-clobber, preservation, republication, rematerialization,
   expectation, unsupported-marker, allowlist, timeout, or pass/fail accounting
   behavior.
+- The current refresh proves the row reaches runtime, but Step 1 does not by
+  itself prove scalar call-boundary freshness is the first internal owner; Step
+  2 must confirm or reassign that owner from object/disassembly evidence.
 
 ## Proof
 
-Lifecycle-only activation; no build or runtime validation run.
+Proof log: `test_after.log`.
+
+Command:
+
+```sh
+(cmake --build --preset default && ALLOWLIST=build/agent_state/643_step1_ipa_sra_2.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh) > test_after.log 2>&1
+```
+
+The proof is sufficient for this evidence-refresh packet: it rebuilt the tree
+and refreshed the one-row residual boundary. The nonzero exit is the expected
+residual result for a failing allowlist row, not an executor blocker.
