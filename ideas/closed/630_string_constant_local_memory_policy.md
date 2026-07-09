@@ -1,6 +1,6 @@
 # String-Constant Local-Memory Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/614_rv64_pointer_local_memory_consumption.md`
 Related:
@@ -62,6 +62,57 @@ frame-slot local-memory consumer shortcut.
 - Negative proof keeps missing string data authority, global-symbol rows,
   frame-slot-only rows, aggregate homes, unsupported widths, and unrelated
   owners outside this idea.
+
+## Closure Notes
+
+Closed on 2026-07-09 after Step 8 reclassified the ten representative
+string-constant local-memory rows with current evidence.
+
+The accepted evidence is:
+
+- `build/agent_state/630_step8_string_constant.log`
+- `build/agent_state/630_step8_classification.md`
+- `build/agent_state/630_step8_string_label_pointer_rows.tsv`
+- `build/agent_state/630_step8_prepared_access_extract.txt`
+
+All ten representative rows now publish
+`layout_authority=string_constant_label_pointer` for the prior short-string
+pointer-materialization shape. No row still stops at
+`unsupported_local_memory_access`, and no row still shows the prior
+`layout_authority=unknown range_verdict=proven_out_of_bounds` blocker for that
+string-label pointer access.
+
+Rows that consume `StringConstantLabelPointer` and pass:
+
+- `src/20010123-1.c`
+- `src/20030920-1.c`
+- `src/pr35800.c`
+
+Rows that consume `StringConstantLabelPointer` but now belong to out-of-scope
+prepared move-bundle fan-in:
+
+- `src/20011109-2.c`
+- `src/20021204-1.c`
+- `src/920429-1.c`
+- `src/930429-1.c`
+- `src/pr34415.c`
+- `src/ptr-arith-1.c`
+
+`src/20000722-1.c` consumes `StringConstantLabelPointer` and reaches object,
+link, and runtime before failing with
+`[RV64_BACKEND_RUNTIME_MISMATCH]` / c4c segfault. That is runtime/object
+correctness work, not string-constant local-memory admission.
+
+Follow-up split ideas created from the remaining out-of-scope owners:
+
+- `ideas/open/637_prepared_stack_destination_fan_in_authority_producer.md`
+- `ideas/open/638_rv64_string_label_pointer_runtime_object_correctness.md`
+
+The close gate used matching focused backend CTest logs:
+`test_before.log` and `test_after.log` both ran
+`ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_riscv_object_emission)$'`.
+The c4c regression guard passed in non-decreasing mode with 2/2 tests passing
+before and after and no new failures.
 
 ## Reviewer Reject Signals
 
