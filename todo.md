@@ -1,128 +1,108 @@
 Status: Active
 Source Idea Path: ideas/open/633_aggregate_stack_home_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Aggregate Stack-Home Evidence
+Current Step ID: 2
+Current Step Title: Trace Stack-Home Authority Carriers
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed the aggregate/sret/byval/pointer stack-home residual evidence
-from `build/agent_state/614_step3_residual_refresh/local_memory_candidates.allowlist`.
-The copied probe list is
-`build/agent_state/633_step1_aggregate_stack_home.allowlist`; the focused run
-covered all 35 rows and wrote
-`build/agent_state/633_step1_aggregate_stack_home.log`.
+Step 2 traced the aggregate/sret/byval stack-home authority carriers for the
+clean in-scope family, using `src/20020215-1.c` and cross-checking
+`src/pr30185.c` plus `src/pr38969.c`. Evidence extracts:
+`build/agent_state/633_step2_producer_trace.txt` and
+`build/agent_state/633_step2_consumer_trace.txt`.
 
-Current probe result:
-- total rows inspected: 35
-- passed now: `src/20010123-1.c`, `src/20030920-1.c`, `src/pr35800.c`
-- still failing: 32
-- first failing allowlist row: `src/20000722-1.c`, current diagnostic
-  `unsupported_local_memory_access`, but its prepared accesses are
-  register-pointer plus string-constant adjacent, so it is not the aggregate
-  stack-home owner for this idea.
+Producer functions for the BIR copy instructions:
+- `BirFunctionLowerer::materialize_aggregate_param_aliases` in
+  `src/backend/bir/lir_to_bir/aggregate.cpp` emits
+  `*.aggregate.param.copy.<offset>` `LoadLocalInst` from the byval pointer
+  parameter and a following `StoreLocalInst` into the local aggregate leaf.
+- `BirFunctionLowerer::try_lower_local_store` byval aggregate branch in
+  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` emits
+  `*.byval.copy.<offset>` `LoadLocalInst` from the byval pointer value and a
+  following `StoreLocalInst` into the local leaf.
+- `BirFunctionLowerer::lower_block_terminator` in
+  `src/backend/bir/lir_to_bir/module.cpp` emits `*.ret.sret.copy.<offset>`
+  copy pairs through `append_local_aggregate_copy_to_pointer` when returning an
+  aggregate through `%ret.sret`.
 
-Fresh Step 1 extracts:
-- `build/agent_state/633_step1_current_diagnostics.tsv`
-- `build/agent_state/633_step1_prepared_access_summary.tsv`
-- `build/agent_state/633_step1_pointer_access_home_summary.tsv`
-- `build/agent_state/633_step1_stack_home_rows.tsv`
-- representative prepared dumps:
-  `build/agent_state/633_step1_20020215-1.prepared.txt`,
-  `build/agent_state/633_step1_pr30185.prepared.txt`,
-  `build/agent_state/633_step1_pr38969.prepared.txt`,
-  `build/agent_state/633_step1_struct-ret-1.prepared.txt`, plus adjacent
-  stack-home/F128 mixed representatives under the same prefix.
+Prepared carrier publication:
+- `build_function_memory_accesses` in
+  `src/backend/prealloc/stack_layout/coordinator.cpp` constructs
+  `PreparedMemoryAccess` entries for the copy instructions through
+  `build_pointer_indirect_access` before falling back to direct frame-slot
+  access construction.
+- For `src/20020215-1.c`, the pointer-side prepared accesses are
+  `base=pointer_value`, `pointer=%p.s` or `%ret.sret`, selected offsets
+  `0,2,3,4,5,6,7,8,16,18,19,20,21,22,23`, sizes `1,2,8`,
+  `base_plus_offset=yes`, and `range_verdict=proven_in_bounds`.
+- The store-source table records same-block producer freshness for the copied
+  values: `source_producer=load_local`,
+  `source_freshness_authority=producer_rematerialization`, and
+  `source_freshness_proof=same_block_before_use`.
+- Cross-checks in `pr30185` and `pr38969` have the same carrier shape:
+  pointer-side byval/sret accesses with stack-slot homes and exact selected
+  offsets/sizes, paired with frame-slot local leaf stores.
 
-In-scope stack-home rows with visible stack-slot pointer homes:
-- `src/20020215-1.c`: `sret(size=24, align=8) %ret.sret` and
-  `byval(size=24, align=8) %p.s`; visible stack homes `%ret.sret` and `%p.s`;
-  offsets `0,2,3,4,5,6,7,8,16,18,19,20,21,22,23`; access sizes `1,2,8`;
-  current diagnostic `unsupported_local_memory_access: ... requires prepared
-  frame-slot or pointer-value base-plus-offset local memory addressing`.
-- `src/921117-1.c`: `byval(size=16, align=4) %p.p`; visible stack home
-  `%p.p`; offsets `0..12`; access sizes `1,4`; same local-memory diagnostic.
-- `src/950628-1.c`: `sret` stack home `%ret.sret`; offsets `0..4`; access
-  sizes `1,2`; same local-memory diagnostic.
-- `src/pr30185.c`: `sret(size=16, align=8) %ret.sret` plus byval stack homes
-  `%p.x` and `%p.y`; offsets `0..8`; access sizes `1,8`; same local-memory
-  diagnostic.
-- `src/pr38969.c`: byval stack home `%p.x` and return home `%ret.sret`;
-  offsets `0,4`; access size `4`; same local-memory diagnostic.
-- `src/pr52129.c`: byval stack home `%p.s`; offsets `0,8,12,13,14,15`;
-  access sizes `1,4,8`; same local-memory diagnostic.
-- `src/pr60017.c`: return home `%ret.sret`; offsets `0,4,5,6,7,8,10,12,14`;
-  access sizes `1,2,4`; same local-memory diagnostic.
+Fields already carried:
+- source value and stored/result value: `PreparedMemoryAccess::result_value_name`
+  or `stored_value_name`, plus same-block store-source freshness facts.
+- pointer/home identity: `PreparedAddress::pointer_value_name` names `%p.s`,
+  `%p.x`, `%p.y`, or `%ret.sret`; `PreparedValueHome` and
+  `PreparedStackObject` identify the stack-slot home.
+- frame slot/home slot: `PreparedValueHome::slot_id`,
+  `PreparedFrameSlot::slot_id`, `PreparedFrameSlot::offset_bytes`, and matching
+  `PreparedStackObject::object_id`.
+- selected byte facts: `PreparedAddress::byte_offset`, `size_bytes`,
+  `align_bytes`, and `can_use_base_plus_offset`.
+- ABI role: currently carried indirectly by `PreparedStackObject::source_kind`
+  values `byval_param` and `sret_param`.
+- object extent: available through `PreparedValueHome::size_bytes` and
+  `PreparedStackObject::size_bytes`; access range is visible as
+  `PreparedAddress::provenance.requested_range`.
 
-Mixed or out-of-scope stack-home-adjacent rows:
-- `src/20010605-2.c`: stack home `%p.x`, but first rejection is unsupported
-  16-byte local-memory width; route to F128/16-byte width policy before this
-  stack-home consumer.
-- `src/complex-7.c`: stack homes `%p.a1` through `%p.a5`, but the row mixes
-  4/8-byte accesses with 16-byte accesses and global-symbol traffic; keep as a
-  mixed aggregate/global/16-byte residual until Step 2 proves a clean shared
-  carrier.
-- `src/pr58984.c`: stack home `%p.p` plus register pointer home `%t14` and
-  global-symbol accesses; classify as mixed local/global publication until a
-  carrier trace separates the stack-home accesses.
-- `src/struct-ret-1.c`: byval homes `%p.a`, `%p.d` and `sret` home
-  `%ret.sret`, but also heavy global aggregate-object traffic; useful as a
-  later negative/mixed representative, not the first clean packet.
-
-Other inspected rows classified out of Step 2 scope:
-- Move-bundle fan-in or stack-destination authority: `src/20011109-2.c`,
-  `src/20021204-1.c`, `src/920429-1.c`, `src/930429-1.c`,
-  `src/pr34415.c`, `src/ptr-arith-1.c`.
-- 16-byte/F128 width: `src/20040208-1.c`, `src/ieee/inf-1.c`.
-- Large-offset/register pointer homes: `src/ipa-sra-2.c`, `src/pr60822.c`.
-- String/global/direct-global/pointer-loaded-from-global/global-object rows:
-  `src/20000722-1.c`, `src/20010123-1.c`, `src/20030920-1.c`,
-  `src/20021204-1.c`, `src/920429-1.c`, `src/pr35800.c`,
-  `src/pr46309.c`, `src/pr49073.c`, `src/pr57861.c`, `src/pr58431.c`,
-  `src/pr66556.c`, `src/pr68185.c`, `src/pr68321.c`,
-  `src/pr70005.c`, `src/pr88739.c`.
-- `src/941110-1.c` remains a plain frame-slot-looking local-memory rejection
-  with no stack-home pointer row in the refreshed pointer-home summary; do not
-  use it as aggregate stack-home evidence without a separate trace.
-
-First missing/rejecting boundary for the clean in-scope family:
-- The prepared text already exposes source value names, destination homes,
-  stack-slot homes, offsets, and access sizes through aggregate/byval/sret copy
-  instructions such as `addr %p.s+8` and `addr %ret.sret+8`.
-- The current RV64 diagnostic still rejects these as not being prepared
-  frame-slot or pointer-value base-plus-offset local memory.
-- Step 1 did not find an explicit memory-use authority fact tying those
-  byval/sret stack-home fields to a consumable prepared local-memory authority.
-  That is the producer/carrier boundary to trace next.
+First missing or ambiguous boundary:
+- Producer publication is partly present but not yet a single explicit
+  memory-use authority predicate for aggregate stack-home local memory.
+  The prepared accesses still print `layout_authority=unknown`, and the
+  existing RV64 byval/sret helpers rely on stack-home shape plus
+  `PreparedStackObject::source_kind` rather than a named authority predicate
+  analogous to direct-global or string local-memory authority.
+- The smallest semantic next boundary is prepared-layer verification or
+  publication of an explicit stack-home local-memory authority predicate over
+  this existing carrier shape. It should accept only pointer-value bases whose
+  home, frame slot, object extent, ABI role, byte offset, size, and range match
+  the selected byval/sret aggregate lane.
 
 ## Suggested Next
 
-Step 2 executor packet: trace the stack-home authority carriers for the clean
-byval/sret stack-slot family, using `src/20020215-1.c` as the first
-representative and cross-checking `src/pr30185.c` and `src/pr38969.c`.
-Find the producer functions and carrier fields that should publish source
-value, destination home, stack slot, selected offset, size, ABI role, and
-memory-use authority before RV64 object emission.
+Step 3 code packet: add focused prepared-layer coverage, and if needed a small
+producer-side helper, for explicit aggregate stack-home local-memory authority.
+The packet should prove the byval `%p.s` load and sret `%ret.sret` store lanes
+from `src/20020215-1.c`-shaped prepared data preserve pointer/home identity,
+stack object source kind, frame slot, selected offset, size, alignment, complete
+object extent, proven in-bounds range, and same-block copied-value freshness.
+If a helper is added, keep it semantic and reusable, for example
+`prepared_stack_home_local_memory_has_authority(...)`, rather than matching
+source filenames or copy-name spelling.
 
 ## Watchouts
 
-Do not treat the first failing row (`src/20000722-1.c`) as the Step 2 target;
-it is string/register-pointer adjacent rather than aggregate stack-home.
-Keep 16-byte/F128 rows, global-object rows, pointer-loaded-from-global rows,
-move-bundle fan-in rows, large-offset pointer rows, and plain frame-slot rows
-outside the first stack-home carrier trace unless fresh evidence shows the
-same explicit authority shape.
+Fail closed for missing home identity, missing or stale copied source value,
+missing frame slot, mismatched `PreparedStackObject::source_kind`, incomplete
+offset/size/alignment, requested range not proven in bounds, ambiguous aggregate
+lane, unsupported ABI role, non-default address space, volatile access, and
+misclassified pointer-value homes.
+
+Keep F128/16-byte rows, outgoing stack args, pointer-result calls,
+return-destination-only rows, string/global rows, global-object traffic,
+large-offset pointer rows, and move-bundle fan-in rows out of the first
+prepared-authority packet.
 
 ## Proof
 
-Ran the delegated evidence command:
-
-```sh
-cmake --build --preset default && ALLOWLIST=build/agent_state/614_step3_residual_refresh/local_memory_candidates.allowlist BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/633_step1_aggregate_stack_home.log 2>&1
-```
-
-The build succeeded; the focused residual probe returned nonzero because 32 of
-35 rows still fail by design for this evidence refresh. No new root-level
-`.log` file was created.
+No build proof required for this trace-only packet. Used existing Step 1
+prepared dumps and focused source/AST-backed queries; no root-level `.log` file
+was created.
