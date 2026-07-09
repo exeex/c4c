@@ -17932,6 +17932,12 @@ int publishes_legal_select_stack_destination_register_fan_in_authority() {
     return fail("authorized select stack-destination fan-in should emit, got `" +
                 emitted.diagnostic + "`");
   }
+  const auto* text = object::find_section(*emitted.module, ".text");
+  if (text == nullptr ||
+      !contains_u32(text->bytes, 0x00512823) ||
+      !contains_u32(text->bytes, 0x01212823)) {
+    return fail("authorized select stack-destination fan-in should emit both register-source stores");
+  }
 
   return 0;
 }

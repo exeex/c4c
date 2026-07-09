@@ -435,13 +435,21 @@ int verify_move_bundle_consumer_status_names() {
                          MissingMoveBundleSourceFreshness) ==
                      "missing_move_bundle_source_freshness" &&
                  prepare::prepared_object_move_bundle_consumer_status_name(
-                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                 prepare::PreparedObjectMoveBundleConsumerStatus::
                          AmbiguousMoveBundleSourceFreshness) ==
                      "ambiguous_move_bundle_source_freshness" &&
                  prepare::prepared_object_move_bundle_consumer_status_name(
                      prepare::PreparedObjectMoveBundleConsumerStatus::
                          AmbiguousNonParallelMultiSourceStackDestination) ==
-                     "ambiguous_non_parallel_multi_source_stack_destination",
+                     "ambiguous_non_parallel_multi_source_stack_destination" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         UnsupportedNonParallelMultiSourceStackDestinationAuthority) ==
+                     "unsupported_non_parallel_multi_source_stack_destination_authority" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         MismatchedStackDestinationRegisterFanInMoveAuthority) ==
+                     "mismatched_stack_destination_register_fan_in_move_authority",
              "prepared object move-bundle consumer status names should remain stable")
              ? 0
              : 1;
@@ -522,6 +530,14 @@ int verify_consumer_diagnostic_category_names() {
                      prepare::PreparedObjectConsumerDiagnosticCategory::
                          AmbiguousNonParallelMultiSourceStackDestination) ==
                      "ambiguous_non_parallel_multi_source_stack_destination" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         UnsupportedNonParallelMultiSourceStackDestinationAuthority) ==
+                     "unsupported_non_parallel_multi_source_stack_destination_authority" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         MismatchedStackDestinationRegisterFanInMoveAuthority) ==
+                     "mismatched_stack_destination_register_fan_in_move_authority" &&
                  prepare::prepared_object_consumer_diagnostic_category_name(
                      prepare::PreparedObjectConsumerDiagnosticCategory::
                          MissingFrameSlotOwner) == "missing_frame_slot_owner",
