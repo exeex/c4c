@@ -8140,8 +8140,8 @@ int check_branch_stack_load_authority_contract() {
   bir::Function prepared_function;
   prepared_function.name = "branch_stack_load_collector";
   bir::Block prepared_entry;
-  prepared_entry.label = "entry";
-  prepared_entry.label_id = c4c::kInvalidBlockLabel;
+  prepared_entry.label = "lowered_entry_payload";
+  prepared_entry.label_id = prepared_entry_label;
   prepared_entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "%tmp0"),

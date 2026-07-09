@@ -2,6 +2,7 @@
 
 #include "mir/query.hpp"
 
+#include "lookup_agreement.hpp"
 #include "module.hpp"
 #include "select_chain_lookups.hpp"
 
@@ -3354,15 +3355,14 @@ namespace {
     BlockLabelId block_label);
 
 [[nodiscard]] const bir::Block* branch_stack_load_bir_block_by_label(
-    const PreparedNameTables& names,
+    const PreparedBirModule& prepared,
     const bir::Function& function,
     BlockLabelId block_label) {
   if (block_label == kInvalidBlockLabel) {
     return nullptr;
   }
   for (const auto& block : function.blocks) {
-    if (block.label_id == block_label ||
-        prepared_block_label_id(names, block) == block_label) {
+    if (compatible_prepared_bir_block_label_id(prepared, block) == block_label) {
       return &block;
     }
   }
@@ -3535,7 +3535,7 @@ collect_prepared_branch_stack_load_authorities(
     for (const auto& branch_condition : function_cf.branch_conditions) {
       const auto* block =
           bir_function != nullptr
-              ? branch_stack_load_bir_block_by_label(prepared.names,
+              ? branch_stack_load_bir_block_by_label(prepared,
                                                      *bir_function,
                                                      branch_condition.block_label)
               : nullptr;
@@ -4201,7 +4201,7 @@ PreparedFrameSlotSourceFactRecords collect_prepared_frame_slot_source_facts(
     for (const auto& branch_condition : function_cf.branch_conditions) {
       const auto* block =
           bir_function != nullptr
-              ? branch_stack_load_bir_block_by_label(prepared.names,
+              ? branch_stack_load_bir_block_by_label(prepared,
                                                      *bir_function,
                                                      branch_condition.block_label)
               : nullptr;
