@@ -149,15 +149,60 @@ Completion check:
 
 - `todo.md` records representative proof and any remaining downstream owner.
 
-### Step 5: Run Broader Validation And Close Or Park
+### Step 5: Implement Packed Bitfield Layout And Access Production
 
-Goal: Decide whether the source idea is complete after focused and
+Goal: Repair the upstream packed bitfield aggregate producer so the
+representative file-scope globals have a 9-byte semantic object layout and
+range-valid packed accesses.
+
+Actions:
+
+- Teach the HIR-to-LIR/BIR layout path to represent `#pragma pack(1)`
+  all-bitfield aggregates like the representative as 9-byte semantic objects
+  when layout authority proves that packed size.
+- Lower bitfield accesses for that packed representation through byte-lane
+  accesses or another range-valid packed access model.
+- Preserve fail-closed behavior for missing packed layout facts, incomplete
+  access identity, unsupported bitfield spans, or access ranges that no longer
+  fit the packed object.
+- Add focused positive and fail-closed coverage for the producer-side packed
+  layout/access rule before relying on RV64 object emission proof.
+
+Completion check:
+
+- Fresh build plus focused producer/layout coverage passes, and `todo.md`
+  records whether the representative now exposes 9-byte globals plus
+  range-valid packed accesses before RV64 object emission.
+
+### Step 6: Reprove Representative Integration
+
+Goal: Show `src/pr79737-2.c` advances through the packed global object-size
+and access mismatch after the producer repair.
+
+Actions:
+
+- Rerun focused packed-global coverage plus the RV64 GCC torture backend route
+  for `src/pr79737-2.c`.
+- Capture HIR/LIR/BIR, object, symbol, and disassembly evidence showing both
+  packed globals use the 9-byte representation and the relevant accesses
+  preserve packed semantics.
+- Record any distinct downstream owner if the representative advances but does
+  not fully satisfy the source idea.
+
+Completion check:
+
+- `todo.md` records representative proof with 9-byte `i` and `j` object
+  evidence, packed access evidence, and any remaining downstream owner.
+
+### Step 7: Run Broader Validation And Close Or Park
+
+Goal: Decide whether the source idea is complete after focused, producer, and
 representative proof.
 
 Actions:
 
-- Run the supervisor-selected broader validation for the affected RV64 backend
-  scope after focused proof is green.
+- Run the supervisor-selected broader validation for the affected frontend,
+  LIR/BIR, and RV64 backend scope after focused proof is green.
 - If acceptance criteria are satisfied, request plan-owner close with
   regression-guard proof.
 - If a distinct downstream owner remains, record it in `todo.md` and request a

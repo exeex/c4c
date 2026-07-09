@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/651_rv64_packed_bitfield_global_layout_access.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Representative Integration
+Current Step ID: 5
+Current Step Title: Implement Packed Bitfield Layout And Access Production
 
 # Current Packet
 
@@ -35,12 +35,25 @@ offset-8 4-byte access authority inconsistent.
 
 ## Suggested Next
 
-Execute a narrow layout/access producer packet for packed bitfield aggregates:
-teach the HIR-to-LIR/BIR layout path to represent the representative
-`#pragma pack(1)` all-bitfield aggregate as a semantic 9-byte object and lower
-its bitfield accesses through byte-lane or otherwise range-valid packed
-accesses. Keep it fact-driven and add focused coverage before returning to RV64
-object emission proof.
+Execute plan Step 5, `Implement Packed Bitfield Layout And Access Production`.
+
+Objective: repair the producer-side packed bitfield aggregate layout and access
+model so the representative `#pragma pack(1)` all-bitfield aggregate is a
+semantic 9-byte object and its bitfield accesses lower through byte-lane or
+otherwise range-valid packed accesses.
+
+Primary targets to inspect before editing:
+
+- `src/frontend/hir/hir_types.cpp`, where current evidence reports
+  `struct S size=12 align=1` with three 32-bit bitfield storage units.
+- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, where current evidence emits
+  `%struct.S = type <{ i32, i32, i32 }>` and passes a 12-byte extent onward.
+- The BIR/prepared access production path that records global-symbol accesses
+  and range authority for the packed aggregate.
+
+Expected packet result: focused producer/layout coverage proves the packed
+9-byte object and compatible range-valid access lowering before returning to
+RV64 object integration proof.
 
 ## Watchouts
 
