@@ -1,5 +1,5 @@
 # F128 And 16-Byte Local-Memory Width Policy
-
+| 開發者註記：先別碰f128這個大坑 把他從open移動到draft 之後專項計畫一次解決
 Status: Open
 Type: Implementation
 Parent: `ideas/closed/614_rv64_pointer_local_memory_consumption.md`
