@@ -8,60 +8,62 @@ Current Step Title: Residual Split Or Close-Readiness Classification
 
 ## Just Finished
 
-Executed Step 3, `Broaden Within Selected Pointer Authority`, as a residual
-refresh after the frame-slot local-memory consumer slice. No implementation
-files were changed.
+Executed Step 4, `Residual Split Or Close-Readiness Classification`, for idea
+614. No implementation, plan, idea, expectation, allowlist, unsupported-marker,
+timeout, or accounting files were changed.
 
-Refresh command and artifacts:
+Residual evidence inspected:
 
-- Candidate set: the `35` prior `unsupported_local_memory_access` rows from
+- Reused the Step 3 residual probe artifacts under
+  `build/agent_state/614_step3_residual_refresh/`.
+- Candidate set: `35` prior `unsupported_local_memory_access` rows from
   `build/agent_state/612_step3_failure_reason_rows.tsv`.
-- Probe command:
+- Probe command recorded by Step 3:
   `ALLOWLIST=build/agent_state/614_step3_residual_refresh/local_memory_candidates.allowlist STOP_ON_FAILURE=0 VERBOSE_FAILURES=0 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/614_step3_residual_refresh/probe.log 2>&1 || true`
-- Result: `0/35` passed; all `35` still stop at
+- Result remained `0/35` passed; all `35` still stop at
   `unsupported_local_memory_access`.
 
-Current first diagnostic split:
+Close-readiness classification:
 
-- `32` rows: `unsupported_local_memory_access: RV64 object route requires
-  prepared frame-slot or pointer-value base-plus-offset local memory
-  addressing`.
-- `3` rows: `unsupported_local_memory_access: RV64 object route supports only
-  1-, 2-, 4-, and 8-byte prepared local memory accesses`
-  (`src/20010605-2.c`, `src/20040208-1.c`, `src/ieee/inf-1.c`).
+- Close/retire idea 614 as an RV64 selected pointer/local-memory consumer
+  route. The completed frame-slot consumer slice was bounded semantic progress,
+  and the refreshed residuals do not expose another in-scope family with
+  complete selected authority and meaningful breadth.
+- Do not implement another 614 consumer packet from the remaining rows. The
+  remaining failures are better described as policy or producer/publication
+  gaps, unsupported width coverage, aggregate stack-home policy, or unusually
+  large selected offsets, not as straightforward RV64 consumption of already
+  complete selected local-memory authority.
 
-Prepared-addressing split from focused dumps:
+Residual split recommendations:
 
-- String-constant local-memory base rows:
-  `src/20000722-1.c`, `src/20010123-1.c`, `src/20011109-2.c`,
-  `src/20021204-1.c`, `src/20030920-1.c`, `src/920429-1.c`,
-  `src/930429-1.c`, `src/pr34415.c`, `src/pr35800.c`, and
-  `src/ptr-arith-1.c`.
-- Global-symbol local-memory base rows:
-  `src/20021204-1.c`, `src/920429-1.c`, `src/921117-1.c`,
-  `src/complex-7.c`, `src/pr46309.c`, `src/pr49073.c`,
-  `src/pr57861.c`, `src/pr58431.c`, `src/pr58984.c`,
-  `src/pr60017.c`, `src/pr60822.c`, `src/pr66556.c`,
-  `src/pr68185.c`, `src/pr68321.c`, `src/pr70005.c`,
-  `src/pr88739.c`, and `src/struct-ret-1.c`.
-- Pointer-value-only supported-width rows:
-  `src/20020215-1.c`, `src/950628-1.c`, `src/ipa-sra-2.c`,
-  `src/pr30185.c`, `src/pr38969.c`, and `src/pr52129.c`. These do not form a
-  clean Step 3 implementation packet: the stack-home cases are sret/byval or
-  aggregate homes deliberately excluded by the current RV64 helper, and the
-  register-base case includes a large selected offset beyond the current
-  immediate/base-offset consumer shape.
-- Frame-slot-only supported-width outlier:
-  `src/941110-1.c`; prepared facts show selected frame-slot accesses only, but
-  the remaining rejection is not a broad adjacent pointer-value family.
+- Create or reuse a durable string-constant local-memory policy route for rows
+  with `string_constant` local-memory bases: `src/20000722-1.c`,
+  `src/20010123-1.c`, `src/20011109-2.c`, `src/20021204-1.c`,
+  `src/20030920-1.c`, `src/920429-1.c`, `src/930429-1.c`,
+  `src/pr34415.c`, `src/pr35800.c`, and `src/ptr-arith-1.c`.
+- Create or reuse a durable direct global-symbol local-memory policy route for
+  rows with `global_symbol` local-memory bases. Existing idea 621 covers
+  prepared global value-location consumption, but its source explicitly excludes
+  direct global-symbol base-plus-offset authority, so these rows need distinct
+  ownership unless refreshed diagnostics prove they now match idea 621.
+- Split unsupported 16-byte/F128 local-memory width rows separately:
+  `src/20010605-2.c`, `src/20040208-1.c`, and `src/ieee/inf-1.c`;
+  `src/complex-7.c` should stay guarded because it mixes global-symbol and
+  16-byte evidence.
+- Keep sret/byval or aggregate pointer stack-home local-memory rows out of 614
+  unless a later producer/policy route publishes explicit stack-home authority
+  for local-memory use.
+- Split large selected pointer-offset rows separately, represented by
+  `src/ipa-sra-2.c` and `src/pr60822.c`; do not fold large-offset materializing
+  policy into the narrow local-memory consumer route.
 
 ## Suggested Next
 
-Do not implement a Step 3 consumer from this refresh. Hand off to plan owner or
-supervisor for Step 4 residual split/close-readiness classification. The
-durable split candidates are string-constant local-memory policy, global-symbol
-local-memory policy, unsupported 16-byte/F128 local-memory width, sret/byval or
-aggregate pointer stack-home policy, and large selected pointer offsets.
+Hand off to the plan owner to close or retire idea 614 and record the residual
+splits. If the plan owner keeps 614 open, the next packet should first name a
+specific complete-authority local-memory consumer family with broader evidence
+than the residuals above; none was found in this Step 4 classification.
 
 ## Watchouts
 
@@ -69,10 +71,11 @@ aggregate pointer stack-home policy, and large selected pointer offsets.
   and helpers. Treat rows still failing here as missing adjacent policy or
   excluded selected-authority shapes unless a later packet proves a broad,
   complete-authority consumer family.
-- Do not fold string constants, global symbols, sret/byval stack homes, large
-  offsets, unsupported 16-byte widths, BIR producer repair, direct pointer
-  arithmetic policy, ABI, branch/select, runtime, expectation, unsupported
-  marker, allowlist, timeout, or accounting work into this RV64 consumer route.
+- Do not fold string constants, global symbols, sret/byval stack homes,
+  aggregate homes, large offsets, unsupported 16-byte widths, BIR producer
+  repair, direct pointer arithmetic policy, ABI, branch/select, runtime,
+  expectation, unsupported marker, allowlist, timeout, or accounting work into
+  this RV64 consumer route.
 - `src/complex-7.c` has both global-symbol rows and 16-byte local-memory width
   evidence; keep it out of any narrow width-only claim.
 
