@@ -1,6 +1,6 @@
 # Aggregate Stack-Home Local-Memory Policy
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/614_rv64_pointer_local_memory_consumption.md`
 Related:
@@ -71,3 +71,32 @@ plain selected frame-slot access.
   accounting changes as capability progress.
 - Reject helper renames or diagnostic wording changes that leave stack-home
   local-memory authority missing.
+
+## Closure Notes
+
+Closed after the aggregate stack-home runbook moved the verified byval/sret
+stack-home local-memory families past the local-memory owner or reclassified
+the remaining rows into existing residual owners.
+
+Final Step 11 evidence:
+- `src/20020215-1.c`, `src/950628-1.c`, `src/pr30185.c`, and
+  `src/pr60017.c` moved from `unsupported_local_memory_access` to
+  `unsupported_call_abi`.
+- `src/pr38969.c` and `src/struct-ret-1.c` had already moved past stack-home
+  local memory in Step 8.
+- `src/941110-1.c` did not move, but current prepared evidence shows ordinary
+  local-slot/frame-slot pointer publication with an unknown-layout 8-byte
+  pointer store rather than byval/sret stack-home authority. It is documented
+  here as a possible future residual, not included in idea 633 scope.
+
+The remaining failures are owned by later call ABI/call-instruction work or by
+existing residual ideas for move-bundle fan-in, F128/16-byte width policy,
+pointer-loaded-from-global local memory, large selected pointer offsets,
+branch stack-load clobber safety, aggregate global materialization, mixed
+local/global publication, and runtime/global mismatch.
+
+Close gate:
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_stack_layout)$' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, before `passed=2 failed=0 total=2`, after
+  `passed=2 failed=0 total=2`.
