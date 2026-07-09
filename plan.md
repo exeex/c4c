@@ -159,7 +159,34 @@ Completion check:
   stack loads without explicit selected freshness plus clobber-safety
   authority.
 
-## Step 5: Reclassify Residual Branch Stack-Source Rows
+## Step 5: Publish Call-Preservation-Aware Clobber-Safety Authority
+
+Goal: extend prepared producer-side clobber-safety proof for selected branch
+stack sources only when an intervening call or helper has explicit same-slot
+preservation evidence for the selected source.
+
+Actions:
+- Start from the five selected-freshness rows that still fail closed at
+  `missing_stack_clobber_safety`: `src/loop-2e.c`, `src/pr39100.c`,
+  `src/20140828-1.c`, `src/20080519-1.c`, and `src/20050125-1.c`.
+- Trace producer-side clobber rejection for calls and helper instructions that
+  currently invalidate selected branch stack sources.
+- Admit preservation only from explicit prepared evidence that names the same
+  stack slot, selected source identity, and branch use point; do not infer
+  preservation from call shape, stack offsets, final assembly, or source file.
+- Preserve fail-closed behavior for calls/helpers without explicit
+  preservation, with mismatched slots, with stale source identity, or with
+  contradictory clobber evidence.
+- Add focused positive and negative prepared-layer coverage for preserved-call
+  and non-preserved-call cases before relying on backend row movement.
+
+Completion check:
+- At least one same-family row moves past `missing_stack_clobber_safety` through
+  prepared producer authority, negative tests prove calls/helpers remain
+  fail-closed without explicit same-slot preservation, and `todo.md` records
+  any remaining rows by first owner.
+
+## Step 6: Reclassify Residual Branch Stack-Source Rows
 
 Goal: decide whether idea `635` is complete, needs another clobber-safety
 packet, or should split remaining work into separate initiatives.

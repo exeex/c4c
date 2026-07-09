@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/635_prepared_branch_stack_clobber_safety_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Admit Only Explicitly Safe Branch Stack Loads
+Current Step ID: 5
+Current Step Title: Publish Call-Preservation-Aware Clobber-Safety Authority
 
 # Current Packet
 
@@ -28,20 +28,24 @@ are under `build/agent_state/635_step4_*`, with the rollup in
 
 ## Suggested Next
 
-The next coherent packet should return to the producer side or split a follow-up
-for call-preservation-aware branch stack clobber safety. For example,
-`src/loop-2e.c` has an intervening same-module call that explicitly preserves
-`%t23` in the same stack slot, but the current prepared clobber-safety proof
-still treats call/helper instructions as fail-closed.
+Execute plan Step 5 in the prepared producer layer. Start with the five
+selected-freshness rows that still stop at `missing_stack_clobber_safety`, and
+trace call/helper rejection to the smallest producer-side packet that can admit
+only explicit same-slot preservation evidence. For example, `src/loop-2e.c` has
+an intervening same-module call that explicitly preserves `%t23` in the same
+stack slot, but the current prepared clobber-safety proof still treats
+call/helper instructions as fail-closed.
 
 ## Watchouts
 
 No consumer change was made. Admitting the five remaining rows from RV64 would
 require bypassing prepared `Available` authority or inferring safety from stack
 homes/offsets/final shape, which is out of scope and would weaken the
-fail-closed rule. `src/20001017-1.c` and `src/20000314-3.c` should not be
-counted as Step 4 consumer blockers because their selected pointer branch
-authority is already available.
+fail-closed rule. Step 5 must preserve fail-closed behavior for calls/helpers
+without explicit same-slot preservation, with stale source identity, or with
+contradictory clobber evidence. `src/20001017-1.c` and `src/20000314-3.c`
+should not be counted as Step 4 consumer blockers because their selected
+pointer branch authority is already available.
 
 ## Proof
 
