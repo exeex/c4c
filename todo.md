@@ -1,53 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/655_stack_destination_fan_in_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Split Residuals Into Authority Seams
+Current Step ID: 3
+Current Step Title: Define Focused Probe Files
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: split the residual non-637 stack-destination fan-in rows
-from `build/agent_state/647_step2_family_revision/` into authority seams.
-Existing evidence does not prove a legal non-637 producer fact for any
-implementation packet, so no Step 3 implementation packet is selected.
+Completed Step 3: defined focused backend probe file specifications for the
+four authority seams before any shared producer implementation. These are
+probe specifications only; no test files, implementation files, expectations,
+unsupported markers, or build outputs were changed.
 
-Seam inventory:
+Focused probe specifications:
 
-| Target | Consumer point | Classification | Producer fact that would prove authority | Fail-closed negative state |
+| Seam | Proposed file under `tests/backend/case/` | Primary authority contract | Expected producer fact shape | Why outside idea 637 |
 | --- | --- | --- | --- | --- |
-| `src/920429-1.c` | `main:entry` before instruction `8`; `%t5`/value `22` register `s2` and `%t6`/value `20` register `t0` to `%t7`/value `21` stack slot `6` offset `24` | rejection-only; no ordered final-state, mutual-exclusion, or explicit-merge fact appears at this consumer point | none currently proven. A future non-637 positive would need `PreparedMoveAuthorityKind::StackDestinationRegisterFanIn` on the bundle and all moves, owner `prepared_stack_destination_register_fan_in`, and a new non-637 semantics that designates either the final stack-slot state, the active predicate/edge candidate, or an explicit merge for value `21` at `main:entry` before instruction `8` | remains rejected when `authority=none`, `parallel_copy=no`, and fragment status is `producer_authority_missing_for_register_fan_in_stack_destination`; nearby `f:tern.end.11` select facts for `%t12` with `select_carrier_alias_authority status=unsupported_publication` must not authorize the `main` bundle |
-| `src/930429-1.c` | `main:entry` before instruction `6`; `%t2`/value `12` register `t0` and `%t5`/value `15` register `s2` to `%t6`/value `14` stack slot `7` offset `24` | rejection-only; evidence has only the ambiguous two-register-source stack destination at the consumer point | none currently proven. A future non-637 positive would need a producer authority fact for destination value `14` at `main:entry` before instruction `6`, with both participating moves carrying `StackDestinationRegisterFanIn` authority and source homes/freshness published separately | remains rejected when `authority=none`, `parallel_copy=no`, and no matching select-chain, ordered-final-state, predicate, edge, guarded-copy, or merge carrier is present for value `14` |
-| `src/pr34415.c` | `main:entry` before instruction `6`; `%t2`/value `45` register `t0` and `%t5`/value `48` register `s2` to `%t7`/value `47` stack slot `10` offset `24` | rejection-only for the failing `main` consumer; unrelated `foo` join/select facts are not authority for this row | none currently proven. A future non-637 positive would need `StackDestinationRegisterFanIn` authority on the `main:entry` bundle and all moves, with a producer fact for destination value `47` naming final-state, mutually-exclusive candidate, or explicit merge semantics at the same consumer point | remains rejected when the only visible select authorities belong to `foo` joins, including `missing_final_carrier`, `missing_carrier_aliases`, or `unsupported_publication`, while the failing `main` bundle still has `authority=none` |
-| `src/pr70005.c` | `fn1:logic.end.73` before instruction `2`; `%t83`/value `53` register `s1` and `%t84`/value `54` register `s2` to `%t85`/value `55` stack slot `7` offset `28` | rejection-only for the failing stack destination; nearby select-chain evidence proves other destinations, not this bundle | none currently proven. A future non-637 positive would need producer metadata at `fn1:logic.end.73` before instruction `2` for destination value `55`, with bundle/move `StackDestinationRegisterFanIn` authority and a named non-637 semantics for ordered final state, mutual exclusion, or explicit merge | remains rejected when destination value `55` has `authority=none`, `parallel_copy=no`, and fragment status `producer_authority_missing_for_register_fan_in_stack_destination`; nearby select facts for `%t88`/value `57`, `%t83`/value `53`, or earlier join results, including `missing_carrier_aliases` and `unsupported_publication`, are not sufficient |
-| `src/ptr-arith-1.c` | `main:entry` before instruction `8`; `%t5`/value `14` register `s2` and `%t6`/value `12` register `t0` to `%t7`/value `13` stack slot `3` offset `24` | rejection-only; no consumer-point producer authority surface appears in the excerpt | none currently proven. A future non-637 positive would need a `StackDestinationRegisterFanIn` producer fact for destination value `13` at `main:entry` before instruction `8`, with all participating source homes recorded and source freshness proven separately | remains rejected when `authority=none`, `parallel_copy=no`, and no ordered-final-state designation, predicate/edge selected candidate, guarded copy, or explicit merge carrier exists |
+| Ordered final-state authority | `riscv64_stack_destination_ordered_final_state_authority.c` | A stack-destination register fan-in bundle is authorized when a producer explicitly names the final destination value at the consumer point after an ordered sequence of contributing register homes. Source freshness remains separate from destination authority. | Positive: prepared/prealloc metadata for the consumer bundle carries `PreparedMoveAuthorityKind::StackDestinationRegisterFanIn` with owner `prepared_stack_destination_register_fan_in`, semantics `ordered_final_state`, destination stack slot/value, ordered contributing source homes, and the same authority on every move in the bundle. Negative paired shape: same two-register-to-stack destination with source homes present but no `ordered_final_state` producer fact remains `authority=none` with `producer_authority_missing_for_register_fan_in_stack_destination`. | It does not materialize a select result through a preserved stack fallback, does not depend on `SelectMaterializationPreservedStackFallback`, and authorizes the stack destination from an ordered final-state producer at the consumer point rather than a select-carrier fallback. |
+| Mutual-exclusion authority | `riscv64_stack_destination_mutual_exclusion_authority.c` | A stack-destination register fan-in bundle is authorized only when a producer proves that exactly one mutually-exclusive source candidate can define the destination at the consumer point. | Positive: prepared/prealloc metadata for the bundle carries `PreparedMoveAuthorityKind::StackDestinationRegisterFanIn`, owner `prepared_stack_destination_register_fan_in`, semantics `mutually_exclusive_destination_candidate`, destination stack slot/value, candidate source homes, and a predicate/edge/candidate identifier proving exclusivity at the consumer point. Negative paired shape: a diagnostic or nearby select fact that merely says `mutually-exclusive` without the destination producer fact keeps the bundle rejected as `authority=none`. | It is not the idea 637 selected-stack fallback contract because the authority is a candidate-exclusivity fact for the destination bundle itself, not a select materialization using a preserved fallback slot or `%*.sel*` carrier. |
+| Explicit merge authority | `riscv64_stack_destination_explicit_merge_authority.c` | A stack-destination register fan-in bundle is authorized when a producer publishes an explicit merge carrier for the destination stack value at the consumer point. | Positive: prepared/prealloc metadata for the bundle carries `PreparedMoveAuthorityKind::StackDestinationRegisterFanIn`, owner `prepared_stack_destination_register_fan_in`, semantics `explicit_destination_merge`, destination stack slot/value, merge carrier id, participating source homes, and per-move authority. Negative paired shape: merge/select facts for a different value, function, block, or destination do not authorize the bundle and must leave the target destination with `authority=none`. | It uses an explicit merge for the destination stack value, not select materialization fallback. Nearby idea-637-style select facts, carrier aliases, or preserved stack fallback evidence are insufficient unless the merge producer names this destination. |
+| Authority rejection | `riscv64_stack_destination_authority_rejection.c` | A two-register-to-stack-destination fan-in must fail closed when no matching destination authority producer exists, even if source homes, source freshness, or unrelated select/join facts are visible. | Negative: prepared/prealloc output records source homes and the stack destination, but the bundle and moves remain `authority=none`, `parallel_copy=no`, with fragment status `producer_authority_missing_for_register_fan_in_stack_destination`; unrelated producer facts are rejected by consumer point, value, destination, or semantics mismatch. Positive fact is intentionally absent in this probe. | It guards idea 655's non-637 boundary by proving that idea 637 select materialization facts, source publication, call-preservation, branch-load freshness, or unrelated joins cannot authorize stack-destination fan-in. |
 
-Out-of-scope row:
-
-| Target | Reason |
-| --- | --- |
-| `src/20011109-2.c` | Only fits idea 637's selected `SelectMaterializationPreservedStackFallback` contract: `select_materialization` at `main:block_1` instruction `9`, preserved stack fallback into `%t12.sel1`/value `17`, and required semantics `select_materialization_preserved_stack_fallback`. This is real evidence but remains out of scope for idea 655 and must not be selected as a non-637 Step 3 packet. |
-
-Rejected mutual-exclusion route retained:
-
-| Target | Reason |
-| --- | --- |
-| `src/20021204-1.c` | The failing `%t20`/value `19` and `%t21`/value `20` to `%t22`/value `18` stack destination at `main:tern.end.12` before instruction `1` still has `authority=none`, `parallel_copy=no`, and no predicate, selected-active-candidate, guarded-copy, edge, or carrier fact. Nearby `%t17`/`%t24 -> %t25` select facts are unrelated and remain illegal as authority. |
-
-Step 2 conclusion: every legal non-637 positive seam is still evidence-missing.
-The only current non-unknown seam classification supported by the existing
-evidence is rejection-only, with the fail-closed states above. Step 3 should
-define focused probes for ordered final-state, mutual-exclusion, explicit
-merge, and rejection authority before any producer implementation is selected.
+The probe specs intentionally avoid selecting an implementation packet. They
+only name the file targets and the fact shapes that a later Step 4 packet can
+use to choose one legal non-637 seam.
 
 ## Suggested Next
 
-Execute Step 3: define focused probe files under `tests/backend/case/` for
-ordered final-state authority, mutual-exclusion authority, explicit merge
-authority, and authority rejection. Keep them as probe specifications or tests
-only; do not implement producer authority until one probe names a legal
-non-637 positive producer fact shape and a fail-closed negative case.
+Execute Step 4: select at most one follow-up implementation seam after
+supervisor review of these probe specifications. The cleanest next packet
+would add focused probe files only, still without producer implementation, if
+the supervisor wants executable observability before selecting producer code.
 
 ## Watchouts
 
@@ -63,13 +47,16 @@ non-637 positive producer fact shape and a fail-closed negative case.
 - Existing code has only the closed idea 637 semantics enum
   `SelectMaterializationPreservedStackFallback`; the Step 3 probes must name
   proposed non-637 contract shapes without pretending they already exist.
-- No Step 3 implementation work is selected until a legal non-637 seam has a
-  producer fact shape and fail-closed negative proof.
+- Ordered final-state, mutual-exclusion, and explicit merge are proposed
+  producer contract shapes, not proof that implementation support already
+  exists.
+- The authority rejection probe is negative by design and must not be converted
+  into an expectation downgrade or an unsupported marker change.
+- No producer implementation work is selected by this Step 3 packet.
 
 ## Proof
 
-No build or ctest proof required by the delegated packet. Used existing
-evidence only: `build/agent_state/647_step2_family_revision/summary.md`,
-per-row `diagnostic_excerpt.txt`, `authority_extract.txt`, and targeted
-prepared dump excerpts under that directory. Did not rerun diagnostics and did
-not create or overwrite `test_after.log`.
+No build or ctest proof required by the delegated packet because this was a
+probe-specification-only update. Used the Step 2 seam inventory already in
+`todo.md` and the active `plan.md`. Did not create or overwrite
+`test_after.log`.
