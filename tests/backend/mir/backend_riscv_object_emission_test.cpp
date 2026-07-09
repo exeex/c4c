@@ -14555,6 +14555,88 @@ make_prepared_frame_slot_address_arg_call_load_local_payload_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_local_frame_address_register_source_arg_call_module() {
+  auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  auto& call_plan = prepared.call_plans.functions[0].calls[0];
+  auto& args = call_plan.arguments;
+  call_plan.preserved_values.clear();
+  call_plan.outgoing_stack_argument_area =
+      prepare::PreparedOutgoingStackArgumentArea{
+          .size_bytes = 8,
+      };
+  prepared.store_source_publications.records.clear();
+  prepared.call_argument_value_publications.facts.clear();
+
+  auto& first_home = prepared.value_locations.functions[1].value_homes[1];
+  first_home.kind = prepare::PreparedValueHomeKind::Register;
+  first_home.register_name = std::string{"s1"};
+  first_home.slot_id = std::nullopt;
+  first_home.offset_bytes = std::nullopt;
+
+  auto& second_home = prepared.value_locations.functions[1].value_homes[2];
+  second_home.kind = prepare::PreparedValueHomeKind::Register;
+  second_home.register_name = std::string{"s2"};
+  second_home.slot_id = std::nullopt;
+  second_home.offset_bytes = std::nullopt;
+
+  args[0].source_encoding = prepare::PreparedStorageEncodingKind::Register;
+  args[0].source_register_name = std::string{"s1"};
+  args[0].source_register_bank = prepare::PreparedRegisterBank::Gpr;
+  args[0].source_slot_id = prepare::PreparedFrameSlotId{7};
+  args[0].source_stack_offset_bytes = 24;
+  args[0].source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization,
+          .source_value_id = prepare::PreparedValueId{14},
+          .source_value_name = prepared.names.value_names.find("%lv.x"),
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .source_slot_id = prepare::PreparedFrameSlotId{7},
+          .source_stack_offset_bytes = 24,
+          .source_size_bytes = 8,
+          .source_align_bytes = 8,
+          .source_pointer_byte_delta = std::int64_t{0},
+          .address_materialization_block_label =
+              prepared.names.block_labels.find("entry"),
+          .address_materialization_inst_index = std::size_t{0},
+          .address_materialization_frame_slot_id =
+              prepare::PreparedFrameSlotId{7},
+          .address_materialization_byte_offset = std::int64_t{24},
+      };
+
+  args[1].source_encoding = prepare::PreparedStorageEncodingKind::Register;
+  args[1].source_register_name = std::string{"s2"};
+  args[1].source_register_bank = prepare::PreparedRegisterBank::Gpr;
+  args[1].source_slot_id = prepare::PreparedFrameSlotId{8};
+  args[1].source_stack_offset_bytes = 32;
+  args[1].destination_register_name = std::nullopt;
+  args[1].destination_register_bank = std::nullopt;
+  args[1].destination_stack_offset_bytes = 0;
+  args[1].destination_stack_size_bytes = 8;
+  args[1].source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization,
+          .source_value_id = prepare::PreparedValueId{15},
+          .source_value_name = prepared.names.value_names.find("%lv.y"),
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .source_slot_id = prepare::PreparedFrameSlotId{8},
+          .source_stack_offset_bytes = 32,
+          .source_size_bytes = 8,
+          .source_align_bytes = 8,
+          .source_pointer_byte_delta = std::int64_t{0},
+          .address_materialization_block_label =
+              prepared.names.block_labels.find("entry"),
+          .address_materialization_inst_index = std::size_t{0},
+          .address_materialization_frame_slot_id =
+              prepare::PreparedFrameSlotId{8},
+          .address_materialization_byte_offset = std::int64_t{32},
+      };
+
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -25128,7 +25210,7 @@ int builds_prepared_local_register_arg_call_object() {
   return 0;
 }
 
-int builds_prepared_local_register_arg_call_with_address_provenance_object() {
+int rejects_prepared_local_register_arg_call_with_incomplete_address_provenance_object() {
   auto prepared = make_prepared_local_register_arg_call_module();
   auto& args = prepared.call_plans.functions[0].calls[0].arguments;
   args[0].source_selection = prepare::PreparedCallArgumentSourceSelection{
@@ -25156,22 +25238,39 @@ int builds_prepared_local_register_arg_call_with_address_provenance_object() {
       .address_materialization_inst_index = std::size_t{4},
   };
 
-  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
-  if (!module.has_value()) {
-    return fail("expected prepared register-storage call args with address provenance to build");
+  return expect_prepared_rejection_diagnostic(
+      prepared, kUnsupportedSameModuleCallAbiDiagnostic);
+}
+
+int builds_prepared_local_frame_address_register_source_arg_call_object() {
+  const auto prepared =
+      make_prepared_local_frame_address_register_source_arg_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared local frame-address register-source arg call RV64 object module to build, got `" +
+                result.diagnostic + "`");
   }
-  const auto* text = object::find_section(*module, ".text");
-  const auto* callee = object::find_symbol(*module, "add_pair");
-  const auto* main = object::find_symbol(*module, "main");
-  if (text == nullptr || callee == nullptr || main == nullptr ||
-      module->relocations.size() != 1 ||
-      module->relocations[0].symbol != callee->id) {
-    return fail("expected address-provenance register args to preserve same-module call relocation");
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* sink = object::find_symbol(module, "sink");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || sink == nullptr || main == nullptr ||
+      module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != sink->id) {
+    return fail("expected local frame-address register-source call relocation");
   }
-  const std::size_t call_offset = module->relocations[0].offset;
-  if (read_u32(text->bytes, call_offset - 8) != 0x00028513 ||
-      read_u32(text->bytes, call_offset - 4) != 0x00048593) {
-    return fail("expected address-provenance register args to move scalar registers, not materialize addresses");
+  const auto call_offset = module.relocations[0].offset;
+  if (call_offset < main->value + 24 ||
+      read_u32(text->bytes, call_offset - 24) != 0x01810493 ||
+      read_u32(text->bytes, call_offset - 20) != 0x00048513 ||
+      read_u32(text->bytes, call_offset - 16) != 0xff810113 ||
+      read_u32(text->bytes, call_offset - 12) != 0x02810913 ||
+      read_u32(text->bytes, call_offset - 8) != 0x00090e13 ||
+      read_u32(text->bytes, call_offset - 4) != 0x01c13023) {
+    return fail("expected prepared local frame addresses to be published before register and stack call-argument consumption");
   }
   return 0;
 }
@@ -30886,7 +30985,8 @@ int main() {
   status |= publishes_select_publication_stack_home_move_intent_fields();
   status |= builds_prepared_local_register_arg_call_object();
   status |=
-      builds_prepared_local_register_arg_call_with_address_provenance_object();
+      rejects_prepared_local_register_arg_call_with_incomplete_address_provenance_object();
+  status |= builds_prepared_local_frame_address_register_source_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
   status |=
       builds_prepared_frame_slot_value_arg_call_with_address_provenance_object();

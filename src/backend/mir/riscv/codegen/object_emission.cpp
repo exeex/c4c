@@ -5596,11 +5596,44 @@ std::optional<std::int32_t> add_active_call_stack_adjustment_to_offset(
   return adjusted;
 }
 
+bool append_rv64_prepared_local_frame_address_call_argument_source(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    std::uint32_t destination_register,
+    std::size_t stack_frame_bytes,
+    std::size_t active_call_stack_adjustment) {
+  const auto offset =
+      prepared_frame_slot_address_call_argument_offset(stack_layout,
+                                                       lookups,
+                                                       frame_plan,
+                                                       argument,
+                                                       stack_frame_bytes);
+  const auto adjusted_offset =
+      offset.has_value()
+          ? add_active_call_stack_adjustment_to_offset(
+                *offset, active_call_stack_adjustment)
+          : std::optional<std::int32_t>{};
+  if (!adjusted_offset.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            destination_register,
+                            0,
+                            2,
+                            *adjusted_offset));  // addi rd, sp, off
+  return true;
+}
+
 bool append_rv64_prepared_scalar_stack_call_argument(
     RiscvEncodedFragment& fragment,
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::prepare::PreparedCallPlan& call_plan,
     const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
     c4c::backend::bir::TypeKind argument_type,
@@ -5683,6 +5716,21 @@ bool append_rv64_prepared_scalar_stack_call_argument(
     if (!source.has_value()) {
       return false;
     }
+    if (argument.source_selection.has_value() &&
+        argument.source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization &&
+        !append_rv64_prepared_local_frame_address_call_argument_source(
+            fragment,
+            stack_layout,
+            lookups,
+            frame_plan,
+            argument,
+            *source,
+            stack_frame_bytes,
+            *active_call_stack_adjustment)) {
+      return false;
+    }
     append_rv64_move(fragment, scratch_gpr, *source);
   } else if (argument.source_encoding ==
                  prepare::PreparedStorageEncodingKind::FrameSlot) {
@@ -5741,6 +5789,7 @@ bool append_pending_rv64_prepared_scalar_stack_call_arguments_using_gpr_source(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::prepare::PreparedCallPlan& call_plan,
     const c4c::backend::bir::CallInst& call,
     c4c::backend::bir::TypeKind current_argument_type,
@@ -5774,6 +5823,7 @@ bool append_pending_rv64_prepared_scalar_stack_call_arguments_using_gpr_source(
             prepared,
             stack_layout,
             lookups,
+            frame_plan,
             call_plan,
             argument,
             call.arg_types[arg_index],
@@ -6089,6 +6139,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
               prepared,
               stack_layout,
               lookups,
+              frame_plan,
               *call_plan,
               argument,
               call.arg_types[arg_index],
@@ -6116,6 +6167,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                   prepared,
                   stack_layout,
                   lookups,
+                  frame_plan,
                   *call_plan,
                   call,
                   call.arg_types[arg_index],
@@ -6200,23 +6252,39 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     if (argument.source_selection.has_value() &&
         argument.source_selection->kind ==
             prepare::PreparedCallArgumentSourceSelectionKind::
-                LocalFrameAddressMaterialization &&
-        argument.source_encoding != prepare::PreparedStorageEncodingKind::Register) {
-      const auto offset =
-          prepared_frame_slot_address_call_argument_offset(stack_layout,
-                                                           lookups,
-                                                           frame_plan,
-                                                           argument,
-                                                           stack_frame_bytes);
-      if (!offset.has_value()) {
+                LocalFrameAddressMaterialization) {
+      if (argument.source_encoding == prepare::PreparedStorageEncodingKind::Register) {
+        if (argument.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+            !argument.source_register_name.has_value()) {
+          return std::nullopt;
+        }
+        const auto source = rv64_register_number(*argument.source_register_name);
+        if (!source.has_value() ||
+            !append_rv64_prepared_local_frame_address_call_argument_source(
+                fragment,
+                stack_layout,
+                lookups,
+                frame_plan,
+                argument,
+                *source,
+                stack_frame_bytes,
+                active_call_stack_adjustment)) {
+          return std::nullopt;
+        }
+        append_rv64_move(fragment, *destination, *source);
+        continue;
+      }
+      if (!append_rv64_prepared_local_frame_address_call_argument_source(
+              fragment,
+              stack_layout,
+              lookups,
+              frame_plan,
+              argument,
+              *destination,
+              stack_frame_bytes,
+              active_call_stack_adjustment)) {
         return std::nullopt;
       }
-      append_le32(fragment.bytes,
-                  encode_i_type(0x13,
-                                *destination,
-                                0,
-                                2,
-                                *offset));  // addi rd, sp, off
       continue;
     }
     const bool scalar_gpr_frame_slot_argument =
@@ -6354,10 +6422,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         }
         case prepare::PreparedCallArgumentSourceSelectionKind::
             LocalFrameAddressMaterialization:
-          if (argument.source_encoding ==
-              prepare::PreparedStorageEncodingKind::Register) {
-            break;
-          }
           return std::nullopt;
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
           if (scalar_gpr_frame_slot_argument) {

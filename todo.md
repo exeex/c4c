@@ -8,44 +8,48 @@ Current Step Title: Implement One Prepared ABI/Home Path
 
 ## Just Finished
 
-Step 3 from `plan.md` repaired RV64 object-emission call-argument scheduling
-for scratch-based FPR immediate materialization versus pending scalar stack
+Step 3 from `plan.md` repaired RV64 object-emission local frame-address
+call-argument source publication for prepared register-source pointer
 arguments.
 
-- `fragment_for_prepared_call` now flushes pending scalar stack arguments that
-  use the FPR-immediate helper scratch GPR before materializing that FPR
-  immediate, instead of letting `fmv.[wd].x` setup clobber a still-needed stack
-  argument source.
-- The flush is local to the proven scratch path and leaves sret, byval/aggregate
-  stack-copy sequencing, ordinary register moves, and ABI lane placement
-  unchanged.
-- Focused object-emission coverage now builds an F64 immediate register
-  argument followed by an I64 stack argument sourced from `t0`, and proves the
-  stack source is stored before `t0` is reused for `fmv.d.x`.
-- `src/20001017-1.c` advanced past the prior `%p.C` clobber: `main` now stores
-  `%p.C` from `t0` to outgoing stack offset `8` before reusing `t0` for the
-  `b` F64 immediate.
+- `fragment_for_prepared_call` now materializes an explicit prepared
+  `LocalFrameAddressMaterialization` route into the selected GPR source before
+  that source is consumed by a register call argument.
+- `append_rv64_prepared_scalar_stack_call_argument` now applies the same
+  prepared local frame-address publication before copying a register-source
+  pointer into an outgoing stack argument, including active outgoing-stack
+  adjustment in the frame offset.
+- The fix still fails closed through the existing prepared frame-slot address
+  authority checks when materialization facts are missing, incomplete,
+  ambiguous, dynamic-frame-only, or out of range.
+- Focused object-emission coverage now proves a complete local frame-address
+  route feeding both a register argument and a stack argument, and converts the
+  old incomplete address-provenance register-source case into rejection
+  coverage.
 
 ## Suggested Next
 
-Next packet should repair the remaining RV64 local frame-address argument source
-materialization gap for `src/20001017-1.c`: `main` consumes pointer argument
-source registers `t0`, `s1`, and `s2` for `C`, `A`, and `B` without visible
-materialization of those local array frame addresses before the call.
+Next packet should repair or reclassify the new `src/20001017-1.c` residual in
+`bug`: the linked binary now reaches the callee and immediately branches to
+`abort` after comparing `a0` against `ld t3, 0x58(sp)`, which is the saved
+return-address slot in `bug`'s frame, not the incoming `Cref` formal value.
 
 ## Watchouts
 
-- The prior scratch-clobber residual is gone. In the fresh disassembly, `main`
-  emits `mv t3,t0; sd t3,8(sp)` before the `fmv.d.x fa1,t0` materialization for
-  `b`.
-- The remaining runtime mismatch is not ABI lane placement or the FPR-immediate
-  stack-source clobber. The fresh `main` still starts the call setup with
-  `mv a0,t0`, later uses `mv a5,s1`, `mv a7,s2`, and stores `t0` to `8(sp)`,
-  but there is no visible setup making `t0`/`s1`/`s2` point at the local arrays
-  `C`/`A`/`B` before those uses.
-- Keep the next fix semantic: repair local frame-address argument source
-  materialization/publication for prepared register-source call arguments. Do
-  not hard-code `src/20001017-1.c`, `bug`, register names, or argument indexes.
+- The local address helper intentionally reuses
+  `prepared_frame_slot_address_call_argument_offset`, so missing prepared
+  addressing/frame-plan authority remains fail-closed instead of falling back to
+  source syntax or final assembly.
+- Stack-argument local frame-address publication must account for an active
+  outgoing call-stack adjustment; the focused test checks this with an adjusted
+  `s2` materialization before storing the stack argument.
+- The prior caller-side local frame-address residual is gone in the linked
+  `main`: it now emits `addi t0, sp, 0x10`, adjusted `addi t0, sp, 0x28`,
+  `addi s1, sp, 0x18`, and `addi s2, sp, 0x20` before consuming those pointer
+  sources as register or stack call arguments.
+- The new residual appears callee-side in `bug`, where the first comparison
+  loads `0x58(sp)`, the saved `ra` slot, before comparing with `a0` and
+  branching to `abort`.
 
 ## Proof
 
@@ -55,7 +59,7 @@ Ran the exact supervisor proof command into `test_after.log`:
 
 Proof status: build passed; all six focused CTests passed; the one-row torture
 probe still failed with `RV64_BACKEND_RUNTIME_MISMATCH`, `clang_exit=0`, and
-`c4c_exit=Subprocess aborted`. The fresh residual owner is RV64 local
-frame-address call-argument source materialization/publication for the pointer
-arguments, not ABI lane placement or scratch-based FPR immediate clobbering.
-The exact proof log is `test_after.log`.
+`c4c_exit=Subprocess aborted`. The repaired caller-side local frame-address
+source publication is visible in `main`; the fresh residual owner is callee-side
+formal value/home materialization for `bug`'s `Cref` comparison, which currently
+loads from the saved-RA stack slot. The exact proof log is `test_after.log`.
