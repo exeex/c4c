@@ -6002,6 +6002,236 @@ int check_pointer_value_memory_authority_contract() {
   return 0;
 }
 
+struct StackHomeLocalMemoryAuthorityFixture {
+  prepare::PreparedNameTables names;
+  prepare::PreparedStackLayout stack_layout;
+  prepare::PreparedValueLocationFunction value_locations;
+  prepare::PreparedMemoryAccess access;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::ValueNameId pointer_value_name = c4c::kInvalidValueName;
+};
+
+StackHomeLocalMemoryAuthorityFixture make_stack_home_local_memory_authority_fixture(
+    prepare::PreparedStackHomeLocalMemoryRole role) {
+  StackHomeLocalMemoryAuthorityFixture fixture;
+  fixture.function_name = fixture.names.function_names.intern("stack_home.authority");
+  fixture.pointer_value_name =
+      fixture.names.value_names.intern(
+          role == prepare::PreparedStackHomeLocalMemoryRole::ByvalParam
+              ? "%p.byval"
+              : "%ret.sret");
+
+  const auto base_identity =
+      role == prepare::PreparedStackHomeLocalMemoryRole::ByvalParam
+          ? bir::MemoryProvenanceBaseIdentityKind::ByvalParameter
+          : bir::MemoryProvenanceBaseIdentityKind::SretParameter;
+  const std::string source_kind =
+      std::string{prepare::prepared_stack_home_local_memory_role_name(role)};
+  auto requested_range = bir::make_memory_byte_range(8, 4);
+
+  fixture.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 41,
+      .function_name = fixture.function_name,
+      .value_name = fixture.pointer_value_name,
+      .source_kind = source_kind,
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 24,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  fixture.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = 17,
+      .object_id = 41,
+      .function_name = fixture.function_name,
+      .offset_bytes = 32,
+      .size_bytes = 24,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+  fixture.stack_layout.frame_size_bytes = 64;
+  fixture.stack_layout.frame_alignment_bytes = 16;
+
+  fixture.value_locations.function_name = fixture.function_name;
+  fixture.value_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 9,
+      .function_name = fixture.function_name,
+      .value_name = fixture.pointer_value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{17},
+      .offset_bytes = std::size_t{32},
+      .size_bytes = std::size_t{24},
+      .align_bytes = std::size_t{8},
+  });
+
+  fixture.access = prepare::PreparedMemoryAccess{
+      .function_name = fixture.function_name,
+      .block_label = fixture.names.block_labels.intern("entry"),
+      .inst_index = role == prepare::PreparedStackHomeLocalMemoryRole::ByvalParam
+                        ? std::size_t{0}
+                        : std::size_t{1},
+      .result_value_name =
+          role == prepare::PreparedStackHomeLocalMemoryRole::ByvalParam
+              ? std::optional<c4c::ValueNameId>{
+                    fixture.names.value_names.intern("%loaded.byval")}
+              : std::nullopt,
+      .stored_value_name =
+          role == prepare::PreparedStackHomeLocalMemoryRole::SretParam
+              ? std::optional<c4c::ValueNameId>{
+                    fixture.names.value_names.intern("%loaded.byval")}
+              : std::nullopt,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+              .pointer_value_name = fixture.pointer_value_name,
+              .byte_offset = 8,
+              .size_bytes = 4,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+              .provenance =
+                  bir::MemoryAccessProvenance{
+                      .base_identity =
+                          bir::MemoryProvenanceBaseIdentity{
+                              .kind = base_identity,
+                              .spelling =
+                                  role == prepare::PreparedStackHomeLocalMemoryRole::ByvalParam
+                                      ? "%p.byval"
+                                      : "%ret.sret",
+                          },
+                      .object_extent =
+                          bir::MemoryObjectExtent{
+                              .completeness =
+                                  bir::MemoryObjectExtentCompleteness::Complete,
+                              .size_bytes = 24,
+                              .size_known = true,
+                          },
+                      .requested_range = requested_range,
+                      .layout_authority = bir::MemoryLayoutAuthorityKind::Unknown,
+                      .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+                  },
+          },
+  };
+  return fixture;
+}
+
+bool stack_home_local_memory_has_authority(
+    const StackHomeLocalMemoryAuthorityFixture& fixture,
+    prepare::PreparedStackHomeLocalMemoryRole role) {
+  const auto lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.value_locations);
+  return prepare::prepared_stack_home_local_memory_has_authority(
+      fixture.stack_layout, &lookups, fixture.access, role);
+}
+
+int check_stack_home_local_memory_authority_contract() {
+  auto byval_fixture = make_stack_home_local_memory_authority_fixture(
+      prepare::PreparedStackHomeLocalMemoryRole::ByvalParam);
+  if (!stack_home_local_memory_has_authority(
+          byval_fixture, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected prepared byval stack-home local-memory authority");
+  }
+
+  auto sret_fixture = make_stack_home_local_memory_authority_fixture(
+      prepare::PreparedStackHomeLocalMemoryRole::SretParam);
+  if (!stack_home_local_memory_has_authority(
+          sret_fixture, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
+    return fail("expected prepared sret stack-home local-memory authority");
+  }
+  if (stack_home_local_memory_has_authority(
+          byval_fixture, prepare::PreparedStackHomeLocalMemoryRole::SretParam) ||
+      stack_home_local_memory_has_authority(
+          sret_fixture, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected stack-home authority role mismatches to stay fail-closed");
+  }
+
+  auto rejected = byval_fixture;
+  rejected.access.result_value_name = std::nullopt;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected byval stack-home access without a load result to stay fail-closed");
+  }
+
+  rejected = sret_fixture;
+  rejected.access.stored_value_name = std::nullopt;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::SretParam)) {
+    return fail("expected sret stack-home access without a stored value to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.value_locations.value_homes.clear();
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected missing stack-home value identity to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.stack_layout.frame_slots.clear();
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected missing stack-home frame slot to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.stack_layout.objects.front().source_kind = "local_slot";
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected mismatched stack-home source kind to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.access.address.provenance.object_extent.size_known = false;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected incomplete stack-home extent to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.access.address.provenance.requested_range =
+      bir::make_memory_byte_range(12, 8);
+  rejected.access.address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::ProvenOutOfBounds;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected rejected stack-home range to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.access.address_space = bir::AddressSpace::Gs;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected non-default stack-home address space to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.access.is_volatile = true;
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected volatile stack-home access to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.access.address.base_kind = prepare::PreparedAddressBaseKind::FrameSlot;
+  rejected.access.address.pointer_value_name = std::nullopt;
+  rejected.access.address.frame_slot_id = prepare::PreparedFrameSlotId{17};
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected non-pointer stack-home base to stay fail-closed");
+  }
+
+  rejected = byval_fixture;
+  rejected.access.address.size_bytes = 16;
+  rejected.access.address.provenance.requested_range =
+      bir::make_memory_byte_range(8, 16);
+  if (stack_home_local_memory_has_authority(
+          rejected, prepare::PreparedStackHomeLocalMemoryRole::ByvalParam)) {
+    return fail("expected 16-byte stack-home local-memory rows to stay fail-closed");
+  }
+
+  return 0;
+}
+
 prepare::PreparedAddress make_proven_global_symbol_memory_address(
     c4c::LinkNameId symbol_name) {
   auto requested_range = bir::make_memory_byte_range(4, 4);
@@ -12851,6 +13081,9 @@ int main() {
   }
 
   if (const int rc = check_pointer_value_memory_authority_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_stack_home_local_memory_authority_contract(); rc != 0) {
     return rc;
   }
 

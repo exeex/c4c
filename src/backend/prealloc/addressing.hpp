@@ -2,6 +2,7 @@
 
 #include "frame.hpp"
 #include "names.hpp"
+#include "value_locations.hpp"
 
 #include "../../target_profile.hpp"
 #include "../bir/bir.hpp"
@@ -325,8 +326,6 @@ prepared_global_symbol_address_policy(
   return std::nullopt;
 }
 
-enum class PreparedValueHomeKind;
-
 enum class PreparedAddressMaterializationKind {
   None,
   FrameSlot,
@@ -444,6 +443,169 @@ struct PreparedMemoryAccess {
   bool is_volatile = false;
   PreparedAddress address;
 };
+
+enum class PreparedStackHomeLocalMemoryRole {
+  ByvalParam,
+  SretParam,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_stack_home_local_memory_role_name(
+    PreparedStackHomeLocalMemoryRole role) {
+  switch (role) {
+    case PreparedStackHomeLocalMemoryRole::ByvalParam:
+      return "byval_param";
+    case PreparedStackHomeLocalMemoryRole::SretParam:
+      return "sret_param";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] constexpr bir::MemoryProvenanceBaseIdentityKind
+prepared_stack_home_local_memory_base_identity(
+    PreparedStackHomeLocalMemoryRole role) {
+  switch (role) {
+    case PreparedStackHomeLocalMemoryRole::ByvalParam:
+      return bir::MemoryProvenanceBaseIdentityKind::ByvalParameter;
+    case PreparedStackHomeLocalMemoryRole::SretParam:
+      return bir::MemoryProvenanceBaseIdentityKind::SretParameter;
+  }
+  return bir::MemoryProvenanceBaseIdentityKind::Unknown;
+}
+
+[[nodiscard]] inline bool prepared_stack_home_local_memory_has_authority(
+    const PreparedStackLayout& stack_layout,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedMemoryAccess& access,
+    PreparedStackHomeLocalMemoryRole role) {
+  if (value_home_lookups == nullptr ||
+      access.function_name == kInvalidFunctionName ||
+      access.address_space != bir::AddressSpace::Default ||
+      access.is_volatile ||
+      access.address.base_kind != PreparedAddressBaseKind::PointerValue ||
+      !access.address.pointer_value_name.has_value() ||
+      !access.address.can_use_base_plus_offset ||
+      access.address.byte_offset < 0 ||
+      access.address.size_bytes == 0 ||
+      access.address.size_bytes > 8 ||
+      access.address.align_bytes == 0) {
+    return false;
+  }
+  switch (role) {
+    case PreparedStackHomeLocalMemoryRole::ByvalParam:
+      if (!access.result_value_name.has_value() ||
+          access.stored_value_name.has_value()) {
+        return false;
+      }
+      break;
+    case PreparedStackHomeLocalMemoryRole::SretParam:
+      if (access.result_value_name.has_value() ||
+          !access.stored_value_name.has_value()) {
+        return false;
+      }
+      break;
+  }
+
+  const auto value_id_it =
+      value_home_lookups->value_ids.find(*access.address.pointer_value_name);
+  if (value_id_it == value_home_lookups->value_ids.end()) {
+    return false;
+  }
+  const auto home_it = value_home_lookups->homes_by_id.find(value_id_it->second);
+  if (home_it == value_home_lookups->homes_by_id.end() ||
+      home_it->second == nullptr) {
+    return false;
+  }
+
+  const PreparedValueHome& home = *home_it->second;
+  if (home.function_name != access.function_name ||
+      home.value_name != *access.address.pointer_value_name ||
+      home.kind != PreparedValueHomeKind::StackSlot ||
+      !home.slot_id.has_value() ||
+      !home.offset_bytes.has_value() ||
+      !home.size_bytes.has_value() ||
+      !home.align_bytes.has_value() ||
+      *home.size_bytes == 0 ||
+      *home.align_bytes == 0) {
+    return false;
+  }
+
+  const PreparedFrameSlot* frame_slot = nullptr;
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == *home.slot_id &&
+        slot.function_name == home.function_name) {
+      if (frame_slot != nullptr) {
+        return false;
+      }
+      frame_slot = &slot;
+    }
+  }
+  if (frame_slot == nullptr ||
+      frame_slot->offset_bytes != *home.offset_bytes ||
+      frame_slot->size_bytes != *home.size_bytes ||
+      frame_slot->align_bytes != *home.align_bytes ||
+      frame_slot->size_bytes == 0 ||
+      frame_slot->align_bytes == 0) {
+    return false;
+  }
+
+  const PreparedStackObject* stack_object = nullptr;
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == frame_slot->object_id &&
+        object.function_name == home.function_name) {
+      if (stack_object != nullptr) {
+        return false;
+      }
+      stack_object = &object;
+    }
+  }
+  const std::string_view expected_source_kind =
+      prepared_stack_home_local_memory_role_name(role);
+  if (stack_object == nullptr ||
+      !stack_object->value_name.has_value() ||
+      *stack_object->value_name != home.value_name ||
+      stack_object->source_kind != expected_source_kind ||
+      stack_object->size_bytes != *home.size_bytes ||
+      stack_object->align_bytes != *home.align_bytes ||
+      !stack_object->address_exposed ||
+      !stack_object->requires_home_slot ||
+      !stack_object->permanent_home_slot) {
+    return false;
+  }
+
+  const auto& provenance = access.address.provenance;
+  if (provenance.base_identity.kind !=
+      prepared_stack_home_local_memory_base_identity(role)) {
+    return false;
+  }
+  const auto& extent = provenance.object_extent;
+  if (!extent.size_known ||
+      extent.completeness != bir::MemoryObjectExtentCompleteness::Complete ||
+      extent.size_bytes != stack_object->size_bytes ||
+      extent.size_bytes == 0) {
+    return false;
+  }
+  const auto& range = provenance.requested_range;
+  if (!range.available ||
+      range.overflowed ||
+      !range.end_available ||
+      range.begin != access.address.byte_offset ||
+      range.size_bytes != access.address.size_bytes ||
+      range.end < range.begin ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return false;
+  }
+
+  const auto byte_offset =
+      static_cast<std::size_t>(access.address.byte_offset);
+  if (byte_offset > stack_object->size_bytes ||
+      stack_object->size_bytes - byte_offset < access.address.size_bytes ||
+      static_cast<std::size_t>(range.end - range.begin) != access.address.size_bytes ||
+      static_cast<std::size_t>(range.end) > stack_object->size_bytes) {
+    return false;
+  }
+
+  return true;
+}
 
 struct PreparedSameBlockGlobalLoadAccess {
   const bir::LoadGlobalInst* load_global = nullptr;
