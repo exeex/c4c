@@ -1,57 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/617_scalar_compare_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Scalar Compare Publication Semantics
+Current Step ID: 4
+Current Step Title: Prove Family Outcome And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 (`Repair Scalar Compare Publication Semantics`) as a bounded RV64 object-emission repair.
+Completed Step 4 (`Prove Family Outcome And Classify Residuals`) as a targeted seven-row family classification after the committed Step 3 scalar compare publication repair.
 
-Changed files:
-
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
-- `todo.md`
-- `test_after.log`
-
-Implementation summary:
-
-- `fragment_for_prepared_fp_compare_publication(...)` keeps the existing fail-closed prepared GPR result-home requirement, then delegates compare encoding to `append_rv64_fp_compare_to_register(...)`.
-- The shared FP compare operand helper now accepts materializable F32/F64 immediates by loading raw bits into a scratch GPR and moving them to a scratch FPR, including non-zero immediates.
-- Scratch FPR selection avoids occupied operand homes and uses distinct scratch FPRs when both compare operands require materialization.
-- Branch, select, join-carrier, unsupported marker, allowlist, expectation, runtime/accounting, and broad failure-map code were not changed.
-- Focused RV64 object-emission tests now cover F32/F64 `Eq`, `Ne`, `Slt`, `Sgt`, `Sle`, and `Sge` scalar compare publication, non-zero F64 immediate compare operands, zero immediate operands, and the existing missing-result-home fail-closed shape.
-
-Seven-row probe under `/tmp/c4c_617_step3_probe` after rebuilding `build/c4cll`:
+Fresh targeted probe under `/tmp/c4c_617_step4_probe` after rebuilding `build/c4cll`:
 
 - `src/20000731-1.c`: pass.
 - `src/20011217-1.c`: pass.
 - `src/930603-1.c`: pass.
 - `src/990117-1.c`: pass.
-- `src/gofast.c`: moved to `unsupported_instruction_fragment` at `function=fail`, `instruction_kind=CallInst`, `owner=i32 %t4`.
-- `src/loop-8.c`: moved to `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
-- `src/strct-pack-1.c`: moved to `[RV64_BACKEND_RUNTIME_MISMATCH]` with `c4c_exit=Segmentation fault`.
+- `src/gofast.c`: reclassified to `unsupported_instruction_fragment`; diagnostic reports `function=fail`, `block=entry`, `instruction_kind=CallInst`, `owner=i32 %t4`.
+- `src/loop-8.c`: reclassified to `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`; diagnostic reports prepared move-bundle classifier rejection for ambiguous non-parallel multi-source stack-destination authority.
+- `src/strct-pack-1.c`: reclassified to `[RV64_BACKEND_RUNTIME_MISMATCH]`; `clang_exit=0`, `c4c_exit=Segmentation fault`.
+
+No current seven-row target still has `unsupported_scalar_compare_publication` as first owner. The source idea acceptance criteria are met: scalar compare publication rows progressed or were reclassified with concrete owner evidence, unrelated branch/select/RV64 instruction-fragment routes were not changed by this packet, and proof covers the complete current small family.
 
 ## Suggested Next
 
-Proceed to Step 4 close-readiness classification: confirm no current row still has scalar compare publication as first owner, record residual owners, and decide whether idea `617` is close-ready or needs a separate follow-up.
+Recommend plan-owner lifecycle closure for idea `617`.
 
 ## Watchouts
 
-- Rebuild `build/c4cll` before row probes; the focused object-emission test rebuilds the backend library/test binary but not necessarily the compiler driver used by the C torture runner.
-- `src/gofast.c`, `src/loop-8.c`, and `src/strct-pack-1.c` are residuals with separate first owners after this repair, not remaining scalar compare publication rows.
-- `test_after.log` is the canonical backend proof log for this packet.
+- Residual owners are separate follow-up territory: RV64 unsupported call instruction fragment for `src/gofast.c`, move-bundle target/consumer authority for `src/loop-8.c`, and runtime mismatch for `src/strct-pack-1.c`.
+- This packet did not modify implementation files, tests, unsupported markers, allowlists, expectations, runtime/accounting files, docs, or broad failure-map artifacts.
+- Existing `test_after.log` from Step 3 remains the canonical backend proof log for the code-changing repair; this Step 4 packet did not refresh it.
 
 ## Proof
 
-Focused proof:
+Targeted proof:
 
-- `cmake --build --preset default --target backend_riscv_object_emission_test && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'` passed.
-
-Delegated proof:
-
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log` passed.
-- `test_after.log`: `346/346` backend tests passed.
+- Rebuilt the compiler driver: `cmake --build build --target c4cll`.
+- Ran `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` directly for all seven Step 1 rows into `/tmp/c4c_617_step4_probe`.
+- Probe summary: `4` pass, `3` reclassified to non-scalar-compare owners, `0` remaining `unsupported_scalar_compare_publication` rows.
+- Probe logs: `/tmp/c4c_617_step4_probe/summary.tsv` and `/tmp/c4c_617_step4_probe/src_*/case.log`.
+- Broader backend proof was not rerun because this packet was diagnostics/classification-only and made no code changes; `test_after.log` was not created or modified by this packet.
