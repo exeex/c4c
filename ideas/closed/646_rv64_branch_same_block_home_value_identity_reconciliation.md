@@ -1,6 +1,6 @@
 # RV64 Branch Same-Block Home/Value Identity Reconciliation
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/636_prepared_branch_stack_source_freshness_publication.md`
 Related:
@@ -78,3 +78,27 @@ freshness-publication packet.
 - Reject helper renames or diagnostic-only edits that leave
   `home_value_mismatch` / `source_freshness_status=missing_value` as the
   effective first owner.
+
+## Closure Note
+
+Closed after the prepared value-id sentinel repair preserved
+`PreparedValueId{0}` as invalid by allocating real liveness/prepared value ids
+from `1`. The representative same-block RHS `%lv.a` branch stack-load
+authority row advanced from `home_value_mismatch` /
+`source_freshness_status=missing_value` to selected source freshness with
+`value_id=1` and one freshness candidate.
+
+Close evidence:
+- Implementation commit: `d7e704136 preserve prepared value id zero sentinel`
+- Validation commit: `629e4eceb [todo_only] record RV64 branch identity validation`
+- Regression guard: matching `test_before.log` and `test_after.log` for
+  `{ cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_riscv_object_emission$'; }`, checked with
+  `--allow-non-decreasing-passed`, passed with `passed=1 failed=0 total=1`
+  before and after.
+- Focused artifacts:
+  `build/agent_state/646_step4_boundary_validation/`
+
+The focused `990127-1.c` object-route case still exits at
+`unsupported_terminator_fragment`, which is explicitly outside this idea's
+scope and is not a home/value identity residual.
