@@ -1,6 +1,6 @@
 # Repeated Stack-Destination Fan-In Order Authority
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/601_rv64_gcc_torture_1000_pass_recovery_umbrella.md`
 Related:
@@ -67,6 +67,23 @@ an encodable move sequence.
   specific diagnostic.
 - Backend regression proof passes with matching before/after logs for the
   touched backend scope.
+
+## Closure Note
+
+Closed after Step 5 review. The implementation publishes
+`StackDestinationRegisterFanIn` prepared/prealloc authority with owner,
+destination stack slot, source homes, and candidate order evidence; RV64 lowers
+only matching explicit authority facts and preserves fail-closed diagnostics
+for missing, unsupported, mismatched, or malformed authority. Focused backend
+coverage proves the legal select-shaped fan-in path and rejected authority
+shapes. `src/pr71631.c` was not special-cased; remaining repeated
+stack-destination families without producer facts stay blocked by explicit
+missing-authority diagnostics or belong to separate non-select authority work.
+
+Close-time backend guard used matching `-R '^backend_'` CTest logs. Strict
+mode reported no new failures but rejected equal pass count; the explicit
+non-decreasing regression mode passed with 347 passed, 0 failed before and
+after.
 
 ## Reviewer Reject Signals
 
