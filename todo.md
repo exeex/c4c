@@ -1,51 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/652_prepared_incoming_stack_formal_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Wire RV64 To Consume The Explicit Authority
+Current Step ID: 4
+Current Step Title: Validate And Review Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 wired RV64 object-route stack-passed scalar formal consumers to read
-`PreparedFormalPublicationPlan::incoming_stack_offset_bytes` from the shared
-formal-publication planner.
-
-Consumer path:
-RV64 admission now accepts stack-passed scalar formal homes only when the
-`IncomingStackToHome` publication is available, while preserving local
-home/frame-slot coherence checks as validation. Branch stack-load operands and
-`LoadLocal` formal loads use the explicit incoming offset plus the established
-callee incoming-stack base; they do not derive that offset from formal order or
-`PreparedValueHome::offset_bytes`.
+Step 4 tightened RV64 consumer-boundary validation for prepared incoming stack
+formal authority.
 
 Focused coverage:
-`tests/backend/mir/backend_riscv_object_emission_test.cpp` now proves both a
-stack-passed formal pointer branch operand and a local-memory formal load use
-explicit incoming authority rather than the local home offset, while
-local-home-only authority remains fail-closed.
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` now includes a
+negative duplicate-formal branch case. The branch consumer rejects ambiguous
+matching prepared formal-publication plans instead of selecting the first
+matching formal. Positive explicit-authority branch and `LoadLocal` coverage
+remain intact.
 
 ## Suggested Next
 
-Execute Step 4: validate and review the RV64 consumer boundary. Compare the
-fresh `test_after.log` against the accepted before log, inspect that the RV64
-diff consumes formal-publication authority rather than rebuilding ABI offsets,
-and decide whether broader stack-passed formal coverage is needed before
-lifecycle review.
+Supervisor review/acceptance for Step 4. If accepted, compare
+`test_before.log` and `test_after.log`, roll the focused proof forward, and
+decide whether idea 652 is ready for lifecycle close review.
 
 ## Watchouts
 
 - Do not reintroduce RV64 helpers that compute incoming offsets by applying
   ABI size/alignment policy in the consumer. The current RV64 loops over
-  formals only to find the matching prepared formal-publication plan.
+  formals only to find one matching prepared formal-publication plan and now
+  fail closed on duplicate matches.
 - Do not use `PreparedValueHome::offset_bytes` as incoming authority; it is
   still the callee local home offset.
 - Incoming stack formal loads in functions that save `ra` must use the
   established call-frame size as the incoming-stack base; local home validation
   still uses local frame-slot offsets.
-- `src/20001017-1.c` now passes the allowlisted RV64 backend object progress
-  check.
+- The duplicate branch-formal case rejects through the existing RV64
+  terminator fallback diagnostic; missing explicit authority remains covered by
+  the dedicated `unsupported_param_home` admission diagnostic.
 
 ## Proof
 

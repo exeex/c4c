@@ -15413,6 +15413,17 @@ int builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_with_incoming_a
   return 0;
 }
 
+int rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_ambiguous_incoming_authority() {
+  auto prepared =
+      make_prepared_fused_pointer_lhs_stack_passed_formal_branch_module(true);
+  auto& params = prepared.module.functions.front().params;
+  params.push_back(params.front());
+  params.back().abi->incoming_stack_offset_bytes = std::size_t{32};
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
+}
+
 int builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object() {
   const auto prepared = make_prepared_fused_pointer_rhs_stack_branch_module();
   const auto result =
@@ -30817,6 +30828,8 @@ int main() {
       rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_without_incoming_authority();
   status |=
       builds_prepared_fused_pointer_lhs_stack_passed_formal_branch_with_incoming_authority();
+  status |=
+      rejects_prepared_fused_pointer_lhs_stack_passed_formal_branch_ambiguous_incoming_authority();
   status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |=
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();

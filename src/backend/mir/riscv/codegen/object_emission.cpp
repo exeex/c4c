@@ -3639,6 +3639,7 @@ bool append_rv64_move_value_to_register_with_formal_stack_home(
       !value.name.empty()) {
     const auto size_bytes = rv64_scalar_memory_size_for_type(value.type);
     if (size_bytes.has_value()) {
+      std::optional<std::size_t> selected_incoming_offset;
       for (std::size_t formal_index = 0; formal_index < function.params.size();
            ++formal_index) {
         const auto& formal = function.params[formal_index];
@@ -3665,8 +3666,14 @@ bool append_rv64_move_value_to_register_with_formal_stack_home(
                     incoming_stack_base_bytes) {
           return false;
         }
+        if (selected_incoming_offset.has_value()) {
+          return false;
+        }
+        selected_incoming_offset = plan.incoming_stack_offset_bytes;
+      }
+      if (selected_incoming_offset.has_value()) {
         const auto incoming_absolute_offset =
-            incoming_stack_base_bytes + *plan.incoming_stack_offset_bytes;
+            incoming_stack_base_bytes + *selected_incoming_offset;
         return append_rv64_load_stack_offset_to_register(fragment,
                                                         destination,
                                                         incoming_absolute_offset,
