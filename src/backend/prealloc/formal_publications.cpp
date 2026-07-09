@@ -85,6 +85,13 @@ PreparedFormalPublicationPlan plan_prepared_formal_publication(
 
   if (formal.abi->passed_on_stack) {
     plan.action = PreparedFormalPublicationAction::IncomingStackToHome;
+    plan.incoming_stack_offset_bytes =
+        formal.abi->incoming_stack_offset_bytes;
+    if (!plan.incoming_stack_offset_bytes.has_value()) {
+      plan.status =
+          PreparedFormalPublicationStatus::MissingIncomingStackOffset;
+      return plan;
+    }
   } else if (formal.abi->passed_in_register) {
     plan.action = PreparedFormalPublicationAction::IncomingRegisterToHome;
   } else {

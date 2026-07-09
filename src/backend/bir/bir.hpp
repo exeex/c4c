@@ -594,6 +594,7 @@ struct CallArgAbiInfo {
   bool sret_pointer = false;
   std::size_t aarch64_hfa_lane_count = 0;
   std::size_t aarch64_hfa_lane_index = 0;
+  std::optional<std::size_t> incoming_stack_offset_bytes;
 };
 
 struct CallResultAbiInfo {

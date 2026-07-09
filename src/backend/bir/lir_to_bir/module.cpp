@@ -109,6 +109,27 @@ void mark_rv64_stack_arg(bir::CallArgAbiInfo& abi) {
   abi.passed_on_stack = true;
 }
 
+[[nodiscard]] std::size_t align_abi_stack_offset(std::size_t value,
+                                                 std::size_t alignment) {
+  if (alignment == 0) {
+    return value;
+  }
+  const std::size_t remainder = value % alignment;
+  return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+[[nodiscard]] std::size_t rv64_stack_argument_alignment_bytes(
+    const bir::CallArgAbiInfo& abi) {
+  const std::size_t abi_alignment =
+      abi.align_bytes == 0 ? abi.size_bytes : abi.align_bytes;
+  return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
+}
+
+[[nodiscard]] std::size_t rv64_stack_argument_size_bytes(
+    const bir::CallArgAbiInfo& abi) {
+  return align_abi_stack_offset(std::max<std::size_t>(abi.size_bytes, 8), 8);
+}
+
 bool rv64_ordinary_c_stack_arg_candidate(const bir::CallArgAbiInfo& abi) {
   if (abi.byval_copy || abi.sret_pointer || abi.passed_on_stack ||
       abi.primary_class == bir::AbiValueClass::Memory ||
@@ -159,6 +180,7 @@ void apply_rv64_ordinary_c_stack_pressure_to_abi(
     if (abi == nullptr) {
       continue;
     }
+    abi->incoming_stack_offset_bytes = std::nullopt;
     if (!rv64_ordinary_c_stack_arg_candidate(*abi)) {
       if (abi->passed_in_register && !abi->passed_on_stack) {
         consume_register_lane(rv64_ordinary_c_arg_lane(*abi));
@@ -173,6 +195,19 @@ void apply_rv64_ordinary_c_stack_pressure_to_abi(
       continue;
     }
     consume_register_lane(lane);
+  }
+
+  std::size_t next_stack_offset_bytes = 0;
+  for (std::size_t index = 0; index < count; ++index) {
+    auto* abi = abi_at(index);
+    if (abi == nullptr || !abi->passed_on_stack || abi->size_bytes == 0) {
+      continue;
+    }
+    next_stack_offset_bytes =
+        align_abi_stack_offset(next_stack_offset_bytes,
+                               rv64_stack_argument_alignment_bytes(*abi));
+    abi->incoming_stack_offset_bytes = next_stack_offset_bytes;
+    next_stack_offset_bytes += rv64_stack_argument_size_bytes(*abi);
   }
 }
 

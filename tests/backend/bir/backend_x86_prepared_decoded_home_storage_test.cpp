@@ -68,6 +68,7 @@ prepare::PreparedBirModule make_fixture() {
                   .align_bytes = 4,
                   .primary_class = bir::AbiValueClass::Integer,
                   .passed_on_stack = true,
+                  .incoming_stack_offset_bytes = 16,
               },
           },
           bir::Param{
@@ -481,7 +482,10 @@ int check_query_reuses_shared_formal_publication_plans() {
               "x86 formal publication did not preserve incoming-stack action") ||
       !expect(stack_home.home_kind == prepare::PreparedValueHomeKind::StackSlot &&
                   stack_home.home != nullptr && stack_home.home->offset_bytes == 96,
-              "x86 formal publication did not preserve stack-home facts")) {
+              "x86 formal publication did not preserve stack-home facts") ||
+      !expect(stack_home.incoming_stack_offset_bytes ==
+                  std::optional<std::size_t>{16},
+              "x86 formal publication did not preserve explicit incoming stack authority")) {
     return 1;
   }
 

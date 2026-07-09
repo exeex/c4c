@@ -42,6 +42,7 @@ enum class PreparedFormalPublicationStatus {
   MissingAbiInfo,
   MissingRegisterName,
   MissingStackOffset,
+  MissingIncomingStackOffset,
   UnsupportedHomeKind,
   UnsupportedFormalSource,
 };
@@ -65,6 +66,8 @@ enum class PreparedFormalPublicationStatus {
       return "missing_register_name";
     case PreparedFormalPublicationStatus::MissingStackOffset:
       return "missing_stack_offset";
+    case PreparedFormalPublicationStatus::MissingIncomingStackOffset:
+      return "missing_incoming_stack_offset";
     case PreparedFormalPublicationStatus::UnsupportedHomeKind:
       return "unsupported_home_kind";
     case PreparedFormalPublicationStatus::UnsupportedFormalSource:
@@ -85,6 +88,7 @@ struct PreparedFormalPublicationPlan {
   const bir::Param* formal = nullptr;
   const PreparedValueHome* home = nullptr;
   PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
+  std::optional<std::size_t> incoming_stack_offset_bytes;
 };
 
 struct PreparedFormalPublicationInputs {

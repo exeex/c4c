@@ -28,13 +28,16 @@ bir::CallArgAbiInfo register_abi(bir::TypeKind type) {
   };
 }
 
-bir::CallArgAbiInfo stack_abi(bir::TypeKind type) {
+bir::CallArgAbiInfo stack_abi(
+    bir::TypeKind type,
+    std::optional<std::size_t> incoming_stack_offset_bytes) {
   return bir::CallArgAbiInfo{
       .type = type,
       .size_bytes = 4,
       .align_bytes = 4,
       .primary_class = bir::AbiValueClass::Integer,
       .passed_on_stack = true,
+      .incoming_stack_offset_bytes = incoming_stack_offset_bytes,
   };
 }
 
@@ -69,9 +72,14 @@ Fixture make_fixture() {
   };
 
   add_param("%reg", bir::TypeKind::I32, register_abi(bir::TypeKind::I32));
-  add_param("%stack", bir::TypeKind::I32, stack_abi(bir::TypeKind::I32));
+  add_param("%stack", bir::TypeKind::I32, stack_abi(bir::TypeKind::I32, 8));
   add_param("%missing_home", bir::TypeKind::I32, register_abi(bir::TypeKind::I32));
-  add_param("%missing_stack_offset", bir::TypeKind::I32, stack_abi(bir::TypeKind::I32));
+  add_param("%missing_stack_offset",
+            bir::TypeKind::I32,
+            stack_abi(bir::TypeKind::I32, 16));
+  add_param("%missing_incoming_stack_offset",
+            bir::TypeKind::I32,
+            stack_abi(bir::TypeKind::I32, std::nullopt));
   add_param("%varargs", bir::TypeKind::Ptr, std::nullopt, true, false);
   add_param("%sret", bir::TypeKind::Ptr, register_abi(bir::TypeKind::Ptr), false, true);
   add_param("%unsupported_home", bir::TypeKind::I32, register_abi(bir::TypeKind::I32));
@@ -81,6 +89,8 @@ Fixture make_fixture() {
   const auto reg_name = fixture.names.value_names.find("%reg");
   const auto stack_name = fixture.names.value_names.find("%stack");
   const auto missing_stack_name = fixture.names.value_names.find("%missing_stack_offset");
+  const auto missing_incoming_stack_name =
+      fixture.names.value_names.find("%missing_incoming_stack_offset");
   const auto unsupported_name = fixture.names.value_names.find("%unsupported_home");
   const auto missing_reg_name = fixture.names.value_names.find("%missing_reg_name");
   const auto missing_abi_name = fixture.names.value_names.find("%missing_abi");
@@ -107,6 +117,14 @@ Fixture make_fixture() {
           .value_name = missing_stack_name,
           .kind = prepare::PreparedValueHomeKind::StackSlot,
           .slot_id = 6,
+      },
+      prepare::PreparedValueHome{
+          .value_id = 5,
+          .function_name = function_name,
+          .value_name = missing_incoming_stack_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = 7,
+          .offset_bytes = 48,
       },
       prepare::PreparedValueHome{
           .value_id = 7,
@@ -170,7 +188,11 @@ int verify_available_publications() {
       !expect(stack.value_id == 2 && stack.home == &fixture.locations.value_homes[1],
               "stack-home prepared authority was not preserved") ||
       !expect(stack.home_kind == prepare::PreparedValueHomeKind::StackSlot,
-              "stack-home kind mismatch")) {
+              "stack-home kind mismatch") ||
+      !expect(stack.incoming_stack_offset_bytes == std::optional<std::size_t>{8},
+              "stack-home incoming caller-stack offset authority mismatch") ||
+      !expect(stack.home->offset_bytes == std::optional<std::size_t>{40},
+              "stack-home local spill offset should remain distinct")) {
     return 1;
   }
   return 0;
@@ -181,9 +203,11 @@ int verify_missing_and_unsupported_statuses() {
   const auto inputs = inputs_for(fixture);
   const auto missing_home = prepare::plan_prepared_formal_publication(inputs, 2);
   const auto missing_stack = prepare::plan_prepared_formal_publication(inputs, 3);
-  const auto unsupported = prepare::plan_prepared_formal_publication(inputs, 6);
-  const auto missing_register = prepare::plan_prepared_formal_publication(inputs, 7);
-  const auto missing_abi = prepare::plan_prepared_formal_publication(inputs, 8);
+  const auto missing_incoming_stack =
+      prepare::plan_prepared_formal_publication(inputs, 4);
+  const auto unsupported = prepare::plan_prepared_formal_publication(inputs, 7);
+  const auto missing_register = prepare::plan_prepared_formal_publication(inputs, 8);
+  const auto missing_abi = prepare::plan_prepared_formal_publication(inputs, 9);
 
   if (!expect(missing_home.status ==
                   prepare::PreparedFormalPublicationStatus::MissingValueHome,
@@ -193,6 +217,17 @@ int verify_missing_and_unsupported_statuses() {
               "missing stack-offset status mismatch") ||
       !expect(missing_stack.home == &fixture.locations.value_homes[2],
               "missing stack-offset should preserve home authority") ||
+      !expect(missing_stack.incoming_stack_offset_bytes ==
+                  std::optional<std::size_t>{16},
+              "missing stack-offset should preserve incoming stack authority") ||
+      !expect(missing_incoming_stack.status ==
+                  prepare::PreparedFormalPublicationStatus::
+                      MissingIncomingStackOffset,
+              "missing incoming stack-offset status mismatch") ||
+      !expect(missing_incoming_stack.home == &fixture.locations.value_homes[3],
+              "missing incoming stack-offset should preserve local home authority") ||
+      !expect(missing_incoming_stack.incoming_stack_offset_bytes == std::nullopt,
+              "missing incoming stack-offset should not invent authority") ||
       !expect(unsupported.status ==
                   prepare::PreparedFormalPublicationStatus::UnsupportedHomeKind,
               "unsupported home-kind status mismatch") ||
@@ -210,8 +245,8 @@ int verify_missing_and_unsupported_statuses() {
 int verify_no_publication_and_collection() {
   const auto fixture = make_fixture();
   const auto inputs = inputs_for(fixture);
-  const auto varargs = prepare::plan_prepared_formal_publication(inputs, 4);
-  const auto sret = prepare::plan_prepared_formal_publication(inputs, 5);
+  const auto varargs = prepare::plan_prepared_formal_publication(inputs, 5);
+  const auto sret = prepare::plan_prepared_formal_publication(inputs, 6);
   const auto plans = prepare::plan_prepared_formal_publications(inputs);
 
   if (!expect(varargs.status == prepare::PreparedFormalPublicationStatus::NoPublication,
@@ -221,7 +256,7 @@ int verify_no_publication_and_collection() {
       !expect(plans.size() == fixture.function.params.size(),
               "formal publication collection size mismatch") ||
       !expect(plans[0].value_id == 1 &&
-                  plans[4].status == prepare::PreparedFormalPublicationStatus::NoPublication,
+                  plans[5].status == prepare::PreparedFormalPublicationStatus::NoPublication,
               "formal publication collection did not preserve per-formal facts")) {
     return 1;
   }

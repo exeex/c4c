@@ -1,75 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/652_prepared_incoming_stack_formal_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate The Producer Authority Boundary
+Current Step ID: 2
+Current Step Title: Publish One Explicit Incoming Stack Formal Fact
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 located the producer/prealloc authority boundary for
-`src/20001017-1.c`.
+Step 2 published explicit incoming stack formal authority in producer/prealloc
+metadata without wiring RV64 consumption.
 
-Current producer owner:
+Fact shape:
+`bir::CallArgAbiInfo::incoming_stack_offset_bytes` is an optional caller-stack
+incoming byte offset. `PreparedFormalPublicationPlan::incoming_stack_offset_bytes`
+copies that fact for `IncomingStackToHome` publications and keeps it distinct
+from `PreparedValueHome::offset_bytes`, which remains the callee local
+spill-slot/home offset.
+
+Producer derivation:
+`src/backend/bir/lir_to_bir/module.cpp::apply_rv64_ordinary_c_stack_pressure_to_abi`
+now assigns incoming stack offsets during RV64 ABI stack-pressure publication,
+after deciding which ordinary C scalar lanes are stack-passed. It clears the
+field for non-stack lanes and computes offsets from target ABI size/alignment
+policy in the BIR producer layer, not in RV64 object emission.
+
+Publication gate:
 `src/backend/prealloc/formal_publications.cpp::plan_prepared_formal_publication`
-chooses `IncomingStackToHome` from BIR ABI facts plus the prepared value home.
-It publishes only the action and `PreparedValueHome` pointer. The available
-home facts are produced by
-`src/backend/prealloc/regalloc/value_homes.cpp::classify_prepared_value_home`,
-with RV64 fixed stack-passed scalar homes selected by
-`find_rv64_stack_passed_fixed_formal_home_slot`.
+now requires `incoming_stack_offset_bytes` before an `IncomingStackToHome`
+formal publication is available. Missing local home offset still reports
+`MissingStackOffset`; local-home-only authority now reports
+`MissingIncomingStackOffset`.
 
-Current facts available in the fresh probe
-`build/agent_state/652_step1_authority_boundary/20001017-1.prepared.txt`:
-caller-side call argument plans and ABI bindings name outgoing stack
-destinations for `bug` (`arg9 -> stack+0`, `arg11 -> stack+8`,
-`arg12 -> stack+16`), but callee formal homes name local frame slots
-(`%p.fdB -> slot#10/offset40`, `%p.C -> slot#12/offset48`,
-`%p.fdC -> slot#11/offset44`). There is no published fact tying the callee
-formal to its incoming caller-stack byte offset independently of the local
-home. The current object probe still fails closed with the missing explicit
-incoming stack formal authority diagnostic.
-
-Classification: this is an upstream publication/model gap in
-producer/prealloc formal publication, not a latent RV64 consumption gap.
+Focused coverage:
+`tests/backend/bir/backend_prealloc_formal_publications_test.cpp` proves an
+available stack formal with incoming offset `8` and local home offset `40`,
+plus negative local-home-only coverage. The x86 prepared query fixture was
+updated to preserve the new shared fact in its synthetic stack formal plan.
 
 ## Suggested Next
 
-Execute Step 2: add the smallest producer/prealloc representation for explicit
-incoming caller-stack formal authority. The natural repair family is to extend
-formal-publication data with an incoming stack offset/address fact that is
-derived upstream from target ABI/prealloc policy, exposed through focused
-producer/prealloc tests, and kept distinct from `PreparedValueHome` local
-frame-slot offsets.
+Execute Step 3: wire RV64 object-route stack-passed scalar formal loading to
+consume `PreparedFormalPublicationPlan::incoming_stack_offset_bytes` only when
+the formal publication is available. Keep missing-authority diagnostics for
+local-home-only or ambiguous facts, and add RV64 coverage proving the load
+source comes from the explicit prepared fact rather than from formal-order or
+frame-size reconstruction.
 
 ## Watchouts
 
 - Do not reintroduce RV64 helpers that compute incoming offsets by walking
   `function.params`, applying ABI size/alignment, or adding
   `stack_frame_bytes`.
-- Keep `IncomingStackToHome` plus callee local home distinct from explicit
-  caller-stack incoming authority.
-- Positive RV64 coverage should wait until the producer/prealloc fact exists;
-  producer/prealloc coverage should prove the authority first.
-- Do not repurpose `PreparedValueHome::offset_bytes` for incoming stack
-  authority; in the current stack-passed formal rows it is the callee local
-  frame-slot offset.
-- The caller-side `PreparedCallPlan` has outgoing destination stack offsets for
-  call arguments, but those rows are callsite facts, not callee formal incoming
-  authority.
+- Do not use `PreparedValueHome::offset_bytes` as incoming authority; it is
+  still the callee local home offset.
+- RV64 object emission currently still fails closed with
+  `unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes`.
+- The new BIR ABI field is producer-owned. Step 3 should consume it through
+  formal-publication/prepared data, not by recomputing the ABI stack layout in
+  RV64.
 
 ## Proof
 
-Fresh Step 1 probes:
-`build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/20001017-1.c > build/agent_state/652_step1_authority_boundary/20001017-1.prepared.txt 2> build/agent_state/652_step1_authority_boundary/20001017-1.prepared.err`
-
-`build/c4cll --target riscv64-linux-gnu --codegen obj -o build/agent_state/652_step1_authority_boundary/20001017-1.o tests/c/external/gcc_torture/src/20001017-1.c > build/agent_state/652_step1_authority_boundary/20001017-1.obj.out 2> build/agent_state/652_step1_authority_boundary/20001017-1.obj.err`
-
-Object probe result: expected fail-closed diagnostic
-`unsupported_param_home: RV64 object route requires explicit prepared incoming stack formal authority before consuming stack-passed scalar formal homes`.
-
 Validation command written to `test_after.log`:
-`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_formal_publications|backend_prepare_frame_stack_call_contract)$') > test_after.log 2>&1`
+`rm -f test_after.log && (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_formal_publications|backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prepared_object_consumer_contract|backend_call_boundary_effect_plan)$') > test_after.log 2>&1`
 
-Result: PASS, 2/2 focused producer/prealloc tests passed.
+Result: PASS, 5/5 focused tests passed.
