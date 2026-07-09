@@ -257,3 +257,80 @@ Completion check:
 - `todo.md` records the refreshed probe result, representative movement or
   non-movement, residual owner buckets, and a close/continue/split
   recommendation grounded in current evidence.
+
+## Step 9: Trace Remaining Stack-Home Local-Memory Bucket
+
+Goal: identify why the remaining clean byval/sret local-memory representatives
+still reach the generic local-memory rejection after the Step 7 route repair.
+
+Primary targets: `src/pr30185.c`, `src/950628-1.c`, and `src/20020215-1.c`.
+
+Actions:
+- Start from the fresh Step 8 prepared extracts and object-route diagnostics.
+- Compare each primary target against the now-moved `src/pr38969.c` route and
+  isolate the first diverging prepared fact, dispatch branch, predicate, or
+  emission helper.
+- For each primary target, record the concrete local-memory access shape:
+  byval or sret role, pointer-value base, source object/home identity,
+  selected offset, size, alignment, lane or byte-slice width, extent,
+  range verdict, and stack-home authority result.
+- Distinguish an RV64 consumer-routing miss from a prepared-authority gap, a
+  selected-lane or byte-slice publication gap, an unsupported width/alignment
+  policy, or an out-of-scope owner.
+- Classify the other Step 8 remaining local-memory rows only enough to decide
+  whether they share the same stack-home route as the primary targets or
+  belong to another existing or new idea.
+
+Completion check:
+- `todo.md` names the exact first failing boundary for each primary target,
+  identifies the shared smallest repair if one exists, and records which
+  remaining local-memory rows are in scope for that repair.
+
+## Step 10: Repair The Verified Residual Stack-Home Route
+
+Goal: move only the Step 9-verified residual byval/sret stack-home lane past
+the local-memory gate without admitting unrelated aggregate, global, call,
+move-bundle, F128, runtime, or ABI rows.
+
+Actions:
+- If Step 9 proves prepared authority is complete but the RV64 consumer still
+  takes the generic local-memory path, repair only that dispatch or predicate
+  boundary.
+- If Step 9 proves a selected byte, lane, offset, size, alignment, or home fact
+  is missing before object emission, publish that fact at the narrow prepared
+  producer/carrier boundary and keep the consumer fail-closed.
+- If Step 9 proves the primary targets split across distinct missing owners,
+  repair only the shared stack-home local-memory owner and record the rest for
+  lifecycle handling instead of broadening this step.
+- Add focused positive tests for the accepted route and negative tests for
+  missing authority, stale home/source identity, malformed selected-lane facts,
+  unsupported width or alignment, non-byval/sret pointer-value accesses, and
+  already out-of-scope owner buckets.
+- Preserve existing behavior for moved Step 8 rows such as `src/pr38969.c` and
+  `src/struct-ret-1.c`; the repair must not route later call ABI or call
+  instruction owners back into local-memory handling.
+
+Completion check:
+- Focused prepared-layer or RV64 object-emission tests pass, and the accepted
+  route is justified by explicit prepared stack-home authority plus the
+  selected access facts identified in Step 9.
+
+## Step 11: Reclassify Aggregate Stack-Home Rows After Residual Repair
+
+Goal: decide whether idea 633 is close-ready after the residual repair or
+whether the remaining local-memory rows require another narrow runbook
+extension or separate durable owners.
+
+Actions:
+- Re-run the same aggregate stack-home residual probe used by Steps 5 and 8.
+- Compare the Step 9 primary targets and moved Step 8 representatives against
+  their prior diagnostics.
+- Classify every remaining failure into stack-home local-memory authority,
+  existing open ideas, later backend owners, or new durable residual owners.
+- Record whether idea 633 is complete, needs another numbered stack-home
+  packet, or should split residual initiatives.
+
+Completion check:
+- `todo.md` records refreshed probe counts, representative movement, row
+  buckets, proof results, and a close/continue/split recommendation grounded
+  in current evidence.

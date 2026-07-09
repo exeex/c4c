@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/633_aggregate_stack_home_local_memory_policy.md
 Source Plan Path: plan.md
-Current Step ID: 8
-Current Step Title: Reclassify Aggregate Stack-Home Rows After Route Repair
+Current Step ID: 9
+Current Step Title: Trace Remaining Stack-Home Local-Memory Bucket
 
 # Current Packet
 
@@ -59,11 +59,13 @@ Residual buckets from Step 8:
 
 ## Suggested Next
 
-Continue idea 633 with a narrow trace packet for the remaining local-memory
-bucket. Primary targets should be `src/pr30185.c`, `src/950628-1.c`, and
+Delegate Step 9 as a narrow trace packet for the remaining local-memory
+bucket. Primary targets are `src/pr30185.c`, `src/950628-1.c`, and
 `src/20020215-1.c`, starting from the fresh Step 8 prepared extracts and
-object-route diagnostics to identify why complete byval/sret pointer-value
-accesses still reach the generic local-memory rejection.
+object-route diagnostics. The packet should compare those rows against the
+now-moved `src/pr38969.c` route, identify the first diverging prepared fact or
+RV64 dispatch boundary, and classify the other remaining local-memory rows
+only enough to decide whether they share the same stack-home route.
 
 ## Watchouts
 
