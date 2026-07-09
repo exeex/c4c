@@ -436,6 +436,23 @@ std::optional<std::size_t> prepared_stack_slot_home_absolute_offset_for_value_gl
                                                        *size_bytes);
 }
 
+std::optional<std::int32_t> prepared_stack_slot_home_offset_for_value_global(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  return rv64_prepared_stack_slot_home_offset(stack_layout,
+                                             *home,
+                                             stack_frame_bytes,
+                                             size_bytes);
+}
+
 std::optional<std::uint32_t> rv64_global_load_funct3_for_size(
     std::size_t size_bytes) {
   switch (size_bytes) {
@@ -836,9 +853,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_global(
         prepare::prepared_link_name(prepared.names, *access->address.symbol_name);
     const auto destination =
         fpr_register_number_for_value_global(names, lookups, load.result);
-    if (!destination.has_value()) {
+    const auto destination_offset =
+        prepared_stack_slot_home_offset_for_value_global(stack_layout,
+                                                        names,
+                                                        lookups,
+                                                        load.result,
+                                                        stack_frame_bytes,
+                                                        *floating_size_bytes);
+    if (!destination.has_value() && !destination_offset.has_value()) {
       return std::nullopt;
     }
+    const std::uint32_t destination_register = destination.value_or(0);
     const std::uint32_t address_register = 6;
     RiscvEncodedFragment fragment = make_rv64_pcrel_address_fragment(
         address_register,
@@ -850,10 +875,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_global(
         0);
     if (!append_rv64_load_global_base_to_fpr(
             fragment,
-            *destination,
+            destination_register,
             address_register,
             static_cast<std::int32_t>(access->address.byte_offset),
             load.result.type)) {
+      return std::nullopt;
+    }
+    if (destination_offset.has_value() &&
+        !append_rv64_prepared_store_fpr_to_stack_offset(fragment,
+                                                       destination_register,
+                                                       *destination_offset)) {
       return std::nullopt;
     }
     return fragment;

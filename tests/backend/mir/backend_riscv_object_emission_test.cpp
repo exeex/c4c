@@ -152,6 +152,20 @@ bool is_rv64_store_to_sp(std::uint32_t word,
          riscv_s_imm(word) == offset;
 }
 
+bool is_rv64_store_to_sp(std::uint32_t word,
+                         unsigned funct3,
+                         std::int32_t offset) {
+  return (word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == funct3 &&
+         riscv_rs1(word) == 2U && riscv_s_imm(word) == offset;
+}
+
+bool is_rv64_fp_store_to_sp(std::uint32_t word,
+                            unsigned funct3,
+                            std::int32_t offset) {
+  return (word & 0x7fU) == 0x27U && ((word >> 12) & 0x7U) == funct3 &&
+         riscv_rs1(word) == 2U && riscv_s_imm(word) == offset;
+}
+
 bool is_rv64_store_to_register(std::uint32_t word,
                                unsigned funct3,
                                unsigned base_register,
@@ -6701,6 +6715,21 @@ prepare::PreparedBirModule make_prepared_global_scalar_load_module(
   return prepared;
 }
 
+prepare::PreparedValueHome rv64_stack_slot_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes);
+
+prepare::PreparedValueHome rv64_sized_stack_slot_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes,
+    std::size_t size_bytes);
+
 prepare::PreparedBirModule make_prepared_global_aggregate_lane_load_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -6783,6 +6812,182 @@ prepare::PreparedBirModule make_prepared_global_aggregate_lane_load_module() {
           },
       }},
   });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_f64_frame_slot_load_module(
+    bool publish_access = true) {
+  auto prepared = make_prepared_global_f64_load_module(publish_access);
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto result_name = prepared.names.value_names.find("%d");
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{30},
+      .function_name = function_name,
+      .value_name = result_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::F64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{30},
+      .object_id = prepare::PreparedObjectId{30},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.value_locations.functions[0].value_homes[0] =
+      rv64_sized_stack_slot_home(1,
+                                 function_name,
+                                 result_name,
+                                 prepare::PreparedFrameSlotId{30},
+                                 8,
+                                 8);
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_aggregate_lane_frame_slot_flow_module(
+    bool publish_access = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("global_lane_stack_flow");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lane_name = prepared.names.value_names.intern("%lane");
+  const auto source_global = prepared.names.link_names.intern("source_lanes");
+  const auto destination_global =
+      prepared.names.link_names.intern("destination_lanes");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadGlobalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%lane"),
+                  .global_name = "source_lanes",
+                  .global_name_id = source_global,
+                  .byte_offset = 68,
+                  .align_bytes = 4,
+              },
+              bir::StoreGlobalInst{
+                  .global_name = "destination_lanes",
+                  .global_name_id = destination_global,
+                  .value = bir::Value::named(bir::TypeKind::I32, "%lane"),
+                  .byte_offset = 4,
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  auto make_lane_global = [](std::string name, c4c::LinkNameId link_name) {
+    bir::Global aggregate{
+        .name = std::move(name),
+        .link_name_id = link_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 72,
+        .align_bytes = 4,
+        .address_materialization_policy =
+            bir::GlobalAddressMaterializationPolicy::Direct,
+    };
+    for (std::int32_t lane = 0; lane != 18; ++lane) {
+      aggregate.initializer_elements.push_back(bir::Value::immediate_i32(lane));
+    }
+    return aggregate;
+  };
+  prepared.module.globals.push_back(
+      make_lane_global("source_lanes", source_global));
+  prepared.module.globals.back().is_constant = true;
+  prepared.module.globals.push_back(
+      make_lane_global("destination_lanes", destination_global));
+  publish_prepared_object_data(prepared);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "global_lane_stack_flow",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{31},
+      .function_name = function_name,
+      .value_name = lane_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{31},
+      .object_id = prepare::PreparedObjectId{31},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {rv64_stack_slot_home(1,
+                                           function_name,
+                                           lane_name,
+                                           prepare::PreparedFrameSlotId{31},
+                                           8)},
+  });
+  if (publish_access) {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 0,
+                    .result_value_name = lane_name,
+                    .address = prepare::PreparedAddress{
+                        .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                        .symbol_name = source_global,
+                        .global_address_materialization_policy =
+                            bir::GlobalAddressMaterializationPolicy::Direct,
+                        .byte_offset = 68,
+                        .size_bytes = 4,
+                        .align_bytes = 4,
+                        .can_use_base_plus_offset = true,
+                    },
+                },
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = 1,
+                    .stored_value_name = lane_name,
+                    .address = prepare::PreparedAddress{
+                        .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                        .symbol_name = destination_global,
+                        .global_address_materialization_policy =
+                            bir::GlobalAddressMaterializationPolicy::Direct,
+                        .byte_offset = 4,
+                        .size_bytes = 4,
+                        .align_bytes = 4,
+                        .can_use_base_plus_offset = true,
+                    },
+                },
+            },
+    });
+  }
   return prepared;
 }
 
@@ -23806,6 +24011,155 @@ int emits_prepared_global_aggregate_lane_load_from_explicit_facts() {
   return 0;
 }
 
+int emits_prepared_f64_global_load_to_frame_slot_from_explicit_facts() {
+  const auto prepared = make_prepared_global_f64_frame_slot_load_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail("expected prepared RV64 object path to emit F64 global load into frame slot: " +
+                build.diagnostic);
+  }
+  const auto& module = *build.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* rodata = object::find_section(module, ".rodata");
+  const auto* global_symbol = object::find_symbol(module, "d");
+  if (text == nullptr || rodata == nullptr || global_symbol == nullptr) {
+    return fail("expected text, rodata, and F64 global symbol for frame-slot load");
+  }
+  bool saw_global_fld = false;
+  bool saw_frame_slot_fsd = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x07U && ((word >> 12) & 0x7U) == 3U &&
+        riscv_rs1(word) != 2U) {
+      saw_global_fld = true;
+    }
+    if (is_rv64_fp_store_to_sp(word, 3U, 8)) {
+      saw_frame_slot_fsd = true;
+    }
+  }
+  if (!saw_global_fld || !saw_frame_slot_fsd) {
+    return fail("expected F64 global load consumer to spill the loaded FPR lane into its prepared frame slot");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      global_symbol->size_bytes != 8) {
+    return fail("expected F64 frame-slot load target to remain a defined object");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize F64 frame-slot global load");
+  }
+  return 0;
+}
+
+int emits_prepared_global_integer_aggregate_lane_frame_slot_flow() {
+  const auto prepared =
+      make_prepared_global_aggregate_lane_frame_slot_flow_module();
+  const auto build =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!build.ok()) {
+    return fail(
+        "expected prepared RV64 object path to emit aggregate lane load/store through frame slot: " +
+        build.diagnostic);
+  }
+  const auto& module = *build.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* source_symbol = object::find_symbol(module, "source_lanes");
+  const auto* destination_symbol =
+      object::find_symbol(module, "destination_lanes");
+  if (text == nullptr || source_symbol == nullptr || destination_symbol == nullptr) {
+    return fail("expected text and aggregate lane global symbols");
+  }
+  bool saw_global_lw = false;
+  bool saw_frame_slot_sw = false;
+  bool saw_frame_slot_lw = false;
+  bool saw_global_sw = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x03U && ((word >> 12) & 0x7U) == 2U &&
+        riscv_rs1(word) != 2U && riscv_i_imm(word) == 68) {
+      saw_global_lw = true;
+    }
+    if (is_rv64_store_to_sp(word, 2U, 8)) {
+      saw_frame_slot_sw = true;
+    }
+    if (is_rv64_load_from_sp(word, 2U, 8)) {
+      saw_frame_slot_lw = true;
+    }
+    if ((word & 0x7fU) == 0x23U && ((word >> 12) & 0x7U) == 2U &&
+        riscv_rs1(word) != 2U && riscv_s_imm(word) == 4) {
+      saw_global_sw = true;
+    }
+  }
+  if (!saw_global_lw || !saw_frame_slot_sw || !saw_frame_slot_lw ||
+      !saw_global_sw) {
+    return fail("expected aggregate lane flow to consume prepared global facts through a prepared GPR frame slot");
+  }
+  if (source_symbol->kind != object::SymbolKind::Object ||
+      destination_symbol->kind != object::SymbolKind::Object ||
+      source_symbol->size_bytes != 72 || destination_symbol->size_bytes != 72) {
+    return fail("expected aggregate lane globals to retain object sizes");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize aggregate lane frame-slot flow");
+  }
+  return 0;
+}
+
+int rejects_prepared_global_frame_slot_consumer_fail_closed_shapes() {
+  constexpr const char* missing_access_diagnostic =
+      "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing";
+  constexpr const char* global_fact_diagnostic =
+      "unsupported_global_data: RV64 object route requires supported prepared global memory facts";
+
+  auto prepared = make_prepared_global_f64_frame_slot_load_module(false);
+  if (expect_prepared_rejection_diagnostic(prepared, missing_access_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_f64_frame_slot_load_module();
+  prepared.addressing.functions[0].accesses[0].address.can_use_base_plus_offset =
+      false;
+  if (expect_prepared_rejection_diagnostic(prepared, global_fact_diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_global_f64_frame_slot_load_module();
+  prepared.value_locations.functions[0].value_homes[0].kind =
+      prepare::PreparedValueHomeKind::PointerBasePlusOffset;
+  if (expect_prepared_rejection_diagnostic(prepared, global_fact_diagnostic) != 0) {
+    return 1;
+  }
+
+  auto aggregate =
+      make_prepared_global_aggregate_lane_frame_slot_flow_module(false);
+  if (expect_prepared_rejection_diagnostic(aggregate, missing_access_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  aggregate = make_prepared_global_aggregate_lane_frame_slot_flow_module();
+  aggregate.addressing.functions[0].accesses[1].address.size_bytes = 16;
+  if (expect_prepared_rejection_diagnostic(aggregate, global_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  aggregate = make_prepared_global_aggregate_lane_frame_slot_flow_module();
+  aggregate.value_locations.functions[0].value_homes[0].kind =
+      prepare::PreparedValueHomeKind::RematerializableImmediate;
+  if (expect_prepared_rejection_diagnostic(aggregate, global_fact_diagnostic) !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_raw_load_local_global_address_lane_without_prepared_access() {
   return expect_prepared_rejection_diagnostic(
       make_raw_global_address_load_local_lane_module(),
@@ -26589,6 +26943,9 @@ int main() {
   status |= rejects_prepared_f64_global_load_without_prepared_access();
   status |= emits_prepared_f64_global_load_from_explicit_facts();
   status |= emits_prepared_global_aggregate_lane_load_from_explicit_facts();
+  status |= emits_prepared_f64_global_load_to_frame_slot_from_explicit_facts();
+  status |= emits_prepared_global_integer_aggregate_lane_frame_slot_flow();
+  status |= rejects_prepared_global_frame_slot_consumer_fail_closed_shapes();
   status |= rejects_raw_load_local_global_address_lane_without_prepared_access();
   status |= builds_prepared_i16_local_store_object();
   status |= builds_prepared_fpr_fpext_object();

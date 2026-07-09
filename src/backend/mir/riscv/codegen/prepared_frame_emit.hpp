@@ -132,6 +132,16 @@ void append_rv64_prepared_load_immediate(RiscvEncodedFragment& fragment,
     std::size_t offset,
     std::size_t size_bytes);
 
+[[nodiscard]] bool append_rv64_prepared_store_fpr_to_stack_offset(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t source_register,
+    std::int32_t offset);
+
+[[nodiscard]] bool append_rv64_prepared_load_stack_offset_to_fpr(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination_register,
+    std::int32_t offset);
+
 [[nodiscard]] bool append_rv64_prepared_stack_pointer_adjustment(
     RiscvEncodedFragment& fragment,
     std::int64_t byte_delta);
