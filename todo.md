@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/656_rv64_20140828_callee_result_frame_slot_runtime.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair The Proven Callee/Frame-Slot Rule
+Current Step ID: 4
+Current Step Title: Representative Runtime And Backend Regression Proof
 
 # Current Packet
 
@@ -29,12 +29,25 @@ Evidence directory:
 
 ## Suggested Next
 
-Continue Step 3 with the newly exposed downstream RV64 object owner:
-`producer_authority_missing_for_register_fan_in_stack_destination` at
-`rv64_advance_and_store` block `entry`, `instruction_index=9`,
-`phase=before_instruction`, `move_count=2`, `parallel_copy=no`. The next packet
-should repair or classify that register-source fan-in to stack destination using
-explicit prepared ordering/producer authority, not instruction-shape inference.
+Proceed to Step 4 as a representative proof/classification packet, not a
+destination fan-in implementation packet.
+
+Refresh BIR, prepared-BIR, ASM, object, disassembly, and qemu/runtime evidence
+for `tests/c/external/gcc_torture/src/20140828-1.c` after the completed `%t3`
+producer/freshness repair. Confirm that the prior 656-owned boundary remains
+repaired:
+
+- `%t3 = bir.add ptr %t2, 2` is present before
+  `bir.store_local %lv.param.base, ptr %t3`.
+- the relevant store source still reports `source_producer=binary` and
+  `source_freshness_status=selected`.
+
+If RV64 object emission or runtime now stops at
+`producer_authority_missing_for_register_fan_in_stack_destination`, record that
+as the precise downstream fail-closed owner for 656 closure consideration. Do
+not implement register-source fan-in-to-stack-destination authority under idea
+656; that owner belongs to the parked 647/655 line unless the supervisor
+explicitly reactivates or splits that work.
 
 ## Watchouts
 
@@ -51,6 +64,10 @@ explicit prepared ordering/producer authority, not instruction-shape inference.
   RV64 object diagnostic for register fan-in stack destination authority.
 - The `*out` route is adjacent evidence only; the focused red runtime result is
   the callee returned pointer.
+- `review/656_route_review.md` rejects continuing Step 3 into
+  stack-destination fan-in authority as route drift. Treat the current fan-in
+  failure as downstream classification evidence, not as implementation
+  authorization inside idea 656.
 
 ## Proof
 
