@@ -1,6 +1,6 @@
 # Post-Wave Residual Baseline Failures
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and repair queue generator
 Parent: `ideas/closed/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -166,3 +166,36 @@ focused follow-up idea or can be resolved within the umbrella triage route.
 candidate-only/common residual policy is settled and a fresh candidate is
 monotonic against `test_baseline.log` or explicitly rejected with preserved
 diagnostic evidence.
+
+## Closure Note
+
+Closed after the post-follow-up residual set was fully reconciled.
+
+- Ideas 676 and 677 closed the two new-only RV64 CLI route rows that originally
+  blocked baseline acceptance.
+- The row-322 AArch64 prepared-BIR publication residual was classified as a
+  stale dump-contract expectation and corrected without implementation-source,
+  unsupported-marker, allowlist, timeout, runtime-policy, or baseline-accounting
+  changes. Backend proof
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  passed with `368/368` backend tests.
+- A fresh full-suite proof
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+  left only `llvm_gcc_c_torture_src_20040709_2_c` and
+  `llvm_gcc_c_torture_src_20040709_3_c`.
+- The fresh candidate was monotonic against the accepted baseline and was
+  accepted through `scripts/plan_review_state.py accept-baseline`. The accepted
+  `test_baseline.log` intentionally contains only those two LLVM torture
+  residuals.
+- Closed idea 668 classifies the two LLVM torture rows as separate research
+  residuals outside the RV64, prepared CLI, AArch64, and object-emission owners
+  reconciled by this umbrella.
+
+Close guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed with `3395/3397` before and after, zero resolved failures, and
+zero new failures.

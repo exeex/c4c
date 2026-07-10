@@ -1,132 +1,146 @@
-# Post-Wave Residual Baseline Failures Runbook
+# Ordered Or Exclusive Stack-Destination Fan-In Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/675_post_wave_residual_baseline_failures.md
+Source Idea: ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md
 
 ## Purpose
 
-Resume post-wave residual reconciliation after the focused 676 and 677
-follow-ups settled the two new-only RV64 backend rows.
+Resume stack-destination register fan-in authority work after idea 675 closed
+and after decomposition idea 655 parked the coarse Step 2 route.
 
 ## Goal
 
-Classify the remaining backend residuals, preserve the baseline policy
-boundary, and generate focused follow-up work only when a first owner is proven.
+Identify one legal non-637 prepared/prealloc destination-authority family for
+stack-destination register fan-in, or record precise producer evidence proving
+no implementation packet is available yet.
 
 ## Core Rule
 
-Do not accept `test_baseline.new.log`, rewrite expectations, or treat row-count
-improvement as progress until residual policy is settled by stable test name.
+Do not claim progress through named-case fixes, expectation rewrites,
+unsupported-marker changes, allowlist edits, timeout/accounting changes, or
+RV64 materialization before prepared/prealloc publishes explicit destination
+authority facts.
 
 ## Read First
 
-- `ideas/open/675_post_wave_residual_baseline_failures.md`
-- `build/agent_state/675_step1_candidate_delta/summary.md`
-- `ideas/closed/676_rv64_pointer_global_local_publication_runtime_contract.md`
-- `ideas/closed/677_rv64_call_arg_local_frame_address_object_materialization.md`
-- `test_baseline.log`
-- `test_baseline.new.log`
+- `ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md`
+- `ideas/open/655_stack_destination_fan_in_authority_decomposition.md`
+- `docs/destination_fan_in_authority/03_implementation_split.md`
+- `ideas/closed/637_prepared_stack_destination_fan_in_authority_producer.md`
 
 ## Current Targets
 
-- Immediate backend residual:
-  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
-- Parent residual policy:
-  reconcile persistent common failures and decide whether a fresh candidate is
-  monotonic or explicitly rejected.
-- Baseline status:
-  `test_baseline.new.log` remains unaccepted.
+- Residual non-637 stack-destination register fan-in rows named in idea 647.
+- Parked decomposition evidence from idea 655.
+- Focused prepared/prealloc producer facts for exactly one legal authority
+  family, if current evidence proves one.
 
 ## Non-Goals
 
-- Do not reopen closed ideas 676 or 677 without fresh evidence that their
-  closure notes are wrong.
-- Do not accept `test_baseline.new.log` in this runbook until the remaining
-  candidate/common residual policy is settled.
-- Do not edit unsupported markers, allowlists, timeouts, runtime policy, or
-  baseline accounting.
-- Do not merge RV64 CLI route fixes, AArch64 publication, dump-contract rows,
-  and LLVM torture rows into one implementation owner without evidence of a
-  shared first owner.
+- Do not reopen idea 637's select-materialized semantic-merge contract.
+- Do not implement RV64 target materialization before the producer authority
+  fact exists.
+- Do not infer authority from filenames, source order, value ids, block labels,
+  diagnostics, move-vector order, source freshness, final assembly, ABI,
+  runtime behavior, expectations, allowlists, timeouts, or unsupported markers.
+- Do not treat decomposition-only notes as implementation progress.
 
 ## Working Model
 
-Idea 675 split the two new-only RV64 CLI rows into focused ideas 676 and 677.
-Both are closed. Broad backend validation now leaves only the AArch64
-prepared-BIR publication row failing in backend scope, but the source idea also
-tracks persistent dump and LLVM residuals from the accepted/candidate baseline
-comparison. The next route is reconciliation: prove the current residual set by
-stable test name, classify the remaining backend row's first owner, and then
-decide whether to create a focused follow-up or continue to baseline policy.
+Idea 637 closed one authority family:
+select-materialized semantic merge with preserved stack fallback. Idea 647 owns
+the remaining non-637 residual rows, but idea 655 records that the last broad
+route did not prove a legal positive family. Execution must therefore refresh
+the residual evidence, reconcile it with 655's focused seams, and choose only a
+single family when producer facts are visible at the consumer program point.
 
 ## Execution Rules
 
-- Compare residuals by stable test name, not numeric row id.
-- Treat 676 and 677 closure notes as settled unless fresh evidence contradicts
-  their proof.
-- Prefer classification and follow-up generation over broad implementation when
-  the first owner is not yet proven.
-- Compare baseline rows by stable test name whenever referencing broad logs.
-- Preserve diagnostic evidence under `build/agent_state/675_*` if new proof
+- Compare rows by stable test name and underlying authority contract, not by
+  numeric row id.
+- Keep missing, unsupported, ambiguous, stale, and bundle-versus-move
+  mismatched authority fail-closed.
+- Prefer focused prepared/prealloc probes before changing shared producer
+  logic.
+- If the only positive evidence re-enters idea 637's closed contract, stop and
+  route the result as blocked instead of implementing under 647.
+- Preserve proof summaries under `build/agent_state/647_*` if new diagnostic
   artifacts are created.
 
 ## Steps
 
-### Step 1: Reconcile The Post-676/677 Residual Set
+### Step 1: Refresh The Non-637 Residual Baseline
 
-Goal: Establish the current backend and baseline residual state after both
-focused RV64 follow-ups closed.
-
-Actions:
-
-- Read the 676 and 677 closure notes.
-- Compare `test_baseline.log`, `test_baseline.new.log`, and current backend
-  proof by stable test name.
-- Confirm whether
-  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
-  is the only remaining backend failure.
-- Preserve a compact reconciliation summary if new evidence is gathered.
-
-Completion Check:
-
-- The current residual set is listed by stable test name, and the settled 676
-  and 677 rows are not treated as open work.
-
-### Step 2: Classify The AArch64 Publication Row
-
-Goal: Decide the first owner for the remaining backend failure without folding
-unrelated persistent rows into it.
+Goal: Establish the current failing residual set and reconcile it with parked
+decomposition evidence.
 
 Actions:
 
-- Inspect the failing AArch64 prepared-BIR publication row and relevant prior
-  closure notes from ideas 668, 671, and 672.
-- Identify whether the owner is prepared dump publication, AArch64 lowering,
-  stale test contract, or a separate policy issue.
-- Do not weaken the test contract or mark it unsupported as classification.
+- Read idea 647, idea 655, and the destination fan-in implementation split.
+- Refresh diagnostics for the residual rows named in idea 647.
+- Classify each residual as ordered final-state, mutual-exclusion, explicit
+  merge, rejection-only, stale, or reopened-637 evidence.
+- Record any new evidence by stable test name and producer fact shape.
 
 Completion Check:
 
-- The row has a named first owner with evidence, or the missing evidence is
-  precisely documented.
+- The current residual set is classified without selecting an implementation
+  family by assumption.
 
-### Step 3: Route The Remaining Work
+### Step 2: Select One Producer Authority Family Or Park
 
-Goal: Decide whether 675 can continue directly, should create a focused
-follow-up idea, or should reject the current baseline candidate.
+Goal: Decide whether one non-637 authority family has enough positive producer
+evidence for implementation.
 
 Actions:
 
-- If the AArch64 row has a proven focused owner, create or request activation
-  of a focused follow-up idea with reviewer reject signals.
-- If the row can be resolved within 675 without implementation, document the
-  classification and required proof.
-- Revisit the persistent dump and LLVM residuals only after the backend row is
-  classified.
-- Keep `test_baseline.new.log` rejected unless a fresh candidate is monotonic
-  against the accepted baseline.
+- Compare the refreshed residuals against idea 655's seams: ordered
+  final-state, mutual-exclusion, explicit merge, and rejection authority.
+- Choose exactly one family only if the producer can publish an explicit fact
+  at the consumer program point.
+- Preserve precise negative evidence for unsupported, missing, stale,
+  ambiguous, and mismatched shapes.
+- If no legal positive family exists, document the missing producer evidence
+  and leave implementation blocked.
 
 Completion Check:
 
-- The next lifecycle route is explicit: focused follow-up, continued 675
-  reconciliation, or baseline-candidate rejection with preserved evidence.
+- The route is explicit: one selected implementation family with proof targets,
+  or a blocked/parked outcome with the missing evidence named.
+
+### Step 3: Implement The Selected Family In Focused Packets
+
+Goal: Add the smallest prepared/prealloc producer support for the selected
+family, if Step 2 proves one is legal.
+
+Actions:
+
+- Add or update focused backend/prepared tests for one legal shape and one
+  fail-closed negative shape.
+- Publish producer facts only for the selected family and only at the proven
+  consumer program point.
+- Keep residuals outside the selected family fail-closed with durable notes.
+- Run `cmake --build --preset default` and a focused backend CTest subset for
+  the changed surface.
+
+Completion Check:
+
+- The selected family is represented in prepared/prealloc facts with explicit
+  owner labels and negative states, and the focused proof is green.
+
+### Step 4: Broader Validation And Residual Routing
+
+Goal: Confirm the slice does not regress backend coverage and route remaining
+residuals.
+
+Actions:
+
+- Run the supervisor-selected broader backend validation after focused proof.
+- Compare remaining residuals against the selected authority family.
+- Move unrelated or still-blocked residuals to a separate open idea only when
+  a distinct initiative is proven.
+
+Completion Check:
+
+- Backend validation is recorded, remaining residual ownership is explicit,
+  and idea 647 can either close or continue with a narrowed next packet.
