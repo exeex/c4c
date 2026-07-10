@@ -25,12 +25,17 @@ the explicit lane `arg.source_selection` frame-slot facts.
 
 ## Suggested Next
 
-Continue Step 3 with a packet for the new first row-322 prepared snippet
-failure: `arg index=12` still reports `source_value_id=2725` / `%t58.0` with
-`source_slot=#3142` and `source_stack_offset=8288`, while the expected snippet
-wants `source_value_id=2732` with the same lane placement facts. Treat this as
-the next prepared source-owner selection rule for later stack aggregate-carrier
-lanes, not as a printer, expectation, or regalloc-index repair.
+Continue Step 3 with a bounded non-overfit packet for the current first
+row-322 prepared snippet failure: `arg index=12` still reports
+`source_value_id=2725` / `%t58.0` with `source_slot=#3142` and
+`source_stack_offset=8288`, while the expected snippet wants
+`source_value_id=2732` with the same lane placement facts.
+
+The packet must reset around the actual missing authority for the current
+call. Either publish or consume a current-call aggregate-carrier source fact
+that directly names the desired owner for `arg index=12`, or fail closed with
+evidence that row 322 belongs outside the current AArch64 publication route.
+Do not use later-call or later-store lookahead as the source-owner rule.
 
 ## Watchouts
 
@@ -44,6 +49,10 @@ lanes, not as a printer, expectation, or regalloc-index repair.
 - Lifecycle decision: keep row 322 in Step 3 as an AArch64 BIR publication
   representation repair; do not move to Step 4 until the remaining prepared
   aggregate-carrier owner mismatch is resolved or proves a different owner.
+- Reviewer reset: `review/row322_later_lane_review.md` rejected the
+  uncommitted later-call/later-store lookahead route as testcase-overfit and
+  temporal route drift. Do not record that route as progress or revive it as
+  the authority for current-call prepared source identity.
 - Do not repair row 322 by making `append_call_arg_move_resolution` reinterpret
   `arg_index` after BIR has already assigned the wrong value to that index.
 - Do not repair row 322 through CLI text formatting, expectation edits,
