@@ -8,31 +8,36 @@ Current Step Title: Implement The Narrow Stack-Carried Pointer Rule
 
 ## Just Finished
 
-Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: investigated the
-real `tests/c/external/gcc_torture/src/20140828-1.c` `%t6` producer/hand-off
-gap and stopped before implementation because the required producer fact is not
-present in structured prepared input.
+Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: traced the real
+`tests/c/external/gcc_torture/src/20140828-1.c` `%t6` / `&a[1]` producer gap
+and stopped because the required semantic producer fact belongs before
+prepared/prealloc.
 
 - Evidence written to
-  `build/agent_state/653_step3_real_t6_source_selection_handoff/summary.md`.
+  `build/agent_state/653_step3_pointer_base_plus_offset_producer_fact/summary.md`.
 - Prepared dump still shows `preserve value=%t6 value_id=19 route=stack_slot
   spill_slot=slot#16+stack8 ...` without `source_selection`.
 - Semantic BIR for `main` compares `%t4` against `%t6`, but there is no
   defining `%t6 = %lv.a.0 + 2` instruction in the block.
-- Prepared value homes record `%t6` value id `19` as `kind=stack_slot
-  slot_id=16 offset=8`, not `PointerBasePlusOffset`.
+- Prepared value homes still record `%t6` value id `19` as `kind=stack_slot
+  slot_id=16 offset=8`, not `PointerBasePlusOffset`, because no pointer-carrier
+  or address-materialization producer row exists for `%t6`.
 - Branch stack-load authority proves only stack-slot freshness for `%t6`; it
   does not carry the semantic local-frame pointer source.
-- A producer-side attachment would have to infer `&a[1]` from source spelling,
-  stack offsets, or final comparison shape, so the slice was left incomplete
-  instead of adding testcase-shaped logic.
+- The exact upstream owner is LIR-to-BIR pointer compare/source lowering:
+  `src/backend/bir/lir_to_bir/memory/coordinator.cpp` dispatches `LirCmpOp` to
+  scalar lowering, and `src/backend/bir/lir_to_bir/scalar.cpp`
+  `lower_scalar_compare_inst` lowers compare operands via `lower_value`
+  without emitting or publishing a named pointer producer for address-valued
+  operands.
 
 ## Suggested Next
 
-Executor packet: publish a real semantic producer fact for the undefined
-`main` `%t6` value in `src/20140828-1.c`, so prepared state can bind value id
-`19` to `&a[1]` / `%lv.a.0 + 2` before call preservation tries to attach a
-stack-carried pointer `source_selection`.
+Executor packet: add a general LIR-to-BIR compare-operand pointer source
+publication/materialization path for address-valued operands, so `%t6`-class
+local-frame pointer operands are represented as named BIR producers or explicit
+address materialization facts before prepared/prealloc builds value homes and
+call preservation.
 
 ## Watchouts
 
@@ -54,6 +59,10 @@ stack-carried pointer `source_selection`.
   prepared producer lookups do not contain a `%t6 = %lv.a.0 + 2` fact to hand
   off. Do not patch call preservation by reconstructing that fact from source
   spelling, stack offsets, final comparison shape, or testcase identity.
+- A prepared value-home ordering patch was explored and rejected for this
+  packet: it can preserve `PointerBasePlusOffset` plus stack-home data when a
+  carrier already exists, but the real `%t6` has no carrier because BIR compare
+  lowering never publishes the producer.
 - Stack-slot-only preservation remains valid as ordinary stack preservation; it
   is not a pointer source materialization authority.
 - `backend_prepare_frame_stack_call_contract` still exits later at the known
@@ -72,10 +81,10 @@ Additional focused probes:
 
 - `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir
   tests/c/external/gcc_torture/src/20140828-1.c` wrote
-  `build/agent_state/653_step3_real_t6_source_selection_handoff/prepared_dump.txt`.
+  `build/agent_state/653_step3_pointer_base_plus_offset_producer_fact/prepared_dump.txt`.
 - `build/c4cll --target riscv64-linux-gnu --dump-bir
   tests/c/external/gcc_torture/src/20140828-1.c` wrote
-  `build/agent_state/653_step3_real_t6_source_selection_handoff/semantic_bir.txt`.
+  `build/agent_state/653_step3_pointer_base_plus_offset_producer_fact/semantic_bir.txt`.
 
 Focused `src/20140828-1.c` probe:
 `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` still
