@@ -1,43 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/674_rv64_object_terminator_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Row 176 Terminator Evidence
+Current Step ID: 2
+Current Step Title: Select The Semantic Terminator-Lowering Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 refreshed row 176 evidence without implementation or expectation edits.
-`backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract` still
-fails during `--codegen obj` with
-`unsupported_terminator_fragment: BIR terminator requires unsupported RV64
-object lowering`, while guard row 256 `backend_riscv_object_emission` passes.
-Evidence is under `build/agent_state/674_step1_terminator_evidence/`.
+Step 2 selected the semantic implementation owner without implementation,
+test, expectation, marker, allowlist, runtime-policy, baseline, `plan.md`, or
+source-idea edits. Evidence is under
+`build/agent_state/674_step2_terminator_boundary/`.
 
-The exact unsupported row 176 terminator is in `main`, block `entry`:
-`%t10 = bir.load_local ptr %lv.slots.2`; `%t12 = bir.add ptr
-%lv.values.0, 8`; `%t13 = bir.ne ptr %t10, %t12`; `bir.cond_br i32
-%t13, block_4, block_5`. Prepared control flow classifies it as
-`kind=fused_compare`, `compare=ne ptr %t10, %t12`, `can_fuse_with_branch=yes`,
-true target `block_4`, false target `block_5`.
+The row 176 shape reaches the intended top-level path:
+`fragment_for_prepared_terminator(...)` finds the prepared fused pointer branch
+and calls `fragment_for_prepared_fused_pointer_branch(...)`. The current path
+does not reject because of terminator dispatch, label relocation, compare
+predicate support, prepared fact production, or missing condition/RHS
+branch-stack-load authority.
 
-Prepared branch stack-load authority exists for `main`/`entry` at terminator
-instruction index 7: role `condition` value `%t13` value_id 17, slot `#11`,
-stack offset 48, selected `BranchStackLoadSource`; and role `rhs` value `%t12`
-value_id 16, slot `#10`, stack offset 40, selected `BranchStackLoadSource`.
-`%t10` is loaded from frame slot `#8` at entry inst 4, and `%t12` is an address
-materialization for `%lv.values.0 + 8` at entry inst 5.
+The real rejection is in
+`append_rv64_move_pointer_branch_operand_to_register(...)` for the LHS `%t10`.
+`%t10` is a same-block `LoadLocalInst` pointer result from `main`/`entry` inst
+4 with prepared memory access `base=frame_slot result=%t10 frame_slot=#8
+offset=0 size=8 align=8`, and it is register-homed in `main` as value_id 15
+(`reg=t0`). Existing pointer-source routes cover stack-carried sources,
+materialized frame-slot pointer sources, and direct-global pointer sources, but
+not a plain same-block local-memory load result. After those routes return
+not-applicable, `block_defines_named_pointer_before(...)` sees that `%t10` is
+defined before the terminator and returns `false` before the generic
+register/formal-stack fallback can use it.
+
+Selected owner for Step 3: add a narrowly scoped same-block `LoadLocalInst`
+pointer operand materialization rule inside the fused pointer branch operand
+helper, before the same-block-definition guard. The rule should identify a
+unique prior same-block load-local producer for the requested pointer operand,
+require function-local value-home/value-id agreement, require prepared
+memory-access facts for that exact block/instruction/result, and emit the value
+into the branch scratch register using existing prepared local-memory/frame-slot
+semantics. This keeps the repair semantic and avoids row-name or testcase-shape
+matching.
 
 ## Suggested Next
 
-Execute Step 2 by inspecting RV64 object terminator lowering in
-`src/backend/mir/riscv/codegen/object_emission.cpp`, especially
-`fragment_for_prepared_terminator(...)`,
-`fragment_for_prepared_fused_pointer_branch(...)`, and
-`append_rv64_move_pointer_branch_operand_to_register(...)`, to determine why
-this condition-plus-RHS-stack fused pointer branch does not pass the existing
-semantic fragment path.
+Execute Step 3 by implementing the same-block load-local pointer branch operand
+source in `src/backend/mir/riscv/codegen/object_emission.cpp`, preferably as a
+small helper called by `append_rv64_move_pointer_branch_operand_to_register(...)`
+after the existing stack-carried/materialized/direct-global pointer source
+routes and before `block_defines_named_pointer_before(...)`. Add focused
+internal coverage near the existing fused pointer branch object tests for the
+condition-plus-RHS-stack branch whose LHS is a same-block load-local pointer
+result, plus fail-closed variants for missing, ambiguous, or mismatched
+load-local facts.
 
 ## Watchouts
 
@@ -46,26 +61,33 @@ semantic fragment path.
 - Do not edit expectations, unsupported markers, allowlists, runtime policy, or
   baseline accounting.
 - Reject testcase-shaped lowering tied only to the row 176 test name.
-- The row 176 failure is not in prepared fact production: the prepared dump
-  already publishes condition and RHS branch stack-load authority. The next
-  boundary is RV64 object terminator consumption/admission or operand
-  materialization for the real prepared shape.
-- Existing internal object tests already cover related fused pointer branch
-  shapes, so Step 2 should compare the real row 176 prepared facts against
-  those fixtures before changing code.
+- Keep malformed/sibling shapes fail-closed: no unique prior same-block
+  `LoadLocalInst`; producer result spelling/type/value-id/home mismatch;
+  homonymous values from another function such as the unrelated `%t10` in
+  `writeback_callee`; missing/ambiguous/volatile/wrong-size/wrong-address-space
+  or non-frame-slot prepared local-memory facts; producer at or after the
+  terminator; multiple candidate loads; unsupported binary/select/cast/phi/call
+  or global-load producers not already owned by an existing semantic route; and
+  unavailable required branch stack-load authority.
+- Guard row 256 must remain a guard, not the active owner.
+- Do not broaden `fragment_for_prepared_terminator(...)`: it already dispatches
+  row 176 into the fused pointer branch path.
 
 ## Proof
 
-Build command:
+Inspection-only packet; no implementation proof was delegated or run.
+Evidence captures these inspection commands under
+`build/agent_state/674_step2_terminator_boundary/`:
+
+- `rg -n "fragment_for_prepared_terminator|fragment_for_prepared_fused_pointer_branch|append_rv64_move_pointer_branch_operand_to_register|BranchStackLoad|branch stack|stack-load|stack_load" src/backend/mir/riscv/codegen/object_emission.cpp`
+- `sed -n '4315,4390p' src/backend/mir/riscv/codegen/object_emission.cpp`
+- `sed -n '13601,13725p' src/backend/mir/riscv/codegen/object_emission.cpp`
+- `sed -n '13726,13985p' src/backend/mir/riscv/codegen/object_emission.cpp`
+- `sed -n '2499,2648p' src/backend/prealloc/publication_plans.cpp`
+- `sed -n '2677,3020p' src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`
+- `rg -n "home %t10|home %t12|home %t13|branch_condition entry|branch_stack_load_authority function=main block=entry|access block=entry inst_index=4|address_materialization block=entry inst_index=5|storage %t10|storage %t12|storage %t13" build/agent_state/674_step1_terminator_evidence/dump_prepared_bir.txt`
+
+Suggested Step 3 proof command:
 `cmake --build --preset default --target c4cll backend_riscv_object_emission_test -j 2`
-passed with no work to do.
-
-Focused proof command:
-`ctest --test-dir build -j --output-on-failure -R '^(backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`
-completed with expected exit code 8 because row 176 failed and row 256 passed.
-`test_after.log` is the canonical proof log.
-
-Evidence commands captured `--codegen obj`, `--dump-bir`, full
-`--dump-prepared-bir`, and focused `--dump-prepared-bir --mir-focus-function
-writeback_callee` outputs under
-`build/agent_state/674_step1_terminator_evidence/`.
+then
+`ctest --test-dir build -j --output-on-failure -R '^(backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`.
