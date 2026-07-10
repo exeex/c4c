@@ -1,6 +1,6 @@
 # RV64 Object Terminator Lowering
 
-Status: Open
+Status: Closed
 Type: Investigation / Implementation
 Parent: `ideas/open/673_post_664_full_suite_regression_probe.md`
 Related:
@@ -63,6 +63,14 @@ reload path, so row 176 must not be repaired inside idea 673.
   `backend_riscv_object_emission` passing.
 - Broader regression proof has no new failures against the accepted baseline
   before this idea is closed.
+
+## Closure Note
+
+Closed after row 176 lowered successfully through RV64 object emission and row
+256 `backend_riscv_object_emission` stayed green. The close gate compared the
+three-row regression probe from idea 673 against the current proof: before
+`passed=1 failed=2 total=3`, after `passed=3 failed=0 total=3`, resolving rows
+139 and 176 with no new failures.
 
 ## Reviewer Reject Signals
 
