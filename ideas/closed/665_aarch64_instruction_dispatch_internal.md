@@ -1,6 +1,6 @@
 # AArch64 Instruction Dispatch Internal
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -67,3 +67,27 @@ does not already settle row 322.
   publication facts are missing.
 - Reject a patch that leaves the same AArch64 dispatch failure behind a new
   name.
+
+## Closure Note
+
+Closed on 2026-07-10 after Step 4 broader backend close-scope proof. Row 284
+passes in the focused proof. Row 322 no longer has a remaining AArch64
+implementation owner under this idea: `review/row322_expectation_contract_review.md`
+confirms `%t58.48` / `2728` is the valid current-call source identity for
+`arg index=12`, while `2732` would require the rejected later-call/later-store
+lookahead route.
+
+The matching broad backend guard used:
+
+```sh
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_before.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1
+```
+
+CTest still exits nonzero for known backend failures, including row 322, but
+the before/after comparison was non-regressive: before passed=359 failed=9
+total=368; after passed=359 failed=9 total=368; new failures=0. Strict guard
+failed only because pass count was unchanged; the close-scope
+`--allow-non-decreasing-passed` guard passed. Any future row 322 expectation
+or prepared-contract adjustment should be handled outside this closed AArch64
+instruction-dispatch idea.
