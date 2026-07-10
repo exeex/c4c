@@ -8,35 +8,31 @@ Current Step Title: Implement The Narrow Stack-Carried Pointer Rule
 
 ## Just Finished
 
-Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: added the RV64
-consumer for explicit stack-carried pointer source authority in prepared fused
-pointer branch operands.
+Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: investigated the
+real `tests/c/external/gcc_torture/src/20140828-1.c` `%t6` producer/hand-off
+gap and stopped before implementation because the required producer fact is not
+present in structured prepared input.
 
-- Changed files:
-  `src/backend/mir/riscv/codegen/object_emission.cpp` and
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
-- RV64 now checks a branch operand's latest prior stack-slot preservation before
-  falling back to ordinary operand moves. If that preservation exists, the
-  consumer requires an explicit `source_selection` matching the preserved stack
-  home and a validated `LocalFrameAddressMaterialization` with
-  `PointerBasePlusOffset` source identity.
-- When the fact is present, RV64 materializes the source local-frame pointer
-  address directly from the prepared offset instead of reloading the carrier
-  stack slot. Missing, mismatched, stack-slot-only, or stale shapes stay
-  fail-closed.
-- Focused object-emission coverage builds a synthetic `%t6`-class pointer
-  branch that materializes `addi rd, sp, offset` from the explicit preserved
-  source selection, plus fail-closed mutations for absent and contradictory
-  authority.
 - Evidence written to
-  `build/agent_state/653_step3_rv64_stack_carried_pointer_consumer/summary.md`.
+  `build/agent_state/653_step3_real_t6_source_selection_handoff/summary.md`.
+- Prepared dump still shows `preserve value=%t6 value_id=19 route=stack_slot
+  spill_slot=slot#16+stack8 ...` without `source_selection`.
+- Semantic BIR for `main` compares `%t4` against `%t6`, but there is no
+  defining `%t6 = %lv.a.0 + 2` instruction in the block.
+- Prepared value homes record `%t6` value id `19` as `kind=stack_slot
+  slot_id=16 offset=8`, not `PointerBasePlusOffset`.
+- Branch stack-load authority proves only stack-slot freshness for `%t6`; it
+  does not carry the semantic local-frame pointer source.
+- A producer-side attachment would have to infer `&a[1]` from source spelling,
+  stack offsets, or final comparison shape, so the slice was left incomplete
+  instead of adding testcase-shaped logic.
 
 ## Suggested Next
 
-Executor packet: repair the producer/hand-off gap for the real
-`src/20140828-1.c` `%t6` row so the stack-slot preserved value for value id
-`19`, slot `#16`, carries the explicit `source_selection` fact currently proven
-by the synthetic RV64 consumer test.
+Executor packet: publish a real semantic producer fact for the undefined
+`main` `%t6` value in `src/20140828-1.c`, so prepared state can bind value id
+`19` to `&a[1]` / `%lv.a.0 + 2` before call preservation tries to attach a
+stack-carried pointer `source_selection`.
 
 ## Watchouts
 
@@ -53,8 +49,11 @@ by the synthetic RV64 consumer test.
   aborting object.
 - Current focused `src/20140828-1.c` prepared output still has no
   `source_selection` on `preserve value=%t6 value_id=19 route=stack_slot
-  slot=#16 stack_offset=8`; the remaining owner is producer/hand-off
-  attachment for that real row, not RV64 inference.
+  slot=#16 stack_offset=8`.
+- The missing owner is upstream source publication for `%t6`: semantic BIR and
+  prepared producer lookups do not contain a `%t6 = %lv.a.0 + 2` fact to hand
+  off. Do not patch call preservation by reconstructing that fact from source
+  spelling, stack offsets, final comparison shape, or testcase identity.
 - Stack-slot-only preservation remains valid as ordinary stack preservation; it
   is not a pointer source materialization authority.
 - `backend_prepare_frame_stack_call_contract` still exits later at the known
@@ -69,15 +68,16 @@ by the synthetic RV64 consumer test.
 Result: build completed and the delegated backend subset remains red with 32
 failed tests out of 365. `test_after.log` is the preserved proof log.
 
-Additional focused proof: `cmake --build --preset default --target
-backend_riscv_object_emission_test` builds. Running
-`build/tests/backend/mir/backend_riscv_object_emission_test` still prints
-unrelated existing failures, but the new stack-carried pointer consumer checks
-do not add failure output.
+Additional focused probes:
+
+- `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir
+  tests/c/external/gcc_torture/src/20140828-1.c` wrote
+  `build/agent_state/653_step3_real_t6_source_selection_handoff/prepared_dump.txt`.
+- `build/c4cll --target riscv64-linux-gnu --dump-bir
+  tests/c/external/gcc_torture/src/20140828-1.c` wrote
+  `build/agent_state/653_step3_real_t6_source_selection_handoff/semantic_bir.txt`.
 
 Focused `src/20140828-1.c` probe:
-`tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` now fails
-at object compile with `unsupported_terminator_fragment` because the current
-prepared dump lacks the real `%t6` preserved `source_selection`; this replaces
-the previous bad runtime-aborting object path and identifies the remaining
-producer/hand-off owner.
+`tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` still
+fails at object compile with `unsupported_terminator_fragment` because the
+current prepared dump lacks the real `%t6` preserved `source_selection`.
