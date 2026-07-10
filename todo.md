@@ -1,50 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/668_llvm_torture_20040709_research.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish Current Failure Boundary
+Current Step ID: 2
+Current Step Title: Map Rows To Existing Follow-Ups
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 of `plan.md`: established the current first observable
-failure boundary for `llvm_gcc_c_torture_src_20040709_2_c` and
-`llvm_gcc_c_torture_src_20040709_3_c` in
-`docs/llvm_torture_20040709_owner_discovery/01_current_failure_boundary.md`.
-Both rows reproduce as runtime boundaries: clang-built binaries exit `0`,
-while generated `c2ll` binaries abort after the compile pipe succeeds. Neither
-row has enough current evidence for a concrete implementation owner.
+Completed Step 2 of `plan.md`: mapped
+`llvm_gcc_c_torture_src_20040709_2_c` and
+`llvm_gcc_c_torture_src_20040709_3_c` against the generated Step 3 follow-up
+ideas in
+`docs/llvm_torture_20040709_owner_discovery/02_owner_mapping.md`. No existing
+generated implementation owner is proven for either row. The only shared
+current fact is a generated-program runtime abort, which is not enough to
+assign the rows to the closed RV64/prepared/AArch64 families or the still-open
+RISC-V object-emission probe.
 
 ## Suggested Next
 
-Execute Step 2: draft
-`docs/llvm_torture_20040709_owner_discovery/02_owner_mapping.md` by comparing
-the runtime-boundary evidence for both rows against existing generated
-follow-up ideas, naming an implementation owner only if row-specific evidence
-proves the same first repair layer.
+Execute Step 3: create
+`docs/llvm_torture_20040709_owner_discovery/index.md`, link both numbered
+answer files, verify the directory contains exactly the required three files,
+and confirm `git diff --name-only` stays within the research docs plus routine
+`todo.md` progress.
 
 ## Watchouts
 
 - This is research/documentation work only.
 - Do not edit implementation files, tests, expectations, unsupported markers,
   allowlists, runtime behavior, baseline acceptance, or lifecycle history.
+- Step 2 proposes a separate direct implementation idea for future first-owner
+  probe and repair, but does not create it.
 - Do not assign either LLVM torture row to an existing backend owner without
-  focused row-specific evidence.
-- Historical notes mention older possible owner routes, but the current Step 1
-  evidence only proves a generated-program runtime abort. Treat those older
-  notes as comparison material for Step 2, not as current ownership proof.
+  fresh focused row-specific evidence.
+- Historical notes mention older possible owner routes, but the current
+  accepted mapping does not treat those closed routes as current generated
+  follow-up ownership.
 
 ## Proof
 
 Ran the supervisor-selected proof command:
 
 ```sh
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_20040709_2_c|llvm_gcc_c_torture_src_20040709_3_c)$') > test_after.log 2>&1
+(git diff --name-only && test -f docs/llvm_torture_20040709_owner_discovery/02_owner_mapping.md) > test_after.log 2>&1
 ```
 
-Result: command exited `8`; build was up to date; both focused tests failed
-with `[RUNTIME_FAIL]`, `clang_exit=0`, and `c2ll_exit=Subprocess aborted`.
-This is sufficient proof for the documentation slice because the packet goal
-was to establish and record the current first observable boundary, not to make
-the rows pass. Proof log: `test_after.log`.
+Result: exit `0`. `test_after.log` contains the tracked diff names
+(`review/reviewA.md`, pre-existing, and `todo.md`) and the successful
+`test -f` check is represented by the command exit status; `git diff
+--name-only` does not list the new untracked `02_owner_mapping.md` file.
+Proof log: `test_after.log`.
