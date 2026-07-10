@@ -8232,7 +8232,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_memory_dump,
-                       "f128_carrier p.value value_id=0",
+                       "f128_carrier p.value value_id=1",
                        "f128 memory carrier value identity")) {
     return EXIT_FAILURE;
   }
@@ -8272,7 +8272,7 @@ int main() {
 
   const std::string f128_register_dump = prepare::print(f128_register_prepared);
   if (!expect_contains(f128_register_dump,
-                       "f128_carrier p.value value_id=0",
+                       "f128_carrier p.value value_id=1",
                        "f128 register carrier value identity")) {
     return EXIT_FAILURE;
   }
