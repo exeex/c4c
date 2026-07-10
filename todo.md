@@ -8,18 +8,50 @@ Current Step Title: Refresh Callee-Saved And Live-Value Evidence
 
 ## Just Finished
 
-Lifecycle switched from retired static-storage idea 663 to active
-callee-saved/live-value idea 666. The retired 663 evidence routed rows 183 and
-184 here because their first mismatch is RV64 object-route stale live-value
-consumption from `s2`, not prepared object-data/static-storage publication,
-layout, initializer payload, symbol binding, or relocation.
+Step 1 refreshed rows 183, 184, and 219 together. The focused proof reproduced
+the current boundary: CLI/codegen object-data rows pass, while the three RV64
+object-runtime rows fail under QEMU (`row183 exit=224 expected=11`,
+`row184 exit=224 expected=24`, `row219 exit=1 expected=0`).
+
+Rows 183 and 184 still preserve the retired 663 finding. Row 183 emits a
+4-byte `.bss` object symbol
+`__static_local_rv64_step3_static_counter_0` plus PC-relative load/store
+relocations, and row 184 emits a 4-byte `.data` object symbol
+`__static_local_rv64_step4_static_initialized_counter_0` with payload
+`0d000000` plus the same relocation shape. Their prepared object-data,
+static-storage layout, initializer payload, symbol, and relocation facts are
+not the first owner.
+
+Prepared call facts for all three rows publish the call result from `a0` to
+caller-saved `t0`, model `t0`/`a0` as clobbered, keep `s1`/`s2` out of the
+call-clobber set, assign fixed callee-saved save slots, and emit matching
+prologue/epilogue save/restore in the object route. The runtime corruption
+appears when RV64 object-route text consumes the callee-saved preservation fact
+after the call by moving the preserved value back into `t0` before the
+fresh call result has been stored or consumed:
+
+- row 183: after `rv64_step3_static_counter`, object text does
+  `mv t0,a0; mv t0,s2; sw t1,0(sp)` and repeats the same stale `s2`
+  overwrite before storing the second result.
+- row 184: same pattern after `rv64_step4_static_initialized_counter`.
+- row 219: `keep_value_across_call` does `mv t0,a0; mv t0,s2; sw t1,4(sp)`,
+  and `main` does `mv t0,a0; mv t0,s1; sw t1,0(sp)`, so the result path
+  compares a stale preserved value instead of `37`.
+
+First owner: one shared RV64 object-route live-value consumption/order owner.
+No split is justified yet. The failing edge is not live-range publication,
+callee-saved slot placement, save/restore emission, or call clobber modeling;
+it is the object-route consumer restoring a preserved callee-saved value into
+the caller-saved result register at the wrong point.
 
 ## Suggested Next
 
-Execute Step 1 of the active 666 runbook: refresh rows 183, 184, and 219
-together, name the first callee-saved/live-value owner or split, and keep rows
-183 and 184 out of static-storage object-data repair unless new evidence
-contradicts the retired 663 findings.
+Execute Step 2 by selecting the shared RV64 object-route live-value
+consumption/order boundary for rows 183, 184, and 219. Define the repair packet
+around preserving the call result publication before any callee-saved
+preservation restore can overwrite the result register, with fail-closed
+diagnostics for missing or ambiguous call-result/preserved-value ordering
+facts.
 
 ## Watchouts
 
@@ -32,23 +64,29 @@ contradicts the retired 663 findings.
   runtime policy, baseline accounting, or unrelated backend families.
 - Reject fixed-register or named-row shortcuts; repair one general
   callee-saved/live-value rule only after the first owner is proven.
-- `riscv64-linux-gnu-gcc` was not available during the retired 663 evidence
-  packet, so there is no supplementary assembly-link runtime check for the
-  passing `.s` output.
+- `c4c-objdump` rejects these relocatable objects because of unsupported text
+  relocations and rejects linked binaries because they are not relocatable
+  objects; use `riscv64-linux-gnu-objdump` for this focused linked/object
+  disassembly evidence.
+- The assembly-route text for row 219 lacks the stale post-call `mv t0,s2`
+  overwrite that appears in object-route disassembly, so keep Step 2 focused
+  on object-route consumption/order rather than broad call lowering.
 
 ## Proof
 
-Lifecycle-only switch. Before the switch, the focused retired-663 proof command
-reproduced the known 4/6 pass state with rows 183 and 184 failing at runtime:
+Proof command:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_riscv64_prepared_object_data_static_local_storage_obj|backend_cli_riscv64_prepared_object_data_static_local_initialized_storage_obj|backend_codegen_route_riscv64_prepared_object_data_static_local_storage|backend_codegen_route_riscv64_prepared_object_data_static_local_initialized_storage|backend_obj_runtime_rv64_prepared_object_data_static_local_storage|backend_obj_runtime_rv64_prepared_object_data_static_local_initialized_storage)$' > test_before.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_riscv64_prepared_object_data_static_local_storage_obj|backend_cli_riscv64_prepared_object_data_static_local_initialized_storage_obj|backend_codegen_route_riscv64_prepared_object_data_static_local_storage|backend_codegen_route_riscv64_prepared_object_data_static_local_initialized_storage|backend_obj_runtime_rv64_prepared_object_data_static_local_storage|backend_obj_runtime_rv64_prepared_object_data_static_local_initialized_storage|backend_obj_runtime_rv64_callee_saved_gpr_live_across_call)$' > test_after.log 2>&1`
 
-After the switch, the plan owner ran the same command into `test_after.log` and
-compared against `test_before.log` for the retirement guard.
+Result: build passed, focused CTest returned the expected failing evidence with
+4 passed and 3 failed out of 7. Passing rows were the two CLI object-data tests
+and the two codegen-route object-data tests. Failing rows were exactly 183,
+184, and 219. Proof log: `test_after.log`.
 
-Regression guard comparison:
-
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-Result: PASS. Before and after both reported 4 passed, 2 failed, 6 total; no
-new failing tests and no new suspicious >30s tests.
+Supplementary read-only diagnostics used for ownership evidence:
+`build/c4cll --dump-prepared-bir --target riscv64-linux-gnu` on all three
+focused case sources, `riscv64-linux-gnu-objdump -dr` on the focused runtime
+objects, `riscv64-linux-gnu-objdump -d` on the focused linked binaries,
+`riscv64-linux-gnu-readelf -S -s -r -x .data` for rows 183/184, and direct
+`qemu-riscv64 -L /usr/riscv64-linux-gnu` runtime checks for the three linked
+binaries.
