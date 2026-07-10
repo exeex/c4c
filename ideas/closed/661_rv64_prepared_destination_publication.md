@@ -1,6 +1,6 @@
 # RV64 Prepared Destination Publication
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -61,6 +61,35 @@ ideas 647 and 655.
   fails closed with precise diagnostics.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
+
+## Completion Notes
+
+Closed after Step 1 evidence proved that the active four-row grouping does not
+expose a direct prepared destination implementation boundary. The delegated
+focused subset stayed stable at 0/4 passing, with all failures reported as
+`BACKEND_DUMP_SNIPPET_MISSING`.
+
+Durable split:
+
+- `backend_dump_riscv64_scalar_compare_frame_slot_destination`,
+  `backend_dump_riscv64_prepared_fused_compare_call_result_predicate`, and
+  `backend_dump_riscv64_function_pointer_return_chain` now have current
+  prepared facts with shifted or updated value IDs. Those rows are split to
+  `ideas/open/671_prepared_destination_dump_contract_review.md`.
+- `backend_dump_riscv64_stack_passed_parameter_home_publication` has callee
+  stack-parameter homes present under current IDs/slots while the first
+  missing snippet names caller ABI stack-binding placement. That row is split
+  to `ideas/open/672_stack_passed_parameter_home_dump_contract_split.md`.
+
+The close gate used matching focused `test_before.log` and `test_after.log`
+for:
+
+```sh
+ctest --test-dir build -j --output-on-failure -R 'backend_dump_riscv64_(stack_passed_parameter_home_publication|scalar_compare_frame_slot_destination|prepared_fused_compare_call_result_predicate|function_pointer_return_chain)'
+```
+
+The guard accepted the lifecycle close because there were no new failing tests
+and the pass count remained stable in the documented no-code/equal-pass mode.
 
 ## Reviewer Reject Signals
 
