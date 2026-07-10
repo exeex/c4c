@@ -1,6 +1,6 @@
 # Prepared Backend Contract And CLI Publication
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -56,6 +56,26 @@ RISC-V object-emission rows are mixed into the same route.
   diagnostics.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
+
+## Closure
+
+Closed: 2026-07-10
+
+The active runbook resolved the six focused prepared backend contract and CLI
+publication rows:
+`backend_prepare_liveness`, `backend_prepare_frame_stack_call_contract`,
+`backend_prepared_printer`, `backend_prealloc_inline_asm`,
+`backend_cli_dump_prepared_bir_exposes_contract_sections`, and
+`backend_cli_dump_prepared_bir_local_arg_call_contract`.
+
+Close-time backend regression guard used matching backend-scope logs in
+`test_before.log` and `test_after.log`. Both runs reported 356 passed and 13
+failed out of 369 backend tests, with no new failures and no timeout additions.
+The lifecycle-only close accepted non-decreasing pass count because no code
+change was made during closure.
+
+Remaining AArch64 dispatch, RISC-V object emission, and RV64 runtime lowering
+failures are outside this idea and remain routed to their separate owners.
 
 ## Reviewer Reject Signals
 
