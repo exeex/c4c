@@ -6,14 +6,16 @@ Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
 - `docs/backend_baseline_history_triage/failure_classification.md`
 - `docs/backend_baseline_history_triage/follow_up_order.md`
-Owning Layer: RV64 callee-saved GPR preservation across calls
+Owning Layer: RV64 callee-saved GPR preservation and object-route live-value
+consumption across calls
 Queue Order: 66
-Proof Surface: current baseline row 219 from
+Proof Surface: current baseline rows 183, 184, and 219 from
 `log/baseline_f3bf820c180dd4638ebd4db37e1223b759103665.log`.
 
 ## Goal
 
-Repair RV64 callee-saved GPR preservation for live values across calls.
+Repair RV64 callee-saved GPR preservation and object-route live-value
+consumption for values that remain live across calls.
 
 ## Why This Exists
 
@@ -21,10 +23,19 @@ Step 2 assigned `backend_obj_runtime_rv64_callee_saved_gpr_live_across_call`
 to an RV64 prepared GPR/callee-saved runtime owner. It is a singleton row and
 therefore follows broader producer/publication families.
 
+The retired static-storage route
+`ideas/closed/663_prepared_object_data_static_storage_runtime.md` added rows
+183 and 184 to this owner. Their prepared object-data, static layout,
+initializer payload, symbols, relocations, and linked data addresses are
+coherent; the first observed mismatch is RV64 object-route `main` copying
+`a0` into `t0`, then overwriting `t0` from stale `s2` before storing live
+values after calls.
+
 ## In Scope
 
 - Refresh focused prepared, RV64 assembly, object, disassembly, and runtime
-  evidence for the callee-saved GPR row.
+  evidence for the callee-saved GPR row and the routed object-route live-value
+  rows.
 - Identify whether the first owner is live-range publication, callee-saved
   slot placement, save/restore emission, call clobber modeling, or runtime
   consumption.
@@ -34,26 +45,32 @@ therefore follows broader producer/publication families.
 ## Out Of Scope
 
 - Byval call-boundary payloads, pointer-local updates, object-data static
-  storage, packed local member offsets, destination publication, AArch64,
-  RISC-V object emission, CLI, or LLVM torture work.
+  storage publication/layout/initializer/relocation repair, packed local member
+  offsets, destination publication, AArch64, RISC-V object emission, CLI, or
+  LLVM torture work.
 - Test expectation rewrites, unsupported-marker changes, allowlists, timeout
   changes, runtime policy changes, or baseline acceptance changes.
 
 ## Acceptance Criteria
 
-- Focused evidence names the first callee-saved GPR owner.
+- Focused evidence names the first callee-saved/live-value owner for rows 183,
+  184, and 219, or records a justified split.
 - The selected repair preserves live values across calls through explicit
   prepared/RV64 facts, save/restore locations, and clobber modeling.
-- The focused runtime row passes or fails closed with a precise diagnostic.
+- The focused runtime rows pass or fail closed with precise diagnostics.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
 
 ## Reviewer Reject Signals
 
-- Reject named-case fixes for the callee-saved GPR row or fixed register
-  identities.
+- Reject named-case fixes for the callee-saved GPR row, the routed
+  static-local rows, or fixed register identities.
 - Reject assuming a register is preserved because final assembly happens to
   work in one test without prepared/RV64 ownership facts.
+- Reject rerouting rows 183 or 184 back to static-storage object-data repair
+  unless refreshed evidence shows the prepared object-data, static section,
+  initializer payload, symbols, relocations, or linked data addresses are the
+  first mismatch.
 - Reject expectation rewrites, unsupported-marker downgrades, allowlist edits,
   helper renames, or classification-only edits claimed as progress.
 - Reject broad rewrites of call lowering, register allocation, or object
