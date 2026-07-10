@@ -1150,6 +1150,64 @@ make_prepared_fused_pointer_rhs_stack_carried_source_branch_module(
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_fused_pointer_rhs_materialized_source_branch_module(
+    bool publish_materialization = true) {
+  auto prepared = make_prepared_fused_pointer_rhs_stack_branch_module();
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto rhs_name = prepared.names.value_names.find("%rhs");
+  auto& function = prepared.module.functions.front();
+  function.blocks.front().insts.insert(
+      function.blocks.front().insts.begin(),
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%rhs"),
+          .operand_type = bir::TypeKind::Ptr,
+          .lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs"),
+          .rhs = bir::Value::immediate_i32(4),
+      });
+
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{21},
+      .function_name = function_name,
+      .value_name = rhs_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .object_id = prepare::PreparedObjectId{21},
+      .function_name = function_name,
+      .offset_bytes = 24,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 32;
+  if (publish_materialization) {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .frame_size_bytes = 32,
+        .frame_alignment_bytes = 8,
+        .address_materializations = {prepare::PreparedAddressMaterialization{
+            .function_name = function_name,
+            .block_label = block_label,
+            .inst_index = 0,
+            .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+            .result_value_name = rhs_name,
+            .result_value_id = prepare::PreparedValueId{3},
+            .result_home_kind =
+                prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+            .frame_slot_id = prepare::PreparedFrameSlotId{21},
+            .byte_offset = 24,
+        }},
+    });
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -15741,6 +15799,77 @@ int rejects_prepared_fused_pointer_rhs_stack_carried_source_fail_closed_shapes()
       .byte_offset = 20;
   if (expect_prepared_rejection_diagnostic_contains(prepared,
                                                     {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int builds_prepared_fused_pointer_rhs_materialized_source_branch_object() {
+  const auto prepared =
+      make_prepared_fused_pointer_rhs_materialized_source_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected materialized pointer source branch to build from explicit address materialization: " +
+                result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected materialized pointer source branch object text");
+  }
+  bool saw_materialized_rhs_source = false;
+  bool saw_carrier_reload = false;
+  bool saw_branch_using_rhs = false;
+  for (std::size_t offset = function->value; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (word == 0x01810e93) {
+      saw_materialized_rhs_source = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 8) && riscv_rd(word) == 29) {
+      saw_carrier_reload = true;
+    }
+    if ((word & 0x7fU) == 0x63U && ((word >> 12) & 0x7U) == 6U &&
+        riscv_rs1(word) == 28 && riscv_rs2(word) == 29) {
+      saw_branch_using_rhs = true;
+    }
+  }
+  if (!saw_materialized_rhs_source || saw_carrier_reload ||
+      !saw_branch_using_rhs) {
+    return fail("expected materialized pointer branch to consume explicit local-frame source without carrier reload");
+  }
+  return 0;
+}
+
+int rejects_prepared_fused_pointer_rhs_materialized_source_fail_closed_shapes() {
+  auto prepared =
+      make_prepared_fused_pointer_rhs_materialized_source_branch_module(false);
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_materialized_source_branch_module();
+  prepared.addressing.functions.front()
+      .address_materializations.front()
+      .frame_slot_id = std::nullopt;
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_materialized_source_branch_module();
+  prepared.addressing.functions.front()
+      .address_materializations.front()
+      .result_value_name = prepared.names.value_names.intern("%other");
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
     return 1;
   }
 
@@ -31337,6 +31466,10 @@ int main() {
       builds_prepared_fused_pointer_rhs_stack_carried_source_branch_object();
   status |=
       rejects_prepared_fused_pointer_rhs_stack_carried_source_fail_closed_shapes();
+  status |=
+      builds_prepared_fused_pointer_rhs_materialized_source_branch_object();
+  status |=
+      rejects_prepared_fused_pointer_rhs_materialized_source_fail_closed_shapes();
   status |=
       builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object();
   status |=

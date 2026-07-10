@@ -4174,6 +4174,87 @@ append_rv64_stack_carried_pointer_source_to_register(
   return Rv64StackCarriedPointerSourceMoveStatus::Appended;
 }
 
+Rv64StackCarriedPointerSourceMoveStatus
+append_rv64_materialized_pointer_branch_source_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::prepare::PreparedValueHome* operand_home,
+    const c4c::backend::bir::Value& value,
+    std::size_t terminator_instruction_index,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || operand_home == nullptr ||
+      value.kind != bir::Value::Kind::Named || value.name.empty() ||
+      value.type != bir::TypeKind::Ptr ||
+      operand_home->value_id == prepare::PreparedValueId{0} ||
+      operand_home->value_name == c4c::kInvalidValueName ||
+      operand_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return Rv64StackCarriedPointerSourceMoveStatus::NotApplicable;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName ||
+      value_name != operand_home->value_name) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations, block_label_id);
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  if (materializations != nullptr) {
+    for (const auto* materialization : *materializations) {
+      if (materialization == nullptr ||
+          materialization->inst_index >= terminator_instruction_index ||
+          materialization->kind !=
+              prepare::PreparedAddressMaterializationKind::FrameSlot ||
+          materialization->result_value_name !=
+              std::optional<c4c::ValueNameId>{operand_home->value_name} ||
+          (materialization->result_value_id.has_value() &&
+           materialization->result_value_id !=
+               std::optional<prepare::PreparedValueId>{operand_home->value_id}) ||
+          !materialization->frame_slot_id.has_value() ||
+          materialization->byte_offset < 0 ||
+          static_cast<std::uint64_t>(materialization->byte_offset) >
+              stack_frame_bytes ||
+          materialization->byte_offset >
+              static_cast<std::int64_t>(
+                  std::numeric_limits<std::int32_t>::max()) ||
+          materialization->address_space != bir::AddressSpace::Default ||
+          materialization->is_thread_local ||
+          materialization->has_tls_address_space ||
+          materialization->tls_model !=
+              prepare::PreparedTlsMaterializationModel::None ||
+          materialization->tls_thread_pointer_register !=
+              prepare::PreparedTlsThreadPointerRegister::None ||
+          materialization->tls_high_relocation !=
+              prepare::PreparedTlsRelocationKind::None ||
+          materialization->tls_low_relocation !=
+              prepare::PreparedTlsRelocationKind::None) {
+        continue;
+      }
+      if (selected != nullptr) {
+        return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+      }
+      selected = materialization;
+    }
+  }
+  if (selected == nullptr) {
+    return Rv64StackCarriedPointerSourceMoveStatus::NotApplicable;
+  }
+  if (!append_rv64_stack_offset_address_to_register(
+          fragment,
+          destination,
+          static_cast<std::size_t>(selected->byte_offset))) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+  return Rv64StackCarriedPointerSourceMoveStatus::Appended;
+}
+
 bool append_rv64_move_pointer_branch_operand_to_register(
     RiscvEncodedFragment& fragment,
     std::uint32_t destination,
@@ -4184,6 +4265,7 @@ bool append_rv64_move_pointer_branch_operand_to_register(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedValueHome* operand_home,
     const c4c::backend::bir::Value& value,
+    c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index,
     std::size_t incoming_stack_base_bytes,
@@ -4203,6 +4285,23 @@ bool append_rv64_move_pointer_branch_operand_to_register(
     return true;
   }
   if (carried == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
+    return false;
+  }
+  const auto materialized =
+      append_rv64_materialized_pointer_branch_source_to_register(
+          fragment,
+          destination,
+          names,
+          lookups,
+          block_label_id,
+          operand_home,
+          value,
+          terminator_instruction_index,
+          stack_frame_bytes);
+  if (materialized == Rv64StackCarriedPointerSourceMoveStatus::Appended) {
+    return true;
+  }
+  if (materialized == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
     return false;
   }
   return append_rv64_move_value_to_register_with_formal_stack_home(
@@ -13487,6 +13586,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
           function,
           prepared_pointer_branch_operand_home_for(names, lookups, normalized->lhs),
           normalized->lhs,
+          block_label_id,
           block_index,
           terminator_instruction_index,
           incoming_stack_base_bytes,
@@ -13501,6 +13601,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
           function,
           prepared_pointer_branch_operand_home_for(names, lookups, normalized->rhs),
           normalized->rhs,
+          block_label_id,
           block_index,
           terminator_instruction_index,
           incoming_stack_base_bytes,

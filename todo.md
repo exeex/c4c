@@ -1,63 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/653_stack_carried_pointer_source_publication_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3A
-Current Step Title: Publish LIR-to-BIR Compare Pointer Sources
+Current Step ID: 3B
+Current Step Title: Connect Prepared And RV64 Stack-Carried Pointer Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 3A, `Publish LIR-to-BIR Compare Pointer Sources`: implemented a general
-LIR-to-BIR compare-operand source publication path for tracked local-frame
-pointer operands.
+Step 3B, `Connect Prepared And RV64 Stack-Carried Pointer Authority`: connected
+the Step 3A local-frame pointer producer through prepared branch stack-load
+authority and RV64 fused pointer branch consumption.
 
-- `src/backend/bir/lir_to_bir/memory/coordinator.cpp` now materializes tracked
-  local pointer compare operands from existing local pointer/address facts
-  before scalar compare lowering consumes them.
-- Focused BIR coverage in
-  `tests/backend/bir/backend_lir_to_bir_notes_test.cpp` checks the positive
-  local `[2 x i16]` compare source, a non-local pointer compare negative, and
-  an out-of-range local array fail-closed shape.
-- Fresh `20140828-1.c` semantic BIR now contains `%t6 = bir.add ptr %lv.a.0, 2`
-  before `%t7 = bir.ne ptr %t4, %t6`.
-- Fresh prepared output now contains an explicit `%t6` frame-slot address
-  materialization fact: `address_materialization block=entry inst_index=2
-  kind=frame_slot result=%t6 ... offset=6`.
+- Prepared branch stack-load clobber safety now distinguishes unrelated
+  same-slot clobbers from a branch pointer value's own explicit frame-slot
+  address materialization.
+- RV64 fused pointer branch lowering can materialize a stack-homed pointer
+  operand directly from a selected prepared frame-slot address materialization
+  when no prior stack-preservation carrier applies.
+- Focused RV64 object-emission coverage was added for a materialized RHS pointer
+  branch source and fail-closed missing/mismatched materialization payloads.
+- Fresh prepared output for `20140828-1.c` now reports `%t6` RHS branch
+  authority as `status=available`, and the focused RV64 object route for that
+  file exits 0.
 - Evidence is in
-  `build/agent_state/653_step3a_lir_to_bir_compare_pointer_sources/summary.md`.
+  `build/agent_state/653_step3b_prepared_rv64_pointer_authority/summary.md`.
 
 ## Suggested Next
 
-Executor packet for Step 3B: connect the new Step 3A `%t6` local-frame pointer
-producer/address-materialization fact through prepared/RV64 branch consumption.
-The first downstream owner is the representative `20140828-1.c` object route
-now failing closed with `unsupported_branch_stack_load_authority` /
-`authority_status=missing_stack_clobber_safety`.
+Supervisor review/commit for the Step 3B slice. If continuing execution after
+commit, use the next failing owner from the backend subset rather than reopening
+`missing_stack_clobber_safety` for `20140828-1.c`.
 
 ## Watchouts
 
-- Do not reopen RV64 terminator-fragment admission from idea 645.
-- Do not infer pointer freshness or materialization from stack offsets, final
-  assembly shape, source spelling, local names, diagnostics, testcase identity,
-  runtime outcomes, or pass/fail accounting.
-- `loop-2e.c` now passes the direct runtime runner; do not use `%t23` as the
-  first failing runtime proof unless a later packet identifies a still-red
-  focused owner.
-- The RV64 consumer now rejects prior stack-slot preservation without explicit
-  source selection for pointer branch operands. This intentionally blocks the
-  old `%t6` stack-slot-only path instead of emitting the previous runtime
-  aborting object.
-- The real `%t6` producer is no longer missing in semantic BIR; do not undo the
-  Step 3A producer by moving the compare back to stack-slot-only inference.
-- The representative object route now fails closed after Step 3A at
-  `missing_stack_clobber_safety`, with `%t6` explicit and
-  `source_freshness_status=selected`.
-- Stack-slot-only preservation remains valid as ordinary stack preservation; it
-  is not a pointer source materialization authority.
-- `backend_prepare_frame_stack_call_contract` still exits later at the known
-  `rv64 FPR ABI/frame fact contract` dump assertion, so use the new check's
-  placement before that assertion when evaluating focused coverage.
+- The real `%t6` address-materialization row currently carries block, inst,
+  result value name, frame-slot id, and byte offset; it does not require
+  `result_home_kind` or `result_value_id` to be present.
+- Same-slot stack moves remain clobbers unless the destination value has an
+  explicit matching pointer address-materialization at that instruction.
+- `backend_riscv_object_emission` still has known existing failures in the full
+  executable, so use the focused `20140828-1.c` object probe and backend subset
+  failure-list comparison for this packet's acceptance signal.
+- Do not weaken expectation files, unsupported markers, allowlists, or runtime
+  accounting to claim progress.
 
 ## Proof
 
@@ -65,22 +51,21 @@ now failing closed with `unsupported_branch_stack_load_authority` /
 --output-on-failure -R '^backend_'`.
 
 Result: build completed and the delegated backend subset remains red with 32
-failed tests out of 365. `backend_lir_to_bir_notes` passed in the delegated
-subset. `test_after.log` is the preserved proof log.
+failed tests out of 365, matching `test_before.log`; no new backend failure
+names were introduced. `backend_prepare_stack_layout` passed after narrowing the
+same-slot move rule. `test_after.log` is the preserved proof log.
 
 Additional focused probes:
 
-- `build/c4cll --target riscv64-linux-gnu --dump-bir
-  tests/c/external/gcc_torture/src/20140828-1.c` wrote
-  `build/agent_state/653_step3a_lir_to_bir_compare_pointer_sources/after_bir.txt`.
 - `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir
   tests/c/external/gcc_torture/src/20140828-1.c` wrote
-  `build/agent_state/653_step3a_lir_to_bir_compare_pointer_sources/after_prepared.txt`.
-- Focused `backend_lir_to_bir_notes` passed; focused
-  `backend_prepare_frame_stack_call_contract` and
-  `backend_riscv_object_emission` remain at known existing failures in
-  `build/agent_state/653_step3a_lir_to_bir_compare_pointer_sources/focused_ctest.log`.
-- Focused `20140828-1.c` object probe now fails at object compile with
-  `unsupported_branch_stack_load_authority` /
-  `authority_status=missing_stack_clobber_safety`; log:
-  `build/agent_state/653_step3a_lir_to_bir_compare_pointer_sources/20140828_object_probe.log`.
+  `build/agent_state/653_step3b_prepared_rv64_pointer_authority/after_prepared.txt`
+  and shows `%t6` RHS branch authority as `status=available`.
+- `build/c4cll --target riscv64-linux-gnu --codegen obj
+  tests/c/external/gcc_torture/src/20140828-1.c -o
+  build/agent_state/653_step3b_prepared_rv64_pointer_authority/final.o` exited
+  0; log:
+  `build/agent_state/653_step3b_prepared_rv64_pointer_authority/final_object_probe.log`.
+- `ctest --test-dir build --output-on-failure -R '^backend_prepare_stack_layout$'`
+  passed; log:
+  `build/agent_state/653_step3b_prepared_rv64_pointer_authority/backend_prepare_stack_layout.log`.

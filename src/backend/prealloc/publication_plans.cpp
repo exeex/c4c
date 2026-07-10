@@ -2846,12 +2846,60 @@ prepared_collected_branch_stack_load_pointer_status(
   return false;
 }
 
+[[nodiscard]] bool prepared_branch_stack_pointer_materialized_at_instruction(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    BlockLabelId block_label,
+    std::size_t instruction_index,
+    const PreparedValueHome* value_home) {
+  if (value_home == nullptr || value_home->value_id == PreparedValueId{0} ||
+      value_home->value_name == kInvalidValueName ||
+      block_label == kInvalidBlockLabel) {
+    return false;
+  }
+  const auto* addressing = find_prepared_addressing(prepared, function_name);
+  if (addressing == nullptr) {
+    return false;
+  }
+  const PreparedAddressMaterialization* selected = nullptr;
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.block_label != block_label ||
+        materialization.inst_index != instruction_index ||
+        materialization.kind != PreparedAddressMaterializationKind::FrameSlot ||
+        materialization.result_value_name !=
+            std::optional<ValueNameId>{value_home->value_name} ||
+        (materialization.result_value_id.has_value() &&
+         materialization.result_value_id !=
+             std::optional<PreparedValueId>{value_home->value_id}) ||
+        !materialization.frame_slot_id.has_value() ||
+        materialization.byte_offset < 0 ||
+        materialization.address_space != bir::AddressSpace::Default ||
+        materialization.is_thread_local ||
+        materialization.has_tls_address_space ||
+        materialization.tls_model != PreparedTlsMaterializationModel::None ||
+        materialization.tls_thread_pointer_register !=
+            PreparedTlsThreadPointerRegister::None ||
+        materialization.tls_high_relocation != PreparedTlsRelocationKind::None ||
+        materialization.tls_low_relocation != PreparedTlsRelocationKind::None) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return false;
+    }
+    selected = &materialization;
+  }
+  return selected != nullptr;
+}
+
 [[nodiscard]] bool prepared_move_bundle_may_clobber_branch_stack_slot(
+    const PreparedBirModule& prepared,
     const PreparedMoveBundle& bundle,
     FunctionNameId function_name,
+    BlockLabelId block_label,
     std::size_t branch_block_index,
     std::size_t branch_terminator_instruction_index,
     const PreparedFrameSlot* frame_slot,
+    const PreparedValueHome* value_home,
     const PreparedValueLocationFunction* value_locations,
     const PreparedValueHomeLookups* value_home_lookups) {
   if (bundle.function_name != function_name ||
@@ -2862,6 +2910,27 @@ prepared_collected_branch_stack_load_pointer_status(
   for (const auto& move : bundle.moves) {
     if (move.destination_storage_kind != PreparedMoveStorageKind::StackSlot) {
       continue;
+    }
+    const PreparedValueHome* destination_home = nullptr;
+    if (move.destination_kind == PreparedMoveDestinationKind::Value &&
+        move.to_value_id != PreparedValueId{0}) {
+      destination_home =
+          find_indexed_prepared_value_home(value_home_lookups,
+                                           value_locations,
+                                           move.to_value_id);
+      if (destination_home != nullptr && value_home != nullptr &&
+          destination_home->value_id == value_home->value_id &&
+          destination_home->value_name == value_home->value_name &&
+          destination_home->kind == PreparedValueHomeKind::StackSlot &&
+          destination_home->slot_id == value_home->slot_id &&
+          prepared_branch_stack_pointer_materialized_at_instruction(
+              prepared,
+              function_name,
+              block_label,
+              bundle.instruction_index,
+              value_home)) {
+        continue;
+      }
     }
     if (frame_slot == nullptr) {
       return true;
@@ -2876,10 +2945,6 @@ prepared_collected_branch_stack_load_pointer_status(
         move.to_value_id == PreparedValueId{0}) {
       return true;
     }
-    const auto* destination_home =
-        find_indexed_prepared_value_home(value_home_lookups,
-                                         value_locations,
-                                         move.to_value_id);
     if (destination_home == nullptr ||
         destination_home->kind != PreparedValueHomeKind::StackSlot ||
         !destination_home->slot_id.has_value()) {
@@ -2935,6 +3000,56 @@ prepared_collected_branch_stack_load_pointer_status(
       });
 }
 
+[[nodiscard]] bool
+prepared_branch_stack_pointer_materialized_after_instruction(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    BlockLabelId block_label,
+    std::size_t instruction_index,
+    std::size_t branch_terminator_instruction_index,
+    const PreparedValueHome* value_home) {
+  if (value_home == nullptr || value_home->value_id == PreparedValueId{0} ||
+      value_home->value_name == kInvalidValueName ||
+      block_label == kInvalidBlockLabel ||
+      instruction_index >= branch_terminator_instruction_index) {
+    return false;
+  }
+  const auto* addressing = find_prepared_addressing(prepared, function_name);
+  if (addressing == nullptr) {
+    return false;
+  }
+
+  const PreparedAddressMaterialization* selected = nullptr;
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.block_label != block_label ||
+        materialization.inst_index <= instruction_index ||
+        materialization.inst_index >= branch_terminator_instruction_index ||
+        materialization.kind != PreparedAddressMaterializationKind::FrameSlot ||
+        materialization.result_value_name !=
+            std::optional<ValueNameId>{value_home->value_name} ||
+        (materialization.result_value_id.has_value() &&
+         materialization.result_value_id !=
+             std::optional<PreparedValueId>{value_home->value_id}) ||
+        !materialization.frame_slot_id.has_value() ||
+        materialization.byte_offset < 0 ||
+        materialization.address_space != bir::AddressSpace::Default ||
+        materialization.is_thread_local ||
+        materialization.has_tls_address_space ||
+        materialization.tls_model != PreparedTlsMaterializationModel::None ||
+        materialization.tls_thread_pointer_register !=
+            PreparedTlsThreadPointerRegister::None ||
+        materialization.tls_high_relocation != PreparedTlsRelocationKind::None ||
+        materialization.tls_low_relocation != PreparedTlsRelocationKind::None) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return false;
+    }
+    selected = &materialization;
+  }
+  return selected != nullptr;
+}
+
 [[nodiscard]] bool branch_stack_load_intervening_instructions_clobber_safe(
     const PreparedBirModule& prepared,
     FunctionNameId function_name,
@@ -2968,11 +3083,14 @@ prepared_collected_branch_stack_load_pointer_status(
   if (value_locations != nullptr) {
     for (const auto& bundle : value_locations->move_bundles) {
       if (prepared_move_bundle_may_clobber_branch_stack_slot(
+              prepared,
               bundle,
               function_name,
+              block_label,
               branch_block_index,
               branch_terminator_instruction_index,
               frame_slot,
+              value_home,
               value_locations,
               value_home_lookups)) {
         return false;
@@ -2988,7 +3106,14 @@ prepared_collected_branch_stack_load_pointer_status(
                                                           branch_block_index,
                                                           index,
                                                           value_home,
-                                                          frame_slot)) {
+                                                          frame_slot) &&
+        !prepared_branch_stack_pointer_materialized_after_instruction(
+            prepared,
+            function_name,
+            block_label,
+            index,
+            branch_terminator_instruction_index,
+            value_home)) {
       return false;
     }
     const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst);
