@@ -2375,13 +2375,30 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
       return std::nullopt;
     }
 
-    const auto base_register = direct_fresh_gpr_register_for_value(*base);
-    if (!base_register.has_value()) {
-      return std::nullopt;
-    }
-
     RiscvEncodedFragment fragment;
     const std::uint32_t destination_register = destination.value_or(28);
+    std::uint32_t base_register = 0;
+    if (const auto direct_base_register = direct_fresh_gpr_register_for_value(*base);
+        direct_base_register.has_value()) {
+      base_register = *direct_base_register;
+    } else {
+      const auto* base_home = prepared_value_home_for(names, lookups, *base);
+      const auto base_stack_offset =
+          base_home == nullptr
+              ? std::nullopt
+              : prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                         *base_home,
+                                                         stack_frame_bytes,
+                                                         8);
+      if (!base_stack_offset.has_value() ||
+          !append_rv64_load_stack_offset_to_register(fragment,
+                                                     destination_register,
+                                                     *base_stack_offset,
+                                                     8)) {
+        return std::nullopt;
+      }
+      base_register = destination_register;
+    }
     const auto offset_immediate = integer_immediate_for_value(names, lookups, *offset);
     if (offset_immediate.has_value()) {
       if (is_sub && *offset_immediate == std::numeric_limits<std::int64_t>::min()) {
@@ -2396,7 +2413,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
                   encode_i_type(0x13,
                                 destination_register,
                                 0,
-                                *base_register,
+                                base_register,
                                 static_cast<std::int32_t>(adjusted_offset)));
     } else {
       const auto offset_register = direct_fresh_gpr_register_for_value(*offset);
@@ -2407,7 +2424,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
                   encode_r_type(0x33,
                                 destination_register,
                                 0,
-                                *base_register,
+                                base_register,
                                 *offset_register,
                                 is_sub ? 0x20 : 0));
     }
@@ -3577,12 +3594,17 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     return std::nullopt;
   }
 
-  const auto base_register = prepared_pointer_register_for_value(context, *base);
-  if (!base_register.has_value()) {
-    return std::nullopt;
-  }
-
   std::string out;
+  std::string base_register_name;
+  if (const auto base_register = prepared_pointer_register_for_value(context, *base);
+      base_register.has_value()) {
+    base_register_name = *base_register;
+  } else {
+    if (!emit_move_to_register(out, "t3", context, *base)) {
+      return std::nullopt;
+    }
+    base_register_name = "t3";
+  }
   const auto offset_immediate =
       simple_or_prepared_integer_immediate(context.names, context.lookups, *offset);
   if (offset_immediate.has_value()) {
@@ -3593,7 +3615,7 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     if (!fits_signed_12_bit_immediate(adjusted_offset)) {
       return std::nullopt;
     }
-    out += "    addi t3, " + *base_register + ", " +
+    out += "    addi t3, " + base_register_name + ", " +
            std::to_string(adjusted_offset) + "\n";
   } else {
     const auto offset_register = prepared_register_for_value(context, *offset);
@@ -3602,7 +3624,7 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     }
     out += "    ";
     out += is_sub ? "sub" : "add";
-    out += " t3, " + *base_register + ", " + *offset_register + "\n";
+    out += " t3, " + base_register_name + ", " + *offset_register + "\n";
   }
   if (home->register_name.has_value() && !home->register_name->empty()) {
     if (*home->register_name != "t3") {

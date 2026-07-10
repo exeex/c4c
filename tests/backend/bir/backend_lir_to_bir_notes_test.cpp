@@ -242,6 +242,7 @@ int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
 int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base();
 int expect_inttoptr_loaded_local_i64_byte_load_publishes_opaque_pointer_base();
+int expect_inttoptr_integer_add_compare_operand_publishes_pointer_source();
 int expect_pointer_addressed_aggregate_field_store_publishes_leaf_stores();
 int expect_direct_local_scalar_access_publishes_local_slot_provenance();
 int expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
@@ -1889,6 +1890,142 @@ int expect_inttoptr_loaded_local_i64_byte_load_publishes_opaque_pointer_base() {
   }
   if (!saw_opaque_pointer_base_byte_load) {
     return fail("inttoptr loaded local i64 byte load should use opaque pointer base");
+  }
+  return 0;
+}
+
+int expect_inttoptr_integer_add_compare_operand_publishes_pointer_source() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+
+  c4c::TypeSpec long_type{};
+  long_type.base = c4c::TB_LONG;
+
+  c4c::TypeSpec void_pointer_type{};
+  void_pointer_type.base = c4c::TB_VOID;
+  void_pointer_type.ptr_level = 1;
+
+  LirFunction function;
+  function.name = "inttoptr_integer_add_compare_operand";
+  function.signature_text =
+      "define i32 @inttoptr_integer_add_compare_operand(i64 %p.addr, ptr %p.other)";
+  function.return_type = int_type;
+  function.params.push_back({"%p.addr", long_type});
+  function.params.push_back({"%p.other", void_pointer_type});
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.addr", .type = long_type});
+  function.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%p.other", .type = void_pointer_type});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("i64"));
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("ptr"));
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.addr"),
+      .type_str = "i64",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i64",
+      .val = LirOperand("%p.addr"),
+      .ptr = LirOperand("%lv.addr"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.addr"),
+      .type_str = "i64",
+      .ptr = LirOperand("%lv.addr"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%runtime.ptr"),
+      .kind = LirCastKind::IntToPtr,
+      .from_type = "i64",
+      .operand = LirOperand("%loaded.addr"),
+      .to_type = "ptr",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%runtime.int"),
+      .kind = LirCastKind::PtrToInt,
+      .from_type = "ptr",
+      .operand = LirOperand("%runtime.ptr"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%runtime.plus"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = "i64",
+      .lhs = LirOperand("%runtime.int"),
+      .rhs = LirOperand("156"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%runtime.added.ptr"),
+      .kind = LirCastKind::IntToPtr,
+      .from_type = "i64",
+      .operand = LirOperand("%runtime.plus"),
+      .to_type = "ptr",
+  });
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%cmp"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "ptr",
+      .lhs = LirOperand("%p.other"),
+      .rhs = LirOperand("%runtime.added.ptr"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%ret"),
+      .kind = LirCastKind::ZExt,
+      .from_type = "i1",
+      .operand = LirOperand("%cmp"),
+      .to_type = "i32",
+  });
+  entry.terminator = LirRet{
+      .value_str = "%ret",
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("inttoptr integer-add compare operand should lower semantically");
+  }
+
+  bool saw_pointer_source = false;
+  bool saw_compare_using_source = false;
+  for (const auto& block : result.module->functions.front().blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+          binary != nullptr && binary->result.name == "%runtime.added.ptr" &&
+          binary->opcode == bir::BinaryOpcode::Add &&
+          binary->operand_type == bir::TypeKind::Ptr &&
+          binary->lhs.kind == bir::Value::Kind::Named &&
+          binary->lhs.name == "%runtime.ptr" &&
+          binary->rhs.kind == bir::Value::Kind::Immediate &&
+          binary->rhs.immediate == 156) {
+        saw_pointer_source = true;
+      }
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+          binary != nullptr &&
+          binary->opcode == bir::BinaryOpcode::Ne &&
+          binary->operand_type == bir::TypeKind::Ptr &&
+          ((binary->lhs.kind == bir::Value::Kind::Named &&
+            binary->lhs.name == "%runtime.added.ptr") ||
+           (binary->rhs.kind == bir::Value::Kind::Named &&
+            binary->rhs.name == "%runtime.added.ptr"))) {
+        saw_compare_using_source = true;
+      }
+    }
+  }
+
+  if (!saw_pointer_source) {
+    return fail("inttoptr integer-add compare operand should publish explicit pointer source");
+  }
+  if (!saw_compare_using_source) {
+    return fail("inttoptr integer-add compare operand should feed compare through published source");
   }
   return 0;
 }
@@ -15392,6 +15529,12 @@ int main() {
           expect_local_array_compare_operand_rejects_out_of_range_source();
       bad_local_array_compare_source_status != 0) {
     return bad_local_array_compare_source_status;
+  }
+
+  if (const int inttoptr_add_compare_source_status =
+          expect_inttoptr_integer_add_compare_operand_publishes_pointer_source();
+      inttoptr_add_compare_source_status != 0) {
+    return inttoptr_add_compare_source_status;
   }
 
   if (const int string_literal_pointer_publication_status =

@@ -207,7 +207,14 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         }
         const bool is_tracked_local_pointer =
             local_pointer_slots.find(operand.str()) != local_pointer_slots.end() ||
-            local_slot_pointer_values.find(operand.str()) != local_slot_pointer_values.end();
+            local_slot_pointer_values.find(operand.str()) != local_slot_pointer_values.end() ||
+            [&]() {
+              const auto pointer_addr_it = pointer_value_addresses.find(operand.str());
+              return pointer_addr_it != pointer_value_addresses.end() &&
+                     pointer_addr_it->second.base_value.kind == bir::Value::Kind::Named &&
+                     pointer_addr_it->second.base_value.type == bir::TypeKind::Ptr &&
+                     pointer_addr_it->second.byte_offset != 0;
+            }();
         if (!is_tracked_local_pointer) {
           return true;
         }
@@ -402,6 +409,68 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         const auto rhs_offset = static_cast<std::int64_t>(rhs_addr_it->second.byte_offset);
         value_aliases[bin->result.str()] = bir::Value::immediate_i64(lhs_offset - rhs_offset);
         return true;
+      }
+    }
+
+    if ((*opcode == bir::BinaryOpcode::Add || *opcode == bir::BinaryOpcode::Sub) &&
+        *value_type == bir::TypeKind::I64 &&
+        bin->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto publish_pointer_address_int_offset =
+          [&](const PointerAddress& base_address, std::int64_t delta) -> bool {
+        const auto base_offset = static_cast<std::int64_t>(base_address.byte_offset);
+        if ((delta > 0 &&
+             base_offset > std::numeric_limits<std::int64_t>::max() - delta) ||
+            (delta < 0 &&
+             base_offset < std::numeric_limits<std::int64_t>::min() - delta)) {
+          return false;
+        }
+        const auto final_offset = base_offset + delta;
+        if (final_offset < 0) {
+          return false;
+        }
+        auto address = base_address;
+        address.byte_offset = static_cast<std::size_t>(final_offset);
+        pointer_address_ints[bin->result.str()] = std::move(address);
+        return true;
+      };
+      const auto immediate_i64_operand =
+          [&](const c4c::codegen::lir::LirOperand& operand) -> std::optional<std::int64_t> {
+        if (operand.kind() == c4c::codegen::lir::LirOperandKind::Immediate) {
+          return parse_i64(operand.str());
+        }
+        if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+          const auto alias_it = value_aliases.find(operand.str());
+          if (alias_it != value_aliases.end() &&
+              alias_it->second.kind == bir::Value::Kind::Immediate &&
+              alias_it->second.type == bir::TypeKind::I64) {
+            return alias_it->second.immediate;
+          }
+        }
+        return std::nullopt;
+      };
+
+      if (bin->lhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        if (const auto lhs_pointer_addr_it = pointer_address_ints.find(bin->lhs.str());
+            lhs_pointer_addr_it != pointer_address_ints.end()) {
+          if (const auto rhs_imm = immediate_i64_operand(bin->rhs);
+              rhs_imm.has_value() &&
+              publish_pointer_address_int_offset(
+                  lhs_pointer_addr_it->second,
+                  *opcode == bir::BinaryOpcode::Sub ? -*rhs_imm : *rhs_imm)) {
+            return true;
+          }
+        }
+      }
+      if (*opcode == bir::BinaryOpcode::Add &&
+          bin->rhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        if (const auto rhs_pointer_addr_it = pointer_address_ints.find(bin->rhs.str());
+            rhs_pointer_addr_it != pointer_address_ints.end()) {
+          if (const auto lhs_imm = immediate_i64_operand(bin->lhs);
+              lhs_imm.has_value() &&
+              publish_pointer_address_int_offset(rhs_pointer_addr_it->second, *lhs_imm)) {
+            return true;
+          }
+        }
       }
     }
 
