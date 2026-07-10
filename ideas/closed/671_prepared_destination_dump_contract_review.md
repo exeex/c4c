@@ -1,6 +1,6 @@
 # Prepared Destination Dump Contract Review
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -83,3 +83,10 @@ lowering failure.
   fresh focused proof shows a current prepared fact is missing or ambiguous.
 - Reject leaving the same stale dump-contract mismatch behind a renamed helper
   or diagnostic.
+
+## Closure Notes
+
+Closed after all three residual prepared destination dump rows were classified
+as stale snippet expectations over current prepared facts, the three focused
+dump snippets were updated, and the supervisor-selected six-row dump plus
+nearby route/runtime subset passed with no new failures.
