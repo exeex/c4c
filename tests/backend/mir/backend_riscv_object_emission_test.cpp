@@ -1028,6 +1028,128 @@ make_prepared_fused_pointer_condition_and_rhs_stack_branch_module() {
   return prepared;
 }
 
+prepare::PreparedCallArgumentSourceSelection
+stack_carried_pointer_source_selection(c4c::ValueNameId rhs_name,
+                                       c4c::BlockLabelId block_label) {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization,
+      .source_value_id = prepare::PreparedValueId{3},
+      .source_value_name = rhs_name,
+      .source_home_kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+      .source_slot_id = prepare::PreparedFrameSlotId{21},
+      .source_stack_offset_bytes = std::size_t{24},
+      .source_size_bytes = std::size_t{8},
+      .source_align_bytes = std::size_t{8},
+      .source_base_value_id = prepare::PreparedValueId{4},
+      .source_pointer_byte_delta = std::int64_t{4},
+      .address_materialization_block_label = block_label,
+      .address_materialization_inst_index = std::size_t{0},
+      .address_materialization_frame_slot_id = prepare::PreparedFrameSlotId{21},
+      .address_materialization_byte_offset = std::int64_t{24},
+  };
+}
+
+prepare::PreparedBirModule
+make_prepared_fused_pointer_rhs_stack_carried_source_branch_module(
+    bool publish_source_selection = true) {
+  auto prepared = make_prepared_fused_pointer_rhs_stack_branch_module();
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto rhs_name = prepared.names.value_names.find("%rhs");
+  auto& function = prepared.module.functions.front();
+
+  bir::CallInst keep_call;
+  keep_call.callee = "keep";
+  keep_call.return_type = bir::TypeKind::Void;
+  function.blocks.front().insts.insert(function.blocks.front().insts.begin(),
+                                       keep_call);
+
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"keep"},
+          .preserved_values = {prepare::PreparedCallPreservedValue{
+              .value_id = prepare::PreparedValueId{3},
+              .value_name = rhs_name,
+              .route = prepare::PreparedCallPreservationRoute::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{11},
+              .stack_offset_bytes = std::size_t{8},
+              .stack_size_bytes = std::size_t{8},
+              .stack_align_bytes = std::size_t{8},
+              .source_selection =
+                  publish_source_selection
+                      ? std::optional<prepare::PreparedCallArgumentSourceSelection>{
+                            stack_carried_pointer_source_selection(rhs_name,
+                                                                   block_label)}
+                      : std::nullopt,
+              .preservation_source =
+                  prepare::PreparedCallBoundaryEffectEndpoint{
+                      .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                      .storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+                      .value_id = prepare::PreparedValueId{3},
+                      .value_name = rhs_name,
+                      .slot_id = prepare::PreparedFrameSlotId{11},
+                      .stack_offset_bytes = std::size_t{8},
+                      .stack_size_bytes = std::size_t{8},
+                      .stack_align_bytes = std::size_t{8},
+                  },
+              .preservation_destination =
+                  prepare::PreparedCallBoundaryEffectEndpoint{
+                      .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                      .storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+                      .value_id = prepare::PreparedValueId{3},
+                      .value_name = rhs_name,
+                      .slot_id = prepare::PreparedFrameSlotId{11},
+                      .stack_offset_bytes = std::size_t{8},
+                      .stack_size_bytes = std::size_t{8},
+                      .stack_align_bytes = std::size_t{8},
+                  },
+              .preservation_reason = "stack_slot_preservation",
+          }},
+      }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{21},
+      .function_name = function_name,
+      .value_name = rhs_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .object_id = prepare::PreparedObjectId{21},
+      .function_name = function_name,
+      .offset_bytes = 20,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 32;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 8,
+      .address_materializations = {prepare::PreparedAddressMaterialization{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+          .result_value_name = rhs_name,
+          .result_value_id = prepare::PreparedValueId{3},
+          .result_home_kind =
+              prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+          .frame_slot_id = prepare::PreparedFrameSlotId{21},
+          .byte_offset = 24,
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -15541,6 +15663,87 @@ int builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object(
   if (!saw_rhs_stack_load || !saw_branch_using_loaded_rhs) {
     return fail("expected stack-homed rhs fused pointer branch to load rhs from its selected stack slot");
   }
+  return 0;
+}
+
+int builds_prepared_fused_pointer_rhs_stack_carried_source_branch_object() {
+  const auto prepared =
+      make_prepared_fused_pointer_rhs_stack_carried_source_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected stack-carried pointer source branch to build from explicit source selection: " +
+                result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected stack-carried pointer source branch object text");
+  }
+  bool saw_materialized_rhs_source = false;
+  bool saw_carrier_reload = false;
+  bool saw_branch_using_rhs = false;
+  for (std::size_t offset = function->value; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if (word == 0x01810e93) {
+      saw_materialized_rhs_source = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 8) && riscv_rd(word) == 29) {
+      saw_carrier_reload = true;
+    }
+    if ((word & 0x7fU) == 0x63U && ((word >> 12) & 0x7U) == 6U &&
+        riscv_rs1(word) == 28 && riscv_rs2(word) == 29) {
+      saw_branch_using_rhs = true;
+    }
+  }
+  if (!saw_materialized_rhs_source || saw_carrier_reload ||
+      !saw_branch_using_rhs) {
+    return fail("expected stack-carried pointer branch to materialize rhs from explicit local-frame source selection");
+  }
+  return 0;
+}
+
+int rejects_prepared_fused_pointer_rhs_stack_carried_source_fail_closed_shapes() {
+  auto prepared =
+      make_prepared_fused_pointer_rhs_stack_carried_source_branch_module(false);
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_stack_carried_source_branch_module();
+  auto& selection = *prepared.call_plans.functions.front()
+                         .calls.front()
+                         .preserved_values.front()
+                         .source_selection;
+  selection.source_home_kind = prepare::PreparedValueHomeKind::StackSlot;
+  if (expect_prepared_rejection_diagnostic_contains(prepared,
+                                                    {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_stack_carried_source_branch_module();
+  prepared.call_plans.functions.front()
+      .calls.front()
+      .preserved_values.front()
+      .stack_offset_bytes = std::size_t{16};
+  if (expect_prepared_rejection_diagnostic_contains(prepared,
+                                                    {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_stack_carried_source_branch_module();
+  prepared.addressing.functions.front()
+      .address_materializations.front()
+      .byte_offset = 20;
+  if (expect_prepared_rejection_diagnostic_contains(prepared,
+                                                    {"unsupported_"}) != 0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -31130,6 +31333,10 @@ int main() {
   status |= rejects_prepared_fused_pointer_lhs_stack_branch_authority_statuses();
   status |=
       builds_prepared_fused_pointer_rhs_stack_branch_with_shared_freshness_object();
+  status |=
+      builds_prepared_fused_pointer_rhs_stack_carried_source_branch_object();
+  status |=
+      rejects_prepared_fused_pointer_rhs_stack_carried_source_fail_closed_shapes();
   status |=
       builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object();
   status |=

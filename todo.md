@@ -8,38 +8,35 @@ Current Step Title: Implement The Narrow Stack-Carried Pointer Rule
 
 ## Just Finished
 
-Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: added the
-producer-side prepared authority carrier for stack-carried pointer values whose
-source is an explicit `PointerBasePlusOffset` local-frame address
-materialization and whose selected preservation home is a complete stack slot.
+Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: added the RV64
+consumer for explicit stack-carried pointer source authority in prepared fused
+pointer branch operands.
 
 - Changed files:
-  `src/backend/prealloc/calls.hpp`,
-  `src/backend/prealloc/call_plans.cpp`,
-  `src/backend/prealloc/prepared_printer/calls.cpp`, and
-  `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`.
-- `PreparedCallPreservedValue` now has an optional `source_selection` fact.
-  Call-preservation planning populates it only when exactly one call-argument
-  source selection proves the same value id/name, `PointerBasePlusOffset`
-  source home, local-frame materialization fields, and complete preserved
-  stack home.
-- Prior-preservation source selection copies that explicit source identity
-  while preserving the selected stack home in `preserved_*` fields. Missing,
-  stale, mismatched, stack-slot-only, and ambiguous producer states remain
-  fail-closed because the selection predicate rejects them or leaves
-  `source_selection` absent.
-- Focused unit coverage checks the positive `%t6`-class shape and negative
-  missing-materialization, stale-value, and stack-slot-only shapes. The check
-  runs before the existing known FPR dump failure in
-  `backend_prepare_frame_stack_call_contract`.
+  `src/backend/mir/riscv/codegen/object_emission.cpp` and
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
+- RV64 now checks a branch operand's latest prior stack-slot preservation before
+  falling back to ordinary operand moves. If that preservation exists, the
+  consumer requires an explicit `source_selection` matching the preserved stack
+  home and a validated `LocalFrameAddressMaterialization` with
+  `PointerBasePlusOffset` source identity.
+- When the fact is present, RV64 materializes the source local-frame pointer
+  address directly from the prepared offset instead of reloading the carrier
+  stack slot. Missing, mismatched, stack-slot-only, or stale shapes stay
+  fail-closed.
+- Focused object-emission coverage builds a synthetic `%t6`-class pointer
+  branch that materializes `addi rd, sp, offset` from the explicit preserved
+  source selection, plus fail-closed mutations for absent and contradictory
+  authority.
+- Evidence written to
+  `build/agent_state/653_step3_rv64_stack_carried_pointer_consumer/summary.md`.
 
 ## Suggested Next
 
-Executor packet: consume the explicit stack-carried pointer source authority in
-the RV64 prior-preservation stack-slot path for the `%t6` family. Require the
-new source-selection fact plus the preserved stack home to match before
-materializing or reloading the branch operand; keep stack-slot-only
-preservation rejected for pointer-source materialization.
+Executor packet: repair the producer/hand-off gap for the real
+`src/20140828-1.c` `%t6` row so the stack-slot preserved value for value id
+`19`, slot `#16`, carries the explicit `source_selection` fact currently proven
+by the synthetic RV64 consumer test.
 
 ## Watchouts
 
@@ -50,11 +47,16 @@ preservation rejected for pointer-source materialization.
 - `loop-2e.c` now passes the direct runtime runner; do not use `%t23` as the
   first failing runtime proof unless a later packet identifies a still-red
   focused owner.
-- The producer authority is now explicit, but this packet did not change the
-  RV64 object-emission consumer. RV64 still must not infer from stack offsets,
-  source spelling, final assembly shape, or testcase identity.
-- Stack-slot-only preservation remains valid as ordinary stack preservation;
-  it is not a pointer source materialization authority.
+- The RV64 consumer now rejects prior stack-slot preservation without explicit
+  source selection for pointer branch operands. This intentionally blocks the
+  old `%t6` stack-slot-only path instead of emitting the previous runtime
+  aborting object.
+- Current focused `src/20140828-1.c` prepared output still has no
+  `source_selection` on `preserve value=%t6 value_id=19 route=stack_slot
+  slot=#16 stack_offset=8`; the remaining owner is producer/hand-off
+  attachment for that real row, not RV64 inference.
+- Stack-slot-only preservation remains valid as ordinary stack preservation; it
+  is not a pointer source materialization authority.
 - `backend_prepare_frame_stack_call_contract` still exits later at the known
   `rv64 FPR ABI/frame fact contract` dump assertion, so use the new check's
   placement before that assertion when evaluating focused coverage.
@@ -65,12 +67,17 @@ preservation rejected for pointer-source materialization.
 --output-on-failure -R '^backend_'`.
 
 Result: build completed and the delegated backend subset remains red with 32
-failed tests out of 365. The failed-test count and list match the known
-`test_before.log` backend subset shape; no new backend failure set was
-introduced. `test_after.log` is the preserved proof log.
+failed tests out of 365. `test_after.log` is the preserved proof log.
 
 Additional focused proof: `cmake --build --preset default --target
-backend_prepare_frame_stack_call_contract_test &&
-build/tests/backend/bir/backend_prepare_frame_stack_call_contract_test` builds
-and reaches the existing `rv64 FPR ABI/frame fact contract` failure after the
-new stack-carried pointer source authority check has run.
+backend_riscv_object_emission_test` builds. Running
+`build/tests/backend/mir/backend_riscv_object_emission_test` still prints
+unrelated existing failures, but the new stack-carried pointer consumer checks
+do not add failure output.
+
+Focused `src/20140828-1.c` probe:
+`tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` now fails
+at object compile with `unsupported_terminator_fragment` because the current
+prepared dump lacks the real `%t6` preserved `source_selection`; this replaces
+the previous bad runtime-aborting object path and identifies the remaining
+producer/hand-off owner.
