@@ -1,51 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/653_stack_carried_pointer_source_publication_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Stack-Carried Pointer Evidence
+Current Step ID: 2
+Current Step Title: Locate The Publication And Materialization Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1, `Refresh Stack-Carried Pointer Evidence`: refreshed prepared-BIR,
-object, disassembly, and runtime evidence for the two representative
-stack-carried pointer rows.
+Step 2, `Locate The Publication And Materialization Boundary`: traced the
+`tests/c/external/gcc_torture/src/20140828-1.c` `%t6` path and recorded the
+prepared/RV64 boundary in
+`build/agent_state/653_step2_t6_pointer_publication_trace/summary.md`.
 
-- Evidence root:
-  `build/agent_state/653_step1_stack_carried_pointer_evidence/summary.md`.
-- `tests/c/external/gcc_torture/src/20140828-1.c` `%t6`: prepared consumer is
-  `main` `entry`, `bir.cond_br i32 %t7, block_2, block_3`, with
-  `branch_condition ... compare=ne ptr %t4, %t6`. The selected stack slot is
-  `%t6` value id `19`, slot `#16`, object `#17`, stack offset `8`, size `8`,
-  align `8`. Source value is source-level `&a[1]`; current prepared facts only
-  publish `%t6` as a call-preserved stack-slot value and branch-stack-load
-  authority, with no explicit local-frame address materialization/source
-  publication for `%t6` itself. Object emission succeeds; linked disassembly
-  compares the call result in `t0` with `ld t4,8(sp)` at the first branch.
-  Runtime still fails with `[RV64_BACKEND_RUNTIME_MISMATCH]`,
-  `clang_exit=0`, `c4c_exit=Subprocess aborted`. First owner remains the
-  prepared/RV64 stack-carried pointer source materialization/publication for
-  `%t6` into slot `#16`, not terminator admission.
-- `tests/c/external/gcc_torture/src/loop-2e.c` `%t23`: prepared consumer is
-  `main` `block_6`, `bir.cond_br i32 %t24, block_13, block_14`, with
-  `branch_condition ... compare=ne ptr %t20, %t23`. The selected stack slot is
-  `%t23` value id `27`, slot `#46`, object `#51`, stack offset `336`, size
-  `8`, align `8`. Source value is source-level `(int *)p + 39`; current
-  prepared facts only publish `%t23` as a call-preserved stack-slot value and
-  branch-stack-load authority, with no explicit address-add source
-  publication/materialization for `%t23` itself. Object emission succeeds;
-  linked disassembly compares loaded `q[39]` in `t0` with `ld t4,336(sp)`.
-  Current runtime runner passes, so `%t23` no longer proves a failing runtime
-  owner even though the publication/materialization fact gap remains visible.
+- `%t6` producer/source: source-level `&a[1]`, meaning local-frame source
+  `%lv.a.0 + 2` for `short a[2]`. Prepared `main` has address materialization
+  facts for the actual call operands `%lv.a.0` at slot `#5` offset `4` and
+  `%lv.d` at slot `#4` offset `0`, but no normal producer/materialization row
+  or source publication for `%t6` itself.
+- Selected slot: `%t6` value id `19`, slot `#16`, object `#17`, stack offset
+  `8`, size `8`, align `8`, carried as
+  `preserve value=%t6 ... route=stack_slot`.
+- Consumer branch: `main` `entry`,
+  `bir.cond_br i32 %t7, block_2, block_3`, fused compare
+  `compare=ne ptr %t4, %t6`; branch RHS stack-load authority is available for
+  `%t6` with `source_freshness_authority=branch_stack_slot`.
+- Current publication/materialization facts: RV64 emits the call argument
+  `a` as `addi a0,sp,4` from the existing local-frame address publication, but
+  later compares the call result against `ld t4,8(sp)`. No prepared fact proves
+  slot `#16` was populated with `%lv.a.0 + 2` before the call or that the
+  stack-carried value source was explicitly published.
+- Boundary: `src/backend/prealloc/publication_plans.cpp` owns the branch
+  stack-load authority and clobber/call-preserve validation, while
+  `src/backend/mir/riscv/codegen/object_emission.cpp` consumes only selected
+  `BranchStackLoadSource` freshness before reloading stack operands.
+  `src/backend/prealloc/call_plans.cpp` already publishes local-frame address
+  materialization for call operands, but there is no prepared producer
+  authority that binds branch-only `%t6` value id `19`, slot `#16`, to
+  `%lv.a.0 + 2`.
+- Narrow first implementation surface or missing authority: add or fail closed
+  on an explicit prepared stack-carried pointer source
+  publication/materialization fact for `%t6` that records source identity,
+  materialized value identity, and selected stack home. RV64 terminator
+  admission should remain a consumer of that fact, not infer it from final
+  stack offsets or source spelling.
 
 ## Suggested Next
 
-Executor packet: trace the `%t6` producer/materialization path for
-`src/20140828-1.c` from the source-level `&a[1]` value through prepared
-selection, call preservation, slot `#16`, and the RV64 branch consumer; identify
-the narrow producer fact that should explicitly publish the materialized
-stack-carried pointer source.
+Executor packet: implement the narrow prepared stack-carried pointer source
+publication/materialization rule, or add the precise fail-closed diagnostic if
+the producer cannot yet prove `%t6`'s source identity, materialized value, and
+slot `#16` home.
 
 ## Watchouts
 
@@ -57,9 +62,10 @@ stack-carried pointer source.
   first failing runtime proof unless a later packet identifies a still-red
   focused owner.
 - The `%t6` row has explicit branch-stack-load authority and call-preserve
-  metadata, but no explicit `%t6` source materialization/publication fact. Keep
-  the next packet on that producer boundary rather than widening to unrelated
-  branch shapes.
+  metadata, but no explicit `%t6` source materialization/publication fact.
+  Preserve RV64's fail-closed behavior for missing, stale, ambiguous, and
+  mismatched producer facts; do not make RV64 infer the source from slot
+  offsets, final assembly shape, or testcase identity.
 
 ## Proof
 
@@ -67,5 +73,5 @@ stack-carried pointer source.
 --output-on-failure -R '^backend_'`.
 
 Result: build completed, but the delegated backend subset remains red with 32
-failed tests. Failure names match `test_before.log`, so this evidence-only
-packet did not introduce a new backend failure set.
+failed tests. The failed-test list matches `test_before.log`, so this
+trace/evidence-only packet did not introduce a new backend failure set.
