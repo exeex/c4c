@@ -26091,14 +26091,13 @@ int builds_prepared_local_frame_address_register_source_arg_call_object() {
     return fail("expected local frame-address register-source call relocation");
   }
   const auto call_offset = module.relocations[0].offset;
-  if (call_offset < main->value + 24 ||
-      read_u32(text->bytes, call_offset - 24) != 0x01810493 ||
-      read_u32(text->bytes, call_offset - 20) != 0x00048513 ||
+  if (call_offset < main->value + 20 ||
+      read_u32(text->bytes, call_offset - 20) != 0x01810513 ||
       read_u32(text->bytes, call_offset - 16) != 0xff810113 ||
       read_u32(text->bytes, call_offset - 12) != 0x02810913 ||
       read_u32(text->bytes, call_offset - 8) != 0x00090e13 ||
       read_u32(text->bytes, call_offset - 4) != 0x01c13023) {
-    return fail("expected prepared local frame addresses to be published before register and stack call-argument consumption");
+    return fail("expected prepared local frame address register argument to materialize directly into ABI a0 while preserving stack argument publication");
   }
   return 0;
 }

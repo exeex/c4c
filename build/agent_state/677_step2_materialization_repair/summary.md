@@ -34,14 +34,37 @@ Fresh object disassembly for the focused row now shows direct materialization:
 The previous two-step object route, `mv s1, sp; mv a0, s1`, is no longer emitted
 for this local-frame-address call argument.
 
+## Internal Unit Contract
+
+Updated
+`tests/backend/mir/backend_riscv_object_emission_test.cpp`,
+`builds_prepared_local_frame_address_register_source_arg_call_object`, to
+assert the repaired object-route contract directly. The fixture's
+`LocalFrameAddressMaterialization` register argument now expects
+`addi a0, sp, 24` immediately before the outgoing stack-argument setup, while
+the second local-frame-address argument still checks the stack publication
+sequence:
+
+```text
+addi a0, sp, 24
+addi sp, sp, -8
+addi s2, sp, 40
+mv t3, s2
+sd t3, 0(sp)
+```
+
+This preserves the stack-argument publication checks and removes the stale
+expectation that the register argument must first publish through `s1`.
+
 ## Proof
 
 Command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_cli_riscv64_call_arg_local_frame_address_materialization|backend_codegen_route_riscv64_call_arg_local_frame_address_materialization|backend_dump_riscv64_call_arg_local_frame_address_materialization'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_cli_riscv64_call_arg_local_frame_address_materialization|backend_codegen_route_riscv64_call_arg_local_frame_address_materialization|backend_dump_riscv64_call_arg_local_frame_address_materialization|backend_riscv_object_emission'
 ```
 
-Result: build succeeded and all three focused tests passed.
+Result: build succeeded; the three focused 677 rows and the nearby
+`backend_riscv_object_emission` internal unit test passed.
 
 Canonical proof log: `test_after.log`.
