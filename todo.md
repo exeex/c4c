@@ -34,9 +34,8 @@ the comparable two-row regression guard.
 
 ## Suggested Next
 
-Execute Step 4 with the supervisor-selected broader regression-safety proof and
-then ask the plan owner to decide whether idea 674 is ready to close. Treat the
-current row 176 improvement as focused proof only until the Step 4 gate is run.
+Ask the plan owner to decide whether idea 674 is ready to close. The
+supervisor-selected three-row close-readiness proof now passes.
 
 ## Watchouts
 
@@ -54,7 +53,7 @@ current row 176 improvement as focused proof only until the Step 4 gate is run.
 
 ## Proof
 
-Delegated proof passed and wrote canonical `test_after.log`:
+Delegated Step 3 proof passed and wrote canonical `test_after.log`:
 
 `cmake --build --preset default --target c4cll backend_riscv_object_emission_test -j 2 && ctest --test-dir build -j --output-on-failure -R '^(backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`
 
@@ -66,3 +65,12 @@ Result:
 - After evidence: `build/agent_state/674_step3_terminator_lowering/test_after.log`.
 - Regression guard result: passed (`passed=1 failed=1 total=2` before,
   `passed=2 failed=0 total=2` after), resolving row 176 with no new failures.
+
+Supervisor Step 4 proof:
+
+`ctest --test-dir build -j --output-on-failure -R '^(backend_cli_riscv64_pointer_global_local_publication|backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`
+
+Result: passed. Regression guard against
+`build/agent_state/673_step1_regression_probe/focused_three_row_ctest.log`
+passed (`passed=1 failed=2 total=3` before, `passed=3 failed=0 total=3`
+after), resolving rows 139 and 176 with no new failures and preserving row 256.
