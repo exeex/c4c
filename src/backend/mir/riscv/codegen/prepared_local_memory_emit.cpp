@@ -2192,6 +2192,41 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     }
     return fragment;
   }
+  if (access != nullptr &&
+      access->address.base_kind ==
+          c4c::backend::prepare::PreparedAddressBaseKind::PointerValue) {
+    RiscvEncodedFragment fragment;
+    const auto pointer_base =
+        materialize_prepared_pointer_value_base_offset(fragment,
+                                                      stack_layout,
+                                                      lookups,
+                                                      access,
+                                                      stack_frame_bytes,
+                                                      *size_bytes,
+                                                      7);
+    if (!pointer_base.has_value()) {
+      return std::nullopt;
+    }
+    const std::uint32_t value_register =
+        rv64_temporary_gpr_avoiding_local(pointer_base->first);
+    if (!append_rv64_materialize_or_move_store_value_local(fragment,
+                                                          value_register,
+                                                          stack_layout,
+                                                          names,
+                                                          lookups,
+                                                          block_label,
+                                                          instruction_index,
+                                                          store.value,
+                                                          stack_frame_bytes) ||
+        !append_rv64_store_register_to_base_local(fragment,
+                                                 value_register,
+                                                 pointer_base->first,
+                                                 pointer_base->second,
+                                                 *size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
   const auto offset =
       prepared_frame_slot_absolute_byte_offset(stack_layout,
                                                access,
