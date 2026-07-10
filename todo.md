@@ -1,50 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/677_rv64_call_arg_local_frame_address_object_materialization.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reconfirm The Object/Text Divergence
+Current Step ID: Step 2
+Current Step Title: Repair Or Prove The Object Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Reconfirm The Object/Text Divergence. Fresh focused proof reproduced
-row 159's object-byte failure, captured fresh text/object artifacts under
-`build/agent_state/677_step1_object_text_divergence/`, and identified the first
-object-route boundary as `fragment_for_prepared_call` in
-`src/backend/mir/riscv/codegen/object_emission.cpp`: its
-`LocalFrameAddressMaterialization` branch passes the prepared source register
-(`s1`) to the local-frame-address helper and then copies to ABI `a0`, while the
-text route emits directly to the ABI destination.
+Step 2: Repair Or Prove The Object Contract. Repaired the RV64 object-route
+`LocalFrameAddressMaterialization` call-argument consumer in
+`fragment_for_prepared_call` so it passes the ABI destination register directly
+to `append_rv64_prepared_local_frame_address_call_argument_source` when the call
+argument has a GPR destination. The focused object route now emits direct
+`mv a0, sp`/`addi a0, sp, 0` materialization instead of the previous
+`mv s1, sp; mv a0, s1` two-step path. Summary:
+`build/agent_state/677_step2_materialization_repair/summary.md`.
 
 ## Suggested Next
 
-Delegate Step 2 to an executor: repair or prove the object contract at the
-`fragment_for_prepared_call` local-frame-address branch by making the decision
-against the `LocalFrameAddressMaterialization` semantic contract, not against
-the focused test name or expected-byte string.
+Supervisor should review and commit the completed Step 2 code plus canonical
+execution artifacts, or choose the next packet from `plan.md` if broader
+validation is desired.
 
 ## Watchouts
 
-- Do not change the text-route contract unless fresh evidence proves it is
-  wrong.
-- `append_rv64_prepared_local_frame_address_call_argument_source` already
-  encodes direct `addi rd, sp, offset` for the register it is given; the
-  divergence is the object caller's current choice of `publication_register =
-  source.value_or(*destination)`.
+- The repair is semantic and general for object-route GPR call arguments with
+  `LocalFrameAddressMaterialization`; no tests, byte contracts, unsupported
+  markers, allowlists, runtime policy, or baseline accounting were changed.
 - Do not repair or reclassify the pointer/global-local publication row; idea
   676 is closed.
-- Do not accept `test_baseline.new.log`; row 159 is still unresolved.
-- Do not edit unsupported markers, allowlists, timeouts, runtime policy, or
-  baseline accounting.
-- Do not key implementation to the focus test name, filename, or expected byte
-  string.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R
-'backend_cli_riscv64_call_arg_local_frame_address_materialization'`.
-Build succeeded; focused CTest failed as expected with
-`[BACKEND_OBJ_MISSING_BYTES]` for missing `13050100`. Proof log:
+'backend_cli_riscv64_call_arg_local_frame_address_materialization|backend_codegen_route_riscv64_call_arg_local_frame_address_materialization|backend_dump_riscv64_call_arg_local_frame_address_materialization'`.
+Build succeeded and all three focused tests passed. Proof log:
 `test_after.log`.
