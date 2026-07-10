@@ -2516,7 +2516,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
                                                stack_frame_bytes,
                                                *size_bytes);
   const auto store_slot_offset =
-      offset.has_value()
+      offset.has_value() || access != nullptr
           ? std::optional<std::size_t>{}
           : prepared_store_local_slot_absolute_byte_offset(stack_layout,
                                                            store,
