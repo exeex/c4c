@@ -57,6 +57,18 @@ through the caller array, and `main` later reloads unchanged `q[39]`.
   owner.
 - Backend regression proof shows no new backend failures.
 
+## Deactivation Notes
+
+- 2026-07-10: Active runbook deactivated before closure. Step 3 evidence
+  under `build/agent_state/657_step3_representative_pointer_value_store/`
+  showed the representative `loop-2e.c` RV64 object-runtime comparison passing
+  against clang after the pointer-value store repair, but Step 4 backend
+  baseline/proof remained too noisy to use as acceptance evidence.
+- `test_baseline.log` showed broad existing failures across RV64 backend
+  dump/codegen/runtime, prepared BIR/CLI, and llvm torture coverage. Do not
+  treat this deactivation as idea completion; reactivate only after the
+  baseline is understood well enough to prove no new backend regressions.
+
 ## Reviewer Reject Signals
 
 - Reject any change that weakens runtime comparison, expectation files,
