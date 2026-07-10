@@ -991,6 +991,17 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_indirect_store_postincrement_callee_contract
+  SRC "${BACKEND_CASE_ROOT}/riscv64_indirect_store_postincrement_callee_contract.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @writeback_callee(ptr %p.base, ptr %p.cursor) -> void {|%t8 = bir.add ptr %p.base, %t8.byte_offset|%t9 = bir.load_local ptr %lv.param.cursor|%t10 = bir.add ptr %t9, 8|bir.store_local %lv.param.cursor, ptr %t10|bir.store_local %t9.store.addr, ptr %t8, addr %t9|home %t9 value_id=11 kind=register reg=s1|home %t10 value_id=12 kind=stack_slot|store_source function=writeback_callee block=block_1 inst=6 source=%t10 status=available intent=store_local_publication source_producer=binary|source_freshness_status=selected|store_source function=writeback_callee block=block_1 inst=7 source=%t8 status=available intent=store_local_publication source_producer=binary|access block=block_1 inst_index=6 base=frame_slot stored=%t10 frame_slot=#0 offset=0 size=8|access block=block_1 inst_index=7 base=pointer_value stored=%t8 pointer=%t9 offset=0 size=8"
+  FORBIDDEN_SNIPPETS "loop-2e.c|src/loop-2e|20140828-1.c|src/20140828"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address pointer_value pointer_step callee indirect_store dump
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_local_array_i8_element_access
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
   TARGET_TRIPLE riscv64-linux-gnu

@@ -8,54 +8,62 @@ Current Step Title: Trace Destination And Updated-Pointer Facts
 
 ## Just Finished
 
-Step 1 refreshed loop-2e evidence for
-`tests/c/external/gcc_torture/src/loop-2e.c` under
-`build/agent_state/657_step1_loop_2e_runtime_boundary/`.
+Step 2 traced the callee destination and updated-pointer facts from semantic
+BIR through prepared value homes and added focused dump coverage under
+`tests/backend/case/riscv64_indirect_store_postincrement_callee_contract.c`.
 
-Artifacts include semantic BIR (`loop-2e.bir.txt`), prepared BIR
-(`loop-2e.prepared.txt`), RV64 asm (`loop-2e.s`), object
-(`loop-2e.o`), disassembly (`loop-2e.objdump.txt`), clang runtime logs,
-c4c RV64 runtime compare logs, and `summary.md`.
+Focused contract:
 
-Preserved idea-653 facts:
+- Callee source pointer: `%p.base`.
+- Old caller-provided destination pointer:
+  `%t9 = bir.load_local ptr %lv.param.cursor`.
+- Postincremented local pointer writeback:
+  `%t10 = bir.add ptr %t9, 8` followed by
+  `bir.store_local %lv.param.cursor, ptr %t10`.
+- Caller-visible indirect store:
+  `bir.store_local %t9.store.addr, ptr %t8, addr %t9`.
 
-- Semantic and prepared BIR still publish `%t23 = bir.add ptr %t21, 156`.
-- Prepared branch RHS authority for `%t23` remains
-  `pointer_status=proven`, `status=available`, and
-  `source_freshness_status=selected`.
-- RV64 object emission succeeds.
+Prepared facts:
 
-Runtime/classification:
+- `%t9` has a register home (`s1`), so the old pointer value is available as
+  the indirect-store destination.
+- `%t10` has a stack-slot home and a selected binary producer/freshness fact:
+  `store_source function=writeback_callee block=block_1 inst=6 source=%t10
+  ... source_producer=binary ... source_freshness_status=selected`.
+- `%t8` has a selected binary producer/freshness fact:
+  `store_source function=writeback_callee block=block_1 inst=7 source=%t8
+  ... source_producer=binary ... source_freshness_status=selected`.
+- Prepared addressing distinguishes the local pointer-variable writeback from
+  the caller-visible store:
+  `access block=block_1 inst_index=6 base=frame_slot stored=%t10 frame_slot=#0`
+  and
+  `access block=block_1 inst_index=7 base=pointer_value stored=%t8 pointer=%t9`.
 
-- Clang RV64 runtime exits `0`.
-- c4c RV64 object-runtime compare fails with
-  `[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
-  `c4c_exit=Subprocess aborted`.
-- The first wrong-value boundary is callee `f` block `block_1`: semantic and
-  prepared facts distinguish postincrement local writeback
-  `bir.store_local %lv.param.q, ptr %t10` from the caller-visible indirect
-  store `bir.store_local %t9.store.addr, ptr %t8, addr %t9`, and prepared
-  addressing records `base=pointer_value stored=%t8 pointer=%t9`.
-- RV64 object code computes both `q + 8` and `&p[i]`, but stores both values
-  to `0(sp)`, the local `%lv.param.q` stack home, instead of storing `&p[i]`
-  through the old pointer value `%t9`. `main` later reloads unchanged
-  `q[39]` from `312(sp)` and aborts when it differs from the correctly
-  materialized `%t23`.
+Classification:
+
+- There is a positive producer/consumer contract for both the local
+  postincrement writeback and the indirect store.
+- The remaining owner is RV64 object lowering for prepared pointer-value
+  stores: it must consume `base=pointer_value stored=%t8 pointer=%t9` as a
+  memory store through the old pointer value, while preserving the separate
+  frame-slot store to the local cursor home.
+- The GCC torture `loop-2e.c` row remains representative evidence for the same
+  failure, not the only proof surface.
 
 ## Suggested Next
 
-Execute Step 2: trace the callee `f` destination and updated-pointer facts
-from semantic BIR through prepared value homes and RV64 lowering inputs,
-distinguishing the local `%lv.param.q` postincrement writeback from the
-caller-visible pointer-value store through `%t9`.
+Execute Step 3: repair the general RV64 prepared pointer-value store lowering
+for the proven contract. The focused legal shape should emit the indirect
+store through the old pointer value (`pointer=%t9`) instead of reusing the
+frame-slot destination for the local cursor writeback.
 
 ## Watchouts
 
 - Do not reopen the completed idea 653 `%t23` source publication route unless
   fresh evidence proves a regression.
-- Step 1 shows object/runtime failure after successful RV64 object emission;
-  the live owner is indirect store/writeback lowering in callee `f`, not the
-  final `%t23` branch RHS path.
+- Step 2 found no missing semantic or prepared producer fact for the callee
+  indirect store/writeback shape; an implementation slice should not infer
+  destination authority from runtime behavior, source names, or final assembly.
 - Do not implement stack-destination fan-in authority from ideas 647/655 under
   this plan.
 - Do not special-case `loop-2e.c`, `%t23`, `q[39]`, or callee `f`.
@@ -64,12 +72,21 @@ caller-visible pointer-value store through `%t9`.
 
 ## Proof
 
-Focused evidence generation completed through BIR, prepared-BIR, ASM, object,
-disassembly, clang runtime, and c4c RV64 runtime comparison.
+Focused dump contract:
+
+`ctest --test-dir build --output-on-failure -R '^backend_dump_riscv64_indirect_store_postincrement_callee_contract$'`
+
+Result: pass. Log:
+`build/agent_state/657_step2_destination_writeback_facts/focused_dump_ctest.log`.
+
+Step 2 evidence:
+
+- `build/agent_state/657_step2_destination_writeback_facts/indirect_store_postincrement_callee.prepared.txt`
+- `build/agent_state/657_step2_destination_writeback_facts/summary.md`
 
 Delegated proof run exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: CTest exited `8`; `test_after.log` reports `334 passed, 32 failed,
-366 total`.
+Result: CTest exited `8`; `test_after.log` reports
+`91% tests passed, 32 tests failed out of 367`.
