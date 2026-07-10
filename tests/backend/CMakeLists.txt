@@ -1705,6 +1705,14 @@ c4c_add_backend_rv64_object_runtime_case(
 )
 
 c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract
+  SRC "${BACKEND_CASE_ROOT}/riscv64_indirect_store_postincrement_callee_contract.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS pointer_value pointer_step indirect_store callee
+)
+
+c4c_add_backend_rv64_object_runtime_case(
   backend_obj_runtime_rv64_cts_00001
   SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00001.c"
   CASE_TIMEOUT_SEC 10

@@ -455,6 +455,48 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i16_acce
   return access;
 }
 
+const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_ptr_access_for(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (context.lookups == nullptr ||
+      store.value.type != bir::TypeKind::Ptr ||
+      (store.value.kind == bir::Value::Kind::Named && store.value.name.empty())) {
+    return nullptr;
+  }
+  std::optional<c4c::ValueNameId> stored_value_name;
+  if (store.value.kind == bir::Value::Kind::Named) {
+    const auto value_name = context.names.value_names.find(store.value.name);
+    if (value_name == c4c::kInvalidValueName) {
+      return nullptr;
+    }
+    stored_value_name = value_name;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &context.lookups->memory_accesses,
+      context.block_label,
+      context.instruction_index);
+  if (access == nullptr ||
+      access->result_value_name.has_value() ||
+      access->stored_value_name != stored_value_name ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      access->address.size_bytes != 8 ||
+      access->address.align_bytes < 8 ||
+      access->address.byte_offset < 0 ||
+      access->address.byte_offset % 8 != 0 ||
+      !access->address.can_use_base_plus_offset ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return nullptr;
+  }
+  return access;
+}
+
 const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_f32_access_for(
     const PreparedCurrentInstructionContext& context,
     const c4c::backend::bir::StoreLocalInst& store) {
@@ -2754,6 +2796,34 @@ std::optional<std::string> emit_riscv_simple_store_local(
       return std::nullopt;
     }
     out += "    fsw " + *source_register + ", " +
+           std::to_string(pointer_access->address.byte_offset) + "(" +
+           *base_register + ")\n";
+    return out;
+  }
+
+  if (const auto* pointer_access = simple_pointer_value_ptr_access_for(
+          context,
+          store);
+      pointer_access != nullptr) {
+    std::string out;
+    const auto base_register = load_pointer_value_base_register(
+        out,
+        context,
+        *pointer_access->address.pointer_value_name,
+        "t3");
+    if (!base_register.has_value()) {
+      return std::nullopt;
+    }
+    const std::string source_register = *base_register == "t1" ? "t3" : "t1";
+    if (!emit_move_to_register(
+            out,
+            source_register,
+            context.names,
+            context.lookups,
+            store.value)) {
+      return std::nullopt;
+    }
+    out += "    sd " + source_register + ", " +
            std::to_string(pointer_access->address.byte_offset) + "(" +
            *base_register + ")\n";
     return out;
