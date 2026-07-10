@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/673_post_664_full_suite_regression_probe.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce And Classify Regression Rows
+Current Step ID: 2
+Current Step Title: Repair Row 139 Direct-Global Local-Memory Publication Reload
 
 # Current Packet
 
@@ -30,18 +30,22 @@ Focused evidence is under
   or stale baseline state.
 - Guard row 256 `backend_riscv_object_emission` passed in the delegated
   three-row proof and in an individual guard proof.
+- Lifecycle split completed: row 176 moved to
+  `ideas/open/674_rv64_object_terminator_lowering.md`. Active idea 673 now
+  owns only row 139.
 
 ## Suggested Next
 
-Split before repair: keep row 139 in this active idea for a narrow
-local-memory/direct-global pointer-publication object-emission packet, and
-move row 176 to a separate idea for RV64 object terminator lowering unless the
-supervisor prefers the opposite prioritization.
+Implement a narrow row-139 repair in RV64 object emission local-memory handling
+for live direct-global local pointer publication reloads. Preserve row 256
+`backend_riscv_object_emission` and do not work row 176 in this active plan.
 
 ## Watchouts
 
 - Do not touch `review/reviewA.md`; it is a transient review artifact.
 - Do not reopen row 256 unless `backend_riscv_object_emission` regresses.
+- Do not repair row 176 here; it belongs to
+  `ideas/open/674_rv64_object_terminator_lowering.md`.
 - Do not change expectations, unsupported markers, allowlists, timeout policy,
   runtime policy, or baseline accounting.
 - Rows 139 and 176 share the broad RV64 object-emission phase, but their first
