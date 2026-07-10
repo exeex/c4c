@@ -1,50 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/664_riscv_object_emission_internal_probe.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair The Selected Infrastructure Rule
+Current Step ID: 4
+Current Step Title: Prove Regression Safety And Lifecycle Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of `plan.md` repaired the selected RV64 prepared object-emission
-traversal contract for post-helper ordinary instructions.
+Step 4 of `plan.md` refreshed the focused proof and classified the new first
+remaining `backend_riscv_object_emission` failure after the Step 3 post-helper
+traversal repair.
 
-Changed files:
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `todo.md`
-- `test_after.log`
+The selected `loads_rv64_va_start_published_word_after_helper` failure remains
+resolved: fresh `test_after.log` no longer contains
+`expected prepared va_start load object text layout`.
 
-Owner reasoning: `fragment_for_prepared_variadic_va_start` returned only the
-helper fragment, but the outer traversal continued; the stale helper-only text
-came from the following `LoadLocalInst` being pruned as dead before prepared
-publication facts were considered. `object_emission.cpp` now keeps an otherwise
-unused `LoadLocalInst` in traversal when it has prepared memory-access or result
-home facts, allowing the existing local-memory fragment owner to emit or fail
-closed. This is a general prepared-publication rule, not testcase identity or
-expectation churn.
+New first remaining failure: `expected prepared RV64 object path to reject`,
+from `rejects_malformed_variadic_saved_gpr_publications()`. The first mutated
+case duplicates a prepared RV64 incoming variadic GPR publication and expects
+the RV64-local diagnostic
+`unsupported_function_admission: RV64 variadic entry incoming GPR publications must not contain duplicate sources or destinations`,
+but the prepared object route currently succeeds.
 
-The selected `loads_rv64_va_start_published_word_after_helper` failure is no
-longer present in `test_after.log`.
+Likely owner: RV64 object-emission function-admission validation for
+`rv64_incoming_variadic_gpr_publications`, before object construction publishes
+a module. This is still in idea 664 scope as an object-emission infrastructure
+fail-closed admission contract, not a relocation, final object byte, baseline,
+or unrelated runtime semantic repair.
 
 ## Suggested Next
 
-Next packet should select the new first remaining focused failure in
-`backend_riscv_object_emission`: the first `test_after.log` line is now
-`expected prepared RV64 object path to reject`, after the va_start post-helper
-load row has been repaired. Classify that later rejection-contract owner before
-editing unrelated relocation, byval, local memory, sret, call-argument ordering,
-or diagnostic-exactness rows.
+Suggested next packet: repair the RV64 variadic incoming GPR publication
+admission/fail-closed path so malformed duplicate source/destination
+publications reject with the existing RV64-local diagnostic before prepared
+object module construction succeeds. Keep the packet limited to that admission
+contract and its existing fail-closed malformed-publication variants.
 
 ## Watchouts
 
-- The repair deliberately does not make unsupported or incomplete prepared load
-  facts silently pass; if prepared publication facts exist, the load fragment
-  owner is reached and may reject with a diagnostic.
-- The focused subset still contains later failures, including direct call
-  relocations, byval/local-memory/sret rows, call-argument publication ordering,
-  and diagnostic exactness. Those were not absorbed into this packet.
+- The classification did not implement a fix and did not touch `plan.md`,
+  `ideas/open/664_riscv_object_emission_internal_probe.md`, implementation
+  files, tests, expectations, unsupported markers, allowlists, timeout policy,
+  runtime policy, baseline accounting, or unrelated backend families.
+- Later failures remain in the focused log, including direct call relocations,
+  byval/local-memory/sret rows, call-argument publication ordering, and
+  diagnostic exactness. Do not absorb those into the next packet.
 - Do not rewrite expectations, unsupported markers, allowlists, timeout/runtime
   policy, or baseline accounting for this slice.
 
@@ -54,13 +55,6 @@ or diagnostic-exactness rows.
 
 Result: build passed; focused CTest still failed on later
 `backend_riscv_object_emission` rows. `test_after.log` is the canonical proof
-log and no longer contains the selected va_start post-helper load failure.
-
-Supervisor acceptance:
-
-- Matching focused before/after guard passed in non-decreasing mode:
-  before 0/1, after 0/1, with the same focused CTest binary still red and no
-  new failing test identity.
-- The selected failure text
-  `expected prepared va_start load object text layout` is present in
-  `test_before.log` and absent from `test_after.log`.
+log. It no longer contains the selected va_start post-helper load failure; its
+first remaining failure is now the malformed variadic saved-GPR publication
+admission case described above.
