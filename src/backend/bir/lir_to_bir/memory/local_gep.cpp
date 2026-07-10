@@ -1522,7 +1522,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
     LocalPointerSlots* local_pointer_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
-    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays) {
+    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
+    std::vector<bir::Inst>* lowered_insts) {
   return try_lower_local_pointer_slot_base_gep(gep,
                                               value_aliases,
                                               type_decls,
@@ -1533,7 +1534,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
                                               local_pointer_slots,
                                               local_pointer_array_bases,
                                               dynamic_local_pointer_arrays,
-                                              dynamic_local_aggregate_arrays);
+                                              dynamic_local_aggregate_arrays,
+                                              lowered_insts);
 }
 
 std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
@@ -1547,7 +1549,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
     LocalPointerSlots* local_pointer_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
-    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays) {
+    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
+    std::vector<bir::Inst>* lowered_insts) {
   const auto ptr_it = local_pointer_slots->find(std::string(gep.ptr.str()));
   if (ptr_it == local_pointer_slots->end()) {
     return std::nullopt;
@@ -1652,6 +1655,25 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
 
   if (resolved_array_base.has_value()) {
     (*local_pointer_array_bases)[std::string(gep.result.str())] = std::move(*resolved_array_base);
+  }
+  if (lowered_insts != nullptr && index_imm.has_value() && *index_imm != 0) {
+    const auto element_type =
+        lower_scalar_or_function_pointer_type(gep.element_type.str());
+    if (!element_type.has_value()) {
+      return false;
+    }
+    const auto element_size = type_size_bytes(*element_type);
+    if (element_size == 0) {
+      return false;
+    }
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::Ptr, gep.result.str()),
+        .operand_type = bir::TypeKind::Ptr,
+        .lhs = bir::Value::named(bir::TypeKind::Ptr, gep.ptr.str()),
+        .rhs = bir::Value::immediate_i64(
+            *index_imm * static_cast<std::int64_t>(element_size)),
+    });
   }
   (*local_pointer_slots)[std::string(gep.result.str())] = std::move(resolved_slot);
   return true;

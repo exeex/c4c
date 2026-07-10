@@ -2710,7 +2710,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           };
           if (resolved_target->byte_offset == base_byte_offset) {
             value_aliases[gep.result.str()] = *base_pointer;
-          } else if (context_.target_profile.arch == c4c::TargetArch::Aarch64) {
+          } else {
             const auto byte_delta =
                 resolved_target->byte_offset - static_cast<std::int64_t>(base_byte_offset);
             lowered_insts->push_back(bir::BinaryInst{
@@ -3040,7 +3040,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         &local_pointer_slots,
         &local_pointer_array_bases,
         &dynamic_local_pointer_arrays,
-        &dynamic_local_aggregate_arrays);
+        &dynamic_local_aggregate_arrays,
+        lowered_insts);
     if (!handled_local_pointer_slot_base_gep.has_value() || !*handled_local_pointer_slot_base_gep) {
       return fail_gep();
     }

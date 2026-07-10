@@ -8,35 +8,33 @@ Current Step Title: Repair The Proven Callee/Frame-Slot Rule
 
 ## Just Finished
 
-Step 3 was blocked before implementation. The focused dump contract still
-passes and continues to prove that the callee store-source publication for
-`%t3` exists but has no selected producer freshness:
+Step 3 published the missing semantic/prepared producer surface for the callee
+result store source. RV64 pointer GEP lowering now emits the explicit producer
+`%t3 = bir.add ptr %t2, 2` before `bir.store_local %lv.param.base, ptr %t3`.
+The focused prepared dump now proves the store source is fact-backed:
 
-`store_source function=rv64_advance_and_store block=entry inst=5 source=%t3
-... source_producer=unknown source_freshness_status=no_candidate`.
+`store_source function=rv64_advance_and_store block=entry inst=6 source=%t3
+... source_producer=binary source_producer_block=entry source_producer_inst=5
+source_freshness_status=selected
+source_freshness_authority=producer_rematerialization`.
 
-The focused BIR contains `bir.store_local %lv.param.base, ptr %t3` with no
-preceding semantic producer instruction for `%t3`, and prepared state gives
-`%t3` only a register home (`t0`), not a binary or pointer-base-plus-offset
-producer. The object runtime still fails with `exit=1 expected=0` because RV64
-emission reads `t0` before any prepared-authorized materialization, stores that
-unmaterialized value into the callee base slot, and then returns the slot.
+Changed files:
+- `src/backend/bir/lir_to_bir/memory/addressing.cpp`
+- `src/backend/bir/lir_to_bir/memory/local_gep.cpp`
+- `src/backend/bir/lir_to_bir/lowering.hpp`
+- `tests/backend/CMakeLists.txt`
 
-Evidence summary:
-`build/agent_state/656_step3_callee_result_repair/summary.md`.
+Evidence directory:
+`build/agent_state/656_step3_producer_surface/`.
 
 ## Suggested Next
 
-Plan-owner decision: keep `plan.md` unchanged. Step 3 already authorizes
-repairing prepared publication before RV64 consumption for the proven
-callee-result/frame-slot owner; no new source idea is needed.
-
-Continue Step 3 with an executor packet that owns the BIR/prepared producer
-surface before any RV64 object-emission repair. The packet should publish an
-explicit producer fact for `%t3` (for example a semantic binary or coherent
-pointer-base-plus-offset fact), prove that the prepared store-source freshness
-is no longer `source_freshness_status=no_candidate`, and only then wire RV64
-consumption to the explicit fact.
+Continue Step 3 with the newly exposed downstream RV64 object owner:
+`producer_authority_missing_for_register_fan_in_stack_destination` at
+`rv64_advance_and_store` block `entry`, `instruction_index=9`,
+`phase=before_instruction`, `move_count=2`, `parallel_copy=no`. The next packet
+should repair or classify that register-source fan-in to stack destination using
+explicit prepared ordering/producer authority, not instruction-shape inference.
 
 ## Watchouts
 
@@ -47,11 +45,10 @@ consumption to the explicit fact.
   `rv64_advance_and_store`, `f(a, 1, &d)`, or final branch compare shapes.
 - Do not change expectations, unsupported markers, allowlists, timeout
   accounting, or runtime policy.
-- Current focused object evidence still stores unmaterialized `t0` into the
-  callee base slot and returns that slot via `ld s1,0(sp); mv a0,s1`.
-- A backend/object-only repair would have to infer `base++` from neighboring
-  local load/store shape. That would be route drift unless an explicit prepared
-  producer or pointer-base-plus-offset fact is added first.
+- The original `%t3` producer/freshness gap is repaired; do not re-open it
+  unless evidence regresses from `source_freshness_status=selected`.
+- The focused object probe now fails before runtime execution with a fail-closed
+  RV64 object diagnostic for register fan-in stack destination authority.
 - The `*out` route is adjacent evidence only; the focused red runtime result is
   the callee returned pointer.
 
@@ -60,17 +57,27 @@ consumption to the explicit fact.
 Focused dump contract:
 `ctest --test-dir build --output-on-failure -R '^backend_dump_riscv64_callee_result_frame_slot_contract$'`
 
-Result: pass. Log:
-`build/agent_state/656_step3_callee_result_repair/focused_dump_ctest.log`.
+Result: pass after the contract update. Log:
+`build/agent_state/656_step3_producer_surface/focused_dump_ctest.after.log`.
 
 Focused object-runtime probe used
 `tests/backend/cmake/run_backend_rv64_object_runtime_case.cmake` for
 `tests/backend/case/riscv64_callee_result_frame_slot_contract.c` with expected
 exit `0`.
 
-Result: fail as expected, `exit=1 expected=0`. Log:
-`build/agent_state/656_step3_callee_result_repair/focused_object_runtime.log`.
+Result: blocked before qemu. The object emitter fails closed with
+`fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`.
+Log:
+`build/agent_state/656_step3_producer_surface/focused_object_runtime.after.log`.
 
-The delegated backend proof command was not run because no implementation
-slice was accepted and the focused positive runtime remains blocked by the
-missing prepared producer fact. Existing `test_after.log` was left untouched.
+Build/backend proof:
+`cmake --build --preset default`
+
+Result: pass.
+
+Supervisor then ran the delegated backend proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
+
+Result: CTest exited `8` with the known red backend subset. `test_after.log`
+reports `334 passed, 32 failed, 366 total`; the non-decreasing regression
+guard found no new failing tests.

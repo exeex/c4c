@@ -1356,10 +1356,10 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_callee_result_frame_slot_contract.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.func @rv64_advance_and_store(ptr %p.base, i32 %p.shift, ptr %p.out) -> ptr {|bir.store_local %lv.param.base, ptr %t|bir.store_local %p.out.store.addr, i32|bir.ret ptr %t|move_bundle phase=before_return authority=none|destination_kind=function_return_abi|reg=a0 reason=return_register_to_register|wrapper_kind=same_module|callee=rv64_advance_and_store|result value_bank=gpr source_storage=register destination_storage=register|move_bundle phase=after_call authority=none|destination_kind=call_result_abi|reg=a0 reason=call_result_register_to_register|store_source function=rv64_advance_and_store block=entry inst=5 source=%t|status=available intent=store_local_publication|source_freshness_status=no_candidate|access block=entry inst_index=13 base=pointer_value stored=%t"
+  REQUIRED_SNIPPETS "bir.func @rv64_advance_and_store(ptr %p.base, i32 %p.shift, ptr %p.out) -> ptr {|%t3 = bir.add ptr %t2, 2|bir.store_local %lv.param.base, ptr %t3|bir.store_local %p.out.store.addr, i32|bir.ret ptr %t|move_bundle phase=before_return authority=none|destination_kind=function_return_abi|reg=a0 reason=return_register_to_register|wrapper_kind=same_module|callee=rv64_advance_and_store|result value_bank=gpr source_storage=register destination_storage=register|move_bundle phase=after_call authority=none|destination_kind=call_result_abi|reg=a0 reason=call_result_register_to_register|store_source function=rv64_advance_and_store block=entry inst=6 source=%t3|status=available intent=store_local_publication|source_producer=binary source_producer_block=entry source_producer_inst=5|source_freshness_status=selected|source_freshness_authority=producer_rematerialization|access block=entry inst_index=14 base=pointer_value stored=%t"
   FORBIDDEN_SNIPPETS "20140828-1.c|src/20140828"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 call pointer prepared_call_boundary frame_slot callee_result missing_producer dump
+  LABELS riscv64 call pointer prepared_call_boundary frame_slot callee_result producer_freshness dump
 )
 
 c4c_add_backend_codegen_route_test(
