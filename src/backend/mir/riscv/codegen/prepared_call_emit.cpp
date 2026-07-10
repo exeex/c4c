@@ -1120,6 +1120,7 @@ std::optional<std::string> emit_riscv_simple_call(
     out += "\n";
   }
 
+  std::optional<std::string> call_result_destination_register;
   if (call.result.has_value()) {
     if (!call_plan->result.has_value() ||
         call_plan->result->value_bank != prepare::PreparedRegisterBank::Gpr ||
@@ -1142,6 +1143,7 @@ std::optional<std::string> emit_riscv_simple_call(
     }
     const std::string& destination_register = *call_plan->result->destination_register_name;
     const std::string& source_register = *call_plan->result->source_register_name;
+    call_result_destination_register = destination_register;
     if (destination_register != source_register) {
       out += "    mv " + destination_register + ", " + source_register + "\n";
     }
@@ -1161,6 +1163,15 @@ std::optional<std::string> emit_riscv_simple_call(
   for (const auto& effect : after_call_effects) {
     if (effect.effect_kind !=
         prepare::PreparedCallBoundaryEffectKind::PreservationRepublication) {
+      continue;
+    }
+    if (call_result_destination_register.has_value() &&
+        effect.destination.storage_kind ==
+            prepare::PreparedMoveStorageKind::Register &&
+        effect.destination.register_bank ==
+            std::optional<prepare::PreparedRegisterBank>{
+                prepare::PreparedRegisterBank::Gpr} &&
+        effect.destination.register_name == call_result_destination_register) {
       continue;
     }
     if (!emit_riscv_callee_saved_gpr_preservation_effect(

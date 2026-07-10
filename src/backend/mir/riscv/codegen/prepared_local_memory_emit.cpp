@@ -185,6 +185,49 @@ std::optional<std::int64_t> local_text_store_slot_sp_offset_for(
   return stack_offset;
 }
 
+std::optional<std::int64_t> local_text_named_store_slot_sp_offset_for(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::StoreLocalInst& store,
+    std::size_t size_bytes) {
+  if (store.slot_name.empty() ||
+      store.byte_offset != 0 ||
+      store.align_bytes > size_bytes) {
+    return std::nullopt;
+  }
+  const auto object_it =
+      std::find_if(prepared.stack_layout.objects.begin(),
+                   prepared.stack_layout.objects.end(),
+                   [&](const c4c::backend::prepare::PreparedStackObject& object) {
+                     return object.function_name == function_name &&
+                            c4c::backend::prepare::prepared_stack_object_name(
+                                prepared.names,
+                                object) == store.slot_name;
+                   });
+  if (object_it == prepared.stack_layout.objects.end() ||
+      object_it->size_bytes < size_bytes) {
+    return std::nullopt;
+  }
+  const auto slot_it =
+      std::find_if(prepared.stack_layout.frame_slots.begin(),
+                   prepared.stack_layout.frame_slots.end(),
+                   [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+                     return slot.object_id == object_it->object_id &&
+                            slot.function_name == function_name;
+                   });
+  if (slot_it == prepared.stack_layout.frame_slots.end() ||
+      slot_it->size_bytes < size_bytes ||
+      slot_it->offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  const auto stack_offset = static_cast<std::int64_t>(slot_it->offset_bytes);
+  if (!fits_signed_12_bit_immediate(stack_offset)) {
+    return std::nullopt;
+  }
+  return stack_offset;
+}
+
 bool is_simple_scalar_frame_slot_access(
     const c4c::backend::prepare::PreparedMemoryAccess& access,
     c4c::backend::bir::TypeKind value_type) {
@@ -203,6 +246,95 @@ bool is_simple_scalar_frame_slot_access(
          access.address.align_bytes <= *size_bytes &&
          access.address.can_use_base_plus_offset &&
          fits_signed_12_bit_immediate(access.address.byte_offset);
+}
+
+bool frame_slot_access_matches_store_destination(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedMemoryAccess& access,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  if (!access.address.frame_slot_id.has_value() ||
+      store.slot_name.empty() ||
+      store.byte_offset != 0) {
+    return false;
+  }
+  const auto slot_it =
+      std::find_if(prepared.stack_layout.frame_slots.begin(),
+                   prepared.stack_layout.frame_slots.end(),
+                   [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *access.address.frame_slot_id &&
+                            slot.function_name == function_name;
+                   });
+  if (slot_it == prepared.stack_layout.frame_slots.end()) {
+    return false;
+  }
+  const auto object_it =
+      std::find_if(prepared.stack_layout.objects.begin(),
+                   prepared.stack_layout.objects.end(),
+                   [&](const c4c::backend::prepare::PreparedStackObject& object) {
+                     return object.object_id == slot_it->object_id &&
+                            object.function_name == function_name;
+                   });
+  if (object_it == prepared.stack_layout.objects.end()) {
+    return false;
+  }
+  return c4c::backend::prepare::prepared_stack_object_name(
+             prepared.names,
+             *object_it) == store.slot_name;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for_store(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (context.lookups == nullptr ||
+      !rv64_local_memory_size_for_type(store.value.type).has_value()) {
+    return nullptr;
+  }
+  std::optional<c4c::ValueNameId> stored_value_name;
+  if (store.value.kind == bir::Value::Kind::Named) {
+    const auto value_name = context.names.value_names.find(store.value.name);
+    if (value_name == c4c::kInvalidValueName) {
+      return nullptr;
+    }
+    stored_value_name = value_name;
+  }
+  auto matches = [&](const prepare::PreparedMemoryAccess& access) {
+    return access.block_label == context.block_label &&
+           access.inst_index == context.instruction_index &&
+           access.stored_value_name == stored_value_name &&
+           frame_slot_access_belongs_to_function(prepared, function_name, access) &&
+           is_simple_scalar_frame_slot_access(access, store.value.type) &&
+           frame_slot_access_matches_store_destination(
+               prepared,
+               function_name,
+               access,
+               store);
+  };
+  if (const auto* access = prepare::find_indexed_prepared_memory_access(
+          &context.lookups->memory_accesses,
+          context.block_label,
+          context.instruction_index);
+      access != nullptr && matches(*access)) {
+    return access;
+  }
+
+  const c4c::backend::prepare::PreparedMemoryAccess* selected = nullptr;
+  for (const auto& entry : context.lookups->memory_accesses.accesses_by_position) {
+    const auto* access = entry.second;
+    if (access == nullptr || !matches(*access)) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = access;
+  }
+  return selected;
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for_load(
@@ -3016,19 +3148,19 @@ std::optional<std::string> emit_riscv_simple_store_local(
     return out;
   }
 
-  const auto* access = simple_frame_slot_access_for(
+  const auto* access = simple_frame_slot_access_for_store(
       prepared,
       function_name,
       context,
-      store.value.type);
+      store);
   const auto stack_offset =
       access != nullptr
           ? local_text_frame_slot_sp_offset_for(prepared, function_name, *access)
-          : local_text_store_slot_sp_offset_for(prepared,
-                                               function_name,
-                                               store,
-                                               *rv64_local_memory_size_for_type(
-                                                   store.value.type));
+          : local_text_named_store_slot_sp_offset_for(
+                prepared,
+                function_name,
+                store,
+                *rv64_local_memory_size_for_type(store.value.type));
   if (!stack_offset.has_value()) {
     return std::nullopt;
   }
