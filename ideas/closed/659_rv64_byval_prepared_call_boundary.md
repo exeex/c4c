@@ -1,11 +1,13 @@
 # RV64 Byval Prepared Call Boundary
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
 - `docs/backend_baseline_history_triage/failure_classification.md`
 - `docs/backend_baseline_history_triage/follow_up_order.md`
+- `ideas/open/669_byval_prepared_dump_contract_review.md`
+- `ideas/open/670_byval_frame_slot_object_runtime_binaryinst.md`
 Owning Layer: RV64 byval/prepared call-boundary publication and consumption
 Queue Order: 59
 Proof Surface: current baseline rows 150, 151, 154, 155, 165, 207, 208, 209,
@@ -58,6 +60,34 @@ should be handled before narrow singleton runtime rows.
   pass or fails closed with precise diagnostics at the proven owner.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
+
+## Completion Notes
+
+Closed after the selected byval prepared call-boundary owner was repaired and
+proved through route/runtime coverage. The focused Step 3 proof recorded 6/9
+rows passing: the three codegen-route rows and the three RV64 runtime rows for
+byval aggregate, preserved pointer args, and formal GPR publication.
+
+The remaining focused rows were split rather than absorbed into this completed
+runtime/codegen route:
+
+- `backend_dump_riscv64_byval_aggregate_fixed_call` and
+  `backend_dump_riscv64_byval_preserved_pointer_args` now belong to
+  `ideas/open/669_byval_prepared_dump_contract_review.md`.
+- `backend_obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload` now
+  belongs to
+  `ideas/open/670_byval_frame_slot_object_runtime_binaryinst.md`.
+
+Close-gate regression proof used the same-scope backend guard:
+
+```sh
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS. Before `passed=343 failed=25 total=368`; after `passed=349
+failed=19 total=368`; resolved 6 backend rows; new failing tests: 0.
 
 ## Reviewer Reject Signals
 
