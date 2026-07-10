@@ -4361,6 +4361,62 @@ append_rv64_direct_global_pointer_branch_source_to_register(
   return Rv64StackCarriedPointerSourceMoveStatus::Appended;
 }
 
+bool block_defines_named_pointer_before(
+    const c4c::backend::bir::Function& function,
+    std::size_t block_index,
+    std::size_t before_instruction_index,
+    const c4c::backend::bir::Value& value) {
+  namespace bir = c4c::backend::bir;
+
+  if (value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::Ptr ||
+      value.name.empty() ||
+      block_index >= function.blocks.size()) {
+    return false;
+  }
+
+  const auto defines_value = [&](const bir::Value& result) {
+    return result.kind == bir::Value::Kind::Named &&
+           result.type == bir::TypeKind::Ptr &&
+           result.name == value.name;
+  };
+  const auto& block = function.blocks[block_index];
+  const auto end = std::min(before_instruction_index, block.insts.size());
+  for (std::size_t index = 0; index < end; ++index) {
+    const auto& inst = block.insts[index];
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+        binary != nullptr && defines_value(binary->result)) {
+      return true;
+    }
+    if (const auto* select = std::get_if<bir::SelectInst>(&inst);
+        select != nullptr && defines_value(select->result)) {
+      return true;
+    }
+    if (const auto* cast = std::get_if<bir::CastInst>(&inst);
+        cast != nullptr && defines_value(cast->result)) {
+      return true;
+    }
+    if (const auto* phi = std::get_if<bir::PhiInst>(&inst);
+        phi != nullptr && defines_value(phi->result)) {
+      return true;
+    }
+    if (const auto* call = std::get_if<bir::CallInst>(&inst);
+        call != nullptr && call->result.has_value() &&
+        defines_value(*call->result)) {
+      return true;
+    }
+    if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+        load != nullptr && defines_value(load->result)) {
+      return true;
+    }
+    if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst);
+        load != nullptr && defines_value(load->result)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool append_rv64_move_pointer_branch_operand_to_register(
     RiscvEncodedFragment& fragment,
     std::uint32_t destination,
@@ -4424,6 +4480,12 @@ bool append_rv64_move_pointer_branch_operand_to_register(
     return true;
   }
   if (direct_global == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
+    return false;
+  }
+  if (block_defines_named_pointer_before(function,
+                                         block_index,
+                                         terminator_instruction_index,
+                                         value)) {
     return false;
   }
   return append_rv64_move_value_to_register_with_formal_stack_home(

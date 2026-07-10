@@ -1919,6 +1919,7 @@ std::optional<std::size_t> prepared_pointer_value_stack_home_base_offset(
       !access->address.can_use_base_plus_offset ||
       access->address.size_bytes != size_bytes ||
       access->address.align_bytes > size_bytes ||
+      !prepare::prepared_pointer_value_local_memory_required_authority_available(*access) ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return std::nullopt;
   }
@@ -2685,6 +2686,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     }
     return fragment;
   }
+  const bool access_is_prepared_pointer_value =
+      access != nullptr &&
+      access->address.base_kind ==
+          c4c::backend::prepare::PreparedAddressBaseKind::PointerValue;
   if (rv64_floating_type_local(load.result.type)) {
     const auto size_bytes = rv64_local_memory_size_for_type(load.result.type);
     if (!size_bytes.has_value()) {
@@ -2696,13 +2701,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
       return std::nullopt;
     }
     const auto offset =
-        prepared_incoming_stack_formal_absolute_offset_local(prepared,
-                                                             function_name,
-                                                             lookups,
-                                                             load,
-                                                             incoming_stack_base_bytes,
-                                                             *size_bytes)
-            .value_or(std::numeric_limits<std::size_t>::max());
+        access_is_prepared_pointer_value
+            ? std::numeric_limits<std::size_t>::max()
+            : prepared_incoming_stack_formal_absolute_offset_local(
+                  prepared,
+                  function_name,
+                  lookups,
+                  load,
+                  incoming_stack_base_bytes,
+                  *size_bytes)
+                  .value_or(std::numeric_limits<std::size_t>::max());
     RiscvEncodedFragment fragment;
     if (offset != std::numeric_limits<std::size_t>::max()) {
       if (!append_rv64_load_stack_offset_to_fpr_local(
@@ -2825,15 +2833,22 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
   std::optional<std::size_t> offset;
   if (va_start_destination_offset.has_value()) {
     offset = static_cast<std::size_t>(*va_start_destination_offset);
-  } else if (const auto incoming_formal_offset =
-                 prepared_incoming_stack_formal_absolute_offset_local(prepared,
-                                                                      function_name,
-                                                                     lookups,
-                                                                     load,
-                                                                     incoming_stack_base_bytes,
-                                                                     *size_bytes);
-             incoming_formal_offset.has_value()) {
-    offset = incoming_formal_offset;
+  } else if (!access_is_prepared_pointer_value) {
+    if (const auto incoming_formal_offset =
+            prepared_incoming_stack_formal_absolute_offset_local(prepared,
+                                                                function_name,
+                                                                lookups,
+                                                                load,
+                                                                incoming_stack_base_bytes,
+                                                                *size_bytes);
+        incoming_formal_offset.has_value()) {
+      offset = incoming_formal_offset;
+    } else {
+      offset = prepared_frame_slot_absolute_byte_offset(stack_layout,
+                                                        access,
+                                                        stack_frame_bytes,
+                                                        *size_bytes);
+    }
   } else {
     offset = prepared_frame_slot_absolute_byte_offset(stack_layout,
                                                       access,
