@@ -967,14 +967,30 @@ void record_entry_formal_register_home(
           .value_home_lookups = context.function.value_home_lookups,
       });
   for (const auto& publication : publication_plans) {
-    if (!prepare::prepared_formal_publication_available(publication) ||
-        publication.formal == nullptr ||
+    if (publication.formal == nullptr ||
         publication.home == nullptr) {
       continue;
     }
     const auto param_index = publication.formal_index;
     const auto& param = *publication.formal;
     const auto& home = *publication.home;
+    const bool supported_aarch64_f128_stack_home =
+        publication.home_kind == prepare::PreparedValueHomeKind::None ||
+        publication.home_kind == prepare::PreparedValueHomeKind::Register ||
+        publication.home_kind == prepare::PreparedValueHomeKind::StackSlot;
+    const bool allow_aarch64_f128_stack_publication =
+        publication.status == prepare::PreparedFormalPublicationStatus::MissingIncomingStackOffset &&
+        context.function.prepared->target_profile.arch == c4c::TargetArch::Aarch64 &&
+        supported_aarch64_f128_stack_home &&
+        !param.is_byval &&
+        param.type == bir::TypeKind::F128 &&
+        entry_formal_uses_incoming_stack(context.function.prepared->target_profile,
+                                         *context.function.bir_function,
+                                         param_index);
+    if (!prepare::prepared_formal_publication_available(publication) &&
+        !allow_aarch64_f128_stack_publication) {
+      continue;
+    }
     std::vector<std::string> lines;
     if (entry_formal_uses_incoming_stack(context.function.prepared->target_profile,
                                          *context.function.bir_function,
