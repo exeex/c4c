@@ -1,6 +1,6 @@
 # RV64 20140828 Callee Result Frame-Slot Runtime
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/653_stack_carried_pointer_source_publication_materialization.md`
 Related:
@@ -55,6 +55,23 @@ callee/result or frame-slot value correctness around the preceding
   fails closed with a precise unsupported diagnostic at the proven downstream
   owner.
 - Backend regression proof shows no new backend failures.
+
+## Closure Note
+
+Closed on 2026-07-10 after Step 4 representative proof confirmed the
+idea-owned `%t3` producer/freshness boundary is repaired and preserved:
+semantic/prepared BIR contains `%t3 = bir.add ptr %t2, 2`, and the prepared
+store source records `source_producer=binary` with
+`source_freshness_status=selected`. The prior `%t6` branch RHS authority from
+idea 653 also remains available and selected.
+
+The representative `20140828-1.c` object path no longer reaches the old qemu
+wrong-result abort. It now fails closed before link/qemu with
+`fragment_status=producer_authority_missing_for_register_fan_in_stack_destination`,
+classified as downstream parked stack-destination fan-in authority work, not
+part of idea 656. Backend close logs `test_before.log` and `test_after.log`
+cover the same backend subset and both report `334 passed, 32 failed, 366
+total`; the close gate passed with no new backend failures.
 
 ## Reviewer Reject Signals
 
