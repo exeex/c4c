@@ -26,12 +26,19 @@ require the rejected later-call/later-store lookahead route.
 
 ## Suggested Next
 
-Have the supervisor decide whether row 322's expected `source_value_id=2732`
-should be revised through lifecycle/review because the current-call owner for
-`arg index=12` is now classified as `%t58.48` / `2728`, not the later
-`%t61.global.aggregate.load.16` / `2732`. Do not implement another code packet
-that chases `2732` unless a current-call source fact for that value is first
-proven.
+Stop Step 3 implementation and request an explicit expectation-contract review
+for row 322 before any more code packets. The current-call owner for
+`arg index=12` is now classified as `%t58.48` / `2728`; the expected
+`source_value_id=2732` is the later `%t61.global.aggregate.load.16` value and
+cannot be used without reviving the rejected later-call/later-store lookahead.
+
+Lifecycle decision: do not continue Step 3 by chasing `2732`. If review or
+explicit user direction accepts `2728` as the correct current-call contract,
+the supervisor can move to Step 4 regression/lifecycle readiness after the
+expectation path is handled outside this packet. If review proves a
+current-call fact that should name `2732`, delegate a narrow Step 3 packet
+around that current-call source authority only. If neither condition holds,
+split or reroute row 322 instead of expanding idea 665.
 
 ## Watchouts
 
@@ -42,9 +49,10 @@ proven.
   identity. The remaining first failure is now `arg index=12`, where the
   current-call aggregate group owner is `%t58.48` / `2728` and the expected
   owner is still the later value id `2732`.
-- Lifecycle decision: keep row 322 in Step 3 as an AArch64 BIR publication
-  representation repair; do not move to Step 4 until the remaining prepared
-  aggregate-carrier owner mismatch is resolved or proves a different owner.
+- Lifecycle decision: row 322 is blocked on expectation-contract authority, not
+  on another known AArch64 implementation repair. Do not move to Step 4 or
+  delegate more Step 3 code until review resolves whether expected `2732` is a
+  valid current-call contract or should be revised outside this packet.
 - Reviewer reset: `review/row322_later_lane_review.md` rejected the
   uncommitted later-call/later-store lookahead route as testcase-overfit and
   temporal route drift. Do not record that route as progress or revive it as
