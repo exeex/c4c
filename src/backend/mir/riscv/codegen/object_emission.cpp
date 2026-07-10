@@ -2192,111 +2192,6 @@ fragment_for_prepared_pointer_global_store_local_publication(
   return fragment;
 }
 
-bool prepared_accesses_same_frame_slot(
-    const c4c::backend::prepare::PreparedMemoryAccess* lhs,
-    const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
-  namespace bir = c4c::backend::bir;
-  namespace prepare = c4c::backend::prepare;
-  return lhs != nullptr &&
-         rhs != nullptr &&
-         lhs->address_space == bir::AddressSpace::Default &&
-         rhs->address_space == bir::AddressSpace::Default &&
-         !lhs->is_volatile &&
-         !rhs->is_volatile &&
-         lhs->address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
-         rhs->address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
-         lhs->address.frame_slot_id.has_value() &&
-         rhs->address.frame_slot_id.has_value() &&
-         lhs->address.frame_slot_id == rhs->address.frame_slot_id &&
-         lhs->address.byte_offset == rhs->address.byte_offset &&
-         lhs->address.size_bytes == rhs->address.size_bytes &&
-         lhs->address.align_bytes == rhs->address.align_bytes;
-}
-
-bool prepared_store_source_has_direct_global_materialization(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::prepare::PreparedStoreSourcePublicationRecord& record) {
-  namespace bir = c4c::backend::bir;
-  namespace prepare = c4c::backend::prepare;
-  if (lookups == nullptr ||
-      record.plan.source_value_name == c4c::kInvalidValueName) {
-    return false;
-  }
-  const auto* materializations =
-      prepare::find_indexed_prepared_address_materializations(
-          &lookups->address_materializations,
-          record.block_label);
-  if (materializations == nullptr) {
-    return false;
-  }
-  bool found = false;
-  for (const auto* materialization : *materializations) {
-    if (materialization == nullptr ||
-        materialization->inst_index != record.instruction_index ||
-        materialization->kind !=
-            prepare::PreparedAddressMaterializationKind::DirectGlobal ||
-        materialization->result_value_name !=
-            std::optional<c4c::ValueNameId>{record.plan.source_value_name} ||
-        !materialization->symbol_name.has_value() ||
-        materialization->address_materialization_policy !=
-            bir::GlobalAddressMaterializationPolicy::Direct ||
-        materialization->address_space != bir::AddressSpace::Default ||
-        materialization->is_thread_local ||
-        materialization->has_tls_address_space) {
-      continue;
-    }
-    const std::string_view symbol =
-        prepare::prepared_link_name(prepared.names, *materialization->symbol_name);
-    if (symbol.empty()) {
-      continue;
-    }
-    if (found) {
-      return false;
-    }
-    found = true;
-  }
-  return found;
-}
-
-bool live_direct_global_local_publication_load_is_unsupported(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    c4c::FunctionNameId function_name,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index,
-    const c4c::backend::bir::LoadLocalInst& load,
-    const c4c::backend::prepare::PreparedMemoryAccess* access) {
-  namespace bir = c4c::backend::bir;
-  namespace prepare = c4c::backend::prepare;
-  if (load.result.type != bir::TypeKind::Ptr ||
-      access == nullptr ||
-      access->address_space != bir::AddressSpace::Default ||
-      access->is_volatile ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      access->address.size_bytes != 8 ||
-      access->address.align_bytes > 8 ||
-      !access->address.can_use_base_plus_offset) {
-    return false;
-  }
-  for (const auto& record : prepared.store_source_publications.records) {
-    if (record.function_name != function_name ||
-        record.block_label != block_label ||
-        record.instruction_index >= instruction_index ||
-        !prepare::prepared_store_source_publication_available(record.plan) ||
-        record.plan.intent !=
-            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
-        !prepared_accesses_same_frame_slot(record.plan.destination_access, access) ||
-        !prepared_store_source_has_direct_global_materialization(prepared,
-                                                                lookups,
-                                                                record)) {
-      continue;
-    }
-    return true;
-  }
-  return false;
-}
-
 std::optional<std::uint32_t> gpr_register_number_for_value_name(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     c4c::ValueNameId value_name) {
@@ -14433,16 +14328,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                                *load) != nullptr) {
         return RiscvEncodedFragment{};
       }
-      if (live_direct_global_local_publication_load_is_unsupported(
-              prepared,
-              &lookups,
-              control_flow.function_name,
-              prepared_block_label,
-              instruction_index,
-              *load,
-              access)) {
-        return std::nullopt;
-      }
       const auto function_id = prepared.names.function_names.find(function_name);
       auto fragment = fragment_for_prepared_load_local(
           prepared,
@@ -14899,16 +14784,6 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
         !bir_value_is_used_after(function, block_index, instruction_index, load->result) &&
         !prepared_load_local_has_publication_facts(names, &lookups, *load, access)) {
       return std::nullopt;
-    }
-    if (live_direct_global_local_publication_load_is_unsupported(prepared,
-                                                                 &lookups,
-                                                                 function_name,
-                                                                 prepared_block_label,
-                                                                 instruction_index,
-                                                                 *load,
-                                                                 access)) {
-      return std::string{
-          "unsupported_local_memory_access: RV64 object route keeps live direct-global local pointer publication reloads fail-closed"};
     }
     const auto diagnostic = local_memory_diagnostic(
         rv64_local_memory_size_for_type(load->result.type),
