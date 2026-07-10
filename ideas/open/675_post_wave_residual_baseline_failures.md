@@ -142,3 +142,27 @@ Resume this umbrella only after those follow-ups settle the two new-only rows;
 then continue with persistent common-failure reconciliation and a fresh
 monotonic baseline candidate. Do not accept `test_baseline.new.log` from this
 evidence point.
+
+## Post-Follow-Up Resume Notes
+
+Ideas 676 and 677 are now closed.
+
+- 676 closed the pointer/global-local publication expected-fail route through
+  runtime proof and a positive object contract.
+- 677 repaired the RV64 object-route
+  `LocalFrameAddressMaterialization` call-argument consumer. Focused proof
+  passed for the CLI, route, dump, and `backend_riscv_object_emission` coverage
+  named in the 677 closure notes.
+
+Supervisor broad backend validation
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+now leaves only
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
+failing in backend scope. Resume 675 by reconciling that remaining backend row
+against the persistent common-failure list and then decide whether it needs a
+focused follow-up idea or can be resolved within the umbrella triage route.
+
+`test_baseline.new.log` remains unaccepted until all remaining
+candidate-only/common residual policy is settled and a fresh candidate is
+monotonic against `test_baseline.log` or explicitly rejected with preserved
+diagnostic evidence.

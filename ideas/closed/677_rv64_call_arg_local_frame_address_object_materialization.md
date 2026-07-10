@@ -1,11 +1,13 @@
 # RV64 Call Arg Local Frame Address Object Materialization
 
-Status: Open
+Status: Closed
 Type: Focused implementation or contract proof
 Parent: `ideas/open/675_post_wave_residual_baseline_failures.md`
 Related:
 - `build/agent_state/675_step1_candidate_delta/summary.md`
 - `build/agent_state/648_post656_call_evidence/summary.md`
+- `build/agent_state/677_step1_object_text_divergence/summary.md`
+- `build/agent_state/677_step2_materialization_repair/summary.md`
 - `test_baseline.log`
 - `test_baseline.new.log`
 - `ideas/open/675_post_wave_residual_baseline_failures.md`
@@ -25,15 +27,16 @@ intended contract.
 ## Why This Exists
 
 Step 1 of idea 675 showed that
-`backend_cli_riscv64_call_arg_local_frame_address_materialization` still fails
-object-byte proof. The text route emits direct frame-address materialization
-into the ABI argument register, while object emission materializes through a
-saved register and then copies to `a0`.
+`backend_cli_riscv64_call_arg_local_frame_address_materialization` still failed
+object-byte proof. The text route emitted direct frame-address materialization
+into the ABI argument register, while object emission materialized through a
+saved register and then copied to `a0`.
 
 Prior evidence in
 `build/agent_state/648_post656_call_evidence/summary.md` already identified
 `arg.source_selection=local_frame_address_materialization`; the remaining
-owner is the RV64 object route's consumption of that source-selection contract.
+owner was the RV64 object route's consumption of that source-selection
+contract.
 
 ## In Scope
 
@@ -51,9 +54,10 @@ owner is the RV64 object route's consumption of that source-selection contract.
 ## Out Of Scope
 
 - Changing the text-route contract unless fresh evidence proves it is wrong.
-- Repairing or reclassifying the pointer/global-local publication expected-fail
-  row; that is owned by idea 676.
-- Accepting `test_baseline.new.log` while either new-only row is unresolved.
+- Repairing or reclassifying the pointer/global-local publication
+  expected-fail row; that was owned by idea 676.
+- Accepting `test_baseline.new.log` while candidate-only/common residual
+  policy remains unsettled.
 - Expectation rewrites, unsupported-marker changes, allowlist edits, timeout
   changes, runtime-policy edits, or baseline accounting changes.
 
@@ -70,8 +74,43 @@ owner is the RV64 object route's consumption of that source-selection contract.
 - The implementation, if any, is driven by the
   `LocalFrameAddressMaterialization` semantic contract rather than by test name
   or expected byte string alone.
-- Baseline acceptance is deferred until the paired new-only RV64 row is also
-  settled.
+- Baseline acceptance is deferred until residual policy is settled by the
+  parent 675 route.
+
+## Closure Notes
+
+Closed after the object-route repair committed for Step 2.
+
+Step 1 evidence in
+`build/agent_state/677_step1_object_text_divergence/summary.md` confirmed that
+the object route consumed
+`PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization` by
+preferring the prepared source register over the ABI destination register. The
+text route already materialized directly into `a0`.
+
+Step 2 repaired `fragment_for_prepared_call` in
+`src/backend/mir/riscv/codegen/object_emission.cpp` so GPR call arguments with
+`LocalFrameAddressMaterialization` pass the ABI destination register directly
+to `append_rv64_prepared_local_frame_address_call_argument_source`. The
+internal object-emission unit contract was updated to assert direct ABI
+materialization while preserving stack-argument publication checks.
+
+Focused proof passed for:
+
+- `backend_cli_riscv64_call_arg_local_frame_address_materialization`
+- `backend_codegen_route_riscv64_call_arg_local_frame_address_materialization`
+- `backend_dump_riscv64_call_arg_local_frame_address_materialization`
+- `backend_riscv_object_emission`
+
+Supervisor broad backend validation
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+now leaves only
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
+failing in backend scope. Row 159 is resolved.
+
+`test_baseline.new.log` is still diagnostic evidence only. It is not accepted
+until the remaining candidate/common residual policy is settled by the parent
+675 route.
 
 ## Reviewer Reject Signals
 
