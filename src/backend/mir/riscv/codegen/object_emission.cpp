@@ -4255,6 +4255,98 @@ append_rv64_materialized_pointer_branch_source_to_register(
   return Rv64StackCarriedPointerSourceMoveStatus::Appended;
 }
 
+Rv64StackCarriedPointerSourceMoveStatus
+append_rv64_direct_global_pointer_branch_source_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::prepare::PreparedValueHome* operand_home,
+    const c4c::backend::bir::Value& value,
+    std::size_t terminator_instruction_index) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || operand_home == nullptr ||
+      value.kind != bir::Value::Kind::Named || value.name.empty() ||
+      value.type != bir::TypeKind::Ptr ||
+      operand_home->value_id == prepare::PreparedValueId{0} ||
+      operand_home->value_name == c4c::kInvalidValueName ||
+      operand_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return Rv64StackCarriedPointerSourceMoveStatus::NotApplicable;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName ||
+      value_name != operand_home->value_name) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations, block_label_id);
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  bool saw_candidate = false;
+  if (materializations != nullptr) {
+    for (const auto* materialization : *materializations) {
+      if (materialization == nullptr ||
+          materialization->inst_index >= terminator_instruction_index ||
+          materialization->result_value_name !=
+              std::optional<c4c::ValueNameId>{operand_home->value_name} ||
+          (materialization->result_value_id.has_value() &&
+           materialization->result_value_id !=
+               std::optional<prepare::PreparedValueId>{operand_home->value_id})) {
+        continue;
+      }
+      saw_candidate = true;
+      if (materialization->kind !=
+              prepare::PreparedAddressMaterializationKind::DirectGlobal ||
+          !materialization->symbol_name.has_value() ||
+          materialization->address_materialization_policy !=
+              bir::GlobalAddressMaterializationPolicy::Direct ||
+          materialization->byte_offset != 0 ||
+          materialization->address_space != bir::AddressSpace::Default ||
+          materialization->is_thread_local ||
+          materialization->has_tls_address_space ||
+          materialization->tls_model !=
+              prepare::PreparedTlsMaterializationModel::None ||
+          materialization->tls_thread_pointer_register !=
+              prepare::PreparedTlsThreadPointerRegister::None ||
+          materialization->tls_high_relocation !=
+              prepare::PreparedTlsRelocationKind::None ||
+          materialization->tls_low_relocation !=
+              prepare::PreparedTlsRelocationKind::None) {
+        return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+      }
+      if (selected != nullptr) {
+        return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+      }
+      selected = materialization;
+    }
+  }
+  if (selected == nullptr) {
+    return saw_candidate ? Rv64StackCarriedPointerSourceMoveStatus::Invalid
+                         : Rv64StackCarriedPointerSourceMoveStatus::NotApplicable;
+  }
+  const std::string_view symbol =
+      prepare::prepared_link_name(names, *selected->symbol_name);
+  if (symbol.empty()) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+
+  auto direct_global = make_rv64_pcrel_address_fragment(
+      destination,
+      std::string{symbol},
+      ".Lpcrel_hi_branch_direct_global_" +
+          std::to_string(selected->function_name) + "_" +
+          std::to_string(selected->block_label) + "_" +
+          std::to_string(selected->inst_index),
+      RiscvObjectFixupTargetKind::Object,
+      0);
+  append_fragment(fragment, std::move(direct_global));
+  return Rv64StackCarriedPointerSourceMoveStatus::Appended;
+}
+
 bool append_rv64_move_pointer_branch_operand_to_register(
     RiscvEncodedFragment& fragment,
     std::uint32_t destination,
@@ -4302,6 +4394,22 @@ bool append_rv64_move_pointer_branch_operand_to_register(
     return true;
   }
   if (materialized == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
+    return false;
+  }
+  const auto direct_global =
+      append_rv64_direct_global_pointer_branch_source_to_register(
+          fragment,
+          destination,
+          names,
+          lookups,
+          block_label_id,
+          operand_home,
+          value,
+          terminator_instruction_index);
+  if (direct_global == Rv64StackCarriedPointerSourceMoveStatus::Appended) {
+    return true;
+  }
+  if (direct_global == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
     return false;
   }
   return append_rv64_move_value_to_register_with_formal_stack_home(

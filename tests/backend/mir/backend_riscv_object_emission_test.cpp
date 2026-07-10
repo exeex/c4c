@@ -1208,6 +1208,46 @@ make_prepared_fused_pointer_rhs_materialized_source_branch_module(
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_fused_pointer_rhs_direct_global_source_branch_module(
+    bool publish_materialization = true) {
+  auto prepared = make_prepared_fused_pointer_rhs_stack_branch_module();
+  const auto function_name = prepared.names.function_names.find("cmp_branch");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto rhs_name = prepared.names.value_names.find("%rhs");
+  const auto global_name = prepared.names.link_names.intern("branch_global");
+  auto& entry = prepared.module.functions.front().blocks.front();
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs"),
+  });
+
+  if (publish_materialization) {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .frame_size_bytes = 16,
+        .frame_alignment_bytes = 8,
+        .address_materializations = {prepare::PreparedAddressMaterialization{
+            .function_name = function_name,
+            .block_label = block_label,
+            .inst_index = 0,
+            .kind = prepare::PreparedAddressMaterializationKind::DirectGlobal,
+            .result_value_name = rhs_name,
+            .result_value_id = prepare::PreparedValueId{3},
+            .result_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+            .symbol_name = global_name,
+            .address_materialization_policy =
+                bir::GlobalAddressMaterializationPolicy::Direct,
+            .byte_offset = 0,
+        }},
+    });
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -15867,6 +15907,102 @@ int rejects_prepared_fused_pointer_rhs_materialized_source_fail_closed_shapes() 
   prepared.addressing.functions.front()
       .address_materializations.front()
       .result_value_name = prepared.names.value_names.intern("%other");
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int builds_prepared_fused_pointer_rhs_direct_global_source_branch_object() {
+  const auto prepared =
+      make_prepared_fused_pointer_rhs_direct_global_source_branch_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail("expected direct-global pointer source branch to build from explicit address materialization: " +
+                result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* branch_global = object::find_symbol(*module, "branch_global");
+  const auto* auipc_label =
+      object::find_symbol(*module, ".Lpcrel_hi_branch_direct_global_1_1_0");
+  if (text == nullptr || function == nullptr || branch_global == nullptr ||
+      auipc_label == nullptr) {
+    return fail("expected direct-global pointer branch object text and pcrel symbols");
+  }
+  bool saw_direct_global_auipc = false;
+  bool saw_direct_global_addi = false;
+  bool saw_stack_reload = false;
+  bool saw_branch_using_rhs = false;
+  for (std::size_t offset = function->value; offset + 4 <= text->bytes.size();
+       offset += 4) {
+    const auto word = read_u32(text->bytes, offset);
+    if ((word & 0x7fU) == 0x17U && riscv_rd(word) == 29) {
+      saw_direct_global_auipc = true;
+    }
+    if ((word & 0x7fU) == 0x13U && riscv_rd(word) == 29 &&
+        riscv_rs1(word) == 29) {
+      saw_direct_global_addi = true;
+    }
+    if (is_rv64_load_from_sp(word, 3U, 8) && riscv_rd(word) == 29) {
+      saw_stack_reload = true;
+    }
+    if ((word & 0x7fU) == 0x63U && ((word >> 12) & 0x7U) == 6U &&
+        riscv_rs1(word) == 28 && riscv_rs2(word) == 29) {
+      saw_branch_using_rhs = true;
+    }
+  }
+  if (!saw_direct_global_auipc || !saw_direct_global_addi ||
+      saw_stack_reload || !saw_branch_using_rhs) {
+    return fail("expected direct-global pointer branch to materialize rhs symbol and branch on that register");
+  }
+
+  bool saw_hi = false;
+  bool saw_lo = false;
+  for (const auto& relocation : module->relocations) {
+    saw_hi = saw_hi ||
+             (relocation.type == R_RISCV_PCREL_HI20 &&
+              relocation.symbol == branch_global->id);
+    saw_lo = saw_lo ||
+             (relocation.type == R_RISCV_PCREL_LO12_I &&
+              relocation.symbol == auipc_label->id);
+  }
+  if (!saw_hi || !saw_lo) {
+    return fail("expected direct-global pointer branch pcrel relocation pair");
+  }
+  return 0;
+}
+
+int rejects_prepared_fused_pointer_rhs_direct_global_source_fail_closed_shapes() {
+  auto prepared = make_prepared_fused_pointer_rhs_direct_global_source_branch_module();
+  prepared.addressing.functions.front()
+      .address_materializations.front()
+      .address_materialization_policy =
+      bir::GlobalAddressMaterializationPolicy::Unspecified;
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_direct_global_source_branch_module();
+  prepared.addressing.functions.front()
+      .address_materializations.front()
+      .kind = prepare::PreparedAddressMaterializationKind::GotGlobal;
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {"unsupported_"}) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_fused_pointer_rhs_direct_global_source_branch_module();
+  prepared.addressing.functions.front().address_materializations.push_back(
+      prepared.addressing.functions.front().address_materializations.front());
   if (expect_prepared_rejection_diagnostic_contains(
           prepared,
           {"unsupported_"}) != 0) {
@@ -31470,6 +31606,10 @@ int main() {
       builds_prepared_fused_pointer_rhs_materialized_source_branch_object();
   status |=
       rejects_prepared_fused_pointer_rhs_materialized_source_fail_closed_shapes();
+  status |=
+      builds_prepared_fused_pointer_rhs_direct_global_source_branch_object();
+  status |=
+      rejects_prepared_fused_pointer_rhs_direct_global_source_fail_closed_shapes();
   status |=
       builds_prepared_fused_pointer_condition_and_rhs_stack_branch_object();
   status |=
