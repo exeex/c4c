@@ -1,145 +1,133 @@
-# Post-Wave Residual Baseline Failures Runbook
+# RV64 Pointer Global Local Publication Runtime Contract Runbook
 
 Status: Active
-Source Idea: ideas/open/675_post_wave_residual_baseline_failures.md
+Source Idea: ideas/open/676_rv64_pointer_global_local_publication_runtime_contract.md
 
 ## Purpose
 
-Handle the remaining `test_baseline.new.log` failures after the 658 follow-up
-wave without accepting a non-monotonic baseline candidate.
+Settle the now-succeeding RV64 pointer/global-local publication expected-fail
+row by proving object semantics before any test-contract or baseline route.
 
 ## Goal
 
-Classify and repair or route the 9-failure post-wave candidate surface, with
-priority on the two new-only RV64 CLI route failures.
+Determine whether the emitted RV64 object is semantically valid; then route the
+row as stale expected-failure/test-contract work or identify the fresh
+implementation owner from runtime evidence.
 
 ## Core Rule
 
-Do not accept `test_baseline.new.log` while it contains failures absent from
-the accepted `test_baseline.log`. Compare by stable test name, not numeric row
-id.
+Do not claim compiler progress, change expectations, or accept
+`test_baseline.new.log` until runtime/semantic proof explains the unexpected
+object success for this row.
 
 ## Read First
 
+- `ideas/open/676_rv64_pointer_global_local_publication_runtime_contract.md`
 - `ideas/open/675_post_wave_residual_baseline_failures.md`
+- `build/agent_state/675_step1_candidate_delta/summary.md`
 - `test_baseline.log`
 - `test_baseline.new.log`
-- `log/baseline_5fef23bfa8b4eaf7f4cd2b897c25ff074d35209e.log`
-- `docs/backend_baseline_history_triage/follow_up_order.md`
-- Closure notes for ideas 668, 671, and 672
+- `ideas/closed/664_riscv_object_emission_internal_probe.md`
 
 ## Current Targets
 
-- Candidate baseline: `test_baseline.new.log`, `9/3397` failed
-- Accepted baseline: `test_baseline.log`, `11/3397` failed
-- New-only candidate failures:
-  - `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
-  - `backend_cli_riscv64_call_arg_local_frame_address_materialization`
-- Persistent failures:
-  - destination/dump rows 92, 103, 109, 172
-  - prepared-BIR AArch64 publication CLI row 322
-  - LLVM torture rows 1941 and 1942
+- Focus row:
+  `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
+- Generated object:
+  `build/tests/backend/riscv64_pointer_global_local_publication_live_load_rejection.o`
+- Step 1 evidence:
+  `build/agent_state/675_step1_candidate_delta/summary.md`
 
 ## Non-Goals
 
-- Do not accept, rewrite, or delete baseline candidate evidence as proof of
-  progress.
 - Do not edit expectations, unsupported markers, allowlists, timeouts, runtime
-  policy, or baseline accounting.
-- Do not reopen closed ideas without fresh evidence contradicting their
-  closure notes.
-- Do not bundle multiple first owning layers into one implementation packet.
+  policy, or baseline accounting in this runbook unless the supervisor
+  explicitly delegates that contract route after proof exists.
+- Do not repair
+  `backend_cli_riscv64_call_arg_local_frame_address_materialization`; that row
+  is split to idea 677.
+- Do not reopen idea 664 or older pointer/global-local owner notes without
+  fresh runtime evidence contradicting their closure.
+- Do not accept `test_baseline.new.log`.
 
 ## Working Model
 
-The candidate baseline improves total failure count from 11 to 9, but it is
-not monotonic. Rows by stable test name show two candidate-only RV64 CLI route
-failures, four accepted-only resolved failures, and seven persistent common
-failures. The next repair route should start with the candidate-only failures
-because accepting the candidate would otherwise bless new red rows.
+Step 1 of idea 675 proved that the old RV64 object-route local-memory admission
+owner moved. The row now fails because the expected-failure wrapper reports
+unexpected success. The object disassembly shows direct global publication into
+stack slots and a live reload. The next step is semantic proof: valid object
+behavior means stale expected-failure/test-contract ownership; invalid object
+behavior means a new implementation owner must be identified from runtime
+evidence.
 
 ## Execution Rules
 
-- Preserve `test_baseline.new.log` for diagnosis until a fresh monotonic
-  candidate exists.
-- Record comparisons under `build/agent_state/675_*`.
-- Use focused probes before implementation.
-- For code-changing packets, run `cmake --build --preset default` plus the
-  delegated focused proof before any broader baseline comparison.
+- Preserve `build/agent_state/675_step1_candidate_delta/summary.md` as the
+  source evidence for this split.
+- Keep any new proof artifacts under a focused `build/agent_state/676_*`
+  directory.
+- Prefer runtime/semantic observation over disassembly-only inference.
+- If code changes become necessary, first record the exact semantic mismatch
+  and then run `cmake --build --preset default` plus the delegated focused
+  proof.
+- Compare baseline rows by stable test name whenever referencing broad logs.
 
 ## Steps
 
-### Step 1: Capture Candidate Delta And First Owners
+### Step 1: Establish Runtime/Semantic Proof Harness
 
-Goal: Produce a durable, name-based comparison between accepted and candidate
-baseline failures.
-
-Actions:
-
-- Create `build/agent_state/675_step1_candidate_delta/summary.md`.
-- Compare `test_baseline.log`, `test_baseline.new.log`, and the matching
-  `log/baseline_5fef23bfa8b4eaf7f4cd2b897c25ff074d35209e.log` by stable test
-  name.
-- Record candidate-only, accepted-only, and common failures.
-- For the two candidate-only failures, gather focused CLI/object route output
-  and identify the first failing diagnostic or snippet boundary.
-
-Completion Check:
-
-- The two candidate-only rows have a first-owner hypothesis backed by fresh
-  evidence, or the runbook names the exact missing probe needed.
-
-### Step 2: Repair Or Split New-Only RV64 CLI Route Failures
-
-Goal: Prevent the candidate baseline from normalizing newly exposed RV64 CLI
-route failures.
+Goal: Produce a focused proof path for the generated RV64 object.
 
 Actions:
 
-- If the two new-only rows share one proven owner, implement the smallest
-  general repair.
-- If they have different owners, create separate follow-up ideas and activate
-  the first by dependency order.
-- Preserve closed idea boundaries around 664, 673, and 674 unless fresh
-  evidence proves their closure notes are wrong.
+- Inspect the existing backend object execution or emulation harnesses for RV64
+  object semantics.
+- If a repo-native harness exists, adapt it to the focus case without changing
+  expectations or baseline policy.
+- If no harness exists, compare generated object behavior against a known-good
+  clang object or record the exact missing harness blocker.
+- Save commands, object paths, disassembly, relocations, and observed result
+  under `build/agent_state/676_step1_runtime_contract/`.
 
 Completion Check:
 
-- A focused proof shows the new-only rows are repaired, fail closed at a
-  precise owner, or are split into separate active follow-up ideas.
+- The runbook has a concrete command or documented blocker for observing
+  whether the generated object returns the expected global short value.
 
-### Step 3: Reconcile Persistent Common Failures
+### Step 2: Decide Valid Object Versus Fresh Implementation Owner
 
-Goal: Decide which persistent rows remain actionable after the candidate-only
-route is handled.
+Goal: Classify the row from semantic proof, not from stale expected-fail state.
 
 Actions:
 
-- Re-read closure notes for ideas 668, 671, and 672.
-- Classify rows 92, 103, 109, 172, 322, 1941, and 1942 as stale dump
-  contract, active missing publication, research-only residual, or separate
-  follow-up.
-- Do not claim closure by expectation churn alone.
+- Run the focused runtime/semantic proof when a harness is available.
+- For a valid object, document the stale expected-failure/test-contract owner
+  and leave expectation or baseline edits for an explicitly delegated route.
+- For an invalid object, capture the first failing semantic boundary with
+  object bytes, relocations, and runtime behavior.
+- Do not infer validity from the expected-failure wrapper alone.
 
 Completion Check:
 
-- Every persistent common failure is either assigned to a focused follow-up or
-  has a documented reason to remain intentionally deferred.
+- The row is assigned to either stale test-contract/baseline routing or a
+  precise implementation owner backed by runtime evidence.
 
-### Step 4: Refresh Baseline Candidate
+### Step 3: Prove Focused Outcome And Hand Back
 
-Goal: Produce a fresh baseline candidate that can be accepted or rejected
-cleanly.
+Goal: Leave the supervisor with an unambiguous next route.
 
 Actions:
 
-- Run the supervisor-delegated broad proof command for the selected scope.
-- Compare the fresh candidate against the accepted baseline by stable test
-  name.
-- Accept only if monotonic under the repo baseline policy; otherwise reject
-  and preserve diagnostic evidence.
+- Run `cmake --build --preset default` when code changed, plus the delegated
+  focused proof command.
+- Update `todo.md` with the latest proof, owner decision, and any blocker.
+- If the row is contract-only, recommend routing to the supervisor without
+  editing expectations in this packet.
+- If the row needs implementation, recommend the smallest focused follow-up or
+  continue only within this idea's scoped owner.
 
 Completion Check:
 
-- Baseline state is either accepted as monotonic or rejected with a clear
-  residual owner list.
+- The focused row has a documented proof-backed route, and
+  `test_baseline.new.log` remains diagnostic evidence rather than accepted
+  baseline state.

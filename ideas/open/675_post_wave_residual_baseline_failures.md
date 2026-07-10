@@ -114,3 +114,31 @@ earlier ideas closed with partial or research-only outcomes.
   evidence that their closure notes are wrong.
 - Reject testcase-shaped shortcuts, expectation rewrites, unsupported
   downgrades, allowlist filtering, or weaker runtime checks as progress.
+
+## Step 2 Split Outcome
+
+Fresh Step 1 evidence is preserved in
+`build/agent_state/675_step1_candidate_delta/summary.md`. That evidence shows
+the two new-only RV64 CLI failures do not share one implementation owner:
+
+- `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
+  now reaches object emission and fails because the expected-failure wrapper
+  reports an unexpected success. Its next owner is runtime/semantic object
+  proof followed by test-contract or baseline routing if the emitted object is
+  semantically valid.
+- `backend_cli_riscv64_call_arg_local_frame_address_materialization` remains an
+  RV64 object-route consumption issue for
+  `LocalFrameAddressMaterialization`: text emission uses direct
+  `addi a0, sp, offset`, while object emission materializes through an
+  intermediate saved register and then copies to the ABI argument register.
+
+The 675 active runbook is therefore retired at Step 2 instead of bundling both
+rows into one implementation packet. Follow-up ideas:
+
+- `ideas/open/676_rv64_pointer_global_local_publication_runtime_contract.md`
+- `ideas/open/677_rv64_call_arg_local_frame_address_object_materialization.md`
+
+Resume this umbrella only after those follow-ups settle the two new-only rows;
+then continue with persistent common-failure reconciliation and a fresh
+monotonic baseline candidate. Do not accept `test_baseline.new.log` from this
+evidence point.
