@@ -71,6 +71,7 @@ struct SimpleCompare {
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes,
+    const c4c::backend::bir::Block* block = nullptr,
     std::optional<std::size_t> block_index = std::nullopt,
     std::optional<std::size_t> instruction_index = std::nullopt);
 

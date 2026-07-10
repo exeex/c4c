@@ -13,6 +13,7 @@ namespace c4c::backend::riscv::codegen {
 struct PreparedCurrentInstructionContext {
   const c4c::backend::prepare::PreparedNameTables& names;
   const c4c::backend::prepare::PreparedFunctionLookups* lookups = nullptr;
+  const c4c::backend::bir::Block* block = nullptr;
   std::optional<std::size_t> block_index;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::size_t instruction_index = 0;

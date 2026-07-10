@@ -2292,11 +2292,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::BinaryInst& binary,
     std::size_t stack_frame_bytes,
+    const c4c::backend::bir::Block* block,
     std::optional<std::size_t> block_index,
     std::optional<std::size_t> instruction_index) {
   const PreparedCurrentInstructionContext context{
       .names = names,
       .lookups = lookups,
+      .block = block,
       .block_index = block_index,
       .instruction_index = instruction_index.value_or(0),
   };
@@ -3097,6 +3099,53 @@ latest_same_block_call_before_current_instruction(
   return selected;
 }
 
+[[nodiscard]] bool instruction_defines_value(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Inst& inst,
+    c4c::ValueNameId value_name) {
+  if (value_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  return std::visit(
+      [&](const auto& concrete) -> bool {
+        using T = std::decay_t<decltype(concrete)>;
+        if constexpr (std::is_same_v<T, c4c::backend::bir::BinaryInst> ||
+                      std::is_same_v<T, c4c::backend::bir::SelectInst> ||
+                      std::is_same_v<T, c4c::backend::bir::CastInst> ||
+                      std::is_same_v<T, c4c::backend::bir::PhiInst> ||
+                      std::is_same_v<T, c4c::backend::bir::LoadLocalInst> ||
+                      std::is_same_v<T, c4c::backend::bir::LoadGlobalInst>) {
+          return concrete.result.kind == c4c::backend::bir::Value::Kind::Named &&
+                 context.names.value_names.find(concrete.result.name) == value_name;
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::CallInst>) {
+          return concrete.result.has_value() &&
+                 concrete.result->kind == c4c::backend::bir::Value::Kind::Named &&
+                 context.names.value_names.find(concrete.result->name) == value_name;
+        } else {
+          return false;
+        }
+      },
+      inst);
+}
+
+[[nodiscard]] bool value_defined_after_latest_same_block_call(
+    const PreparedCurrentInstructionContext& context,
+    c4c::ValueNameId value_name,
+    const c4c::backend::prepare::PreparedCallPlan& call) {
+  if (context.block == nullptr || value_name == c4c::kInvalidValueName ||
+      call.instruction_index >= context.instruction_index) {
+    return false;
+  }
+  const auto limit =
+      std::min(context.instruction_index, context.block->insts.size());
+  for (std::size_t index = call.instruction_index + 1U; index < limit; ++index) {
+    if (instruction_defines_value(context, context.block->insts[index], value_name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool call_clobbers_gpr_register(
     const c4c::backend::prepare::PreparedCallPlan& call,
     std::string_view register_name) {
@@ -3122,7 +3171,10 @@ latest_same_block_call_before_current_instruction(
     return false;
   }
   const auto* call = latest_same_block_call_before_current_instruction(context);
-  return call != nullptr && call_clobbers_gpr_register(*call, *home.register_name);
+  return call != nullptr &&
+         !value_defined_after_latest_same_block_call(
+             context, home.value_name, *call) &&
+         call_clobbers_gpr_register(*call, *home.register_name);
 }
 
 [[nodiscard]] std::optional<std::uint32_t> fresh_gpr_register_for_value(
@@ -3164,6 +3216,15 @@ latest_same_block_call_before_current_instruction(
   if (const auto* preserved =
           find_prior_preserved_value_for_current_instruction(context, home->value_id);
       preserved != nullptr) {
+    if (!direct_register_home_is_stale_after_call(context, *home)) {
+      return append_rv64_move_value_to_register(fragment,
+                                               destination,
+                                               stack_layout,
+                                               context.names,
+                                               context.lookups,
+                                               value,
+                                               stack_frame_bytes);
+    }
     return append_prior_preserved_value_to_register(fragment,
                                                    destination,
                                                    *preserved,

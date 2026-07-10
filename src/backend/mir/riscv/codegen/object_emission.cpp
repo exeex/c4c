@@ -902,6 +902,20 @@ bool append_rv64_callee_saved_gpr_preservation_effect(
   return true;
 }
 
+bool rv64_after_call_preservation_targets_call_result(
+    const c4c::backend::prepare::PreparedCallBoundaryEffectPlan& effect,
+    const std::optional<std::string>& call_result_destination_register) {
+  namespace prepare = c4c::backend::prepare;
+
+  return call_result_destination_register.has_value() &&
+         effect.destination.storage_kind ==
+             prepare::PreparedMoveStorageKind::Register &&
+         effect.destination.register_bank ==
+             std::optional<prepare::PreparedRegisterBank>{
+                 prepare::PreparedRegisterBank::Gpr} &&
+         effect.destination.register_name == call_result_destination_register;
+}
+
 std::optional<std::uint32_t> fpr_register_number_for_target_identity(
     const c4c::backend::prepare::PreparedTargetRegisterIdentity& identity);
 
@@ -7173,6 +7187,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   if (call.result.has_value() != call_plan->result.has_value()) {
     return std::nullopt;
   }
+  std::optional<std::string> call_result_destination_register;
   if (call_plan->result.has_value()) {
     const auto& result = *call_plan->result;
     if (result.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
@@ -7299,6 +7314,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         *destination != *plan_destination) {
       return std::nullopt;
     }
+    call_result_destination_register = *result.destination_register_name;
     append_rv64_move(fragment, *destination, *source);
   } else if (call.return_type != c4c::backend::bir::TypeKind::Void) {
     return std::nullopt;
@@ -7318,6 +7334,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   for (const auto& effect : after_call_effects) {
     if (effect.effect_kind !=
         prepare::PreparedCallBoundaryEffectKind::PreservationRepublication) {
+      continue;
+    }
+    if (rv64_after_call_preservation_targets_call_result(
+            effect, call_result_destination_register)) {
       continue;
     }
     if (!append_rv64_callee_saved_gpr_preservation_effect(
@@ -14155,6 +14175,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                    &lookups,
                                                    *binary,
                                                    stack_frame_bytes,
+                                                   &block,
                                                    block_index,
                                                    instruction_index);
       if (fragment.has_value()) {
@@ -15007,6 +15028,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                     &lookups,
                                     *binary,
                                     stack_frame_bytes,
+                                    &block,
                                     block_index,
                                     instruction_index)
            .has_value()) {
