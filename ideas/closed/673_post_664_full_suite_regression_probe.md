@@ -1,6 +1,6 @@
 # Post-664 Full-Suite Regression Probe
 
-Status: Open
+Status: Closed
 Type: Investigation / Implementation
 Parent: `ideas/open/664_riscv_object_emission_internal_probe.md`
 Related:
@@ -14,6 +14,19 @@ baseline candidate.
 Split:
 - Row 176 was split to `ideas/open/674_rv64_object_terminator_lowering.md`
   after Step 1 evidence proved a different first owner.
+
+Closure:
+- Closed after row 139 was repaired by commit `e046ee60a` and the comparable
+  three-row guard passed.
+- `test_before.log` from
+  `build/agent_state/673_step1_regression_probe/focused_three_row_ctest.log`
+  compared against current `test_after.log`: before `passed=1 failed=2
+  total=3`, after `passed=2 failed=1 total=3`.
+- The resolved failure was
+  `backend_cli_riscv64_pointer_global_local_publication`; no new failures were
+  introduced, and `backend_riscv_object_emission` remained passing.
+- The remaining row 176 failure belongs to
+  `ideas/open/674_rv64_object_terminator_lowering.md`.
 
 ## Goal
 
