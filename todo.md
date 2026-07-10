@@ -8,35 +8,48 @@ Current Step Title: Prove Regression Safety And Lifecycle Readiness
 
 ## Just Finished
 
-Step 4 of `plan.md` refreshed the delegated proof and rechecked the classified
-malformed variadic saved-GPR publication admission owner.
+Step 4 of `plan.md` classified the
+`builds_prepared_prior_preserved_arg_call_object()` failure without
+implementation.
 
-Current source state already rejects duplicate
-`rv64_incoming_variadic_gpr_publications`: gdb stopped at
-`rejects_malformed_variadic_saved_gpr_publications()` and the function returned
-without calling `fail()`. The RV64-local validator in
-`src/backend/mir/riscv/codegen/object_emission.cpp` still owns the duplicate
-source/destination diagnostic before prologue publication emission.
+The malformed variadic saved-GPR publication admission case already passes:
+the focused log no longer attributes the first generic rejection to
+`rejects_malformed_variadic_saved_gpr_publications()`, and prior gdb evidence
+showed that helper returns without calling `fail()`.
 
-No implementation file needed an edit in this packet. The refreshed
-`test_after.log` still contains a generic
-`expected prepared RV64 object path to reject` line, but gdb identified that
-line as `builds_prepared_prior_preserved_arg_call_object()`, not the delegated
-malformed variadic saved-GPR publication case.
+For `builds_prepared_prior_preserved_arg_call_object()`, the first failing
+boundary is the object-level two-call relocation/layout contract:
+`fail("expected two direct probe call relocations")`. The prepared fixture
+models two direct extern `probe` calls; the call text helper has a separate
+passing acceptance row for the same prior-preserved argument freshness route.
+That leaves the likely owner as the RV64 prepared object call fragment and
+relocation emission path in `src/backend/mir/riscv/codegen/object_emission.cpp`
+(`fragment_for_prepared_call()` through `prepared_function_to_object_function()`
+and `build_rv64_text_object_module()`), not admission, tests, expectations, or
+baseline policy.
+
+This remains in idea 664 scope because it is an RV64 prepared object-emission
+internal boundary for ordinary prepared call objects. No implementation files,
+tests, expectations, unsupported markers, allowlists, timeout/runtime policy,
+or baseline accounting were edited.
 
 ## Suggested Next
 
-Suggested next packet: classify and repair the remaining generic
-`expected prepared RV64 object path to reject` failure from
-`builds_prepared_prior_preserved_arg_call_object()`, or choose the next
-supervisor-owned focused failure if that prior-preserved-argument call route is
-not the desired next slice.
+Suggested next packet: delegate a c4c-executor repair slice owning
+`src/backend/mir/riscv/codegen/object_emission.cpp` for the prior-preserved
+argument direct-extern call object path. Start by proving why
+`fragment_for_prepared_call()`/object-module construction does not satisfy the
+two `R_RISCV_CALL_PLT` relocations and expected preservation
+population/republication bytes for
+`make_prepared_prior_preserved_arg_call_module()`.
 
 ## Watchouts
 
 - `test_after.log` prints repeated generic messages without test names; use
   gdb/backtrace disambiguation before assigning ownership to any generic
   `expected prepared RV64 object path to reject` line.
+- Evidence for this packet is in
+  `build/agent_state/664_step4_prior_preserved_arg_probe/gdb_prior_preserved_arg_failure.txt`.
 - Later failures remain in the focused log, including direct call relocations,
   byval/local-memory/sret rows, call-argument publication ordering, and
   diagnostic exactness. This packet did not absorb those.
@@ -49,7 +62,7 @@ not the desired next slice.
 
 Result: build passed; focused CTest still failed on later
 `backend_riscv_object_emission` rows. `test_after.log` is the canonical proof
-log. Additional gdb checks showed the delegated
-`rejects_malformed_variadic_saved_gpr_publications()` case returns without
-calling `fail()`; the first generic rejection failure in the log is currently
-`builds_prepared_prior_preserved_arg_call_object()`, outside this packet.
+log. Additional gdb evidence for this packet shows
+`builds_prepared_prior_preserved_arg_call_object()` reaches
+`fail("expected two direct probe call relocations")`; the classification-only
+slice is complete despite the known focused-test failures.
