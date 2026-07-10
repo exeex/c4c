@@ -1,6 +1,6 @@
 # RV64 Pointer-Local Lowering Route Runtime
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -13,6 +13,22 @@ pointer-step, and store-source cases
 Queue Order: 60
 Proof Surface: current baseline rows 120, 122, 127, 192, 193, and 195 from
 `log/baseline_f3bf820c180dd4638ebd4db37e1223b759103665.log`.
+
+## Completion Notes
+
+Closed after Step 1 evidence refresh found the complete focused
+pointer-local route/runtime proof surface already passing:
+
+- `backend_codegen_route_riscv64_loop_carried_pointer_postincrement`
+- `backend_codegen_route_riscv64_duff_fallthrough_pointer_update_producers`
+- `backend_codegen_route_riscv64_i16_local_array_select_store`
+- `backend_rv64_runtime_riscv64_loop_carried_pointer_postincrement`
+- `backend_rv64_runtime_riscv64_duff_fallthrough_pointer_update_producers`
+- `backend_rv64_runtime_riscv64_i16_local_array_select_store`
+
+No implementation boundary remained to select without inventing work. The
+focused before/after regression guard for this no-code lifecycle close was
+6/6 passing before and after, with zero new failing tests.
 
 ## Goal
 
