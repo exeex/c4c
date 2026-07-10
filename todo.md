@@ -8,44 +8,38 @@ Current Step Title: Prove Regression Safety And Lifecycle Readiness
 
 ## Just Finished
 
-Step 4 of `plan.md` refreshed the focused proof and classified the new first
-remaining `backend_riscv_object_emission` failure after the Step 3 post-helper
-traversal repair.
+Step 4 of `plan.md` refreshed the delegated proof and rechecked the classified
+malformed variadic saved-GPR publication admission owner.
 
-The selected `loads_rv64_va_start_published_word_after_helper` failure remains
-resolved: fresh `test_after.log` no longer contains
-`expected prepared va_start load object text layout`.
+Current source state already rejects duplicate
+`rv64_incoming_variadic_gpr_publications`: gdb stopped at
+`rejects_malformed_variadic_saved_gpr_publications()` and the function returned
+without calling `fail()`. The RV64-local validator in
+`src/backend/mir/riscv/codegen/object_emission.cpp` still owns the duplicate
+source/destination diagnostic before prologue publication emission.
 
-New first remaining failure: `expected prepared RV64 object path to reject`,
-from `rejects_malformed_variadic_saved_gpr_publications()`. The first mutated
-case duplicates a prepared RV64 incoming variadic GPR publication and expects
-the RV64-local diagnostic
-`unsupported_function_admission: RV64 variadic entry incoming GPR publications must not contain duplicate sources or destinations`,
-but the prepared object route currently succeeds.
-
-Likely owner: RV64 object-emission function-admission validation for
-`rv64_incoming_variadic_gpr_publications`, before object construction publishes
-a module. This is still in idea 664 scope as an object-emission infrastructure
-fail-closed admission contract, not a relocation, final object byte, baseline,
-or unrelated runtime semantic repair.
+No implementation file needed an edit in this packet. The refreshed
+`test_after.log` still contains a generic
+`expected prepared RV64 object path to reject` line, but gdb identified that
+line as `builds_prepared_prior_preserved_arg_call_object()`, not the delegated
+malformed variadic saved-GPR publication case.
 
 ## Suggested Next
 
-Suggested next packet: repair the RV64 variadic incoming GPR publication
-admission/fail-closed path so malformed duplicate source/destination
-publications reject with the existing RV64-local diagnostic before prepared
-object module construction succeeds. Keep the packet limited to that admission
-contract and its existing fail-closed malformed-publication variants.
+Suggested next packet: classify and repair the remaining generic
+`expected prepared RV64 object path to reject` failure from
+`builds_prepared_prior_preserved_arg_call_object()`, or choose the next
+supervisor-owned focused failure if that prior-preserved-argument call route is
+not the desired next slice.
 
 ## Watchouts
 
-- The classification did not implement a fix and did not touch `plan.md`,
-  `ideas/open/664_riscv_object_emission_internal_probe.md`, implementation
-  files, tests, expectations, unsupported markers, allowlists, timeout policy,
-  runtime policy, baseline accounting, or unrelated backend families.
+- `test_after.log` prints repeated generic messages without test names; use
+  gdb/backtrace disambiguation before assigning ownership to any generic
+  `expected prepared RV64 object path to reject` line.
 - Later failures remain in the focused log, including direct call relocations,
   byval/local-memory/sret rows, call-argument publication ordering, and
-  diagnostic exactness. Do not absorb those into the next packet.
+  diagnostic exactness. This packet did not absorb those.
 - Do not rewrite expectations, unsupported markers, allowlists, timeout/runtime
   policy, or baseline accounting for this slice.
 
@@ -55,6 +49,7 @@ contract and its existing fail-closed malformed-publication variants.
 
 Result: build passed; focused CTest still failed on later
 `backend_riscv_object_emission` rows. `test_after.log` is the canonical proof
-log. It no longer contains the selected va_start post-helper load failure; its
-first remaining failure is now the malformed variadic saved-GPR publication
-admission case described above.
+log. Additional gdb checks showed the delegated
+`rejects_malformed_variadic_saved_gpr_publications()` case returns without
+calling `fail()`; the first generic rejection failure in the log is currently
+`builds_prepared_prior_preserved_arg_call_object()`, outside this packet.
