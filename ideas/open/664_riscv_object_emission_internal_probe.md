@@ -52,6 +52,20 @@ This idea owns that probe-first route.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
 
+## Lifecycle Note 2026-07-10
+
+The focused `backend_riscv_object_emission` row now passes after the Step 4
+repair sequence, and focused regression evidence under
+`build/agent_state/664_step4_local_frame_address_publication/` shows row 256
+moving from failed to passed. Closure was not accepted because the
+supervisor-reported full-suite baseline candidate regressed from the accepted
+3386/3397 baseline to 3384/3397 by adding rows 139 and 176:
+`backend_cli_riscv64_pointer_global_local_publication` and
+`backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`.
+Those rows are outside this object-emission row-256 source scope, so follow-up
+ownership is split to `ideas/open/673_post_664_full_suite_regression_probe.md`
+instead of expanding this idea.
+
 ## Reviewer Reject Signals
 
 - Reject absorbing unrelated RV64 runtime rows into this object-emission route
