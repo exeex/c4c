@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Refresh Loop-2e Runtime Boundary Evidence
+Current Step ID: Step 2
+Current Step Title: Trace Destination And Updated-Pointer Facts
 
 # Current Packet
 
