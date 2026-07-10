@@ -1,39 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Repair General RV64 Indirect-Store Or Writeback Lowering
+Current Step ID: Step 4
+Current Step Title: Representative Runtime And Backend Regression Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired the general RV64 prepared pointer-value store lowering for the
-proven indirect-store/postincrement contract.
+Step 4 refreshed representative `loop-2e.c` runtime evidence after the Step 3
+pointer-value store repair and ran the delegated backend proof.
 
-Changed files:
+Evidence:
 
-- `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`
-- `tests/backend/CMakeLists.txt`
-- `todo.md`
+- `build/agent_state/657_step4_representative_proof/summary.md`
+- `build/agent_state/657_step4_representative_proof/loop-2e.bir.txt`
+- `build/agent_state/657_step4_representative_proof/loop-2e.prepared.txt`
+- `build/agent_state/657_step4_representative_proof/loop-2e.s`
+- `build/agent_state/657_step4_representative_proof/loop-2e.o`
+- `build/agent_state/657_step4_representative_proof/loop-2e.objdump.txt`
+- `build/agent_state/657_step4_representative_proof/loop-2e.runner.o`
+- `build/agent_state/657_step4_representative_proof/loop-2e.runner.objdump.txt`
+- `build/agent_state/657_step4_representative_proof/runtime-case.stderr.txt`
 
-Completed behavior:
+Representative facts:
 
-- Added a prepared `Ptr` store path for `base=pointer_value` local-memory
-  accesses with explicit `stored_value_name`, pointer-value base authority,
-  size/alignment `8`, default address space, non-volatile access, and signed
-  12-bit base-plus-offset addressing.
-- The focused contract now emits the caller-visible indirect store through the
-  old pointer value (`sd ..., 0(s1)`) and keeps the local cursor writeback as a
-  separate frame-slot update (`sd ..., 0(sp)`).
-- Registered the focused RV64 object-runtime contract only after the manual
-  object-runtime probe reached exit `0`.
+- `%t23 = bir.add ptr %t21, 156` remains present in semantic and prepared BIR.
+- Prepared branch RHS authority for `%t23` remains selected and available.
+- The callee still has an explicit prepared pointer-value store fact:
+  `access block=block_1 inst_index=7 base=pointer_value stored=%t8 pointer=%t9
+  offset=0 size=8 align=8`.
+- Store-source freshness for `%t8` remains selected.
+- Clang RV64 runtime exits `0`.
+- c4c RV64 runtime compare still fails with `[RV64_BACKEND_RUNTIME_MISMATCH]`,
+  `clang_exit=0 c4c_exit=Subprocess aborted`.
+- The focused Step 3 backend contract remains green, but the representative
+  object still writes both the local cursor update and caller-visible stored
+  value to `0(sp)` instead of emitting the expected `sd ..., 0(s1)` pointer-value
+  store.
+- Idea 657 is not ready for lifecycle closure consideration yet.
 
 ## Suggested Next
 
-Execute Step 4: refresh representative `loop-2e.c` runtime evidence and run the
-supervisor-selected backend regression proof/classification. No further
-implementation is currently needed for the focused Step 3 contract.
+Review or implement the smallest follow-up packet for the representative RV64
+prepared pointer-value store lowering gap: make the Step 3 `base=pointer_value`
+repair apply to the `loop-2e.c` callee shape where old `%t9` is register-home
+`s1` and the local cursor writeback also targets `%lv.param.q`'s frame-slot
+home.
 
 ## Watchouts
 
@@ -42,48 +55,30 @@ implementation is currently needed for the focused Step 3 contract.
 - The Step 3 implementation consumes explicit prepared pointer-value access
   facts; it does not infer destination authority from runtime behavior, source
   names, final assembly, `loop-2e.c`, `%t23`, `q[39]`, or callee `f`.
+- Step 4 proves the focused contract passed but the representative shape still
+  emits `sd t1,0(sp)` for the caller-visible indirect store. The next packet
+  should not claim closure until representative runtime matches clang or fails
+  closed at a more precise non-overfit owner.
 - Do not implement stack-destination fan-in authority from ideas 647/655 under
   this plan.
 - Do not change expectations, unsupported markers, allowlists, timeouts, or
   pass/fail accounting.
-- `backend_riscv_object_emission` remains in the known red backend subset; the
-  delegated proof count stayed at 32 failed while the total backend test count
-  increased by one registered passing object-runtime contract.
+- `backend_riscv_object_emission` remains in the known red backend subset.
 
 ## Proof
 
-Focused dump contract:
+Representative evidence refresh:
 
-`ctest --test-dir build --output-on-failure -R '^backend_dump_riscv64_indirect_store_postincrement_callee_contract$'`
-
-Result: pass. Logs:
-
-- `build/agent_state/657_step3_pointer_value_store_repair/focused_dump_ctest.log`
-- `build/agent_state/657_step3_pointer_value_store_repair/focused_dump_ctest.after.log`
-
-Manual focused RV64 object-runtime probe before CTest registration:
-
-`cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=/usr/bin/clang -DQEMU_RISCV64=/usr/bin/qemu-riscv64 -DSRC=/workspaces/c4c/tests/backend/case/riscv64_indirect_store_postincrement_callee_contract.c -DTARGET_TRIPLE=riscv64-linux-gnu -DOUT_OBJECT=/workspaces/c4c/build/agent_state/657_step3_pointer_value_store_repair/riscv64_indirect_store_postincrement_callee_contract.o -DOUT_BIN=/workspaces/c4c/build/agent_state/657_step3_pointer_value_store_repair/riscv64_indirect_store_postincrement_callee_contract.bin -DEXPECTED_RUN_CODE=0 -DCASE_TIMEOUT_SEC=10 -P /workspaces/c4c/tests/backend/cmake/run_backend_rv64_object_runtime_case.cmake`
-
-Result: pass. Log:
-`build/agent_state/657_step3_pointer_value_store_repair/focused_object_runtime.log`.
-
-Registered focused RV64 object-runtime CTest:
-
-`ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract$'`
-
-Result: pass. Log:
-`build/agent_state/657_step3_pointer_value_store_repair/focused_object_runtime_ctest.log`.
-
-Object evidence:
-
-- `build/agent_state/657_step3_pointer_value_store_repair/focused_object_runtime_objdump.txt`
+- Build, BIR, prepared BIR, ASM, object, disassembly, and clang runtime all
+  exited `0`.
+- c4c RV64 runtime compare exited `1` with
+  `[RV64_BACKEND_RUNTIME_MISMATCH]`.
 
 Delegated proof run exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: CTest exited `8`; `test_after.log` reports
-`91% tests passed, 32 tests failed out of 368`. The newly registered
-`backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract` passed,
-and the focused dump contract passed inside the subset.
+Result: CTest exited `8`; `test_after.log` reports `91% tests passed, 32 tests
+failed out of 368`, matching `test_before.log`. The focused dump and focused
+RV64 object-runtime contracts for `riscv64_indirect_store_postincrement_callee`
+passed inside the subset.
