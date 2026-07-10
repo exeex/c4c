@@ -8,31 +8,30 @@ Current Step Title: Publish The `%t23` Compare Pointer Source Chain
 
 ## Just Finished
 
-Step 4A, `Publish The %t23 Compare Pointer Source Chain`, published the real
-`src/loop-2e.c` compare pointer producer and carried it into prepared BIR.
+Step 4A, `Publish The %t23 Compare Pointer Source Chain`, repaired the
+prepared/RV64 branch stack-load authority for the new `%t23` producer shape.
 
-- LIR-to-BIR now preserves structured pointer-address facts through
-  `ptrtoint`/integer add/sub-immediate/`inttoptr` chains and admits those
-  nonzero named-base pointer facts as compare-operand source producers.
-- `src/loop-2e.c` semantic BIR now has `%t23 = bir.add ptr %t21, 156` before
-  `%t24 = bir.ne ptr %t20, %t23`; prepared BIR carries the same producer.
-- `%t23` is now produced after the call from `%t21`, so the old stack-carried
-  preservation shape `%t23` value id `27` / `slot #46+stack336` is no longer
-  the active authority chain. The refreshed prepared shape is `%t23` value id
-  `26` / `slot #50+stack368`.
-- RV64 object emission advances past the previous
-  `unsupported_terminator_fragment` and past the prepared pointer-arithmetic
-  diagnostic. The current precise owner is RHS branch stack-load authority:
-  `unsupported_branch_stack_load_authority`, `authority_status=missing_stack_clobber_safety`.
+- Prepared branch stack-load clobber safety now recognizes an unambiguous
+  same-block pointer-add producer after an intervening call as re-establishing
+  the selected stack slot, including the before-instruction stack move emitted
+  at the producer instruction.
+- The rule is keyed on the named BIR pointer producer and exact prepared value
+  home/slot identity; unrelated pointer producers and still-live lhs values
+  remain fail-closed.
+- For `src/loop-2e.c`, prepared output now records the RHS
+  `branch_stack_load_authority` for `%t23` value id `26` / `slot #50+stack368`
+  as `status=available`.
+- RV64 object emission for `src/loop-2e.c` advances past
+  `unsupported_branch_stack_load_authority` /
+  `authority_status=missing_stack_clobber_safety` and exits 0.
 - Evidence is in
-  `build/agent_state/653_step4a_loop_t23_pointer_source_chain/summary.md`.
+  `build/agent_state/653_step4a_loop_t23_clobber_safety/summary.md`.
 
 ## Suggested Next
 
-Delegate the next packet to repair the prepared/RV64 branch stack-load
-authority for the new `%t23` producer shape: prove the stack-clobber safety or
-consume the freshly materialized `%t23 = %t21 + 156` producer directly at the
-fused branch without re-inferring from stack offsets or testcase shape.
+Delegate the next packet to decide whether Step 4A is complete enough for
+integration/runtime probing, or to inspect the current `loop-2e.c` runtime
+result under qemu now that object emission reaches a concrete RV64 object.
 
 ## Watchouts
 
@@ -41,6 +40,9 @@ fused branch without re-inferring from stack offsets or testcase shape.
   numbering and moves `%t23` to value id `26` / `slot #50+stack368`.
 - Do not treat the remaining failure as a missing semantic producer:
   `%t23 = bir.add ptr %t21, 156` is present in semantic and prepared BIR.
+- Do not re-open the `%t23` clobber-safety owner without checking the current
+  prepared authority row first; it is now `status=available` for the refreshed
+  `%t23` value id `26` / `slot #50+stack368` shape.
 - Do not broaden Step 4A into the parked `%t6` runtime owner; that owner is
   downstream of the pointer-source publication/materialization boundary.
 - Do not weaken expectation files, unsupported markers, allowlists, or runtime
@@ -58,19 +60,13 @@ log.
 
 Focused proof:
 
-- `cmake --build --preset default --target c4cll backend_lir_to_bir_notes_test
-  && ./build/tests/backend/bir/backend_lir_to_bir_notes_test` passed.
-- `build/c4cll --target riscv64-linux-gnu --dump-bir
-  tests/c/external/gcc_torture/src/loop-2e.c` wrote
-  `build/agent_state/653_step4a_loop_t23_pointer_source_chain/loop-2e.bir.txt`
-  and shows `%t23 = bir.add ptr %t21, 156`.
+- `cmake --build --preset default --target backend_prepare_stack_layout_test
+  c4cll && ./build/tests/backend/bir/backend_prepare_stack_layout_test`
+  passed.
 - `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir
   tests/c/external/gcc_torture/src/loop-2e.c` wrote
-  `build/agent_state/653_step4a_loop_t23_pointer_source_chain/loop-2e.prepared.txt`
-  and shows the same `%t23` producer.
+  `build/agent_state/653_step4a_loop_t23_clobber_safety/loop-2e.after.prepared.txt`
+  and shows `%t23` branch stack-load authority `status=available`.
 - `build/c4cll --target riscv64-linux-gnu --codegen obj
   tests/c/external/gcc_torture/src/loop-2e.c -o
-  build/agent_state/653_step4a_loop_t23_pointer_source_chain/loop-2e.o` exits
-  2 with `unsupported_branch_stack_load_authority` /
-  `authority_status=missing_stack_clobber_safety`, recorded in
-  `build/agent_state/653_step4a_loop_t23_pointer_source_chain/loop-2e.obj.stderr.txt`.
+  build/agent_state/653_step4a_loop_t23_clobber_safety/loop-2e.o` exits 0.

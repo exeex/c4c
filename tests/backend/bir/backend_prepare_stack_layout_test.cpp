@@ -8584,6 +8584,55 @@ int check_branch_stack_load_authority_contract() {
     return fail("expected intervening call without explicit preservation to stay fail-closed");
   }
 
+  auto call_with_unrelated_pointer_producer_after_call =
+      call_without_preservation;
+  call_with_unrelated_pointer_producer_after_call.module.functions.front()
+      .blocks.front()
+      .insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%unrelated"),
+          .operand_type = bir::TypeKind::Ptr,
+          .lhs = prepared_lhs,
+          .rhs = bir::Value::immediate_i64(156),
+      });
+  const auto unrelated_pointer_producer_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          call_with_unrelated_pointer_producer_after_call);
+  if (unrelated_pointer_producer_records.records.size() != 3 ||
+      unrelated_pointer_producer_records.records[2].role !=
+          prepare::PreparedBranchStackLoadRole::Rhs ||
+      unrelated_pointer_producer_records.records[2].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("expected unrelated pointer producer after call not to authorize rhs branch source");
+  }
+
+  auto call_with_rhs_pointer_producer_after_call = call_without_preservation;
+  call_with_rhs_pointer_producer_after_call.module.functions.front()
+      .blocks.front()
+      .insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = prepared_rhs,
+          .operand_type = bir::TypeKind::Ptr,
+          .lhs = prepared_lhs,
+          .rhs = bir::Value::immediate_i64(156),
+      });
+  const auto rhs_pointer_producer_records =
+      prepare::collect_prepared_branch_stack_load_authorities(
+          call_with_rhs_pointer_producer_after_call);
+  if (rhs_pointer_producer_records.records.size() != 3 ||
+      rhs_pointer_producer_records.records[1].role !=
+          prepare::PreparedBranchStackLoadRole::Lhs ||
+      rhs_pointer_producer_records.records[1].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety ||
+      rhs_pointer_producer_records.records[2].role !=
+          prepare::PreparedBranchStackLoadRole::Rhs ||
+      rhs_pointer_producer_records.records[2].authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::Available) {
+    return fail("expected same-block rhs pointer producer after call to re-authorize only rhs branch source");
+  }
+
   auto call_with_lhs_preservation = call_without_preservation;
   prepare::PreparedCallPlansFunction preserved_call_plans{
       .function_name = prepared_function_name,

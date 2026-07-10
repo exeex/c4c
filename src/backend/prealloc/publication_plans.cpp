@@ -2819,6 +2819,15 @@ prepared_collected_branch_stack_load_pointer_status(
   return *access->address.frame_slot_id == frame_slot->slot_id;
 }
 
+[[nodiscard]] bool prepared_pointer_value_produced_after_instruction(
+    const PreparedNameTables& names,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const bir::Block* block,
+    std::size_t instruction_index,
+    std::size_t branch_terminator_instruction_index,
+    const PreparedValueHome* value_home,
+    const PreparedFrameSlot* frame_slot);
+
 [[nodiscard]] bool prepared_store_publication_may_clobber_branch_stack_slot(
     const PreparedStoreSourcePublicationRecord& record,
     FunctionNameId function_name,
@@ -2896,6 +2905,7 @@ prepared_collected_branch_stack_load_pointer_status(
     const PreparedMoveBundle& bundle,
     FunctionNameId function_name,
     BlockLabelId block_label,
+    const bir::Block* block,
     std::size_t branch_block_index,
     std::size_t branch_terminator_instruction_index,
     const PreparedFrameSlot* frame_slot,
@@ -2923,12 +2933,21 @@ prepared_collected_branch_stack_load_pointer_status(
           destination_home->value_name == value_home->value_name &&
           destination_home->kind == PreparedValueHomeKind::StackSlot &&
           destination_home->slot_id == value_home->slot_id &&
-          prepared_branch_stack_pointer_materialized_at_instruction(
-              prepared,
-              function_name,
-              block_label,
-              bundle.instruction_index,
-              value_home)) {
+          (prepared_branch_stack_pointer_materialized_at_instruction(
+               prepared,
+               function_name,
+               block_label,
+               bundle.instruction_index,
+               value_home) ||
+           (bundle.instruction_index > 0 &&
+            prepared_pointer_value_produced_after_instruction(
+                prepared.names,
+                value_home_lookups,
+                block,
+                bundle.instruction_index - 1,
+                bundle.instruction_index + 1,
+                value_home,
+                frame_slot)))) {
         continue;
       }
     }
@@ -3050,6 +3069,79 @@ prepared_branch_stack_pointer_materialized_after_instruction(
   return selected != nullptr;
 }
 
+[[nodiscard]] const PreparedValueHome* value_home_for_named_value(
+    const PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const bir::Value& value);
+
+[[nodiscard]] bool prepared_pointer_value_produced_after_instruction(
+    const PreparedNameTables& names,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const bir::Block* block,
+    std::size_t instruction_index,
+    std::size_t branch_terminator_instruction_index,
+    const PreparedValueHome* value_home,
+    const PreparedFrameSlot* frame_slot) {
+  if (value_home_lookups == nullptr || block == nullptr ||
+      value_home == nullptr || frame_slot == nullptr ||
+      value_home->value_id == PreparedValueId{0} ||
+      value_home->value_name == kInvalidValueName ||
+      value_home->kind != PreparedValueHomeKind::StackSlot ||
+      !value_home->slot_id.has_value() ||
+      *value_home->slot_id != frame_slot->slot_id ||
+      !value_home->offset_bytes.has_value() ||
+      *value_home->offset_bytes != frame_slot->offset_bytes ||
+      !value_home->size_bytes.has_value() ||
+      *value_home->size_bytes != frame_slot->size_bytes ||
+      instruction_index >= branch_terminator_instruction_index ||
+      branch_terminator_instruction_index > block->insts.size()) {
+    return false;
+  }
+
+  const bir::BinaryInst* selected = nullptr;
+  for (std::size_t index = instruction_index + 1;
+       index < branch_terminator_instruction_index;
+       ++index) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&block->insts[index]);
+    if (binary == nullptr ||
+        (binary->opcode != bir::BinaryOpcode::Add &&
+         binary->opcode != bir::BinaryOpcode::Sub) ||
+        binary->result.kind != bir::Value::Kind::Named ||
+        binary->result.type != bir::TypeKind::Ptr ||
+        names.value_names.find(binary->result.name) != value_home->value_name) {
+      continue;
+    }
+    const bool ptr_plus_int =
+        binary->lhs.type == bir::TypeKind::Ptr &&
+        binary->rhs.type != bir::TypeKind::Ptr;
+    const bool int_plus_ptr =
+        binary->opcode == bir::BinaryOpcode::Add &&
+        binary->rhs.type == bir::TypeKind::Ptr &&
+        binary->lhs.type != bir::TypeKind::Ptr;
+    if (!ptr_plus_int && !int_plus_ptr) {
+      continue;
+    }
+    const auto* producer_home = value_home_for_named_value(
+        names, nullptr, value_home_lookups, binary->result);
+    if (producer_home == nullptr ||
+        producer_home->value_id != value_home->value_id ||
+        producer_home->value_name != value_home->value_name ||
+        producer_home->kind != PreparedValueHomeKind::StackSlot ||
+        producer_home->slot_id != value_home->slot_id ||
+        producer_home->offset_bytes != value_home->offset_bytes ||
+        producer_home->size_bytes != value_home->size_bytes ||
+        producer_home->align_bytes != value_home->align_bytes) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return false;
+    }
+    selected = binary;
+  }
+  return selected != nullptr;
+}
+
 [[nodiscard]] bool branch_stack_load_intervening_instructions_clobber_safe(
     const PreparedBirModule& prepared,
     FunctionNameId function_name,
@@ -3076,7 +3168,15 @@ prepared_branch_stack_pointer_materialized_after_instruction(
             block_label,
             branch_terminator_instruction_index,
             frame_slot,
-            stack_object)) {
+            stack_object) &&
+        !prepared_pointer_value_produced_after_instruction(
+            prepared.names,
+            value_home_lookups,
+            block,
+            record.instruction_index,
+            branch_terminator_instruction_index,
+            value_home,
+            frame_slot)) {
       return false;
     }
   }
@@ -3087,6 +3187,7 @@ prepared_branch_stack_pointer_materialized_after_instruction(
               bundle,
               function_name,
               block_label,
+              block,
               branch_block_index,
               branch_terminator_instruction_index,
               frame_slot,
@@ -3113,7 +3214,15 @@ prepared_branch_stack_pointer_materialized_after_instruction(
             block_label,
             index,
             branch_terminator_instruction_index,
-            value_home)) {
+            value_home) &&
+        !prepared_pointer_value_produced_after_instruction(
+            prepared.names,
+            value_home_lookups,
+            block,
+            index,
+            branch_terminator_instruction_index,
+            value_home,
+            frame_slot)) {
       return false;
     }
     const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst);
