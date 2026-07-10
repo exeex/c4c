@@ -1,6 +1,6 @@
 # RV64 Packed Bitfield Global Layout And Access Lowering
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/642_rv64_global_residual_runtime_mismatch_research.md`
 Related:
@@ -57,6 +57,21 @@ values differ.
   without weakening the harness or expectations.
 - Focused unit coverage rejects unsupported or incomplete authority shapes
   fail-closed rather than silently choosing word-lane storage.
+
+## Closure Notes
+
+Closed after Step 7 broader validation. The representative
+`tests/c/external/gcc_torture/src/pr79737-2.c` now has HIR `struct S size=9
+align=1`, LIR/LLVM `%struct.S = type <{ [9 x i8] }>`, 9-byte ELF `OBJECT
+GLOBAL` symbols for both `i` and `j`, and prepared byte-storage aggregate
+global accesses at offsets 0, 2, and 5 with `range_verdict=proven_in_bounds`.
+
+Focused packed-global coverage passed, including fail-closed zero-width and
+too-small packed bitfield cases plus the representative RV64 GCC torture
+backend route. Broader matched regression guard passed with `test_before.log`
+and `test_after.log`: before `366/398` passed with 32 known failures, after
+`369/401` passed with the same 32 known failures, `+3` passes, and no new
+failures.
 
 ## Reviewer Reject Signals
 
