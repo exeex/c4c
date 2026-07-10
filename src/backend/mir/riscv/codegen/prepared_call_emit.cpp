@@ -519,7 +519,6 @@ bool emit_riscv_byval_aggregate_address_argument(
       argument_abi->primary_class != c4c::backend::bir::AbiValueClass::Memory ||
       argument_abi->size_bytes != transport->copy_size_bytes ||
       argument_abi->align_bytes != transport->copy_align_bytes ||
-      *plan.destination_stack_size_bytes != transport->copy_size_bytes ||
       outgoing_stack_argument_area == nullptr ||
       outgoing_stack_argument_area->size_bytes != *plan.destination_stack_size_bytes) {
     return false;
@@ -528,6 +527,7 @@ bool emit_riscv_byval_aggregate_address_argument(
   const std::size_t stack_copy_size =
       align_riscv_stack_slot(transport->copy_size_bytes, 16);
   if (stack_copy_size == 0 ||
+      *plan.destination_stack_size_bytes != stack_copy_size ||
       stack_copy_size >
           static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
       active_stack_adjustment_bytes >
@@ -1008,6 +1008,13 @@ std::optional<std::string> emit_riscv_simple_call(
             ? prepare::as_local_frame_address_materialization_route(
                   *source_selection)
             : std::nullopt;
+    std::string destination_register_name = *plan->destination_register_name;
+    if (active_stack_adjustment_bytes != 0) {
+      const auto abi_destination_register = riscv_gpr_argument_register(arg_index);
+      if (abi_destination_register.has_value()) {
+        destination_register_name = *abi_destination_register;
+      }
+    }
     if (local_materialization_route.has_value()) {
       if (local_materialization_route->source_stack_offset_bytes >
               static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
@@ -1019,7 +1026,7 @@ std::optional<std::string> emit_riscv_simple_call(
               active_stack_adjustment_bytes))) {
         return std::nullopt;
       }
-      out += "    addi " + *plan->destination_register_name + ", sp, " +
+      out += "    addi " + destination_register_name + ", sp, " +
              std::to_string(local_materialization_route->source_stack_offset_bytes +
                             active_stack_adjustment_bytes) + "\n";
     } else if (source_selection != nullptr &&
@@ -1073,13 +1080,22 @@ std::optional<std::string> emit_riscv_simple_call(
               prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
         return std::nullopt;
       }
-      if (*plan->source_register_name != *plan->destination_register_name) {
-        out += "    mv " + *plan->destination_register_name + ", " +
+      if (*plan->source_register_name != destination_register_name) {
+        out += "    mv " + destination_register_name + ", " +
                *plan->source_register_name + "\n";
+      }
+    } else if (plan->source_encoding ==
+                   prepare::PreparedStorageEncodingKind::Immediate &&
+               plan->source_literal.has_value()) {
+      if (!emit_move_to_register(out,
+                                 destination_register_name,
+                                 context,
+                                 *plan->source_literal)) {
+        return std::nullopt;
       }
     } else {
       if (!emit_move_to_register(out,
-                                 *plan->destination_register_name,
+                                 destination_register_name,
                                  context.names,
                                  context.lookups,
                                  call.args[arg_index])) {
