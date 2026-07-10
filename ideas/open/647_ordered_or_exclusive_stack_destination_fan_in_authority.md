@@ -92,3 +92,28 @@ producer authority, not as select-materialized semantic merge.
 - Reject expectation rewrites, unsupported-marker changes, allowlist edits,
   timeout/accounting changes, runtime changes, helper renames, or
   classification-only edits claimed as capability progress.
+
+## Parked Outcome
+
+The active runbook was parked after Step 2 in commit `ea0ab226f` because the
+refreshed residual baseline did not expose a legal positive non-637 producer
+authority family.
+
+Durable evidence:
+
+- Step 1 refreshed the residual set in
+  `build/agent_state/647_step1_20260710_residual_baseline/summary.md`.
+- Step 2 selected no implementation family: ordered final-state and explicit
+  merge have no producer metadata at the consumer program point; mutual
+  exclusion remains negative for `src/20021204-1.c`; `src/20011109-2.c`
+  re-enters closed idea 637 evidence; `src/920429-1.c`,
+  `src/ptr-arith-1.c`, and `src/pr70005.c` are rejection-only; and
+  `src/930429-1.c` plus `src/pr34415.c` are stale for this route.
+- The latest proof command was
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`,
+  recorded as passing in `test_after.log`.
+
+Leave this idea parked until new prepared/prealloc evidence exposes a positive
+non-637 ordered final-state, mutual-exclusion, or explicit-merge producer fact
+at the failing consumer program point. Do not route to implementation from the
+parked runbook alone.
