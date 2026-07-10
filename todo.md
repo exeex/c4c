@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/653_stack_carried_pointer_source_publication_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement The Narrow Stack-Carried Pointer Rule
+Current Step ID: 3A
+Current Step Title: Publish LIR-to-BIR Compare Pointer Sources
 
 # Current Packet
 
@@ -12,6 +12,13 @@ Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: traced the real
 `tests/c/external/gcc_torture/src/20140828-1.c` `%t6` / `&a[1]` producer gap
 and stopped because the required semantic producer fact belongs before
 prepared/prealloc.
+
+Plan-owner review split the remaining route into Step 3A,
+`Publish LIR-to-BIR Compare Pointer Sources`, followed by Step 3B,
+`Connect Prepared And RV64 Stack-Carried Pointer Authority`. This stays inside
+idea 653 because the missing compare-operand producer is the required upstream
+authority for the same `%t6` stack-carried pointer publication chain, not a
+separate initiative.
 
 - Evidence written to
   `build/agent_state/653_step3_pointer_base_plus_offset_producer_fact/summary.md`.
@@ -33,11 +40,16 @@ prepared/prealloc.
 
 ## Suggested Next
 
-Executor packet: add a general LIR-to-BIR compare-operand pointer source
-publication/materialization path for address-valued operands, so `%t6`-class
-local-frame pointer operands are represented as named BIR producers or explicit
-address materialization facts before prepared/prealloc builds value homes and
-call preservation.
+Executor packet for Step 3A: add a general LIR-to-BIR compare-operand pointer
+source publication/materialization path for address-valued operands, so
+`%t6`-class local-frame pointer operands are represented as named BIR producers
+or explicit address materialization facts before prepared/prealloc builds value
+homes and call preservation.
+
+Required first proof target: focused BIR/LIR-to-BIR evidence for
+`tests/c/external/gcc_torture/src/20140828-1.c` showing the semantic `%t6`
+compare operand has an explicit `%lv.a.0 + 2` producer or equivalent
+address-materialization fact, without reconstructing it later from stack homes.
 
 ## Watchouts
 

@@ -17,11 +17,11 @@ pointer sources or fail closed with a precise producer-authority diagnostic.
 
 ## Core Rule
 
-Pointer source freshness and materialization must come from explicit prepared
-facts at the consumer point. Do not infer them from stack offsets, final
-assembly shape, source spelling, local names, diagnostics, testcase identity,
-runtime outcomes, expectation changes, unsupported markers, or pass/fail
-accounting.
+Pointer source freshness and materialization must come from explicit semantic
+producer facts upstream and explicit prepared facts at the consumer point. Do
+not infer them from stack offsets, final assembly shape, source spelling, local
+names, diagnostics, testcase identity, runtime outcomes, expectation changes,
+unsupported markers, or pass/fail accounting.
 
 ## Read First
 
@@ -35,8 +35,14 @@ accounting.
 - Representative rows: `tests/c/external/gcc_torture/src/20140828-1.c` and
   `tests/c/external/gcc_torture/src/loop-2e.c`.
 - Target values: `%t6` in `src/20140828-1.c` and `%t23` in `src/loop-2e.c`.
-- Owned boundary: prepared/RV64 stack-carried pointer source publication and
-  materialization after terminator admission is no longer the first owner.
+- Owned boundary: the explicit producer-to-consumer authority chain needed for
+  prepared/RV64 stack-carried pointer source publication and materialization
+  after terminator admission is no longer the first owner.
+- Current first missing owner: LIR-to-BIR compare-operand pointer source
+  publication for address-valued operands, around
+  `src/backend/bir/lir_to_bir/memory/coordinator.cpp` dispatching `LirCmpOp`
+  to scalar lowering and
+  `src/backend/bir/lir_to_bir/scalar.cpp::lower_scalar_compare_inst`.
 
 ## Non-Goals
 
@@ -53,9 +59,13 @@ accounting.
 
 Idea 645 proved the fused pointer branch terminator shape can lower when the
 condition and exactly one compared pointer operand have explicit branch
-stack-load authority. The remaining representative rows now reach object
-emission but abort at runtime, which points to stale or unmaterialized
-stack-carried pointer source publication rather than terminator admission.
+stack-load authority. Step 3 packets added prepared/RV64 producer and consumer
+authority for explicit stack-carried pointer source selections. The remaining
+`src/20140828-1.c` `%t6` row now fails closed because semantic BIR compares
+`%t4` against `%t6` without a named `%t6 = %lv.a.0 + 2` producer or equivalent
+address-materialization fact. The next owner is upstream pointer-source
+publication for address-valued LIR compare operands, not RV64 terminator
+admission and not stack-offset reconstruction.
 
 ## Execution Rules
 
@@ -64,11 +74,15 @@ stack-carried pointer source publication rather than terminator admission.
   for both representative values before implementation.
 - Identify the producer, selected stack slot, source value, consumer branch,
   and publication or materialization point before changing code.
-- Add support only when explicit prepared facts prove the pointer source is
-  fresh and materialized at the selected consumer point.
+- Add support only when explicit semantic or prepared facts prove the pointer
+  source identity, freshness, selected stack home, and materialization at the
+  selected consumer point.
 - Preserve fail-closed diagnostics for missing source publication, stale stack
   slots, ambiguous pointer sources, mismatched homes, and unrelated branch
   shapes.
+- Do not reconstruct `%t6`-class pointer provenance in call preservation,
+  value-home classification, or RV64 codegen from stack offsets, source spelling,
+  final comparison shape, diagnostics, or testcase identity.
 - If refreshed evidence belongs to the direct-global branch boundary, request
   lifecycle switch to idea 654 instead of broadening this plan.
 
@@ -115,26 +129,57 @@ Completion check:
 - `todo.md` names the owned implementation surface, selected first family,
   focused proof target, and rejection behavior to preserve.
 
-### Step 3: Implement The Narrow Stack-Carried Pointer Rule
+### Step 3A: Publish LIR-to-BIR Compare Pointer Sources
 
-Goal: Repair one proven stack-carried pointer source publication or
-materialization owner without broad branch or stack rewrites.
+Goal: Give address-valued LIR compare operands a semantic pointer producer or
+equivalent address-materialization publication before prepared/prealloc builds
+value homes and call preservation.
 
 Actions:
 
-- Publish or consume explicit prepared facts for the selected stack-carried
-  pointer source only when the producer can prove freshness and materialization
-  at the consumer branch point.
-- Keep stale, missing, ambiguous, and mismatched pointer source states rejected
-  with precise diagnostics.
-- Add focused positive coverage for the selected semantic shape.
-- Add or preserve focused negative coverage for incomplete pointer source
-  publication and unrelated branch shapes.
+- Inspect `src/backend/bir/lir_to_bir/memory/coordinator.cpp` and
+  `src/backend/bir/lir_to_bir/scalar.cpp::lower_scalar_compare_inst` to locate
+  the narrow place where `LirCmpOp` address-valued operands are lowered through
+  `lower_value`.
+- Publish a named BIR producer or explicit address-materialization fact for
+  local-frame pointer compare operands only when the LIR operand carries a
+  structured local-slot base plus byte-offset source.
+- Preserve scalar compare lowering for non-pointer operands and unrelated
+  branch shapes.
+- Add focused positive coverage for a `%t6`-class local-frame pointer compare
+  operand that later needs stack-carried source selection.
+- Add fail-closed coverage for missing, ambiguous, stale, non-local, or
+  unsupported pointer source shapes.
 
 Completion check:
 
-- Fresh build plus focused proof passes, or lifecycle state records the exact
-  missing producer authority and parks or splits this route.
+- Fresh build plus focused LIR-to-BIR/BIR proof shows the `%t6`-class compare
+  operand has an explicit local-frame pointer source producer or address
+  materialization fact, without testcase-specific matching.
+
+### Step 3B: Connect Prepared And RV64 Stack-Carried Pointer Authority
+
+Goal: Carry the Step 3A pointer producer through prepared/prealloc preservation
+and consume it in RV64 without broad branch or stack rewrites.
+
+Actions:
+
+- Verify prepared/prealloc value homes and call preservation attach
+  `source_selection` for the real `%t6` stack-carried path from the Step 3A
+  producer, not from stack-slot inference.
+- Keep stale, missing, ambiguous, and mismatched pointer source states rejected
+  with precise diagnostics.
+- Preserve the explicit RV64 consumer path for prior stack-slot preservation
+  and reject stack-slot-only pointer branch operands.
+- Add or preserve focused positive and negative coverage for complete and
+  incomplete pointer source publication.
+
+Completion check:
+
+- Fresh build plus focused proof shows prepared output for
+  `src/20140828-1.c` carries `source_selection` for `%t6` value id `19` /
+  slot `#16+stack8`, and RV64 either materializes that explicit source or fails
+  closed on a precise missing-authority diagnostic.
 
 ### Step 4: Prove Representative Integration
 
@@ -145,8 +190,9 @@ Actions:
 
 - Rerun focused coverage plus the RV64 GCC torture backend route for
   `src/20140828-1.c` and `src/loop-2e.c`.
-- Capture prepared-BIR, object, disassembly, and runtime evidence showing the
-  consumed pointer source is fresh and materialized at the selected branch.
+- Capture BIR, prepared-BIR, object, disassembly, and runtime evidence showing
+  the consumed pointer source is explicit, fresh, and materialized at the
+  selected branch.
 - Record any distinct downstream owner if either representative advances but
   does not fully satisfy the source idea.
 
