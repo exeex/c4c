@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/659_rv64_byval_prepared_call_boundary.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Repair The Selected Publication Or Consumption Boundary
+Current Step ID: Step 4
+Current Step Title: Representative Runtime And Backend Regression Proof
 
 # Current Packet
 
@@ -26,9 +26,10 @@ published.
 
 ## Suggested Next
 
-Supervisor should run a same-scope `^backend_` before/after regression guard
-before committing this code slice, because the focused runtime proof is green
-and the packet requires broad guard coverage before commit.
+Run the focused Step 3 byval/prepared call-boundary subset from `plan.md`,
+including dump, route, runtime, and the intentionally separate object-runtime
+row, so the supervisor can decide whether remaining failures are in-family
+Step 2 work or should move to Step 4 broader validation.
 
 ## Watchouts
 
@@ -41,9 +42,8 @@ and the packet requires broad guard coverage before commit.
   their current output is useful positive evidence that prepared facts exist.
 - Keep the object-runtime `BinaryInst` unsupported-fragment row as a separate
   split unless the supervisor explicitly assigns object-route coverage.
-- The focused runtime subset now passes, but this slice is not commit-ready
-  until the supervisor runs or accepts a same-scope `^backend_` before/after
-  guard.
+- The focused runtime subset and supervisor same-scope `^backend_` guard both
+  passed for the committed runtime slice.
 - Avoid broad scalar `StoreLocalInst` fallbacks. A previous attempt that
   allowed mismatched or missing prepared accesses to fall back to the raw store
   slot made many unrelated local-memory routes fail.
