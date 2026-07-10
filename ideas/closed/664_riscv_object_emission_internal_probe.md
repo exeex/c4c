@@ -1,6 +1,6 @@
 # RISC-V Object Emission Internal Probe
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -65,6 +65,17 @@ supervisor-reported full-suite baseline candidate regressed from the accepted
 Those rows are outside this object-emission row-256 source scope, so follow-up
 ownership is split to `ideas/open/673_post_664_full_suite_regression_probe.md`
 instead of expanding this idea.
+
+## Closure Note 2026-07-10
+
+Closed after refreshing row 256 as passing and reconciling the post-664 split
+blockers through closed ideas 673 and 674. Close-readiness proof covered
+`backend_riscv_object_emission`,
+`backend_cli_riscv64_pointer_global_local_publication`, and
+`backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`; all
+three passed before and after, with no new failures. The strict guard only
+failed on unchanged pass count, and the lifecycle close guard passed with
+`--allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
