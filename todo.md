@@ -8,22 +8,27 @@ Current Step Title: Refresh Focused Evidence
 
 ## Just Finished
 
-Lifecycle activation created this executor scratchpad for Step 1 of `plan.md`.
+Step 1 of `plan.md` refreshed focused packed-local-member evidence. The
+delegated proof passed both focused rows:
+`backend_codegen_route_x86_64_packed_local_member_offsets_observe_semantic_bir`
+and `backend_rv64_runtime_packed_local_member_offsets`.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor with a supervisor-selected focused proof command
-for `backend_rv64_runtime_packed_local_member_offsets`.
+No first-owner repair is visible from the focused evidence. Ask the plan owner
+to decide whether this lifecycle state should close or retire because the
+target RV64 runtime row already passes.
 
 ## Watchouts
 
-- Do not hard-code offsets, field names, filenames, or final assembly shapes.
-- Keep static object-data, byval, callee-saved GPR, destination publication,
-  AArch64, CLI, RISC-V object emission, and LLVM torture work out of this
-  packet unless focused evidence proves the same first owner.
-- Do not change expectations, unsupported markers, allowlists, timeouts,
-  runtime policy, or baseline accounting.
+No diagnostic/runtime mismatch was visible in the focused proof. Avoid
+inventing an implementation packet unless broader supervisor review finds a
+remaining packed-local-member failure outside this focused subset.
 
 ## Proof
 
-Lifecycle-only activation. No build or test proof required yet.
+Ran:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_rv64_runtime_packed_local_member_offsets|backend_codegen_route_x86_64_packed_local_member_offsets_observe_semantic_bir)$' > test_after.log 2>&1`
+
+Result: passed. `test_after.log` is the preserved proof log. The proof was
+sufficient for this evidence-only Step 1 packet.
