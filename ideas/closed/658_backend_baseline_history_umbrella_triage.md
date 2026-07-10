@@ -1,6 +1,6 @@
 # Backend Baseline History Umbrella Triage
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and follow-up idea generator
 Parent: `ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md`
 Handoff Directory: `docs/backend_baseline_history_triage/`
@@ -143,6 +143,50 @@ The closure note must state which logs and evidence timestamps were used,
 which handoff docs were written, which follow-up ideas were generated, why
 they are ordered that way, and which baseline rows remain unassigned or
 intentionally deferred.
+
+## Closure Prep Note
+
+2026-07-10 Step 4 validated the umbrella handoff against the current evidence
+source `log/baseline_f3bf820c180dd4638ebd4db37e1223b759103665.log`
+from 2026-07-10 04:20:43, which reports `34/3397` failed. The handoff also
+uses `build/agent_state/657_step3_representative_pointer_value_store/summary.md`
+from 2026-07-10 04:18:53 as the current representative 657 evidence, superseding
+the older 2026-07-10 04:12:24 Step 4 mismatch summary unless fresh evidence
+proves otherwise.
+
+The umbrella wrote these durable handoff docs:
+
+- `docs/backend_baseline_history_triage/evidence_timeline.md`
+- `docs/backend_baseline_history_triage/failure_classification.md`
+- `docs/backend_baseline_history_triage/follow_up_order.md`
+
+The umbrella generated ordered follow-up ideas
+`ideas/open/659_rv64_byval_prepared_call_boundary.md` through
+`ideas/open/668_llvm_torture_20040709_research.md`. The order starts with
+the broadest producer/publication and shared call-boundary families, then
+moves through pointer-local, destination-publication, prepared contract/CLI,
+narrow object/runtime singleton owners, target-specific internal probes, and
+finally LLVM torture research. Existing ideas 647 and 655 remain the owners
+for prepared/prealloc stack-destination fan-in authority; existing idea 657
+remains the owner for the `loop-2e.c` representative writeback route, with
+the newer 04:18 representative pass preserved as current evidence.
+
+No current baseline rows are unassigned. Rows marked `blocked pending probe`
+were handed to probe-first follow-up ideas. Rows 1941 and 1942,
+`llvm_gcc_c_torture_src_20040709_2_c` and
+`llvm_gcc_c_torture_src_20040709_3_c`, remain intentionally deferred to the
+research-only follow-up `ideas/open/668_llvm_torture_20040709_research.md`
+because Step 2 did not prove a first implementation owner.
+
+Close accepted on 2026-07-10 after the supervisor supplied matching canonical
+backend regression logs. The close-gate check used `test_before.log` and
+`test_after.log` with
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`.
+The guard reported before `passed=336 failed=32 total=368`, after
+`passed=337 failed=32 total=369`, `new failing tests=0`, and `result: PASS`.
+Raw CTest for the backend subset remained nonzero because known backend
+failures remain, but the monotonic guard accepted the handoff as
+non-regressive for closure.
 
 ## Reviewer Reject Signals
 
