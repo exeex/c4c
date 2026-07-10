@@ -1,6 +1,6 @@
 # RV64 Packed Local Member Offsets
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -47,6 +47,21 @@ prepared object-data static storage and broader object-emission work.
 - The focused runtime row passes or fails closed with a precise diagnostic.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
+
+## Closure Note
+
+Closed because the focused target already passes under refreshed Step 1
+evidence, so no first-owner repair is visible or justified. The close-time
+same-scope regression guard compared `test_before.log` and `test_after.log`
+for:
+
+```bash
+ctest --test-dir build -j --output-on-failure -R '^(backend_rv64_runtime_packed_local_member_offsets|backend_codegen_route_x86_64_packed_local_member_offsets_observe_semantic_bir)$'
+```
+
+Result: 2/2 passed before, 2/2 passed after, no new failures. This satisfies
+the acceptance branch that the focused runtime row passes and preserves the
+route boundary by avoiding an invented implementation packet.
 
 ## Reviewer Reject Signals
 
