@@ -1,6 +1,6 @@
 # RV64 Loop-2e Indirect Store Writeback Runtime
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/653_stack_carried_pointer_source_publication_materialization.md`
 Related:
@@ -68,6 +68,22 @@ through the caller array, and `main` later reloads unchanged `q[39]`.
   dump/codegen/runtime, prepared BIR/CLI, and llvm torture coverage. Do not
   treat this deactivation as idea completion; reactivate only after the
   baseline is understood well enough to prove no new backend regressions.
+
+## Closure Notes
+
+- 2026-07-10: Closed after reactivation runbook
+  `657_rv64_loop_2e_indirect_store_writeback_runtime`. Fresh representative
+  evidence under
+  `build/agent_state/657_step1_reactivation_runtime_proof/summary.md` shows
+  `loop-2e.c` RV64 object runtime matching clang, with the explicit prepared
+  `base=pointer_value` access fact driving the caller-visible store while
+  local cursor writeback remains separate.
+- The completed `%t23` source publication and branch RHS authority stayed
+  intact in the refreshed evidence.
+- Close-time full-suite regression comparison reused canonical
+  `test_before.log` and `test_after.log`. Both logs report 3386 passed and 11
+  failed out of 3397 with the same failed tests; the regression guard passed in
+  non-decreasing mode with zero new failures against the accepted red baseline.
 
 ## Reviewer Reject Signals
 
