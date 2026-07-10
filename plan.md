@@ -11,7 +11,7 @@ evidence history before choosing implementation repair work.
 ## Goal
 
 Produce timestamp-grounded handoff docs and ordered follow-up ideas for the
-current `test_baseline.log` failure surface.
+current `log/baseline_*.log` failure surface.
 
 ## Core Rule
 
@@ -22,8 +22,14 @@ backward by file timestamp when history conflicts.
 ## Read First
 
 - `ideas/open/658_backend_baseline_history_umbrella_triage.md`
-- `test_baseline.log`
-- `test_before.log`
+- `log/baseline_f3bf820c180dd4638ebd4db37e1223b759103665.log`
+- `log/baseline_b5900d89fd30348c8e79901ce3e5e14875274d03.log`
+- `log/baseline_575142db412ec5e846e77a6abcef8a77d7e97d83.log`
+- `log/baseline_24c42f8da1ba7099134e97af222391de11ec5753.log`
+- `log/baseline_11ee2da0f73d9328066ae05b84d75028df1adce7.log`
+- `log/baseline_8a1ed1685aaa22a36153bc13c7acf08aeda05cd1.log`
+- `log/baseline_9ae9ddfce0163d04b7df19e956175a6c8ccb1083.log`
+- `log/baseline_0d937a44156ddf33c9df2691925d87e3f24a0978.log`
 - `build/agent_state/657_step3_representative_pointer_value_store/summary.md`
 - `build/agent_state/657_step4_representative_proof/summary.md`
 - `build/agent_state/agent_logs/agents_codex_iter_21_844333.log`
@@ -31,8 +37,8 @@ backward by file timestamp when history conflicts.
 ## Current Targets
 
 - Handoff directory: `docs/backend_baseline_history_triage/`
-- Current broad evidence: `test_baseline.log`
-- Matching backend proof baseline: `test_before.log`
+- Current broad evidence: newest `log/baseline_*.log`
+- Regression history: `log/baseline_*.log` sorted by modification time
 - Reverse-chronological evidence under `build/agent_state/`
 - Open idea queue under `ideas/open/`
 
@@ -47,12 +53,14 @@ backward by file timestamp when history conflicts.
 ## Working Model
 
 The current baseline is too noisy for one direct implementation route. The
-newest broad log reports 32 backend failures out of 368 backend tests plus two
-LLVM torture rows. The backend failures span multiple layers, so the first
-repair must be selected through ownership classification rather than named-row
-pressure. For 657-specific evidence, the newer 04:18 Step 3 representative
-summary supersedes the older 04:12 Step 4 representative summary unless a new
-probe proves otherwise.
+newest `log/baseline_*.log` reports 34 failures out of 3397 tests. The sorted
+history shows a clean baseline on 2026-07-09 12:47, then 13 failures at 15:56,
+20 at 17:57, 31 at 19:35, 32 at 22:53, and 34 from 2026-07-10 00:58 through
+04:20. The failures span multiple layers, so the first repair must be selected
+through ownership classification rather than named-row pressure. For
+657-specific evidence, the newer 04:18 Step 3 representative summary
+supersedes the older 04:12 Step 4 representative summary unless a new probe
+proves otherwise.
 
 ## Execution Rules
 
@@ -74,10 +82,11 @@ baseline triage.
 Actions:
 
 - Create `docs/backend_baseline_history_triage/evidence_timeline.md`.
-- List `test_baseline.log`, `test_before.log`, recent `build/agent_state/*`
-  summaries, and the latest agent log in descending timestamp order.
+- List `log/baseline_*.log`, recent `build/agent_state/*` summaries, and the
+  latest agent log in descending timestamp order.
 - Record the current failed backend and LLVM torture rows from
-  `test_baseline.log`.
+  the newest `log/baseline_*.log`.
+- Identify the failure-count change points in the sorted log history.
 - Explicitly reconcile the older 657 Step 4 representative mismatch with the
   newer 657 Step 3 representative pass.
 
@@ -93,7 +102,8 @@ Goal: Turn the noisy failure list into repairable ownership families.
 Actions:
 
 - Create `docs/backend_baseline_history_triage/failure_classification.md`.
-- Group every failed row from `test_baseline.log` by first owning layer.
+- Group every failed row from the newest `log/baseline_*.log` by first owning
+  layer.
 - Separate RV64 prepared destination/publication, pointer-local lowering,
   byval/prepared call-boundary, prepared object data/static storage,
   callee-saved GPR, packed local member, internal prepared BIR/CLI/AArch64,

@@ -15,7 +15,7 @@ baseline history triage.
 
 Execute Step 1: create
 `docs/backend_baseline_history_triage/evidence_timeline.md` from
-`test_baseline.log`, `test_before.log`, and reverse-chronological
+`log/baseline_*.log` sorted by modification time plus reverse-chronological
 `build/agent_state/` evidence. Treat newer files as authoritative when history
 conflicts.
 
@@ -23,6 +23,8 @@ conflicts.
 
 - Do not change implementation, tests, expectations, unsupported markers,
   allowlists, runtime behavior, or baseline acceptance state in this umbrella.
+- Use `ls -lt log/*` / timestamp sorting as the source of truth for baseline
+  history; do not use root-level `test_baseline.log` as the primary history.
 - Reconcile the older 657 Step 4 representative mismatch with the newer 657
   Step 3 representative pass before choosing repair order.
 - Every follow-up idea generated later must name one owning layer and include

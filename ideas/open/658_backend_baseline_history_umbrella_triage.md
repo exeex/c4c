@@ -5,8 +5,14 @@ Type: Umbrella triage and follow-up idea generator
 Parent: `ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md`
 Handoff Directory: `docs/backend_baseline_history_triage/`
 Related:
-- `test_baseline.log`
-- `test_before.log`
+- `log/baseline_f3bf820c180dd4638ebd4db37e1223b759103665.log`
+- `log/baseline_b5900d89fd30348c8e79901ce3e5e14875274d03.log`
+- `log/baseline_575142db412ec5e846e77a6abcef8a77d7e97d83.log`
+- `log/baseline_24c42f8da1ba7099134e97af222391de11ec5753.log`
+- `log/baseline_11ee2da0f73d9328066ae05b84d75028df1adce7.log`
+- `log/baseline_8a1ed1685aaa22a36153bc13c7acf08aeda05cd1.log`
+- `log/baseline_9ae9ddfce0163d04b7df19e956175a6c8ccb1083.log`
+- `log/baseline_0d937a44156ddf33c9df2691925d87e3f24a0978.log`
 - `build/agent_state/657_step3_representative_pointer_value_store/summary.md`
 - `build/agent_state/657_step4_representative_proof/summary.md`
 - `build/agent_state/agent_logs/agents_codex_iter_21_844333.log`
@@ -16,33 +22,36 @@ Related:
 
 ## Goal
 
-Use the current backend baseline logs and reverse-chronological evidence
-history to classify the noisy red backend/LLVM failure surface and generate
-ordered follow-up ideas that repair the current baseline problem without
-overfitting named tests.
+Use the timestamp-sorted `log/baseline_*.log` history and
+reverse-chronological evidence history to classify the noisy red backend/LLVM
+failure surface and generate ordered follow-up ideas that repair the current
+baseline problem without overfitting named tests.
 
 ## Why This Exists
 
-The latest active 657 runbook was deactivated because `test_baseline.log`
-contains too many failures to use as clean acceptance evidence. Directly fixing
-one named runtime case would be premature: the log surface spans RV64 dump,
-codegen, object runtime, prepared BIR/CLI, AArch64 backend internals, and two
-LLVM torture rows. Recent evidence is also time-sensitive: the 04:12 Step 4
-summary for 657 still reports a representative `loop-2e.c` runtime mismatch,
-while the later 04:18 Step 3 representative summary reports the same
-representative object-runtime comparison passing. This umbrella must prevent
-route drift by treating newer file timestamps as authoritative until proven
-otherwise.
+The latest active 657 runbook was deactivated because the newest
+`log/baseline_*.log` files contain too many failures to use as clean
+acceptance evidence. Directly fixing one named runtime case would be
+premature: the sorted log history shows a clean baseline on 2026-07-09 12:47,
+then 13 failures at 15:56, 20 at 17:57, 31 at 19:35, 32 at 22:53, and 34
+from 2026-07-10 00:58 through the newest 04:20 log. Recent evidence is also
+time-sensitive: the 04:12 Step 4 summary for 657 still reports a
+representative `loop-2e.c` runtime mismatch, while the later 04:18 Step 3
+representative summary reports the same representative object-runtime
+comparison passing. This umbrella must prevent route drift by treating newer
+file timestamps as authoritative until proven otherwise.
 
 ## Current Evidence
 
-- `test_baseline.log` from 2026-07-10 04:20:43 is the newest broad baseline
-  evidence. It reports `91% tests passed, 32 tests failed out of 368` for
-  backend coverage and also lists two `llvm_gcc_c_torture` failures.
-- `test_before.log` from 2026-07-10 04:18:29 is the matching earlier backend
-  proof baseline. Its failed backend set matches the 32 backend failures in
-  `test_baseline.log`; `test_baseline.log` additionally records the two LLVM
-  torture failures.
+- `log/baseline_f3bf820c180dd4638ebd4db37e1223b759103665.log` from
+  2026-07-10 04:20:43 is the newest broad baseline evidence. It reports
+  `99% tests passed, 34 tests failed out of 3397`.
+- Recent sorted history shows the failure count stayed at 34 for
+  2026-07-10 02:28 and 00:58, was 32 on 2026-07-09 22:53, was 31 at 19:35,
+  was 20 at 17:57, was 13 at 15:56, and was clean at 12:47.
+- The 34 current failures are the 32 backend rows also visible in the
+  root-level backend proof logs plus two `llvm_gcc_c_torture` rows:
+  `20040709_2.c` and `20040709_3.c`.
 - `build/agent_state/657_step3_representative_pointer_value_store/summary.md`
   from 2026-07-10 04:18:53 is newer than
   `build/agent_state/657_step4_representative_proof/summary.md` from
@@ -75,7 +84,7 @@ otherwise.
 
 - Implementing backend, frontend, test, expectation, allowlist, timeout, or
   runtime-policy changes inside this umbrella idea.
-- Accepting, rewriting, or weakening `test_baseline.log` as proof of progress.
+- Accepting, rewriting, or weakening baseline logs as proof of progress.
 - Mixing prepared producer repair, RV64 consumer lowering, AArch64 internals,
   CLI dump formatting, and LLVM torture diagnosis in one implementation idea.
 - Reopening 657 as the first repair target unless reverse-chronological
@@ -87,7 +96,7 @@ Follow-up ordering must be driven by evidence freshness first, then first
 owning layer, then breadth across the failed baseline rows. Start from the
 newest files and walk backward:
 
-1. `test_baseline.log` and `test_before.log`
+1. newest `log/baseline_*.log` files sorted by modification time
 2. newest `build/agent_state/*/summary.md` and related logs
 3. latest agent log handoff
 4. older source ideas or summaries only when newer evidence does not already
@@ -117,8 +126,9 @@ Generate these families unless fresh evidence proves a better split:
 
 - The handoff directory contains current evidence, reverse-chronological
   history, ownership classification, and follow-up ordering documents.
-- The documents agree that `test_baseline.log` is the broad current evidence
-  and explicitly state which newer evidence supersedes older summaries.
+- The documents agree that the newest `log/baseline_*.log` file is the broad
+  current evidence and explicitly state which newer evidence supersedes older
+  summaries.
 - Every failed row from the current baseline is assigned to an owning family or
   marked unassigned with a concrete next probe.
 - Follow-up ideas are generated under `ideas/open/`, ordered by dependency and
