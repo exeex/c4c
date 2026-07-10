@@ -14780,17 +14780,8 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                         stack_frame_bytes,
                                                         *size_bytes)
                .has_value()) {
-        std::ostringstream out;
-        out << "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"
-            << "; function=" << rv64_prepared_function_name(names, function_name)
-            << "; block=" << rv64_prepared_block_label(names, prepared_block_label)
-            << "; block_index=" << block_index
-            << "; instruction_index=" << instruction_index
-            << "; access_base="
-            << (access == nullptr
-                    ? std::string_view{"none"}
-                    : prepare::prepared_address_base_kind_name(access->address.base_kind));
-        return out.str();
+        return std::string{
+            "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
       }
       return std::nullopt;
     }
@@ -14862,17 +14853,8 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
              .has_value() &&
         !scalar_direct_global_local_access_is_supported() &&
         !string_constant_local_load_is_supported()) {
-      std::ostringstream out;
-      out << "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"
-          << "; function=" << rv64_prepared_function_name(names, function_name)
-          << "; block=" << rv64_prepared_block_label(names, prepared_block_label)
-          << "; block_index=" << block_index
-          << "; instruction_index=" << instruction_index
-          << "; access_base="
-          << (access == nullptr
-                  ? std::string_view{"none"}
-                  : prepare::prepared_address_base_kind_name(access->address.base_kind));
-      return out.str();
+      return std::string{
+          "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
     }
     return std::nullopt;
   };

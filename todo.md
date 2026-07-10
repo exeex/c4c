@@ -8,41 +8,41 @@ Current Step Title: Prove Regression Safety And Lifecycle Readiness
 
 ## Just Finished
 
-Step 4 of `plan.md` repaired two prepared local-memory/object-emission
-fail-open paths:
+Step 4 of `plan.md` classified and repaired the remaining first diagnostic
+exactness row after commit `f0cc218db`: `unsupported_local_memory_access` for
+`byval_stack_param` rejected correctly but returned the canonical base
+diagnostic with contextual suffix fields
+`; function=byval_stack_param; block=entry; block_index=0;
+instruction_index=0; access_base=pointer_value`.
 
-- selected prepared `PointerValue` local-memory facts now stay on the
-  pointer/byval validation path instead of falling through to
-  incoming-stack-formal load emission, and the stack-homed pointer-base
-  fallback requires prepared pointer-value local-memory authority before
-  loading a pointer home
-- fused pointer branch operands that are same-block named pointer temporaries
-  now require explicit prepared source materialization facts instead of falling
-  back to an older stack home when the materialization is missing or malformed
+Owner decision: this belongs to implementation diagnostic surface policy in
+`src/backend/mir/riscv/codegen/object_emission.cpp`, not to plan-owner or
+reviewer expectation churn. Both scalar and F64 local-memory address-shape
+rejection paths now return the canonical base
+`unsupported_local_memory_access` diagnostic while preserving the fail-closed
+category. No tests, expectations, unsupported markers, allowlists, timeout or
+runtime policy, baseline accounting, `plan.md`, or source idea files were
+edited.
 
-Evidence in `build/agent_state/664_step4_byval_pointer_probe/summary.md` shows
-the aggregate generic rejection count decreases from 2 to 1 and the first
-pre-repair generic owner was
-`rejects_prepared_fused_pointer_rhs_materialized_source_fail_closed_shapes()`.
+Evidence:
+`build/agent_state/664_step4_local_memory_diagnostic/summary.md` and
+`build/agent_state/664_step4_local_memory_diagnostic/gdb_first_postfix_fail.txt`.
 
 ## Suggested Next
 
-Suggested next packet: address the remaining first failure, now a byval
-diagnostic exactness mismatch where the object route rejects correctly but
-returns contextual
-`unsupported_local_memory_access...; function=byval_stack_param; ...;
-access_base=pointer_value` instead of the exact base diagnostic expected by the
-focused test. Keep the packet scoped to diagnostic surface policy unless the
-supervisor routes this to plan-owner/reviewer because expectation edits are out
-of executor scope.
+Suggested next packet: address the new first focused failure after diagnostic
+normalization, `expected prepared RV64 object path to reject`, mapped by gdb to
+`rejects_prepared_scalar_local_subobject_fail_closed_shapes()`. Start with the
+first subcase, where the prepared scalar local subobject fixture removes
+`address.frame_slot_id` but the RV64 object route still builds instead of
+failing closed with the local-memory diagnostic.
 
 ## Watchouts
 
-- Optimized backtraces fold helper names; precise untracked `-O0 -g` evidence
-  lives under `build/agent_state/664_step4_precise_first_generic/`.
-- The first remaining focused failure after this repair is not generic; it is
-  the byval diagnostic exactness mismatch recorded in
-  `build/agent_state/664_step4_precise_first_generic/gdb_first_fail_O0_after_object_patch.txt`.
+- Optimized backtraces may fold identical helper wrappers; the post-fix gdb
+  backtrace names the failing test function
+  `rejects_prepared_scalar_local_subobject_fail_closed_shapes()`, and the
+  source order points to the first mutation that clears `address.frame_slot_id`.
 - Later focused failures remain, including local-memory diagnostic exactness,
   pointer-value F64 local, sret stack-homed stores, call-argument publication
   ordering, string/direct-global diagnostics, and one remaining generic
@@ -58,12 +58,11 @@ of executor scope.
 Result: build passed; focused CTest still fails on
 `backend_riscv_object_emission`. `test_after.log` is the canonical proof log.
 
-Aggregate-visible delta: `expected prepared RV64 object path to reject`
-decreased from 2 occurrences in `test_before.log` to 1 occurrence in
-`test_after.log`; the first generic line from `test_before.log` was removed.
-Precise debug evidence:
-`build/agent_state/664_step4_precise_first_generic/gdb_first_fail_O0.txt` and
-`build/agent_state/664_step4_precise_first_generic/gdb_first_fail_O0_after_object_patch.txt`.
+Aggregate-visible delta: all
+`unsupported_local_memory_access` diagnostic exactness mismatch lines in
+`test_before.log` were removed from `test_after.log`. The focused aggregate
+still has one failing CTest row, and the first visible failure is now
+`expected prepared RV64 object path to reject`.
 
 Regression guard command:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
