@@ -1,6 +1,6 @@
 # LLVM Torture 20040709 Owner Discovery
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -96,6 +96,17 @@ result. It must not replace any required answer file.
   idea or require a new direct implementation idea.
 - No implementation files, test expectations, unsupported markers, allowlists,
   runtime behavior, active plan state, or lifecycle history are changed.
+
+## Closure Note
+
+Closed after the research package was completed and tracked in
+`docs/llvm_torture_20040709_owner_discovery/`. The focused close guard used
+matching CTest logs for `llvm_gcc_c_torture_src_20040709_2_c` and
+`llvm_gcc_c_torture_src_20040709_3_c`; strict mode failed only because the
+documentation-only slice did not increase the pass count, while
+`--allow-non-decreasing-passed` passed with zero new failures. The remaining
+implementation question is outside this research idea and should be activated
+only as a separate direct implementation initiative if requested later.
 
 ## Reviewer Reject Signals
 
