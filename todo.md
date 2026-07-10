@@ -82,3 +82,20 @@ Supervisor regression comparison:
 - Compared canonical `test_before.log` and `test_after.log` for the same
   backend subset using the non-decreasing guard. Both logs report 333 passed,
   32 failed, 365 total; no new failing tests and no newly slow tests.
+
+Plan-owner lifecycle decision:
+- Closure was considered for
+  `ideas/open/654_direct_global_stack_backed_pointer_branch_boundary.md`
+  after Steps 1-4 completed.
+- Source-idea completion is treated as satisfied for this runbook: the
+  direct-global stack-backed pointer branch boundary has focused semantic
+  positive/negative coverage, and the representative full object route is now
+  blocked earlier by out-of-scope `unsupported_call_abi` before reaching the
+  branch boundary.
+- Close gate rejected closure because
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+  exited 1: both backend logs report 333 passed, 32 failed, 365 total, with no
+  new failures, but the checker requires a strictly increased passed count.
+- Lifecycle state remains active pending supervisor decision on whether to
+  supply an acceptable close-gate proof, adjust the close-scope policy, or
+  leave the runbook parked behind the current backend baseline.
