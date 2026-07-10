@@ -8,29 +8,25 @@ Current Step Title: Repair The Selected Publication Or Consumption Boundary
 
 ## Just Finished
 
-Continued `plan.md` Step 2 by repairing the remaining RV64 caller aggregate
-local-store path and the adjacent prepared call-consumer register selection.
+Step 2 route-emission slice is complete and committed. RV64 prepared call text
+emission now reaches the byval/prepared call consumer for the three route rows,
+emits the 16-byte outgoing stack argument area for aggregate stack-copy calls,
+uses the correct ABI register for the following GPR argument, and emits the
+prepared immediate GPR argument path such as `li a2, 5`.
 
-Implemented function-aware local text frame-slot access selection so a caller
-`entry` store does not consume a same-index callee access. Added a scalar
-`StoreLocalInst` frame-slot fallback for prepared local aggregate field stores
-whose prepared access cannot be consumed directly. Adjusted RV64 prepared call
-emission so a byval stack-copy argument consumes `a0` and the following local
-frame-address GPR argument is emitted into its ABI register (`a1`) instead of
-overwriting `a0`.
-
-Result: complete for this packet. The two aggregate stack-copy route rows now
-reach the prepared call consumer and include `addi sp, sp, -16`; all three
-route rows in the delegated proof are green. The remaining failures are the
-three runtime rows, all returning `exit=1`.
+Rejected follow-up attempt: a runtime-focused patch made the three
+`backend_rv64_runtime_riscv64_byval_*` rows pass locally, but its local-store
+fallback caused broad backend regressions (`^backend_` dropped from
+`passed=343 failed=25 total=368` to `passed=320 failed=48 total=368`, with 27
+new failing tests). That code was removed before commit.
 
 ## Suggested Next
 
-Next packet should repair the RV64 runtime result/preservation boundary after
-the now-emitted byval calls. Start with the visible post-call restore pattern:
-`backend_codegen_route_riscv64_byval_formal_gpr_publication` had already shown
-`mv t0, s2` overwriting the call result, and the two aggregate runtime rows now
-also reach the call path but return `exit=1`.
+Next packet should repair the RV64 runtime result/preservation boundary for
+the three remaining runtime rows without broad local-store fallback. Start from
+the rejected attempt's useful observation: a preservation-republication guard
+alone was not enough, and broad direct `StoreLocalInst` fallback regressed
+unrelated local-memory routes.
 
 ## Watchouts
 
@@ -43,37 +39,25 @@ also reach the call path but return `exit=1`.
   their current output is useful positive evidence that prepared facts exist.
 - Keep the object-runtime `BinaryInst` unsupported-fragment row as a separate
   split unless the supervisor explicitly assigns object-route coverage.
-- The aggregate route rows now prove the caller local stores and byval
-  stack-copy call consumer; do not re-open that path unless a regression points
-  back to these selectors.
-- Runtime remains red outside this packet: all three runtime rows now return
-  `exit=1`, so the next owner is call result preservation/restore ordering, not
-  missing route emission.
+- The runtime rows still fail when only the committed route-emission slice is
+  present; do not claim them fixed until both the focused runtime subset and a
+  same-scope backend guard pass.
+- Avoid broad scalar `StoreLocalInst` fallbacks. A previous attempt that
+  allowed mismatched or missing prepared accesses to fall back to the raw store
+  slot made many unrelated local-memory routes fail.
+- The object-runtime row was not part of this packet and should remain a
+  separate owner unless the supervisor explicitly assigns shared helper work.
 
 ## Proof
 
-Ran exactly:
+Committed route-emission proof ran:
 
 ```sh
 cmake --build --preset default && (ctest --test-dir build -j --output-on-failure -R 'backend_(codegen_route_riscv64_byval_aggregate_fixed_call|codegen_route_riscv64_byval_preserved_pointer_args|codegen_route_riscv64_byval_formal_gpr_publication|rv64_runtime_riscv64_byval_aggregate_fixed_call|rv64_runtime_riscv64_byval_preserved_pointer_args|rv64_runtime_riscv64_byval_formal_gpr_publication)' > test_after.log; test -s test_after.log)
 ```
 
-Result: build succeeded, focused CTest is red with 3/6 failures, and
-`test_after.log` is populated. Passing rows:
-`backend_codegen_route_riscv64_byval_aggregate_fixed_call`,
-`backend_codegen_route_riscv64_byval_preserved_pointer_args`, and
-`backend_codegen_route_riscv64_byval_formal_gpr_publication`. Failing rows:
-the three `backend_rv64_runtime_*` rows, all with `exit=1`.
-
-Supervisor acceptance also ran a stash-based backend before/after guard:
-
-```sh
-cmake --build --preset default
-ctest --test-dir build -j --output-on-failure -R '^backend_' > test_before.log
-ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
-```
-
-Result: PASS. Before `passed=336 failed=32 total=368`; after
-`passed=343 failed=25 total=368`; resolved 7 backend rows; new failing tests:
-0.
+Result for the committed route slice: build succeeded, focused CTest was red
+with 3/6 failures, all three route rows passed, and all three runtime rows
+returned `exit=1`. A stash-based backend before/after guard passed with before
+`passed=336 failed=32 total=368`, after `passed=343 failed=25 total=368`, and
+new failing tests: 0.
