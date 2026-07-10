@@ -1,48 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/664_riscv_object_emission_internal_probe.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Reconcile Post-664 Split Evidence
+Current Step ID: 3
+Current Step Title: Prove Regression Safety And Lifecycle Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2, `Reconcile Post-664 Split Evidence`, by comparing the
-post-664 split closure notes from ideas 673 and 674 against the refreshed
-passing row-256 boundary. The old post-664 blocker is cleared for idea 664:
-idea 673 records row 139 repaired with no new failures and
-`backend_riscv_object_emission` still passing, while idea 674 records row 176
-closed with the three-row probe reaching `passed=3 failed=0 total=3` and row
-256 staying green. No current evidence requires a new open idea from this
-reconciliation packet.
+Completed plan Step 3, `Prove Regression Safety And Lifecycle Readiness`, by
+running the supervisor-selected close-readiness proof for row 256 plus the
+directly linked post-664 split rows 139 and 176. The focused build/test proof
+passed with all three tests green: `backend_riscv_object_emission`,
+`backend_cli_riscv64_pointer_global_local_publication`, and
+`backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`.
+Idea 664 is ready for plan-owner close review on this focused scope.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: prove regression safety and lifecycle readiness
-with the supervisor-selected close-readiness proof for row 256 and the directly
-linked post-664 split rows.
+Ask the plan owner to perform the lifecycle close decision for idea 664 using
+the passing Step 3 close-readiness proof.
 
 ## Watchouts
 
-- Keep the route scoped to row 256 RISC-V object-emission infrastructure and
-  close-readiness evidence.
-- Treat ideas 673 and 674 as cleared post-664 blocker evidence; do not reopen
-  them unless fresh proof shows row 256 shares a current first owner.
-- Do not touch transient review artifacts, expectations, unsupported markers,
-  allowlists, timeout policy, runtime policy, or baseline accounting.
-- Step 2 did not expose a current row-256 repair target or durable follow-up
-  idea; Step 3 should focus on close-readiness proof, not implementation.
+- Keep closure scoped to row 256 and the directly linked post-664 split rows
+  proven here.
+- No implementation, expectation, unsupported-marker, allowlist, timeout,
+  runtime-policy, baseline-accounting, source, plan, idea, or review artifact
+  changes were made by this executor packet.
+- `test_before.log` was intentionally left untouched per delegation;
+  `test_after.log` contains the fresh passing close-readiness proof.
 
 ## Proof
 
 Ran the delegated proof:
 
 ```sh
-(test -f ideas/closed/673_post_664_full_suite_regression_probe.md; test -f ideas/closed/674_rv64_object_terminator_lowering.md; rg -n "backend_riscv_object_emission.*remained passing|row 256.*stayed green|after `passed=3 failed=0 total=3`|no new failures" ideas/closed/673_post_664_full_suite_regression_probe.md ideas/closed/674_rv64_object_terminator_lowering.md; git diff --name-only -- todo.md) > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_cli_riscv64_pointer_global_local_publication|backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract)$') > test_after.log 2>&1
 ```
 
-Result: exit `0`; both closed idea files exist, the required closed-note
-evidence matched, and the scoped diff is limited to `todo.md`. The
-supervisor-selected evidence proof was sufficient for Step 2 reconciliation.
-Proof log: `test_after.log`.
+Result: exit `0`; build was up to date and CTest reported `100% tests passed,
+0 tests failed out of 3`.
+
+Test subset:
+
+- `backend_riscv_object_emission`
+- `backend_cli_riscv64_pointer_global_local_publication`
+- `backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`
+
+The supervisor-selected proof was sufficient for Step 3 close-readiness on row
+256 plus linked rows 139 and 176. Proof log: `test_after.log`.
