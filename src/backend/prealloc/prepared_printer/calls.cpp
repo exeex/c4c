@@ -163,6 +163,10 @@ std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   return std::string(prepared_register_bank_name(*bank));
 }
 
+std::string optional_size_text(const std::optional<std::size_t>& value) {
+  return value.has_value() ? std::to_string(*value) : std::string("<unknown>");
+}
+
 void append_register_placement(std::ostringstream& out,
                                std::string_view label,
                                const std::optional<PreparedRegisterPlacement>& placement) {
@@ -184,6 +188,60 @@ void append_spill_slot_placement(std::ostringstream& out,
   }
   out << " " << label << "=slot#" << placement->slot_id
       << "+stack" << placement->offset_bytes;
+}
+
+const PreparedSavedRegisterSlotPlacement* find_saved_register_slot_placement(
+    const PreparedFramePlanFunction& frame_plan,
+    const PreparedCallPreservedValue& preserved) {
+  if (preserved.route != PreparedCallPreservationRoute::CalleeSavedRegister ||
+      !preserved.register_bank.has_value() ||
+      !preserved.register_name.has_value() ||
+      !preserved.callee_saved_save_index.has_value()) {
+    return nullptr;
+  }
+
+  for (const auto& saved : frame_plan.saved_callee_registers) {
+    if (saved.bank == *preserved.register_bank &&
+        saved.register_name == *preserved.register_name &&
+        saved.save_index == *preserved.callee_saved_save_index &&
+        saved.slot_placement.has_value()) {
+      return &*saved.slot_placement;
+    }
+  }
+  return nullptr;
+}
+
+void append_saved_register_slot_placement(
+    std::ostringstream& out,
+    const PreparedSavedRegisterSlotPlacement* placement) {
+  if (placement == nullptr) {
+    return;
+  }
+
+  out << " slot_placement=";
+  if (placement->slot_id.has_value()) {
+    out << "slot#" << *placement->slot_id;
+  } else {
+    out << "<none>";
+  }
+  out << "+stack" << optional_size_text(placement->stack_offset_bytes)
+      << " slot_size=" << optional_size_text(placement->size_bytes)
+      << " slot_align=" << optional_size_text(placement->align_bytes)
+      << " fixed_location=" << (placement->fixed_location ? "yes" : "no")
+      << " slot_reg=" << prepared_register_bank_name(placement->bank)
+      << ":" << placement->register_name
+      << " slot_save_index=" << placement->save_index
+      << " slot_width=" << placement->contiguous_width;
+  if (!placement->occupied_register_names.empty()) {
+    out << " slot_units=";
+    for (std::size_t index = 0; index < placement->occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        out << ",";
+      }
+      out << placement->occupied_register_names[index];
+    }
+  }
+  append_register_placement(out, "slot_register_placement", placement->register_placement);
 }
 
 void append_register_occupancy(std::ostringstream& out,
@@ -499,6 +557,7 @@ void append_aggregate_transport_plan(
 void append_call_plans(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-call-plans ---\n";
   for (const auto& function_plan : module.call_plans.functions) {
+    const auto* frame_plan = find_prepared_frame_plan(module, function_plan.function_name);
     out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
         << "\n";
     for (const auto& call : function_plan.calls) {
@@ -673,6 +732,10 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (preserved.source_selection.has_value()) {
           append_call_argument_source_selection(
               out, module.names, *preserved.source_selection);
+        }
+        if (frame_plan != nullptr) {
+          append_saved_register_slot_placement(
+              out, find_saved_register_slot_placement(*frame_plan, preserved));
         }
         out << "\n";
       }

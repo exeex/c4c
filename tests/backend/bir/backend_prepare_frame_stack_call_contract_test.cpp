@@ -6317,8 +6317,9 @@ int check_riscv_fpr_abi_frame_fact_contract() {
           "source_literal=0x40800000") == std::string::npos ||
       prepared_dump.find("dest_placement=fpr:call_argument#0/w1 dest_reg=fa0 "
                          "dest_bank=fpr") == std::string::npos ||
-      prepared_dump.find("preserve value=float.carry value_id=1 "
-                         "route=callee_saved_register") == std::string::npos ||
+      prepared_dump.find("preserve value=float.carry value_id=" +
+                         std::to_string(carry->value_id) +
+                         " route=callee_saved_register") == std::string::npos ||
       prepared_dump.find(expected_saved) == std::string::npos) {
     return fail("rv64 FPR ABI/frame fact contract: prepared dump hides FPR facts");
   }
