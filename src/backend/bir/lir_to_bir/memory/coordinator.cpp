@@ -19,6 +19,7 @@ using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using LocalPointerArrayBase = BirFunctionLowerer::LocalPointerArrayBase;
 using PointerAddress = BirFunctionLowerer::PointerAddress;
 using lir_to_bir_detail::GlobalInfo;
+using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
 
@@ -198,10 +199,70 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         value_aliases[std::string(result_name)] =
             bir::Value::named(bir::TypeKind::Ptr, std::string(slot_name));
       };
+  const auto publish_local_pointer_compare_operand =
+      [&](const c4c::codegen::lir::LirOperand& operand) -> bool {
+        if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+            value_aliases.find(operand.str()) != value_aliases.end()) {
+          return true;
+        }
+        const bool is_tracked_local_pointer =
+            local_pointer_slots.find(operand.str()) != local_pointer_slots.end() ||
+            local_slot_pointer_values.find(operand.str()) != local_slot_pointer_values.end();
+        if (!is_tracked_local_pointer) {
+          return true;
+        }
+
+        const auto pointer_address = resolve_runtime_pointer_address(operand.str());
+        if (!pointer_address.has_value() ||
+            pointer_address->base_value.kind != bir::Value::Kind::Named ||
+            pointer_address->base_value.type != bir::TypeKind::Ptr) {
+          return false;
+        }
+
+        const auto result = bir::Value::named(bir::TypeKind::Ptr, operand.str());
+        if (pointer_address->byte_offset == 0) {
+          value_aliases[operand.str()] = pointer_address->base_value;
+          return true;
+        }
+
+        lowered_insts->push_back(bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Add,
+            .result = result,
+            .operand_type = bir::TypeKind::Ptr,
+            .lhs = pointer_address->base_value,
+            .rhs = bir::Value::immediate_i64(
+                static_cast<std::int64_t>(pointer_address->byte_offset)),
+        });
+        value_aliases[operand.str()] = result;
+        pointer_value_addresses[operand.str()] = PointerAddress{
+            .base_value = result,
+            .value_type = pointer_address->value_type,
+            .byte_offset = 0,
+            .dynamic_element_count = pointer_address->dynamic_element_count,
+            .dynamic_element_stride_bytes = pointer_address->dynamic_element_stride_bytes,
+            .storage_type_text = pointer_address->storage_type_text,
+            .type_text = pointer_address->type_text,
+            .loaded_pointer_value_type = pointer_address->loaded_pointer_value_type,
+            .loaded_pointer_type_text = pointer_address->loaded_pointer_type_text,
+            .aarch64_variadic_fp_register_save_area =
+                pointer_address->aarch64_variadic_fp_register_save_area,
+            .loaded_pointer_aarch64_variadic_fp_register_save_area =
+                pointer_address->loaded_pointer_aarch64_variadic_fp_register_save_area,
+            .provenance = pointer_value_base_provenance(result),
+        };
+        return true;
+      };
   if (const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst)) {
     if (cmp->is_float &&
         cmp->predicate.typed() == c4c::codegen::lir::LirCmpPredicate::Uno) {
       return fail_unordered_float_compare();
+    }
+    const auto operand_type = cmp->is_float ? lower_scalar_or_function_pointer_type(cmp->type_str.str())
+                                            : lower_integer_type(cmp->type_str.str());
+    if (operand_type == bir::TypeKind::Ptr &&
+        (!publish_local_pointer_compare_operand(cmp->lhs) ||
+         !publish_local_pointer_compare_operand(cmp->rhs))) {
+      return fail_scalar_binop();
     }
     const auto scalar_result =
         lower_scalar_family_inst(inst, value_aliases, compare_exprs, lowered_insts);

@@ -305,6 +305,9 @@ int expect_runtime_memcpy_pointer_destination_publishes_memory_effect();
 int expect_runtime_memcpy_global_gep_source_publishes_memory_effect();
 int expect_runtime_memset_global_destination_publishes_memory_effect();
 int expect_runtime_memset_pointer_destination_publishes_memory_effect();
+int expect_local_array_compare_operand_publishes_pointer_source();
+int expect_nonlocal_compare_operand_does_not_publish_local_pointer_source();
+int expect_local_array_compare_operand_rejects_out_of_range_source();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -1300,6 +1303,157 @@ int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base() {
   }
   if (!saw_pointer_base_load) {
     return fail("incremented pointer-carrier dereference should load from the current pointer base");
+  }
+  return 0;
+}
+
+LirModule make_local_array_pointer_compare_module(std::string index_operand,
+                                                  std::string function_name) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = std::move(function_name);
+  function.signature_text = "define i32 @" + function.name + "(ptr %incoming)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  c4c::TypeSpec pointer_type{};
+  pointer_type.base = c4c::TB_VOID;
+  pointer_type.ptr_level = 1;
+  function.params.push_back({"%incoming", pointer_type});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.a"),
+      .type_str = "[2 x i16]",
+      .count = LirOperand(""),
+      .align = 2,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%rhs"),
+      .element_type = "i16",
+      .ptr = LirOperand("%lv.a"),
+      .inbounds = true,
+      .indices = {std::move(index_operand)},
+  });
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%cmp"),
+      .is_float = false,
+      .predicate = c4c::codegen::lir::LirCmpPredicateRef("ne"),
+      .type_str = "ptr",
+      .lhs = LirOperand("%incoming"),
+      .rhs = LirOperand("%rhs"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("0"),
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_array_compare_operand_publishes_pointer_source() {
+  auto result = try_lower_to_bir_with_options(
+      make_local_array_pointer_compare_module("i64 1",
+                                              "local_array_compare_operand_source"),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("local array pointer compare source fixture should lower to BIR");
+  }
+
+  const auto& insts = result.module->functions.front().blocks.front().insts;
+  bool saw_pointer_source = false;
+  bool saw_compare_consuming_source = false;
+  for (const auto& inst : insts) {
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+        binary != nullptr && binary->result.name == "%rhs" &&
+        binary->opcode == bir::BinaryOpcode::Add &&
+        binary->operand_type == bir::TypeKind::Ptr &&
+        binary->lhs.kind == bir::Value::Kind::Named &&
+        binary->lhs.name == "%lv.a.0" &&
+        binary->rhs.kind == bir::Value::Kind::Immediate &&
+        binary->rhs.immediate == 2) {
+      saw_pointer_source = true;
+    }
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+        binary != nullptr && binary->result.name == "%cmp" &&
+        binary->opcode == bir::BinaryOpcode::Ne &&
+        binary->operand_type == bir::TypeKind::Ptr &&
+        binary->rhs.kind == bir::Value::Kind::Named &&
+        binary->rhs.name == "%rhs") {
+      saw_compare_consuming_source = true;
+    }
+  }
+
+  if (!saw_pointer_source || !saw_compare_consuming_source) {
+    return fail("local array pointer compare operand should publish a named pointer source");
+  }
+  return 0;
+}
+
+int expect_nonlocal_compare_operand_does_not_publish_local_pointer_source() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  c4c::TypeSpec pointer_type{};
+  pointer_type.base = c4c::TB_VOID;
+  pointer_type.ptr_level = 1;
+
+  LirFunction function;
+  function.name = "nonlocal_compare_operand_source";
+  function.signature_text =
+      "define i32 @nonlocal_compare_operand_source(ptr %lhs, ptr %rhs)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.params.push_back({"%lhs", pointer_type});
+  function.params.push_back({"%rhs", pointer_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%cmp"),
+      .is_float = false,
+      .predicate = c4c::codegen::lir::LirCmpPredicateRef("ne"),
+      .type_str = "ptr",
+      .lhs = LirOperand("%lhs"),
+      .rhs = LirOperand("%rhs"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("0"),
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("nonlocal pointer compare fixture should remain supported");
+  }
+
+  for (const auto& inst : result.module->functions.front().blocks.front().insts) {
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+        binary != nullptr && binary->result.name == "%rhs" &&
+        binary->opcode == bir::BinaryOpcode::Add &&
+        binary->operand_type == bir::TypeKind::Ptr) {
+      return fail("nonlocal pointer compare operand should not publish local source");
+    }
+  }
+  return 0;
+}
+
+int expect_local_array_compare_operand_rejects_out_of_range_source() {
+  auto result = try_lower_to_bir_with_options(
+      make_local_array_pointer_compare_module("i64 2",
+                                              "bad_local_array_compare_operand_source"),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("out-of-range local array compare source should fail closed");
+  }
+  if (!contains_note(
+          result.notes,
+          "function",
+          "failed in gep local-memory semantic family")) {
+    return fail("out-of-range local array compare source should report GEP family failure");
   }
   return 0;
 }
@@ -15220,6 +15374,24 @@ int main() {
           expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
       string_pointer_carrier_load_status != 0) {
     return string_pointer_carrier_load_status;
+  }
+
+  if (const int local_array_compare_source_status =
+          expect_local_array_compare_operand_publishes_pointer_source();
+      local_array_compare_source_status != 0) {
+    return local_array_compare_source_status;
+  }
+
+  if (const int nonlocal_compare_source_status =
+          expect_nonlocal_compare_operand_does_not_publish_local_pointer_source();
+      nonlocal_compare_source_status != 0) {
+    return nonlocal_compare_source_status;
+  }
+
+  if (const int bad_local_array_compare_source_status =
+          expect_local_array_compare_operand_rejects_out_of_range_source();
+      bad_local_array_compare_source_status != 0) {
+    return bad_local_array_compare_source_status;
   }
 
   if (const int string_literal_pointer_publication_status =
