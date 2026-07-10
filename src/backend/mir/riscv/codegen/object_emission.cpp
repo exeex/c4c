@@ -4256,6 +4256,136 @@ append_rv64_direct_global_pointer_branch_source_to_register(
   return Rv64StackCarriedPointerSourceMoveStatus::Appended;
 }
 
+Rv64StackCarriedPointerSourceMoveStatus
+append_rv64_same_block_load_local_pointer_branch_source_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedValueHome* operand_home,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Value& value,
+    c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || operand_home == nullptr ||
+      value.kind != bir::Value::Kind::Named || value.name.empty() ||
+      value.type != bir::TypeKind::Ptr ||
+      operand_home->value_id == prepare::PreparedValueId{0} ||
+      operand_home->value_name == c4c::kInvalidValueName ||
+      operand_home->function_name == c4c::kInvalidFunctionName ||
+      block_label_id == c4c::kInvalidBlockLabel ||
+      block_index >= function.blocks.size()) {
+    return Rv64StackCarriedPointerSourceMoveStatus::NotApplicable;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName ||
+      value_name != operand_home->value_name) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+
+  const auto& block = function.blocks[block_index];
+  const auto end = std::min(terminator_instruction_index, block.insts.size());
+  const bir::LoadLocalInst* selected_load = nullptr;
+  std::size_t selected_index = 0;
+  for (std::size_t index = 0; index < end; ++index) {
+    const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[index]);
+    if (load == nullptr ||
+        load->result.kind != bir::Value::Kind::Named ||
+        load->result.name != value.name ||
+        load->result.type != bir::TypeKind::Ptr) {
+      continue;
+    }
+    if (selected_load != nullptr) {
+      return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+    }
+    selected_load = load;
+    selected_index = index;
+  }
+  if (selected_load == nullptr) {
+    return Rv64StackCarriedPointerSourceMoveStatus::NotApplicable;
+  }
+
+  const auto result_value_name = names.value_names.find(selected_load->result.name);
+  if (result_value_name == c4c::kInvalidValueName ||
+      result_value_name != operand_home->value_name) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+  const auto value_id_it = lookups->value_homes.value_ids.find(result_value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end() ||
+      value_id_it->second != operand_home->value_id) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(operand_home->value_id);
+  if (home_it == lookups->value_homes.homes_by_id.end() ||
+      home_it->second == nullptr ||
+      home_it->second != operand_home ||
+      home_it->second->function_name != operand_home->function_name ||
+      home_it->second->value_name != operand_home->value_name) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &lookups->memory_accesses, block_label_id, selected_index);
+  if (access == nullptr ||
+      access->function_name != operand_home->function_name ||
+      access->block_label != block_label_id ||
+      access->inst_index != selected_index ||
+      access->result_value_name !=
+          std::optional<c4c::ValueNameId>{operand_home->value_name} ||
+      access->stored_value_name.has_value()) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+  const auto* accesses_by_id =
+      prepare::find_indexed_prepared_memory_accesses_by_result_value_id(
+          &lookups->memory_accesses, operand_home->value_id);
+  bool found_exact_access = false;
+  if (accesses_by_id != nullptr) {
+    for (const auto* candidate : *accesses_by_id) {
+      if (candidate == nullptr ||
+          candidate->function_name != operand_home->function_name ||
+          candidate->block_label != block_label_id ||
+          candidate->result_value_name !=
+              std::optional<c4c::ValueNameId>{operand_home->value_name}) {
+        continue;
+      }
+      if (candidate->inst_index != selected_index) {
+        return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+      }
+      found_exact_access = found_exact_access || candidate == access;
+    }
+  }
+  if (!found_exact_access ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      access->address.size_bytes != 8 ||
+      access->address.align_bytes < 8 ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+
+  const auto offset = prepared_frame_slot_absolute_byte_offset(stack_layout,
+                                                              access,
+                                                              stack_frame_bytes,
+                                                              8);
+  if (!offset.has_value() ||
+      !append_rv64_load_stack_offset_to_register(fragment,
+                                                destination,
+                                                *offset,
+                                                8)) {
+    return Rv64StackCarriedPointerSourceMoveStatus::Invalid;
+  }
+  return Rv64StackCarriedPointerSourceMoveStatus::Appended;
+}
+
 bool block_defines_named_pointer_before(
     const c4c::backend::bir::Function& function,
     std::size_t block_index,
@@ -4375,6 +4505,26 @@ bool append_rv64_move_pointer_branch_operand_to_register(
     return true;
   }
   if (direct_global == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
+    return false;
+  }
+  const auto same_block_load =
+      append_rv64_same_block_load_local_pointer_branch_source_to_register(
+          fragment,
+          destination,
+          stack_layout,
+          names,
+          lookups,
+          operand_home,
+          function,
+          value,
+          block_label_id,
+          block_index,
+          terminator_instruction_index,
+          stack_frame_bytes);
+  if (same_block_load == Rv64StackCarriedPointerSourceMoveStatus::Appended) {
+    return true;
+  }
+  if (same_block_load == Rv64StackCarriedPointerSourceMoveStatus::Invalid) {
     return false;
   }
   if (block_defines_named_pointer_before(function,

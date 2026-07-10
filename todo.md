@@ -8,51 +8,35 @@ Current Step Title: Implement The Focused Terminator Lowering
 
 ## Just Finished
 
-Step 2 selected the semantic implementation owner without implementation,
-test, expectation, marker, allowlist, runtime-policy, baseline, `plan.md`, or
-source-idea edits. Evidence is under
-`build/agent_state/674_step2_terminator_boundary/`.
+Step 3 implemented the focused same-block `LoadLocalInst` pointer branch
+operand source in
+`src/backend/mir/riscv/codegen/object_emission.cpp`. The new helper is called
+from `append_rv64_move_pointer_branch_operand_to_register(...)` after the
+existing stack-carried/materialized/direct-global pointer source routes and
+before `block_defines_named_pointer_before(...)`, so row 176's LHS `%t10`
+can be materialized from its prepared local frame-slot load instead of being
+rejected only because it is defined earlier in the same block.
 
-The row 176 shape reaches the intended top-level path:
-`fragment_for_prepared_terminator(...)` finds the prepared fused pointer branch
-and calls `fragment_for_prepared_fused_pointer_branch(...)`. The current path
-does not reject because of terminator dispatch, label relocation, compare
-predicate support, prepared fact production, or missing condition/RHS
-branch-stack-load authority.
+The route is semantic and fail-closed: it requires a unique prior same-block
+`LoadLocalInst` pointer producer, matching result spelling/type, matching
+prepared value name/id/home/function, exact indexed prepared memory-access
+facts for the producer block/instruction/result, default nonvolatile frame-slot
+base-plus-offset addressing, 8-byte size, at-least-8-byte alignment, and an
+encodable prepared frame-slot stack offset. It rejects missing, ambiguous,
+mismatched, volatile, wrong-address-space, wrong-size, non-frame-slot, or
+post-terminator producer shapes.
 
-The real rejection is in
-`append_rv64_move_pointer_branch_operand_to_register(...)` for the LHS `%t10`.
-`%t10` is a same-block `LoadLocalInst` pointer result from `main`/`entry` inst
-4 with prepared memory access `base=frame_slot result=%t10 frame_slot=#8
-offset=0 size=8 align=8`, and it is register-homed in `main` as value_id 15
-(`reg=t0`). Existing pointer-source routes cover stack-carried sources,
-materialized frame-slot pointer sources, and direct-global pointer sources, but
-not a plain same-block local-memory load result. After those routes return
-not-applicable, `block_defines_named_pointer_before(...)` sees that `%t10` is
-defined before the terminator and returns `false` before the generic
-register/formal-stack fallback can use it.
-
-Selected owner for Step 3: add a narrowly scoped same-block `LoadLocalInst`
-pointer operand materialization rule inside the fused pointer branch operand
-helper, before the same-block-definition guard. The rule should identify a
-unique prior same-block load-local producer for the requested pointer operand,
-require function-local value-home/value-id agreement, require prepared
-memory-access facts for that exact block/instruction/result, and emit the value
-into the branch scratch register using existing prepared local-memory/frame-slot
-semantics. This keeps the repair semantic and avoids row-name or testcase-shape
-matching.
+Evidence is under
+`build/agent_state/674_step3_terminator_lowering/`. Before evidence from Step
+1 recorded row 176 failing with `unsupported_terminator_fragment` while row 256
+passed; after this packet, row 176 and row 256 both pass the focused proof and
+the comparable two-row regression guard.
 
 ## Suggested Next
 
-Execute Step 3 by implementing the same-block load-local pointer branch operand
-source in `src/backend/mir/riscv/codegen/object_emission.cpp`, preferably as a
-small helper called by `append_rv64_move_pointer_branch_operand_to_register(...)`
-after the existing stack-carried/materialized/direct-global pointer source
-routes and before `block_defines_named_pointer_before(...)`. Add focused
-internal coverage near the existing fused pointer branch object tests for the
-condition-plus-RHS-stack branch whose LHS is a same-block load-local pointer
-result, plus fail-closed variants for missing, ambiguous, or mismatched
-load-local facts.
+Execute Step 4 with the supervisor-selected broader regression-safety proof and
+then ask the plan owner to decide whether idea 674 is ready to close. Treat the
+current row 176 improvement as focused proof only until the Step 4 gate is run.
 
 ## Watchouts
 
@@ -61,33 +45,24 @@ load-local facts.
 - Do not edit expectations, unsupported markers, allowlists, runtime policy, or
   baseline accounting.
 - Reject testcase-shaped lowering tied only to the row 176 test name.
-- Keep malformed/sibling shapes fail-closed: no unique prior same-block
-  `LoadLocalInst`; producer result spelling/type/value-id/home mismatch;
-  homonymous values from another function such as the unrelated `%t10` in
-  `writeback_callee`; missing/ambiguous/volatile/wrong-size/wrong-address-space
-  or non-frame-slot prepared local-memory facts; producer at or after the
-  terminator; multiple candidate loads; unsupported binary/select/cast/phi/call
-  or global-load producers not already owned by an existing semantic route; and
-  unavailable required branch stack-load authority.
+- The Step 3 helper intentionally does not own binary/select/cast/phi/call or
+  global-load same-block pointer producers; those remain unsupported unless an
+  existing semantic source route owns them.
 - Guard row 256 must remain a guard, not the active owner.
 - Do not broaden `fragment_for_prepared_terminator(...)`: it already dispatches
   row 176 into the fused pointer branch path.
 
 ## Proof
 
-Inspection-only packet; no implementation proof was delegated or run.
-Evidence captures these inspection commands under
-`build/agent_state/674_step2_terminator_boundary/`:
+Delegated proof passed and wrote canonical `test_after.log`:
 
-- `rg -n "fragment_for_prepared_terminator|fragment_for_prepared_fused_pointer_branch|append_rv64_move_pointer_branch_operand_to_register|BranchStackLoad|branch stack|stack-load|stack_load" src/backend/mir/riscv/codegen/object_emission.cpp`
-- `sed -n '4315,4390p' src/backend/mir/riscv/codegen/object_emission.cpp`
-- `sed -n '13601,13725p' src/backend/mir/riscv/codegen/object_emission.cpp`
-- `sed -n '13726,13985p' src/backend/mir/riscv/codegen/object_emission.cpp`
-- `sed -n '2499,2648p' src/backend/prealloc/publication_plans.cpp`
-- `sed -n '2677,3020p' src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`
-- `rg -n "home %t10|home %t12|home %t13|branch_condition entry|branch_stack_load_authority function=main block=entry|access block=entry inst_index=4|address_materialization block=entry inst_index=5|storage %t10|storage %t12|storage %t13" build/agent_state/674_step1_terminator_evidence/dump_prepared_bir.txt`
+`cmake --build --preset default --target c4cll backend_riscv_object_emission_test -j 2 && ctest --test-dir build -j --output-on-failure -R '^(backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`
 
-Suggested Step 3 proof command:
-`cmake --build --preset default --target c4cll backend_riscv_object_emission_test -j 2`
-then
-`ctest --test-dir build -j --output-on-failure -R '^(backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`.
+Result:
+
+- Row 176 `backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`: passed.
+- Row 256 `backend_riscv_object_emission`: passed.
+- Comparable before evidence: `build/agent_state/674_step3_terminator_lowering/test_before.log`.
+- After evidence: `build/agent_state/674_step3_terminator_lowering/test_after.log`.
+- Regression guard result: passed (`passed=1 failed=1 total=2` before,
+  `passed=2 failed=0 total=2` after), resolving row 176 with no new failures.
