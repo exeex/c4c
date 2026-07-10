@@ -1,6 +1,6 @@
 # Direct-Global Stack-Backed Pointer Branch Boundary
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/645_rv64_branch_residual_terminator_fragment_lowering.md`
 Related:
@@ -76,3 +76,15 @@ boundary, not the condition-plus-one-stack-operand family closed by idea 645.
   accounting changes as capability progress.
 - Reject helper renames or diagnostic-only edits that leave
   `unsupported_terminator_fragment` as the effective first owner.
+
+## Completion Note
+
+Closed after active runbook Steps 1-4 completed. The direct-global
+stack-backed pointer branch boundary has focused semantic positive/negative
+coverage; representative `src/20000314-3.c` object evidence now stops earlier
+at the out-of-scope `unsupported_call_abi` owner before reaching this branch
+boundary. Canonical backend subset logs were accepted with the documented
+non-decreasing regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+reported 333 passed, 32 failed, 365 total both before and after, with no new
+failing tests and result PASS.
