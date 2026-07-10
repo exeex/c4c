@@ -34,11 +34,19 @@ CLI/expectation/regalloc/materializer guessing was introduced.
 
 ## Suggested Next
 
-Decide whether the intended contract is a richer BIR representation for
-AArch64 variadic HFA overflow publication sources when a carrier straddles the
-FP register boundary. The next implementation packet should model that
-relationship explicitly in BIR lowering before re-opening prepared/prealloc
-consumers.
+Continue Step 3 inside active idea 665. Row 322 remains in-scope because the
+new first failure is the AArch64 prepared-BIR publication owner named by the
+source idea: semantic `lir_to_bir` direct-call lowering now lacks a precise BIR
+source representation for an AArch64 variadic HFA carrier that straddles the FP
+register boundary and overflows to stack.
+
+Delegate a bounded BIR-representation implementation packet before moving to
+Step 4. The packet should model the straddling carrier's publication/source
+relationship explicitly in BIR lowering, preserve the fail-closed diagnostic
+for unsupported shapes, and only then re-open prepared/prealloc consumers. Do
+not split or reroute row 322 unless fresh evidence proves the missing
+representation is generic prepared/CLI exposure rather than AArch64
+publication.
 
 ## Watchouts
 
@@ -47,6 +55,9 @@ consumers.
   proves a wider prepared-formal rule is required.
 - Row 322 is now fail-closed inside the BIR lowering owner rather than emitting
   stale `call.args` and `arg_sources`.
+- Lifecycle decision: keep row 322 in Step 3 as an AArch64 BIR publication
+  representation repair; do not move to Step 4 until this bounded packet is
+  attempted or proves the owner is different.
 - Do not repair row 322 by making `append_call_arg_move_resolution` reinterpret
   `arg_index` after BIR has already assigned the wrong value to that index.
 - Do not repair row 322 through CLI text formatting, expectation edits,
