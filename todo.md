@@ -8,25 +8,25 @@ Current Step Title: Repair The Selected Publication Or Consumption Boundary
 
 ## Just Finished
 
-Step 2 route-emission slice is complete and committed. RV64 prepared call text
-emission now reaches the byval/prepared call consumer for the three route rows,
-emits the 16-byte outgoing stack argument area for aggregate stack-copy calls,
-uses the correct ABI register for the following GPR argument, and emits the
-prepared immediate GPR argument path such as `li a2, 5`.
+Step 2 runtime-boundary probe did not land code. The focused runtime rows
+remain red from the clean committed route slice:
+`backend_rv64_runtime_riscv64_byval_aggregate_fixed_call`,
+`backend_rv64_runtime_riscv64_byval_preserved_pointer_args`, and
+`backend_rv64_runtime_riscv64_byval_formal_gpr_publication`.
 
-Rejected follow-up attempt: a runtime-focused patch made the three
-`backend_rv64_runtime_riscv64_byval_*` rows pass locally, but its local-store
-fallback caused broad backend regressions (`^backend_` dropped from
-`passed=343 failed=25 total=368` to `passed=320 failed=48 total=368`, with 27
-new failing tests). That code was removed before commit.
+A narrow preservation-republication guard removed the visible `mv t0, s2`
+clobber after `mv t0, a0`, but the rows still failed because caller aggregate
+field stores still publish wrong local offsets before the byval call. A
+prepared-fact keyed local-store attempt did not change that offset shape, so
+the code edits were reverted and no implementation files remain dirty.
 
 ## Suggested Next
 
-Next packet should repair the RV64 runtime result/preservation boundary for
-the three remaining runtime rows without broad local-store fallback. Start from
-the rejected attempt's useful observation: a preservation-republication guard
-alone was not enough, and broad direct `StoreLocalInst` fallback regressed
-unrelated local-memory routes.
+Next packet should inspect the prepared text local-store ownership boundary for
+split aggregate local slots before reattempting runtime repair. The exact
+remaining shape is caller stores such as `bir.store_local %lv.value.8, i32 0`
+emitting `sw t1, 0(sp)` instead of the prepared frame-slot offset, while
+prepared dumps contain frame-slot access rows for the split local slots.
 
 ## Watchouts
 
@@ -47,17 +47,21 @@ unrelated local-memory routes.
   slot made many unrelated local-memory routes fail.
 - The object-runtime row was not part of this packet and should remain a
   separate owner unless the supervisor explicitly assigns shared helper work.
+- A result preservation-republication guard is likely still needed, but guard
+  alone is insufficient; the caller aggregate field store offset shape must be
+  fixed without broad raw-slot fallback.
+- A local probe dump at `build/riscv64_byval_formal_gpr_publication.prepared.txt`
+  showed prepared main access rows for `%lv.value.0`, `.4`, `.8`, and `.12`.
 
 ## Proof
 
-Committed route-emission proof ran:
+Runtime-boundary proof ran:
 
 ```sh
-cmake --build --preset default && (ctest --test-dir build -j --output-on-failure -R 'backend_(codegen_route_riscv64_byval_aggregate_fixed_call|codegen_route_riscv64_byval_preserved_pointer_args|codegen_route_riscv64_byval_formal_gpr_publication|rv64_runtime_riscv64_byval_aggregate_fixed_call|rv64_runtime_riscv64_byval_preserved_pointer_args|rv64_runtime_riscv64_byval_formal_gpr_publication)' > test_after.log; test -s test_after.log)
+cmake --build --preset default && (ctest --test-dir build -j --output-on-failure -R 'backend_rv64_runtime_riscv64_byval_(aggregate_fixed_call|preserved_pointer_args|formal_gpr_publication)' > test_after.log; test -s test_after.log)
 ```
 
-Result for the committed route slice: build succeeded, focused CTest was red
-with 3/6 failures, all three route rows passed, and all three runtime rows
-returned `exit=1`. A stash-based backend before/after guard passed with before
-`passed=336 failed=32 total=368`, after `passed=343 failed=25 total=368`, and
-new failing tests: 0.
+Result: build succeeded, focused CTest stayed red with 0/3 passing, and all
+three runtime rows returned `exit=1`. `test_after.log` is the preserved proof
+log. No broad backend guard was run because the focused proof did not pass and
+the code edits were reverted.
