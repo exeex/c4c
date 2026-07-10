@@ -453,6 +453,7 @@ struct Aapcs64VariadicHfaCarrierExpansionLane {
 struct Aapcs64VariadicHfaCarrierExpansionRequest {
   const c4c::TargetProfile& target_profile;
   bool is_variadic_call = false;
+  std::size_t variadic_fp_register_lane_count = 0;
   std::size_t argument_index = 0;
   const c4c::codegen::lir::LirOperand& source_operand;
   const BirFunctionLowerer::AggregateTypeLayout& aggregate_layout;
@@ -508,6 +509,10 @@ build_aapcs64_variadic_hfa_carrier_expansion(
   const auto ordered_leaf_slots =
       collect_sorted_hfa_carrier_leaf_slots(aggregate_it->second, request.aggregate_layout);
   if (ordered_leaf_slots.size() != lane_count) {
+    return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
+  }
+  if (request.variadic_fp_register_lane_count < 8 &&
+      request.variadic_fp_register_lane_count + lane_count > 8) {
     return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
   }
 
@@ -1518,6 +1523,19 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   bool is_indirect_call = false;
   bool is_variadic_call = false;
   std::optional<std::string> sret_slot_name;
+  std::size_t aarch64_variadic_fp_register_lane_count = 0;
+  const auto note_aarch64_variadic_fp_arg_abi =
+      [&](const bir::CallArgAbiInfo& abi) {
+    if (context_.target_profile.arch != c4c::TargetArch::Aarch64 ||
+        !is_variadic_call ||
+        !abi.passed_in_register ||
+        abi.passed_on_stack ||
+        abi.primary_class != bir::AbiValueClass::Sse ||
+        aarch64_variadic_fp_register_lane_count >= 8) {
+      return;
+    }
+    ++aarch64_variadic_fp_register_lane_count;
+  };
   const auto lower_public_pointer_call_arg_value =
       [&](const c4c::codegen::lir::LirOperand& operand) -> std::optional<bir::Value> {
     if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
@@ -1599,6 +1617,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         Aapcs64VariadicHfaCarrierExpansionRequest{
             .target_profile = context_.target_profile,
             .is_variadic_call = is_variadic_call,
+            .variadic_fp_register_lane_count = aarch64_variadic_fp_register_lane_count,
             .argument_index = index,
             .source_operand = operand,
             .aggregate_layout = aggregate_layout,
@@ -1617,6 +1636,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       lowered_arg_types.push_back(lane.type);
       lowered_args.push_back(lane.value);
       lowered_arg_abi.push_back(lane.abi);
+      note_aarch64_variadic_fp_arg_abi(lane.abi);
     }
     return expansion.kind;
   };
@@ -2023,6 +2043,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           lowered_args.push_back(*arg);
           lowered_arg_abi.push_back(
               apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
+          note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
           continue;
         }
         if (trimmed_param_type == "ptr") {
@@ -2036,6 +2057,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           lowered_args.push_back(*arg);
           lowered_arg_abi.push_back(apply_call_arg_metadata(
               index, *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)));
+          note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
           continue;
         }
         const auto scalar_type_text =
@@ -2074,6 +2096,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           lowered_args.push_back(*arg);
           lowered_arg_abi.push_back(
               apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
+          note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
           continue;
         }
         const auto arg_operand = c4c::codegen::lir::LirOperand(
@@ -2099,6 +2122,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           lowered_args.push_back(*arg);
           lowered_arg_abi.push_back(
               apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
+          note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
           continue;
         }
         const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
@@ -2109,6 +2133,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         lowered_args.push_back(*arg);
         lowered_arg_abi.push_back(apply_call_arg_metadata(
             index, *compute_call_arg_abi(context_.target_profile, *arg_type)));
+        note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
       }
     } else if (c4c::codegen::lir::trim_lir_arg_text(call.args_str).empty()) {
       callee_name = resolved_direct_callee_name(*direct_callee);
@@ -2142,6 +2167,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         lowered_args.push_back(*arg);
         lowered_arg_abi.push_back(apply_call_arg_metadata(
             index, *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)));
+        note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
         continue;
       }
       const auto scalar_type_text =
@@ -2179,6 +2205,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         lowered_args.push_back(*arg);
         lowered_arg_abi.push_back(
             apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
+        note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
         continue;
       }
       const auto arg_operand =
@@ -2204,6 +2231,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         lowered_args.push_back(*arg);
         lowered_arg_abi.push_back(
             apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
+        note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
         continue;
       }
       const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
@@ -2214,6 +2242,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       lowered_args.push_back(*arg);
       lowered_arg_abi.push_back(apply_call_arg_metadata(
           index, *compute_call_arg_abi(context_.target_profile, *arg_type)));
+      note_aarch64_variadic_fp_arg_abi(lowered_arg_abi.back());
     }
     is_indirect_call = true;
   }
