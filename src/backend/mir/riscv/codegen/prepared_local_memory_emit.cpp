@@ -2342,6 +2342,23 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const c4c::backend::bir::StoreLocalInst& store,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
+  const auto* selected_access = access;
+  if (selected_access == nullptr &&
+      lookups != nullptr &&
+      store.value.kind == c4c::backend::bir::Value::Kind::Named) {
+    const auto* indexed_access =
+        c4c::backend::prepare::find_indexed_prepared_memory_access(
+            &lookups->memory_accesses,
+            block_label,
+            instruction_index);
+    if (indexed_access != nullptr &&
+        !indexed_access->result_value_name.has_value() &&
+        !indexed_access->stored_value_name.has_value() &&
+        indexed_access->address.base_kind ==
+            c4c::backend::prepare::PreparedAddressBaseKind::PointerValue) {
+      selected_access = indexed_access;
+    }
+  }
   if (rv64_floating_type_local(store.value.type)) {
     constexpr std::uint32_t scratch_fpr = 0;  // ft0
     const auto size_bytes = rv64_local_memory_size_for_type(store.value.type);
@@ -2350,7 +2367,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     }
     const auto offset =
         prepared_frame_slot_absolute_byte_offset(stack_layout,
-                                                 access,
+                                                 selected_access,
                                                  stack_frame_bytes,
                                                  *size_bytes);
     if (offset.has_value()) {
@@ -2367,7 +2384,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const auto sret_pointer =
         prepared_sret_stack_slot_pointer_access(stack_layout,
                                                 lookups,
-                                                access,
+                                                selected_access,
                                                 stack_frame_bytes,
                                                 *size_bytes);
     if (sret_pointer.has_value()) {
@@ -2395,7 +2412,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
         materialize_prepared_pointer_value_base_offset(fragment,
                                                       stack_layout,
                                                       lookups,
-                                                      access,
+                                                      selected_access,
                                                       stack_frame_bytes,
                                                       *size_bytes,
                                                       7);
@@ -2433,12 +2450,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     stored_value_name = value_name;
   }
   if (prepared_scalar_direct_global_local_access_is_supported(names,
-                                                             access,
+                                                             selected_access,
                                                              std::nullopt,
                                                              stored_value_name,
                                                              *size_bytes)) {
     const auto symbol =
-        prepared_scalar_direct_global_local_symbol(names, *access);
+        prepared_scalar_direct_global_local_symbol(names, *selected_access);
     if (!symbol.has_value()) {
       return std::nullopt;
     }
@@ -2460,30 +2477,30 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
             5,
             *symbol,
             ".Lpcrel_hi_global_local_store_" +
-                std::to_string(access->function_name) + "_" +
-                std::to_string(access->block_label) + "_" +
-                std::to_string(access->inst_index),
+                std::to_string(selected_access->function_name) + "_" +
+                std::to_string(selected_access->block_label) + "_" +
+                std::to_string(selected_access->inst_index),
             RiscvObjectFixupTargetKind::Object,
             0));
     if (!append_rv64_store_register_to_base_local(
             fragment,
             6,
             5,
-            static_cast<std::int32_t>(access->address.byte_offset),
+            static_cast<std::int32_t>(selected_access->address.byte_offset),
             *size_bytes)) {
       return std::nullopt;
     }
     return fragment;
   }
-  if (access != nullptr &&
-      access->address.base_kind ==
+  if (selected_access != nullptr &&
+      selected_access->address.base_kind ==
           c4c::backend::prepare::PreparedAddressBaseKind::PointerValue) {
     RiscvEncodedFragment fragment;
     const auto pointer_base =
         materialize_prepared_pointer_value_base_offset(fragment,
                                                       stack_layout,
                                                       lookups,
-                                                      access,
+                                                      selected_access,
                                                       stack_frame_bytes,
                                                       *size_bytes,
                                                       7);
@@ -2512,11 +2529,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
   }
   const auto offset =
       prepared_frame_slot_absolute_byte_offset(stack_layout,
-                                               access,
+                                               selected_access,
                                                stack_frame_bytes,
                                                *size_bytes);
   const auto store_slot_offset =
-      offset.has_value() || access != nullptr
+      offset.has_value() || selected_access != nullptr
           ? std::optional<std::size_t>{}
           : prepared_store_local_slot_absolute_byte_offset(stack_layout,
                                                            store,
@@ -2526,7 +2543,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const auto byval_offset =
         prepared_byval_stack_slot_pointer_access_offset(stack_layout,
                                                         lookups,
-                                                        access,
+                                                        selected_access,
                                                         stack_frame_bytes,
                                                         *size_bytes);
     if (byval_offset.has_value()) {
@@ -2551,7 +2568,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const auto sret_pointer =
         prepared_sret_stack_slot_pointer_access(stack_layout,
                                                 lookups,
-                                                access,
+                                                selected_access,
                                                 stack_frame_bytes,
                                                 *size_bytes);
     if (sret_pointer.has_value()) {
@@ -2581,7 +2598,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
         materialize_prepared_pointer_value_base_offset(fragment,
                                                       stack_layout,
                                                       lookups,
-                                                      access,
+                                                      selected_access,
                                                       stack_frame_bytes,
                                                       *size_bytes,
                                                       7);

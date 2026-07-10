@@ -9,41 +9,44 @@ Current Step Title: Prove Regression Safety And Lifecycle Readiness
 ## Just Finished
 
 Step 4 of `plan.md` repaired the new first focused failure after commit
-`4c7e45784`: `expected prepared RV64 object path to reject`, mapped to
-`rejects_prepared_scalar_local_subobject_fail_closed_shapes()`. The first
-subcase clears the selected store access
-`address.frame_slot_id`; `fragment_for_prepared_store_local()` rejected that
-malformed prepared frame-slot access but then fell through to the broader BIR
-slot-offset fallback and still published text.
+`b7c665902`: `expected prepared pointer-value F64 local RV64 object module to
+build`. The supported fixture had a positioned pointer-value
+`PreparedMemoryAccess` for the named F64 `StoreLocalInst`, but the access did
+not carry `stored_value_name`; the normal local-store access lookup dropped
+that selected access before `prepared_local_memory_emit.cpp` could validate and
+emit the pointer-value F64 path.
 
-The prepared local-memory store fragment path now only uses the BIR local-slot
-fallback when no selected prepared memory access exists. If prepared
-local-memory facts are selected for an instruction, malformed frame-slot or
-pointer facts must fail closed instead of being rescued by the broader slot
-path. No tests, expectations, unsupported markers, allowlists, timeout or
+`fragment_for_prepared_store_local()` now preserves a positioned pointer-value
+access with no `stored_value_name` for named stores when the caller did not pass
+a selected access. Malformed selected pointer-value facts still fail closed in
+the prepared local-memory emitter instead of falling back to BIR local-slot
+offsets, while valid F64 pointer-value facts reach the existing `fsd`/`fld`
+encoder. No tests, expectations, unsupported markers, allowlists, timeout or
 runtime policy, baseline accounting, `plan.md`, or source idea files were
 edited.
 
 Evidence:
-`build/agent_state/664_step4_prepared_local_fail_closed/summary.md`,
-`build/agent_state/664_step4_prepared_local_fail_closed/before_after.diff`,
-and `build/agent_state/664_step4_prepared_local_fail_closed/regression_guard.txt`.
+`build/agent_state/664_step4_pointer_value_f64_local/summary.md`,
+`build/agent_state/664_step4_pointer_value_f64_local/before_after.diff`,
+`build/agent_state/664_step4_pointer_value_f64_local/code.diff`,
+`build/agent_state/664_step4_pointer_value_f64_local/regression_guard.txt`,
+and `build/agent_state/664_step4_pointer_value_f64_local/test_after.log`.
 
 ## Suggested Next
 
-Suggested next packet: address the new first focused failure,
-`expected prepared pointer-value F64 local RV64 object module to build`. Start
-in the prepared local-memory F64 pointer-value path and determine why the
-supported pointer-value F64 fixture no longer emits an object.
+Suggested next packet: address the new first visible focused failure,
+`expected prepared sret stack-homed pointer store to build`. Start in the
+prepared local-memory pointer-value/sret stack-homed store path and determine
+why the supported pointer-store fixture no longer emits an object.
 
 ## Watchouts
 
-- The current slice deliberately does not allow a selected but malformed
-  prepared local-memory access to fall back to BIR local-slot offsets. That is
-  the intended fail-closed behavior for malformed prepared facts.
-- Remaining focused failures include pointer-value F64 local, sret stack-homed
-  stores, call-argument publication ordering, string/direct-global diagnostics,
-  and one remaining generic rejection.
+- The pointer-value F64 failure was repaired by preserving the selected
+  pointer-value access, not by relaxing local-slot fallback. Selected malformed
+  prepared local-memory facts should still fail closed.
+- Remaining focused failures visible in `test_after.log` are sret stack-homed
+  pointer store, sret stack-homed I8 extent-6 store, and prepared local frame
+  address publication before register/stack call-argument consumption.
 - Do not rewrite expectations, unsupported markers, allowlists, timeout/runtime
   policy, baseline accounting, `plan.md`, or the source idea in a routine
   executor packet.
@@ -55,10 +58,10 @@ supported pointer-value F64 fixture no longer emits an object.
 Result: build passed; focused CTest still fails on
 `backend_riscv_object_emission`. `test_after.log` is the canonical proof log.
 
-Aggregate-visible delta: `expected prepared RV64 object path to reject` was
-removed from `test_after.log`. The focused aggregate still has one failing
-CTest row, and the first visible failure is now
-`expected prepared pointer-value F64 local RV64 object module to build`.
+Aggregate-visible delta: `expected prepared pointer-value F64 local RV64
+object module to build` was removed from `test_after.log`. The focused
+aggregate still has one failing CTest row, and the first visible failure is now
+`expected prepared sret stack-homed pointer store to build`.
 
 Regression guard command:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
