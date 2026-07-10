@@ -30,18 +30,30 @@ by chasing `2732` under idea 665.
 
 ## Suggested Next
 
-Proceed with Step 4 regression and lifecycle readiness. The supervisor should
-choose the focused AArch64 proof plus any broader backend subset needed for
-acceptance, then decide whether idea 665 can close or must remain active with a
-new narrow packet.
+Step 4 lifecycle decision: close is rejected for now. The focused regression
+guard showed no new failures, but it did not satisfy the strict closure gate
+because the pass count did not increase (`before passed=1 failed=1 total=2`;
+`after passed=1 failed=1 total=2`). Idea 665 stays active at Step 4 until the
+supervisor either proves an acceptable close scope or deliberately routes the
+remaining row 322 expectation contract outside this active AArch64 plan.
+
+Concrete next packet: run or delegate a Step 4 proof-only lifecycle packet that
+uses the supervisor-selected broader backend close scope with matching
+before/after logs, then rerun the regression guard for that exact scope. The
+packet should not edit implementation or expectations. It should only establish
+whether the AArch64 work can close under a broader no-new-failures proof, or
+whether the active runbook should be retired/split because all remaining row
+322 work is expectation-contract or generic prepared-publication work outside
+idea 665.
 
 Expectation path status: `%t58.48` / `2728` is the valid current-call owner for
 row 322 `arg index=12`; `2732` is not a valid current-call source identity on
 the current evidence. If row 322 still needs an expectation adjustment, handle
-that outside Step 3 implementation for idea 665. Create or switch to a separate
-idea only if the supervisor decides the expectation contract itself is a
-durable initiative; do not expand idea 665 to revive later-call/later-store
-lookahead.
+that outside Step 3 implementation for idea 665. Do not create a new
+`ideas/open/` initiative yet solely for row 322 expectation handling; split only
+after the supervisor decides that the expectation contract is durable follow-up
+work rather than closure bookkeeping for the focused AArch64 route. Do not
+expand idea 665 to revive later-call/later-store lookahead.
 
 ## Watchouts
 
@@ -92,3 +104,15 @@ Result: `2732` is not a valid current-call source identity for row 322
 Step 3 implementation packet is not justified unless new evidence proves a
 current-call fact that directly ties call inst 460 arg 12 to `2732` without
 later-call/later-store lookahead.
+
+Step 4 regression guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
+```
+
+Result: no new failures, but strict close failed because the pass count was
+unchanged (`before passed=1 failed=1 total=2`; `after passed=1 failed=1
+total=2`). Lifecycle close is therefore rejected for this focused scope, and
+the active plan remains at Step 4 pending broader close proof or an explicit
+retire/split decision.
