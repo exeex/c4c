@@ -1,45 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Refresh The Non-637 Residual Baseline
+Current Step ID: Step 2
+Current Step Title: Select One Producer Authority Family Or Park
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by refreshing the named idea-647 residual rows and
-classifying the current evidence without selecting an implementation family.
-Fresh diagnostics are under
-`build/agent_state/647_step1_20260710_residual_baseline/`, with the summary in
-`build/agent_state/647_step1_20260710_residual_baseline/summary.md`.
+Completed `plan.md` Step 2 as a no-implementation decision packet. The route
+is blocked/parked: no non-637 producer authority family is selected from the
+refreshed Step 1 evidence.
 
-Current residual set by stable test name:
+Decision basis:
 
-| Stable test name | Classification | Refreshed evidence |
+| Candidate family | Step 2 decision | Missing or negative producer evidence |
 | --- | --- | --- |
-| `src/20011109-2.c` | reopened-637 evidence | current diagnostic is `authority=none`, `move_count=3`, `fragment_status=missing_stack_destination_fan_in_authority_fact`; prior Step 2 extract records select-materialized chains, which belongs to closed idea 637 rather than a non-637 producer family |
-| `src/20021204-1.c` | mutual-exclusion negative evidence | current diagnostic is non-parallel two-register-source stack-destination fan-in with `authority=none`; prior focused probe shows edge/select facts authorize `%t25`, not failing `%t20/%t21 -> %t22` |
-| `src/920429-1.c` | rejection-only | current diagnostic is non-parallel two-register-source stack-destination fan-in with `authority=none` and no ordered final-state, mutual-exclusion, or explicit-merge producer fact |
-| `src/ptr-arith-1.c` | rejection-only | current diagnostic is non-parallel two-register-source stack-destination fan-in with `authority=none` and no ordered final-state, mutual-exclusion, or explicit-merge producer fact |
-| `src/pr70005.c` | rejection-only | current diagnostic is `fn1:logic.end.73` non-parallel two-register-source stack-destination fan-in with `authority=none` and no ordered final-state, mutual-exclusion, or explicit-merge producer fact |
+| Ordered final-state authority | Not selected | No refreshed row exposes producer metadata designating one final authoritative stack-slot state at the failing consumer program point. |
+| Mutual-exclusion authority | Not selected | `src/20021204-1.c` remains negative evidence: the available edge/select facts authorize `%t17/%t24 -> %t25`, not the failing `%t20/%t21 -> %t22` stack-destination bundle, which still has no predicate, edge, selected-active-candidate, guarded-copy, or destination-authority carrier fact at the consumer point. |
+| Explicit merge authority | Not selected | No refreshed row exposes semantic-equivalence metadata or an explicit merge operation covering all candidate sources targeting the same stack destination. |
+| Reopened idea-637 select-materialized semantic merge | Not selected under idea 647 | `src/20011109-2.c` has select-materialized chain evidence, but that matches closed idea 637 rather than a legal non-637 family for this plan. |
+| Rejection-only or stale rows | Not an implementation family | `src/920429-1.c`, `src/ptr-arith-1.c`, and `src/pr70005.c` only prove fail-closed `authority=none`; `src/930429-1.c` and `src/pr34415.c` are stale for this route because their current first owners are not stack-destination fan-in. |
 
-Stale named idea-647 rows:
-
-| Stable test name | Classification | Refreshed evidence |
-| --- | --- | --- |
-| `src/930429-1.c` | stale | current first owner is `unsupported_terminator_fragment`, not stack-destination fan-in |
-| `src/pr34415.c` | stale | current first owner is `unsupported_scalar_compare_publication`, not stack-destination fan-in |
-
-No refreshed row exposes ordered final-state producer metadata, explicit merge
-metadata, or positive non-637 mutual-exclusion metadata at the failing consumer
-program point.
+This satisfies Step 2 by recording the blocked outcome with the missing evidence
+named. Step 3 implementation is not currently legal because the source
+files/artifacts do not contain explicit positive non-637 producer metadata at
+the failing consumer point.
 
 ## Suggested Next
 
-Keep Step 2 parked/unselected unless a later diagnostic packet finds explicit
-non-637 producer metadata for ordered final-state, mutual-exclusion, or
-explicit merge at the failing consumer program point.
+Route to plan-owner/lifecycle review to decide whether this active runbook
+should be closed, parked, rewritten around proof discovery, or replaced by a
+different open idea. Do not delegate implementation for Step 3 unless new
+prepared/prealloc evidence first exposes positive non-637 ordered final-state,
+mutual-exclusion, or explicit-merge producer metadata at the failing consumer
+program point.
 
 ## Watchouts
 
@@ -47,15 +42,22 @@ explicit merge at the failing consumer program point.
   this idea.
 - Do not implement RV64 materialization before prepared/prealloc producer facts
   prove a selected authority family.
-- Idea 655 is parked unless new evidence identifies a positive producer seam
-  outside idea 637.
-- Fresh direct object-route diagnostics supersede older stale fan-in logs for
-  `src/930429-1.c` and `src/pr34415.c` in this Step 1 baseline.
-- `src/20021204-1.c` remains negative mutual-exclusion evidence only: current
-  producer facts do not carry predicate, edge, selected-active-candidate,
-  guarded-copy, or destination-authority metadata for `%t20/%t21 -> %t22`.
+- Idea 655's parked outcome still applies: ordered final-state,
+  mutual-exclusion, and explicit merge positive producer seams remain blocked
+  until a legal non-637 producer authority fact is proven.
+- The implementation split requires producer/prealloc ownership first; RV64 is
+  only a downstream consumer after an accepted destination-authority contract
+  exists.
+- Rejection-only diagnostics are useful negative proof, but they do not select
+  a producer family.
 
 ## Proof
 
+No new build was required for this todo-only decision packet. This decision
+cites the existing Step 1 proof:
+
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-passed. Canonical proof log: `test_after.log`.
+
+The proof passed and is recorded in `test_after.log`; the Step 1 evidence
+summary is
+`build/agent_state/647_step1_20260710_residual_baseline/summary.md`.
