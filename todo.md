@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/674_rv64_object_terminator_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement The Focused Terminator Lowering
+Current Step ID: 4
+Current Step Title: Prove Regression Safety And Close Readiness
 
 # Current Packet
 
