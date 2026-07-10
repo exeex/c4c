@@ -8,24 +8,35 @@ Current Step Title: Reproduce And Classify Regression Rows
 
 ## Just Finished
 
-Lifecycle review rejected closing idea 664 because the focused
-`backend_riscv_object_emission` row now passes, but the supervisor-reported
-full-suite baseline candidate regressed from the accepted 3386/3397 baseline
-to 3384/3397 by adding rows 139 and 176.
+Step 1 reproduced and classified the two rejected baseline-candidate rows.
+Focused evidence is under
+`build/agent_state/673_step1_regression_probe/`.
 
-Rows identified from the current CTest index:
-
-- 139: `backend_cli_riscv64_pointer_global_local_publication`
-- 176: `backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`
-
-Idea 664 was parked with a durable note, and this new active plan was split to
-keep those rows out of the row-256 object-emission source scope.
+- Row 139 `backend_cli_riscv64_pointer_global_local_publication` fails during
+  `--codegen obj` before object bytes are checked:
+  `unsupported_local_memory_access: RV64 object route keeps live direct-global
+  local pointer publication reloads fail-closed`. The prepared dump succeeds
+  and shows available `store_local_publication` plus direct-global
+  `address_materialization`, so the first owner is RV64 object emission for
+  local-memory/direct-global pointer-publication reloads, not CLI dump
+  publication or stale baseline state.
+- Row 176
+  `backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract`
+  fails during `--codegen obj` before clang link or QEMU runtime:
+  `unsupported_terminator_fragment: BIR terminator requires unsupported RV64
+  object lowering`. The prepared dump succeeds and shows a prepared fused
+  pointer compare branch with available branch stack load authorities, so the
+  first owner is RV64 object emission terminator lowering, not runtime behavior
+  or stale baseline state.
+- Guard row 256 `backend_riscv_object_emission` passed in the delegated
+  three-row proof and in an individual guard proof.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor: reproduce rows 139 and 176 with focused
-commands, preserve `backend_riscv_object_emission` as a guard row, and write
-classification evidence under `build/agent_state/673_step1_regression_probe/`.
+Split before repair: keep row 139 in this active idea for a narrow
+local-memory/direct-global pointer-publication object-emission packet, and
+move row 176 to a separate idea for RV64 object terminator lowering unless the
+supervisor prefers the opposite prioritization.
 
 ## Watchouts
 
@@ -33,12 +44,28 @@ classification evidence under `build/agent_state/673_step1_regression_probe/`.
 - Do not reopen row 256 unless `backend_riscv_object_emission` regresses.
 - Do not change expectations, unsupported markers, allowlists, timeout policy,
   runtime policy, or baseline accounting.
-- If rows 139 and 176 have different owners, split one into a separate source
-  idea rather than coupling unrelated repairs.
+- Rows 139 and 176 share the broad RV64 object-emission phase, but their first
+  failing contracts differ. Do not couple a direct-global local-memory
+  publication repair with terminator lowering without new evidence.
 
 ## Proof
 
-Lifecycle-only transition. No implementation validation was run by the plan
-owner. Close for idea 664 was rejected because the broader baseline evidence
-reported rows 139 and 176 as new full-suite failures despite the focused row
-256 proof passing.
+Setup build:
+
+`cmake --build build --target c4cll c4c-objdump backend_riscv_object_emission_test`
+
+Supervisor-selected proof:
+
+`ctest --test-dir build -j --output-on-failure -R '^(backend_cli_riscv64_pointer_global_local_publication|backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract|backend_riscv_object_emission)$' > test_after.log 2>&1`
+
+Result: failed as expected for rows 139 and 176, with row 256 passing. The
+canonical proof log is `test_after.log`, copied to
+`build/agent_state/673_step1_regression_probe/focused_three_row_ctest.log`.
+
+Additional diagnostics:
+
+- `ctest --test-dir build -j --output-on-failure -R '^backend_cli_riscv64_pointer_global_local_publication$'`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_obj_runtime_rv64_indirect_store_postincrement_callee_contract$'`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'`
+- `build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/backend/case/riscv64_pointer_global_local_publication.c`
+- `build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/backend/case/riscv64_indirect_store_postincrement_callee_contract.c`
