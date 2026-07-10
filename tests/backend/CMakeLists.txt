@@ -775,7 +775,7 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_scalar_compare_frame_slot_destination.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t2 = bir.ne i32 %t0, %t1|bir.store_local %lv.comparison, i32 %t2|storage %t2 frame_slot bank=gpr spill_slot=slot#5+stack24 offset=24|home %t2 value_id=2 kind=stack_slot slot_id=5 offset=24|object #2 func=main name=%lv.comparison source_kind=local_slot type=i32 size=4 align=4 address_exposed=yes requires_home_slot=yes permanent_home_slot=yes|slot #0 object_id=2 func=main offset=0 size=4 align=4 fixed_location=yes|store_source function=main block=entry inst=5 source=%t2 status=available intent=store_local_publication source_producer=binary|access block=entry inst_index=5 base=frame_slot stored=%t2 frame_slot=#0 offset=0 size=4 align=4"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t2 = bir.ne i32 %t0, %t1|bir.store_local %lv.comparison, i32 %t2|storage %t2 frame_slot bank=gpr spill_slot=slot#5+stack24 offset=24|home %t2 value_id=3 kind=stack_slot slot_id=5 offset=24|object #2 func=main name=%lv.comparison source_kind=local_slot type=i32 size=4 align=4 address_exposed=yes requires_home_slot=yes permanent_home_slot=yes|slot #0 object_id=2 func=main offset=0 size=4 align=4 fixed_location=yes|store_source function=main block=entry inst=5 source=%t2 status=available intent=store_local_publication source_producer=binary|access block=entry inst_index=5 base=frame_slot stored=%t2 frame_slot=#0 offset=0 size=4 align=4"
   FORBIDDEN_SNIPPETS "semantic_write_event function=main status=available|semantic_materialization_interval function=main status=available|frame_slot_source_fact function=main status=available|branch_stack_load_authority function=main status=available"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 scalar_compare frame_slot_destination prepared_destination dump
@@ -841,7 +841,7 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.func @rv64_predicate_value() -> i32 {|bir.func @main() -> i32 {|%t0 = bir.call i32 rv64_predicate_value()|%t1 = bir.ne i32 %t0, 0|bir.cond_br i32 %t1, block_2, block_3|block entry terminator=cond_branch true=block_2 false=block_3|branch_condition entry kind=fused_compare condition=%t1 compare=ne i32 %t0, 0 can_fuse_with_branch=yes true=block_2 false=block_3|call block_index=0 inst_index=0 wrapper_kind=same_module|result value_bank=gpr source_storage=register destination_storage=register destination_value_id=0"
+  REQUIRED_SNIPPETS "bir.func @rv64_predicate_value() -> i32 {|bir.func @main() -> i32 {|%t0 = bir.call i32 rv64_predicate_value()|%t1 = bir.ne i32 %t0, 0|bir.cond_br i32 %t1, block_2, block_3|block entry terminator=cond_branch true=block_2 false=block_3|branch_condition entry kind=fused_compare condition=%t1 compare=ne i32 %t0, 0 can_fuse_with_branch=yes true=block_2 false=block_3|call block_index=0 inst_index=0 wrapper_kind=same_module|result value_bank=gpr source_storage=register destination_storage=register destination_value_id=1"
   FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00030|src/00030.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 prepared_control_flow fused_compare call_result
@@ -1530,7 +1530,7 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.ret ptr @sub|bir.ret ptr 0|%t0 = bir.call ptr choose(i32 1)|bir.store_local %lv.selected, ptr %t0|bir.load_local ptr %lv.selected|bir.call i32 %t1(i32 9, i32 4)|wrapper_kind=indirect|indirect_callee=%t1|home @sub value_id=5 kind=register reg=t0"
+  REQUIRED_SNIPPETS "bir.ret ptr @sub|bir.ret ptr 0|%t0 = bir.call ptr choose(i32 1)|bir.store_local %lv.selected, ptr %t0|bir.load_local ptr %lv.selected|bir.call i32 %t1(i32 9, i32 4)|wrapper_kind=indirect|indirect_callee=%t1|home @sub value_id=6 kind=register reg=t0"
   FORBIDDEN_SNIPPETS "src/00124.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 function_pointer return_chain indirect_call dump
