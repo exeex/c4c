@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Representative Runtime And Backend Regression Proof
+Current Step ID: Step 3
+Current Step Title: Repair General RV64 Indirect-Store Or Writeback Lowering
 
 # Current Packet
 
@@ -42,11 +42,16 @@ Representative facts:
 
 ## Suggested Next
 
-Review or implement the smallest follow-up packet for the representative RV64
-prepared pointer-value store lowering gap: make the Step 3 `base=pointer_value`
-repair apply to the `loop-2e.c` callee shape where old `%t9` is register-home
-`s1` and the local cursor writeback also targets `%lv.param.q`'s frame-slot
-home.
+Continue Step 3 with the smallest bounded implementation packet for the
+representative RV64 prepared pointer-value store lowering gap: make the
+existing `base=pointer_value` repair apply to the `loop-2e.c` callee shape
+where old `%t9` is register-home `s1` and the local cursor writeback also
+targets `%lv.param.q`'s frame-slot home.
+
+The packet should prove the prepared fact is still explicit:
+`access block=block_1 inst_index=7 base=pointer_value stored=%t8 pointer=%t9
+offset=0 size=8 align=8`, then repair only the RV64 consumption path that
+chooses `0(sp)` instead of the pointer register home for that access.
 
 ## Watchouts
 
