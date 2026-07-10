@@ -1157,6 +1157,9 @@ struct CallArgumentPublicationSourceRouting {
       CallArgumentSourceEncodingKind::None;
   std::optional<std::size_t> source_value_id;
   std::optional<std::string> source_value_name;
+  std::optional<std::string> aggregate_source_value_name;
+  std::optional<std::size_t> aggregate_source_lane_index;
+  std::optional<std::size_t> aggregate_source_lane_count;
   std::optional<std::size_t> source_base_value_id;
   std::optional<std::string> source_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
@@ -2245,6 +2248,9 @@ struct Route6CallArgumentSourceRecord {
   Route1SourceValueIdentity source_value;
   std::optional<std::size_t> source_value_id;
   std::optional<std::string_view> source_value_name;
+  std::optional<std::string_view> aggregate_source_value_name;
+  std::optional<std::size_t> aggregate_source_lane_index;
+  std::optional<std::size_t> aggregate_source_lane_count;
   std::optional<std::size_t> source_base_value_id;
   std::optional<std::string_view> source_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
@@ -2281,6 +2287,9 @@ struct Route6CallArgumentPublicationSourceRecord {
   Route6CallArgumentSourceRecord argument_source;
   Route6CallUseSourceKind source_kind = Route6CallUseSourceKind::Unknown;
   std::optional<std::size_t> source_value_id;
+  std::optional<std::string_view> aggregate_source_value_name;
+  std::optional<std::size_t> aggregate_source_lane_index;
+  std::optional<std::size_t> aggregate_source_lane_count;
   std::optional<std::size_t> source_base_value_id;
   std::optional<std::string_view> source_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;

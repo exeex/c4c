@@ -305,6 +305,14 @@ Route6CallArgumentSourceRecord route6_call_argument_source_record(
       relationship->source_value_name.has_value()
           ? std::optional<std::string_view>{*relationship->source_value_name}
           : std::nullopt;
+  record.aggregate_source_value_name =
+      relationship->aggregate_source_value_name.has_value()
+          ? std::optional<std::string_view>{*relationship->aggregate_source_value_name}
+          : std::nullopt;
+  record.aggregate_source_lane_index =
+      relationship->aggregate_source_lane_index;
+  record.aggregate_source_lane_count =
+      relationship->aggregate_source_lane_count;
   record.source_base_value_id = relationship->source_base_value_id;
   record.source_base_value_name =
       relationship->source_base_value_name.has_value()
@@ -443,6 +451,14 @@ route6_call_argument_publication_source_record(
     return record;
   }
   record.source_value_id = routing.source_value_id;
+  record.aggregate_source_value_name =
+      routing.aggregate_source_value_name.has_value()
+          ? std::optional<std::string_view>{*routing.aggregate_source_value_name}
+          : std::nullopt;
+  record.aggregate_source_lane_index =
+      routing.aggregate_source_lane_index;
+  record.aggregate_source_lane_count =
+      routing.aggregate_source_lane_count;
   record.source_base_value_id = routing.source_base_value_id;
   record.source_base_value_name =
       routing.source_base_value_name.has_value()
@@ -960,6 +976,9 @@ CallArgumentPublicationSourceRouting find_call_argument_publication_source_routi
       .source_encoding = relationship->source_encoding,
       .source_value_id = relationship->source_value_id,
       .source_value_name = relationship->source_value_name,
+      .aggregate_source_value_name = relationship->aggregate_source_value_name,
+      .aggregate_source_lane_index = relationship->aggregate_source_lane_index,
+      .aggregate_source_lane_count = relationship->aggregate_source_lane_count,
       .source_base_value_id = relationship->source_base_value_id,
       .source_base_value_name = relationship->source_base_value_name,
       .source_pointer_byte_delta = relationship->source_pointer_byte_delta,

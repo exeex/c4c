@@ -379,6 +379,12 @@ struct CallArgumentSourcePlan {
   std::optional<PreparedRegisterPlacement> register_placement;
 };
 
+struct AggregateCarrierSourceIdentity {
+  std::optional<PreparedValueId> value_id;
+  std::optional<ValueNameId> value_name;
+  std::optional<PreparedRegisterBank> register_bank;
+};
+
 [[nodiscard]] PreparedValueHomeLookup make_prepared_value_home_lookup(
     const PreparedValueLocationFunction* value_locations) {
   PreparedValueHomeLookup lookup;
@@ -1511,6 +1517,129 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   }
 
   return source;
+}
+
+[[nodiscard]] AggregateCarrierSourceIdentity
+find_aggregate_carrier_source_identity(
+    const PreparedNameTables& names,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::CallArgumentPublicationSourceRouting& routing) {
+  if (!routing.aggregate_source_value_name.has_value() ||
+      routing.aggregate_source_value_name->empty() ||
+      !routing.aggregate_source_lane_index.has_value() ||
+      !routing.aggregate_source_lane_count.has_value() ||
+      *routing.aggregate_source_lane_count <= 1 ||
+      *routing.aggregate_source_lane_index >= *routing.aggregate_source_lane_count) {
+    return {};
+  }
+
+  const ValueNameId value_name =
+      names.value_names.find(*routing.aggregate_source_value_name);
+  if (value_name == kInvalidValueName) {
+    return {};
+  }
+
+  AggregateCarrierSourceIdentity identity{
+      .value_name = value_name,
+  };
+  if (value_locations != nullptr) {
+    if (const auto* home = find_prepared_value_home(*value_locations, value_name);
+        home != nullptr) {
+      identity.value_id = home->value_id;
+    }
+  }
+  if (!identity.value_id.has_value() && regalloc_function != nullptr) {
+    if (const auto* regalloc_value =
+            find_regalloc_value_by_name(*regalloc_function, value_name);
+        regalloc_value != nullptr) {
+      identity.value_id = regalloc_value->value_id;
+      identity.register_bank =
+          register_bank_from_class(regalloc_value->register_class);
+    }
+  }
+  return identity;
+}
+
+[[nodiscard]] AggregateCarrierSourceIdentity
+find_named_call_argument_source_identity(
+    const PreparedNameTables& names,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Value& value) {
+  const auto value_name = maybe_named_value_id(names, value);
+  if (!value_name.has_value()) {
+    return {};
+  }
+
+  AggregateCarrierSourceIdentity identity{
+      .value_name = *value_name,
+  };
+  if (value_locations != nullptr) {
+    if (const auto* home = find_prepared_value_home(*value_locations, *value_name);
+        home != nullptr) {
+      identity.value_id = home->value_id;
+    }
+  }
+  if (!identity.value_id.has_value() && regalloc_function != nullptr) {
+    if (const auto* regalloc_value =
+            find_regalloc_value_by_name(*regalloc_function, *value_name);
+        regalloc_value != nullptr) {
+      identity.value_id = regalloc_value->value_id;
+      identity.register_bank =
+          register_bank_from_class(regalloc_value->register_class);
+    }
+  }
+  return identity;
+}
+
+[[nodiscard]] AggregateCarrierSourceIdentity
+find_stack_aggregate_carrier_lane_run_source_identity(
+    const PreparedNameTables& names,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::CallInst& call,
+    const PreparedCallArgumentPlan& argument,
+    const bir::CallArgumentPublicationSourceRouting& routing) {
+  if (argument.arg_index >= call.args.size() ||
+      argument.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      routing.source_encoding != bir::CallArgumentSourceEncodingKind::FrameSlot ||
+      !routing.aggregate_source_value_name.has_value() ||
+      !routing.aggregate_source_lane_index.has_value() ||
+      !routing.aggregate_source_lane_count.has_value() ||
+      *routing.aggregate_source_lane_count <= 1 ||
+      *routing.aggregate_source_lane_index >= *routing.aggregate_source_lane_count) {
+    return {};
+  }
+
+  std::optional<std::size_t> terminal_arg_index;
+  for (std::size_t index = argument.arg_index; index < call.args.size(); ++index) {
+    if (index >= call.arg_abi.size() || !call.arg_abi[index].passed_on_stack) {
+      break;
+    }
+    const auto lane_routing =
+        bir::find_call_argument_publication_source_routing(call, index);
+    if (lane_routing.source_encoding !=
+            bir::CallArgumentSourceEncodingKind::FrameSlot ||
+        !lane_routing.aggregate_source_value_name.has_value() ||
+        !lane_routing.aggregate_source_lane_index.has_value() ||
+        !lane_routing.aggregate_source_lane_count.has_value() ||
+        *lane_routing.aggregate_source_lane_count <= 1 ||
+        *lane_routing.aggregate_source_lane_index >=
+            *lane_routing.aggregate_source_lane_count) {
+      break;
+    }
+    terminal_arg_index = index;
+  }
+  if (!terminal_arg_index.has_value() ||
+      *terminal_arg_index == argument.arg_index) {
+    return {};
+  }
+
+  return find_named_call_argument_source_identity(names,
+                                                 regalloc_function,
+                                                 value_locations,
+                                                 call.args[*terminal_arg_index]);
 }
 
 [[nodiscard]] PreparedCallArgumentDirectGlobalSelectChainDependency
@@ -3915,8 +4044,30 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                         regalloc_function,
                                         value_locations,
                                         call->args[arg_index]);
+          const auto source_routing =
+              bir::find_call_argument_publication_source_routing(*call, arg_index);
+          const auto aggregate_source_identity =
+              find_aggregate_carrier_source_identity(prepared.names,
+                                                     regalloc_function,
+                                                     value_locations,
+                                                     source_routing);
+          const auto stack_lane_run_source_identity =
+              aggregate_source_identity.value_id.has_value()
+                  ? AggregateCarrierSourceIdentity{}
+                  : find_stack_aggregate_carrier_lane_run_source_identity(
+                        prepared.names,
+                        regalloc_function,
+                        value_locations,
+                        *call,
+                        arg_plan,
+                        source_routing);
           arg_plan.source_encoding = source.encoding;
-          arg_plan.source_value_id = source.value_id;
+          arg_plan.source_value_id =
+              aggregate_source_identity.value_id.has_value()
+                  ? aggregate_source_identity.value_id
+                  : (stack_lane_run_source_identity.value_id.has_value()
+                         ? stack_lane_run_source_identity.value_id
+                         : source.value_id);
           arg_plan.source_base_value_id = source.base_value_id;
           arg_plan.source_literal = source.literal;
           arg_plan.source_symbol_name = source.symbol_name;
@@ -3924,10 +4075,21 @@ void populate_call_plans(PreparedBirModule& prepared) {
           arg_plan.source_register_name = source.register_name;
           arg_plan.source_slot_id = source.slot_id;
           arg_plan.source_stack_offset_bytes = source.stack_offset_bytes;
-          arg_plan.source_register_bank = source.register_bank;
+          arg_plan.source_register_bank =
+              aggregate_source_identity.register_bank.has_value()
+                  ? aggregate_source_identity.register_bank
+                  : (stack_lane_run_source_identity.register_bank.has_value()
+                         ? stack_lane_run_source_identity.register_bank
+                         : source.register_bank);
           arg_plan.source_base_value_name = source.base_value_name;
           arg_plan.source_pointer_byte_delta = source.pointer_byte_delta;
           arg_plan.source_register_placement = source.register_placement;
+          const auto source_identity_value_name =
+              aggregate_source_identity.value_name.has_value()
+                  ? aggregate_source_identity.value_name
+                  : (stack_lane_run_source_identity.value_name.has_value()
+                         ? stack_lane_run_source_identity.value_name
+                         : source.value_name);
           arg_plan.direct_global_select_chain_dependency =
               plan_call_argument_direct_global_select_chain_dependency(
                   prepared.names,
@@ -3936,7 +4098,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   block,
                   call->args[arg_index],
                   instruction_index,
-                  source.value_name);
+                  source_identity_value_name);
           const auto* source_home =
               source.value_id.has_value()
                   ? find_prepared_value_home(value_home_lookup, *source.value_id)
@@ -3968,7 +4130,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   arg_plan,
                   source_home,
                   before_call_bundle,
-                  source.value_name);
+                  source_identity_value_name);
           arg_plan.aggregate_transport =
               plan_prepared_aggregate_transport(prepared.names,
                                                 prepared.stack_layout,
@@ -3984,7 +4146,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   PreparedCallArgumentSourceSelectionKind::
                       LocalFrameAddressMaterialization;
           publish_route6_named_scalar_i32_call_argument_source(
-              prepared.names, *call, arg_plan, source.value_name);
+              prepared.names, *call, arg_plan, source_identity_value_name);
 
           call_plan.arguments.push_back(std::move(arg_plan));
         }
