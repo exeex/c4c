@@ -7519,6 +7519,15 @@ bool bir_value_is_used_after(const c4c::backend::bir::Function& function,
   return false;
 }
 
+bool prepared_load_local_has_publication_facts(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::LoadLocalInst& load,
+    const c4c::backend::prepare::PreparedMemoryAccess* access) {
+  return access != nullptr ||
+         prepared_value_home_for(names, lookups, load.result) != nullptr;
+}
+
 const c4c::backend::prepare::PreparedMemoryAccess*
 unique_prepared_memory_access_for_value_in_block(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -14329,8 +14338,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       if (c4c::backend::bir::is_vrm_register_type(load->result.type)) {
         return RiscvEncodedFragment{};
       }
+      const auto* access = prepared_memory_access_for_local_instruction(
+          prepared.names,
+          &lookups,
+          prepared_block_label,
+          instruction_index,
+          *load);
       if ((!load->address.has_value() || !load->address->is_volatile) &&
-          !bir_value_is_used_after(function, block_index, instruction_index, load->result)) {
+          !bir_value_is_used_after(function, block_index, instruction_index, load->result) &&
+          !prepared_load_local_has_publication_facts(prepared.names, &lookups, *load, access)) {
         return RiscvEncodedFragment{};
       }
       if (find_admitted_edge_store_slot_join_transfer_for_load(prepared.names,
@@ -14340,12 +14356,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                                *load) != nullptr) {
         return RiscvEncodedFragment{};
       }
-      const auto* access = prepared_memory_access_for_local_instruction(
-          prepared.names,
-          &lookups,
-          prepared_block_label,
-          instruction_index,
-          *load);
       if (live_direct_global_local_publication_load_is_unsupported(
               prepared,
               &lookups,
@@ -14820,15 +14830,16 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
         size_bytes, access, rv64_floating_type(store->value.type));
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
-    if ((!load->address.has_value() || !load->address->is_volatile) &&
-        !bir_value_is_used_after(function, block_index, instruction_index, load->result)) {
-      return std::nullopt;
-    }
     const auto* access = prepared_memory_access_for_local_instruction(names,
                                                                      &lookups,
                                                                      prepared_block_label,
                                                                      instruction_index,
                                                                      *load);
+    if ((!load->address.has_value() || !load->address->is_volatile) &&
+        !bir_value_is_used_after(function, block_index, instruction_index, load->result) &&
+        !prepared_load_local_has_publication_facts(names, &lookups, *load, access)) {
+      return std::nullopt;
+    }
     if (live_direct_global_local_publication_load_is_unsupported(prepared,
                                                                  &lookups,
                                                                  function_name,
