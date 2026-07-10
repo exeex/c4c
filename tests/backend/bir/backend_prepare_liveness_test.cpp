@@ -1295,6 +1295,81 @@ prepare::PreparedBirModule prepare_call_arg_move_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_rv64_sret_then_fpr_call_arg_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "rv64_sret_then_fpr_call_arg_indexing";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "result.ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "float.arg",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::CallInst{
+      .callee = "sret_then_f64_sink",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "result.ptr"),
+               bir::Value::named(bir::TypeKind::F64, "float.arg")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::F64},
+      .arg_abi = {bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::Ptr,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .primary_class = bir::AbiValueClass::Memory,
+                      .sret_pointer = true,
+                  },
+                  bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::F64,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .primary_class = bir::AbiValueClass::Sse,
+                      .passed_in_register = true,
+                  }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_call_result_move_module_with_regalloc() {
   bir::Module module;
 
@@ -5651,6 +5726,46 @@ int check_call_arg_move_resolution(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_rv64_sret_then_fpr_call_arg_indexing(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* function =
+      find_regalloc_function(prepared, "rv64_sret_then_fpr_call_arg_indexing");
+  if (function == nullptr) {
+    return fail("expected regalloc output for RV64 sret/FPR call-argument indexing");
+  }
+
+  const auto* locations = prepare::find_prepared_value_location_function(
+      prepared, "rv64_sret_then_fpr_call_arg_indexing");
+  const auto* before_call_bundle =
+      locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*locations,
+                                               prepare::PreparedMovePhase::BeforeCall,
+                                               0,
+                                               0);
+  const auto* fpr_binding =
+      before_call_bundle == nullptr
+          ? nullptr
+          : find_abi_binding(*before_call_bundle,
+                             prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                             1);
+  if (fpr_binding == nullptr ||
+      fpr_binding->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      fpr_binding->destination_register_name != std::optional<std::string>{"fa0"} ||
+      fpr_binding->destination_register_placement !=
+          std::optional<prepare::PreparedRegisterPlacement>{
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Fpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              }}) {
+    return fail("expected RV64 sret pointer accounting not to shift the following FPR argument lane");
+  }
+
+  return 0;
+}
+
 int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared) {
   const auto* function = find_regalloc_function(prepared, "call_result_move_resolution");
   if (function == nullptr) {
@@ -7785,6 +7900,13 @@ int main() {
 
   const auto call_arg_move_prepared = prepare_call_arg_move_module_with_regalloc();
   if (const int rc = check_call_arg_move_resolution(call_arg_move_prepared); rc != 0) {
+    return rc;
+  }
+  const auto rv64_sret_then_fpr_call_arg_prepared =
+      prepare_rv64_sret_then_fpr_call_arg_module_with_regalloc();
+  if (const int rc = check_rv64_sret_then_fpr_call_arg_indexing(
+          rv64_sret_then_fpr_call_arg_prepared);
+      rc != 0) {
     return rc;
   }
 

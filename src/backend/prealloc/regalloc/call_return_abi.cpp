@@ -435,10 +435,17 @@ std::optional<std::size_t> call_arg_abi_register_index(
       std::size_t register_index = 0;
       for (std::size_t candidate_index = 0; candidate_index < arg_index; ++candidate_index) {
         const auto candidate_abi = resolve_call_arg_abi(target_profile, call, candidate_index);
-        if (!candidate_abi.has_value() || !candidate_abi->passed_in_register) {
+        if (!candidate_abi.has_value()) {
           continue;
         }
-        if (rv64_same_call_arg_register_lane(target_profile, *candidate_abi, *abi)) {
+        if (candidate_abi->type == bir::TypeKind::Ptr &&
+            candidate_abi->sret_pointer &&
+            !rv64_call_arg_uses_fpr_lane(target_profile, *abi)) {
+          ++register_index;
+        } else if (candidate_abi->passed_in_register &&
+                   rv64_same_call_arg_register_lane(target_profile,
+                                                    *candidate_abi,
+                                                    *abi)) {
           ++register_index;
         }
       }
