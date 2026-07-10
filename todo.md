@@ -1,18 +1,19 @@
 Status: Active
 Source Idea Path: ideas/open/665_aarch64_instruction_dispatch_internal.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair The Selected AArch64 Rule
+Current Step ID: 4
+Current Step Title: Prove Regression Safety And Lifecycle Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed the bounded current-call aggregate-carrier classification
-packet for row 322 `arg index=12`. Prepared call-plan construction now has a
-same-call aggregate lane-group lookup that requires matching
-`aggregate_source_value_name`, matching lane count, and a terminal lane index
-inside the current call before it reuses a lane-run carrier identity.
+Step 3 is complete at the expectation-contract boundary. The bounded
+current-call aggregate-carrier classification packet for row 322
+`arg index=12` moved prepared call-plan construction to a same-call aggregate
+lane-group lookup that requires matching `aggregate_source_value_name`,
+matching lane count, and a terminal lane index inside the current call before
+it reuses a lane-run carrier identity.
 
 Before this packet, row 322 `arg index=12` used the scalar lane source
 `source_value_id=2725` / `%t58.0` while retaining `source_slot=#3142` and
@@ -20,25 +21,27 @@ Before this packet, row 322 `arg index=12` used the scalar lane source
 After this packet, the same row resolves to the current-call `%t58` aggregate
 group terminal source `source_value_id=2728` / `%t58.48` while preserving
 `source_slot=#3142`, `source_stack_offset=8288`, and `dest_stack_offset=64`.
-The requested `2732` remains outside current-call arg-12 authority in this
-proof; it is the later `%t61.global.aggregate.load.16` value, so using it would
-require the rejected later-call/later-store lookahead route.
+The expectation-contract review in
+`review/row322_expectation_contract_review.md` confirmed that `2732` remains
+outside current-call arg-12 authority. It is the later
+`%t61.global.aggregate.load.16` value, so using it would require the rejected
+later-call/later-store lookahead route. Do not continue Step 3 implementation
+by chasing `2732` under idea 665.
 
 ## Suggested Next
 
-Stop Step 3 implementation and request an explicit expectation-contract review
-for row 322 before any more code packets. The current-call owner for
-`arg index=12` is now classified as `%t58.48` / `2728`; the expected
-`source_value_id=2732` is the later `%t61.global.aggregate.load.16` value and
-cannot be used without reviving the rejected later-call/later-store lookahead.
+Proceed with Step 4 regression and lifecycle readiness. The supervisor should
+choose the focused AArch64 proof plus any broader backend subset needed for
+acceptance, then decide whether idea 665 can close or must remain active with a
+new narrow packet.
 
-Lifecycle decision: do not continue Step 3 by chasing `2732`. If review or
-explicit user direction accepts `2728` as the correct current-call contract,
-the supervisor can move to Step 4 regression/lifecycle readiness after the
-expectation path is handled outside this packet. If review proves a
-current-call fact that should name `2732`, delegate a narrow Step 3 packet
-around that current-call source authority only. If neither condition holds,
-split or reroute row 322 instead of expanding idea 665.
+Expectation path status: `%t58.48` / `2728` is the valid current-call owner for
+row 322 `arg index=12`; `2732` is not a valid current-call source identity on
+the current evidence. If row 322 still needs an expectation adjustment, handle
+that outside Step 3 implementation for idea 665. Create or switch to a separate
+idea only if the supervisor decides the expectation contract itself is a
+durable initiative; do not expand idea 665 to revive later-call/later-store
+lookahead.
 
 ## Watchouts
 
@@ -49,10 +52,10 @@ split or reroute row 322 instead of expanding idea 665.
   identity. The remaining first failure is now `arg index=12`, where the
   current-call aggregate group owner is `%t58.48` / `2728` and the expected
   owner is still the later value id `2732`.
-- Lifecycle decision: row 322 is blocked on expectation-contract authority, not
-  on another known AArch64 implementation repair. Do not move to Step 4 or
-  delegate more Step 3 code until review resolves whether expected `2732` is a
-  valid current-call contract or should be revised outside this packet.
+- Lifecycle decision: the row 322 expectation-contract authority is resolved
+  for Step 3. `2732` is not a valid current-call owner; no further Step 3 code
+  packet should chase it unless new evidence proves a current-call fact that
+  directly ties call inst 460 arg 12 to `2732` without later lookahead.
 - Reviewer reset: `review/row322_later_lane_review.md` rejected the
   uncommitted later-call/later-store lookahead route as testcase-overfit and
   temporal route drift. Do not record that route as progress or revive it as
@@ -77,3 +80,15 @@ current-call aggregate owner for `arg index=12`. Current first failure in
 expected `source_value_id=2732 source_slot=#3142 source_stack_offset=8288`;
 actual prepared output now has `source_value_id=2728` / `%t58.48` with the
 same slot and stack offset.
+
+Lifecycle review:
+
+```text
+review/row322_expectation_contract_review.md
+```
+
+Result: `2732` is not a valid current-call source identity for row 322
+`arg index=12`; the current-call authority is `%t58.48` / `2728`. Another
+Step 3 implementation packet is not justified unless new evidence proves a
+current-call fact that directly ties call inst 460 arg 12 to `2732` without
+later-call/later-store lookahead.
