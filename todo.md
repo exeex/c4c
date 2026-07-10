@@ -1,24 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prove Backend Regression Safety
+Current Step ID: 3
+Current Step Title: Decide Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` proved backend regression safety against the accepted
-full-suite baseline context. The delegated proof command was run exactly and
-preserved output in `test_after.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`.
+Step 3 of `plan.md` completed the closure-readiness decision for idea 657.
+The source idea acceptance criteria are satisfied by the refreshed evidence:
 
-The build was up to date and CTest returned nonzero for the accepted baseline
-red rows. `test_before.log` and `test_after.log` both report `99% tests
-passed, 11 tests failed out of 3397`, and the failed test IDs/names match
-exactly. There are no new failures for idea 657.
+- Focused boundary evidence is recorded in
+  `build/agent_state/657_step1_reactivation_runtime_proof/summary.md`. It
+  names the explicit prepared `base=pointer_value` access fact as the
+  caller-visible indirect-store boundary, keeps the local cursor writeback
+  separate, and confirms the completed `%t23` branch-source publication did
+  not regress.
+- The representative `tests/c/external/gcc_torture/src/loop-2e.c` RV64
+  object-runtime comparison matches clang. The Step 1 delegated focused CTest
+  proof in `test_after.log` reported `100% tests passed, 0 tests failed out
+  of 1`, and the summary records the c4c RV64 object-runtime comparison as
+  `[PASS][rv64-gcc-torture-backend-obj]`.
+- Backend regression proof shows no new failures for idea 657 against the
+  accepted full-suite baseline. Step 2 ran
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`;
+  `test_before.log` and `test_after.log` both report `99% tests passed, 11
+  tests failed out of 3397`, with matching failed test IDs/names.
 
-Remaining red rows are accepted unrelated baseline state:
+The remaining full-suite red rows are accepted unrelated baseline state, not
+idea 657 blockers:
 `backend_dump_riscv64_stack_passed_parameter_home_publication`,
 `backend_dump_riscv64_scalar_compare_frame_slot_destination`,
 `backend_dump_riscv64_prepared_fused_compare_call_result_predicate`,
@@ -33,11 +44,10 @@ Remaining red rows are accepted unrelated baseline state:
 
 ## Suggested Next
 
-Delegate Step 3 closure-readiness decision. The Step 3 packet should summarize
-that Step 1 refreshed representative `loop-2e.c` RV64 object-runtime evidence
-successfully and Step 2 found no new failures against the accepted full-suite
-baseline, then request lifecycle close review unless the supervisor sees a
-separate blocker.
+Request lifecycle close review for
+`ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md`. The current
+evidence supports closing idea 657 unless the supervisor or plan owner finds a
+separate lifecycle blocker outside this executor packet.
 
 ## Watchouts
 
@@ -53,8 +63,14 @@ separate blocker.
 
 ## Proof
 
-Completed with no new failures against accepted baseline:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`.
+No new proof command was delegated for Step 3. Closure readiness uses these
+existing artifacts:
 
-Proof log: `test_after.log`.
-Baseline log: `test_before.log`.
+- Step 1 representative runtime proof summary:
+  `build/agent_state/657_step1_reactivation_runtime_proof/summary.md`.
+- Step 1 focused proof command recorded in that summary:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_loop_2e_c$' > test_after.log 2>&1`.
+- Step 2 full-suite regression proof command:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`.
+- Current full-suite proof log: `test_after.log`.
+- Accepted baseline comparison log: `test_before.log`.
