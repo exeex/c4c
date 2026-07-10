@@ -139,6 +139,17 @@ void render_call_argument_source_annotation(
   if (source.source_value_name.has_value()) {
     out << " source_value=" << *source.source_value_name;
   }
+  if (source.aggregate_source_value_name.has_value()) {
+    out << " aggregate_source_value=" << *source.aggregate_source_value_name;
+  }
+  if (source.aggregate_source_lane_index.has_value()) {
+    out << " aggregate_source_lane="
+        << *source.aggregate_source_lane_index;
+  }
+  if (source.aggregate_source_lane_count.has_value()) {
+    out << " aggregate_source_lanes="
+        << *source.aggregate_source_lane_count;
+  }
   if (source.source_base_value_id.has_value()) {
     out << " source_base_value_id=" << *source.source_base_value_id;
   }

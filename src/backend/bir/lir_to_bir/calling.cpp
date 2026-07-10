@@ -448,6 +448,9 @@ struct Aapcs64VariadicHfaCarrierExpansionLane {
   bir::Value value;
   bir::TypeKind type = bir::TypeKind::Void;
   bir::CallArgAbiInfo abi;
+  std::string aggregate_source_value_name;
+  std::size_t aggregate_source_lane_index = 0;
+  std::size_t aggregate_source_lane_count = 0;
 };
 
 struct Aapcs64VariadicHfaCarrierExpansionRequest {
@@ -511,10 +514,6 @@ build_aapcs64_variadic_hfa_carrier_expansion(
   if (ordered_leaf_slots.size() != lane_count) {
     return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
   }
-  if (request.variadic_fp_register_lane_count < 8 &&
-      request.variadic_fp_register_lane_count + lane_count > 8) {
-    return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
-  }
 
   Aapcs64VariadicHfaCarrierExpansionResult result{
       .kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded,
@@ -548,6 +547,9 @@ build_aapcs64_variadic_hfa_carrier_expansion(
         .value = bir::Value::named(*lane_type, slot_name),
         .type = *lane_type,
         .abi = *lane_abi,
+        .aggregate_source_value_name = request.source_operand.str(),
+        .aggregate_source_lane_index = lane_index,
+        .aggregate_source_lane_count = lane_count,
     });
   }
   return result;
@@ -1517,6 +1519,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   std::vector<bir::TypeKind> lowered_arg_types;
   std::vector<bir::CallArgAbiInfo> lowered_arg_abi;
   std::vector<bir::CallArgumentSourceRelationship> lowered_arg_sources;
+  std::vector<std::optional<bir::CallArgumentSourceRelationship>>
+      explicit_arg_sources;
   std::optional<std::string> callee_name;
   std::optional<bir::Value> callee_value;
   std::optional<PointerAddress> returned_pointer_address;
@@ -1633,9 +1637,23 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
 
     for (const auto& lane : expansion.lanes) {
+      const auto arg_index = lowered_args.size();
       lowered_arg_types.push_back(lane.type);
       lowered_args.push_back(lane.value);
       lowered_arg_abi.push_back(lane.abi);
+      explicit_arg_sources.resize(lowered_args.size());
+      explicit_arg_sources[arg_index] = bir::CallArgumentSourceRelationship{
+          .arg_index = arg_index,
+          .source_encoding = bir::CallArgumentSourceEncodingKind::FrameSlot,
+          .source_value_name = lane.value.name,
+          .aggregate_source_value_name = lane.aggregate_source_value_name,
+          .aggregate_source_lane_index = lane.aggregate_source_lane_index,
+          .aggregate_source_lane_count = lane.aggregate_source_lane_count,
+          .source_selection = bir::CallArgumentSourceSelection{
+              .kind = bir::CallArgumentSourceSelectionKind::FrameSlotValue,
+              .source_value_name = lane.value.name,
+          },
+      };
       note_aarch64_variadic_fp_arg_abi(lane.abi);
     }
     return expansion.kind;
@@ -1836,6 +1854,11 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     std::vector<bir::CallArgumentSourceRelationship> relationships;
     relationships.reserve(lowered_args.size());
     for (std::size_t index = 0; index < lowered_args.size(); ++index) {
+      if (index < explicit_arg_sources.size() &&
+          explicit_arg_sources[index].has_value()) {
+        relationships.push_back(std::move(*explicit_arg_sources[index]));
+        continue;
+      }
       const auto& value = lowered_args[index];
       bir::CallArgumentSourceRelationship relationship{
           .arg_index = index,
