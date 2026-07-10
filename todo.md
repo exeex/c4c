@@ -8,28 +8,38 @@ Current Step Title: Representative Runtime And Backend Regression Proof
 
 ## Just Finished
 
-Step 2 repaired the prepared text local-store and call-result preservation
-boundaries for the remaining RV64 byval runtime rows:
-`backend_rv64_runtime_riscv64_byval_aggregate_fixed_call`,
-`backend_rv64_runtime_riscv64_byval_preserved_pointer_args`, and
-`backend_rv64_runtime_riscv64_byval_formal_gpr_publication`.
+Step 4 evidence remains active after the committed RV64 byval runtime repair:
+the focused runtime subset and supervisor same-scope `^backend_` guard both
+passed for the committed runtime slice.
 
-The local-store repair now rejects mismatched scalar prepared memory-access
-rows and falls back only to an exact prepared stack-layout object match by
-store destination slot name, rather than the broad raw `StoreLocalInst` slot
-fallback. This fixed split aggregate stores such as `%lv.value.8` and
-`%lv.value.4`.
+Step 3 focused byval/prepared call-boundary evidence was also recorded after
+that repair. The delegated focused subset completed with 6/9 rows passing.
+Passing target rows:
+`backend_codegen_route_riscv64_byval_preserved_pointer_args`,
+`backend_codegen_route_riscv64_byval_formal_gpr_publication`,
+`backend_codegen_route_riscv64_byval_aggregate_fixed_call`,
+`backend_rv64_runtime_riscv64_byval_preserved_pointer_args`,
+`backend_rv64_runtime_riscv64_byval_formal_gpr_publication`, and
+`backend_rv64_runtime_riscv64_byval_aggregate_fixed_call`.
 
-The call repair suppresses after-call preservation republication only when it
-would write over the exact GPR where the prepared call result was just
-published.
+Remaining non-Step-2 / separate-owner Step 3 rows:
+`backend_dump_riscv64_byval_aggregate_fixed_call` still fails because the
+expected dump snippet asks for `move from_value_id=20 to_value_id=20
+destination_kind=call_argument_abi destination_storage=stack_slot`, while the
+current prepared output has the call-argument stack move for value id 22.
+`backend_dump_riscv64_byval_preserved_pointer_args` still fails on a stale
+aggregate-address dump snippet whose current output records frame-slot
+call-argument sources. `backend_obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload`
+still fails in the separate object-runtime route with `unsupported_instruction_fragment`
+for `instruction_kind=BinaryInst`.
 
 ## Suggested Next
 
-Run the focused Step 3 byval/prepared call-boundary subset from `plan.md`,
-including dump, route, runtime, and the intentionally separate object-runtime
-row, so the supervisor can decide whether remaining failures are in-family
-Step 2 work or should move to Step 4 broader validation.
+Supervisor should decide close, split, or lifecycle routing after the Step 4
+same-scope backend evidence, with the Step 3 focused proof recorded as
+supporting evidence. No implementation, tests, expectations, unsupported
+markers, allowlists, runtime policy, timeout settings, baseline files, or logs
+were changed by this correction.
 
 ## Watchouts
 
@@ -42,8 +52,9 @@ Step 2 work or should move to Step 4 broader validation.
   their current output is useful positive evidence that prepared facts exist.
 - Keep the object-runtime `BinaryInst` unsupported-fragment row as a separate
   split unless the supervisor explicitly assigns object-route coverage.
-- The focused runtime subset and supervisor same-scope `^backend_` guard both
-  passed for the committed runtime slice.
+- The focused route/runtime Step 2 rows passed in this proof. The focused
+  subset remains red only because the two dump rows and the separate
+  object-runtime row are still failing.
 - Avoid broad scalar `StoreLocalInst` fallbacks. A previous attempt that
   allowed mismatched or missing prepared accesses to fall back to the raw store
   slot made many unrelated local-memory routes fail.
@@ -60,16 +71,18 @@ Step 2 work or should move to Step 4 broader validation.
 
 ## Proof
 
-Runtime-boundary proof ran:
+Step 3 focused proof command ran exactly as delegated:
 
 ```sh
-cmake --build --preset default && (ctest --test-dir build -j --output-on-failure -R 'backend_rv64_runtime_riscv64_byval_(aggregate_fixed_call|preserved_pointer_args|formal_gpr_publication)' > test_after.log; test -s test_after.log)
+cmake --build --preset default && (ctest --test-dir build -j --output-on-failure -R 'backend_(dump_riscv64_byval_aggregate_fixed_call|codegen_route_riscv64_byval_aggregate_fixed_call|dump_riscv64_byval_preserved_pointer_args|codegen_route_riscv64_byval_preserved_pointer_args|codegen_route_riscv64_byval_formal_gpr_publication|rv64_runtime_riscv64_byval_aggregate_fixed_call|rv64_runtime_riscv64_byval_preserved_pointer_args|rv64_runtime_riscv64_byval_formal_gpr_publication|obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload)' > test_after.log; test -s test_after.log)
 ```
 
-Result: build succeeded and focused CTest passed 3/3. `test_after.log` is the
-preserved proof log.
+Result: build succeeded (`ninja: no work to do`), the focused CTest subset
+reported 67% tests passed with 6 passed and 3 failed out of 9, and
+`test_after.log` is the preserved proof log. The shell wrapper returned success
+because `test_after.log` was nonempty after the CTest run.
 
-Supervisor acceptance ran a stash-based same-scope backend guard:
+Prior supervisor Step 4 acceptance ran a stash-based same-scope backend guard:
 
 ```sh
 cmake --build --preset default
