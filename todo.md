@@ -8,30 +8,33 @@ Current Step Title: Publish The `%t23` Compare Pointer Source Chain
 
 ## Just Finished
 
-Step 4A, `Publish The %t23 Compare Pointer Source Chain`, repaired the
-prepared/RV64 branch stack-load authority for the new `%t23` producer shape.
+Step 4A, `Publish The %t23 Compare Pointer Source Chain`, now has fresh
+focused integration/runtime evidence for the `src/loop-2e.c` `%t23` path after
+the clobber-safety fix.
 
-- Prepared branch stack-load clobber safety now recognizes an unambiguous
-  same-block pointer-add producer after an intervening call as re-establishing
-  the selected stack slot, including the before-instruction stack move emitted
-  at the producer instruction.
-- The rule is keyed on the named BIR pointer producer and exact prepared value
-  home/slot identity; unrelated pointer producers and still-live lhs values
-  remain fail-closed.
-- For `src/loop-2e.c`, prepared output now records the RHS
-  `branch_stack_load_authority` for `%t23` value id `26` / `slot #50+stack368`
-  as `status=available`.
-- RV64 object emission for `src/loop-2e.c` advances past
-  `unsupported_branch_stack_load_authority` /
-  `authority_status=missing_stack_clobber_safety` and exits 0.
+- Semantic and prepared BIR both contain `%t23 = bir.add ptr %t21, 156`
+  followed by `%t24 = bir.ne ptr %t20, %t23`.
+- Prepared output records `%t23` as value id `26` in `slot #50+stack368`, with
+  RHS `branch_stack_load_authority` `status=available` and
+  `pointer_status=proven`.
+- RV64 object emission exits 0; disassembly shows the selected branch
+  materializes the RHS pointer with `ld` from `360(sp)`, `addi ..., 156`,
+  stores it to `368(sp)`, reloads it with `ld`, and branches on that value.
+- The one-case RV64 GCC torture object runtime compare still fails with
+  `clang_exit=0` and `c4c_exit=Subprocess aborted`.
+- The runtime abort is downstream of Step 4A: callee `f` updates the local
+  stack home for `q` at `0(sp)` instead of storing the computed pointer through
+  the caller-provided `*q++` destination, so `main` reloads unchanged `q[39]`
+  from `312(sp)` before comparing it with the now-materialized `%t23`.
 - Evidence is in
-  `build/agent_state/653_step4a_loop_t23_clobber_safety/summary.md`.
+  `build/agent_state/653_step4a_loop_t23_runtime_probe/summary.md`.
 
 ## Suggested Next
 
-Delegate the next packet to decide whether Step 4A is complete enough for
-integration/runtime probing, or to inspect the current `loop-2e.c` runtime
-result under qemu now that object emission reaches a concrete RV64 object.
+Treat Step 4A as complete for the `%t23` pointer-source
+publication/materialization boundary and route the next packet or lifecycle
+decision to the downstream callee indirect-store / `*q++` writeback owner if
+that owner is in scope for the current idea.
 
 ## Watchouts
 
@@ -43,6 +46,8 @@ result under qemu now that object emission reaches a concrete RV64 object.
 - Do not re-open the `%t23` clobber-safety owner without checking the current
   prepared authority row first; it is now `status=available` for the refreshed
   `%t23` value id `26` / `slot #50+stack368` shape.
+- Do not classify the fresh `loop-2e.c` runtime abort as a pointer-source
+  authority failure; object emission and branch materialization now advance.
 - Do not broaden Step 4A into the parked `%t6` runtime owner; that owner is
   downstream of the pointer-source publication/materialization boundary.
 - Do not weaken expectation files, unsupported markers, allowlists, or runtime
@@ -50,8 +55,8 @@ result under qemu now that object emission reaches a concrete RV64 object.
 
 ## Proof
 
-`test_after.log`: `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_'`.
+`test_after.log`: `{ cmake --build --preset default && ctest --test-dir build
+-j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`.
 
 Result: build completed and the delegated backend subset remains red with 32
 failed tests out of 365, matching `test_before.log` by failed test name. No new
@@ -60,13 +65,16 @@ log.
 
 Focused proof:
 
-- `cmake --build --preset default --target backend_prepare_stack_layout_test
-  c4cll && ./build/tests/backend/bir/backend_prepare_stack_layout_test`
-  passed.
+- `build/c4cll --target riscv64-linux-gnu --dump-bir
+  tests/c/external/gcc_torture/src/loop-2e.c` exits 0 and writes
+  `build/agent_state/653_step4a_loop_t23_runtime_probe/loop-2e.bir.txt`.
 - `build/c4cll --target riscv64-linux-gnu --dump-prepared-bir
-  tests/c/external/gcc_torture/src/loop-2e.c` wrote
-  `build/agent_state/653_step4a_loop_t23_clobber_safety/loop-2e.after.prepared.txt`
-  and shows `%t23` branch stack-load authority `status=available`.
+  tests/c/external/gcc_torture/src/loop-2e.c` exits 0 and writes
+  `build/agent_state/653_step4a_loop_t23_runtime_probe/loop-2e.prepared.txt`.
 - `build/c4cll --target riscv64-linux-gnu --codegen obj
   tests/c/external/gcc_torture/src/loop-2e.c -o
-  build/agent_state/653_step4a_loop_t23_clobber_safety/loop-2e.o` exits 0.
+  build/agent_state/653_step4a_loop_t23_runtime_probe/loop-2e.o` exits 0.
+- `scripts/check_progress_rv64_gcc_c_torture_backend.sh` with a one-case
+  `src/loop-2e.c` allowlist fails only at runtime compare:
+  `clang_exit=0`, `c4c_exit=Subprocess aborted`; copied case log is
+  `build/agent_state/653_step4a_loop_t23_runtime_probe/loop-2e.runtime.case.log`.
