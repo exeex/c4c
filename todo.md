@@ -8,34 +8,30 @@ Current Step Title: Repair The Selected AArch64 Rule
 
 ## Just Finished
 
-Step 3 completed the bounded prepared/prealloc publication packet for AArch64
-variadic HFA aggregate-carrier lane metadata at the prepared call-plan
-construction point. `CallArgumentPublicationSourceRouting`, the route6 source
-records, and `PreparedCallArgumentPlan` construction now carry and consume
-`aggregate_source_value_name` / lane index / lane count metadata instead of
-leaving the prepared source identity to printer or regalloc interpretation.
+Step 3 completed the bounded current-call aggregate-carrier classification
+packet for row 322 `arg index=12`. Prepared call-plan construction now has a
+same-call aggregate lane-group lookup that requires matching
+`aggregate_source_value_name`, matching lane count, and a terminal lane index
+inside the current call before it reuses a lane-run carrier identity.
 
-Before this packet, row 322 failed on `arg index=8` with prepared
-`source_value_id=2721` / `%t56.0` while retaining lane placement
-`source_slot=#3138` and `source_stack_offset=8224`; the expected owner was
-`source_value_id=2728` / `%t58.48`. After this packet, that row-322 snippet is
-present: `arg index=8` now has `source_value_id=2728` while preserving
-`source_slot=#3138`, `source_stack_offset=8224`, `dest_stack_offset=0`, and
-the explicit lane `arg.source_selection` frame-slot facts.
+Before this packet, row 322 `arg index=12` used the scalar lane source
+`source_value_id=2725` / `%t58.0` while retaining `source_slot=#3142` and
+`source_stack_offset=8288`; the expected snippet wanted `source_value_id=2732`.
+After this packet, the same row resolves to the current-call `%t58` aggregate
+group terminal source `source_value_id=2728` / `%t58.48` while preserving
+`source_slot=#3142`, `source_stack_offset=8288`, and `dest_stack_offset=64`.
+The requested `2732` remains outside current-call arg-12 authority in this
+proof; it is the later `%t61.global.aggregate.load.16` value, so using it would
+require the rejected later-call/later-store lookahead route.
 
 ## Suggested Next
 
-Continue Step 3 with a bounded non-overfit packet for the current first
-row-322 prepared snippet failure: `arg index=12` still reports
-`source_value_id=2725` / `%t58.0` with `source_slot=#3142` and
-`source_stack_offset=8288`, while the expected snippet wants
-`source_value_id=2732` with the same lane placement facts.
-
-The packet must reset around the actual missing authority for the current
-call. Either publish or consume a current-call aggregate-carrier source fact
-that directly names the desired owner for `arg index=12`, or fail closed with
-evidence that row 322 belongs outside the current AArch64 publication route.
-Do not use later-call or later-store lookahead as the source-owner rule.
+Have the supervisor decide whether row 322's expected `source_value_id=2732`
+should be revised through lifecycle/review because the current-call owner for
+`arg index=12` is now classified as `%t58.48` / `2728`, not the later
+`%t61.global.aggregate.load.16` / `2732`. Do not implement another code packet
+that chases `2732` unless a current-call source fact for that value is first
+proven.
 
 ## Watchouts
 
@@ -44,8 +40,8 @@ Do not use later-call or later-store lookahead as the source-owner rule.
   proves a wider prepared-formal rule is required.
 - Row 322 is no longer blocked on the original `arg index=8` prepared source
   identity. The remaining first failure is now `arg index=12`, where the
-  current prepared owner remains the lane value `%t58.0` while the expected
-  owner has advanced to value id `2732`.
+  current-call aggregate group owner is `%t58.48` / `2728` and the expected
+  owner is still the later value id `2732`.
 - Lifecycle decision: keep row 322 in Step 3 as an AArch64 BIR publication
   representation repair; do not move to Step 4 until the remaining prepared
   aggregate-carrier owner mismatch is resolved or proves a different owner.
@@ -67,9 +63,9 @@ Ran the delegated proof and preserved `test_after.log`:
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$') > test_after.log 2>&1
 ```
 
-Result: build completed, row 284 passed, row 322 still failed after advancing
-past the previous `arg index=8` mismatch. Current first failure in
+Result: build completed, row 284 passed, row 322 still failed closed at the
+current-call aggregate owner for `arg index=12`. Current first failure in
 `test_after.log` is `[BACKEND_DUMP_SNIPPET_MISSING]` for `arg index=12`:
 expected `source_value_id=2732 source_slot=#3142 source_stack_offset=8288`;
-actual prepared output has `source_value_id=2725` / `%t58.0` with the same slot
-and stack offset.
+actual prepared output now has `source_value_id=2728` / `%t58.48` with the
+same slot and stack offset.

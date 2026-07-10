@@ -1593,6 +1593,59 @@ find_named_call_argument_source_identity(
   return identity;
 }
 
+[[nodiscard]] bool aggregate_source_group_matches(
+    const bir::CallArgumentPublicationSourceRouting& lhs,
+    const bir::CallArgumentPublicationSourceRouting& rhs) {
+  return lhs.aggregate_source_value_name.has_value() &&
+         rhs.aggregate_source_value_name.has_value() &&
+         *lhs.aggregate_source_value_name == *rhs.aggregate_source_value_name &&
+         lhs.aggregate_source_lane_count.has_value() &&
+         rhs.aggregate_source_lane_count.has_value() &&
+         *lhs.aggregate_source_lane_count == *rhs.aggregate_source_lane_count;
+}
+
+[[nodiscard]] AggregateCarrierSourceIdentity
+find_current_call_aggregate_lane_group_source_identity(
+    const PreparedNameTables& names,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::CallInst& call,
+    const PreparedCallArgumentPlan& argument,
+    const bir::CallArgumentPublicationSourceRouting& routing) {
+  if (argument.arg_index >= call.args.size() ||
+      routing.source_encoding != bir::CallArgumentSourceEncodingKind::FrameSlot ||
+      !routing.aggregate_source_value_name.has_value() ||
+      !routing.aggregate_source_lane_index.has_value() ||
+      !routing.aggregate_source_lane_count.has_value() ||
+      *routing.aggregate_source_lane_count <= 1 ||
+      *routing.aggregate_source_lane_index >= *routing.aggregate_source_lane_count) {
+    return {};
+  }
+
+  const std::size_t lane_offset =
+      *routing.aggregate_source_lane_count - *routing.aggregate_source_lane_index - 1;
+  const std::size_t terminal_arg_index = argument.arg_index + lane_offset;
+  if (terminal_arg_index >= call.args.size() ||
+      terminal_arg_index == argument.arg_index) {
+    return {};
+  }
+
+  const auto terminal_routing =
+      bir::find_call_argument_publication_source_routing(call, terminal_arg_index);
+  if (terminal_routing.source_encoding !=
+          bir::CallArgumentSourceEncodingKind::FrameSlot ||
+      !aggregate_source_group_matches(routing, terminal_routing) ||
+      terminal_routing.aggregate_source_lane_index !=
+          std::optional<std::size_t>{*routing.aggregate_source_lane_count - 1}) {
+    return {};
+  }
+
+  return find_named_call_argument_source_identity(names,
+                                                 regalloc_function,
+                                                 value_locations,
+                                                 call.args[terminal_arg_index]);
+}
+
 [[nodiscard]] AggregateCarrierSourceIdentity
 find_stack_aggregate_carrier_lane_run_source_identity(
     const PreparedNameTables& names,
@@ -4061,13 +4114,26 @@ void populate_call_plans(PreparedBirModule& prepared) {
                         *call,
                         arg_plan,
                         source_routing);
+          const auto current_call_lane_group_source_identity =
+              aggregate_source_identity.value_id.has_value() ||
+                      stack_lane_run_source_identity.value_id.has_value()
+                  ? AggregateCarrierSourceIdentity{}
+                  : find_current_call_aggregate_lane_group_source_identity(
+                        prepared.names,
+                        regalloc_function,
+                        value_locations,
+                        *call,
+                        arg_plan,
+                        source_routing);
           arg_plan.source_encoding = source.encoding;
           arg_plan.source_value_id =
               aggregate_source_identity.value_id.has_value()
                   ? aggregate_source_identity.value_id
                   : (stack_lane_run_source_identity.value_id.has_value()
                          ? stack_lane_run_source_identity.value_id
-                         : source.value_id);
+                         : (current_call_lane_group_source_identity.value_id.has_value()
+                                ? current_call_lane_group_source_identity.value_id
+                                : source.value_id));
           arg_plan.source_base_value_id = source.base_value_id;
           arg_plan.source_literal = source.literal;
           arg_plan.source_symbol_name = source.symbol_name;
@@ -4080,7 +4146,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   ? aggregate_source_identity.register_bank
                   : (stack_lane_run_source_identity.register_bank.has_value()
                          ? stack_lane_run_source_identity.register_bank
-                         : source.register_bank);
+                         : (current_call_lane_group_source_identity.register_bank.has_value()
+                                ? current_call_lane_group_source_identity.register_bank
+                                : source.register_bank));
           arg_plan.source_base_value_name = source.base_value_name;
           arg_plan.source_pointer_byte_delta = source.pointer_byte_delta;
           arg_plan.source_register_placement = source.register_placement;
@@ -4089,7 +4157,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   ? aggregate_source_identity.value_name
                   : (stack_lane_run_source_identity.value_name.has_value()
                          ? stack_lane_run_source_identity.value_name
-                         : source.value_name);
+                         : (current_call_lane_group_source_identity.value_name.has_value()
+                                ? current_call_lane_group_source_identity.value_name
+                                : source.value_name));
           arg_plan.direct_global_select_chain_dependency =
               plan_call_argument_direct_global_select_chain_dependency(
                   prepared.names,
