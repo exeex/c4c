@@ -1,6 +1,6 @@
 # RV64 Callee-Saved GPR Runtime
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -60,6 +60,22 @@ values after calls.
 - The focused runtime rows pass or fail closed with precise diagnostics.
 - Backend regression proof shows no new backend failures in the supervisor's
   chosen subset.
+
+## Closure Note
+
+Closed after the active runbook completed the focused callee-saved/live-value
+route. Step 3 repaired RV64 object-route live-value ordering for rows 183, 184,
+and 219, and the focused guard improved from 4/7 before to 7/7 after for the
+selected family. Step 4 rechecked rows 87, 88, 100, 101, 183, 184, and 219 and
+passed 7/7 with no remaining callee-saved/live-value packet identified.
+
+Close-time regression guard reused canonical same-scope logs
+`test_before.log` and `test_after.log` for the seven-test focused family. The
+strict monotonic guard reported 7/7 before and 7/7 after with no new failures
+but failed only because the lifecycle-close delta had no additional pass-count
+increase; rerunning the same comparison with
+`--allow-non-decreasing-passed` passed. Remaining backend smoke failures rows
+92, 103, 109, 150, 154, 172, 256, 284, and 322 are outside this idea's scope.
 
 ## Reviewer Reject Signals
 
