@@ -1,6 +1,6 @@
 # Byval Frame-Slot Object Runtime BinaryInst Support
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -76,3 +76,13 @@ a separate owner from the completed prepared call-boundary repair.
   instruction contract is not named.
 - Reject reopening the completed byval prepared call-boundary route unless a
   fresh focused proof shows the passing route or runtime rows regressed.
+
+## Closure Note
+
+Closed after refreshed focused evidence showed the historical object-runtime
+`BinaryInst` unsupported-fragment boundary is stale. The target row now emits,
+links, and runs successfully, with no current repair owner exposed. Nearby
+byval route/runtime regression surfaces also pass. Matching close logs covered
+the focused target plus four byval route/runtime rows before and after:
+`5 passed / 0 failed / 5 total` in both logs, with no new failures under the
+non-decreasing regression guard.
