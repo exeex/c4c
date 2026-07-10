@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/654_direct_global_stack_backed_pointer_branch_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Direct-Global Branch Evidence
+Current Step ID: 3
+Current Step Title: Consume Direct-Global Branch Authority In RV64
 
 # Current Packet
 
@@ -44,10 +44,24 @@ Evidence:
 
 ## Suggested Next
 
-Supervisor should decide whether to route the newly earlier
-`unsupported_call_abi` owner separately before continuing this idea, or keep
-Step 2/3 scoped to an isolated/direct branch fixture that reaches `attr_rtx`
-without the same-module call ABI blocker.
+Lifecycle decision: continue the active source idea without rewriting
+`plan.md` or creating a separate `ideas/open/` initiative for the newly earlier
+`unsupported_call_abi` owner. The call ABI gate is upstream of the representative
+full-testcase route and is explicitly out of scope for this source idea, while
+the isolated branch-boundary evidence still identifies this idea's missing fact:
+RV64 consumption of an explicit direct-global materialization for the selected
+RHS stack-backed pointer branch operand.
+
+Treat Step 2 as classified by the Step 1 evidence for the current route:
+producer facts are present, including direct-global identity and selected RHS
+branch stack-load authority. The next executor should run Step 3 against a
+focused isolated/direct branch fixture that reaches `attr_rtx` or an equivalent
+direct-global stack-backed pointer branch shape without first passing through
+the same-module call ABI blocker.
+
+Only create a separate same-module call ABI idea if the supervisor chooses to
+prioritize broad `unsupported_call_abi` recovery independently of this branch
+boundary. Do not block this source idea on that separate ABI work.
 
 ## Watchouts
 
