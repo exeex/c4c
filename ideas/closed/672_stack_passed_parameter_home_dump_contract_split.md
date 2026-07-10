@@ -1,6 +1,6 @@
 # Stack-Passed Parameter Home Dump Contract Split
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -83,3 +83,22 @@ authority from ideas 647 or 655.
   claimed as progress.
 - Reject leaving the caller/callee ABI-home split ambiguous behind a renamed
   diagnostic.
+
+## Completion Notes
+
+Closed after focused evidence classified
+`backend_dump_riscv64_stack_passed_parameter_home_publication` as a stale dump
+snippet expectation. The accepted repair updated only that row's
+`REQUIRED_SNIPPETS` to current caller ABI and callee parameter-home facts:
+ABI index 8 is `a7`, index 9 is stack offset 0, index 10 is `fa1`, and indices
+11 and 12 are stack offsets 8 and 16. Current homes for `%p.B`, `%p.fdB`,
+`%p.b`, `%p.C`, and `%p.fdC` are published.
+
+The close proof used the supervisor-selected seven-test backend subset covering
+the target dump row plus nearby prepared-destination dump, route, and runtime
+surfaces. `test_before.log` and `test_after.log` both passed 7/7 with no new
+failures under the regression guard.
+
+Ideas 647 and 655 remain parked; this closure did not reopen
+stack-destination fan-in authority and does not claim backend capability
+progress beyond the dump-contract alignment.
