@@ -8,38 +8,38 @@ Current Step Title: Implement The Narrow Stack-Carried Pointer Rule
 
 ## Just Finished
 
-Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: attempted the narrow
-`%t6` prepared/RV64 rule and stopped at the exact producer-authority boundary.
-Evidence is recorded in
-`build/agent_state/653_step3_stack_carried_pointer_rule/summary.md`.
+Step 3, `Implement The Narrow Stack-Carried Pointer Rule`: added the
+producer-side prepared authority carrier for stack-carried pointer values whose
+source is an explicit `PointerBasePlusOffset` local-frame address
+materialization and whose selected preservation home is a complete stack slot.
 
-- Focused representative:
-  `tests/c/external/gcc_torture/src/20140828-1.c`.
-- Focused RV64 backend object route:
-  `build/agent_state/653_step3_stack_carried_pointer_rule/src_20140828-1.c/case.log`
-  still reports `[RV64_BACKEND_RUNTIME_MISMATCH]` with c4c aborting.
-- Prepared dump:
-  `build/agent_state/653_step3_stack_carried_pointer_rule/src_20140828-1.c/prepared.txt`
-  still shows `%t6` value id `19` as
-  `preservation_source=stack_slot:slot#16:value#19`, not as an explicit
-  `%lv.a.0 + 2` computed local-frame pointer source.
-- Disassembly:
-  `build/agent_state/653_step3_stack_carried_pointer_rule/src_20140828-1.c/c4c.disasm.txt`
-  still has no pre-call materialization/store of `sp + 6` into slot `#16`; the
-  branch still reloads `ld t4,8(sp)`.
-- Blocker: the producer cannot currently prove source identity `%lv.a.0 + 2`,
-  materialized value identity `%t6`, and selected stack home `slot#16+stack8`
-  in one explicit prepared fact. RV64 must remain fail-closed rather than
-  infer that fact from stack offsets, source spelling, or assembly shape.
+- Changed files:
+  `src/backend/prealloc/calls.hpp`,
+  `src/backend/prealloc/call_plans.cpp`,
+  `src/backend/prealloc/prepared_printer/calls.cpp`, and
+  `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`.
+- `PreparedCallPreservedValue` now has an optional `source_selection` fact.
+  Call-preservation planning populates it only when exactly one call-argument
+  source selection proves the same value id/name, `PointerBasePlusOffset`
+  source home, local-frame materialization fields, and complete preserved
+  stack home.
+- Prior-preservation source selection copies that explicit source identity
+  while preserving the selected stack home in `preserved_*` fields. Missing,
+  stale, mismatched, stack-slot-only, and ambiguous producer states remain
+  fail-closed because the selection predicate rejects them or leaves
+  `source_selection` absent.
+- Focused unit coverage checks the positive `%t6`-class shape and negative
+  missing-materialization, stale-value, and stack-slot-only shapes. The check
+  runs before the existing known FPR dump failure in
+  `backend_prepare_frame_stack_call_contract`.
 
 ## Suggested Next
 
-Executor packet: add the prepared producer authority or fail-closed diagnostic
-in call-preservation planning for stack-carried pointer values whose source
-home should be a materializable `PointerBasePlusOffset` local-frame address.
-The first positive shape is `%t6` value id `19` at slot `#16`, source
-`%lv.a.0 + 2`; the negative shape is the current stack-slot-only preservation
-source, which must keep RV64 from materializing the branch operand.
+Executor packet: consume the explicit stack-carried pointer source authority in
+the RV64 prior-preservation stack-slot path for the `%t6` family. Require the
+new source-selection fact plus the preserved stack home to match before
+materializing or reloading the branch operand; keep stack-slot-only
+preservation rejected for pointer-source materialization.
 
 ## Watchouts
 
@@ -50,15 +50,14 @@ source, which must keep RV64 from materializing the branch operand.
 - `loop-2e.c` now passes the direct runtime runner; do not use `%t23` as the
   first failing runtime proof unless a later packet identifies a still-red
   focused owner.
-- The `%t6` row has explicit branch-stack-load authority and call-preserve
-  metadata, but no explicit `%t6` source materialization/publication fact.
-  Preserve RV64's fail-closed behavior for missing, stale, ambiguous, and
-  mismatched producer facts; do not make RV64 infer the source from slot
-  offsets, final assembly shape, or testcase identity.
-- The current `call_plans.cpp` preservation endpoint for `%t6` is built from
-  the selected stack home, so it records the source as `slot#16` rather than
-  the semantic pointer source `%lv.a.0 + 2`. The producer-side change must
-  carry both identities without weakening ordinary stack-slot preservation.
+- The producer authority is now explicit, but this packet did not change the
+  RV64 object-emission consumer. RV64 still must not infer from stack offsets,
+  source spelling, final assembly shape, or testcase identity.
+- Stack-slot-only preservation remains valid as ordinary stack preservation;
+  it is not a pointer source materialization authority.
+- `backend_prepare_frame_stack_call_contract` still exits later at the known
+  `rv64 FPR ABI/frame fact contract` dump assertion, so use the new check's
+  placement before that assertion when evaluating focused coverage.
 
 ## Proof
 
@@ -66,9 +65,12 @@ source, which must keep RV64 from materializing the branch operand.
 --output-on-failure -R '^backend_'`.
 
 Result: build completed and the delegated backend subset remains red with 32
-failed tests. The failed-test list matches `test_before.log`, so this blocked
-producer-authority packet did not introduce a new backend failure set.
+failed tests out of 365. The failed-test count and list match the known
+`test_before.log` backend subset shape; no new backend failure set was
+introduced. `test_after.log` is the preserved proof log.
 
-Additional focused proof: the RV64 backend object route for
-`src/20140828-1.c` still aborts at runtime; log path is
-`build/agent_state/653_step3_stack_carried_pointer_rule/src_20140828-1.c/case.log`.
+Additional focused proof: `cmake --build --preset default --target
+backend_prepare_frame_stack_call_contract_test &&
+build/tests/backend/bir/backend_prepare_frame_stack_call_contract_test` builds
+and reaches the existing `rv64 FPR ABI/frame fact contract` failure after the
+new stack-carried pointer source authority check has run.

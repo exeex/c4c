@@ -2029,6 +2029,30 @@ void append_consumer_move_preserved_value_if_complete(
   return preserved_values;
 }
 
+void attach_stack_carried_pointer_source_selection(
+    std::vector<PreparedCallPreservedValue>& preserved_values,
+    const PreparedCallPlan& call_plan) {
+  for (auto& preserved : preserved_values) {
+    const PreparedCallArgumentSourceSelection* selected = nullptr;
+    bool ambiguous = false;
+    for (const auto& argument : call_plan.arguments) {
+      if (!argument.source_selection.has_value() ||
+          !prepared_stack_carried_pointer_source_selection_matches_preservation(
+              *argument.source_selection, preserved)) {
+        continue;
+      }
+      if (selected != nullptr) {
+        ambiguous = true;
+        break;
+      }
+      selected = &*argument.source_selection;
+    }
+    if (!ambiguous && selected != nullptr) {
+      preserved.source_selection = *selected;
+    }
+  }
+}
+
 [[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
@@ -2052,6 +2076,7 @@ void append_consumer_move_preserved_value_if_complete(
                                                    regalloc_function,
                                                    value_home_lookup,
                                                    call_plan);
+  attach_stack_carried_pointer_source_selection(preserved_values, call_plan);
 
   const auto by_value_id =
       [](const PreparedCallPreservedValue& lhs,
@@ -2581,8 +2606,35 @@ find_no_addressing_local_frame_address_source_compatibility(
 [[nodiscard]] bool copy_prior_preservation_source_selection_fields(
     PreparedCallArgumentSourceSelection& selection,
     const PreparedCallPreservedValue& preserved) {
-  selection.source_value_id = preserved.value_id;
-  selection.source_value_name = preserved.value_name;
+  if (preserved.source_selection.has_value()) {
+    const auto& source_selection = *preserved.source_selection;
+    if (!prepared_stack_carried_pointer_source_selection_matches_preservation(
+            source_selection, preserved)) {
+      return false;
+    }
+    selection.source_value_id = source_selection.source_value_id;
+    selection.source_value_name = source_selection.source_value_name;
+    selection.source_home_kind = source_selection.source_home_kind;
+    selection.source_slot_id = source_selection.source_slot_id;
+    selection.source_stack_offset_bytes =
+        source_selection.source_stack_offset_bytes;
+    selection.source_size_bytes = source_selection.source_size_bytes;
+    selection.source_align_bytes = source_selection.source_align_bytes;
+    selection.source_base_value_id = source_selection.source_base_value_id;
+    selection.source_pointer_byte_delta =
+        source_selection.source_pointer_byte_delta;
+    selection.address_materialization_block_label =
+        source_selection.address_materialization_block_label;
+    selection.address_materialization_inst_index =
+        source_selection.address_materialization_inst_index;
+    selection.address_materialization_frame_slot_id =
+        source_selection.address_materialization_frame_slot_id;
+    selection.address_materialization_byte_offset =
+        source_selection.address_materialization_byte_offset;
+  } else {
+    selection.source_value_id = preserved.value_id;
+    selection.source_value_name = preserved.value_name;
+  }
   selection.preservation_route = preserved.route;
   selection.preserved_register_name = preserved.register_name;
   selection.preserved_register_bank = preserved.register_bank;

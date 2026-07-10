@@ -670,6 +670,10 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (preserved.stack_align_bytes.has_value()) {
           out << " stack_align=" << *preserved.stack_align_bytes;
         }
+        if (preserved.source_selection.has_value()) {
+          append_call_argument_source_selection(
+              out, module.names, *preserved.source_selection);
+        }
         out << "\n";
       }
       for (const auto& clobbered : call.clobbered_registers) {

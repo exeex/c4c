@@ -7040,6 +7040,67 @@ int check_aarch64_global_byval_register_lane_source_selection_contract() {
   return 0;
 }
 
+int check_stack_carried_pointer_source_authority_contract() {
+  prepare::PreparedCallPreservedValue preserved{
+      .value_id = 19,
+      .value_name = 6,
+      .route = prepare::PreparedCallPreservationRoute::StackSlot,
+      .slot_id = 16,
+      .stack_offset_bytes = 8,
+      .stack_size_bytes = 8,
+      .stack_align_bytes = 8,
+  };
+  const prepare::PreparedCallArgumentSourceSelection source{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization,
+      .source_value_id = 19,
+      .source_value_name = 6,
+      .source_home_kind =
+          prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+      .source_slot_id = 3,
+      .source_stack_offset_bytes = 6,
+      .source_size_bytes = 8,
+      .source_align_bytes = 8,
+      .source_base_value_id = 12,
+      .source_pointer_byte_delta = 2,
+      .address_materialization_block_label = 1,
+      .address_materialization_inst_index = 4,
+      .address_materialization_frame_slot_id = 3,
+      .address_materialization_byte_offset = 6,
+  };
+  if (!prepare::prepared_stack_carried_pointer_source_selection_matches_preservation(
+          source, preserved)) {
+    return fail(
+        "stack-carried pointer source authority contract: complete source/home fact rejected");
+  }
+
+  auto missing_materialization = source;
+  missing_materialization.address_materialization_frame_slot_id = std::nullopt;
+  if (prepare::prepared_stack_carried_pointer_source_selection_matches_preservation(
+          missing_materialization, preserved)) {
+    return fail(
+        "stack-carried pointer source authority contract: missing materialization accepted");
+  }
+
+  auto stale_value = source;
+  stale_value.source_value_id = 20;
+  if (prepare::prepared_stack_carried_pointer_source_selection_matches_preservation(
+          stale_value, preserved)) {
+    return fail(
+        "stack-carried pointer source authority contract: stale value identity accepted");
+  }
+
+  auto mismatched_home = source;
+  mismatched_home.source_home_kind = prepare::PreparedValueHomeKind::StackSlot;
+  if (prepare::prepared_stack_carried_pointer_source_selection_matches_preservation(
+          mismatched_home, preserved)) {
+    return fail(
+        "stack-carried pointer source authority contract: stack-slot-only source accepted");
+  }
+
+  return 0;
+}
+
 int check_missing_local_aggregate_frame_slot_address_source_selection_contract() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -11274,6 +11335,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_dynamic_stack_callee_saved_slot_placement_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_stack_carried_pointer_source_authority_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_riscv_fpr_abi_frame_fact_contract(); rc != 0) {

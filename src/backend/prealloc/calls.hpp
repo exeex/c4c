@@ -821,10 +821,46 @@ struct PreparedCallPreservedValue {
   std::optional<std::size_t> stack_align_bytes;
   std::optional<PreparedRegisterPlacement> register_placement;
   std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
+  std::optional<PreparedCallArgumentSourceSelection> source_selection;
   PreparedCallBoundaryEffectEndpoint preservation_source;
   PreparedCallBoundaryEffectEndpoint preservation_destination;
   std::string preservation_reason;
 };
+
+[[nodiscard]] inline bool prepared_stack_preserved_value_has_complete_home(
+    const PreparedCallPreservedValue& preserved) {
+  return preserved.route == PreparedCallPreservationRoute::StackSlot &&
+         preserved.slot_id.has_value() &&
+         preserved.stack_offset_bytes.has_value() &&
+         preserved.stack_size_bytes.has_value() &&
+         preserved.stack_align_bytes.has_value() &&
+         *preserved.stack_size_bytes != 0;
+}
+
+[[nodiscard]] inline bool
+prepared_stack_carried_pointer_source_selection_matches_preservation(
+    const PreparedCallArgumentSourceSelection& selection,
+    const PreparedCallPreservedValue& preserved) {
+  return prepared_stack_preserved_value_has_complete_home(preserved) &&
+         selection.kind ==
+             PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization &&
+         selection.source_value_id == std::optional<PreparedValueId>{preserved.value_id} &&
+         selection.source_value_name ==
+             std::optional<ValueNameId>{preserved.value_name} &&
+         selection.source_home_kind ==
+             std::optional<PreparedValueHomeKind>{
+                 PreparedValueHomeKind::PointerBasePlusOffset} &&
+         selection.source_base_value_id.has_value() &&
+         selection.source_pointer_byte_delta.has_value() &&
+         selection.source_slot_id.has_value() &&
+         selection.source_stack_offset_bytes.has_value() &&
+         selection.source_size_bytes.has_value() &&
+         selection.source_align_bytes.has_value() &&
+         selection.address_materialization_block_label.has_value() &&
+         selection.address_materialization_inst_index.has_value() &&
+         selection.address_materialization_frame_slot_id == selection.source_slot_id &&
+         selection.address_materialization_byte_offset.has_value();
+}
 
 enum class PreparedCallWrapperKind {
   SameModule,
