@@ -1,6 +1,6 @@
 # Stack-Carried Pointer Source Publication Materialization
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/closed/645_rv64_branch_residual_terminator_fragment_lowering.md`
 Related:
@@ -74,3 +74,26 @@ materialization for `%t6` and `%t23`, not branch admission.
   accounting changes as capability progress.
 - Reject helper renames or diagnostic-only edits that leave the same stale or
   unmaterialized stack-carried pointer source behind a new label.
+
+## Closure Notes
+
+Closed after both representative stack-carried pointer source publication and
+materialization boundaries advanced past the owned failure mode.
+
+- `src/20140828-1.c` now has explicit `%t6 = bir.add ptr %lv.a.0, 2`
+  semantic/prepared publication, available branch RHS authority, RV64
+  materialization at the selected branch, and object emission exits 0.
+- `src/loop-2e.c` now has explicit `%t23 = bir.add ptr %t21, 156`
+  semantic/prepared publication, available branch RHS authority, RV64
+  materialization at the selected branch, and object emission exits 0.
+- Remaining qemu runtime aborts are downstream of pointer-source authority:
+  `src/20140828-1.c` is parked under a callee/result or frame-slot value owner,
+  and `src/loop-2e.c` is parked under callee indirect-store / `*q++` writeback
+  lowering.
+
+Close evidence:
+
+- `build/agent_state/653_step4_representative_integration/summary.md`
+- `build/agent_state/653_step4a_loop_t23_runtime_probe/summary.md`
+- `test_after.log` from `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; }`
+- Regression guard: `check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed` passed with 333 passed / 32 failed / 365 total and no new failures.
