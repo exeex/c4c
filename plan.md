@@ -38,11 +38,14 @@ unsupported markers, or pass/fail accounting.
 - Owned boundary: the explicit producer-to-consumer authority chain needed for
   prepared/RV64 stack-carried pointer source publication and materialization
   after terminator admission is no longer the first owner.
-- Current first missing owner: LIR-to-BIR compare-operand pointer source
-  publication for address-valued operands, around
-  `src/backend/bir/lir_to_bir/memory/coordinator.cpp` dispatching `LirCmpOp`
-  to scalar lowering and
-  `src/backend/bir/lir_to_bir/scalar.cpp::lower_scalar_compare_inst`.
+- Current first missing owner: the `src/loop-2e.c` `%t23` compare operand
+  still needs an explicit semantic pointer producer and prepared
+  `source_selection` chain before RV64 object emission can consume it.
+- Parked downstream evidence: `src/20140828-1.c` `%t6` now has explicit
+  semantic/prepared/RV64 branch source publication and object emission exits 0;
+  its qemu runtime abort is downstream of this idea's pointer-source authority
+  boundary and should not be pursued under Step 4A unless new evidence shows a
+  source-publication regression.
 
 ## Non-Goals
 
@@ -59,13 +62,15 @@ unsupported markers, or pass/fail accounting.
 
 Idea 645 proved the fused pointer branch terminator shape can lower when the
 condition and exactly one compared pointer operand have explicit branch
-stack-load authority. Step 3 packets added prepared/RV64 producer and consumer
-authority for explicit stack-carried pointer source selections. The remaining
-`src/20140828-1.c` `%t6` row now fails closed because semantic BIR compares
-`%t4` against `%t6` without a named `%t6 = %lv.a.0 + 2` producer or equivalent
-address-materialization fact. The next owner is upstream pointer-source
-publication for address-valued LIR compare operands, not RV64 terminator
-admission and not stack-offset reconstruction.
+stack-load authority. Step 3 packets added semantic compare-operand producer
+publication plus prepared/RV64 producer and consumer authority for explicit
+stack-carried pointer source selections. Step 4 evidence shows the
+`src/20140828-1.c` `%t6` branch source is now explicit, fresh, materialized,
+and accepted by RV64 object emission, while its remaining runtime abort belongs
+to a downstream callee/result or frame-slot value owner. The active idea
+continues with `src/loop-2e.c` `%t23`, where semantic BIR still reaches
+`%t24 = bir.ne ptr %t20, %t23` without an explicit `%t23` producer and prepared
+preservation remains stack-slot-only without `source_selection`.
 
 ## Execution Rules
 
@@ -200,6 +205,39 @@ Completion check:
 
 - `todo.md` records representative proof for both target values and any
   remaining downstream owner.
+
+### Step 4A: Publish The `%t23` Compare Pointer Source Chain
+
+Goal: Give the `src/loop-2e.c` `%t23` branch operand the same explicit
+semantic-to-prepared stack-carried pointer source authority now proven for the
+`%t6` path, without inferring from stack offsets or testcase shape.
+
+Actions:
+
+- Use the Step 4 evidence under
+  `build/agent_state/653_step4_representative_integration/` as the starting
+  boundary: `%t23` has branch stack freshness for value id `27` in
+  `slot #46+stack336`, but no semantic `%t23` producer and no prepared
+  `source_selection`.
+- Inspect the `loop-2e.c` LIR-to-BIR compare operand path and identify why the
+  Step 3A local-frame pointer publication rule did not create an explicit
+  `%t23` producer.
+- Extend the semantic producer rule only for structured stack-carried pointer
+  compare operands with a proven local-frame source, selected stack home, and
+  complete materialization facts.
+- Carry the producer through prepared/prealloc preservation so `%t23` gains an
+  explicit `source_selection`; keep stack-slot-only, stale, ambiguous, and
+  mismatched states rejected with precise diagnostics.
+- Prove RV64 object emission for `src/loop-2e.c` either materializes that
+  explicit `%t23` source or fails closed on a precise missing-authority
+  diagnostic.
+
+Completion check:
+
+- Fresh build plus focused proof shows `src/loop-2e.c` prepared output carries
+  `source_selection` for `%t23` value id `27` / `slot #46+stack336`, and RV64
+  object emission advances past `unsupported_terminator_fragment` for the
+  selected branch without named-case matching.
 
 ### Step 5: Run Broader Validation And Close Or Park
 

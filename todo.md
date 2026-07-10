@@ -1,16 +1,16 @@
 Status: Active
 Source Idea Path: ideas/open/653_stack_carried_pointer_source_publication_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Representative Integration
+Current Step ID: 4A
+Current Step Title: Publish The `%t23` Compare Pointer Source Chain
 
 # Current Packet
 
 ## Just Finished
 
-Step 4, `Prove Representative Integration`: refreshed semantic BIR,
-prepared-BIR, RV64 object, disassembly, and runtime evidence for the two idea
-653 representative rows.
+Step 4 lifecycle review: representative integration evidence was classified
+and the active runbook now continues with Step 4A,
+`Publish The %t23 Compare Pointer Source Chain`.
 
 - Evidence is in
   `build/agent_state/653_step4_representative_integration/summary.md`.
@@ -31,13 +31,18 @@ prepared-BIR, RV64 object, disassembly, and runtime evidence for the two idea
 - `loop-2e.c` still stops before object/disassembly/runtime on the c4c route:
   `--codegen obj` exits 2 with `unsupported_terminator_fragment: BIR
   terminator requires unsupported RV64 object lowering`.
+- Lifecycle decision: idea 653 continues with the `%t23` producer gap because
+  it is still within the source idea's stack-carried pointer publication
+  boundary. The `%t6` runtime abort is parked as a downstream owner outside the
+  current Step 4A path unless new evidence shows source-publication regression.
 
 ## Suggested Next
 
-Supervisor review/commit for the Step 4 evidence slice. Next execution should
-choose whether to continue idea 653 with the `loop-2e.c` `%t23` producer gap or
-split/park Step 4 because `20140828-1.c` has moved to a distinct downstream
-runtime correctness owner.
+Delegate Step 4A to an executor. Start from the Step 4 artifacts, inspect why
+the Step 3A compare-operand publication did not produce an explicit `%t23`
+producer for `loop-2e.c`, and carry only a structured local-frame
+stack-carried source through prepared `source_selection` into RV64 object
+emission.
 
 ## Watchouts
 
@@ -46,6 +51,8 @@ runtime correctness owner.
 - Do not claim `loop-2e.c` integration from ASM printing alone; the c4c object
   route still fails before disassembly/runtime, and `%t23` lacks an explicit
   semantic/prepared source-selection chain.
+- Do not broaden Step 4A into the parked `%t6` runtime owner; that owner is
+  downstream of the pointer-source publication/materialization boundary.
 - Do not weaken expectation files, unsupported markers, allowlists, or runtime
   accounting to claim progress.
 
