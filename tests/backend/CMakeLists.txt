@@ -1177,14 +1177,15 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object pointer global local_publication cli
 )
 
-c4c_add_backend_codegen_object_failure_test(
+c4c_add_backend_codegen_object_test(
   backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_global_local_publication_live_load_rejection.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_global_local_publication_live_load_rejection.o"
-  EXPECTED_DIAGNOSTICS "unsupported_local_memory_access|live direct-global local pointer publication reloads fail-closed"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "83348100039304002319610083142101"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 object pointer global local_publication expected_failure cli
+  LABELS riscv64 object pointer global local_publication cli
 )
 
 c4c_add_backend_dump_flag_test(
