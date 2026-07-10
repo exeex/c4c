@@ -6169,26 +6169,25 @@ prepared_frame_slot_address_call_argument_publication(
 
 const prepare::PreparedCallPreservedValue* exact_prior_preserved_value_for_selection(
     const prepare::PreparedFunctionLookups* lookups,
+    const prepare::PreparedControlFlowFunction* control_flow,
+    const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedCallArgumentSourceSelection& selection) {
   if (lookups == nullptr || !selection.source_value_id.has_value() ||
       !selection.preserved_call_block_index.has_value() ||
-      !selection.preserved_call_instruction_index.has_value() ||
-      *selection.source_value_id >=
-          lookups->call_plans.prior_preserved_by_value.size()) {
+      !selection.preserved_call_instruction_index.has_value()) {
     return nullptr;
   }
-  const auto& entries =
-      lookups->call_plans.prior_preserved_by_value[*selection.source_value_id];
-  const auto it = std::find_if(
-      entries.begin(),
-      entries.end(),
-      [&](const prepare::PreparedPriorPreservedValueEntry& entry) {
-        return entry.block_index == *selection.preserved_call_block_index &&
-               entry.instruction_index ==
-                   *selection.preserved_call_instruction_index &&
-               entry.preserved != nullptr;
-      });
-  return it == entries.end() ? nullptr : it->preserved;
+  const auto lookup =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups->call_plans, control_flow, call_plan, *selection.source_value_id);
+  if (lookup.status != prepare::PreparedPriorPreservedValueLookupStatus::Found ||
+      lookup.entry == nullptr || lookup.preserved == nullptr ||
+      lookup.entry->block_index != *selection.preserved_call_block_index ||
+      lookup.entry->instruction_index !=
+          *selection.preserved_call_instruction_index) {
+    return nullptr;
+  }
+  return lookup.preserved;
 }
 
 bool ensure_rv64_prepared_call_outgoing_stack_area(
@@ -6524,6 +6523,7 @@ bool append_pending_rv64_prepared_scalar_stack_call_arguments_using_gpr_source(
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     std::string_view function_name,
@@ -7051,6 +7051,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
           const auto* prior_preserved =
               exact_prior_preserved_value_for_selection(
                   lookups,
+                  &control_flow,
+                  *call_plan,
                   *argument.source_selection);
           const auto source = gpr_register_number_for_prior_preserved_selection(
               *argument.source_selection,
@@ -7314,7 +7316,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         *destination != *plan_destination) {
       return std::nullopt;
     }
-    call_result_destination_register = *result.destination_register_name;
+    if (*destination != *source) {
+      call_result_destination_register = *result.destination_register_name;
+    }
     append_rv64_move(fragment, *destination, *source);
   } else if (call.return_type != c4c::backend::bir::TypeKind::Void) {
     return std::nullopt;
@@ -14527,6 +14531,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       find_prepared_inline_asm_carrier(inline_asm_carriers, block_index, instruction_index);
   return fragment_for_prepared_call(prepared,
                                     prepared.stack_layout,
+                                    control_flow,
                                     &lookups,
                                     frame_plan,
                                     function_name,
