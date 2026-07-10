@@ -1,21 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/651_rv64_packed_bitfield_global_layout_access.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Reprove Representative Integration
+Current Step ID: 7
+Current Step Title: Run Broader Validation And Close Or Park
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 6, `Reprove Representative Integration`.
+Completed plan Step 7, `Run Broader Validation And Close Or Park`.
 
-Reran the focused packed-global coverage and the representative RV64 GCC
-torture route for `tests/c/external/gcc_torture/src/pr79737-2.c` from the
-committed Step 5 state. The refreshed evidence is under
-`build/agent_state/651_step6_representative_reproof/`: `pr79737.hir.txt`,
-`pr79737.llvm.txt`, `pr79737.prepared-bir.txt`, `pr79737.o`,
-`pr79737.symbols.txt`, and `pr79737.objdump.txt`.
+Ran a matched broader regression guard around the substantive Step 5/6 changes.
+The before checkpoint was `e1770abce` (`[plan] repair packed bitfield layout
+runbook`), and the after checkpoint was current `main` after
+`038fb771f` (`[todo_only] record packed global representative reproof`).
+
+Both sides used the same command shape with backend enabled:
+`ctest --test-dir build -j --output-on-failure -R
+"^(frontend_hir_tests$|positive_sema_|backend_|llvm_gcc_c_torture_src_pr79737_2_c$)"`.
+This broader scope covers HIR, positive C sema, the backend/LIR/BIR/RV64
+buckets, and the representative RV64 GCC torture case.
+
+`c4c-regression-guard` passed:
+before `366/398` passed with 32 known failures; after `369/401` passed with
+the same 32 known failures. The delta was `+3` passing tests, `0` new failures,
+and `0` newly slow tests. The added passing tests are the focused HIR
+packed-global bitfield coverage introduced by Step 5.
 
 Representative criteria are now satisfied for the source-idea surface:
 HIR reports `struct S size=9 align=1`; LLVM lowers the record as
@@ -31,11 +41,8 @@ and access mismatch.
 
 ## Suggested Next
 
-Execute plan Step 7, `Run Broader Validation And Close Or Park`.
-
-Objective: run the supervisor-selected broader validation for the affected
-frontend, LIR/BIR, and RV64 backend scope, then decide whether the source idea
-can close or needs a precise park/split decision.
+Request plan-owner close for
+`ideas/open/651_rv64_packed_bitfield_global_layout_access.md`.
 
 ## Watchouts
 
@@ -48,13 +55,17 @@ can close or needs a precise park/split decision.
 - Zero-width bitfields and packed objects too small for their declared storage
   window are intentionally excluded from the byte-storage authority until a
   future packet models them correctly.
-- Step 7 should provide broader validation before lifecycle close; this Step 6
-  packet is focused representative proof only.
+- No park/split owner remains for the source-idea acceptance criteria after
+  Step 7 validation.
 
 ## Proof
 
-Exact delegated proof command ran and passed. `test_after.log` is the proof
-log.
+`test_before.log` and `test_after.log` are the matched broader regression
+guard logs. The guard command was:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Guard result: `PASS`.
 
 Focused CTest subset passed 6/6:
 `backend_dump_hir_riscv64_packed_global_bitfield_access`,
