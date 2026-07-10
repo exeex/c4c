@@ -2495,6 +2495,36 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
   if (selected_access != nullptr &&
       selected_access->address.base_kind ==
           c4c::backend::prepare::PreparedAddressBaseKind::PointerValue) {
+    const auto sret_pointer =
+        prepared_sret_stack_slot_pointer_access(stack_layout,
+                                                lookups,
+                                                selected_access,
+                                                stack_frame_bytes,
+                                                *size_bytes);
+    if (sret_pointer.has_value()) {
+      RiscvEncodedFragment fragment;
+      if (!append_rv64_load_stack_to_register_local(fragment,
+                                                   7,
+                                                   sret_pointer->pointer_home_offset,
+                                                   8) ||
+          !append_rv64_materialize_or_move_store_value_local(fragment,
+                                                            6,
+                                                            stack_layout,
+                                                            names,
+                                                            lookups,
+                                                            block_label,
+                                                            instruction_index,
+                                                            store.value,
+                                                            stack_frame_bytes) ||
+          !append_rv64_store_register_to_base_local(fragment,
+                                                   6,
+                                                   7,
+                                                   sret_pointer->pointee_offset,
+                                                   *size_bytes)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
     RiscvEncodedFragment fragment;
     const auto pointer_base =
         materialize_prepared_pointer_value_base_offset(fragment,

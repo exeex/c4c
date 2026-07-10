@@ -9,44 +9,43 @@ Current Step Title: Prove Regression Safety And Lifecycle Readiness
 ## Just Finished
 
 Step 4 of `plan.md` repaired the new first focused failure after commit
-`b7c665902`: `expected prepared pointer-value F64 local RV64 object module to
-build`. The supported fixture had a positioned pointer-value
-`PreparedMemoryAccess` for the named F64 `StoreLocalInst`, but the access did
-not carry `stored_value_name`; the normal local-store access lookup dropped
-that selected access before `prepared_local_memory_emit.cpp` could validate and
-emit the pointer-value F64 path.
+`a02cc6e25`: `expected prepared sret stack-homed pointer store to build`.
+`fragment_for_prepared_store_local()` treated a selected scalar pointer-value
+store as generic pointer-value memory before checking the specialized sret
+stack-home authority. For valid sret stack-homed stores, the pointer base lives
+in the hidden sret stack home, so the generic register/ordinary stack-home
+materialization failed and the object build returned `std::nullopt`.
 
-`fragment_for_prepared_store_local()` now preserves a positioned pointer-value
-access with no `stored_value_name` for named stores when the caller did not pass
-a selected access. Malformed selected pointer-value facts still fail closed in
-the prepared local-memory emitter instead of falling back to BIR local-slot
-offsets, while valid F64 pointer-value facts reach the existing `fsd`/`fld`
-encoder. No tests, expectations, unsupported markers, allowlists, timeout or
-runtime policy, baseline accounting, `plan.md`, or source idea files were
-edited.
+The selected pointer-value scalar store path now first recognizes
+`prepared_sret_stack_slot_pointer_access()`. Valid sret stack-homed stores load
+the hidden sret pointer home and store the named source through the return
+pointee, while malformed selected sret facts still fail closed through the
+existing unsupported local-memory diagnostic. No tests, expectations,
+unsupported markers, allowlists, timeout or runtime policy, baseline
+accounting, `plan.md`, source idea files, or `review/reviewA.md` were edited.
 
 Evidence:
-`build/agent_state/664_step4_pointer_value_f64_local/summary.md`,
-`build/agent_state/664_step4_pointer_value_f64_local/before_after.diff`,
-`build/agent_state/664_step4_pointer_value_f64_local/code.diff`,
-`build/agent_state/664_step4_pointer_value_f64_local/regression_guard.txt`,
-and `build/agent_state/664_step4_pointer_value_f64_local/test_after.log`.
+`build/agent_state/664_step4_sret_stack_pointer_store/summary.md`,
+`build/agent_state/664_step4_sret_stack_pointer_store/before_after.diff`,
+`build/agent_state/664_step4_sret_stack_pointer_store/code.diff`,
+`build/agent_state/664_step4_sret_stack_pointer_store/regression_guard.txt`,
+and `build/agent_state/664_step4_sret_stack_pointer_store/test_after.log`.
 
 ## Suggested Next
 
-Suggested next packet: address the new first visible focused failure,
-`expected prepared sret stack-homed pointer store to build`. Start in the
-prepared local-memory pointer-value/sret stack-homed store path and determine
-why the supported pointer-store fixture no longer emits an object.
+Suggested next packet: address the remaining first visible focused failure,
+`expected prepared local frame addresses to be published before register and
+stack call-argument consumption`. Start at the prepared local frame-address
+publication ordering before register and stack call-argument consumption.
 
 ## Watchouts
 
-- The pointer-value F64 failure was repaired by preserving the selected
-  pointer-value access, not by relaxing local-slot fallback. Selected malformed
-  prepared local-memory facts should still fail closed.
-- Remaining focused failures visible in `test_after.log` are sret stack-homed
-  pointer store, sret stack-homed I8 extent-6 store, and prepared local frame
-  address publication before register/stack call-argument consumption.
+- The sret repair is semantic: selected pointer-value scalar stores check
+  valid sret stack-home authority before generic pointer-value materialization.
+  Do not relax the malformed selected local-memory fail-closed checks.
+- The focused proof also removed the visible sret stack-homed I8 extent-6
+  store failure. The remaining aggregate-visible blocker is prepared local
+  frame-address publication before register/stack call-argument consumption.
 - Do not rewrite expectations, unsupported markers, allowlists, timeout/runtime
   policy, baseline accounting, `plan.md`, or the source idea in a routine
   executor packet.
@@ -58,10 +57,11 @@ why the supported pointer-store fixture no longer emits an object.
 Result: build passed; focused CTest still fails on
 `backend_riscv_object_emission`. `test_after.log` is the canonical proof log.
 
-Aggregate-visible delta: `expected prepared pointer-value F64 local RV64
-object module to build` was removed from `test_after.log`. The focused
-aggregate still has one failing CTest row, and the first visible failure is now
-`expected prepared sret stack-homed pointer store to build`.
+Aggregate-visible delta: `expected prepared sret stack-homed pointer store to
+build` and `expected prepared sret stack-homed I8 extent-6 store to build` were
+removed from `test_after.log`. The focused aggregate still has one failing
+CTest row, and the first visible failure is now `expected prepared local frame
+addresses to be published before register and stack call-argument consumption`.
 
 Regression guard command:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
