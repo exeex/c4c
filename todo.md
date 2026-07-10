@@ -1,57 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/666_rv64_callee_saved_gpr_runtime.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Repair The Selected Callee-Saved/Live-Value Rule
+Current Step ID: Step 4
+Current Step Title: Broaden Within The Callee-Saved/Live-Value Family
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired the selected RV64 object-route callee-saved/live-value
-consumer ordering boundary for rows 183, 184, and 219.
+Step 4 rechecked the callee-saved/live-value family after the Step 3 repair.
+No implementation, test, expectation, unsupported-marker, allowlist, timeout,
+runtime-policy, baseline-accounting, or unrelated backend-family files were
+changed in this packet.
 
-Changed files:
+The focused family proof passed all seven selected tests:
 
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `src/backend/mir/riscv/codegen/prepared_emit_context.hpp`
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.hpp`
-- `todo.md`
-- `test_after.log`
+- rows 87 and 88 preserve the CLI prepared-object static-local object checks
+- rows 100 and 101 preserve the codegen-route prepared-object static-local
+  checks
+- rows 183 and 184 preserve the RV64 object-runtime prepared-object
+  static-local storage checks
+- row 219 preserves the RV64 callee-saved GPR live-across-call runtime check
 
-The object-route call fragment now records the published GPR call-result
-destination and suppresses after-call preservation republication that would
-write a stale callee-saved value back over that same register. This matches the
-existing text-route rule without naming rows or hard-coding registers.
-
-The RV64 prepared scalar consumer context now carries the current BIR block, so
-the freshness check can distinguish values defined after the latest same-block
-call from truly live-through caller-saved homes. A post-call local reload or
-call result can therefore be consumed from its fresh direct home, while
-genuinely stale caller-saved homes still fall back to the prepared
-prior-preservation path.
-
-Rows 183 and 184 preserve the CLI/codegen static-storage object-data checks,
-and rows 183, 184, and 219 pass under the same general ordering repair.
+Based on this Step 4 recheck, no remaining callee-saved/live-value packet is
+identified inside the delegated focused family.
 
 ## Suggested Next
 
-Have the supervisor review and commit this Step 3 slice, then decide whether
-the active plan needs a broader RV64 prepared-object regression guard or can
-advance to the next planned callee-saved/runtime boundary.
+Supervisor can treat the focused callee-saved/live-value family as complete for
+this runbook and route toward acceptance review and close consideration. If
+acceptance needs more confidence, the next packet should be supervisor-owned
+broader validation rather than another executor repair packet in this family.
 
 ## Watchouts
 
-- This packet intentionally did not touch test expectations, unsupported
-  markers, allowlists, timeout/runtime policy, baseline accounting, or adjacent
-  backend families.
-- The repair relies on BIR block context only where the object route already
-  has it; unindexed scalar helper callers retain the previous conservative
-  behavior.
-- The prepared call plan for row 219 still publishes a prior-preservation fact
-  for `%t3`, but the object route now consumes the later `%t3` load from its
-  fresh `t0` home before using that preservation carrier.
+- The prior supervisor backend smoke after Step 3 reported 359/368 passing.
+  Remaining backend rows were 92, 103, 109, 150, 154, 172, 256, 284, and 322;
+  rows 183, 184, and 219 were not in that failing set.
+- This Step 4 packet did not investigate or claim ownership of those remaining
+  backend rows because they are outside the delegated callee-saved/live-value
+  family.
+- No current blocker is recorded for the focused callee-saved/live-value
+  family.
 
 ## Proof
 
@@ -61,13 +51,6 @@ Proof command:
 
 Result: passed, 7/7 tests. Proof log: `test_after.log`.
 
-Supervisor acceptance:
-
-- Focused regression guard compared matching seven-row logs and passed:
-  before 4/7, after 7/7, with rows 183, 184, and 219 resolved and no new
-  focused failures.
-- Broader patched backend smoke ran
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` and reported
-  359/368 passing. The remaining failing backend rows were 92, 103, 109, 150,
-  154, 172, 256, 284, and 322; target rows 183, 184, and 219 were not in the
-  failing set.
+The delegated proof is sufficient for the Step 4 focused-family recheck. It
+does not replace supervisor-owned broader acceptance validation or lifecycle
+close routing.
