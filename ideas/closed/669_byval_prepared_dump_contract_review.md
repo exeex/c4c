@@ -1,6 +1,6 @@
 # Byval Prepared Dump Contract Review
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/658_backend_baseline_history_umbrella_triage.md`
 Related:
@@ -74,3 +74,14 @@ reopen the completed runtime repair.
   fresh proof that the passing route or runtime rows regressed.
 - Reject leaving the same stale dump-contract mismatch behind a renamed helper
   or diagnostic.
+
+## Closure Note
+
+Closed after focused evidence classified both residual dump failures as stale
+snippet expectations over current prepared facts, and the expectation contract
+was aligned without claiming lowering or runtime progress. The focused dump
+rows plus nearby byval route/runtime regression surfaces passed before and
+after the patch: `6 passed / 0 failed / 6 total` in both `test_before.log` and
+`test_after.log`. Strict regression guard failed only because the pass count was
+unchanged; `--allow-non-decreasing-passed` passed with no new failures. No new
+open idea is required for this source scope.
