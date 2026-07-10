@@ -111,7 +111,32 @@ void append_register_placement(std::ostringstream& out,
   return nullptr;
 }
 
-[[nodiscard]] const bir::Value* find_block_entry_phi_result(
+[[nodiscard]] const bir::Value* instruction_result_value(const bir::Inst& inst) {
+  if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+    return &phi->result;
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+    return &select->result;
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return &binary->result;
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    return &cast->result;
+  }
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+    return &load_local->result;
+  }
+  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    return &load_global->result;
+  }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+    return call->result.has_value() ? &*call->result : nullptr;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::Value* find_block_entry_destination_result(
     const bir::Block* block,
     const PreparedNameTables& names,
     ValueNameId value_name) {
@@ -123,12 +148,12 @@ void append_register_placement(std::ostringstream& out,
     return nullptr;
   }
   for (const auto& inst : block->insts) {
-    const auto* phi = std::get_if<bir::PhiInst>(&inst);
-    if (phi == nullptr) {
-      break;
+    const auto* result = instruction_result_value(inst);
+    if (result == nullptr) {
+      continue;
     }
-    if (phi->result.name == name) {
-      return &phi->result;
+    if (result->name == name) {
+      return result;
     }
   }
   return nullptr;
@@ -148,8 +173,8 @@ find_agreeing_route4_block_entry_publication(
   const auto* function = find_bir_function(module, function_locations.function_name);
   const auto* successor_block = find_bir_block(function, module.names, successor_label);
   const auto* destination_value =
-      find_block_entry_phi_result(successor_block, module.names,
-                                  publication.destination_value_name);
+      find_block_entry_destination_result(successor_block, module.names,
+                                          publication.destination_value_name);
   const PreparedCurrentBlockEntryPublicationQueryInputs query{
       .names = &module.names,
       .value_locations = &function_locations,
@@ -167,6 +192,51 @@ find_agreeing_route4_block_entry_publication(
     return std::nullopt;
   }
   return attributed;
+}
+
+void append_block_entry_publication_row(
+    std::ostringstream& out,
+    const PreparedNameTables& names,
+    BlockLabelId successor_label,
+    const PreparedBlockEntryPublication& publication) {
+  out << "  block_entry_publication successor="
+      << maybe_block_label(names, successor_label)
+      << " status="
+      << prepared_block_entry_publication_status_name(publication.status)
+      << " to_value_id=" << publication.destination_value_id
+      << " to=" << maybe_value_name(names, publication.destination_value_name)
+      << " home_kind="
+      << (publication.home == nullptr
+              ? std::string_view{"<none>"}
+              : prepared_value_home_kind_name(publication.home->kind))
+      << " destination_kind="
+      << move_destination_kind_name(publication.destination_kind)
+      << " destination_storage="
+      << move_storage_kind_name(publication.destination_storage_kind);
+  if (publication.destination_register_name.has_value()) {
+    out << " reg=" << *publication.destination_register_name;
+  }
+  if (publication.bundle != nullptr) {
+    out << " block_index=" << publication.bundle->block_index
+        << " instruction_index=" << publication.bundle->instruction_index;
+  }
+  out << "\n";
+}
+
+[[nodiscard]] std::optional<PreparedBlockEntryPublication>
+source_block_entry_publication_row(
+    const PreparedBlockEntryPublication& publication) {
+  if (!prepared_block_entry_publication_available(publication) ||
+      publication.move == nullptr ||
+      publication.move->source_immediate_i32.has_value() ||
+      publication.move->from_value_id == PreparedValueId{0} ||
+      publication.move->from_value_id == publication.move->to_value_id) {
+    return std::nullopt;
+  }
+
+  auto source_publication = publication;
+  source_publication.destination_value_id = publication.move->from_value_id;
+  return source_publication;
 }
 
 }  // namespace
@@ -305,28 +375,14 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
             attributed_publication.has_value()
                 ? attributed_publication->publication
                 : publication;
-        out << "  block_entry_publication successor="
-            << maybe_block_label(module.names, successor_label)
-            << " status="
-            << prepared_block_entry_publication_status_name(row_publication.status)
-            << " to_value_id=" << row_publication.destination_value_id
-            << " to=" << maybe_value_name(module.names, row_publication.destination_value_name)
-            << " home_kind="
-            << (row_publication.home == nullptr
-                    ? std::string_view{"<none>"}
-                    : prepared_value_home_kind_name(row_publication.home->kind))
-            << " destination_kind="
-            << move_destination_kind_name(row_publication.destination_kind)
-            << " destination_storage="
-            << move_storage_kind_name(row_publication.destination_storage_kind);
-        if (row_publication.destination_register_name.has_value()) {
-          out << " reg=" << *row_publication.destination_register_name;
+        append_block_entry_publication_row(out, module.names, successor_label,
+                                           row_publication);
+        const auto source_publication =
+            source_block_entry_publication_row(row_publication);
+        if (source_publication.has_value()) {
+          append_block_entry_publication_row(out, module.names, successor_label,
+                                             *source_publication);
         }
-        if (row_publication.bundle != nullptr) {
-          out << " block_index=" << row_publication.bundle->block_index
-              << " instruction_index=" << row_publication.bundle->instruction_index;
-        }
-        out << "\n";
       }
     }
   }
