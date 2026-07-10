@@ -1,60 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/657_rv64_loop_2e_indirect_store_writeback_runtime.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Representative Runtime Proof
+Current Step ID: 2
+Current Step Title: Prove Backend Regression Safety
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 of `plan.md` refreshed representative `loop-2e.c` evidence after
-baseline review. New artifacts live under
-`build/agent_state/657_step1_reactivation_runtime_proof/summary.md`.
+Step 2 of `plan.md` proved backend regression safety against the accepted
+full-suite baseline context. The delegated proof command was run exactly and
+preserved output in `test_after.log`:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`.
 
-The delegated proof command passed and preserved output in `test_after.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_loop_2e_c$' > test_after.log 2>&1`.
-`test_after.log` reports `100% tests passed, 0 tests failed out of 1`.
+The build was up to date and CTest returned nonzero for the accepted baseline
+red rows. `test_before.log` and `test_after.log` both report `99% tests
+passed, 11 tests failed out of 3397`, and the failed test IDs/names match
+exactly. There are no new failures for idea 657.
 
-Fresh BIR, prepared-BIR, ASM, object, disassembly, clang runtime, and c4c RV64
-object-runtime comparison evidence were regenerated. The representative RV64
-object runtime matches clang; the standalone comparison reports
-`[PASS][rv64-gcc-torture-backend-obj]` for
-`tests/c/external/gcc_torture/src/loop-2e.c`.
-
-The explicit prepared `base=pointer_value` access fact remains present for the
-callee indirect store:
-`access block=block_1 inst_index=7 base=pointer_value stored=%t8 pointer=%t9`.
-That fact now corresponds to the caller-visible object store `sd t1,0(s1)`.
-The local cursor writeback remains separate as `bir.store_local %lv.param.q,
-ptr %t10` and object `sd t1,0(sp)`.
-
-`%t23` pointer-source publication remains present as
-`%t23 = bir.add ptr %t21, 156`, and the branch compare remains
-`%t24 = bir.ne ptr %t20, %t23`. Prepared branch RHS authority remains selected
-and pointer-proven for `%t23`.
+Remaining red rows are accepted unrelated baseline state:
+`backend_dump_riscv64_stack_passed_parameter_home_publication`,
+`backend_dump_riscv64_scalar_compare_frame_slot_destination`,
+`backend_dump_riscv64_prepared_fused_compare_call_result_predicate`,
+`backend_dump_riscv64_byval_aggregate_fixed_call`,
+`backend_dump_riscv64_byval_preserved_pointer_args`,
+`backend_dump_riscv64_function_pointer_return_chain`,
+`backend_riscv_object_emission`,
+`backend_aarch64_instruction_dispatch`,
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+`llvm_gcc_c_torture_src_20040709_2_c`, and
+`llvm_gcc_c_torture_src_20040709_3_c`.
 
 ## Suggested Next
 
-Delegate Step 2 regression proof against the accepted backend baseline context.
+Delegate Step 3 closure-readiness decision. The Step 3 packet should summarize
+that Step 1 refreshed representative `loop-2e.c` RV64 object-runtime evidence
+successfully and Step 2 found no new failures against the accepted full-suite
+baseline, then request lifecycle close review unless the supervisor sees a
+separate blocker.
 
 ## Watchouts
 
-- Do not reopen the completed `%t23` source-publication route unless fresh
-  evidence proves a regression.
-- Do not special-case `loop-2e.c`, `%t23`, `q[39]`, or callee `f`.
-- Preserve the existing explicit prepared `base=pointer_value` access contract.
+- The full-suite proof is intentionally red only because the accepted baseline
+  is red; do not route the 11 matching rows through idea 657.
 - Do not change expectations, unsupported markers, allowlists, timeouts,
   runtime policy, or baseline accounting.
 - Keep stack-destination fan-in, byval, object-emission, AArch64, CLI, and
-  LLVM torture work out of this packet unless focused evidence proves the same
-  first owner.
-- Step 1 evidence is representative/runtime-focused only; Step 2 still owns the
-  accepted backend regression comparison.
+  LLVM torture work out of this plan unless fresh evidence proves they became
+  idea 657 blockers.
+- Preserve the Step 1 explicit prepared `base=pointer_value` access contract and
+  do not reopen the completed `%t23` route without new regression evidence.
 
 ## Proof
 
-Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_loop_2e_c$' > test_after.log 2>&1`.
+Completed with no new failures against accepted baseline:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`.
 
 Proof log: `test_after.log`.
+Baseline log: `test_before.log`.
