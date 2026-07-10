@@ -1,133 +1,139 @@
-# RV64 Pointer Global Local Publication Runtime Contract Runbook
+# RV64 Call Arg Local Frame Address Object Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/676_rv64_pointer_global_local_publication_runtime_contract.md
+Source Idea: ideas/open/677_rv64_call_arg_local_frame_address_object_materialization.md
 
 ## Purpose
 
-Settle the now-succeeding RV64 pointer/global-local publication expected-fail
-row by proving object semantics before any test-contract or baseline route.
+Resolve the RV64 object-route divergence for call arguments sourced from
+`LocalFrameAddressMaterialization`.
 
 ## Goal
 
-Determine whether the emitted RV64 object is semantically valid; then route the
-row as stale expected-failure/test-contract work or identify the fresh
-implementation owner from runtime evidence.
+Either make object emission match the text-route direct
+`addi a0, sp, offset` contract for local frame address call arguments, or
+produce reviewed evidence that the current two-step object shape is the
+intended contract.
 
 ## Core Rule
 
-Do not claim compiler progress, change expectations, or accept
-`test_baseline.new.log` until runtime/semantic proof explains the unexpected
-object success for this row.
+Do not treat byte-expectation churn, test-name matching, or baseline accounting
+as progress. The route must be driven by the
+`LocalFrameAddressMaterialization` semantic contract.
 
 ## Read First
 
-- `ideas/open/676_rv64_pointer_global_local_publication_runtime_contract.md`
-- `ideas/open/675_post_wave_residual_baseline_failures.md`
+- `ideas/open/677_rv64_call_arg_local_frame_address_object_materialization.md`
 - `build/agent_state/675_step1_candidate_delta/summary.md`
+- `build/agent_state/648_post656_call_evidence/summary.md`
 - `test_baseline.log`
 - `test_baseline.new.log`
-- `ideas/closed/664_riscv_object_emission_internal_probe.md`
 
 ## Current Targets
 
 - Focus row:
-  `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
-- Generated object:
-  `build/tests/backend/riscv64_pointer_global_local_publication_live_load_rejection.o`
-- Step 1 evidence:
-  `build/agent_state/675_step1_candidate_delta/summary.md`
+  `backend_cli_riscv64_call_arg_local_frame_address_materialization`
+- Owning contract:
+  RV64 object-route consumption of `LocalFrameAddressMaterialization`
+- Known paired-residual context:
+  `test_baseline.new.log` remains unaccepted while row 159 is unresolved.
 
 ## Non-Goals
 
-- Do not edit expectations, unsupported markers, allowlists, timeouts, runtime
-  policy, or baseline accounting in this runbook unless the supervisor
-  explicitly delegates that contract route after proof exists.
-- Do not repair
-  `backend_cli_riscv64_call_arg_local_frame_address_materialization`; that row
-  is split to idea 677.
-- Do not reopen idea 664 or older pointer/global-local owner notes without
-  fresh runtime evidence contradicting their closure.
+- Do not change the text-route contract unless fresh evidence proves it is
+  wrong.
+- Do not repair or reclassify the pointer/global-local publication row; idea
+  676 closed that route through runtime proof and a positive object contract.
 - Do not accept `test_baseline.new.log`.
+- Do not edit unsupported markers, allowlists, timeouts, runtime policy, or
+  baseline accounting.
+- Do not key implementation to the filename, expected byte string, or test
+  identity of the focus row.
 
 ## Working Model
 
-Step 1 of idea 675 proved that the old RV64 object-route local-memory admission
-owner moved. The row now fails because the expected-failure wrapper reports
-unexpected success. The object disassembly shows direct global publication into
-stack slots and a live reload. The next step is semantic proof: valid object
-behavior means stale expected-failure/test-contract ownership; invalid object
-behavior means a new implementation owner must be identified from runtime
-evidence.
+Idea 675 identified this row as a remaining RV64 object-route divergence.
+Prior evidence from idea 648 identified
+`arg.source_selection=local_frame_address_materialization`. The text route
+materializes the local frame address directly into the ABI argument register,
+while the object route currently materializes through a saved register and then
+copies to `a0`. This runbook must determine whether that object shape is a bug
+in consuming the source-selection contract or an acceptable object contract
+that needs documented positive proof.
 
 ## Execution Rules
 
-- Preserve `build/agent_state/675_step1_candidate_delta/summary.md` as the
-  source evidence for this split.
-- Keep any new proof artifacts under a focused `build/agent_state/676_*`
-  directory.
-- Prefer runtime/semantic observation over disassembly-only inference.
-- If code changes become necessary, first record the exact semantic mismatch
-  and then run `cmake --build --preset default` plus the delegated focused
-  proof.
+- Preserve the prepared/source-selection distinction between local frame
+  address materialization and generic register publication.
+- Prefer semantic lowering or contract clarification over expectation rewrites.
+- If implementation changes are needed, make the smallest general object-route
+  repair that follows `LocalFrameAddressMaterialization` data rather than test
+  identity.
+- Focused proof must cover the target row and at least one nearby
+  same-feature object-route case or negative boundary when available.
 - Compare baseline rows by stable test name whenever referencing broad logs.
 
 ## Steps
 
-### Step 1: Establish Runtime/Semantic Proof Harness
+### Step 1: Reconfirm The Object/Text Divergence
 
-Goal: Produce a focused proof path for the generated RV64 object.
-
-Actions:
-
-- Inspect the existing backend object execution or emulation harnesses for RV64
-  object semantics.
-- If a repo-native harness exists, adapt it to the focus case without changing
-  expectations or baseline policy.
-- If no harness exists, compare generated object behavior against a known-good
-  clang object or record the exact missing harness blocker.
-- Save commands, object paths, disassembly, relocations, and observed result
-  under `build/agent_state/676_step1_runtime_contract/`.
-
-Completion Check:
-
-- The runbook has a concrete command or documented blocker for observing
-  whether the generated object returns the expected global short value.
-
-### Step 2: Decide Valid Object Versus Fresh Implementation Owner
-
-Goal: Classify the row from semantic proof, not from stale expected-fail state.
+Goal: Establish the current object route and text route shapes from fresh
+commands before editing code.
 
 Actions:
 
-- Run the focused runtime/semantic proof when a harness is available.
-- For a valid object, document the stale expected-failure/test-contract owner
-  and leave expectation or baseline edits for an explicitly delegated route.
-- For an invalid object, capture the first failing semantic boundary with
-  object bytes, relocations, and runtime behavior.
-- Do not infer validity from the expected-failure wrapper alone.
+- Inspect the focus row's current object-byte failure and expected contract.
+- Re-read the idea 648 evidence for
+  `arg.source_selection=local_frame_address_materialization`.
+- Capture the text-route direct materialization shape and the object-route
+  two-step shape with enough command output to identify the first divergent
+  lowering boundary.
+- Record findings under a focused `build/agent_state/677_*` directory if new
+  proof artifacts are created.
 
 Completion Check:
 
-- The row is assigned to either stale test-contract/baseline routing or a
-  precise implementation owner backed by runtime evidence.
+- The runbook has fresh evidence naming the exact object-route boundary that
+  consumes `LocalFrameAddressMaterialization` differently from the text route,
+  or a concrete reason the divergence is only contractual.
 
-### Step 3: Prove Focused Outcome And Hand Back
+### Step 2: Repair Or Prove The Object Contract
 
-Goal: Leave the supervisor with an unambiguous next route.
+Goal: Resolve whether direct ABI-register materialization is required for RV64
+  object emission.
 
 Actions:
 
-- Run `cmake --build --preset default` when code changed, plus the delegated
-  focused proof command.
-- Update `todo.md` with the latest proof, owner decision, and any blocker.
-- If the row is contract-only, recommend routing to the supervisor without
-  editing expectations in this packet.
-- If the row needs implementation, recommend the smallest focused follow-up or
-  continue only within this idea's scoped owner.
+- If direct `addi a0, sp, offset` is the intended contract, implement the
+  smallest general object-route repair at the semantic consumption point.
+- If the current two-step shape is valid, document the semantic or ABI evidence
+  proving it should be accepted as the object contract.
+- Do not weaken byte contracts or rewrite expectations as a substitute for
+  implementation or reviewed contract evidence.
+- Keep changes scoped to local frame address call-argument materialization.
 
 Completion Check:
 
-- The focused row has a documented proof-backed route, and
-  `test_baseline.new.log` remains diagnostic evidence rather than accepted
-  baseline state.
+- The route has either a general implementation repair or a reviewed contract
+  decision, both traceable to `LocalFrameAddressMaterialization` semantics.
+
+### Step 3: Prove Focused And Nearby Coverage
+
+Goal: Leave the supervisor with acceptance-quality evidence for the 677 route.
+
+Actions:
+
+- Run `cmake --build --preset default` when code or tests changed.
+- Run the delegated focused proof for
+  `backend_cli_riscv64_call_arg_local_frame_address_materialization`.
+- Include at least one nearby same-feature object-route case or negative
+  boundary when available.
+- Update `todo.md` with proof results, remaining blockers, and whether
+  baseline acceptance is still deferred.
+
+Completion Check:
+
+- The focus row and selected nearby coverage are green or the remaining
+  blocker is precisely documented, and `test_baseline.new.log` remains
+  unaccepted unless the supervisor delegates baseline acceptance after all
+  paired residual rows are settled.

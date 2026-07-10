@@ -1,6 +1,6 @@
 # RV64 Pointer Global Local Publication Runtime Contract
 
-Status: Open
+Status: Closed
 Type: Focused contract/runtime proof
 Parent: `ideas/open/675_post_wave_residual_baseline_failures.md`
 Related:
@@ -72,6 +72,40 @@ failure, not from the old local-memory admission diagnosis.
   mismatch.
 - The candidate baseline remains unaccepted while this and the paired
   new-only row are unresolved.
+
+## Closure Notes
+
+Closed after the runtime proof and positive contract update completed the
+source idea's proof route.
+
+- Step 1 evidence in
+  `build/agent_state/676_step1_runtime_contract/summary.md` established a
+  repo-native RV64 link/run path for
+  `build/tests/backend/riscv64_pointer_global_local_publication_live_load_rejection.o`.
+  The object links with the system RISC-V toolchain, runs under
+  `qemu-riscv64`, and returns `0`, matching the expected zero-initialized
+  global short value. The same harness observed the nearby known-good global
+  publication object returning `7`, so the proof path is semantically useful
+  rather than a no-op.
+- Step 2 evidence in
+  `build/agent_state/676_step2_contract_update/summary.md` documents the stale
+  expected-failure wrapper being converted into the positive RV64 object-route
+  contract for the live-load case. The updated contract requires successful
+  object emission, RV64 ELF machine bytes, and the stable live pointer reload
+  plus short load/store/reload byte sequence.
+- Focused proof passed for the updated live-load row and the nearby existing
+  publication object row.
+- Close-time backend proof keeps
+  `backend_cli_failure_riscv64_pointer_global_local_publication_live_load_rejection`
+  green. The only remaining backend failures in the matching close-gate scope
+  are the known residual rows
+  `backend_cli_riscv64_call_arg_local_frame_address_materialization` and
+  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`.
+
+`test_baseline.new.log` remains unaccepted. In particular, row 159
+(`backend_cli_riscv64_call_arg_local_frame_address_materialization`) is still
+unresolved and is carried by the dependency-order follow-up in
+`ideas/open/677_rv64_call_arg_local_frame_address_object_materialization.md`.
 
 ## Reviewer Reject Signals
 
