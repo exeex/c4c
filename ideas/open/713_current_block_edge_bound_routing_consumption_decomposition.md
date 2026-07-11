@@ -3,7 +3,6 @@
 Status: Open
 Type: backend contract decomposition
 Unblocks: `ideas/open/705_prepared_fact_boundary_from_bir_views.md`
-Blocked By: `ideas/open/716_prealloc_current_block_routing_authority_closure.md` pending handback
 
 ## Goal
 
@@ -96,3 +95,14 @@ with the same one-primary-contract split. Do not rely on an unregistered source.
   focused proof.
 - The implementation broadens into common MIR or unrelated target migration.
 - The exact old failure mode survives behind a new aggregate/query name.
+
+## Authority Handback
+
+Idea 716 closed the prealloc authority dependency at commit `1394423de` with
+final accepted review and 329/329 backend proof. The owner-attached stable-key
+query is now the only AArch64 consumption boundary: Route 5 is diagnostic-only,
+exact negative prepared roots fail closed, legitimate uncovered BIR-PHI
+dependencies are preserved, and duplicate or parallel disagreement remains
+ambiguous. Resume at Step 4 to adopt and verify this bounded contract; do not
+reconstruct authority in the target or reopen the completed classification
+family.

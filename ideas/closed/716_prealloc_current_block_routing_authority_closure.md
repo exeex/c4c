@@ -1,6 +1,6 @@
 # Prealloc Current-Block Routing Authority Closure
 
-Status: Open
+Status: Closed
 Type: backend authority decomposition
 Blocks:
 - `ideas/open/713_current_block_edge_bound_routing_consumption_decomposition.md`
@@ -103,3 +103,18 @@ already own exactly one named seam; do not combine seams to reduce file count.
   claimed as capability progress.
 - The exact Route 5-to-`Available` promotion survives behind a new abstraction.
 - The route broadens into unrelated publication, BIR, MIR, or target work.
+
+## Completion Note
+
+Closed after the accepted authority handback in commit `1394423de` and the
+final Step 8 review. Owner attachment and copied-context lifetime are proven
+independently; Route 5 remains diagnostic-only; complete prepared authority
+requires predecessor/successor, destination, routed stable key, available
+status, known semantic origin, and agreement across every applicable fact.
+Exact negative prepared roots remain fail closed, legitimate uncovered
+BIR-PHI dependencies remain available, and duplicate or parallel disagreement
+remains ambiguous. Fixture policy and attachment stay independent, AArch64
+consumes only the owner-attached stable-key query with no reconstruction
+fallback, unchanged supported vectors and original short-circuit producers
+pass, and the accepted broader backend proof is 329/329. The authority contract
+is handed back to idea 713 Step 4; idea 705 remains blocked on idea 713.
