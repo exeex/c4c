@@ -337,8 +337,6 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
-
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
     bir::TypeKind operand_type = bir::TypeKind::Void;
@@ -1334,7 +1332,7 @@ class BirFunctionLowerer {
       bir::TypeKind value_type,
       const GlobalTypes& global_types,
       const TypeDeclMap& type_decls,
-      const GlobalAddressSlots& global_address_slots,
+      const c4c::backend::GlobalAddressSlots& global_address_slots,
       const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
       const c4c::backend::GlobalPointerValueSlots& global_pointer_value_slots,
       const c4c::backend::AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
@@ -1352,7 +1350,7 @@ class BirFunctionLowerer {
       const c4c::backend::GlobalPointerMap& global_pointer_slots,
       const c4c::backend::GlobalObjectPointerMap& global_object_pointer_slots,
       const PointerAddressMap& pointer_value_addresses,
-      GlobalAddressSlots* global_address_slots,
+      c4c::backend::GlobalAddressSlots* global_address_slots,
       AddressedGlobalPointerSlots* addressed_global_pointer_slots,
       c4c::backend::GlobalPointerValueSlots* global_pointer_value_slots,
       c4c::backend::AddressedGlobalPointerValueSlots* addressed_global_pointer_value_slots,
@@ -1471,7 +1469,7 @@ class BirFunctionLowerer {
   c4c::backend::LocalAddressSlots local_address_slots_;
   c4c::backend::LocalSlotAddressSlots local_slot_address_slots_;
   c4c::backend::LocalSlotPointerValues local_slot_pointer_values_;
-  GlobalAddressSlots global_address_slots_;
+  c4c::backend::GlobalAddressSlots global_address_slots_;
   AddressedGlobalPointerSlots addressed_global_pointer_slots_;
   c4c::backend::GlobalPointerValueSlots global_pointer_value_slots_;
   c4c::backend::AddressedGlobalPointerValueSlots addressed_global_pointer_value_slots_;
