@@ -251,10 +251,76 @@ Completion check:
   observational only; `dispatch.edge.add` remains available without synthesized
   BIR edge-publication evidence; and focused publication proof is green.
 
-#### Step 2.3b: Retire the bounded Route 5 compatibility consumer
+#### Step 2.3b.1: Produce independent named current-block evidence in prealloc
 
-Goal: remove the route-numbered public publication payload and migrate only its
-known compatibility consumers to the Step 2.3a named/prepared contract.
+Goal: replace the rejected circular target-generated evidence with a
+prealloc-owned adapter that consumes named BIR producer input independently of
+the prepared publication it helps validate.
+
+Primary targets:
+
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/publication_plans.hpp`
+- registered prepared publication tests under `tests/backend/bir/`
+
+Actions:
+
+- Read `review/reviewA.md` before implementation and remove any adapter that
+  constructs `PreparedFactBoundaryEvidence` by copying identity fields from an
+  already-selected `PreparedEdgePublication`.
+- Build the narrow evidence input from the named BIR producer view/query at the
+  BIR-to-prealloc boundary. Keep producer availability and identity independent
+  of prepared publication selection.
+- Select a positive prepared current-block fact only when applicable named
+  evidence is complete, unique, and matches function, producer block,
+  instruction, and value identity.
+- Keep prepared-originated non-PHI `JoinTransfer` authority independent of any
+  nonexistent BIR CFG-edge publication relation.
+- Move focused positive and missing/incomplete/ambiguous/mismatched cases into
+  a test target that is built and registered by CTest. Do not claim proof from
+  `backend_prepared_lookup_helper_test.cpp` while it is unreachable.
+
+Completion check:
+
+- Named evidence originates from a named BIR query rather than prepared output;
+  applicable evidence fails closed and uniquely; the non-PHI prepared path
+  remains supported; and the registered focused proof is green.
+
+#### Step 2.3b.2: Publish uniquely edge-bound prepared routing authority
+
+Goal: make prealloc expose the complete current-block incoming/source routing
+decision so the target consumes one selected fact instead of rescanning
+function-wide publications or transfers.
+
+Primary targets:
+
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/publication_plans.hpp`
+- registered current-block publication contract tests
+
+Actions:
+
+- Bind each routing fact to the current predecessor, successor, destination,
+  source, move, publication, freshness authority, and unique `JoinTransfer` or
+  BIR-origin identity as applicable.
+- Reject missing or duplicate semantic edges and same-value facts from another
+  predecessor, successor, destination, or join.
+- Remove function-wide `any_of` scans that treat any publication source id or
+  any `JoinTransfer` incoming value as authority for the current block.
+- Add registered negative proof for parallel edges sharing a source value,
+  wrong successor, wrong destination, duplicate transfer, and mismatched named
+  producer evidence.
+
+Completion check:
+
+- One unique prepared fact owns each incoming-expression/source routing bit;
+  adjacent same-value edges cannot satisfy it; no pointer identity is required
+  for semantic uniqueness; and registered focused proof is green.
+
+#### Step 2.3b.3: Retire the bounded Route 5 compatibility consumer
+
+Goal: remove the route-numbered public payload and let the one bounded AArch64
+consumer read only the Step 2.3b.2 prepared result.
 
 Primary targets:
 
@@ -262,29 +328,28 @@ Primary targets:
 - `src/backend/prealloc/publication_plans.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
 - `src/backend/prealloc/prepared_printer/select_chains.cpp`
-- directly affected prepared and AArch64 contract tests
+- registered prepared and AArch64 contract tests
 
 Actions:
 
 - Remove `route5_join_source`, `route5_join_source_status`,
   `route5_join_source_agrees`, and the Route 5 index input from the public
   current-block publication fact/query payload.
-- Replace the AArch64 dispatch predicate that reads those fields with the
-  already-produced named evidence and prepared publication, home, move,
-  freshness, and edge identity. Do not replan publication semantics in the
-  target and do not migrate unrelated target materializers.
-- Remove Route 5 construction and transport used only by this prepared query.
-- Update the prepared printer and the directly affected contract test to expose
-  and assert the named/prepared boundary rather than route status/agreement.
-- Reject any widening into common MIR query migration, other AArch64 producer
-  families, x86/RV64 materializers, or target-owned publication authority.
+- Make AArch64 consume the uniquely selected prepared incoming/source routing
+  output directly. It must not construct named evidence, rescan publications or
+  transfers, or select publication semantics.
+- Remove Route 5 construction and transport used only by this prepared query,
+  and update the printer to expose the named/prepared boundary.
+- Keep common MIR queries, unrelated AArch64 producer families, x86/RV64
+  materializers, and target-owned publication authority out of scope.
+- Run registered focused contracts and the supervisor-selected backend proof.
 
 Completion check:
 
 - Public prepared publication records and query inputs expose no route-numbered
-  executable state; the bounded AArch64 consumer uses the Step 2.3a authority
-  without selecting new semantics; printer/tests contain no stored Route 5
-  agreement contract; and focused prepared plus AArch64 proof is green.
+  executable state; AArch64 reads one edge-bound prepared result without
+  replanning; printer/tests contain no stored Route 5 agreement contract; all
+  directly affected proof is reachable; and the backend proof is green.
 
 #### Step 2.3c: Integrate and prove publication-family closure
 

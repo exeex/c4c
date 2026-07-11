@@ -3,37 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
 Source Plan Path: plan.md
-Current Step ID: 2.3a
-Current Step Title: Contract publication selection at the prealloc boundary
+Current Step ID: 2.3b.1
+Current Step Title: Produce independent named current-block evidence in prealloc
 
 ## Just Finished
 
-- Step 2.3a — confirmed current-block publication selection uses applicable
-  named producer evidence plus prepared publication, home, move, freshness,
-  and control authority while Route 5 compatibility fields remain
-  observational only.
-- Strengthened prepared-originated non-PHI `JoinTransfer` authority selection
-  to reject duplicate semantic transfer candidates and added focused ambiguous
-  prepared-authority proof alongside the existing available and fail-closed
-  named-evidence coverage.
+- None for the repaired Step 2.3b.1 packet; the prior Step 2.3b implementation
+  is under blocking review and is not accepted progress.
 
 ## Suggested Next
 
-- Execute Step 2.3b to retire the bounded Route 5 public compatibility payload
-  and migrate only its known AArch64 dispatch, printer, and contract-test
-  consumers to the Step 2.3a boundary.
+- Execute Step 2.3b.1 by replacing circular target-generated evidence with an
+  independent prealloc-owned named BIR producer adapter and registered focused
+  proof.
 
 ## Watchouts
 
-- Step 2.3b must keep the AArch64 change to the existing compatibility consumer;
-  do not migrate unrelated target materializers or replan publication authority
-  in the target.
-- Preserve the non-PHI prepared `JoinTransfer` path without synthesizing a BIR
-  CFG-edge publication relation.
+- Follow `review/reviewA.md`: do not certify prepared publication identity with
+  fields copied from that same publication, and do not use function-wide
+  publication/`JoinTransfer` scans as current-edge routing authority.
+- `backend_prepared_lookup_helper_test.cpp` is not registered proof; migrate the
+  required negative cases into a built CTest target.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- Result: build passed; all 309/309 backend tests passed. Canonical proof log:
-  `test_after.log`.
+- Pending supervisor-delegated Step 2.3b.1 proof; preserve its canonical result
+  in `test_after.log`.
