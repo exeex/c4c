@@ -13,6 +13,7 @@
 #include "../../shared/text_id_table.hpp"
 #include "bir_route_index_prereqs.hpp"
 #include "bir_producer_view.hpp"
+#include "bir_select_dependency_view.hpp"
 #include "bir_memory_access_view.hpp"
 #include "bir_publication_view.hpp"
 #include "bir_return_view.hpp"

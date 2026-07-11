@@ -22,6 +22,23 @@ set_tests_properties(backend_bir_producer_view_contract PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_bir_select_dependency_view_contract_test
+    "${BACKEND_TEST_ROOT}/bir/backend_bir_select_dependency_view_contract_test.cpp"
+)
+target_include_directories(backend_bir_select_dependency_view_contract_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_bir_select_dependency_view_contract_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_bir_select_dependency_view_contract_test PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_bir_select_dependency_view_contract
+  COMMAND $<TARGET_FILE:backend_bir_select_dependency_view_contract_test>)
+set_tests_properties(backend_bir_select_dependency_view_contract PROPERTIES
+  LABELS "backend;internal;cpp")
+
 add_executable(backend_bir_memory_publication_view_contract_test
     "${BACKEND_TEST_ROOT}/bir/backend_bir_memory_publication_view_contract_test.cpp"
 )

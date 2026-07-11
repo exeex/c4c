@@ -3,30 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate source-semantic common queries
+Current Step ID: 2.2
+Current Step Title: Adapt common MIR to named source-semantic results
 
 ## Just Finished
 
-- Step 2 migrated the bounded same-block binary/select producer, named producer
-  identity, scalar producer, and integer-constant common-query family to
-  `BirProducerView`. Before-index and stable producer/value identities are
-  preserved; missing names, type/label mismatches, future producers,
-  incomplete results, and ambiguous producer results fail closed.
-- Integer folding now walks operands through the named producer view with the
-  original depth bound and arithmetic semantics, without rebuilding or
-  querying a Route 1 index in common MIR. The exact Route 1 guard inventory was
-  ratcheted from 33 to 23 hits.
+- Step 2.1 established `BirSelectDependencyResult` and the BIR-owned
+  `find_bir_select_dependency` API. BIR now owns recursive Select/Cast/Binary/
+  LoadGlobal interpretation with explicit complete-direct-global,
+  complete-no-dependency, unavailable, incomplete, ambiguous, and mismatched
+  statuses plus stable block, root-value, dependency-value, and instruction
+  indices.
+- Added focused BIR contract proof for direct-global and no-dependency success,
+  all required negative statuses, stable identities, and before-index behavior.
 
 ## Suggested Next
 
-- Step 2: migrate the bounded Route 2 select-chain common-query family to its
-  named BIR select/dependency view, preserving root/dependency identities and
-  explicit unavailable/incomplete/ambiguous behavior. Ratchet the Route 2
-  guard inventory only for the completed family.
+- Step 2.2: replace the rejected common-MIR recursive select-chain walk with a
+  narrow adapter over `find_bir_select_dependency`, preserving the named
+  result's status and stable identities before reconsidering the Route 2 guard.
 
 ## Watchouts
 
+- Remove `find_select_chain_dependency` from common MIR in Step 2.2; common MIR
+  must not duplicate or reinterpret the BIR-owned recursion now established.
+- Do not accept the uncommitted Route 2 guard reduction from 29 to zero; restore
+  the prior guard inventory until ownership-correct consumption is proved.
 - Twenty-three Route 1 spellings remain in other bounded memory/publication/
   edge-join adapters; they are not same-block producer authority and should
   migrate with their owning families rather than being mechanically renamed.
@@ -37,7 +39,7 @@ Current Step Title: Migrate source-semantic common queries
 
 ## Proof
 
-- Passed `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' | tee test_after.log`: 330/330 backend
-  tests passed, including the focused producer-query and route-authority guard
-  contracts. Proof log: `test_after.log`.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' | tee test_after.log`
+- The supervisor-selected backend proof passed; `test_after.log` is the
+  canonical proof log.

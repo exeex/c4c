@@ -86,15 +86,44 @@ Completion check:
   detects route-shaped public/common contracts, and the first bounded producer
   family is selected without broadening into target policy.
 
-### Step 2: Migrate source-semantic common queries
+### Step 2: Establish and consume source-semantic named results
 
 Goal: replace common queries whose answers are owned by BIR with named BIR
-results and explicit availability.
+results and explicit availability, creating the owning result before common MIR
+adapts any semantic family that does not already have one.
+
+#### Step 2.1: Establish the BIR-owned select/dependency result
+
+Actions:
+
+- Define a named BIR select-chain/dependency result with explicit status and
+  stable root/dependency identity before changing the corresponding common MIR
+  query.
+- Keep recursive interpretation of `SelectInst`, `CastInst`, `BinaryInst`, and
+  `LoadGlobalInst` in the BIR-owned producer/view implementation; common MIR
+  must not reconstruct that traversal from a same-block producer primitive.
+- Represent at least complete direct-global dependency, complete no-dependency,
+  and incomplete/ambiguous/mismatched outcomes in the named result.
+- Add focused BIR-side proof for those outcomes and preserve the existing
+  before-index and identity rules.
+
+Completion check:
+
+- A BIR-owned named select/dependency producer and result expose the complete
+  semantic answer with explicit status and stable identities, and focused proof
+  covers direct-global positive, complete no-dependency, and incomplete plus
+  ambiguous/mismatched negatives. No common MIR select-chain traversal is part
+  of this completion claim.
+
+#### Step 2.2: Adapt common MIR to named source-semantic results
 
 Actions:
 
 - Replace direct route-record and route-index inputs with the applicable named
   producer, memory, publication, call-boundary, or control query.
+- For the select/dependency family, consume the Step 2.1 named result as a
+  narrow status/identity adapter; do not recursively interpret BIR
+  instructions or derive dependency completeness in common MIR.
 - Preserve stable function, block, instruction, edge, value, and call identity.
 - Reject missing, incomplete, ambiguous, unsupported, and mismatched applicable
   input without route discovery or agreement fallback.
@@ -104,6 +133,10 @@ Completion check:
 
 - Migrated source-semantic queries consume named BIR results only, preserve
   identity, fail closed explicitly, and expose no route-shaped result.
+- Route-vocabulary guard counts may ratchet only after the corresponding named
+  BIR result is consumed without semantic reconstruction in common MIR; Route
+  2 reaches zero only after the select/dependency focused proof and broader
+  backend proof are green.
 
 ### Step 3: Migrate placement and executable-authority queries
 
