@@ -415,9 +415,11 @@ bool BirFunctionLowerer::append_local_aggregate_copy_from_slots(
   // Step 4 no-id compatibility bridge: local aggregate copy lowering owns
   // source/target LocalAggregateSlots that retain rendered type text only. The
   // limitation is that copy-size validation cannot compare original
-  // LirTypeRef/StructNameId metadata for either aggregate value. Remove this
-  // once LocalAggregateSlots carry structured type identity through aggregate
-  // copy planning.
+  // LirTypeRef/StructNameId metadata for either aggregate value. The resolved
+  // target layout is reused below to avoid a second root rendered-text lookup
+  // while preserving the existing compatibility decision. Remove this once
+  // LocalAggregateSlots carry structured type identity through aggregate copy
+  // planning.
   const auto source_layout =
       lower_byval_aggregate_layout(source_slots.type_text, type_decls_, &structured_layouts_);
   const auto target_layout =
@@ -427,7 +429,7 @@ bool BirFunctionLowerer::append_local_aggregate_copy_from_slots(
     return false;
   }
 
-  const auto target_leaves = collect_sorted_leaf_slots(target_slots);
+  const auto target_leaves = collect_sorted_leaf_slots(target_slots, *target_layout);
   for (const auto& [byte_offset, target_slot_name] : target_leaves) {
     const auto source_slot_it =
         source_slots.leaf_slots.find(source_slots.base_byte_offset + byte_offset);
