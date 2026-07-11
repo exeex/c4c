@@ -282,6 +282,125 @@ int x86_facing_code_can_consume_shared_query_records() {
     return fail("expected shared query to traverse select-chain dependencies");
   }
 
+  const auto select_chain_request = mir::BirSelectChainIdentityRequest{
+      .block = &block,
+      .block_label = "entry",
+      .root_value = &choice,
+      .root_value_name = choice.name,
+      .root_value_type = choice.type,
+      .before_instruction_index = block.insts.size(),
+  };
+  const auto select_chain = mir::find_bir_select_chain_identity(
+      select_chain_request);
+  if (!select_chain || !select_chain.root_is_select ||
+      select_chain.root_instruction_index != std::size_t{4} ||
+      select_chain.root_value.value == nullptr ||
+      select_chain.root_value.name != choice.name ||
+      select_chain.root_producer.instruction_index != 4U ||
+      !select_chain.scalar_materialization_available) {
+    return fail("expected named select-chain view to preserve root identities");
+  }
+  const auto typeless_select_chain = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
+          .block = &block,
+          .block_label = "entry",
+          .root_value_name = choice.name,
+          .before_instruction_index = block.insts.size(),
+      });
+  if (!typeless_select_chain ||
+      typeless_select_chain.root_value.value != select_chain.root_value.value ||
+      typeless_select_chain.direct_global_dependency) {
+    return fail("expected complete no-dependency result and type-less-name compatibility");
+  }
+
+  bir::Block global_select_block;
+  global_select_block.label = "global-select";
+  global_select_block.insts.push_back(bir::LoadGlobalInst{
+      .result = named(bir::TypeKind::I64, "%global"),
+      .global_name = "global0",
+      .align_bytes = 8,
+  });
+  global_select_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = named(bir::TypeKind::I64, "%global-choice"),
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(1),
+      .rhs = bir::Value::immediate_i64(1),
+      .true_value = named(bir::TypeKind::I64, "%global"),
+      .false_value = bir::Value::immediate_i64(0),
+  });
+  global_select_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = named(bir::TypeKind::I64, "%stopped-choice"),
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(1),
+      .rhs = bir::Value::immediate_i64(1),
+      .true_value = bir::Value::immediate_i64(0),
+      .false_value = named(bir::TypeKind::I64, "%global"),
+  });
+  const auto global_choice = named(bir::TypeKind::I64, "%global-choice");
+  const auto direct_global = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
+          .block = &global_select_block,
+          .block_label = "global-select",
+          .root_value = &global_choice,
+          .before_instruction_index = global_select_block.insts.size(),
+      });
+  if (!direct_global || !direct_global.direct_global_dependency ||
+      direct_global.direct_global_dependency.load_global == nullptr ||
+      direct_global.direct_global_dependency.instruction_index !=
+          std::size_t{0}) {
+    return fail("expected named select-chain adapter to preserve direct-global identity");
+  }
+  const auto stopped_choice = named(bir::TypeKind::I64, "%stopped-choice");
+  const auto stopped = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
+          .block = &global_select_block,
+          .block_label = "global-select",
+          .root_value = &stopped_choice,
+          .before_instruction_index = global_select_block.insts.size(),
+      });
+  if (!stopped || !stopped.root_is_select ||
+      stopped.direct_global_dependency) {
+    return fail("expected complete-stopped result to preserve root identity without later dependency");
+  }
+
+  bir::Block incomplete_block;
+  incomplete_block.label = "incomplete";
+  incomplete_block.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = named(bir::TypeKind::I64, "%incomplete"),
+      .operand = named(bir::TypeKind::I64, "%missing"),
+  });
+  const auto incomplete_value = named(bir::TypeKind::I64, "%incomplete");
+  const auto incomplete_select_chain = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
+          .block = &incomplete_block,
+          .block_label = "incomplete",
+          .root_value = &incomplete_value,
+          .before_instruction_index = incomplete_block.insts.size(),
+      });
+  const auto ambiguous_select_chain = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
+          .block = &ambiguous_block,
+          .block_label = "ambiguous",
+          .root_value_name = "%duplicate",
+          .root_value_type = bir::TypeKind::I64,
+          .before_instruction_index = ambiguous_block.insts.size(),
+      });
+  const auto mismatched_select_chain = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
+          .block = &block,
+          .block_label = "not-entry",
+          .root_value = &choice,
+          .root_value_type = choice.type,
+          .before_instruction_index = block.insts.size(),
+      });
+  if (incomplete_select_chain || ambiguous_select_chain ||
+      mismatched_select_chain) {
+    return fail("expected named select-chain view to fail closed for incomplete, ambiguous, or mismatched facts");
+  }
+
   return 0;
 }
 

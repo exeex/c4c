@@ -8,30 +8,27 @@ Current Step Title: Adapt common MIR to named source-semantic results
 
 ## Just Finished
 
-- Step 2.1 corrected the BIR-owned select/dependency result with an explicit
-  `CompleteStopped` status. Immediate or unresolved first arms now preserve a
-  complete root identity while stopping traversal without exposing later
-  dependencies; only a proven traversable dependency-free arm continues.
-- Focused contracts now prove immediate-first/global-second stopping,
-  global-first/immediate-second direct-global identity, and LoadLocal-first
-  continuation to a later global dependency.
+- Step 2.2 replaced the rejected common-MIR recursive select dependency walk
+  with a narrow adapter over `find_bir_select_dependency`. Complete stopped,
+  no-dependency, and direct-global results preserve root/dependency identities;
+  unavailable, incomplete, ambiguous, and mismatched results fail closed.
+- Focused MIR contracts cover direct-global, complete-no-dependency,
+  complete-stopped, type-less-name compatibility, incomplete, ambiguous, and
+  mismatched inputs. The Route 2 guard legitimately reaches zero.
 
 ## Suggested Next
 
-- Step 2.2: finish the narrow common-MIR adapter over the corrected named BIR
-  result, preserving its status and stable identities without restoring
-  common-MIR recursion.
+- Continue Step 2 with one bounded Route 3 memory-access family: inventory the
+  existing named BIR memory-access result and adapt the matching common query
+  slice without changing target placement policy.
 
 ## Watchouts
 
-- `CompleteStopped` is complete for root identity/materialization consumers but
-  is not continuable by pair traversal; `CompleteNoDependency` remains the
-  only status that permits inspection of the later operand.
-- Do not restore common-MIR recursion. The correction belongs in the BIR-owned
-  producer/result and must preserve the distinction between a conclusively
-  dependency-free traversable operand and a legacy stop/unavailable operand.
-- Do not ratchet Route 2 vocabulary to zero or claim Step 2.2 complete until
-  the corrected Step 2.1 focused proof and the broader backend proof are green.
+- Preserve the accepted distinction between `CompleteStopped` and
+  `CompleteNoDependency`; common MIR relies only on the BIR result's complete
+  contract and must not reconstruct operand traversal.
+- Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
+  select dependency interpretation in later common-query packets.
 - Twenty-three Route 1 spellings remain in other bounded memory/publication/
   edge-join adapters; they are not same-block producer authority and should
   migrate with their owning families rather than being mechanically renamed.
@@ -44,5 +41,6 @@ Current Step Title: Adapt common MIR to named source-semantic results
 
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`
-- The supervisor-selected exact backend proof passed 331/331; `test_after.log`
-  is the canonical proof log.
+- The supervisor-selected exact backend proof passed 331/331, including the
+  unchanged `backend_aarch64_instruction_dispatch`; `test_after.log` is the
+  canonical proof log.
