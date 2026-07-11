@@ -1,57 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/688_initializer_lowering_bridge_isolation.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Verify Known Global Address Import Boundaries
+Current Step ID: Step 6
+Current Step Title: Final Consistency And Proof Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 verified the known global-address import/publication boundaries without
-source changes.
+Step 6 completed the final consistency and proof check for the initializer
+lowering bridge isolation runbook.
 
-Boundary findings:
-- `resolve_known_global_address()` remains the only known global-address
-  publisher; it writes `GlobalInfo::known_global_address` in
-  `src/backend/bir/lir_to_bir/globals.cpp`.
-- The module adapter call order still resolves aggregate pointer initializer
-  offsets, string-pointer target ids, and resolved pointer value ids before
-  publishing known global-address aliases in
-  `src/backend/bir/lir_to_bir/module.cpp`.
-- `is_known_function_global_address()` and the fenced raw-symbol bridge still
-  have existing memory-lowering consumers, so removing or renaming them from
-  `lowering.hpp` would cross into unowned memory files rather than tighten this
-  packet's owned boundary.
+Diff check:
+- Re-read the source idea acceptance criteria and reviewer reject signals in
+  `ideas/open/688_initializer_lowering_bridge_isolation.md`.
+- Compared the accumulated active-plan diff since
+  `8c65ee593 [plan] Activate initializer lowering bridge isolation plan`.
+- The implementation diff is confined to
+  `src/backend/bir/lir_to_bir/global_initializers.cpp`,
+  `src/backend/bir/lir_to_bir/globals.cpp`,
+  `src/backend/bir/lir_to_bir/lowering.hpp`, and
+  `src/backend/bir/lir_to_bir/module.cpp`; `todo.md` contains execution-state
+  updates.
+- No public BIR schema files, prepared object-data plans, target data emission
+  files, tests, expectations, unsupported markers, allowlists, runtime harness
+  policy, docs, source ideas, or baseline logs changed.
+- The diff narrows adapter ownership by keeping imported function symbol
+  compatibility state, string-pointer target-id rewriting, and initializer
+  value materialization details inside LIR-to-BIR adapter helpers. It does not
+  introduce testcase-shaped initializer parsing, named-case-only rewrites, or
+  expectation downgrades.
 
-No helper signature/name tightening was useful inside the owned files. No
-emitted BIR facts, prepared object data, relocation spelling, target behavior,
-diagnostics, expectations, unsupported markers, tests, allowlists, or harness
-policy were changed.
+The active plan appears ready for supervisor lifecycle close review.
 
 ## Suggested Next
 
-Next coherent packet: supervisor should decide whether Step 5 is complete as a
-verified no-op or whether a broader packet should include the memory-lowering
-consumers before any public helper signature/name tightening is attempted.
+Next coherent packet: supervisor should run lifecycle close review for
+`ideas/open/688_initializer_lowering_bridge_isolation.md`.
 
 ## Watchouts
 
-- `src/backend/bir/lir_to_bir/memory/provenance.cpp` and
-  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` consume
-  `is_known_function_global_address()` from `lowering.hpp`; they were inspected
-  only to establish the boundary and were not edited.
-- `GlobalInfo::known_global_address` is still consumed by memory provenance
-  lowering after the module adapter publishes it. Tightening that data shape is
-  broader than this packet's owned files.
-- Avoid turning future boundary cleanup into classification-only churn; a
-  useful follow-up should either remove an actual cross-file dependency or keep
-  behavior bit-for-bit identical.
+- `is_known_function_global_address()` and `GlobalInfo::known_global_address`
+  remain stable existing contracts with memory-lowering consumers; tightening
+  them would be broader than this initializer bridge isolation runbook.
+- No residual reject-signal issue was found in this final packet.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
 
-Result: passed. Build completed and the selected backend plus
-`string_authority_guard` subset passed with 0 failures. Fresh proof output is
-preserved in `test_after.log`.
+Result: passed. Build reported no work to do, and CTest reported 3331 tests
+passed with 0 failures. Fresh full proof output is preserved in
+`test_after.log`.
