@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -158,6 +159,85 @@ int current_block_routing_facts_are_edge_bound_and_unique() {
   return 0;
 }
 
+prepare::PreparedCurrentBlockJoinRoutingFact routing_fact() {
+  return {
+      .status = prepare::PreparedFactBoundaryStatus::Available,
+      .predecessor_label = c4c::BlockLabelId{1},
+      .successor_label = c4c::BlockLabelId{2},
+      .destination_value_id = prepare::PreparedValueId{10},
+      .destination_value_name = c4c::ValueNameId{10},
+      .source_value_id = prepare::PreparedValueId{20},
+      .source_value_name = c4c::ValueNameId{20},
+      .routed_value_id = prepare::PreparedValueId{20},
+      .routed_value_name = c4c::ValueNameId{20},
+      .role = prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression,
+      .publication_semantic_origin =
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::PreparedJoinTransfer,
+  };
+}
+
+prepare::PreparedCurrentBlockJoinRoutingFact select_routing_fact(
+    const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact>& facts,
+    const prepare::PreparedCurrentBlockJoinRoutingFact& key) {
+  return prepare::select_prepared_current_block_join_routing_fact(
+      facts, key.predecessor_label, key.successor_label,
+      key.destination_value_id, key.destination_value_name, key.source_value_id,
+      key.source_value_name, key.routed_value_id, key.routed_value_name,
+      key.role);
+}
+
+int parallel_predecessors_remain_independently_available() {
+  const auto first = routing_fact();
+  auto second = first;
+  second.predecessor_label = c4c::BlockLabelId{3};
+  const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts{first,
+                                                                       second};
+  if (select_routing_fact(facts, first).status !=
+          prepare::PreparedFactBoundaryStatus::Available ||
+      select_routing_fact(facts, second).status !=
+          prepare::PreparedFactBoundaryStatus::Available) {
+    return fail("parallel predecessors must remain independently available");
+  }
+  return 0;
+}
+
+int parallel_destinations_remain_independently_available() {
+  const auto first = routing_fact();
+  auto second = first;
+  second.destination_value_id = prepare::PreparedValueId{11};
+  second.destination_value_name = c4c::ValueNameId{11};
+  const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts{first,
+                                                                       second};
+  if (select_routing_fact(facts, first).status !=
+          prepare::PreparedFactBoundaryStatus::Available ||
+      select_routing_fact(facts, second).status !=
+          prepare::PreparedFactBoundaryStatus::Available) {
+    return fail("parallel destinations must remain independently available");
+  }
+  return 0;
+}
+
+int wrong_successor_is_explicitly_mismatched() {
+  const auto fact = routing_fact();
+  auto wrong_successor = fact;
+  wrong_successor.successor_label = c4c::BlockLabelId{4};
+  if (select_routing_fact({fact}, wrong_successor).status !=
+      prepare::PreparedFactBoundaryStatus::Mismatched) {
+    return fail("wrong successor must be explicitly mismatched");
+  }
+  return 0;
+}
+
+int duplicate_semantic_edge_is_explicitly_ambiguous() {
+  const auto fact = routing_fact();
+  if (select_routing_fact({fact, fact}, fact).status !=
+      prepare::PreparedFactBoundaryStatus::Ambiguous) {
+    return fail("duplicate semantic edge must be explicitly ambiguous");
+  }
+  return 0;
+}
+
 int result_level_key_loses_predecessor_before_destination_identity() {
   const prepare::PreparedCurrentBlockJoinRoutingFact first{
       .status = prepare::PreparedFactBoundaryStatus::Available,
@@ -262,7 +342,23 @@ int public_headers_have_only_inventoried_compatibility_payloads() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 2) {
+    const std::string_view probe = argv[1];
+    if (probe == "parallel-predecessors") {
+      return parallel_predecessors_remain_independently_available();
+    }
+    if (probe == "parallel-destinations") {
+      return parallel_destinations_remain_independently_available();
+    }
+    if (probe == "wrong-successor") {
+      return wrong_successor_is_explicitly_mismatched();
+    }
+    if (probe == "duplicate-semantic-edge") {
+      return duplicate_semantic_edge_is_explicitly_ambiguous();
+    }
+    return fail("unknown prepared fact-boundary contract probe");
+  }
   if (const int status = statuses_are_explicit_and_fail_closed(); status != 0) {
     return status;
   }
@@ -277,6 +373,22 @@ int main() {
   }
   if (const int status =
           result_level_key_loses_predecessor_before_destination_identity();
+      status != 0) {
+    return status;
+  }
+  if (const int status = parallel_predecessors_remain_independently_available();
+      status != 0) {
+    return status;
+  }
+  if (const int status = parallel_destinations_remain_independently_available();
+      status != 0) {
+    return status;
+  }
+  if (const int status = wrong_successor_is_explicitly_mismatched();
+      status != 0) {
+    return status;
+  }
+  if (const int status = duplicate_semantic_edge_is_explicitly_ambiguous();
       status != 0) {
     return status;
   }

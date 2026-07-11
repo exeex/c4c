@@ -577,7 +577,25 @@ set_target_properties(backend_prepared_fact_boundary_contract_test PROPERTIES
 )
 add_test(NAME backend_prepared_fact_boundary_contract
   COMMAND $<TARGET_FILE:backend_prepared_fact_boundary_contract_test>)
-set_tests_properties(backend_prepared_fact_boundary_contract PROPERTIES
+add_test(NAME backend_prepared_fact_boundary_parallel_predecessors
+  COMMAND $<TARGET_FILE:backend_prepared_fact_boundary_contract_test>
+          parallel-predecessors)
+add_test(NAME backend_prepared_fact_boundary_parallel_destinations
+  COMMAND $<TARGET_FILE:backend_prepared_fact_boundary_contract_test>
+          parallel-destinations)
+add_test(NAME backend_prepared_fact_boundary_wrong_successor
+  COMMAND $<TARGET_FILE:backend_prepared_fact_boundary_contract_test>
+          wrong-successor)
+add_test(NAME backend_prepared_fact_boundary_duplicate_semantic_edge
+  COMMAND $<TARGET_FILE:backend_prepared_fact_boundary_contract_test>
+          duplicate-semantic-edge)
+set_tests_properties(
+  backend_prepared_fact_boundary_contract
+  backend_prepared_fact_boundary_parallel_predecessors
+  backend_prepared_fact_boundary_parallel_destinations
+  backend_prepared_fact_boundary_wrong_successor
+  backend_prepared_fact_boundary_duplicate_semantic_edge
+  PROPERTIES
   LABELS "backend;internal;cpp")
 
 add_test(
