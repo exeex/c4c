@@ -2,8 +2,8 @@
 
 Status: Open
 Type: Umbrella triage and follow-up idea generator
-After: `ideas/open/693_bir_route_index_retirement_research.md`
-Parent: `ideas/open/693_bir_route_index_retirement_research.md`
+After: `ideas/closed/693_bir_route_index_retirement_research.md`
+Parent: `ideas/closed/693_bir_route_index_retirement_research.md`
 Handoff Directory: `docs/bir_route_index_retirement/`
 Consumes:
 - `docs/bir_route_index_retirement_research/index.md`
@@ -16,7 +16,7 @@ Consumes:
 - `docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md`
 - `docs/bir_route_index_retirement_research/08_stack_view_and_destination_authority_handoff.md`
 Related:
-- `ideas/open/693_bir_route_index_retirement_research.md`
+- `ideas/closed/693_bir_route_index_retirement_research.md`
 - `ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md`
 - `ideas/open/655_stack_destination_fan_in_authority_decomposition.md`
 - `src/backend/bir/`
