@@ -1,35 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/700_prepared_mir_stack_view_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Record Residual Stack Revisit Eligibility
+Current Step ID: Complete
+Current Step Title: Runbook Exhausted - Supervisor/Plan-Owner Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 is satisfied for the selected `PreparedBranchStackLoadAuthority`
-family. No additional test change is needed for this proof step.
+Step 5 recorded residual stack revisit eligibility for ideas 647 and 655 based
+on the completed `PreparedBranchStackLoadAuthority` evidence.
 
-Existing accepted proof demonstrates the required positive surface above route
-dumps: `backend_prepare_stack_layout` covers available condition, lhs, and rhs
-branch stack-load authority rows plus prepared-printer exposure for
-`branch_stack_load_authority`; the prepared MIR query/view exposes that same
-authority through `query_prepared_mir_branch_stack_load_authority()` and
-`PreparedMirFunctionView::branch_stack_load_authority()`; and the RV64 object
-path consumes branch stack-load freshness through that named prepared MIR
-authority boundary, including partial prepared snapshots that have authority
-records without a full core view.
+Decision: ideas 647 and 655 remain parked. This runbook produced positive
+prepared evidence only for branch stack-load authority and its prepared MIR
+fail-closed query/view:
+`query_prepared_mir_branch_stack_load_authority()` and
+`PreparedMirFunctionView::branch_stack_load_authority()`. That evidence is
+valid for branch stack-load source freshness at the branch terminator point,
+including partial prepared snapshots that have authority records without a
+full core view.
 
-Existing accepted proof also demonstrates the negative fail-closed surface:
-`check_branch_stack_load_authority_contract()` covers missing, ambiguous,
-stale, wrong-value, wrong-use, stack-home-only, unsupported-home, same-slot
-clobber, unpreserved call, mismatched preserved slot, and stale preserved
-source rejection statuses. The query returns `available=true` only for
-`PreparedBranchStackLoadAuthorityStatus::Available` records with selected
-`BranchStackLoadSource` freshness backed by `BranchStackSlot` and
-`BranchTerminatorOrdering`; missing, unsupported, ambiguous, invalid, stale, or
-clobbered authority remains unavailable.
+The completed slice does not satisfy the unrelated prerequisite families
+needed to resume residual stack-destination fan-in work in ideas 647 or 655.
+It does not prove destination value identity, destination home, destination
+storage kind, source value/home, move bundle authority, move resolution,
+freshness outside `BranchStackLoadSource`, aggregate stack source, ordered
+final-state authority, mutual-exclusion authority, explicit merge authority,
+or explicit destination authority.
+
+Idea 647 remains parked because its residual rows require a positive non-637
+stack-destination producer family such as ordered final-state,
+mutual-exclusion, or explicit merge authority at the failing consumer program
+point. This branch stack-load authority slice is not that destination
+authority.
+
+Idea 655 remains parked because its decomposition seams still need a positive
+non-637 stack-destination producer fact before implementation can resume. This
+slice supplies one branch stack-load authority family, not the destination
+fan-in producer evidence required by the decomposition.
 
 Route-numbered evidence is compatibility-only: Route 4, Route 5, Route 7,
 `RouteIndexReferenceFacade`, route dumps, expectation rows, and allowlists may
@@ -39,23 +47,26 @@ stack-load operands. The selected family must be accepted only through
 `PreparedValueFreshnessUseKind::BranchStackLoadSource` freshness at the branch
 terminator point.
 
-Step 4 proof decision: satisfied by existing positive and negative proof. No
-precise missing proof was found for the selected branch stack-load authority
-family.
+Runbook status: exhausted. Steps 1 through 5 have been handled for the selected
+`PreparedBranchStackLoadAuthority` family. Supervisor/plan-owner handling is
+needed next to decide whether to close, deactivate, or otherwise transition the
+active runbook.
 
 ## Suggested Next
 
-Delegate Step 5: record residual stack revisit eligibility. Compare the
-prepared branch stack-load authority evidence against the prerequisite
-threshold for ideas 647 and 655, then record whether those residual stack ideas
-remain parked or can be revisited by a later lifecycle packet.
+Supervisor should hand this exhausted runbook to plan-owner for lifecycle
+disposition. Do not reactivate ideas 647 or 655 from this slice alone; a later
+lifecycle packet can revisit them only after separate positive prepared
+producer evidence exists for the relevant stack-destination fan-in authority
+family.
 
 ## Watchouts
 
 - Do not use Route 4, Route 5, Route 7, route facade status, dump rows,
   expectations, or allowlists as MIR authority.
 - Do not reactivate ideas 647 or 655 until positive prepared producer evidence
-  exists above route dumps.
+  exists for their residual stack-destination fan-in prerequisites above route
+  dumps.
 - Keep route facade contraction and dump vocabulary cleanup out of this packet.
 - Keep the selected family exact: branch stack-load authority only. Do not fold
   aggregate stack-source, direct-edge publication source, generic value-home,
@@ -71,10 +82,13 @@ remain parked or can be revisited by a later lifecycle packet.
 - Partial prepared lookup snapshots are accepted only through
   `query_prepared_mir_branch_stack_load_authority()`; do not reintroduce raw
   branch-authority lookup iteration or route-numbered/dump-based authority.
+- The completed runbook does not provide destination-authority evidence for
+  ordered final-state, mutual-exclusion, explicit merge, or any other
+  non-637 residual stack-destination fan-in family.
 
 ## Proof
 
-No new proof was required for this todo-only Step 4 assessment.
+No new proof was required for this todo-only Step 5 eligibility record.
 
 Accepted existing proof:
 
@@ -101,4 +115,5 @@ Result: 304/304 passed.
 - Hook baseline full-suite candidate was accepted at 3333/3333.
 
 Conclusion: Step 4 proof is sufficient for this runbook step; no missing proof
-is currently recorded.
+is currently recorded. Step 5 is an evidence classification only and required
+no build or test run.
