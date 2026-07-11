@@ -3,31 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/703_bir_mir_contract_abstraction_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define ownership and named handoff contracts
+Current Step ID: 3
+Current Step Title: Generate the ordered follow-up idea queue
 
 ## Just Finished
 
-- Completed `plan.md` Step 2: classified dependencies by first owner and
-  defined narrow named BIR, prepared/prealloc, MIR, target, proof, and
-  compatibility contracts, including public/private header rules and the
-  positive stack-authority producer gate for ideas 647 and 655.
+- Completed `plan.md` Step 3: wrote the dependency-ordered follow-up queue and
+  generated ideas 704-712 with single first owners, dependencies, first
+  consumers, proof surfaces, retirement guards, acceptance criteria, and
+  concrete reviewer reject signals.
 
 ## Suggested Next
 
-- Delegate `plan.md` Step 3 to generate a dependency-ordered, single-owner
-  follow-up idea queue from the inventory and named contracts.
+- Delegate `plan.md` Step 4 to audit the handoff, map every guarded dependency
+  to its shrink/retirement owner, and prepare closure-note evidence for
+  plan-owner review without implementing or closing the umbrella.
 
 ## Watchouts
 
-- Keep this umbrella docs-and-ideas only; do not modify implementation or tests.
-- Leave ideas 647 and 655 parked until explicit positive prepared/prealloc
-  producer evidence exists.
-- Keep BIR view production, prepared fact production, common MIR migration,
-  target materialization, route quarantine, and test vocabulary cleanup in
-  separate follow-ups; a renamed full route record is not a named contract.
-- Stack-authority follow-ups must prove a positive unique prepared producer and
-  fail-closed MIR consumption before ideas 647 or 655 can resume.
+- Keep ideas 647 and 655 parked until idea 707 proves the complete positive
+  prepared producer row and fail-closed MIR consumption; generating the gate
+  idea is not evidence that the gate has passed.
+- Treat target ideas 708-710 as ownership siblings after common MIR migration,
+  not as route-number ordering, and keep route quarantine/test cleanup behind
+  all semantic consumers.
+- Step 4 must classify every remaining guard hit; do not call unowned route
+  vocabulary generic later cleanup.
 
 ## Proof
 
