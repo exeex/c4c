@@ -2087,7 +2087,7 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
     c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
-    GlobalPointerMap* global_pointer_slots,
+    c4c::backend::GlobalPointerMap* global_pointer_slots,
     std::vector<bir::Inst>* lowered_insts) {
   const auto result = std::string(result_name);
   const auto direct_slot_type_it = local_slot_types.find(local_slot_ptr.slot_name);
@@ -2182,7 +2182,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
     const LocalPointerArrayBaseMap& local_pointer_array_bases,
     const c4c::backend::LocalSlotPointerValues& local_slot_pointer_values,
     const PointerAddressMap& pointer_value_addresses,
-    const GlobalPointerMap& global_pointer_slots,
+    const c4c::backend::GlobalPointerMap& global_pointer_slots,
     const GlobalAddressIntMap& global_address_ints,
     c4c::backend::LocalPointerValueAliasMap* local_pointer_value_aliases,
     c4c::backend::LocalIndirectPointerSlotSet* local_indirect_pointer_slots,
@@ -2527,7 +2527,7 @@ BirFunctionLowerer::LocalSlotLoadResult BirFunctionLowerer::try_lower_local_slot
     c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
-    GlobalPointerMap* global_pointer_slots,
+    c4c::backend::GlobalPointerMap* global_pointer_slots,
     PointerAddressMap* pointer_value_addresses,
     GlobalAddressIntMap* global_address_ints,
     std::vector<bir::Inst>* lowered_insts) {
@@ -2602,7 +2602,7 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
     c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
-    GlobalPointerMap* global_pointer_slots,
+    c4c::backend::GlobalPointerMap* global_pointer_slots,
     PointerAddressMap* pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   const auto result = std::string(result_name);

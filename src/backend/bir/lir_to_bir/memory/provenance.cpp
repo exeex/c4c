@@ -321,7 +321,7 @@ static std::optional<PointerAddress> make_runtime_global_pointer_address(
 
 std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     const c4c::codegen::lir::LirOperand& operand,
-    const GlobalPointerMap& global_pointer_slots,
+    const c4c::backend::GlobalPointerMap& global_pointer_slots,
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
@@ -530,7 +530,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
     const c4c::backend::GlobalPointerValueSlots& global_pointer_value_slots,
     const c4c::backend::AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
-    GlobalPointerMap* global_pointer_slots,
+    c4c::backend::GlobalPointerMap* global_pointer_slots,
     GlobalObjectPointerMap* global_object_pointer_slots,
     PointerAddressMap* pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
@@ -740,7 +740,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     const TypeDeclMap& type_decls,
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
-    const GlobalPointerMap& global_pointer_slots,
+    const c4c::backend::GlobalPointerMap& global_pointer_slots,
     const GlobalObjectPointerMap& global_object_pointer_slots,
     const PointerAddressMap& pointer_value_addresses,
     GlobalAddressSlots* global_address_slots,
@@ -970,7 +970,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
     c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
-    GlobalPointerMap* global_pointer_slots,
+    c4c::backend::GlobalPointerMap* global_pointer_slots,
     const PointerAddressMap& pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   if (const auto addressed_load = try_lower_addressed_pointer_load(

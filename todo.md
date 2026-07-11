@@ -8,37 +8,37 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned local
-aggregate field-slot set type.
+Completed Step 3 import-boundary contraction for the memory-owned global
+pointer side-table map type.
 
-- Removed the `BirFunctionLowerer::LocalAggregateFieldSet` compatibility alias
+- Removed the `BirFunctionLowerer::GlobalPointerMap` compatibility alias
   from `src/backend/bir/lir_to_bir/lowering.hpp`.
 - Updated lowerer declarations and the lowerer member in the owned header to
-  use `c4c::backend::LocalAggregateFieldSet` directly.
-- Updated the matching memory-owned local-slot definitions to use
-  `c4c::backend::LocalAggregateFieldSet` directly.
+  use `c4c::backend::GlobalPointerMap` directly.
+- Updated the matching memory-owned local-slot and provenance definitions to
+  use `c4c::backend::GlobalPointerMap` directly.
 
 ## Suggested Next
 
 Continue Step 3 with the next supervisor-selected import-boundary alias family
-still re-exported by `BirFunctionLowerer`, or move to review if the selected
-memory adapter scope has no remaining local memory provenance aliases to
-contract.
+still re-exported by `BirFunctionLowerer`, one state family at a time, or move
+to review if the selected memory adapter scope has no remaining pointer or
+provenance aliases to contract.
 
 ## Watchouts
 
-- This packet intentionally only contracted the local aggregate field-slot set
-  type alias; it did not change GEP semantics, BIR route records, prepared data,
-  target/MIR paths, runtime behavior, tests, expectations, unsupported markers,
-  allowlists, or public BIR query APIs.
+- This packet intentionally only contracted the global pointer side-table map
+  type alias; it did not change pointer provenance semantics, BIR route
+  records, prepared data, target/MIR paths, runtime behavior, tests,
+  expectations, unsupported markers, allowlists, or public BIR query APIs.
 - `BirFunctionLowerer` no longer re-exports `LocalSlotTypes`,
   `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
   `LocalAggregateGepTarget`, `AggregateArrayExtent`, `LocalSlotAddress`, or
-  `LocalAggregateFieldSet`.
-- `rg 'BirFunctionLowerer::LocalAggregateFieldSet|using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet|const LocalAggregateFieldSet&' src/backend/bir/lir_to_bir`
-  returns no lowerer alias or unqualified parameter matches after this packet;
-  the remaining header references are the direct
-  `c4c::backend::LocalAggregateFieldSet` type.
+  `LocalAggregateFieldSet`, or `GlobalPointerMap`.
+- `rg 'BirFunctionLowerer::GlobalPointerMap|using GlobalPointerMap = c4c::backend::GlobalPointerMap|[^:]\\bGlobalPointerMap\\b' src/backend/bir/lir_to_bir/lowering.hpp src/backend/bir/lir_to_bir/memory`
+  returns only the memory-owned alias definition in `memory_types.hpp`; lowerer
+  declarations and owned memory definitions use direct
+  `c4c::backend::GlobalPointerMap` references after this packet.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,
   runtime behavior, or harness policy.

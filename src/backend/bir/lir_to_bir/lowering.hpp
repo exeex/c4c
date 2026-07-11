@@ -337,7 +337,6 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  using GlobalPointerMap = c4c::backend::GlobalPointerMap;
   using GlobalObjectPointerMap = c4c::backend::GlobalObjectPointerMap;
   using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
   using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
@@ -839,7 +838,7 @@ class BirFunctionLowerer {
       GlobalObjectPointerMap& global_object_pointer_slots);
   static std::optional<GlobalAddress> resolve_pointer_store_address(
       const c4c::codegen::lir::LirOperand& operand,
-      const GlobalPointerMap& global_pointer_slots,
+      const c4c::backend::GlobalPointerMap& global_pointer_slots,
       const GlobalTypes& global_types,
       const ImportedFunctionSymbolIndex& function_symbols);
   static std::optional<std::string> resolve_local_aggregate_gep_slot(
@@ -1108,7 +1107,7 @@ class BirFunctionLowerer {
       const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
-      GlobalPointerMap* global_pointer_slots,
+      c4c::backend::GlobalPointerMap* global_pointer_slots,
       std::vector<bir::Inst>* lowered_insts);
   LocalSlotStoreResult try_lower_local_slot_store(
       std::string_view ptr_name,
@@ -1127,7 +1126,7 @@ class BirFunctionLowerer {
       const LocalPointerArrayBaseMap& local_pointer_array_bases,
       const c4c::backend::LocalSlotPointerValues& local_slot_pointer_values,
       const PointerAddressMap& pointer_value_addresses,
-      const GlobalPointerMap& global_pointer_slots,
+      const c4c::backend::GlobalPointerMap& global_pointer_slots,
       const GlobalAddressIntMap& global_address_ints,
       c4c::backend::LocalPointerValueAliasMap* local_pointer_value_aliases,
       c4c::backend::LocalIndirectPointerSlotSet* local_indirect_pointer_slots,
@@ -1155,7 +1154,7 @@ class BirFunctionLowerer {
       c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
       c4c::backend::LocalAggregateSlotMap* local_aggregate_slots,
       LocalPointerArrayBaseMap* local_pointer_array_bases,
-      GlobalPointerMap* global_pointer_slots,
+      c4c::backend::GlobalPointerMap* global_pointer_slots,
       PointerAddressMap* pointer_value_addresses,
       GlobalAddressIntMap* global_address_ints,
       std::vector<bir::Inst>* lowered_insts);
@@ -1183,7 +1182,7 @@ class BirFunctionLowerer {
       c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
       c4c::backend::LocalAggregateSlotMap* local_aggregate_slots,
       LocalPointerArrayBaseMap* local_pointer_array_bases,
-      GlobalPointerMap* global_pointer_slots,
+      c4c::backend::GlobalPointerMap* global_pointer_slots,
       PointerAddressMap* pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
   static void record_loaded_local_pointer_slot_state(
@@ -1342,7 +1341,7 @@ class BirFunctionLowerer {
       const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
       const c4c::backend::GlobalPointerValueSlots& global_pointer_value_slots,
       const c4c::backend::AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
-      GlobalPointerMap* global_pointer_slots,
+      c4c::backend::GlobalPointerMap* global_pointer_slots,
       GlobalObjectPointerMap* global_object_pointer_slots,
       PointerAddressMap* pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
@@ -1353,7 +1352,7 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const GlobalTypes& global_types,
       const ImportedFunctionSymbolIndex& function_symbols,
-      const GlobalPointerMap& global_pointer_slots,
+      const c4c::backend::GlobalPointerMap& global_pointer_slots,
       const GlobalObjectPointerMap& global_object_pointer_slots,
       const PointerAddressMap& pointer_value_addresses,
       GlobalAddressSlots* global_address_slots,
@@ -1390,7 +1389,7 @@ class BirFunctionLowerer {
       const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
-      GlobalPointerMap* global_pointer_slots,
+      c4c::backend::GlobalPointerMap* global_pointer_slots,
       const PointerAddressMap& pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
   std::optional<bool> try_lower_addressed_pointer_load(
@@ -1479,7 +1478,7 @@ class BirFunctionLowerer {
   AddressedGlobalPointerSlots addressed_global_pointer_slots_;
   c4c::backend::GlobalPointerValueSlots global_pointer_value_slots_;
   c4c::backend::AddressedGlobalPointerValueSlots addressed_global_pointer_value_slots_;
-  GlobalPointerMap global_pointer_slots_;
+  c4c::backend::GlobalPointerMap global_pointer_slots_;
   DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays_;
   DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays_;
   DynamicGlobalScalarArrayMap dynamic_global_scalar_arrays_;
