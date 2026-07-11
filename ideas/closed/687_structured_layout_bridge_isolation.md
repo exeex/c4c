@@ -1,6 +1,6 @@
 # Structured Layout Bridge Isolation
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Order: 3 of 6 in the `LIR -> BIR` adapter boundary first wave
 After: `ideas/open/686_private_detail_header_contraction.md`
@@ -69,6 +69,13 @@ type/model or downstream layout files are touched.
   contract.
 - Existing BIR, MIR, object, and runtime behavior remains unchanged.
 - Proof is recorded in `todo.md`.
+
+## Closure Note
+
+Closed after the active runbook completed Step 5 proof. The final focused proof
+was `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_'`, passing 302/302 backend tests with no
+new failures against the canonical before/after logs.
 
 ## Reviewer Reject Signals
 
