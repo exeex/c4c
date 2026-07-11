@@ -98,21 +98,30 @@ Completion check:
 - The query is prealloc-owned, pointer-free, collision-complete, and green for
   all focused probes without function-wide target scans.
 
-### Step 4: Prove bounded AArch64 consumption
+### Step 4: Correct and prove bounded AArch64 consumption
 
 Goal: make the bounded consumer read only the Step 3 query result.
 
 Actions:
 
-- Transport only the stable result-consumption key into prealloc.
-- Remove target-side publication/`JoinTransfer` scans or evidence construction.
-- Run focused probes, the existing AArch64 integration test, and the broader
-  backend proof.
+- Build and attach `PreparedFunctionLookups::current_block_join_routing_facts`
+  at the prealloc/function-context owner boundary before target consumption.
+- Transport only the stable result-consumption key from AArch64 and fail closed
+  when the owner-attached lookup is absent.
+- Delete the AArch64-triggered fallback that calls the function-wide prepared
+  lookup builder; do not reconstruct routing authority from the target.
+- Restore the existing supported integration expectations without weakening or
+  reclassifying them.
+- Run the focused probes, the restored AArch64 integration test, and fresh
+  broader backend proof after the correction.
 
 Completion check:
 
-- AArch64 consumes prealloc authority without replanning; all focused and
-  integration proof is green; and idea 705 can resume at Route 5 retirement.
+- Precomputed routing facts are attached by their prealloc/function-context
+  owner; AArch64 has no fallback builder or reconstruction path; the existing
+  supported integration contract is restored; all focused, integration, and
+  broader backend proof is freshly green; and idea 705 can resume at Route 5
+  retirement.
 
 ### Step 5: Hand back to idea 705
 
