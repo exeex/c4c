@@ -374,6 +374,7 @@ struct BirSameBlockLoadLocalSourceIdentity {
 };
 
 struct BirSameBlockLoadLocalStoredValueSourceIdentity {
+  bir::BirViewStatus status = bir::BirViewStatus::Unavailable;
   BirMemoryAccessIdentity load_memory_access;
   BirMemoryAccessIdentity store_memory_access;
   const bir::LoadLocalInst* load_local = nullptr;
@@ -385,7 +386,8 @@ struct BirSameBlockLoadLocalStoredValueSourceIdentity {
   std::size_t before_instruction_index = 0;
 
   [[nodiscard]] explicit operator bool() const {
-    return load_local != nullptr && store_local != nullptr &&
+    return status == bir::BirViewStatus::Available &&
+           load_local != nullptr && store_local != nullptr &&
            load_memory_access && store_memory_access && stored_value;
   }
 };

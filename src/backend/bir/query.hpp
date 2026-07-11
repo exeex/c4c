@@ -10,6 +10,7 @@ namespace c4c::backend::bir {
 struct Block;
 struct LoadGlobalInst;
 struct LoadLocalInst;
+struct StoreLocalInst;
 struct Value;
 enum class TypeKind : unsigned char;
 
@@ -66,5 +67,24 @@ struct BirSameBlockLoadLocalResult {
 
 [[nodiscard]] BirSameBlockLoadLocalResult find_same_block_load_local_source(
     BirSameBlockLoadLocalRequest request);
+
+struct BirSameBlockStoreLocalSourceResult {
+  BirViewStatus status = BirViewStatus::Unavailable;
+  BirMemoryAccessResult load_access;
+  BirMemoryAccessResult store_access;
+  const LoadLocalInst* load = nullptr;
+  const StoreLocalInst* store = nullptr;
+  const Value* loaded_value = nullptr;
+  const Value* stored_value = nullptr;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == BirViewStatus::Available && load_access && store_access &&
+           load != nullptr && store != nullptr && loaded_value != nullptr &&
+           stored_value != nullptr;
+  }
+};
+
+[[nodiscard]] BirSameBlockStoreLocalSourceResult
+find_same_block_store_local_source(BirSameBlockLoadLocalRequest request);
 
 }  // namespace c4c::backend::bir

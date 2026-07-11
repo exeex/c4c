@@ -1,6 +1,8 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/bir_memory_access_view.hpp"
 #include "src/backend/bir/bir_publication_view.hpp"
+#include "src/backend/bir/query.hpp"
+#include "src/backend/mir/query.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -125,12 +127,19 @@ int stored_value_source_states() {
   exact.label = "stored-value";
   exact.insts.emplace_back(store("%stored", "slot.a", 31));
   exact.insts.emplace_back(load("%loaded", "slot.a", 31));
-  const auto available = bir::find_same_block_load_local_stored_value_source(
-      exact, bir::Value::named(bir::TypeKind::I64, "%loaded"), exact.insts.size());
-  const auto mismatched = bir::find_same_block_load_local_stored_value_source(
-      exact, bir::Value::named(bir::TypeKind::I32, "%loaded"), exact.insts.size());
-  const auto incomplete = bir::find_same_block_load_local_stored_value_source(
-      exact, bir::Value::named(bir::TypeKind::I64, ""), exact.insts.size());
+  const auto query = [&](bir::TypeKind type, std::string_view name,
+                         const bir::Block* block = nullptr) {
+    return bir::find_same_block_store_local_source({
+        .block = block != nullptr ? block : &exact,
+        .value_name = name,
+        .value_type = type,
+        .before_instruction_index =
+            block != nullptr ? block->insts.size() : exact.insts.size(),
+    });
+  };
+  const auto available = query(bir::TypeKind::I64, "%loaded");
+  const auto mismatched = query(bir::TypeKind::I32, "%loaded");
+  const auto incomplete = query(bir::TypeKind::I64, "");
   if (!available || available.load != &std::get<bir::LoadLocalInst>(exact.insts[1]) ||
       available.store != &std::get<bir::StoreLocalInst>(exact.insts[0]) ||
       available.loaded_value != &available.load->result ||
@@ -144,16 +153,39 @@ int stored_value_source_states() {
 
   auto ambiguous = exact;
   ambiguous.insts.emplace_back(load("%loaded", "slot.a", 31));
-  const auto duplicate = bir::find_same_block_load_local_stored_value_source(
-      ambiguous, bir::Value::named(bir::TypeKind::I64, "%loaded"),
-      ambiguous.insts.size());
+  const auto duplicate = query(bir::TypeKind::I64, "%loaded", &ambiguous);
   auto overlap = exact;
   std::get<bir::LoadLocalInst>(overlap.insts[1]).address->byte_offset = 4;
-  const auto partial = bir::find_same_block_load_local_stored_value_source(
-      overlap, bir::Value::named(bir::TypeKind::I64, "%loaded"), overlap.insts.size());
+  const auto partial = query(bir::TypeKind::I64, "%loaded", &overlap);
   if (duplicate.status != bir::BirViewStatus::Ambiguous || duplicate ||
       partial.status != bir::BirViewStatus::Incomplete || partial) {
     return fail("stored-value source accepted ambiguous or partial-range evidence");
+  }
+  namespace mir = c4c::backend::mir;
+  const auto common_available =
+      mir::find_bir_same_block_load_local_stored_value_source_identity({
+          .block = &exact, .block_label = exact.label,
+          .root_value_name = "%loaded", .root_value_type = bir::TypeKind::I64,
+          .before_instruction_index = exact.insts.size()});
+  const auto common_mismatched =
+      mir::find_bir_same_block_load_local_stored_value_source_identity({
+          .block = &exact, .block_label = exact.label,
+          .root_value_name = "%loaded", .root_value_type = bir::TypeKind::I32,
+          .before_instruction_index = exact.insts.size()});
+  const auto common_ambiguous =
+      mir::find_bir_same_block_load_local_stored_value_source_identity({
+          .block = &ambiguous, .block_label = ambiguous.label,
+          .root_value_name = "%loaded", .root_value_type = bir::TypeKind::I64,
+          .before_instruction_index = ambiguous.insts.size()});
+  if (!common_available ||
+      common_available.status != bir::BirViewStatus::Available ||
+      common_available.store_local != available.store ||
+      common_available.stored_value.value != available.stored_value ||
+      common_mismatched.status != bir::BirViewStatus::Unavailable ||
+      common_mismatched ||
+      common_ambiguous.status != bir::BirViewStatus::Ambiguous ||
+      common_ambiguous) {
+    return fail("common store-local source adapter did not preserve identity and explicit status");
   }
   return 0;
 }

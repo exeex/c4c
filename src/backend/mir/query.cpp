@@ -231,28 +231,6 @@ namespace {
   };
 }
 
-[[nodiscard]] SameBlockProducerIdentity route3_load_access_to_producer(
-    const bir::Route3MemoryAccessRecord& record,
-    std::size_t before_instruction_index) {
-  const auto node_kind = route3_node_kind_to_mir(record.node_kind);
-  SameBlockProducerKind producer_kind = SameBlockProducerKind::Unknown;
-  if (node_kind == BirMemoryAccessNodeKind::LoadLocal) {
-    producer_kind = SameBlockProducerKind::LoadLocal;
-  } else if (node_kind == BirMemoryAccessNodeKind::LoadGlobal) {
-    producer_kind = SameBlockProducerKind::LoadGlobal;
-  }
-  return SameBlockProducerIdentity{
-      .inst = record.instruction,
-      .instruction_index = record.instruction_index,
-      .kind = producer_kind,
-      .block_label = record.block_label,
-      .before_instruction_index = before_instruction_index,
-      .produced_value = route1_value_identity_to_same_block(record.result_value),
-      .materialization_available =
-          same_block_producer_kind_has_materialization(producer_kind),
-  };
-}
-
 [[nodiscard]] const bir::Value* produced_value_for_same_block_identity(
     const bir::Inst& inst) {
   return std::visit(
@@ -2025,24 +2003,26 @@ find_bir_same_block_load_local_stored_value_source_identity(
     BirSameBlockLoadLocalSourceRequest request) {
   if (!request ||
       (!request.block_label.empty() && request.block_label != request.block->label)) {
-    return {};
+    return {.status = bir::BirViewStatus::Incomplete};
   }
   const auto value_name = root_value_name(request);
   if (value_name.empty()) {
-    return {};
+    return {.status = bir::BirViewStatus::Incomplete};
   }
   const auto value_type = root_value_type(request);
   if (value_type == bir::TypeKind::Void) {
-    return {};
+    return {.status = bir::BirViewStatus::Incomplete};
   }
-  const auto before = std::min(request.before_instruction_index,
-                               request.block->insts.size());
-  const auto result = bir::find_same_block_load_local_stored_value_source(
-      *request.block,
-      bir::Value::named(value_type, std::string(value_name)),
-      before);
+  const auto result = bir::find_same_block_store_local_source(
+      bir::BirSameBlockLoadLocalRequest{
+          .block = request.block,
+          .value = request.root_value,
+          .value_name = value_name,
+          .value_type = value_type,
+          .before_instruction_index = request.before_instruction_index,
+      });
   if (!result) {
-    return {};
+    return {.status = result.status};
   }
   const auto load_memory_access = named_memory_access_to_mir(result.load_access);
   const auto store_memory_access = named_memory_access_to_mir(result.store_access);
@@ -2050,10 +2030,12 @@ find_bir_same_block_load_local_stored_value_source_identity(
       !store_memory_access ||
       load_memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
       store_memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
-      load_memory_access.result_value_name != value_name) {
-    return {};
+      load_memory_access.result_value_name != value_name ||
+      load_memory_access.local_slot_id != store_memory_access.local_slot_id) {
+    return {.status = bir::BirViewStatus::Incomplete};
   }
   return BirSameBlockLoadLocalStoredValueSourceIdentity{
+      .status = result.status,
       .load_memory_access = load_memory_access,
       .store_memory_access = store_memory_access,
       .load_local = result.load,
