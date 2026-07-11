@@ -14,7 +14,7 @@ namespace {
 
 std::optional<LinkNameId> link_name_id_for_dynamic_global(
     const BirFunctionLowerer::GlobalTypes& global_types,
-    const BirFunctionLowerer::DynamicGlobalScalarArrayAccess& access) {
+    const DynamicGlobalScalarArrayAccess& access) {
   if (access.link_name_id != kInvalidLinkName) {
     const auto it = global_types.find(access.global_name);
     if (it == global_types.end() || it->second.link_name_id != access.link_name_id) {

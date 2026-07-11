@@ -354,18 +354,6 @@ class BirFunctionLowerer {
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
   using AddressedGlobalPointerSlots = c4c::backend::AddressedGlobalPointerSlots;
 
-  using DynamicGlobalPointerArrayAccess = c4c::backend::DynamicGlobalPointerArrayAccess;
-
-  using DynamicGlobalPointerArrayMap = c4c::backend::DynamicGlobalPointerArrayMap;
-
-  using DynamicGlobalAggregateArrayAccess = c4c::backend::DynamicGlobalAggregateArrayAccess;
-
-  using DynamicGlobalAggregateArrayMap = c4c::backend::DynamicGlobalAggregateArrayMap;
-
-  using DynamicGlobalScalarArrayAccess = c4c::backend::DynamicGlobalScalarArrayAccess;
-
-  using DynamicGlobalScalarArrayMap = c4c::backend::DynamicGlobalScalarArrayMap;
-
   using LocalAggregateSlots = c4c::backend::LocalAggregateSlots;
 
   using LocalAggregateSlotMap = c4c::backend::LocalAggregateSlotMap;

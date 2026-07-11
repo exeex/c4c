@@ -10,9 +10,6 @@
 
 namespace c4c::backend {
 
-using DynamicGlobalAggregateArrayAccess = BirFunctionLowerer::DynamicGlobalAggregateArrayAccess;
-using DynamicGlobalPointerArrayAccess = BirFunctionLowerer::DynamicGlobalPointerArrayAccess;
-using DynamicGlobalScalarArrayAccess = BirFunctionLowerer::DynamicGlobalScalarArrayAccess;
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::lower_integer_type;

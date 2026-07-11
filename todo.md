@@ -8,32 +8,32 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the pointer-address
-provenance state alias family.
+Completed Step 3 import-boundary contraction for the memory-owned global
+dynamic-array access/map alias family.
 
-- Removed the `BirFunctionLowerer` compatibility aliases for `PointerAddress`,
-  `PointerAddressMap`, and `PointerAddressIntMap`.
-- Updated the remaining memory implementation references and the module phi
-  merge helper to use the memory-owned `PointerAddress` declarations directly
-  from `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-- Did not change `PointerAddress` fields, map definitions, BIR route records,
-  prepared data, target/MIR paths, runtime behavior, tests, expectations,
-  allowlists, or public BIR query APIs.
+- Removed the `BirFunctionLowerer` compatibility aliases for
+  `DynamicGlobalPointerArrayAccess`, `DynamicGlobalPointerArrayMap`,
+  `DynamicGlobalAggregateArrayAccess`, `DynamicGlobalAggregateArrayMap`,
+  `DynamicGlobalScalarArrayAccess`, and `DynamicGlobalScalarArrayMap`.
+- Updated the affected memory implementation references to use the
+  memory-owned declarations directly from
+  `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
+- Did not change dynamic global array fields, map definitions, BIR route
+  records, prepared data, target/MIR paths, runtime behavior, tests,
+  expectations, allowlists, or public BIR query APIs.
 
 ## Suggested Next
 
-Continue Step 3 with the remaining memory-owned global dynamic-array alias
-family or another adapter-local state alias family the supervisor selects for
-the same declaration-boundary cleanup.
+Continue Step 3 with another adapter-local state alias family the supervisor
+selects for the same declaration-boundary cleanup.
 
 ## Watchouts
 
 - This packet intentionally did not edit string-authority classification data;
   the declarations were already memory-owned and this slice only removed
   lowerer re-export/import coupling.
-- `PointerAddress`, `PointerAddressMap`, and `PointerAddressIntMap` are now
-  found through the enclosing `c4c::backend` namespace instead of through
-  `BirFunctionLowerer::`.
+- The dynamic global array access and map types are now found through the
+  enclosing `c4c::backend` namespace instead of through `BirFunctionLowerer::`.
 - Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.

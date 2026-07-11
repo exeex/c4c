@@ -8,7 +8,6 @@
 
 namespace c4c::backend {
 
-using DynamicGlobalPointerArrayAccess = BirFunctionLowerer::DynamicGlobalPointerArrayAccess;
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using GlobalPointerSlotKey = BirFunctionLowerer::GlobalPointerSlotKey;
 using lir_to_bir_detail::compute_aggregate_type_layout;
