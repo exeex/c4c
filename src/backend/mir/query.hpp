@@ -2,6 +2,8 @@
 
 #include "../bir/bir.hpp"
 #include "../bir/query.hpp"
+#include "../prealloc/names.hpp"
+#include "../prealloc/publication_plans.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -75,7 +77,8 @@ struct BirMemoryAccessIdentity {
   std::size_t align_bytes = 0;
 
   [[nodiscard]] explicit operator bool() const {
-    return status == bir::BirViewStatus::Available && inst != nullptr;
+    return status == bir::BirViewStatus::Available &&
+           (inst != nullptr || node_kind != BirMemoryAccessNodeKind::Unknown);
   }
 };
 
@@ -201,28 +204,6 @@ struct BirBlockEntryPublicationIdentity {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
-struct BirCfgEdgePublicationSourceRequest {
-  const bir::Block* predecessor_block = nullptr;
-  std::string_view predecessor_label;
-  c4c::BlockLabelId predecessor_label_id = c4c::kInvalidBlockLabel;
-  const bir::Block* successor_block = nullptr;
-  std::string_view successor_label;
-  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
-  const bir::Value* destination_value = nullptr;
-  std::size_t destination_value_id = 0;
-  std::string_view destination_value_name;
-  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
-  bir::TypeKind destination_value_type = bir::TypeKind::Void;
-
-  [[nodiscard]] explicit operator bool() const {
-    return predecessor_block != nullptr &&
-           successor_block != nullptr &&
-           (destination_value != nullptr ||
-            !destination_value_name.empty() ||
-            destination_value_name_id != c4c::kInvalidValueName);
-  }
-};
-
 struct BirCfgEdgePublicationSourceIdentity {
   bool available = false;
   BirCfgEdgePublicationSourceStatus status =
@@ -255,6 +236,22 @@ struct BirCfgEdgePublicationSourceIdentity {
   BirMemoryAccessIdentity source_memory_access;
 
   [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+// Legacy request shape retained for source compatibility with builders that
+// prepare edge-copy facts.  The public identity query does not consume it.
+struct BirCfgEdgePublicationSourceRequest {
+  const bir::Block* predecessor_block = nullptr;
+  std::string_view predecessor_label;
+  c4c::BlockLabelId predecessor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Block* successor_block = nullptr;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Value* destination_value = nullptr;
+  std::size_t destination_value_id = 0;
+  std::string_view destination_value_name;
+  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
 };
 
 enum class BirCurrentBlockJoinSourceStatus {
@@ -526,7 +523,8 @@ find_bir_block_entry_publication_identity(
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(
-    BirCfgEdgePublicationSourceRequest request);
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgeCopySourceFacts& prepared);
 
 [[nodiscard]] BirCurrentBlockJoinSourceIdentity
 find_bir_current_block_join_source_identity(

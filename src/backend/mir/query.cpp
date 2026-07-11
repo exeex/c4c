@@ -1542,116 +1542,121 @@ find_bir_block_entry_publication_identity(
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(
-    BirCfgEdgePublicationSourceRequest request) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgeCopySourceFacts& prepared) {
   BirCfgEdgePublicationSourceIdentity result{
-      .destination_value_id = request.destination_value_id,
-      .destination_value_name_id = request.destination_value_name_id,
+      .predecessor_label_id = prepared.predecessor_label,
+      .successor_label_id = prepared.successor_label,
+      .destination_value_id = prepared.destination_value_id,
+      .destination_value_name_id = prepared.destination_value_name,
+      .destination_value_type = prepared.destination_value.type,
+      .source_value_id = prepared.source_value_id,
+      .source_value_name_id = prepared.source_value_name,
+      .source_value_kind = prepared.source_value_kind,
+      .source_value_type = prepared.source_value.type,
   };
-  if (request.predecessor_block != nullptr) {
-    result.predecessor_label =
-        normalized_block_label(*request.predecessor_block,
-                               request.predecessor_label);
-    result.predecessor_label_id =
-        request.predecessor_block->label_id != c4c::kInvalidBlockLabel
-            ? request.predecessor_block->label_id
-            : request.predecessor_label_id;
-  }
-  if (request.successor_block != nullptr) {
-    result.successor_label =
-        normalized_block_label(*request.successor_block, request.successor_label);
-    result.successor_label_id =
-        request.successor_block->label_id != c4c::kInvalidBlockLabel
-            ? request.successor_block->label_id
-            : request.successor_label_id;
-  }
-  if (request.predecessor_block == nullptr ||
-      !predecessor_block_label_matches(request)) {
-    result.status = BirCfgEdgePublicationSourceStatus::MissingPredecessorLabel;
+  auto fail = [&](BirCfgEdgePublicationSourceStatus status) {
+    result.status = status;
     return result;
+  };
+  if (prepared.status != prepare::PreparedEdgeCopySourceFactsStatus::Available) {
+    switch (prepared.status) {
+      case prepare::PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel:
+        return fail(BirCfgEdgePublicationSourceStatus::MissingPredecessorLabel);
+      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel:
+        return fail(BirCfgEdgePublicationSourceStatus::MissingSuccessorLabel);
+      case prepare::PreparedEdgeCopySourceFactsStatus::MissingDestinationValue:
+        return fail(BirCfgEdgePublicationSourceStatus::MissingDestinationValue);
+      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceValue:
+        return fail(BirCfgEdgePublicationSourceStatus::MissingSourceValue);
+      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer:
+      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess:
+      case prepare::PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
+        return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
+      default:
+        return fail(BirCfgEdgePublicationSourceStatus::MissingPublication);
+    }
   }
-  if (request.successor_block == nullptr ||
-      !successor_block_label_matches(request)) {
-    result.status = BirCfgEdgePublicationSourceStatus::MissingSuccessorLabel;
-    return result;
+  if (prepared.publication == nullptr || prepared.move == nullptr ||
+      !prepared.source_producer_block_label.has_value() ||
+      !prepared.source_producer_instruction_index.has_value()) {
+    return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
   }
-
-  const auto value_name = destination_value_name(request);
-  const auto value_type = destination_value_type(request);
-  if (value_name.empty()) {
-    result.status = BirCfgEdgePublicationSourceStatus::MissingDestinationValue;
-    result.destination_value_type = value_type;
-    return result;
-  }
-  result.destination_value_name = value_name;
-  result.destination_value_type = value_type;
-
-  const bir::Value* destination_value = request.destination_value;
-  for (const auto& inst : request.successor_block->insts) {
-    const auto* phi = std::get_if<bir::PhiInst>(&inst);
-    if (phi == nullptr) {
+  result.destination_value_name =
+      prepare::prepared_value_name(names, prepared.destination_value_name);
+  result.destination_value_identity = SameBlockValueIdentity{
+      .name = result.destination_value_name,
+      .type = prepared.destination_value.type,
+  };
+  result.source_value_name =
+      prepare::prepared_value_name(names, prepared.source_value_name);
+  result.source_value_identity = SameBlockValueIdentity{
+      .name = result.source_value_name,
+      .type = prepared.source_value.type,
+      .immediate_constant =
+          prepared.source_value_kind == bir::Value::Kind::Immediate
+              ? std::optional<std::int64_t>{prepared.source_value.immediate}
+              : std::nullopt,
+  };
+  result.source_producer_block_label_id = *prepared.source_producer_block_label;
+  result.source_producer_instruction_index =
+      prepared.source_producer_instruction_index;
+  switch (prepared.source_producer_kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      result.source_producer_kind = SameBlockProducerKind::Binary;
       break;
-    }
-    if (phi->result.kind == bir::Value::Kind::Named &&
-        phi->result.name == value_name &&
-        (value_type == bir::TypeKind::Void || phi->result.type == value_type)) {
-      destination_value = &phi->result;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      result.source_producer_kind = SameBlockProducerKind::Cast;
       break;
-    }
-  }
-  const auto synthesized_destination =
-      bir::Value::named(value_type, std::string{value_name});
-  if (destination_value == nullptr) {
-    destination_value = &synthesized_destination;
-  }
-
-  bir::Function route5_function;
-  route5_function.blocks.push_back(*request.predecessor_block);
-  for (const auto& inst : request.successor_block->insts) {
-    const auto* phi = std::get_if<bir::PhiInst>(&inst);
-    if (phi == nullptr) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      result.source_producer_kind = SameBlockProducerKind::Select;
       break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      result.source_producer_kind = SameBlockProducerKind::LoadLocal;
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      result.source_producer_kind = SameBlockProducerKind::LoadGlobal;
+      break;
+    default:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
+  }
+  result.source_producer.kind = result.source_producer_kind;
+  result.source_producer.instruction_index =
+      *prepared.source_producer_instruction_index;
+  result.source_producer.produced_value = result.source_value_identity;
+  result.source_producer.materialization_available = true;
+  if (prepared.source_memory_access_status ==
+      prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available) {
+    if (prepared.source_memory_access == nullptr) {
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
     }
-    for (const auto& incoming : phi->incomings) {
-      const bool matches_request =
-          (incoming.label_id != c4c::kInvalidBlockLabel &&
-           request.predecessor_block->label_id != c4c::kInvalidBlockLabel &&
-           incoming.label_id == request.predecessor_block->label_id) ||
-          (!incoming.label.empty() &&
-           incoming.label == request.predecessor_block->label);
-      if (matches_request) {
-        continue;
-      }
-      const auto already_added =
-          std::find_if(route5_function.blocks.begin(),
-                       route5_function.blocks.end(),
-                       [&](const bir::Block& block) {
-                         if (incoming.label_id != c4c::kInvalidBlockLabel &&
-                             block.label_id != c4c::kInvalidBlockLabel) {
-                           return block.label_id == incoming.label_id;
-                         }
-                         return !incoming.label.empty() &&
-                                block.label == incoming.label;
-                       }) != route5_function.blocks.end();
-      if (already_added) {
-        continue;
-      }
-      route5_function.blocks.push_back(bir::Block{
-          .label = incoming.label,
-          .insts = {},
-          .terminator = {},
-          .label_id = incoming.label_id,
-      });
+    result.source_memory_access.status = bir::BirViewStatus::Available;
+    result.source_memory_access.instruction_index =
+        prepared.source_memory_access->inst_index;
+    result.source_memory_access.result_value_name = result.source_value_name;
+    result.source_memory_access.address_space = prepared.source_memory_address_space;
+    result.source_memory_access.is_volatile = prepared.source_memory_is_volatile;
+    result.source_memory_access.byte_offset = prepared.source_memory_byte_offset;
+    result.source_memory_access.size_bytes = prepared.source_memory_size_bytes;
+    result.source_memory_access.align_bytes = prepared.source_memory_align_bytes;
+    if (result.source_producer_kind == SameBlockProducerKind::LoadLocal &&
+        prepared.source_memory_frame_slot_id.has_value()) {
+      result.source_memory_access.node_kind = BirMemoryAccessNodeKind::LoadLocal;
+      result.source_memory_access.base_kind = BirMemoryAccessBaseKind::LocalSlot;
+      result.source_memory_access.local_slot_id =
+          static_cast<c4c::SlotNameId>(*prepared.source_memory_frame_slot_id);
+    } else if (result.source_producer_kind == SameBlockProducerKind::LoadGlobal &&
+               prepared.source_memory_symbol_name.has_value()) {
+      result.source_memory_access.node_kind = BirMemoryAccessNodeKind::LoadGlobal;
+      result.source_memory_access.base_kind = BirMemoryAccessBaseKind::GlobalSymbol;
+      result.source_memory_access.global_name_id = *prepared.source_memory_symbol_name;
+    } else {
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
     }
   }
-  route5_function.blocks.push_back(*request.successor_block);
-  const auto& route5_predecessor = route5_function.blocks.front();
-  const auto& route5_successor = route5_function.blocks.back();
-  const auto route5_index =
-      bir::route5_build_edge_join_source_index(route5_function);
-  const auto route5_edge = bir::route5_find_cfg_edge_publication(
-      route5_index, route5_predecessor, route5_successor, *destination_value);
-  return route5_edge_record_to_mir(
-      route5_edge, request, result.predecessor_label, result.successor_label);
+  result.available = true;
+  result.status = BirCfgEdgePublicationSourceStatus::Available;
+  return result;
 }
 
 [[nodiscard]] BirCurrentBlockJoinSourceIdentity

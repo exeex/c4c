@@ -23,7 +23,7 @@ constexpr std::array<RouteInventory, 8> kInventory{{
     {2, 0, "BIR select-chain semantics", "named select/dependency view"},
     {3, 19, "BIR memory-access semantics", "named memory-access view"},
     {4, 31, "BIR publication semantics", "named publication view"},
-    {5, 133, "BIR edge/join semantics", "named edge/join publication view"},
+    {5, 112, "BIR edge/join semantics", "named edge/join publication view"},
     {6, 0, "BIR call-boundary semantics", "named call-boundary view"},
     {7, 0, "BIR comparison semantics", "named comparison view"},
     {8, 0, "BIR return/control semantics", "named return/control view"},

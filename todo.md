@@ -8,29 +8,27 @@ Current Step Title: Migrate placement and executable-authority queries
 
 ## Just Finished
 
-- Step 3's first bounded placement family now makes
-  `PreparedMirFunctionView::current_block_direct_edge_publication_sources`
-  consume only prepared names, value homes, edge-publication lookups, control
-  flow, and move/freshness authority.
-- Removed the common-MIR caller's Route 5/BIR join-source discovery and evidence
-  agreement fallback. Missing prepared join-transfer authority fails closed
-  even when the raw BIR route remains discoverable.
+- Step 3's public `find_bir_cfg_edge_publication_source_identity` family now
+  consumes a complete `PreparedEdgeCopySourceFacts` result plus prepared names.
+- Removed its Route 5 function/index reconstruction path while preserving
+  producer kind/index, value type, memory identity, and unique edge/destination
+  binding; incomplete, ambiguous, missing, and mismatched prepared evidence
+  fails closed.
+- Returned value identities retain prepared name/type/immediate semantics
+  without borrowing pointers from temporary prepared-facts payloads.
 
 ## Suggested Next
 
-- Migrate the public `find_bir_cfg_edge_publication_source_identity` family once
-  a prepared view/result carries its required producer kind/index, value type,
-  and memory-access identity fields with unique edge/destination binding.
+- Continue Step 3 with the next bounded placement/executable-authority family
+  selected by the supervisor.
 
 ## Watchouts
 
-- `PreparedMirDirectEdgePublicationSourceView` currently carries placement and
-  freshness authority but not the producer/type/memory fields required to
-  migrate `find_bir_cfg_edge_publication_source_identity`; do not invent a
-  partial request-pointer adapter or discard those contracts.
-- Remaining Route 3 helpers in common MIR serve the separate Route 5
-  publication/edge identity family; do not mechanically migrate them or lower
-  the guard inventory until their owning family is migrated.
+- The legacy request record remains for diagnostic/test builders, but the
+  public identity query no longer accepts it; do not restore a request-pointer
+  overload.
+- Prepared producer identity intentionally uses semantic kind/index/value
+  identity rather than reconstructing raw enclosing `bir::Inst*` pointers.
 - Preserve missing, incomplete, ambiguous, unsupported, and mismatched
   fail-closed behavior at the common-MIR boundary.
 - Eighteen Route 1 spellings remain in other bounded memory/publication/

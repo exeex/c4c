@@ -1788,7 +1788,8 @@ bool prepared_and_bir_cfg_edge_publication_source_identity_match(
     mir::BirCfgEdgePublicationSourceRequest request) {
   const auto prepared = prepare::prepare_edge_copy_source_facts(
       &edge_publications, predecessor_label, successor_label, destination_value_id);
-  const auto bir = mir::find_bir_cfg_edge_publication_source_identity(request);
+  const auto bir =
+      mir::find_bir_cfg_edge_publication_source_identity(names, prepared);
   if (bir.status != expected_bir_edge_status(prepared.status)) {
     return false;
   }
@@ -6406,7 +6407,10 @@ int verify_edge_publication_source_producer_facts() {
     return fail("BIR CFG edge source identity should match prepared load-local semantic oracle");
   }
   const auto bir_load_edge =
-      mir::find_bir_cfg_edge_publication_source_identity(load_request);
+      mir::find_bir_cfg_edge_publication_source_identity(
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications, predecessor_label,
+                              successor_label, 11));
   if (!bir_load_edge ||
       bir_load_edge.status !=
           mir::BirCfgEdgePublicationSourceStatus::Available ||
@@ -6427,8 +6431,14 @@ int verify_edge_publication_source_producer_facts() {
       bir_load_edge.source_producer_block_label_id !=
           load_publication->source_producer_block_label.value_or(
               c4c::kInvalidBlockLabel) ||
-      bir_load_edge.source_producer.inst != &predecessor_block.insts[0] ||
-      bir_load_edge.source_memory_access.inst != &predecessor_block.insts[0] ||
+      bir_load_edge.destination_value != nullptr ||
+      bir_load_edge.source_value != nullptr ||
+      bir_load_edge.destination_value_identity.value != nullptr ||
+      bir_load_edge.source_value_identity.value != nullptr ||
+      bir_load_edge.destination_value_identity.name != load_destination.name ||
+      bir_load_edge.source_value_identity.name != loaded.name ||
+      bir_load_edge.source_producer.inst != nullptr ||
+      bir_load_edge.source_memory_access.inst != nullptr ||
       bir_load_edge.source_memory_access.node_kind !=
           mir::BirMemoryAccessNodeKind::LoadLocal ||
       bir_load_edge.source_memory_access.result_value_name != loaded.name ||
@@ -6506,7 +6516,10 @@ int verify_edge_publication_source_producer_facts() {
     return fail("BIR CFG edge source identity should match prepared cast semantic oracle");
   }
   const auto bir_cast_edge =
-      mir::find_bir_cfg_edge_publication_source_identity(cast_request);
+      mir::find_bir_cfg_edge_publication_source_identity(
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications, predecessor_label,
+                              successor_label, 12));
   if (!bir_cast_edge ||
       bir_cast_edge.source_producer_kind !=
           expected_bir_producer_kind(cast_publication->source_producer_kind) ||
@@ -6565,14 +6578,9 @@ int verify_edge_publication_source_producer_facts() {
 
   const auto bir_missing_destination =
       mir::find_bir_cfg_edge_publication_source_identity(
-          mir::BirCfgEdgePublicationSourceRequest{
-              .predecessor_block = &predecessor_block,
-              .predecessor_label_id = predecessor_label,
-              .successor_block = &successor_block,
-              .successor_label_id = successor_label,
-              .destination_value_name = "%producer.missing",
-              .destination_value_type = bir::TypeKind::I32,
-          });
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications, predecessor_label,
+                              successor_label, 99));
   if (bir_missing_destination ||
       bir_missing_destination.status !=
           mir::BirCfgEdgePublicationSourceStatus::MissingPublication) {
@@ -6597,17 +6605,9 @@ int verify_edge_publication_source_producer_facts() {
 
   const auto bir_missing_source =
       mir::find_bir_cfg_edge_publication_source_identity(
-          mir::BirCfgEdgePublicationSourceRequest{
-              .predecessor_block = &predecessor_block,
-              .predecessor_label_id = predecessor_label,
-              .successor_block = &successor_block,
-              .successor_label_id = successor_label,
-              .destination_value = &unavailable_destination,
-              .destination_value_id = 15,
-              .destination_value_name = unavailable_destination.name,
-              .destination_value_name_id = unavailable_destination_name,
-              .destination_value_type = unavailable_destination.type,
-          });
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications, predecessor_label,
+                              successor_label, 15));
   if (bir_missing_source ||
       bir_missing_source.status !=
           mir::BirCfgEdgePublicationSourceStatus::MissingSourceProducer ||
@@ -6687,22 +6687,16 @@ int verify_edge_publication_source_producer_facts() {
   }
   const auto indexed_bir_load_edge =
       mir::find_bir_cfg_edge_publication_source_identity(
-          make_bir_edge_publication_source_request(route5_predecessor,
-                                                   predecessor_label,
-                                                   route5_successor,
-                                                   successor_label,
-                                                   load_destination,
-                                                   11,
-                                                   load_destination_name));
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications, predecessor_label,
+                              successor_label, 11));
   if (!indexed_bir_load_edge ||
       indexed_bir_load_edge.status !=
           mir::BirCfgEdgePublicationSourceStatus::Available ||
-      indexed_bir_load_edge.source_producer.inst !=
-          indexed_route5_load_edge.source_producer_instruction ||
+      indexed_bir_load_edge.source_producer.kind !=
+          mir::SameBlockProducerKind::LoadLocal ||
       indexed_bir_load_edge.source_producer_instruction_index !=
           indexed_route5_load_edge.source_producer_instruction_index ||
-      indexed_bir_load_edge.source_memory_access.inst !=
-          indexed_route5_load_edge.source_memory_access.instruction ||
       indexed_bir_load_edge.source_memory_access.instruction_index !=
           indexed_route5_load_edge.source_memory_access.instruction_index ||
       indexed_bir_load_edge.source_memory_access.node_kind !=
@@ -6726,13 +6720,9 @@ int verify_edge_publication_source_producer_facts() {
   }
   const auto indexed_bir_missing_source =
       mir::find_bir_cfg_edge_publication_source_identity(
-          make_bir_edge_publication_source_request(route5_predecessor,
-                                                   predecessor_label,
-                                                   route5_successor,
-                                                   successor_label,
-                                                   unavailable_destination,
-                                                   15,
-                                                   unavailable_destination_name));
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications, predecessor_label,
+                              successor_label, 15));
   if (indexed_bir_missing_source ||
       indexed_bir_missing_source.status !=
           mir::BirCfgEdgePublicationSourceStatus::MissingSourceProducer ||
@@ -6780,13 +6770,9 @@ int verify_edge_publication_source_producer_facts() {
   }
   const auto indexed_bir_wrong_predecessor =
       mir::find_bir_cfg_edge_publication_source_identity(
-          make_bir_edge_publication_source_request(route5_wrong_predecessor,
-                                                   c4c::BlockLabelId{777},
-                                                   route5_successor,
-                                                   successor_label,
-                                                   load_destination,
-                                                   11,
-                                                   load_destination_name));
+          prepared.names, prepare::prepare_edge_copy_source_facts(
+                              &lookups.edge_publications,
+                              c4c::BlockLabelId{777}, successor_label, 11));
   if (indexed_bir_wrong_predecessor ||
       indexed_bir_wrong_predecessor.status !=
           mir::BirCfgEdgePublicationSourceStatus::MissingSourceValue) {
