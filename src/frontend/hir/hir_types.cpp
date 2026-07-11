@@ -3111,6 +3111,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   int llvm_idx = 0;
   int packed_bitfield_current_bit = 0;
+  int packed_bitfield_llvm_idx = -1;
   // Bitfield packing state (for structs only; unions always use offset 0)
   int bf_unit_start_bit = -1;  // bit position where current storage unit starts (-1 = none)
   int bf_unit_bits = 0;        // size of current storage unit in bits
@@ -3141,6 +3142,25 @@ void Lowerer::lower_struct_def(const Node* sd) {
       StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(enum_consts_);
   static_member_enum_lookup.enum_consts_by_key =
       &static_member_consteval_maps.enum_consts_by_key;
+
+  bool use_packed_bitfield_byte_storage =
+      sd->pack_align == 1 && !sd->is_union && def.base_tags.empty();
+  if (use_packed_bitfield_byte_storage) {
+    bool saw_layout_field = false;
+    for (int i = 0; i < num_fields; ++i) {
+      const Node* f = get_field(i);
+      if (!f || f->kind == NK_FUNCTION || f->is_static) continue;
+      const bool field_is_bitfield = static_cast<int>(f->ival) >= 0;
+      if (!f->name && !field_is_bitfield) continue;
+      saw_layout_field = true;
+      if (!field_is_bitfield || static_cast<int>(f->ival) == 0) {
+        use_packed_bitfield_byte_storage = false;
+        break;
+      }
+    }
+    use_packed_bitfield_byte_storage = use_packed_bitfield_byte_storage &&
+                                      saw_layout_field;
+  }
 
   for (int i = 0; i < num_fields; ++i) {
     const Node* f = get_field(i);
@@ -3350,8 +3370,11 @@ void Lowerer::lower_struct_def(const Node* sd) {
       }
     }
 
-    if (is_bitfield && !sd->is_union && sd->pack_align == 1 &&
-        def.base_tags.empty() && !def.has_zero_width_bitfield) {
+    if (is_bitfield && use_packed_bitfield_byte_storage) {
+      if (packed_bitfield_current_bit == 0) {
+        packed_bitfield_llvm_idx = llvm_idx;
+        ++llvm_idx;
+      }
       const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
                               ft.base == TB_SCHAR || ft.base == TB_SHORT ||
                               ft.base == TB_LONG || ft.base == TB_LONGLONG ||
@@ -3368,7 +3391,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
       }
       hf.storage_unit_bits = storage_unit_bits;
       hf.bit_width = bit_width;
-      hf.llvm_idx = 0;
+      hf.llvm_idx = packed_bitfield_llvm_idx;
       packed_bitfield_current_bit += bit_width;
       hf.is_bf_signed = bf_signed;
 
@@ -3388,6 +3411,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
     if (is_bitfield && !sd->is_union) {
       packed_bitfield_current_bit = 0;
+      packed_bitfield_llvm_idx = -1;
       // Determine signedness from original declared type
       const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
                               ft.base == TB_SCHAR || ft.base == TB_SHORT ||
@@ -3436,6 +3460,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
     }
 
     if (is_bitfield && sd->is_union) {
+      packed_bitfield_llvm_idx = -1;
       const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
                               ft.base == TB_SCHAR || ft.base == TB_SHORT ||
                               ft.base == TB_LONG || ft.base == TB_LONGLONG ||
@@ -3467,6 +3492,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
       bf_current_bit = 0;
     }
     packed_bitfield_current_bit = 0;
+    packed_bitfield_llvm_idx = -1;
 
     // Extract first array dimension (keep base element type for LLVM)
     if (ft.array_rank > 0) {

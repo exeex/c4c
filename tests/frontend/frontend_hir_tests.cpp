@@ -141,6 +141,63 @@ c4c::hir::Module lower_hir_module(std::string_view source,
   return *result.hir_module;
 }
 
+void test_hir_packed_mixed_bitfield_record_layout_keeps_scalar_members() {
+  const c4c::hir::Module module = lower_hir_module(R"c(
+struct __attribute__((packed)) BitsThenScalar {
+  unsigned short i : 4;
+  unsigned short j : 1;
+  unsigned short k : 11;
+  unsigned int l;
+};
+
+struct __attribute__((packed)) ScalarThenBits {
+  unsigned long long l;
+  unsigned long long i : 12;
+  unsigned long long j : 23;
+  unsigned long long k : 29;
+};
+
+struct BitsThenScalar g_bits_then_scalar;
+struct ScalarThenBits g_scalar_then_bits;
+)c", c4c::SourceProfile::C);
+
+  const auto bits_it = module.struct_defs.find("BitsThenScalar");
+  expect_true(bits_it != module.struct_defs.end(),
+              "mixed packed bitfield fixture should lower BitsThenScalar");
+  const c4c::hir::HirStructDef& bits = bits_it->second;
+  expect_eq_int(bits.size_bytes, 6,
+                "packed bitfields followed by scalar should keep scalar tail size");
+  expect_eq_int(bits.fields[0].llvm_idx, 0,
+                "packed bitfield run should use the first LLVM field");
+  expect_eq_int(bits.fields[3].llvm_idx, 1,
+                "scalar after packed bitfield run should use a separate LLVM field");
+  expect_eq_int(bits.fields[3].offset_bytes, 2,
+                "scalar after packed bitfield run should start after the bitfield storage unit");
+
+  const auto scalar_it = module.struct_defs.find("ScalarThenBits");
+  expect_true(scalar_it != module.struct_defs.end(),
+              "mixed packed bitfield fixture should lower ScalarThenBits");
+  const c4c::hir::HirStructDef& scalar = scalar_it->second;
+  expect_eq_int(scalar.size_bytes, 16,
+                "scalar followed by packed bitfields should keep bitfield tail size");
+  expect_eq_int(scalar.fields[0].llvm_idx, 0,
+                "leading scalar should use the first LLVM field");
+  expect_eq_int(scalar.fields[1].llvm_idx, 1,
+                "bitfields after scalar should use a separate LLVM field");
+  expect_eq_int(scalar.fields[1].offset_bytes, 8,
+                "bitfields after scalar should start after the scalar storage unit");
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(module);
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_true(llvm_ir.find("%struct.BitsThenScalar = type <{ i16, i32 }>") !=
+                  std::string::npos,
+              "LIR should emit both packed bitfield and scalar fields");
+  expect_true(llvm_ir.find("%struct.ScalarThenBits = type <{ i64, i64 }>") !=
+                  std::string::npos,
+              "LIR should emit scalar followed by packed bitfield storage");
+}
+
 void expect_hir_rejects(std::string_view source,
                         std::string_view expected_diagnostic,
                         const std::string& msg) {
@@ -7755,6 +7812,7 @@ int main() {
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
+  test_hir_packed_mixed_bitfield_record_layout_keeps_scalar_members();
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss();
   test_hir_template_seed_and_retry_reject_rendered_fallback_after_decl_miss();
