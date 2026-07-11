@@ -10,7 +10,6 @@
 
 namespace c4c::backend {
 
-using LocalAggregateGepTarget = BirFunctionLowerer::LocalAggregateGepTarget;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;

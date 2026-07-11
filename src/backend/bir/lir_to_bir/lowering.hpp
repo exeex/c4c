@@ -431,7 +431,6 @@ class BirFunctionLowerer {
   };
 
   using AggregateArrayExtent = c4c::backend::AggregateArrayExtent;
-  using LocalAggregateGepTarget = c4c::backend::LocalAggregateGepTarget;
 
   enum class LocalSlotLoadResult {
     NotHandled,
@@ -695,13 +694,13 @@ class BirFunctionLowerer {
       std::string_view repeated_type_text,
       const TypeDeclMap& type_decls,
       const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
-  static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
+  static std::optional<c4c::backend::LocalAggregateGepTarget> resolve_relative_gep_target(
       std::string_view type_text,
       std::int64_t base_byte_offset,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls);
-  static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
+  static std::optional<c4c::backend::LocalAggregateGepTarget> resolve_relative_gep_target(
       std::string_view type_text,
       std::int64_t base_byte_offset,
       const c4c::codegen::lir::LirGepOp& gep,
@@ -888,13 +887,13 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const c4c::backend::LocalAggregateSlots& aggregate_slots);
-  static std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
+  static std::optional<c4c::backend::LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
       std::string_view base_type_text,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const c4c::backend::LocalAggregateSlots& aggregate_slots);
-  static std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
+  static std::optional<c4c::backend::LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
       std::string_view base_type_text,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,

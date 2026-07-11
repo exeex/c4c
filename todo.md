@@ -9,20 +9,16 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 ## Just Finished
 
 Completed Step 3 import-boundary contraction for the memory-owned local
-aggregate slot side-table family.
+aggregate GEP target type.
 
-- Removed the `BirFunctionLowerer` compatibility aliases for
-  `LocalAggregateSlots` and `LocalAggregateSlotMap` from
-  `src/backend/bir/lir_to_bir/lowering.hpp`.
-- Updated lowerer declarations/member state in the owned header to use
-  `c4c::backend::LocalAggregateSlots` and
-  `c4c::backend::LocalAggregateSlotMap` directly.
-- Updated the remaining owned call and memory helper references in
-  `src/backend/bir/lir_to_bir/calling.cpp`,
-  `src/backend/bir/lir_to_bir/memory/local_slots.cpp`, and
-  `src/backend/bir/lir_to_bir/memory/local_gep.cpp` away from
-  `BirFunctionLowerer::LocalAggregateSlots` /
-  `BirFunctionLowerer::LocalAggregateSlotMap`.
+- Removed the `BirFunctionLowerer::LocalAggregateGepTarget` compatibility alias
+  from `src/backend/bir/lir_to_bir/lowering.hpp`.
+- Updated lowerer declarations in the owned header to use
+  `c4c::backend::LocalAggregateGepTarget` directly.
+- Updated owned memory adapter definitions in
+  `src/backend/bir/lir_to_bir/memory/local_gep.cpp` and
+  `src/backend/bir/lir_to_bir/memory/addressing.cpp` to use the memory-owned
+  `LocalAggregateGepTarget` declaration directly.
 
 ## Suggested Next
 
@@ -31,12 +27,13 @@ family that still routes memory-owned declarations through `BirFunctionLowerer`.
 
 ## Watchouts
 
-- This packet intentionally only contracted the local aggregate slot
-  side-table alias family; it did not change local aggregate semantics, BIR
-  route records, prepared data, target/MIR paths, runtime behavior, tests,
-  expectations, unsupported markers, allowlists, or public BIR query APIs.
+- This packet intentionally only contracted the local aggregate GEP target type
+  alias; it did not change GEP semantics, BIR route records, prepared data,
+  target/MIR paths, runtime behavior, tests, expectations, unsupported markers,
+  allowlists, or public BIR query APIs.
 - `BirFunctionLowerer` no longer re-exports `LocalSlotTypes`,
-  `LocalAggregateSlots`, or `LocalAggregateSlotMap`.
+  `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
+  `LocalAggregateGepTarget`.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,
   runtime behavior, or harness policy.

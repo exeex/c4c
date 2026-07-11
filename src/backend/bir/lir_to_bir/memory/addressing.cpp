@@ -337,7 +337,7 @@ bool can_reinterpret_byte_storage_as_type(
 [[nodiscard]] bool is_aarch64_va_list_vr_top_gep(
     const c4c::codegen::lir::LirGepOp& gep,
     std::string_view base_type_text,
-    const BirFunctionLowerer::LocalAggregateGepTarget& resolved_target) {
+    const LocalAggregateGepTarget& resolved_target) {
   if (c4c::codegen::lir::trim_lir_arg_text(base_type_text) != "%struct.__va_list_tag_" ||
       resolved_target.type_text != "ptr" || gep.indices.size() != 2) {
     return false;
@@ -394,7 +394,7 @@ BirFunctionLowerer::find_nested_repeated_aggregate_extent_at_offset(
       type_text, target_offset, repeated_type_text, type_decls, &structured_layouts, false);
 }
 
-std::optional<BirFunctionLowerer::LocalAggregateGepTarget>
+std::optional<LocalAggregateGepTarget>
 BirFunctionLowerer::resolve_relative_gep_target(
     std::string_view type_text,
     std::int64_t base_byte_offset,
@@ -405,7 +405,7 @@ BirFunctionLowerer::resolve_relative_gep_target(
       type_text, base_byte_offset, gep, value_aliases, type_decls, nullptr);
 }
 
-std::optional<BirFunctionLowerer::LocalAggregateGepTarget>
+std::optional<LocalAggregateGepTarget>
 BirFunctionLowerer::resolve_relative_gep_target(
     std::string_view type_text,
     std::int64_t base_byte_offset,
