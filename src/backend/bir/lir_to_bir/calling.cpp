@@ -420,7 +420,7 @@ call_argument_direct_global_select_chain_dependency(
 
 [[nodiscard]] std::vector<std::pair<std::size_t, std::string>>
 collect_sorted_hfa_carrier_leaf_slots(
-    const BirFunctionLowerer::LocalAggregateSlots& aggregate_slots,
+    const c4c::backend::LocalAggregateSlots& aggregate_slots,
     const BirFunctionLowerer::AggregateTypeLayout& aggregate_layout) {
   if ((aggregate_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
        aggregate_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
@@ -463,7 +463,7 @@ struct Aapcs64VariadicHfaCarrierExpansionRequest {
   const BirFunctionLowerer::TypeDeclMap& type_decls;
   const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts;
   const BirFunctionLowerer::AggregateValueAliasMap& aggregate_value_aliases;
-  const BirFunctionLowerer::LocalAggregateSlotMap& local_aggregate_slots;
+  const c4c::backend::LocalAggregateSlotMap& local_aggregate_slots;
   const c4c::backend::LocalSlotTypes& local_slot_types;
   const std::vector<c4c::codegen::lir::LirCallArg>& structured_args;
 };

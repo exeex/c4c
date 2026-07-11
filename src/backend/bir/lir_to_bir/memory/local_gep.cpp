@@ -233,7 +233,7 @@ std::optional<LocalAggregateRawByteSliceLeaf> resolve_local_aggregate_raw_byte_s
     const BirFunctionLowerer::ValueMap& value_aliases,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts,
-    const BirFunctionLowerer::LocalAggregateSlots& aggregate_slots) {
+    const LocalAggregateSlots& aggregate_slots) {
   if (c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()) != "i8") {
     return std::nullopt;
   }

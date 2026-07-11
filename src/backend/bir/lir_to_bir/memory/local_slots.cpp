@@ -473,7 +473,7 @@ std::optional<std::vector<std::string>> collect_local_scalar_array_slots_impl(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts,
     const std::optional<BirFunctionLowerer::AggregateArrayExtent>& repeated_extent,
-    const BirFunctionLowerer::LocalAggregateSlots& aggregate_slots) {
+    const LocalAggregateSlots& aggregate_slots) {
   const auto layout = lookup_scalar_byte_offset_layout(
       c4c::codegen::lir::trim_lir_arg_text(type_text), type_decls, structured_layouts);
   if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) {
