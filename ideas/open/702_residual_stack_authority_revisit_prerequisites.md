@@ -12,7 +12,7 @@ Handoff:
 - `docs/bir_route_index_retirement/ordered_followup_plan.md`
 Queue Order: 8
 Depends On:
-- `ideas/open/700_prepared_mir_stack_view_contract.md`
+- `ideas/closed/700_prepared_mir_stack_view_contract.md`
 
 ## Goal
 
