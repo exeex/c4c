@@ -1,6 +1,6 @@
 # BIR Route Index Retirement Umbrella
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and follow-up idea generator
 After: `ideas/closed/693_bir_route_index_retirement_research.md`
 Parent: `ideas/closed/693_bir_route_index_retirement_research.md`
@@ -139,6 +139,65 @@ The closure note must state which research docs were consumed, which handoff
 documents were written, which follow-up ideas were generated, how they were
 ordered, what route-numbered APIs remain as private compatibility, and what
 must happen before ideas 647 and 655 can be revisited.
+
+## Closure Note
+
+Closed after the umbrella runbook produced the durable handoff package under
+`docs/bir_route_index_retirement/` and generated the ordered follow-up queue.
+
+Consumed research docs:
+`docs/bir_route_index_retirement_research/index.md`,
+`01_current_route_inventory.md`,
+`02_required_bir_to_prealloc_inputs.md`,
+`03_named_view_replacement_shape.md`,
+`04_publication_and_authority_boundaries.md`,
+`05_retirement_sequence.md`,
+`06_test_and_dump_policy_after_route_retirement.md`,
+`07_followup_idea_recommendations.md`, and
+`08_stack_view_and_destination_authority_handoff.md`.
+
+Handoff docs written:
+`docs/bir_route_index_retirement/research_digest.md`,
+`docs/bir_route_index_retirement/ownership_dependencies.md`, and
+`docs/bir_route_index_retirement/ordered_followup_plan.md`.
+
+Generated follow-up ideas, in dependency order:
+
+1. `ideas/open/695_bir_route_facade_named_compatibility_adapters.md`
+2. `ideas/open/696_bir_producer_index_view_extraction.md`
+3. `ideas/open/697_bir_memory_publication_view_extraction.md`
+4. `ideas/open/698_bir_call_return_route_view_extraction.md`
+5. `ideas/open/699_prealloc_named_bir_proof_consumer_migration.md`
+6. `ideas/open/700_prepared_mir_stack_view_contract.md`
+7. `ideas/open/701_route_fact_test_dump_contract_cleanup.md`
+8. `ideas/open/702_residual_stack_authority_revisit_prerequisites.md`
+
+The ordering contracts the narrow Route 4/Route 7 facade first, then extracts
+producer, publication, call, and return BIR views, then migrates prealloc proof
+consumers, then defines prepared/MIR stack authority, then cleans test/dump
+contracts, and leaves residual stack authority prerequisites last.
+
+Route-numbered APIs remain private compatibility during migration:
+`RouteIndexReferenceFacade`, `RouteIndexRoute`,
+`RouteIndexRecordReference`, `Route4IndexReferenceValidation`,
+`Route7IndexReferenceValidation`, `Route4PublicationAvailabilityIndex`,
+`Route5EdgeJoinSourceIndex`, Route 5 CFG-edge and current-block join-source
+rows, `route5_join_source`, `route5_join_source_status`,
+`route5_join_source_agrees`, `Route7ComparisonConditionIndex`,
+`Route1ProducerIndex`, `Route2SelectChainValueIndex`,
+`Route3MemoryAccessIndex`, `Route6CallUseSourceIndex`, and
+`Route8ReturnChainIndex`. They may remain as private builders, proof adapters,
+diagnostic bridges, rollback inputs, or compatibility fields, but they must
+not become prepared publication, source freshness, move-bundle, value-home,
+stack destination, frame-layout, branch stack-load, or MIR authority.
+
+Ideas 647 and 655 remain parked until prepared/MIR stack view work exposes
+positive prepared producer evidence above route dumps, including named
+destination value/home/storage authority, selected move or freshness authority,
+stack-source or branch stack-load authority when relevant, fail-closed MIR
+statuses, and prepared/MIR/object/runtime proof if executable behavior changes.
+Route 4, Route 5, Route 7, facade status, dump rows, expectations, and
+allowlists remain compatibility evidence only.
 
 ## Reviewer Reject Signals
 
