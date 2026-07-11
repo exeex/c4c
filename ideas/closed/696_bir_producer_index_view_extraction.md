@@ -1,6 +1,6 @@
 # BIR Producer Index View Extraction
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -92,3 +92,38 @@ authority.
   proven.
 - Reject expectation rewrites, unsupported downgrades, allowlist filtering, or
   helper renames claimed as producer-view progress.
+
+## Completion Note
+
+Closed after commit `4834bc655` completed the Route 1-only named producer-view
+adapter and first proof-reader migration. The slice added a
+`bir::BirProducerView` compatibility surface over existing Route 1 producer
+facts with `bir::make_bir_producer_view`,
+`bir::find_same_block_scalar_producer`, and
+`bir::find_materialization_availability`, then migrated the selected `%sum`
+proof reader in `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+through the named view.
+
+Route 2 select-chain and direct-global facts were explicitly deferred because
+the first named producer-view proof did not require them. No prealloc
+authority, MIR lowering, target materialization, memory/publication view,
+call/return view, dump vocabulary, expectation, unsupported-marker, allowlist,
+timeout, or runtime contract changed.
+
+Close proof:
+
+- corrected focused before/after proof:
+  `cmake --build --preset default && build/tests/backend/bir/backend_prepared_lookup_helper_test`
+  passed before and after the slice
+- full baseline candidate accepted separately: 3333 passed / 0 failed
+
+The focused proof logs are build-plus-binary logs rather than CTest summary
+logs, so the CTest regression checker cannot parse them directly. The accepted
+full baseline candidate is the close-scope regression evidence for this
+behavior-preserving adapter packet.
+
+Remaining Route 2 producer/control extraction, memory/publication extraction,
+call/return extraction, prealloc consumer migration, dump cleanup, and stack
+authority prerequisite work belongs to the separate follow-up ideas already
+parked under `ideas/open/`, not to this closed Route 1-only producer-view
+packet.
