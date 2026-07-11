@@ -9,6 +9,7 @@
 #include "liveness.hpp"
 #include "names.hpp"
 #include "object_data.hpp"
+#include "prepared_fact_boundary.hpp"
 #include "regalloc.hpp"
 #include "runtime_helpers.hpp"
 #include "special_carriers.hpp"

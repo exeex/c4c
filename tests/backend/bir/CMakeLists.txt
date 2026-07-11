@@ -562,6 +562,24 @@ set_tests_properties(backend_x86_prepared_decoded_home_storage PROPERTIES
 )
 endif()
 
+add_executable(backend_prepared_fact_boundary_contract_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prepared_fact_boundary_contract_test.cpp"
+)
+target_include_directories(backend_prepared_fact_boundary_contract_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_compile_definitions(backend_prepared_fact_boundary_contract_test PRIVATE
+    C4C_PREALLOC_SOURCE_DIR="${PROJECT_SOURCE_DIR}/src/backend/prealloc"
+)
+target_link_libraries(backend_prepared_fact_boundary_contract_test PRIVATE c4c_backend)
+set_target_properties(backend_prepared_fact_boundary_contract_test PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_prepared_fact_boundary_contract
+  COMMAND $<TARGET_FILE:backend_prepared_fact_boundary_contract_test>)
+set_tests_properties(backend_prepared_fact_boundary_contract PROPERTIES
+  LABELS "backend;internal;cpp")
+
 add_test(
   NAME backend_cli_dump_bir_is_semantic
   COMMAND "${CMAKE_COMMAND}"
