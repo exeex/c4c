@@ -1,6 +1,6 @@
 # Memory Address Provenance Import Cleanup
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Order: 5 of 6 in the `LIR -> BIR` adapter boundary first wave
 After: `ideas/open/688_initializer_lowering_bridge_isolation.md`
@@ -71,6 +71,29 @@ memory/address model files or downstream prepared/target surfaces.
 - Prepared frame/storage policy, target addressing legality, MIR memory
   emission, and runtime behavior remain unchanged.
 - Proof is recorded in `todo.md`.
+
+## Closure Summary
+
+Closed on 2026-07-11 after the active runbook completed Step 4 final boundary
+audit. The completed route narrowed the lowerer re-export surface for the
+reviewed memory/provenance side-table families and left those families as
+memory-owned adapter import state in
+`src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
+
+No remaining follow-up was found inside the reviewed lowerer re-export
+alias-contraction route. Public BIR Route 3 authority, prepared/prealloc,
+target, MIR, runtime behavior, tests, expectations, unsupported markers, and
+allowlists were preserved.
+
+Close proof used:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)' | tee test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+The close proof selected 303 tests, passed 303, failed 0, and the regression
+guard reported no new failing tests.
 
 ## Reviewer Reject Signals
 
