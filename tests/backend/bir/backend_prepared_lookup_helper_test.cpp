@@ -4008,6 +4008,8 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
           prepare::PreparedJoinTransfer{
               .function_name = function_name,
               .join_block_label = successor_label,
+              .result = bir::Value::named(bir::TypeKind::I32,
+                                          "%current.destination"),
               .kind = prepare::PreparedJoinTransferKind::PhiEdge,
               .edge_transfers = {
                   prepare::PreparedEdgeValueTransfer{
@@ -4018,6 +4020,15 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
                       .destination_value = bir::Value::named(
                           bir::TypeKind::I32, "%edge_shared.named_destination"),
                   },
+              },
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = bir::Value::named(
+                  bir::TypeKind::I32, "%current.immediate_destination"),
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
                   prepare::PreparedEdgeValueTransfer{
                       .predecessor_label = predecessor_label,
                       .successor_label = successor_label,
@@ -4025,6 +4036,15 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
                       .destination_value = bir::Value::named(
                           bir::TypeKind::I32, "%edge_shared.immediate_destination"),
                   },
+              },
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = bir::Value::named(bir::TypeKind::I32,
+                                          "%current.stack_destination"),
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
                   prepare::PreparedEdgeValueTransfer{
                       .predecessor_label = predecessor_label,
                       .successor_label = successor_label,
@@ -4930,6 +4950,7 @@ int verify_current_block_join_parallel_copy_source_query() {
                                 c4c::ValueNameId value_name) {
     return std::find(values.begin(), values.end(), value_name) != values.end();
   };
+
   if (query.status !=
           prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
       query.facts.size() != 4) {
@@ -4965,8 +4986,11 @@ int verify_current_block_join_parallel_copy_source_query() {
       query.facts[1].source_freshness_status !=
           prepare::PreparedValueFreshnessQueryStatus::NoCandidate ||
       query.facts[1].source_freshness_authority.has_value() ||
-      !query.facts[1].source_freshness_authorities.empty()) {
-    return fail("current-block join query should not require freshness for immediate sources");
+      !query.facts[1].source_freshness_authorities.empty() ||
+      query.facts[1].publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::BirPhi) {
+    return fail("current-block join query should retain immediate publication origin without requiring freshness");
   }
   if (query.facts[2].status !=
           prepare::PreparedEdgeCopySourceFactsStatus::Available ||
@@ -5141,15 +5165,31 @@ int verify_current_block_join_parallel_copy_source_query() {
       !prepared_only.facts.front().join_source_evidence) {
     return fail("complete prepared JoinTransfer publication should support a non-PHI edge");
   }
+  if (prepared_only.facts.size() < 2 ||
+      prepared_only.facts[1].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      prepared_only.facts[1].publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::PreparedJoinTransfer ||
+      !prepared_only.facts[1].prepared_join_transfer_authority_complete ||
+      prepared_only.facts[1].join_source_evidence_applicable) {
+    return fail("complete immediate JoinTransfer should establish prepared publication origin independently of named-source evidence");
+  }
   auto incomplete_control_flow = control_flow;
   incomplete_control_flow.join_transfers.front().edge_transfers.clear();
+  const auto incomplete_edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          names,
+          incomplete_control_flow,
+          &locations,
+          &value_home_lookups);
   const auto incomplete_prepared_only =
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
               .names = &names,
               .regalloc = &regalloc,
               .value_locations = &locations,
-              .edge_publications = &edge_publications,
+              .edge_publications = &incomplete_edge_publications,
               .control_flow = &incomplete_control_flow,
               .join_source_evidence = {named_join_evidence},
               .block = &prepared_only_block,
@@ -5163,16 +5203,54 @@ int verify_current_block_join_parallel_copy_source_query() {
               PublicationSemanticOrigin::Unknown) {
     return fail("incomplete prepared JoinTransfer publication should fail closed");
   }
+  auto mismatched_result_control_flow = control_flow;
+  mismatched_result_control_flow.join_transfers.front().result =
+      bir::Value::named(bir::TypeKind::I32,
+                        "%current.immediate_destination");
+  const auto mismatched_result_edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          names,
+          mismatched_result_control_flow,
+          &locations,
+          &value_home_lookups);
+  const auto mismatched_result =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &mismatched_result_edge_publications,
+              .control_flow = &mismatched_result_control_flow,
+              .join_source_evidence = {named_join_evidence},
+              .block = &prepared_only_block,
+              .successor_label = successor_label,
+          });
+  if (mismatched_result.facts.empty() ||
+      mismatched_result.facts.front().status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer ||
+      mismatched_result.facts.front().publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::Unknown ||
+      mismatched_result.facts.front()
+          .prepared_join_transfer_authority_complete) {
+    return fail("mismatched prepared JoinTransfer result should fail closed");
+  }
   auto ambiguous_control_flow = control_flow;
   ambiguous_control_flow.join_transfers.push_back(
       ambiguous_control_flow.join_transfers.front());
+  const auto ambiguous_edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          names,
+          ambiguous_control_flow,
+          &locations,
+          &value_home_lookups);
   const auto ambiguous_prepared_only =
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
               .names = &names,
               .regalloc = &regalloc,
               .value_locations = &locations,
-              .edge_publications = &edge_publications,
+              .edge_publications = &ambiguous_edge_publications,
               .control_flow = &ambiguous_control_flow,
               .join_source_evidence = {named_join_evidence},
               .block = &prepared_only_block,

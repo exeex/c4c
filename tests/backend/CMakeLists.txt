@@ -2266,6 +2266,10 @@ c4c_add_current_block_authority_probe(
   backend_current_block_short_circuit_dependency_probe
   current_block_short_circuit_dependency_probe.cpp
 )
+c4c_add_current_block_authority_probe(
+  backend_current_block_phi_root_authority_probe
+  current_block_phi_root_authority_probe.cpp
+)
 
 add_executable(backend_prealloc_current_block_all_edge_invariance_test
   "${BACKEND_TEST_ROOT}/bir/backend_prealloc_current_block_all_edge_invariance_test.cpp"

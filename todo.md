@@ -3,40 +3,50 @@
 Status: Active
 Source Idea Path: ideas/open/718_prepared_routing_root_dependency_classification_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Implement short-circuit dependency composition
+Current Step ID: 8
+Current Step Title: Prove unchanged integration and hand back
 
 ## Just Finished
 
-- Step 7 bound short-circuit stable-key facts to the validated producer
-  dependency closure. The select, add, and leaf roles remain independently
-  authoritative through the complete prepared publication origin, while a
-  dependency merely visited by traversal can no longer regain authority after
-  its producer is found missing, duplicate, or unsupported.
-- Strengthened the focused short-circuit probe to query owner authority for
-  both original select/add producer roles and the transitive leaf, and to reject
-  missing add producers, mismatched publication destinations, and incomplete
-  transfers. Prior focused probes and the established routed-operand contract
-  remain green.
+- Step 8 completed the unchanged integration handback. Generic owner
+  preparation now preserves legitimate BIR-PHI-root incoming dependencies when
+  the prepared publication/move pair does not cover that stable key, while
+  retaining duplicate roots for ambiguity-safe fail-closed consumption.
+- Resolved the Step 8 review findings by making prepared-root suppression
+  require applicable predecessor/successor, destination, routed stable key,
+  available status, and a known semantic origin; exact negative prepared roots
+  now propagate an incomplete routing fact instead of being bypassed.
+- Added focused owner matrices for uncovered BIR-PHI roots (positive, missing
+  predecessor, and duplicate ambiguity) and Source-role agreement (different
+  predecessor/source positive; destination, origin, and duplicate negatives).
+- Registered `backend_current_block_phi_root_authority_probe` in the default
+  CTest graph. It also covers parallel uncovered roots with differing
+  destinations and exact-negative prepared-root propagation to `Incomplete`.
+- AArch64 consumes only attached stable-key owner queries. The unchanged
+  policy-present routing vectors and short-circuit dispatch contract pass; the
+  original `%rhs.add` and `%short.selected` producers remain intact.
 
 ## Suggested Next
 
-- Execute the supervisor-selected Step 8 unchanged integration and handback
-  packet after accepting the Step 7 composition contract.
+- Hand the completed Step 8 slice back to the supervisor for review, regression
+  log normalization, and commit handling.
 
 ## Watchouts
 
-- `src/backend/prealloc/publication_plans.cpp` contains an unrelated
-  pre-existing dirty candidate hunk around join-source semantic-origin
-  preparation; Step 6 preserved it exactly and does not claim it.
-- Stable-key duplicate, multiple, and parallel disagreement remains owned by
-  the all-applicable-fact query; dependency traversal cannot bypass it because
-  only validated closure members now receive composed routing facts.
+- BIR-PHI-root facts are emitted only for uncovered stable keys. Existing
+  prepared routing remains authoritative only when its complete applicable
+  dependency identity agrees; multiple uncovered PHI roots are deliberately
+  retained so the all-applicable query reports ambiguity.
+- No AArch64 reconstruction fallback, fixture-name matcher, expectation
+  downgrade, or producer rewrite was introduced.
 
 ## Proof
 
 - Ran `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_(current_block_(direct_root_classification|composed_dependency_authority|memory_source_authority|short_circuit_dependency)_probe|prealloc_current_block_routed_operand_authority)$'
-  > test_after.log 2>&1` exactly as delegated. Build passed and all four
-  focused probes plus the established routed-operand authority contract passed
-  (5/5). Proof log: `test_after.log`.
+  --output-on-failure -R '^backend_' > test_after.log 2>&1` exactly as
+  delegated. Build passed and all 329/329 backend tests passed, including the
+  default-registered PHI-root authority probe. Proof log:
+  `test_after.log`.
+- The acceptance matrices now live in the default-registered
+  `backend_current_block_phi_root_authority_probe`; redundant copies were
+  removed from the normally disabled prepared-lookup helper.

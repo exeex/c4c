@@ -353,16 +353,29 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
       prepared, prepared.target_profile, function_cf);
   if (attach_prepared_policy) {
     attach_prepared_function_lookups(function_context, prepared_lookups);
+  } else {
+    function_context.prepared_lookups_owner.reset();
+    function_context.prepared_lookups = nullptr;
+    function_context.call_plan_lookups = nullptr;
+    function_context.address_materialization_lookups = nullptr;
+    function_context.move_bundle_lookups = nullptr;
+    function_context.value_home_lookups = nullptr;
   }
-  if (function_context.prepared_lookups_owner == nullptr ||
-      function_context.prepared_lookups !=
-          function_context.prepared_lookups_owner.get()) {
-    return fail("expected current-block join entry to retain its prepared lookup owner");
+  if (attach_prepared_policy &&
+      (function_context.prepared_lookups_owner == nullptr ||
+       function_context.prepared_lookups !=
+           function_context.prepared_lookups_owner.get())) {
+    return fail("expected policy-present current-block join entry to retain its prepared lookup owner");
+  }
+  if (!attach_prepared_policy &&
+      (function_context.prepared_lookups_owner != nullptr ||
+       function_context.prepared_lookups != nullptr)) {
+    return fail("expected policy-absent current-block join entry to remain unattached");
   }
   const bool expects_authoritative_source =
       std::find(expected_sources.begin(), expected_sources.end(), true) !=
       expected_sources.end();
-  if (expects_authoritative_source &&
+  if (expects_authoritative_source && function_context.prepared_lookups != nullptr &&
       function_context.prepared_lookups->current_block_join_routing_facts.empty()) {
     return fail(
         "expected supported current-block join entry to carry authoritative owner facts");
@@ -448,7 +461,7 @@ int main() {
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::NormalPredecessor, false),
-          true, false, {false, true, true}, {false, false, false});
+          true, false, {false, false, false}, {false, false, false});
       status != 0) {
     return status;
   }

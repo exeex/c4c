@@ -77,161 +77,32 @@ instruction_result_prepared_value_id(
                                                 *result_value_name);
 }
 
-[[nodiscard]] std::optional<prepare::PreparedValueId>
-instruction_result_prepared_value_id(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst) {
-  return instruction_result_prepared_value_id(
-      context, context.function.value_home_lookups, inst);
-}
-
-[[nodiscard]] bool instruction_result_matches_bir_value_identity(
-    const bir::Inst& inst,
-    const std::vector<mir::SameBlockValueIdentity>& values) {
-  const auto* result = instruction_result_value_ref(inst);
-  if (result == nullptr ||
-      result->kind != bir::Value::Kind::Named ||
-      result->name.empty()) {
-    return false;
-  }
-  return std::find_if(values.begin(), values.end(), [&](const auto& value) {
-           return value.name == result->name && value.type == result->type;
-         }) != values.end();
-}
-
-[[nodiscard]] bool instruction_result_matches_bir_value_identity(
-    const bir::Inst& inst,
-    const mir::SameBlockValueIdentity& value) {
-  const auto* result = instruction_result_value_ref(inst);
-  return result != nullptr &&
-         result->kind == bir::Value::Kind::Named &&
-         !result->name.empty() &&
-         value.name == result->name &&
-         value.type == result->type;
-}
-
-[[nodiscard]] prepare::PreparedCurrentBlockJoinParallelCopySourceFacts
-prepare_current_block_join_parallel_copy_source_facts(
-    const module::BlockLoweringContext& context) {
-  std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
-  const auto* value_home_lookups = context.function.value_home_lookups;
-  if (value_home_lookups == nullptr && context.function.value_locations != nullptr) {
-    local_value_home_lookups =
-        prepare::make_prepared_value_home_lookups(context.function.value_locations);
-    value_home_lookups = &*local_value_home_lookups;
-  }
-
-  std::optional<prepare::PreparedEdgePublicationLookups> local_edge_publications;
-  const auto* edge_publications =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publications
-          : nullptr;
-  if (edge_publications == nullptr &&
-      context.function.prepared != nullptr &&
-      context.function.control_flow != nullptr) {
-    local_edge_publications =
-        prepare::make_prepared_edge_publication_lookups(
-            context.function.prepared->names,
-            *context.function.control_flow,
-            context.function.value_locations,
-            value_home_lookups);
-    edge_publications = &*local_edge_publications;
-  }
-
-  return prepare::prepare_current_block_join_parallel_copy_source_facts(
-      prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
-          .names = context.function.prepared != nullptr
-                       ? &context.function.prepared->names
-                       : nullptr,
-          .regalloc = context.function.regalloc,
-          .value_locations = context.function.value_locations,
-          .value_home_lookups = value_home_lookups,
-          .edge_publications = edge_publications,
-          .control_flow = context.function.control_flow,
-          .block = context.bir_block,
-          .successor_label =
-              context.control_flow_block != nullptr
-                  ? context.control_flow_block->block_label
-                  : c4c::kInvalidBlockLabel,
-      });
-}
-
-[[nodiscard]] bool current_block_join_route5_source_agrees_with_prepared(
+[[nodiscard]] bool query_attached_current_block_join_routing(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
-    std::size_t instruction_index,
-    const mir::BirCurrentBlockJoinSourceIdentity& route5_identity,
-    const prepare::PreparedCurrentBlockJoinParallelCopySourceFacts& prepared_facts) {
-  if (route5_identity.status != mir::BirCurrentBlockJoinSourceStatus::Available ||
-      prepared_facts.status !=
-          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
-      context.control_flow_block == nullptr ||
-      context.function.prepared == nullptr) {
+    prepare::PreparedCurrentBlockJoinRoutingRole role) {
+  const auto& function = context.function;
+  if (function.prepared_lookups_owner == nullptr ||
+      function.prepared_lookups != function.prepared_lookups_owner.get() ||
+      function.prepared == nullptr || context.control_flow_block == nullptr) {
     return false;
   }
-  const auto prepared_successor_label =
-      prepare::prepared_block_label(context.function.prepared->names,
-                                    context.control_flow_block->block_label);
-  if (prepared_successor_label.empty()) {
+  const auto* result = instruction_result_value_ref(inst);
+  if (result == nullptr) {
     return false;
   }
-  const auto result_value_id = instruction_result_prepared_value_id(context, inst);
-  const auto* result_value = instruction_result_value_ref(inst);
-  if (!result_value_id.has_value() ||
-      result_value == nullptr ||
-      result_value->kind != bir::Value::Kind::Named ||
-      result_value->name.empty()) {
+  const auto value_name = prepared_named_value_id(context, *result);
+  const auto value_id = instruction_result_prepared_value_id(
+      context, &function.prepared_lookups->value_homes, inst);
+  if (!value_name.has_value() || !value_id.has_value()) {
     return false;
   }
-
-  for (const auto& route5_fact : route5_identity.facts) {
-    if (route5_fact.status != mir::BirCurrentBlockJoinSourceStatus::Available ||
-        route5_fact.source_producer.inst != &inst ||
-        route5_fact.source_producer.instruction_index != instruction_index ||
-        route5_fact.source_producer_instruction_index !=
-            std::optional<std::size_t>{instruction_index} ||
-        !instruction_result_matches_bir_value_identity(
-            inst, route5_fact.source_value_identity) ||
-        route5_fact.successor_label != prepared_successor_label) {
-      continue;
-    }
-    const auto route5_destination_value_name =
-        route5_fact.destination_value != nullptr
-            ? prepared_named_value_id(context, *route5_fact.destination_value)
-            : std::nullopt;
-    const auto route5_source_value_name =
-        route5_fact.source_value != nullptr
-            ? prepared_named_value_id(context, *route5_fact.source_value)
-            : std::nullopt;
-    const auto prepared_match =
-        std::find_if(prepared_facts.facts.begin(),
-                     prepared_facts.facts.end(),
-                     [&](const auto& prepared_fact) {
-                       const auto prepared_predecessor_label =
-                           prepare::prepared_block_label(
-                               context.function.prepared->names,
-                               prepared_fact.predecessor_label);
-                       return prepared_fact.source_is_source_value &&
-                              prepared_fact.route5_join_source_agrees &&
-                              prepared_fact.route5_join_source != nullptr &&
-                              prepared_fact.successor_label ==
-                                  context.control_flow_block->block_label &&
-                              !prepared_predecessor_label.empty() &&
-                              prepared_predecessor_label ==
-                                  route5_fact.predecessor_label &&
-                              prepared_fact.source_value_id == result_value_id &&
-                              route5_destination_value_name.has_value() &&
-                              route5_source_value_name.has_value() &&
-                              prepared_fact.destination_value_name ==
-                                  *route5_destination_value_name &&
-                              prepared_fact.source_value_name ==
-                                  *route5_source_value_name;
-                     });
-    if (prepared_match != prepared_facts.facts.end()) {
-      return true;
-    }
-  }
-  return false;
+  return static_cast<bool>(prepare::query_prepared_current_block_join_routing_consumption(
+      *function.prepared_lookups,
+      context.control_flow_block->block_label,
+      *value_id,
+      *value_name,
+      role));
 }
 
 [[nodiscard]] SameBlockSelectProducer prepared_same_block_select_producer(
@@ -478,133 +349,25 @@ prepared_publication_source_producer_for_value(
 [[nodiscard]] bool prepared_query_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
-  const auto result_value_id = instruction_result_prepared_value_id(context, inst);
-  if (!result_value_id.has_value()) {
-    return false;
-  }
-  const auto query = prepare_current_block_join_parallel_copy_source_facts(context);
-  if (query.status !=
-      prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available) {
-    return false;
-  }
-  return std::find(query.source_value_ids.begin(),
-                   query.source_value_ids.end(),
-                   *result_value_id) != query.source_value_ids.end();
+  return query_attached_current_block_join_routing(
+      context, inst, prepare::PreparedCurrentBlockJoinRoutingRole::Source);
 }
 
 [[nodiscard]] CurrentBlockJoinPreparedQueryRouting
 build_current_block_join_prepared_query_routing(
     const module::BlockLoweringContext& context) {
   CurrentBlockJoinPreparedQueryRouting routing{.context = &context};
-  std::optional<mir::BirCurrentBlockJoinSourceIdentity> route5_identity;
-  const auto route5_join_sources =
-      context.function.bir_function != nullptr
-          ? std::optional<bir::Route5EdgeJoinSourceIndex>{
-                bir::route5_build_edge_join_source_index(
-                    *context.function.bir_function)}
-          : std::nullopt;
-  if (context.bir_block != nullptr) {
-    const auto bir_identity = mir::find_bir_current_block_join_source_identity(
-        mir::BirCurrentBlockJoinSourceRequest{
-            .successor_block = context.bir_block,
-            .route5_edge_join_sources =
-                route5_join_sources.has_value() ? &*route5_join_sources : nullptr,
-            .successor_label_id =
-                context.control_flow_block != nullptr
-                    ? context.control_flow_block->block_label
-                    : c4c::kInvalidBlockLabel,
-        });
-    if (bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available) {
-      route5_identity = bir_identity;
-    }
-  }
-
-  std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
-  const auto* value_home_lookups = context.function.value_home_lookups;
-  if (value_home_lookups == nullptr && context.function.value_locations != nullptr) {
-    local_value_home_lookups =
-        prepare::make_prepared_value_home_lookups(context.function.value_locations);
-    value_home_lookups = &*local_value_home_lookups;
-  }
-
-  std::optional<prepare::PreparedEdgePublicationLookups> local_edge_publications;
-  const auto* edge_publications =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publications
-          : nullptr;
-  if (edge_publications == nullptr &&
-      context.function.prepared != nullptr &&
-      context.function.control_flow != nullptr) {
-    local_edge_publications =
-        prepare::make_prepared_edge_publication_lookups(
-            context.function.prepared->names,
-            *context.function.control_flow,
-            context.function.value_locations,
-            value_home_lookups);
-    edge_publications = &*local_edge_publications;
-  }
-
-  const auto facts = prepare::prepare_current_block_join_parallel_copy_source_facts(
-      prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
-          .names = context.function.prepared != nullptr
-                       ? &context.function.prepared->names
-                       : nullptr,
-          .regalloc = context.function.regalloc,
-          .value_locations = context.function.value_locations,
-          .value_home_lookups = value_home_lookups,
-          .edge_publications = edge_publications,
-          .control_flow = context.function.control_flow,
-          .route5_edge_join_sources =
-              route5_join_sources.has_value() ? &*route5_join_sources : nullptr,
-          .block = context.bir_block,
-          .successor_label =
-              context.control_flow_block != nullptr
-                  ? context.control_flow_block->block_label
-                  : c4c::kInvalidBlockLabel,
-      });
-  if (facts.status !=
-          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
-      context.bir_block == nullptr) {
-    if (route5_identity.has_value() && context.bir_block != nullptr) {
-      for (const auto& inst : context.bir_block->insts) {
-        routing.incoming_expressions.push_back(
-            instruction_result_matches_bir_value_identity(
-                inst, route5_identity->incoming_expression_values));
-        routing.sources.push_back(false);
-      }
-    }
+  if (context.bir_block == nullptr) {
     return routing;
   }
 
   for (const auto& inst : context.bir_block->insts) {
-    const auto result_value_id =
-        instruction_result_prepared_value_id(context, value_home_lookups, inst);
-    const bool prepared_incoming_expression =
-        result_value_id.has_value() &&
-        std::find(facts.incoming_expression_value_ids.begin(),
-                  facts.incoming_expression_value_ids.end(),
-                  *result_value_id) != facts.incoming_expression_value_ids.end();
-    const bool prepared_source =
-        result_value_id.has_value() &&
-        std::find(facts.source_value_ids.begin(),
-                  facts.source_value_ids.end(),
-                  *result_value_id) != facts.source_value_ids.end();
-    const bool route5_incoming_expression =
-        route5_identity.has_value() &&
-        instruction_result_matches_bir_value_identity(
-            inst, route5_identity->incoming_expression_values);
-    const bool route5_source =
-        route5_identity.has_value() &&
-        instruction_result_matches_bir_value_identity(
-            inst, route5_identity->source_values);
-    const bool route5_source_agrees =
-        route5_source &&
-        current_block_join_route5_source_agrees_with_prepared(
-            context, inst, routing.sources.size(), *route5_identity, facts);
-    routing.incoming_expressions.push_back(route5_identity.has_value()
-                                               ? route5_incoming_expression
-                                               : prepared_incoming_expression);
-    routing.sources.push_back(route5_source_agrees ? true : prepared_source);
+    routing.incoming_expressions.push_back(query_attached_current_block_join_routing(
+        context,
+        inst,
+        prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression));
+    routing.sources.push_back(query_attached_current_block_join_routing(
+        context, inst, prepare::PreparedCurrentBlockJoinRoutingRole::Source));
   }
   return routing;
 }

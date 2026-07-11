@@ -1267,8 +1267,9 @@ query_prepared_current_block_join_routing_consumption(
   for (const auto* candidate : applicable) {
     if (candidate->destination_value_id != invariant_destination_value_id ||
         candidate->destination_value_name != invariant_destination_value_name ||
-        candidate->source_value_id != invariant_source_value_id ||
-        candidate->source_value_name != invariant_source_value_name ||
+        (role == PreparedCurrentBlockJoinRoutingRole::IncomingExpression &&
+         (candidate->source_value_id != invariant_source_value_id ||
+          candidate->source_value_name != invariant_source_value_name)) ||
         candidate->publication_semantic_origin != invariant_origin) {
       result.status = PreparedFactBoundaryStatus::Ambiguous;
       return result;
@@ -2277,6 +2278,19 @@ void attach_named_current_block_join_source_evidence(
   return false;
 }
 
+[[nodiscard]] bool block_has_phi_publication_destination(
+    const bir::Block& block,
+    const PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
+  if (fact.publication == nullptr) {
+    return false;
+  }
+  return std::any_of(block.insts.begin(), block.insts.end(), [&](const auto& inst) {
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    return phi != nullptr &&
+           phi->result == fact.publication->destination_value;
+  });
+}
+
 [[nodiscard]] bool has_unique_complete_prepared_join_transfer_authority(
     const PreparedControlFlowFunction* control_flow,
     const PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
@@ -2336,6 +2350,7 @@ prepare_current_block_join_parallel_copy_source_facts(
   }
 
   result.status = PreparedCurrentBlockJoinParallelCopySourceStatus::Available;
+  std::vector<ValueNameId> mismatched_direct_expression_names;
   std::vector<PreparedFactBoundaryEvidence> generated_join_source_evidence;
   const auto* join_source_evidence = &inputs.join_source_evidence;
   if (join_source_evidence->empty() && inputs.bir_function != nullptr) {
@@ -2381,7 +2396,7 @@ prepare_current_block_join_parallel_copy_source_facts(
                                  PreparedCurrentBlockJoinRoutingRole role) {
     if (fact.status != PreparedEdgeCopySourceFactsStatus::Available ||
         fact.publication == nullptr || fact.move == nullptr ||
-        (!fact.immediate_source &&
+        (!fact.immediate_source && !fact.source_home_is_stack &&
          (fact.source_freshness_status !=
               PreparedValueFreshnessQueryStatus::Selected ||
           !fact.source_freshness_authority.has_value())) ||
@@ -2483,6 +2498,12 @@ prepare_current_block_join_parallel_copy_source_facts(
 
       fact.status =
           prepared_direct_edge_publication_source_freshness_status(source_facts);
+      if (fact.status ==
+              PreparedEdgeCopySourceFactsStatus::MissingSourceFreshnessAuthority &&
+          fact.source_home != nullptr &&
+          fact.source_home->kind == PreparedValueHomeKind::StackSlot) {
+        fact.status = PreparedEdgeCopySourceFactsStatus::Available;
+      }
 
       if (fact.status == PreparedEdgeCopySourceFactsStatus::Available) {
         if (!move.source_immediate_i32.has_value()) {
@@ -2511,35 +2532,32 @@ prepare_current_block_join_parallel_copy_source_facts(
         if (fact.source_is_source_value) {
           append_source_value(fact.source_home);
         }
+        if (block_has_matching_phi_publication(*inputs.block, fact)) {
+          fact.publication_semantic_origin =
+              PreparedCurrentBlockJoinParallelCopySourceFact::
+                  PublicationSemanticOrigin::BirPhi;
+        } else {
+          fact.prepared_join_transfer_authority_complete =
+              has_unique_complete_prepared_join_transfer_authority(
+                  inputs.control_flow, fact);
+          if (fact.prepared_join_transfer_authority_complete) {
+            fact.publication_semantic_origin =
+                PreparedCurrentBlockJoinParallelCopySourceFact::
+                    PublicationSemanticOrigin::PreparedJoinTransfer;
+          }
+        }
         fact.join_source_evidence_applicable =
             !fact.immediate_source && fact.source_is_incoming_expression &&
             fact.destination_is_source_value && !fact.source_is_source_value &&
             !fact.source_home_is_stack;
-        if (fact.join_source_evidence_applicable) {
-          if (block_has_matching_phi_publication(*inputs.block, fact)) {
-            fact.publication_semantic_origin =
-                PreparedCurrentBlockJoinParallelCopySourceFact::
-                    PublicationSemanticOrigin::BirPhi;
-          } else {
-            fact.prepared_join_transfer_authority_complete =
-                has_unique_complete_prepared_join_transfer_authority(
-                    inputs.control_flow, fact);
-            if (fact.prepared_join_transfer_authority_complete) {
-              fact.publication_semantic_origin =
-                  PreparedCurrentBlockJoinParallelCopySourceFact::
-                      PublicationSemanticOrigin::PreparedJoinTransfer;
-            }
-          }
-        }
         attach_named_current_block_join_source_evidence(
             inputs.value_locations->function_name,
             *join_source_evidence,
             fact);
         if (fact.join_source_evidence_applicable &&
-            (fact.publication_semantic_origin ==
-                 PreparedCurrentBlockJoinParallelCopySourceFact::
-                     PublicationSemanticOrigin::Unknown ||
-             !fact.join_source_evidence)) {
+            fact.publication_semantic_origin ==
+                PreparedCurrentBlockJoinParallelCopySourceFact::
+                    PublicationSemanticOrigin::Unknown) {
           fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
         }
         // Retain the legacy Route 5 fields as diagnostic compatibility payload
@@ -2547,6 +2565,38 @@ prepare_current_block_join_parallel_copy_source_facts(
         attach_route5_current_block_join_source_if_agrees(
             *inputs.names, inputs.route5_edge_join_sources, inputs.block, fact);
         if (fact.source_is_incoming_expression) {
+          const bool mismatched_phi_has_local_root =
+              fact.publication != nullptr &&
+              std::any_of(inputs.block->insts.begin(),
+                          inputs.block->insts.end(),
+                          [&](const auto& candidate) {
+                            const auto* phi = std::get_if<bir::PhiInst>(&candidate);
+                            if (phi == nullptr ||
+                                phi->result != fact.publication->destination_value) {
+                              return false;
+                            }
+                            return std::any_of(
+                                phi->incomings.begin(),
+                                phi->incomings.end(),
+                                [&](const auto& incoming) {
+                                  return std::any_of(
+                                      inputs.block->insts.begin(),
+                                      inputs.block->insts.end(),
+                                      [&](const auto& producer) {
+                                        const auto* produced =
+                                            prepared_current_block_join_instruction_result_value_ref(
+                                                producer);
+                                        return produced != nullptr &&
+                                               *produced == incoming.value;
+                                      });
+                                });
+                          });
+          if (block_has_phi_publication_destination(*inputs.block, fact) &&
+              !block_has_matching_phi_publication(*inputs.block, fact) &&
+              mismatched_phi_has_local_root && fact.source_home != nullptr) {
+            append_value_name(mismatched_direct_expression_names,
+                              fact.source_home->value_name);
+          }
           append_routing_fact(
               fact,
               fact.source_home,
@@ -2726,6 +2776,110 @@ prepare_current_block_join_parallel_copy_source_facts(
       if (duplicate == result.routing_facts.end()) {
         result.routing_facts.push_back(std::move(composed));
       }
+    }
+  }
+  result.routing_facts.erase(
+      std::remove_if(result.routing_facts.begin(),
+                     result.routing_facts.end(),
+                     [&](const auto& fact) {
+                       return fact.role ==
+                                  PreparedCurrentBlockJoinRoutingRole::
+                                      IncomingExpression &&
+                              std::find(
+                                  mismatched_direct_expression_names.begin(),
+                                  mismatched_direct_expression_names.end(),
+                                  fact.routed_value_name) !=
+                                  mismatched_direct_expression_names.end();
+                     }),
+      result.routing_facts.end());
+
+  // A BIR PHI is also semantic owner data for its incoming root.  Preserve a
+  // legitimate root that is not represented by the prepared publication/move
+  // pair (for example, a stack-homed incoming expression).  Existing prepared
+  // routing remains authoritative when it already covers the same stable key;
+  // otherwise every matching PHI is retained so duplicate roots fail closed in
+  // the all-applicable-fact query.
+  const auto prepared_routing_facts = result.routing_facts;
+  for (const auto& inst : inputs.block->insts) {
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      continue;
+    }
+    const auto destination_name =
+        existing_prepared_value_name_id(*inputs.names, phi->result);
+    const auto destination_id = destination_name.has_value()
+                                    ? find_indexed_prepared_value_id(
+                                          inputs.value_home_lookups,
+                                          inputs.regalloc,
+                                          inputs.value_locations,
+                                          *destination_name)
+                                    : std::nullopt;
+    if (!destination_name.has_value() || !destination_id.has_value()) {
+      continue;
+    }
+    for (const auto& incoming : phi->incomings) {
+      const auto source_name =
+          existing_prepared_value_name_id(*inputs.names, incoming.value);
+      const auto source_id = source_name.has_value()
+                                 ? find_indexed_prepared_value_id(
+                                       inputs.value_home_lookups,
+                                       inputs.regalloc,
+                                       inputs.value_locations,
+                                       *source_name)
+                                 : std::nullopt;
+      const auto predecessor_label =
+          inputs.names->block_labels.find(incoming.label);
+      if (!source_name.has_value() || !source_id.has_value() ||
+          predecessor_label == kInvalidBlockLabel) {
+        continue;
+      }
+      const auto prepared_covers_root = std::find_if(
+          prepared_routing_facts.begin(),
+          prepared_routing_facts.end(),
+          [&](const PreparedCurrentBlockJoinRoutingFact& fact) {
+            return fact.status == PreparedFactBoundaryStatus::Available &&
+                   fact.role ==
+                       PreparedCurrentBlockJoinRoutingRole::IncomingExpression &&
+                   fact.predecessor_label == predecessor_label &&
+                   fact.successor_label == inputs.successor_label &&
+                   fact.destination_value_id == *destination_id &&
+                   fact.destination_value_name == *destination_name &&
+                   fact.routed_value_id == *source_id &&
+                   fact.routed_value_name == *source_name &&
+                   fact.publication_semantic_origin !=
+                       PreparedCurrentBlockJoinParallelCopySourceFact::
+                           PublicationSemanticOrigin::Unknown;
+          });
+      if (prepared_covers_root != prepared_routing_facts.end()) {
+        continue;
+      }
+      const auto negative_prepared_root = std::find_if(
+          result.facts.begin(), result.facts.end(), [&](const auto& fact) {
+            return fact.status != PreparedEdgeCopySourceFactsStatus::Available &&
+                   fact.predecessor_label == predecessor_label &&
+                   fact.successor_label == inputs.successor_label &&
+                   fact.destination_value_id == *destination_id &&
+                   fact.destination_value_name == *destination_name &&
+                   fact.source_value_id == source_id &&
+                   fact.source_value_name == *source_name;
+          });
+      result.routing_facts.push_back(PreparedCurrentBlockJoinRoutingFact{
+          .status = negative_prepared_root == result.facts.end()
+                        ? PreparedFactBoundaryStatus::Available
+                        : PreparedFactBoundaryStatus::Incomplete,
+          .predecessor_label = predecessor_label,
+          .successor_label = inputs.successor_label,
+          .destination_value_id = *destination_id,
+          .destination_value_name = *destination_name,
+          .source_value_id = source_id,
+          .source_value_name = *source_name,
+          .routed_value_id = *source_id,
+          .routed_value_name = *source_name,
+          .role = PreparedCurrentBlockJoinRoutingRole::IncomingExpression,
+          .publication_semantic_origin =
+              PreparedCurrentBlockJoinParallelCopySourceFact::
+                  PublicationSemanticOrigin::BirPhi,
+      });
     }
   }
   return result;

@@ -28589,6 +28589,8 @@ int predecessor_immediate_select_join_condition_uses_published_zero() {
           {prepare::PreparedJoinTransfer{
               .function_name = function_name,
               .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I32, "%join.selected"),
               .kind = prepare::PreparedJoinTransferKind::PhiEdge,
               .edge_transfers =
                   {prepare::PreparedEdgeValueTransfer{
@@ -28913,6 +28915,8 @@ int short_circuit_join_consumes_edge_published_result() {
           {prepare::PreparedJoinTransfer{
               .function_name = function_name,
               .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I32, "%short.selected"),
               .kind = prepare::PreparedJoinTransferKind::PhiEdge,
               .edge_transfers =
                   {prepare::PreparedEdgeValueTransfer{
