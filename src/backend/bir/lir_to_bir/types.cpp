@@ -199,6 +199,7 @@ AggregateTypeLayout compute_structured_layout_from_type(
         .align_bytes = element_layout.align_bytes,
         .array_count = layer->first,
         .element_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(layer->second)),
+        .element_layout = std::make_shared<AggregateTypeLayout>(element_layout),
     };
   }
 
@@ -500,6 +501,7 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
         .align_bytes = element_layout.align_bytes,
         .array_count = layer->first,
         .element_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(layer->second)),
+        .element_layout = std::make_shared<AggregateTypeLayout>(element_layout),
     };
   }
 

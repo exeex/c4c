@@ -138,6 +138,7 @@ struct AggregateTypeLayout {
   // Element type spelling is layout input/output text, not a lookup key after
   // the layout has been resolved.
   std::string element_type_text;
+  std::shared_ptr<const AggregateTypeLayout> element_layout;
   std::vector<AggregateField> fields;
 };
 

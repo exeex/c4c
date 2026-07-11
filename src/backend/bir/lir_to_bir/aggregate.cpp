@@ -338,18 +338,16 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(
       return true;
     }
     case AggregateTypeLayout::Kind::Array: {
-      const auto element_layout =
-          selected_aggregate_type_layout(layout.element_type_text,
-                                         type_decls_,
-                                         structured_layouts_);
-      if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-          element_layout.size_bytes == 0) {
+      if (layout.element_layout == nullptr ||
+          layout.element_layout->kind == AggregateTypeLayout::Kind::Invalid ||
+          layout.element_layout->size_bytes == 0) {
         return false;
       }
       for (std::size_t index = 0; index < layout.array_count; ++index) {
-        if (!append_local_aggregate_scalar_slots(element_layout,
+        if (!append_local_aggregate_scalar_slots(*layout.element_layout,
                                                  slot_prefix,
-                                                 byte_offset + index * element_layout.size_bytes,
+                                                 byte_offset +
+                                                     index * layout.element_layout->size_bytes,
                                                  align_bytes,
                                                  aggregate_slots)) {
           return false;

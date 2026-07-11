@@ -8,27 +8,27 @@ Current Step Title: Isolate Type Declaration And Typed Operand Compatibility
 
 ## Just Finished
 
-Completed `plan.md` Step 2 selected contraction for typed-index operand
-lowering.
+Completed `plan.md` Step 2 final selected contraction for local aggregate array
+slot recursion.
 
-`ParsedTypedOperand` now records the adapter-private lowered scalar type when
-raw LIR typed operand text is parsed, and `lower_typed_index_value` consumes
-that cached type instead of re-entering integer type lowering from
-`type_text`. The original compatibility type text remains available for the
-existing adapter boundary, and produced index values are intended unchanged.
+`AggregateTypeLayout` now retains the adapter-private resolved array element
+layout when structured or legacy aggregate layouts are built, and
+`append_local_aggregate_scalar_slots` recurses through that cached layout
+instead of re-entering rendered `element_type_text` for each array element. The
+compatibility element type text remains available for existing adapter
+boundaries, and produced local aggregate slots are intended unchanged.
 
 ## Suggested Next
 
-Choose the next structured-layout bridge contraction from the remaining
-rendered-text lookup sites, likely an adapter-private type declaration or
-aggregate layout lookup path that still re-enters raw text after a typed helper
-has already resolved the relevant fact.
+Ask the supervisor to review whether Step 2 has enough completed contractions
+to move to plan review or the next planned boundary; no further narrow Step 2
+contraction was selected by this packet.
 
 ## Watchouts
 
-This removes only the repeated scalar integer type parse in the typed-index
-value consumer; typed operand text is still retained at the raw LIR adapter
-boundary for compatibility and diagnostics. Avoid widening this into memory
+This removes only the repeated array element layout lookup in local aggregate
+slot expansion. Element type text is still retained for compatibility callers,
+diagnostics, and unresolved no-id bridge paths. Avoid widening this into memory
 addressing policy, public BIR type/model authority, prepared/prealloc, target
 transport, MIR, initializer lowering, memory/provenance policy, or call ABI
 placement.
