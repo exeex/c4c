@@ -656,6 +656,16 @@ std::optional<std::string_view> aggregate_struct_initializer_body(std::string_vi
   return std::nullopt;
 }
 
+bool lower_aggregate_initializer_recursive(
+    std::string_view init_text,
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
+    std::vector<bir::Value>* out,
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices,
+    std::size_t byte_offset);
+
 std::optional<std::string_view> structured_type_name_for_ref(
     const c4c::codegen::lir::LirTypeRef& type_ref,
     const BackendStructuredLayoutTable& structured_layouts) {
@@ -678,19 +688,68 @@ std::optional<std::string_view> structured_type_name_for_ref(
   return std::nullopt;
 }
 
+struct AggregateInitializerMaterialization {
+  const TypeDeclMap& type_decls;
+  const BackendStructuredLayoutTable* structured_layouts = nullptr;
+  std::vector<bir::Value>* out = nullptr;
+  std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets = nullptr;
+  std::unordered_map<std::size_t, std::size_t>* pointer_value_indices = nullptr;
+};
+
+AggregateTypeLayout lookup_initializer_layout(
+    std::string_view type_text,
+    const AggregateInitializerMaterialization& materialization) {
+  return lookup_global_initializer_layout(
+      type_text, materialization.type_decls, materialization.structured_layouts);
+}
+
+std::optional<GlobalAddress> parse_pointer_initializer_address(
+    std::string_view init_text,
+    const AggregateInitializerMaterialization& materialization) {
+  if (materialization.structured_layouts != nullptr) {
+    return parse_global_address_initializer(
+        init_text, materialization.type_decls, *materialization.structured_layouts);
+  }
+  return parse_global_address_initializer(init_text, materialization.type_decls);
+}
+
+void clear_pointer_initializer_slot(const AggregateInitializerMaterialization& materialization,
+                                    std::size_t byte_offset) {
+  materialization.pointer_offsets->erase(byte_offset);
+}
+
+void record_pointer_initializer_address(const AggregateInitializerMaterialization& materialization,
+                                        std::size_t byte_offset,
+                                        const GlobalAddress& address) {
+  materialization.pointer_offsets->emplace(byte_offset, address);
+  if (materialization.pointer_value_indices != nullptr) {
+    (*materialization.pointer_value_indices)[byte_offset] = materialization.out->size();
+  }
+}
+
+bool append_pointer_address_initializer(std::string_view init_text,
+                                        const AggregateInitializerMaterialization& materialization,
+                                        std::size_t byte_offset) {
+  const auto address = parse_pointer_initializer_address(init_text, materialization);
+  if (!address.has_value()) {
+    return false;
+  }
+  record_pointer_initializer_address(materialization, byte_offset, *address);
+  materialization.out->push_back(
+      bir::Value::named(bir::TypeKind::Ptr, "@" + address->global_name));
+  return true;
+}
+
 bool append_zero_aggregate_initializer(
     std::string_view type_text,
-    const TypeDeclMap& type_decls,
-    const BackendStructuredLayoutTable* structured_layouts,
-    std::vector<bir::Value>* out,
-    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    const AggregateInitializerMaterialization& materialization,
     std::size_t byte_offset) {
-  const auto layout = lookup_global_initializer_layout(type_text, type_decls, structured_layouts);
+  const auto layout = lookup_initializer_layout(type_text, materialization);
   switch (layout.kind) {
     case AggregateTypeLayout::Kind::Scalar: {
       if (layout.scalar_type == bir::TypeKind::F128) {
         for (std::size_t index = 0; index < layout.size_bytes; ++index) {
-          out->push_back(bir::Value::immediate_i8(0));
+          materialization.out->push_back(bir::Value::immediate_i8(0));
         }
         return true;
       }
@@ -698,36 +757,29 @@ bool append_zero_aggregate_initializer(
       if (!zero_value.has_value()) {
         return false;
       }
-      out->push_back(*zero_value);
+      materialization.out->push_back(*zero_value);
       if (layout.scalar_type == bir::TypeKind::Ptr) {
-        pointer_offsets->erase(byte_offset);
+        clear_pointer_initializer_slot(materialization, byte_offset);
       }
       return true;
     }
     case AggregateTypeLayout::Kind::Array:
       for (std::size_t index = 0; index < layout.array_count; ++index) {
         const auto element_layout =
-            lookup_global_initializer_layout(
-                layout.element_type_text, type_decls, structured_layouts);
+            lookup_initializer_layout(layout.element_type_text, materialization);
         if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-            !append_zero_aggregate_initializer(layout.element_type_text,
-                                              type_decls,
-                                              structured_layouts,
-                                              out,
-                                              pointer_offsets,
-                                              byte_offset + index * element_layout.size_bytes)) {
+            !append_zero_aggregate_initializer(
+                layout.element_type_text,
+                materialization,
+                byte_offset + index * element_layout.size_bytes)) {
           return false;
         }
       }
       return true;
     case AggregateTypeLayout::Kind::Struct:
       for (const auto& field : layout.fields) {
-        if (!append_zero_aggregate_initializer(field.type_text,
-                                              type_decls,
-                                              structured_layouts,
-                                              out,
-                                              pointer_offsets,
-                                              byte_offset + field.byte_offset)) {
+        if (!append_zero_aggregate_initializer(
+                field.type_text, materialization, byte_offset + field.byte_offset)) {
           return false;
         }
       }
@@ -735,6 +787,122 @@ bool append_zero_aggregate_initializer(
     default:
       return false;
   }
+}
+
+bool append_scalar_aggregate_initializer(std::string_view init_text,
+                                         const AggregateTypeLayout& layout,
+                                         const AggregateInitializerMaterialization& materialization,
+                                         std::size_t byte_offset) {
+  if (layout.scalar_type == bir::TypeKind::F128) {
+    return append_x86_fp80_initializer_bytes(init_text, materialization.out) ||
+           append_f128_initializer_bytes(init_text, materialization.out);
+  }
+
+  if (layout.scalar_type == bir::TypeKind::Ptr &&
+      append_pointer_address_initializer(init_text, materialization, byte_offset)) {
+    return true;
+  }
+
+  const auto value = lower_global_initializer(init_text, layout.scalar_type);
+  if (!value.has_value()) {
+    return false;
+  }
+  if (layout.scalar_type == bir::TypeKind::Ptr) {
+    clear_pointer_initializer_slot(materialization, byte_offset);
+  }
+  materialization.out->push_back(*value);
+  return true;
+}
+
+bool append_array_aggregate_initializer(std::string_view init_text,
+                                        std::string_view type_text,
+                                        const AggregateTypeLayout& layout,
+                                        const AggregateInitializerMaterialization& materialization,
+                                        std::size_t byte_offset) {
+  if (const auto integer_array_elements = lower_integer_array_initializer(init_text, type_text);
+      integer_array_elements.has_value()) {
+    materialization.out->insert(materialization.out->end(),
+                                integer_array_elements->begin(),
+                                integer_array_elements->end());
+    return true;
+  }
+  if (init_text.front() != '[' || init_text.back() != ']') {
+    return false;
+  }
+
+  const auto element_layout = lookup_initializer_layout(layout.element_type_text, materialization);
+  if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+      element_layout.size_bytes == 0) {
+    return false;
+  }
+
+  const auto body = init_text.substr(1, init_text.size() - 2);
+  const auto items = split_top_level_initializer_items(body);
+  if (items.size() > layout.array_count) {
+    return false;
+  }
+
+  for (std::size_t index = 0; index < items.size(); ++index) {
+    if (!lower_aggregate_initializer_recursive(
+            items[index],
+            layout.element_type_text,
+            materialization.type_decls,
+            materialization.structured_layouts,
+            materialization.out,
+            materialization.pointer_offsets,
+            materialization.pointer_value_indices,
+            byte_offset + index * element_layout.size_bytes)) {
+      return false;
+    }
+  }
+
+  for (std::size_t index = items.size(); index < layout.array_count; ++index) {
+    if (!append_zero_aggregate_initializer(
+            layout.element_type_text,
+            materialization,
+            byte_offset + index * element_layout.size_bytes)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool append_struct_aggregate_initializer(std::string_view init_text,
+                                         const AggregateTypeLayout& layout,
+                                         const AggregateInitializerMaterialization& materialization,
+                                         std::size_t byte_offset) {
+  const auto body = aggregate_struct_initializer_body(init_text);
+  if (!body.has_value()) {
+    return false;
+  }
+  const auto items = split_top_level_initializer_items(*body);
+  if (items.size() > layout.fields.size()) {
+    return false;
+  }
+
+  for (std::size_t index = 0; index < items.size(); ++index) {
+    if (!lower_aggregate_initializer_recursive(
+            items[index],
+            layout.fields[index].type_text,
+            materialization.type_decls,
+            materialization.structured_layouts,
+            materialization.out,
+            materialization.pointer_offsets,
+            materialization.pointer_value_indices,
+            byte_offset + layout.fields[index].byte_offset)) {
+      return false;
+    }
+  }
+
+  for (std::size_t index = items.size(); index < layout.fields.size(); ++index) {
+    if (!append_zero_aggregate_initializer(
+            layout.fields[index].type_text,
+            materialization,
+            byte_offset + layout.fields[index].byte_offset)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool lower_aggregate_initializer_recursive(
@@ -746,7 +914,14 @@ bool lower_aggregate_initializer_recursive(
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
     std::unordered_map<std::size_t, std::size_t>* pointer_value_indices,
     std::size_t byte_offset) {
-  const auto layout = lookup_global_initializer_layout(type_text, type_decls, structured_layouts);
+  const AggregateInitializerMaterialization materialization{
+      .type_decls = type_decls,
+      .structured_layouts = structured_layouts,
+      .out = out,
+      .pointer_offsets = pointer_offsets,
+      .pointer_value_indices = pointer_value_indices,
+  };
+  const auto layout = lookup_initializer_layout(type_text, materialization);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid) {
     return false;
   }
@@ -758,116 +933,19 @@ bool lower_aggregate_initializer_recursive(
   trimmed_init = strip_typed_initializer_prefix(trimmed_init, type_text);
 
   if (trimmed_init == "zeroinitializer") {
-    return append_zero_aggregate_initializer(
-        type_text, type_decls, structured_layouts, out, pointer_offsets, byte_offset);
+    return append_zero_aggregate_initializer(type_text, materialization, byte_offset);
   }
 
   if (layout.kind == AggregateTypeLayout::Kind::Scalar) {
-    if (layout.scalar_type == bir::TypeKind::F128) {
-      return append_x86_fp80_initializer_bytes(trimmed_init, out) ||
-             append_f128_initializer_bytes(trimmed_init, out);
-    }
-    if (layout.scalar_type == bir::TypeKind::Ptr) {
-      const auto address = structured_layouts != nullptr
-                               ? parse_global_address_initializer(
-                                     trimmed_init, type_decls, *structured_layouts)
-                               : parse_global_address_initializer(trimmed_init, type_decls);
-      if (address.has_value()) {
-        pointer_offsets->emplace(byte_offset, *address);
-        if (pointer_value_indices != nullptr) {
-          (*pointer_value_indices)[byte_offset] = out->size();
-        }
-        out->push_back(bir::Value::named(bir::TypeKind::Ptr, "@" + address->global_name));
-        return true;
-      }
-    }
-    const auto value = lower_global_initializer(trimmed_init, layout.scalar_type);
-    if (!value.has_value()) {
-      return false;
-    }
-    if (layout.scalar_type == bir::TypeKind::Ptr) {
-      pointer_offsets->erase(byte_offset);
-    }
-    out->push_back(*value);
-    return true;
+    return append_scalar_aggregate_initializer(trimmed_init, layout, materialization, byte_offset);
   }
 
   if (layout.kind == AggregateTypeLayout::Kind::Array) {
-    if (const auto integer_array_elements = lower_integer_array_initializer(trimmed_init, type_text);
-        integer_array_elements.has_value()) {
-      out->insert(out->end(), integer_array_elements->begin(), integer_array_elements->end());
-      return true;
-    }
-    if (trimmed_init.front() != '[' || trimmed_init.back() != ']') {
-      return false;
-    }
-    const auto element_layout =
-        lookup_global_initializer_layout(layout.element_type_text, type_decls, structured_layouts);
-    if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-        element_layout.size_bytes == 0) {
-      return false;
-    }
-    const auto body = trimmed_init.substr(1, trimmed_init.size() - 2);
-    const auto items = split_top_level_initializer_items(body);
-    if (items.size() > layout.array_count) {
-      return false;
-    }
-    for (std::size_t index = 0; index < items.size(); ++index) {
-      if (!lower_aggregate_initializer_recursive(items[index],
-                                                 layout.element_type_text,
-                                                 type_decls,
-                                                 structured_layouts,
-                                                 out,
-                                                 pointer_offsets,
-                                                 pointer_value_indices,
-                                                 byte_offset + index * element_layout.size_bytes)) {
-        return false;
-      }
-    }
-    for (std::size_t index = items.size(); index < layout.array_count; ++index) {
-      if (!append_zero_aggregate_initializer(layout.element_type_text,
-                                             type_decls,
-                                             structured_layouts,
-                                             out,
-                                             pointer_offsets,
-                                             byte_offset + index * element_layout.size_bytes)) {
-        return false;
-      }
-    }
-    return true;
+    return append_array_aggregate_initializer(
+        trimmed_init, type_text, layout, materialization, byte_offset);
   }
 
-  const auto body = aggregate_struct_initializer_body(trimmed_init);
-  if (!body.has_value()) {
-    return false;
-  }
-  const auto items = split_top_level_initializer_items(*body);
-  if (items.size() > layout.fields.size()) {
-    return false;
-  }
-  for (std::size_t index = 0; index < items.size(); ++index) {
-    if (!lower_aggregate_initializer_recursive(items[index],
-                                               layout.fields[index].type_text,
-                                               type_decls,
-                                               structured_layouts,
-                                               out,
-                                               pointer_offsets,
-                                               pointer_value_indices,
-                                               byte_offset + layout.fields[index].byte_offset)) {
-      return false;
-    }
-  }
-  for (std::size_t index = items.size(); index < layout.fields.size(); ++index) {
-    if (!append_zero_aggregate_initializer(layout.fields[index].type_text,
-                                           type_decls,
-                                           structured_layouts,
-                                           out,
-                                           pointer_offsets,
-                                           byte_offset + layout.fields[index].byte_offset)) {
-      return false;
-    }
-  }
-  return true;
+  return append_struct_aggregate_initializer(trimmed_init, layout, materialization, byte_offset);
 }
 
 }  // namespace

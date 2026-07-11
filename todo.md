@@ -1,49 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/688_initializer_lowering_bridge_isolation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Isolate String Constant Rewrite State
+Current Step ID: Step 4
+Current Step Title: Narrow Initializer Value Materialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed the string-constant target-id rewrite isolation by moving the
-rewrite helper out of module-local ownership and into the initializer/global
-adapter path.
+Step 4 completed the initializer value materialization narrowing in
+`src/backend/bir/lir_to_bir/global_initializers.cpp`.
 
 Exact files/helpers touched:
-- `src/backend/bir/lir_to_bir/lowering.hpp`: declared
-  `apply_string_pointer_initializer_target_ids(GlobalTypes&, LinkNameTable&)`
-  alongside pointer-initializer resolution helpers.
-- `src/backend/bir/lir_to_bir/globals.cpp`: added the adapter-owned helper that
-  interns target ids for aggregate pointer-initializer addresses whose target is
-  a string constant and whose address does not already carry a LinkNameId.
-- `src/backend/bir/lir_to_bir/module.cpp`: removed the module-local helper and
-  kept the same call ordering before relocation-slot/value-id publication.
+- Added `AggregateInitializerMaterialization` as the adapter-local carrier for
+  type declarations, structured-layout compatibility, emitted values, pointer
+  initializer offsets, and pointer value-index publication.
+- Added pointer-specific helpers for parsing, recording, and clearing aggregate
+  pointer initializer slots so the spelling-to-fact conversion stays private to
+  initializer lowering.
+- Split aggregate materialization into scalar, array, struct, and zero-fill
+  helpers while keeping the exported `lower_aggregate_initializer*()` entry
+  points and recursive behavior unchanged.
 
-Behavioral scope: no BIR output contract, relocation-slot publication,
-prepared object-data behavior, string data layout, diagnostics, runtime
-behavior, expectations, unsupported markers, tests, allowlists, or harness
-policy were changed.
+Behavioral scope: no scalar, byte-string, array, aggregate, pointer initializer
+parsing semantics, relocation spelling, prepared object-data publication, BIR
+output, diagnostics, runtime behavior, expectations, unsupported markers,
+tests, allowlists, or harness policy were changed.
 
 ## Suggested Next
 
-Next coherent packet: Step 4 should narrow initializer value materialization in
-`src/backend/bir/lir_to_bir/global_initializers.cpp`, keeping scalar, byte
-string, array, aggregate, and pointer initializer spelling compatibility behind
-adapter-owned helpers without changing emitted initializer facts.
+Next coherent packet: Step 5 should verify known global-address import
+boundaries, focusing on whether known global-address publication and consumers
+remain local to the LIR-to-BIR adapter without changing emitted BIR facts or
+downstream prepared/target behavior.
 
 ## Watchouts
 
-- The rewrite still intentionally runs before
-  `apply_resolved_pointer_initializer_value_ids()` so relocation slots and
-  named pointer initializer values see the same string target ids as before.
-- `GlobalInfo::is_string_constant` remains the existing adapter-private marker
-  consumed by memory lowering; this packet did not widen or rename that shared
-  state.
-- Step 4 should avoid changing pointer initializer parsing semantics,
-  relocation spelling, prepared object-data publication, or expectation files.
+- The public `lower_aggregate_initializer*()` helper signatures remain
+  unchanged; this packet narrowed implementation ownership only.
+- Pointer initializer value indices still record `out->size()` before pushing
+  the named pointer value, preserving relocation-slot/value-index publication
+  order.
+- The byte-string and integer-array fast paths still run before recursive array
+  descent; Step 5 should avoid turning known global-address cleanup into
+  semantic initializer repair.
 
 ## Proof
 
