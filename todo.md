@@ -4,43 +4,44 @@ Status: Active
 Source Idea Path: ideas/open/716_prealloc_current_block_routing_authority_closure.md
 Source Plan Path: plan.md
 Current Step ID: 6.2
-Current Step Title: Repair complete invariant owner-prepared fact coverage
+Current Step Title: Establish complete publication semantic origin at the prepared owner
 
 ## Just Finished
 
-- Completed plan Step 6.2 by validating the repaired owner-prepared routing
-  fact model produced by the routed-value decomposition work: aggregate
-  transfer destinations fail closed, composed scalar dependencies retain the
-  direct edge source identity, and all applicable facts require invariant
-  destination/source/origin semantics.
-- Extended the focused authority matrix to prove that unrelated routed values
-  and roles do not enter the applicable edge family while related mismatches,
-  duplicate facts, multiple predecessors, and parallel destinations continue
-  to fail closed under their established contracts.
+- Step 6.3 produced a blocked owner-only AArch64 consumer candidate that removes
+  Route 5, MIR, value-home, edge-publication, and target-local routing-fact
+  reconstruction in favor of the attached stable successor/value/role query.
+- Exact backend proof showed that Step 6.2 is not complete: unchanged supported
+  fixtures still attach otherwise positive facts with `Unknown` publication
+  semantic origin, so the prepared query correctly returns `Mismatched`.
 
 ## Suggested Next
 
-- Execute plan Step 6.3 as a bounded AArch64 packet that consumes only the
-  owner-attached stable-key facts and preserves the unchanged supported
-  incoming-expression expectations.
+- Execute Step 6.2 at the prepared owner/publication boundary: trace the
+  unchanged supported fixture publication path, establish concrete semantic
+  origin from complete edge semantics, and prove incomplete publication still
+  fails closed.
+- Preserve the uncommitted Step 6.3 owner-only consumer as blocked candidate
+  work. After Step 6.2 focused proof is green, rerun that candidate unchanged
+  against the exact backend subset.
 
 ## Watchouts
 
-- Step 6.3 must remove Route 5 and target-local authority reconstruction rather
-  than treating their current green integration behavior as authority proof.
-- Preserve direct publication source ID/name pairs on composed dependency
-  facts; only the stable routed key identifies a scalar dependency.
-- Immediate operands have no stable prepared value identity and therefore do
-  not independently receive routing facts; the focused immediate contract
-  authorizes only a complete prepared publication's named destination where
-  semantically applicable.
-- Ideas 713 and 705 remain blocked until idea 716 completes its handback.
+- Do not restore Route 5 or target-local fallback to mask the missing prepared
+  semantic origin; the owner-only consumer is correctly fail closed.
+- Do not rewrite supported integration vectors. The blocker is upstream of the
+  AArch64 consumer and outside this packet's owned files.
+- Do not treat attachment alone as semantic authority: a supported positive
+  must carry a concrete publication semantic origin derived from its complete
+  prepared edge contract.
 
 ## Proof
 
 - Ran `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' > test_after.log 2>&1` exactly as delegated.
-- Build passed and all 324/324 backend tests passed, including the focused
-  destination-consistency, routed-operand, all-edge invariance, prepared-owner
-  attachment, and unchanged AArch64 integration contracts. The delegated
-  proof was sufficient; proof log: `test_after.log`.
+- Build passed, but the delegated backend subset failed at the unchanged
+  `backend_aarch64_instruction_dispatch`,
+  `backend_aarch64_current_block_join_routing`, and
+  `backend_aarch64_current_block_fixture_policy_attachment` contracts because
+  owner facts with `Unknown` semantic origin are rejected. Proof log:
+  `test_after.log`.

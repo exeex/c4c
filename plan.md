@@ -178,11 +178,11 @@ Completion check:
   collection and the stable-key query consumes it without an externally
   supplied vector; focused build and authority/lifetime proof are green.
 
-### Step 6.2: Repair complete invariant owner-prepared fact coverage
+### Step 6.2: Establish complete publication semantic origin at the prepared owner
 
-Goal: prove that the owner-attached artifact covers the unchanged
-incoming-expression contract from complete prepared edge semantics before any
-target consumes it.
+Goal: ensure every unchanged supported incoming-expression fixture publishes
+complete, non-`Unknown` semantic origin into the owner-attached artifact before
+any target consumes it.
 
 Primary targets:
 `tests/backend/bir/backend_prealloc_current_block_incoming_expression_authority_test.cpp`
@@ -190,6 +190,11 @@ and the prepared-lookup focused contracts extended by Step 6.1.
 
 Actions:
 
+- Trace the prepared publication path used by the unchanged supported AArch64
+  fixtures and identify why otherwise complete owner-attached facts retain
+  `Unknown` semantic origin.
+- Publish semantic origin from the prepared edge/publication contract at the
+  owner boundary; do not infer or patch it in AArch64 consumption.
 - Restore or prove the transfer-level destination invariant: an aggregate
   prepared transfer whose result disagrees with its selected edge or
   publication must fail closed rather than establish semantic origin.
@@ -206,13 +211,17 @@ Actions:
 - Keep fact preparation at the `PreparedFunctionLookups` owner boundary and
   keep Route 5, AArch64 inputs, result-name matching, and target-local scans out
   of authority construction.
+- Re-run the unchanged supported fixture matrix and prove that its positive
+  owner facts have a concrete semantic origin while missing or genuinely
+  incomplete publication remains fail closed.
 
 Completion check:
 
-- Focused authority and prepared-lookup contracts prove complete coverage for
-  the unchanged supported incoming-expression cases and fail closed for
-  incomplete, inconsistent, unrelated, ambiguous, and mismatched facts; no
-  expectation rewrite or testcase-shaped authority synthesis is used.
+- Focused authority and prepared-lookup contracts prove non-`Unknown`
+  publication semantic origin and complete coverage for every unchanged
+  supported incoming-expression case, while incomplete, inconsistent,
+  unrelated, ambiguous, and mismatched facts fail closed; no expectation
+  rewrite or testcase-shaped authority synthesis is used.
 
 ### Step 6.3: Adopt bounded AArch64 consumption
 
