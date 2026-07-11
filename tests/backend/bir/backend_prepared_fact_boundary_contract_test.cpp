@@ -158,6 +158,71 @@ int current_block_routing_facts_are_edge_bound_and_unique() {
   return 0;
 }
 
+int result_level_key_loses_predecessor_before_destination_identity() {
+  const prepare::PreparedCurrentBlockJoinRoutingFact first{
+      .status = prepare::PreparedFactBoundaryStatus::Available,
+      .predecessor_label = c4c::BlockLabelId{1},
+      .successor_label = c4c::BlockLabelId{9},
+      .destination_value_id = prepare::PreparedValueId{10},
+      .destination_value_name = c4c::ValueNameId{10},
+      .source_value_id = prepare::PreparedValueId{20},
+      .source_value_name = c4c::ValueNameId{20},
+      .routed_value_id = prepare::PreparedValueId{20},
+      .routed_value_name = c4c::ValueNameId{20},
+      .role = prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression,
+      .publication_semantic_origin =
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::PreparedJoinTransfer,
+  };
+  auto second = first;
+  second.predecessor_label = c4c::BlockLabelId{2};
+  second.destination_value_id = prepare::PreparedValueId{11};
+  second.destination_value_name = c4c::ValueNameId{11};
+  const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts{
+      first, second};
+
+  const auto select = [&](const auto& fact) {
+    return prepare::select_prepared_current_block_join_routing_fact(
+        facts,
+        fact.predecessor_label,
+        fact.successor_label,
+        fact.destination_value_id,
+        fact.destination_value_name,
+        fact.source_value_id,
+        fact.source_value_name,
+        fact.routed_value_id,
+        fact.routed_value_name,
+        fact.role);
+  };
+  if (!select(first) || !select(second)) {
+    return fail("baseline requires two independently valid edge-bound routing facts");
+  }
+
+  const auto same_result_level_key = [&](const auto& lhs, const auto& rhs) {
+    return lhs.routed_value_id == rhs.routed_value_id &&
+           lhs.routed_value_name == rhs.routed_value_name &&
+           lhs.role == rhs.role && lhs.successor_label == rhs.successor_label;
+  };
+  if (!same_result_level_key(first, second) ||
+      first.predecessor_label == second.predecessor_label ||
+      first.destination_value_id == second.destination_value_id) {
+    return fail("baseline fixture must share one result key across distinct edges");
+  }
+
+  const auto result_level_matches = std::count_if(
+      facts.begin(), facts.end(), [&](const auto& fact) {
+        return fact.status == prepare::PreparedFactBoundaryStatus::Available &&
+               fact.routed_value_id == first.routed_value_id &&
+               fact.routed_value_name == first.routed_value_name &&
+               fact.role == first.role &&
+               fact.successor_label == first.successor_label;
+      });
+  if (result_level_matches != 2) {
+    return fail("first lost identity is predecessor_label; destination identity is also unavailable");
+  }
+  return 0;
+}
+
 int public_headers_have_only_inventoried_compatibility_payloads() {
   // Step 1 inventory: these are legacy public compatibility/proof payloads.
   // The guard makes additions fail while their owning producer seams migrate.
@@ -207,6 +272,11 @@ int main() {
     return status;
   }
   if (const int status = current_block_routing_facts_are_edge_bound_and_unique();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          result_level_key_loses_predecessor_before_destination_identity();
       status != 0) {
     return status;
   }

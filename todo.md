@@ -8,20 +8,28 @@ Current Step Title: Establish the result-level versus edge-bound baseline
 
 ## Just Finished
 
-- None for the newly activated decomposition initiative.
+- Step 1 — added a registered prepared fact-boundary baseline with two
+  independently valid edge-bound routing facts sharing one result-level key.
+- The baseline proves the consumer key cannot distinguish the facts and names
+  `predecessor_label` as the first lost identity, followed by destination
+  identity, without changing backend selection or AArch64 integration behavior.
 
 ## Suggested Next
 
-- Establish a registered baseline that reproduces one result mapping to
-  multiple edge-bound prepared facts without changing backend selection.
+- Execute Step 2 by extracting separate registered probes for parallel
+  predecessors, parallel destinations, wrong successor, and duplicate semantic
+  edge outcomes.
 
 ## Watchouts
 
-- Idea 705 remains open and parked at Step 2.3b.3.
-- Do not use the AArch64 integration test as the only probe and do not collapse
-  multiple edge facts in the target.
+- Preserve the Step 1 distinction: result id/name, role, and current successor
+  are insufficient once predecessor/destination diverge.
+- Keep the existing AArch64 routing test as integration proof only.
 
 ## Proof
 
-- Pending supervisor-delegated Step 1 baseline proof; preserve canonical output
-  in `test_after.log` when execution begins.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
+- Result: build passed; all 309/309 backend tests passed. The registered
+  `backend_prepared_fact_boundary_contract` contains the focused baseline.
+  Canonical proof log: `test_after.log`.
