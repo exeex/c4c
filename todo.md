@@ -8,18 +8,22 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned local address
-slot maps.
+Completed Step 3 import-boundary contraction for the memory-owned local slot
+type map.
 
-- Removed the `BirFunctionLowerer` compatibility aliases for
-  `LocalAddressSlots` and `LocalSlotAddressSlots`.
-- Updated the affected memory adapter signatures and lowerer member
-  declarations to use the memory-owned `c4c::backend::LocalAddressSlots` and
-  `c4c::backend::LocalSlotAddressSlots` declarations directly from
+- Removed the `BirFunctionLowerer::LocalSlotTypes` compatibility alias from
+  `src/backend/bir/lir_to_bir/lowering.hpp`.
+- Updated lowerer declarations/member state in the owned header to use
+  `c4c::backend::LocalSlotTypes` directly.
+- Updated the remaining owned memory-local helper signatures in
+  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` from
+  `BirFunctionLowerer::LocalSlotTypes` to the memory-owned `LocalSlotTypes`.
+- Updated the remaining call-lowering request field in
+  `src/backend/bir/lir_to_bir/calling.cpp` to use
+  `c4c::backend::LocalSlotTypes` directly.
+- `rg -n "BirFunctionLowerer::LocalSlotTypes|using LocalSlotTypes"
+  src/backend/bir/lir_to_bir` now reports only the memory-owned declaration in
   `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-- Did not change pointer value side-table behavior, BIR route records,
-  prepared data, target/MIR paths, runtime behavior, tests, expectations,
-  allowlists, or public BIR query APIs.
 
 ## Suggested Next
 
@@ -28,15 +32,10 @@ family that still routes memory-owned declarations through `BirFunctionLowerer`.
 
 ## Watchouts
 
-- This packet intentionally did not edit string-authority classification data;
-  the declarations were already memory-owned and this slice only removed
-  lowerer re-export/import coupling.
-- `LocalAddressSlots` and `LocalSlotAddressSlots` are now referenced
-  through the memory-owned `c4c::backend` declarations instead of through
-  `BirFunctionLowerer` aliases.
-- Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
-  `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
-  declarations.
+- This packet intentionally only contracted the `LocalSlotTypes` alias family;
+  it did not change local slot semantics, BIR route records, prepared data,
+  target/MIR paths, runtime behavior, tests, expectations, unsupported markers,
+  allowlists, or public BIR query APIs.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,
   runtime behavior, or harness policy.

@@ -509,7 +509,7 @@ std::optional<bool> try_lower_byte_array_base_store(
     bir::TypeKind value_type,
     const bir::Value& value,
     const LocalPointerArrayBaseMap& local_pointer_array_bases,
-    const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
+    const LocalSlotTypes& local_slot_types,
     std::vector<bir::LocalSlot>* local_slots,
     std::vector<bir::Inst>* lowered_insts) {
   if (value_type == bir::TypeKind::Ptr) {
@@ -567,7 +567,7 @@ std::optional<bool> try_lower_byte_array_base_load(
     std::string_view ptr_name,
     bir::TypeKind value_type,
     const LocalPointerArrayBaseMap& local_pointer_array_bases,
-    const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
+    const LocalSlotTypes& local_slot_types,
     std::vector<bir::LocalSlot>* local_slots,
     std::vector<bir::Inst>* lowered_insts) {
   if (value_type == bir::TypeKind::Ptr) {

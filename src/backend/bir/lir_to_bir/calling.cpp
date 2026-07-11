@@ -464,7 +464,7 @@ struct Aapcs64VariadicHfaCarrierExpansionRequest {
   const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts;
   const BirFunctionLowerer::AggregateValueAliasMap& aggregate_value_aliases;
   const BirFunctionLowerer::LocalAggregateSlotMap& local_aggregate_slots;
-  const BirFunctionLowerer::LocalSlotTypes& local_slot_types;
+  const c4c::backend::LocalSlotTypes& local_slot_types;
   const std::vector<c4c::codegen::lir::LirCallArg>& structured_args;
 };
 
