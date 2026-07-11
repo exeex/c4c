@@ -1,39 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
+Source Idea Path: ideas/open/713_current_block_edge_bound_routing_consumption_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2.3b.2
-Current Step Title: Publish uniquely edge-bound prepared routing authority
+Current Step ID: 1
+Current Step Title: Establish the result-level versus edge-bound baseline
 
 ## Just Finished
 
-- Step 2.3b.2 — published pointer-free prepared routing facts bound to routing
-  role, predecessor, successor, destination, source, routed value, and semantic
-  publication origin after move/publication/freshness/evidence authority is
-  available.
-- Added a unique edge-bound selector: missing facts fail closed, same-value
-  facts from another predecessor/successor/destination mismatch, and duplicate
-  exact semantic facts are ambiguous. Prepared `JoinTransfer` uniqueness no
-  longer depends on pointer identity.
+- None for the newly activated decomposition initiative.
 
 ## Suggested Next
 
-- Execute Step 2.3b.3 to remove the Route 5 public compatibility payload and
-  make the bounded AArch64 consumer read only these selected prepared routing
-  facts.
+- Establish a registered baseline that reproduces one result mapping to
+  multiple edge-bound prepared facts without changing backend selection.
 
 ## Watchouts
 
-- Step 2.3b.3 must query the edge-bound routing facts; do not recreate
-  function-wide publication/`JoinTransfer` scans or target-generated evidence.
+- Idea 705 remains open and parked at Step 2.3b.3.
+- Do not use the AArch64 integration test as the only probe and do not collapse
+  multiple edge facts in the target.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- Result: build passed; all 309/309 backend tests passed. The registered
-  `backend_prepared_fact_boundary_contract` covers parallel same-source, wrong
-  successor, wrong destination, duplicate semantic routing, and the Step
-  2.3b.1 mismatched named-producer boundary. Canonical proof log:
-  `test_after.log`.
+- Pending supervisor-delegated Step 1 baseline proof; preserve canonical output
+  in `test_after.log` when execution begins.
