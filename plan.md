@@ -218,18 +218,94 @@ Completion check:
 Goal: make common placement queries consume prepared MIR views without
 reconstructing prealloc decisions.
 
+#### Step 3.1: Complete the prepared block-entry publication payload
+
+Goal: make `PreparedCurrentBlockEntryPublication` the complete stable semantic
+authority required by the common block-entry publication identity contract
+before changing the common adapter.
+
 Actions:
 
-- Replace route-backed placement, publication, home, move, freshness, frame,
-  call-plan, and control lookups with existing prepared views.
-- Require complete, uniquely identity-bound prepared authority.
-- Remove common-layer route agreement and discovery fallbacks.
-- Add focused available and fail-closed placement proof.
+- Enrich `PreparedCurrentBlockEntryPublication` at the prealloc/prepared
+  producer boundary with the stable successor and destination semantics that
+  the common identity contract genuinely requires: successor label text and
+  ID, destination value name text and ID, destination value ID and type, and
+  the prepared publication bundle instruction index, alongside explicit
+  result/proof status.
+- Bind the complete payload to one prepared block-entry publication and its
+  destination home. Reject missing, incomplete, ambiguous, unavailable, or
+  mismatched names, labels, homes, publication bundles, types, and attribution
+  rather than returning a partially authoritative result.
+- Do not expose, retain, or reconstruct `bir::Block*`, `bir::Inst*`,
+  `bir::PhiInst*`, or `bir::Value*` identity as prepared or common authority.
+  Pointer-bearing proof inputs may remain only as bounded producer
+  compatibility evidence while this substep establishes the stable payload;
+  they must not become fields in the completed result.
+- Keep this substep limited to the prepared producer/result and focused
+  producer contracts. Do not change the common adapter, AArch64 caller,
+  target materialization policy, or Route 5 families here.
+- Add focused producer proof for one complete, uniquely bound publication and
+  fail-closed missing, incomplete, ambiguous/unavailable, and mismatched
+  successor/destination payloads.
 
 Completion check:
 
-- Placement queries forward prepared-owned authority, common MIR performs no
-  route analysis or authority reconstruction, and negative inputs fail closed.
+- `PreparedCurrentBlockEntryPublication` carries every stable successor,
+  destination, type, name, ID, status, and instruction-position field needed
+  by the common semantic identity contract. Focused producer proof is green,
+  and no raw BIR pointer is part of the prepared authority claim.
+
+#### Step 3.2: Replace the Route 4 common adapter and adapt AArch64 compatibility
+
+Dependency: begin only after Step 3.1's complete prepared payload and focused
+producer proof are green.
+
+Actions:
+
+- Replace `find_bir_block_entry_publication_identity`'s Route 4 index build,
+  validation, and raw-BIR reconstruction with a narrow adapter over the
+  complete `PreparedCurrentBlockEntryPublication` result.
+- Redefine the common result around producer-owned stable semantics: explicit
+  status, successor label text/ID, destination value ID/name text/name ID/type,
+  and publication instruction index. Retire obsolete request and result fields
+  whose contract is `bir::Block*`, `bir::Inst*`, `bir::PhiInst*`, or
+  `bir::Value*` identity; do not synthesize pointer identity from an index.
+- Fail closed for every non-complete or mismatched prepared status without
+  Route 4 discovery, agreement fallback, successor-block copying, instruction
+  lookup, or PHI inspection in common MIR.
+- Adapt only the signature/result compatibility in the AArch64 block-entry
+  publication caller. Preserve its existing materialization decisions and do
+  not move target policy into common MIR or expand into ideas 708-710.
+- Add focused common-query and directly affected AArch64 positive/negative
+  proof, then ratchet Route 4 vocabulary only for this fully migrated family.
+  Do not include Route 5 edge/join migration in this packet.
+
+Completion check:
+
+- The common block-entry publication adapter consumes only the complete
+  prepared result, exposes stable semantic identity without raw BIR pointers,
+  and performs no Route 4 reconstruction. The AArch64 caller has only bounded
+  interface compatibility changes, focused proof is green, and target
+  materializer policy remains deferred to ideas 708-710.
+
+#### Step 3.3: Continue remaining prepared-authority families
+
+Actions:
+
+- Replace other route-backed placement, publication, home, move, freshness,
+  frame, call-plan, and control lookups with their existing complete prepared
+  views in separately bounded packets.
+- Require complete, uniquely identity-bound prepared authority and remove
+  common-layer route agreement and discovery fallbacks.
+- Add focused available and fail-closed placement proof for each family.
+- Keep Route 5 edge/join migration separate from Steps 3.1 and 3.2 and do not
+  combine it with the block-entry publication packet.
+
+Completion check:
+
+- Remaining placement queries forward prepared-owned authority, common MIR
+  performs no route analysis or authority reconstruction, and negative inputs
+  fail closed.
 
 ### Step 4: Adapt target-facing callers without migrating materializers
 
