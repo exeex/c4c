@@ -8,35 +8,34 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned aggregate
-array extent type.
+Completed Step 3 import-boundary contraction for the memory-owned local slot
+address type.
 
-- Removed the `BirFunctionLowerer::AggregateArrayExtent` compatibility alias
+- Removed the `BirFunctionLowerer::LocalSlotAddress` compatibility alias
   from `src/backend/bir/lir_to_bir/lowering.hpp`.
 - Updated lowerer declarations in the owned header to use
-  `c4c::backend::AggregateArrayExtent` directly.
-- Updated owned memory adapter definitions in
-  `src/backend/bir/lir_to_bir/memory/addressing.cpp` and
-  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` to use the memory-owned
-  `AggregateArrayExtent` declaration directly.
+  `c4c::backend::LocalSlotAddress` directly.
+- Left adapter-local `.cpp` definitions unchanged because they already use the
+  memory-owned type inside the backend namespace and do not depend on the
+  removed lowerer alias.
 
 ## Suggested Next
 
-Continue Step 3 with the next supervisor-selected adapter-local state alias
-family that still routes memory-owned declarations through `BirFunctionLowerer`,
-or move to review if no such alias family remains in the selected memory
-adapter scope.
+Continue Step 3 with the next supervisor-selected import-boundary alias family
+still re-exported by `BirFunctionLowerer`, or move to review if the selected
+memory adapter scope has no remaining local memory provenance aliases to
+contract.
 
 ## Watchouts
 
-- This packet intentionally only contracted the aggregate array extent type
+- This packet intentionally only contracted the local slot address type
   alias; it did not change GEP semantics, BIR route records, prepared data,
   target/MIR paths, runtime behavior, tests, expectations, unsupported markers,
   allowlists, or public BIR query APIs.
 - `BirFunctionLowerer` no longer re-exports `LocalSlotTypes`,
   `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
-  `LocalAggregateGepTarget`, or `AggregateArrayExtent`.
-- `rg 'BirFunctionLowerer::AggregateArrayExtent|using AggregateArrayExtent = c4c::backend::AggregateArrayExtent' src/backend/bir/lir_to_bir`
+  `LocalAggregateGepTarget`, `AggregateArrayExtent`, or `LocalSlotAddress`.
+- `rg 'BirFunctionLowerer::LocalSlotAddress|using LocalSlotAddress = c4c::backend::LocalSlotAddress' src/backend/bir/lir_to_bir`
   returns no matches after this packet.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,

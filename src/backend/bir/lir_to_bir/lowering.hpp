@@ -341,7 +341,6 @@ class BirFunctionLowerer {
   using GlobalObjectPointerMap = c4c::backend::GlobalObjectPointerMap;
   using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
   using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
-  using LocalSlotAddress = c4c::backend::LocalSlotAddress;
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
   using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet;
 
@@ -1090,17 +1089,17 @@ class BirFunctionLowerer {
       const LoweredReturnInfo& return_info,
       std::vector<bir::Inst>* lowered_insts);
   bool try_lower_local_slot_pointer_store(
-      const LocalSlotAddress& local_slot_ptr,
+      const c4c::backend::LocalSlotAddress& local_slot_ptr,
       bir::TypeKind value_type,
       const bir::Value& value,
       const c4c::backend::LocalSlotTypes& local_slot_types,
       std::vector<bir::Inst>* lowered_insts);
   bool maybe_publish_local_byte_storage_covering_extent(
-      const LocalSlotAddress& local_slot_ptr,
+      const c4c::backend::LocalSlotAddress& local_slot_ptr,
       std::size_t access_size);
   bool try_lower_local_slot_pointer_load(
       std::string_view result_name,
-      const LocalSlotAddress& local_slot_ptr,
+      const c4c::backend::LocalSlotAddress& local_slot_ptr,
       bir::TypeKind value_type,
       const c4c::backend::LocalSlotTypes& local_slot_types,
       const c4c::backend::LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
