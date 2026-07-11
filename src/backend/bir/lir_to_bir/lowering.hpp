@@ -337,7 +337,6 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
 
   struct CompareExpr {
@@ -1482,7 +1481,7 @@ class BirFunctionLowerer {
   DynamicGlobalScalarArrayMap dynamic_global_scalar_arrays_;
   c4c::backend::GlobalObjectPointerMap global_object_pointer_slots_;
   c4c::backend::GlobalAddressIntMap global_address_ints_;
-  GlobalObjectAddressIntMap global_object_address_ints_;
+  c4c::backend::GlobalObjectAddressIntMap global_object_address_ints_;
   std::vector<bir::Inst> hoisted_alloca_scratch_;
 };
 

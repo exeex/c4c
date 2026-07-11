@@ -9,26 +9,28 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 ## Just Finished
 
 Completed Step 3 import-boundary contraction for the memory-owned
-global-address-int side-table map type.
+global-object-address-int side-table map type.
 
-- Removed the `BirFunctionLowerer::GlobalAddressIntMap` compatibility alias
+- Removed the `BirFunctionLowerer::GlobalObjectAddressIntMap` compatibility alias
   from `src/backend/bir/lir_to_bir/lowering.hpp`.
-- Updated lowerer declarations and the lowerer member in the owned header to
-  use `c4c::backend::GlobalAddressIntMap` directly.
-- Updated the matching memory-owned local-slot definitions to use
-  `c4c::backend::GlobalAddressIntMap` directly.
+- Updated the owned lowerer member to use
+  `c4c::backend::GlobalObjectAddressIntMap` directly.
+- Left the memory-owned alias definition in
+  `src/backend/bir/lir_to_bir/memory/memory_types.hpp` as the direct backend
+  type owner.
 
 ## Suggested Next
 
 Continue Step 3 with the next supervisor-selected import-boundary alias family
 still re-exported by `BirFunctionLowerer`, one state family at a time. The
-remaining visible candidates include object-address-int maps or global address
-slots, which should stay supervisor-selected because this packet intentionally
-did not widen past the global-address-int side-table boundary.
+remaining visible candidate in this nearby memory/provenance cluster is global
+address slots, which should stay supervisor-selected because this packet
+intentionally did not widen past the global-object-address-int side-table
+boundary.
 
 ## Watchouts
 
-- This packet intentionally only contracted the global-address-int side-table
+- This packet intentionally only contracted the global-object-address-int side-table
   map type alias; it did not change pointer provenance semantics, BIR route
   records, prepared data, target/MIR paths, runtime behavior, tests,
   expectations, unsupported markers, allowlists, or public BIR query APIs.
@@ -36,11 +38,11 @@ did not widen past the global-address-int side-table boundary.
   `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
   `LocalAggregateGepTarget`, `AggregateArrayExtent`, `LocalSlotAddress`, or
   `LocalAggregateFieldSet`, `GlobalPointerMap`, or
-  `GlobalObjectPointerMap`, or `GlobalAddressIntMap`.
-- `rg 'BirFunctionLowerer::GlobalAddressIntMap|using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap|\\bGlobalAddressIntMap\\b' src/backend/bir/lir_to_bir/lowering.hpp src/backend/bir/lir_to_bir/memory/local_slots.cpp src/backend/bir/lir_to_bir/memory/memory_types.hpp src/backend/bir/lir_to_bir/memory/memory_helpers.hpp`
+  `GlobalObjectPointerMap`, or `GlobalAddressIntMap`, or
+  `GlobalObjectAddressIntMap`.
+- `rg 'BirFunctionLowerer::GlobalObjectAddressIntMap|using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap|\\bGlobalObjectAddressIntMap\\b' src/backend/bir/lir_to_bir/lowering.hpp src/backend/bir/lir_to_bir/memory/memory_types.hpp src/backend/bir/lir_to_bir/memory/memory_helpers.hpp`
   returns only the memory-owned alias definition in `memory_types.hpp` plus
-  direct `c4c::backend::GlobalAddressIntMap` references in lowerer declarations,
-  the owned lowerer member, and matching local-slot definitions.
+  the direct `c4c::backend::GlobalObjectAddressIntMap` lowerer member.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,
   runtime behavior, or harness policy.
@@ -48,9 +50,10 @@ did not widen past the global-address-int side-table boundary.
 - Do not widen `memory_helpers.hpp`; it should remain pure layout/projection
   helper declarations, not a home for stateful lowerer policy.
 - Do not move `GlobalAddress`, `GlobalInfo`, `GlobalTypes`, function-symbol
-  lookup, known-global-address authority, `GlobalObjectAddressIntMap`, or
-  `GlobalAddressSlots` as part of this narrowing packet; those are separate
-  import-boundary families.
+  lookup, or known-global-address authority as part of this cleanup family.
+  Treat `GlobalAddressSlots` as a separate supervisor-selected
+  import-boundary family, not as part of this completed object-address-int
+  packet.
 - Do not touch canonical BIR memory route records or query APIs in
   `bir.hpp`/`bir.cpp`; the selected target should compile without any public
   BIR schema or downstream prepared/target/MIR edits.
