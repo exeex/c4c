@@ -83,6 +83,7 @@ def default_state() -> dict:
         "test_baseline_counter": 0,
         "test_baseline_limit": DEFAULT_TEST_BASELINE_LIMIT,
         "test_baseline_regex": "",
+        "test_baseline_exclude_regex": "",
         "baseline_review_pending": False,
     }
 
@@ -193,6 +194,8 @@ def load_state(path: Path) -> dict | None:
         data["test_baseline_limit"] = DEFAULT_TEST_BASELINE_LIMIT
     if "test_baseline_regex" not in data:
         data["test_baseline_regex"] = ""
+    if "test_baseline_exclude_regex" not in data:
+        data["test_baseline_exclude_regex"] = ""
     if "baseline_review_pending" not in data:
         data["baseline_review_pending"] = data.get("baseline_sanity_pending", False)
     return data
@@ -208,6 +211,7 @@ def save_state(path: Path, state: dict) -> None:
         "test_baseline_counter": state["test_baseline_counter"],
         "test_baseline_limit": state["test_baseline_limit"],
         "test_baseline_regex": state["test_baseline_regex"],
+        "test_baseline_exclude_regex": state["test_baseline_exclude_regex"],
         "baseline_review_pending": state["baseline_review_pending"],
     }
     write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -301,12 +305,16 @@ def parse_baseline_summary(text: str) -> dict:
     }
 
 
-def format_baseline_log(summary: str, baseline_regex: str) -> str:
+def format_baseline_log(summary: str, baseline_regex: str, baseline_exclude_regex: str) -> str:
     baseline_scope = baseline_regex if baseline_regex else "<full-suite>"
+    baseline_exclude_scope = (
+        baseline_exclude_regex if baseline_exclude_regex else "<none>"
+    )
     header = (
         f"Baseline Commit: {current_head_hash()}\n"
         f"Baseline Subject: {current_head_subject()}\n\n"
         f"Baseline Regex: {baseline_scope}\n\n"
+        f"Baseline Exclude Regex: {baseline_exclude_scope}\n\n"
     )
     body = summary if summary.endswith("\n") else summary + "\n"
     return header + body
@@ -350,7 +358,11 @@ def run_command(command: list[str], *, check: bool) -> subprocess.CompletedProce
     )
 
 
-def refresh_test_baseline_candidate(baseline_path: Path, baseline_regex: str) -> Path:
+def refresh_test_baseline_candidate(
+    baseline_path: Path,
+    baseline_regex: str,
+    baseline_exclude_regex: str,
+) -> Path:
     root = repo_root()
     build_dir = root / "build"
     candidate_path = baseline_candidate_path(baseline_path)
@@ -362,12 +374,17 @@ def refresh_test_baseline_candidate(baseline_path: Path, baseline_regex: str) ->
     ctest_command = ["ctest", "--test-dir", str(build_dir), "-j", "--output-on-failure"]
     if baseline_regex:
         ctest_command.extend(["-R", baseline_regex])
+    if baseline_exclude_regex:
+        ctest_command.extend(["-E", baseline_exclude_regex])
     ctest = run_command(ctest_command, check=False)
     combined = ctest.stdout
     if ctest.stderr:
         combined = combined + ("\n" if combined and not combined.endswith("\n") else "") + ctest.stderr
     summary = capture_ctest_summary(combined)
-    write_text(candidate_path, format_baseline_log(summary, baseline_regex))
+    write_text(
+        candidate_path,
+        format_baseline_log(summary, baseline_regex, baseline_exclude_regex),
+    )
     return candidate_path
 
 
@@ -448,6 +465,15 @@ def cmd_set_baseline_regex(args) -> int:
     return 0
 
 
+def cmd_set_baseline_exclude_regex(args) -> int:
+    state = ensure_state(args.todo, args.state)
+    state["test_baseline_exclude_regex"] = args.test_baseline_exclude_regex
+    save_state(args.state, state)
+    if args.todo.exists():
+        sync_todo(args.todo, state)
+    return 0
+
+
 def cmd_accept_baseline(args) -> int:
     state = ensure_state(args.todo, args.state)
     candidate_path = baseline_candidate_path(args.baseline)
@@ -502,7 +528,9 @@ def cmd_post_commit(args) -> int:
         )
         if needs_new_baseline:
             candidate_path = refresh_test_baseline_candidate(
-                args.baseline, state["test_baseline_regex"]
+                args.baseline,
+                state["test_baseline_regex"],
+                state["test_baseline_exclude_regex"],
             )
             archive_baseline_candidate_snapshot(
                 candidate_path, current_head_hash()
@@ -563,6 +591,12 @@ def build_parser() -> argparse.ArgumentParser:
     set_baseline_regex = subparsers.add_parser("set-baseline-regex")
     set_baseline_regex.add_argument("--test-baseline-regex", required=True)
     set_baseline_regex.set_defaults(func=cmd_set_baseline_regex)
+
+    set_baseline_exclude_regex = subparsers.add_parser("set-baseline-exclude-regex")
+    set_baseline_exclude_regex.add_argument(
+        "--test-baseline-exclude-regex", required=True
+    )
+    set_baseline_exclude_regex.set_defaults(func=cmd_set_baseline_exclude_regex)
 
     accept_baseline = subparsers.add_parser("accept-baseline")
     accept_baseline.set_defaults(func=cmd_accept_baseline)
