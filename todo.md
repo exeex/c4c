@@ -83,5 +83,5 @@ Todo-only selection packet; no build or test proof was required and no
 Recommended executor proof command for the next code packet:
 
 ```sh
-cmake --build --preset default --target backend_prepare_stack_layout_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build -R '^(backend_prepare_stack_layout|backend_riscv_prepared_edge_publication)$' --output-on-failure | tee test_after.log
+cmake --preset default -DC4C_ENABLE_PREPARED_FACT_TESTS=ON && cmake --build --preset default --target backend_prepare_stack_layout_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build -R '^(backend_prepare_stack_layout|backend_riscv_prepared_edge_publication)$' --output-on-failure | tee test_after.log
 ```
