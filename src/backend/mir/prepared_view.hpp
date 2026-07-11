@@ -10,6 +10,7 @@
 #include "../../target_profile.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -156,6 +157,67 @@ struct PreparedMirCoreComparisonReport {
   [[nodiscard]] bool equal() const;
 };
 
+enum class PreparedMirDirectEdgePublicationSourceQueryStatus {
+  Available,
+  MissingFunctionView,
+  MissingBlock,
+  MissingLookups,
+  MissingValueLocations,
+  MissingEdgePublicationLookups,
+  MissingSuccessorLabel,
+};
+
+enum class PreparedMirDirectEdgePublicationSourceStatus {
+  Available,
+  MissingPublication,
+  MissingSelectedFreshness,
+  AmbiguousSourceFreshness,
+  InvalidSourceFreshness,
+  UnsupportedSourceHome,
+  UnsupportedDestinationHome,
+  UnsupportedMove,
+  UnsupportedSource,
+};
+
+struct PreparedMirDirectEdgePublicationSourceView {
+  PreparedMirDirectEdgePublicationSourceStatus status =
+      PreparedMirDirectEdgePublicationSourceStatus::MissingPublication;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  prepare::PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<prepare::PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  prepare::PreparedValueHomeKind source_home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedValueHomeKind destination_home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedMoveStorageKind destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
+  std::optional<std::string> source_register_name;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::int32_t> source_immediate_i32;
+  std::optional<std::string> destination_register_name;
+  bool immediate_source = false;
+  prepare::PreparedValueFreshnessQueryStatus source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::size_t source_freshness_candidate_count = 0;
+  prepare::PreparedValueFreshnessUseKind freshness_use_kind =
+      prepare::PreparedValueFreshnessUseKind::Unknown;
+  prepare::PreparedValueFreshnessSourceKind freshness_source_kind =
+      prepare::PreparedValueFreshnessSourceKind::Unknown;
+  prepare::PreparedValueFreshnessProofKind freshness_proof_kind =
+      prepare::PreparedValueFreshnessProofKind::Unknown;
+  prepare::PreparedValueFreshnessSourceRank freshness_rank =
+      prepare::PreparedValueFreshnessSourceRank::None;
+};
+
+struct PreparedMirDirectEdgePublicationSourceQuery {
+  PreparedMirDirectEdgePublicationSourceQueryStatus status =
+      PreparedMirDirectEdgePublicationSourceQueryStatus::MissingFunctionView;
+  std::vector<PreparedMirDirectEdgePublicationSourceView> sources;
+};
+
 class PreparedMirFunctionView {
  public:
   PreparedMirFunctionView() = default;
@@ -176,6 +238,8 @@ class PreparedMirFunctionView {
   [[nodiscard]] std::optional<PreparedMirInstructionCursor> instruction(
       std::size_t block_index,
       std::size_t instruction_index) const;
+  [[nodiscard]] PreparedMirDirectEdgePublicationSourceQuery
+  current_block_direct_edge_publication_sources(std::size_t block_index) const;
 
  private:
   friend class PreparedMirCoreView;

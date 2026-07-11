@@ -167,6 +167,72 @@ bool same_function_view_snapshot(const PreparedMirCoreFunctionViewSnapshot& lhs,
          same_snapshot_vector(lhs.blocks, rhs.blocks, same_block_snapshot);
 }
 
+PreparedMirDirectEdgePublicationSourceStatus direct_edge_source_status_from_prealloc(
+    prepare::PreparedEdgeCopySourceFactsStatus status) {
+  switch (status) {
+    case prepare::PreparedEdgeCopySourceFactsStatus::Available:
+      return PreparedMirDirectEdgePublicationSourceStatus::Available;
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingPublication:
+    case prepare::PreparedEdgeCopySourceFactsStatus::AmbiguousPublication:
+    case prepare::PreparedEdgeCopySourceFactsStatus::PublicationUnavailable:
+    case prepare::PreparedEdgeCopySourceFactsStatus::EdgeMismatch:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingPreparedLookups:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingDestinationValue:
+      return PreparedMirDirectEdgePublicationSourceStatus::MissingPublication;
+    case prepare::PreparedEdgeCopySourceFactsStatus::UnsupportedMove:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MoveEdgeMismatch:
+    case prepare::PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch:
+      return PreparedMirDirectEdgePublicationSourceStatus::UnsupportedMove;
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceValue:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer:
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess:
+    case prepare::PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
+      return PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceHome:
+      return PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSourceHome;
+    case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceFreshnessAuthority:
+      return PreparedMirDirectEdgePublicationSourceStatus::MissingSelectedFreshness;
+    case prepare::PreparedEdgeCopySourceFactsStatus::InvalidSourceFreshnessAuthority:
+      return PreparedMirDirectEdgePublicationSourceStatus::InvalidSourceFreshness;
+    case prepare::PreparedEdgeCopySourceFactsStatus::AmbiguousSourceFreshnessAuthority:
+      return PreparedMirDirectEdgePublicationSourceStatus::AmbiguousSourceFreshness;
+  }
+  return PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+}
+
+PreparedMirDirectEdgePublicationSourceQueryStatus direct_edge_query_status_from_prealloc(
+    prepare::PreparedCurrentBlockJoinParallelCopySourceStatus status) {
+  switch (status) {
+    case prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available:
+      return PreparedMirDirectEdgePublicationSourceQueryStatus::Available;
+    case prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::MissingNames:
+      return PreparedMirDirectEdgePublicationSourceQueryStatus::MissingLookups;
+    case prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations:
+      return PreparedMirDirectEdgePublicationSourceQueryStatus::MissingValueLocations;
+    case prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::
+        MissingEdgePublicationLookups:
+      return PreparedMirDirectEdgePublicationSourceQueryStatus::MissingEdgePublicationLookups;
+    case prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::MissingBlock:
+      return PreparedMirDirectEdgePublicationSourceQueryStatus::MissingBlock;
+    case prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::MissingSuccessorLabel:
+      return PreparedMirDirectEdgePublicationSourceQueryStatus::MissingSuccessorLabel;
+  }
+  return PreparedMirDirectEdgePublicationSourceQueryStatus::MissingLookups;
+}
+
+const prepare::PreparedRegallocFunction* find_regalloc_function(
+    const prepare::PreparedRegalloc& regalloc,
+    FunctionNameId function_name) {
+  for (const auto& function : regalloc.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 std::optional<PreparedMirInstructionCursor> PreparedMirFunctionView::instruction(
@@ -190,6 +256,98 @@ std::optional<PreparedMirInstructionCursor> PreparedMirFunctionView::instruction
       .instruction = &block_view.block->insts[instruction_index],
       .prepared_block = block_view.control_flow,
   };
+}
+
+PreparedMirDirectEdgePublicationSourceQuery
+PreparedMirFunctionView::current_block_direct_edge_publication_sources(
+    std::size_t block_index) const {
+  PreparedMirDirectEdgePublicationSourceQuery view_query;
+  if (!*this) {
+    view_query.status =
+        PreparedMirDirectEdgePublicationSourceQueryStatus::MissingFunctionView;
+    return view_query;
+  }
+  if (block_index >= entry_->blocks.size() ||
+      entry_->blocks[block_index].block == nullptr) {
+    view_query.status = PreparedMirDirectEdgePublicationSourceQueryStatus::MissingBlock;
+    return view_query;
+  }
+
+  const auto& block = entry_->blocks[block_index];
+  const auto* regalloc = find_regalloc_function(core_->module_->regalloc,
+                                                entry_->function_name);
+  const auto source_facts =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &core_->prepared_names(),
+              .regalloc = regalloc,
+              .value_locations = entry_->value_locations,
+              .value_home_lookups = &entry_->prepared_lookups.value_homes,
+              .edge_publications = &entry_->prepared_lookups.edge_publications,
+              .block = block.block,
+              .successor_label = block.block_label,
+          });
+  view_query.status = direct_edge_query_status_from_prealloc(source_facts.status);
+  if (source_facts.status !=
+      prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available) {
+    return view_query;
+  }
+
+  for (const auto& fact : source_facts.facts) {
+    PreparedMirDirectEdgePublicationSourceView source_view{
+        .status = direct_edge_source_status_from_prealloc(fact.status),
+    };
+    if (fact.destination_home == nullptr ||
+        fact.destination_home->kind != prepare::PreparedValueHomeKind::Register ||
+        !fact.destination_home->register_name.has_value()) {
+      source_view.status =
+          PreparedMirDirectEdgePublicationSourceStatus::UnsupportedDestinationHome;
+    }
+    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        (!fact.source_freshness_authority.has_value() ||
+         fact.source_freshness_authority->use_kind !=
+             prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource ||
+         fact.source_freshness_authority->source_kind !=
+             prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication ||
+         fact.source_freshness_authority->proof_kind !=
+             prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove ||
+         fact.source_freshness_authority->rank !=
+             prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication)) {
+      source_view.status =
+          PreparedMirDirectEdgePublicationSourceStatus::InvalidSourceFreshness;
+    }
+
+    if (source_view.status != PreparedMirDirectEdgePublicationSourceStatus::Available) {
+      view_query.sources.push_back(std::move(source_view));
+      continue;
+    }
+
+    source_view.predecessor_label = fact.predecessor_label;
+    source_view.successor_label = fact.successor_label;
+    source_view.destination_value_id = fact.destination_value_id;
+    source_view.destination_value_name = fact.destination_value_name;
+    source_view.source_value_id = fact.source_value_id;
+    source_view.source_value_name = fact.source_value_name;
+    source_view.source_home_kind = fact.source_home_kind;
+    source_view.destination_home_kind = fact.destination_home_kind;
+    source_view.destination_storage_kind = fact.destination_storage_kind;
+    source_view.destination_register_name = fact.destination_register_name;
+    source_view.immediate_source = fact.immediate_source;
+    source_view.source_freshness_status = fact.source_freshness_status;
+    source_view.source_freshness_candidate_count =
+        fact.source_freshness_authorities.size();
+    source_view.freshness_use_kind = fact.source_freshness_authority->use_kind;
+    source_view.freshness_source_kind = fact.source_freshness_authority->source_kind;
+    source_view.freshness_proof_kind = fact.source_freshness_authority->proof_kind;
+    source_view.freshness_rank = fact.source_freshness_authority->rank;
+    if (fact.source_home != nullptr) {
+      source_view.source_register_name = fact.source_home->register_name;
+      source_view.source_stack_offset_bytes = fact.source_home->offset_bytes;
+      source_view.source_immediate_i32 = fact.source_home->immediate_i32;
+    }
+    view_query.sources.push_back(std::move(source_view));
+  }
+  return view_query;
 }
 
 PreparedMirCoreView::PreparedMirCoreView(const prepare::PreparedBirModule& module)

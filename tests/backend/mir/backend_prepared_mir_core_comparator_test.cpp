@@ -104,6 +104,137 @@ prepare::PreparedBirModule make_fixture() {
   return module;
 }
 
+prepare::PreparedBirModule make_current_block_join_fixture(bool include_join_transfer) {
+  prepare::PreparedBirModule module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+  module.module.target_triple = "x86_64-test-c4c";
+
+  const auto function_name = module.names.function_names.intern("current_join_query");
+  const auto predecessor_label = module.names.block_labels.intern("current_join.pred");
+  const auto successor_label = module.names.block_labels.intern("current_join.succ");
+  const auto incoming_name = module.names.value_names.intern("%current.incoming");
+  const auto destination_name = module.names.value_names.intern("%current.destination");
+
+  const prepare::PreparedValueId incoming_id{101};
+  const prepare::PreparedValueId destination_id{103};
+
+  bir::Block block;
+  block.label = "current_join.succ";
+  block.label_id = successor_label;
+  block.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "current_join.pred",
+              .value =
+                  bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
+              .label_id = predecessor_label,
+          },
+      },
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(4),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+
+  bir::Function function;
+  function.name = "current_join_query";
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(block));
+  module.module.functions.push_back(std::move(function));
+
+  prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = successor_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+      .parallel_copy_bundles = {
+          prepare::PreparedParallelCopyBundle{
+              .predecessor_label = predecessor_label,
+              .successor_label = successor_label,
+              .steps = {
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  },
+              },
+          },
+      },
+  };
+  if (include_join_transfer) {
+    control_flow.join_transfers.push_back(prepare::PreparedJoinTransfer{
+        .function_name = function_name,
+        .join_block_label = successor_label,
+        .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+        .edge_transfers = {
+            prepare::PreparedEdgeValueTransfer{
+                .predecessor_label = predecessor_label,
+                .successor_label = successor_label,
+                .incoming_value =
+                    bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
+                .destination_value = bir::Value::named(
+                    bir::TypeKind::I32, "%current.destination"),
+            },
+        },
+    });
+  }
+  module.control_flow.functions.push_back(std::move(control_flow));
+
+  module.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = incoming_id,
+              .function_name = function_name,
+              .value_name = incoming_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"r10d"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = destination_id,
+              .function_name = function_name,
+              .value_name = destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"r12d"},
+          },
+      },
+      .move_bundles = {
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind =
+                  prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .source_parallel_copy_predecessor_label = predecessor_label,
+              .source_parallel_copy_successor_label = successor_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = incoming_id,
+                      .to_value_id = destination_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"r12d"},
+                      .source_parallel_copy_step_index = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+              },
+          },
+      },
+  });
+  module.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+  });
+  return module;
+}
+
 bool contains(std::string_view text, std::string_view needle) {
   return text.find(needle) != std::string_view::npos;
 }
@@ -204,11 +335,76 @@ int verify_core_view_structural_comparison() {
   return 0;
 }
 
+int verify_direct_edge_publication_source_freshness_view() {
+  const auto accepted_module = make_current_block_join_fixture(true);
+  const prepared::PreparedMirCoreView accepted_core(accepted_module);
+  const auto accepted_function = accepted_core.function_view("current_join_query");
+  if (!accepted_function.has_value()) {
+    return fail("expected current-block join fixture to produce a function view");
+  }
+  const auto accepted_query =
+      accepted_function->current_block_direct_edge_publication_sources(0);
+  if (accepted_query.status !=
+          prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available ||
+      accepted_query.sources.size() != 1 ||
+      accepted_query.sources.front().status !=
+          prepared::PreparedMirDirectEdgePublicationSourceStatus::Available ||
+      accepted_query.sources.front().source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      accepted_query.sources.front().source_freshness_candidate_count != 1 ||
+      accepted_query.sources.front().freshness_use_kind !=
+          prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource ||
+      accepted_query.sources.front().freshness_source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::DirectEdgePublication ||
+      accepted_query.sources.front().freshness_proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove ||
+      accepted_query.sources.front().freshness_rank !=
+          prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication ||
+      accepted_query.sources.front().source_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{101}} ||
+      accepted_query.sources.front().source_value_name == c4c::kInvalidValueName ||
+      accepted_query.sources.front().destination_value_id !=
+          prepare::PreparedValueId{103} ||
+      accepted_query.sources.front().destination_register_name !=
+          std::optional<std::string>{"r12d"} ||
+      accepted_query.sources.front().source_register_name !=
+          std::optional<std::string>{"r10d"}) {
+    return fail("expected selected direct-edge source freshness to become a typed view result");
+  }
+
+  const auto rejected_module = make_current_block_join_fixture(false);
+  const prepared::PreparedMirCoreView rejected_core(rejected_module);
+  const auto rejected_function = rejected_core.function_view("current_join_query");
+  if (!rejected_function.has_value()) {
+    return fail("expected rejected fixture to keep the core function view available");
+  }
+  const auto rejected_query =
+      rejected_function->current_block_direct_edge_publication_sources(0);
+  if (rejected_query.status !=
+          prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available ||
+      rejected_query.sources.size() != 1 ||
+      rejected_query.sources.front().status !=
+          prepared::PreparedMirDirectEdgePublicationSourceStatus::MissingPublication ||
+      rejected_query.sources.front().source_value_id.has_value() ||
+      rejected_query.sources.front().destination_value_id != prepare::PreparedValueId{0} ||
+      rejected_query.sources.front().destination_register_name.has_value() ||
+      rejected_query.sources.front().source_freshness_candidate_count != 0 ||
+      rejected_query.sources.front().freshness_use_kind !=
+          prepare::PreparedValueFreshnessUseKind::Unknown) {
+    return fail("expected rejected direct-edge source freshness to expose no lowering authority");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
   if (const int status = verify_core_view_canonical_dump(); status != 0) {
     return status;
   }
-  return verify_core_view_structural_comparison();
+  if (const int status = verify_core_view_structural_comparison(); status != 0) {
+    return status;
+  }
+  return verify_direct_edge_publication_source_freshness_view();
 }
