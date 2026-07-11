@@ -1,6 +1,6 @@
 # Prepared MIR Stack View Contract
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -39,8 +39,8 @@ Prepared/prealloc producer records and MIR prepared views.
 ## First Producer Migration
 
 Publish one explicit prepared stack authority view over existing contacts such
-as `PreparedStackLayout`, `PreparedFramePlanFunction`, `PreparedValueHome`,
-`PreparedMoveBundle`, `PreparedMoveResolution`,
+as `PreparedStackLayout`, `PreparedFramePlanFunction`,
+`PreparedValueHome`, `PreparedMoveBundle`, `PreparedMoveResolution`,
 `PreparedValueFreshnessAuthority`,
 `PreparedAggregateStackSourceAuthority`,
 `PreparedBranchStackLoadAuthority`, or prepared MIR direct-edge source views.
@@ -86,6 +86,26 @@ move-bundle, branch stack-load, or publication authority.
 - Route-numbered evidence remains historical or compatibility input, not
   executable authority.
 - Proof exists above route dumps for any executable behavior change.
+
+## Completion Notes
+
+Closed after the active runbook selected `PreparedBranchStackLoadAuthority` as
+the first prepared authority family, published the prepared producer/MIR view
+contract, and proved positive plus fail-closed behavior above route dumps.
+
+The completed contract is intentionally limited to branch stack-load authority.
+It is not prerequisite evidence for residual stack-destination fan-in work:
+ideas 647 and 655 remain parked until a separate positive prepared producer
+family proves destination value identity, destination home, storage kind,
+source value/home, move bundle or move resolution, aggregate stack source,
+ordered final-state authority, mutual-exclusion authority, explicit merge
+authority, or explicit destination authority as applicable.
+
+Route 4, Route 5, Route 7, `RouteIndexReferenceFacade`, route dumps,
+expectation rows, and allowlists remain compatibility or diagnostic evidence
+only. MIR authority for this closed slice comes from available
+`PreparedBranchStackLoadAuthority` rows and the prepared MIR branch stack-load
+authority view.
 
 ## Reviewer Reject Signals
 
