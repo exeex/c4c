@@ -1,28 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/690_call_abi_import_boundary_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Narrow Adapter-Owned Call ABI Helper Boundaries
+Current Step ID: Step 3
+Current Step Title: Narrow Call-Lowering Admission Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implementation packet for `plan.md` Step 2 completed. In
-`src/backend/bir/lir_to_bir/call_abi.cpp`, extracted the AArch64 HFA aggregate
-return semantic ABI decoration into one anonymous-namespace helper,
-`lower_aarch64_hfa_aggregate_return_info`. The helper takes the target profile
-and aggregate layout, detects AArch64 HFA return facts, computes the semantic
-`CallResultAbiInfo`, preserves the existing `register_count` decoration, and
-returns the corresponding `LoweredReturnInfo`. `lower_return_info_from_type`
-now delegates that HFA aggregate-return branch to the helper without changing
-the sret aggregate-return path.
+Step 3 implementation packet for `plan.md` Step 3 completed. In
+`src/backend/bir/lir_to_bir/calling.cpp`, extracted the local
+`apply_call_arg_metadata` lambda from `lower_call_inst` into an
+anonymous-namespace helper. The helper takes the structured call args,
+argument index, and `bir::CallArgAbiInfo`, then applies
+`aarch64_hfa_lane_count`, `aarch64_hfa_lane_index`, and
+`aarch64_stack_align_bytes` exactly as the local lambda did. `lower_call_inst`
+now passes `call.structured_args` at each existing metadata application site
+without changing call admission behavior.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2 by looking for another narrow
-adapter-owned signature, argument, return, byval, vararg, or HFA helper
-boundary inside `call_abi.cpp` that does not require changing `calling.cpp`,
+Next coherent packet: continue Step 3 with another narrow call-lowering
+admission-boundary cleanup inside `calling.cpp` only, if the supervisor
+selects one that does not require changing call ABI import helpers,
 prepared/prealloc files, target files, MIR files, tests, expectations,
 unsupported markers, allowlists, or runtime harness policy.
 
@@ -43,9 +43,12 @@ unsupported markers, allowlists, or runtime harness policy.
   `compute_function_return_abi`: `calling.cpp` and existing
   internal BIR handoff tests still reference that surface. Contracting those
   declarations would require a separate packet with explicit test ownership.
-- If the next helper-boundary packet exposes a need to edit
-  `calling.cpp`, prepared/prealloc files, target files, tests, or expectations,
-  stop instead of broadening this packet.
+- If the next helper-boundary packet exposes a need to edit call ABI import
+  helpers, prepared/prealloc files, target files, MIR files, tests, or
+  expectations, stop instead of broadening that packet.
+- For Step 3 cleanup, keep helper extraction behavior-preserving. Do not turn
+  admission cleanup into expectation changes, unsupported markers, or
+  testcase-shaped shortcuts.
 
 ## Proof
 
