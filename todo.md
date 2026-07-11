@@ -8,14 +8,14 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned local slot
-pointer values map.
+Completed Step 3 import-boundary contraction for the memory-owned local pointer
+slot map and indirect local pointer slot set.
 
-- Removed the `BirFunctionLowerer` compatibility alias for
-  `LocalSlotPointerValues`.
+- Removed the `BirFunctionLowerer` compatibility aliases for
+  `LocalPointerSlots` and `LocalIndirectPointerSlotSet`.
 - Updated the affected memory adapter signatures and lowerer member
-  declarations to use the memory-owned `c4c::backend::LocalSlotPointerValues`
-  declaration directly from
+  declarations to use the memory-owned `c4c::backend::LocalPointerSlots` and
+  `c4c::backend::LocalIndirectPointerSlotSet` declarations directly from
   `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
 - Did not change pointer value side-table behavior, BIR route records,
   prepared data, target/MIR paths, runtime behavior, tests, expectations,
@@ -23,16 +23,17 @@ pointer values map.
 
 ## Suggested Next
 
-Continue Step 3 with another adapter-local state alias family the supervisor
-selects for the same declaration-boundary cleanup.
+Continue Step 3 with the next supervisor-selected adapter-local state alias
+family that still routes memory-owned declarations through `BirFunctionLowerer`.
 
 ## Watchouts
 
 - This packet intentionally did not edit string-authority classification data;
   the declarations were already memory-owned and this slice only removed
   lowerer re-export/import coupling.
-- `LocalSlotPointerValues` is now referenced through the memory-owned
-  `c4c::backend` declaration instead of through a `BirFunctionLowerer` alias.
+- `LocalPointerSlots` and `LocalIndirectPointerSlotSet` are now referenced
+  through the memory-owned `c4c::backend` declarations instead of through
+  `BirFunctionLowerer` aliases.
 - Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.

@@ -963,7 +963,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
     bir::TypeKind value_type,
     const TypeDeclMap& type_decls,
     const LocalSlotTypes& local_slot_types,
-    const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+    const c4c::backend::LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
     const LocalAddressSlots& local_address_slots,
     const LocalSlotAddressSlots& local_slot_address_slots,
     const GlobalTypes& global_types,
