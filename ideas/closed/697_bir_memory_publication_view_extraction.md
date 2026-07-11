@@ -1,6 +1,6 @@
 # BIR Memory And Publication View Extraction
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -100,3 +100,40 @@ value-home authority, stack destination authority, or MIR authority.
   route-dump-only proof for executable behavior changes.
 - Reject retaining the old route-only failure mode behind a renamed
   publication helper.
+
+## Completion Note
+
+Closed after commit `879ad56be` completed the Route 4-only named publication
+view adapter and first proof-reader migration. The slice added
+`bir::BirPublicationView`, `bir::make_bir_publication_view(function)`, and
+`bir::validate_current_block_publication_reference(view, block, value,
+before_instruction_index)`, keeping the Route 4 availability index private and
+delegating to the existing Route 4 current-block validation path.
+
+The selected proof reader in
+`tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+`check_call_argument_source_producer_materializability_contract` now uses the
+named publication view for the focused `%sum` current-block proof and its
+negative cases. Route 5 agreement residue was explicitly deferred. No
+executable prepared publication authority, Route 5 implementation, stack,
+frame, value-home, freshness, move-bundle, MIR lowering, target
+materialization, Route 7 comparison proof, call/return view, dump vocabulary,
+expectation, unsupported-marker, allowlist, timeout, runtime contract, or
+default harness contract changed.
+
+Close proof:
+
+- focused before/after proof:
+  `cmake --build --preset default && build/tests/backend/bir/backend_prepare_frame_stack_call_contract_test`
+  passed before and after the slice
+- full baseline candidate accepted separately: 3333 passed / 0 failed
+
+The focused proof logs are build-plus-binary logs rather than CTest summary
+logs, so the CTest regression checker cannot parse them directly. The accepted
+full baseline candidate is the close-scope regression evidence for this
+behavior-preserving Route 4 publication-view packet.
+
+Remaining Route 5 publication proof, memory-view extraction, prealloc consumer
+migration, dump cleanup, call/return extraction, and stack-authority
+prerequisite work belongs to the separate follow-up ideas already parked under
+`ideas/open/`, not to this closed Route 4-only publication-view packet.
