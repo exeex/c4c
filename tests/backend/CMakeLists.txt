@@ -2246,6 +2246,10 @@ c4c_add_current_block_authority_probe(
   backend_current_block_stable_key_composition_probe
   current_block_stable_key_composition_probe.cpp
 )
+c4c_add_current_block_authority_probe(
+  backend_current_block_no_policy_zero_fact_probe
+  current_block_no_policy_zero_fact_probe.cpp
+)
 
 add_executable(backend_prealloc_current_block_all_edge_invariance_test
   "${BACKEND_TEST_ROOT}/bir/backend_prealloc_current_block_all_edge_invariance_test.cpp"
