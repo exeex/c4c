@@ -678,6 +678,81 @@ int records_direct_global_select_chain_dependency_from_prepared_authority() {
   return 0;
 }
 
+int requires_named_select_store_source_producer_evidence() {
+  const auto selected_name = c4c::ValueNameId{704};
+  bir::Block block;
+  block.label = "entry";
+  block.insts.push_back(bir::SelectInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%selected"),
+      .compare_type = bir::TypeKind::I1,
+      .lhs = bir::Value::named(bir::TypeKind::I1, "%condition"),
+      .rhs = bir::Value::immediate_i1(false),
+      .true_value = bir::Value::immediate_i64(11),
+      .false_value = bir::Value::immediate_i64(17),
+  });
+  block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "local0",
+      .value = bir::Value::named(bir::TypeKind::I64, "%selected"),
+  });
+  const auto* select = std::get_if<bir::SelectInst>(&block.insts[0]);
+  const auto* store = std::get_if<bir::StoreLocalInst>(&block.insts[1]);
+  if (select == nullptr || store == nullptr) {
+    return fail("select store-source fixture should contain select/store instructions");
+  }
+
+  const auto home = source_home(prepare::PreparedValueHomeKind::Register,
+                                prepare::PreparedValueId{88},
+                                selected_name);
+  auto destination_access = frame_slot_store_access(selected_name, 9, 0);
+  destination_access.inst_index = 1;
+  const prepare::PreparedEdgePublicationSourceProducer producer{
+      .kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+      .block_label = c4c::BlockLabelId{23},
+      .instruction_index = 0,
+      .select = select,
+  };
+  const auto evidence = bir::find_same_block_producer(
+      bir::make_bir_producer_view(block), store->value, 1);
+  const auto plan_with_evidence = [&](std::optional<bir::BirProducerResult> candidate) {
+    return prepare::plan_prepared_store_source_publication({
+        .source_value = &store->value,
+        .destination_access = &destination_access,
+        .source_home = &home,
+        .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+        .source_producer = &producer,
+        .source_producer_evidence = candidate,
+        .source_producer_block_label = block.label,
+        .publication_instruction_index = 1,
+    });
+  };
+  const auto accepted = plan_with_evidence(evidence);
+  if (accepted.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
+      accepted.source_producer_instruction_index != std::optional<std::size_t>{0} ||
+      accepted.source_select != select) {
+    return fail("select store publication should accept unique matching named producer evidence");
+  }
+
+  const auto producer_metadata_absent = [](const auto& plan) {
+    return plan.source_producer_kind ==
+               prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
+           !plan.source_producer_instruction_index.has_value() &&
+           plan.source_select == nullptr;
+  };
+  auto ambiguous = evidence;
+  ambiguous.status = bir::BirViewStatus::Ambiguous;
+  auto mismatched = evidence;
+  mismatched.kind = bir::BirProducerKind::Binary;
+  if (!producer_metadata_absent(plan_with_evidence(std::nullopt)) ||
+      !producer_metadata_absent(plan_with_evidence(ambiguous)) ||
+      !producer_metadata_absent(plan_with_evidence(mismatched))) {
+    return fail(
+        "select store publication should fail closed for missing, ambiguous, or mismatched named producer evidence");
+  }
+  return 0;
+}
+
 int finds_unpublished_load_local_source_from_indexed_authority() {
   prepare::PreparedNameTables names;
   const auto block_label = c4c::BlockLabelId{23};
@@ -1988,6 +2063,9 @@ int main() {
   }
   if (int rc = records_direct_global_select_chain_dependency_from_prepared_authority();
       rc != 0) {
+    return rc;
+  }
+  if (int rc = requires_named_select_store_source_producer_evidence(); rc != 0) {
     return rc;
   }
   if (int rc = finds_unpublished_load_local_source_from_indexed_authority();

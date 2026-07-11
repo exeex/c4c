@@ -133,7 +133,10 @@ namespace {
            PreparedEdgePublicationSourceProducerKind::Cast &&
        !inputs.source_producer_block_label.empty()) ||
       inputs.source_producer->kind ==
-          PreparedEdgePublicationSourceProducerKind::Binary;
+          PreparedEdgePublicationSourceProducerKind::Binary ||
+      (inputs.source_producer->kind ==
+           PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
+       !inputs.source_producer_block_label.empty());
   if (named_producer_evidence_applicable) {
     if (!inputs.source_producer_evidence.has_value()) {
       return false;
