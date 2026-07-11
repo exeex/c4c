@@ -85,6 +85,26 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bir::BirProducerKind bir_producer_kind(
+    PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return bir::BirProducerKind::LoadLocal;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return bir::BirProducerKind::LoadGlobal;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return bir::BirProducerKind::Cast;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return bir::BirProducerKind::Binary;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return bir::BirProducerKind::SelectMaterialization;
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return bir::BirProducerKind::Unknown;
+  }
+  return bir::BirProducerKind::Unknown;
+}
+
 [[nodiscard]] bool prepared_store_source_producer_metadata_agrees(
     const PreparedStoreSourcePublicationInputs& inputs) {
   const auto publication_instruction_index =
@@ -106,6 +126,19 @@ namespace {
     return false;
   }
 
+  if (inputs.source_producer->kind ==
+      PreparedEdgePublicationSourceProducerKind::Binary) {
+    if (!inputs.source_producer_evidence.has_value()) {
+      return false;
+    }
+    const auto& evidence = *inputs.source_producer_evidence;
+    if (evidence.status != bir::BirViewStatus::Available ||
+        evidence.kind != bir_producer_kind(inputs.source_producer->kind) ||
+        evidence.instruction_index != inputs.source_producer->instruction_index) {
+      return false;
+    }
+  }
+
   const bool home_backed_source_agrees =
       inputs.source_home != nullptr &&
       inputs.destination_access->stored_value_name.has_value() &&
@@ -123,7 +156,15 @@ namespace {
 
   const auto* produced_value =
       prepared_source_producer_result_value(*inputs.source_producer);
-  return produced_value != nullptr &&
+  if (produced_value == nullptr) {
+    return false;
+  }
+  const bool applicable_evidence_agrees =
+      inputs.source_producer->kind !=
+          PreparedEdgePublicationSourceProducerKind::Binary ||
+      (inputs.source_producer_evidence->produced_value != nullptr &&
+       *inputs.source_producer_evidence->produced_value == *produced_value);
+  return applicable_evidence_agrees &&
          produced_value->kind == bir::Value::Kind::Named &&
          inputs.source_value->kind == bir::Value::Kind::Named &&
          produced_value->name == inputs.source_value->name &&
@@ -7889,6 +7930,10 @@ plan_pending_prepared_store_global_publications(
         .stack_homes_only = true,
         .duplicate_publication = plan.duplicate_publication,
         .source_producer = source_producer,
+        .source_producer_evidence =
+            bir::find_same_block_producer(bir::make_bir_producer_view(*block),
+                                          store->value,
+                                          index),
         .publication_block_label = block_label,
         .publication_instruction_index = index,
     });
@@ -7961,6 +8006,14 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
                                                        &block,
                                                        source_value,
                                                        inst_index);
+        const auto source_producer_evidence =
+            source_producer != nullptr
+                ? std::optional<bir::BirProducerResult>{
+                      bir::find_same_block_producer(
+                          bir::make_bir_producer_view(block),
+                          source_value,
+                          inst_index)}
+                : std::nullopt;
         const auto direct_global_select_chain =
             find_prepared_store_source_direct_global_select_chain_dependency(
                 prepared.names,
@@ -8024,6 +8077,7 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
             .stack_homes_only = store_global != nullptr,
             .duplicate_publication = duplicate_publication,
             .source_producer = source_producer,
+            .source_producer_evidence = source_producer_evidence,
             .publication_block_label = block_label,
             .publication_instruction_index = inst_index,
         });

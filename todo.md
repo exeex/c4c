@@ -8,27 +8,25 @@ Current Step Title: Migrate prepared publication production
 
 ## Just Finished
 
-- Step 2 — classified current-block edge publication facts by semantic origin
-  (`BirPhi` versus prepared `JoinTransfer`) and made named evidence applicability
-  explicit. A non-PHI edge is accepted only with complete unique prepared
-  transfer authority and matching named producer evidence; incomplete prepared
-  authority and missing, ambiguous, or mismatched applicable evidence fail
-  closed.
+- Step 2 — migrated binary store-source producer publication to require the
+  applicable named `BirProducerResult` plus existing prepared producer, home,
+  access, and ordering authority. Missing, ambiguous, or mismatched named
+  producer evidence now fails closed without changing unrelated load/cast/
+  select store-source families.
 
 ## Suggested Next
 
-- Continue Step 2 with the next prepared publication-production seam selected
-  by the supervisor.
+- Continue Step 2 with the next smallest formal or remaining store-source
+  publication family selected by the supervisor.
 
 ## Watchouts
 
-- `backend_prepared_lookup_helper_test` becomes available when configured with
-  `C4C_ENABLE_PREPARED_FACT_TESTS=ON`, but a direct focused compile currently
-  fails later on pre-existing undeclared `route1_query` / `route1_index`
-  errors. The new focused case therefore could not execute in that target.
-- Production query-input callsites now pass their existing
-  `PreparedControlFlowFunction`; a null control-flow input remains
-  intentionally fail-closed for non-PHI prepared publication authority.
+- The named producer evidence requirement is deliberately classified as
+  applicable only to the binary store-source family in this packet; load,
+  cast, and select families retain their existing prepared-authority behavior
+  until migrated independently.
+- Production store-source population and pending global publication derive the
+  named producer evidence directly from the BIR block and publication index.
 - Do not widen into call plans, prepared lookups, target materializers, or the
   common MIR migration owned by idea 706.
 
@@ -38,7 +36,3 @@ Current Step Title: Migrate prepared publication production
   --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
 - Result: passed, 309/309 backend tests; canonical proof log:
   `test_after.log`.
-- Supervisor focused compile: configured prepared-fact tests exposed
-  `backend_prepared_lookup_helper_test`, but compilation stopped on the
-  pre-existing undeclared `route1_query` / `route1_index` errors before the new
-  case could run.

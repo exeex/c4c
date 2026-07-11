@@ -10662,6 +10662,8 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
       .instruction_index = 0,
       .binary = binary,
   };
+  const auto producer_evidence = bir::find_same_block_producer(
+      bir::make_bir_producer_view(block), store->value, 1);
 
   const prepare::PreparedStoreSourcePublicationInputs base_inputs{
       .source_value = &store->value,
@@ -10670,6 +10672,7 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
       .intent =
           prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = &source_producer,
+      .source_producer_evidence = producer_evidence,
   };
 
   const auto agreed =
@@ -10720,6 +10723,31 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
   missing_home_inputs.source_home = nullptr;
   if (const int result =
           expect_fail_closed(missing_home_inputs, "missing source home");
+      result != 0) {
+    return result;
+  }
+
+  auto missing_evidence_inputs = base_inputs;
+  missing_evidence_inputs.source_producer_evidence = std::nullopt;
+  if (const int result = expect_fail_closed(missing_evidence_inputs,
+                                           "missing named BIR producer evidence");
+      result != 0) {
+    return result;
+  }
+
+  auto ambiguous_evidence_inputs = base_inputs;
+  ambiguous_evidence_inputs.source_producer_evidence->status =
+      bir::BirViewStatus::Ambiguous;
+  if (const int result = expect_fail_closed(ambiguous_evidence_inputs,
+                                           "ambiguous named BIR producer evidence");
+      result != 0) {
+    return result;
+  }
+
+  auto mismatched_evidence_inputs = base_inputs;
+  mismatched_evidence_inputs.source_producer_evidence->instruction_index = 1;
+  if (const int result = expect_fail_closed(mismatched_evidence_inputs,
+                                           "mismatched named BIR producer evidence");
       result != 0) {
     return result;
   }

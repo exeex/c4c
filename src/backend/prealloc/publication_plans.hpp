@@ -2120,6 +2120,7 @@ struct PreparedStoreSourcePublicationInputs {
   bool pointer_store_writeback = false;
   bool duplicate_publication = false;
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
+  std::optional<bir::BirProducerResult> source_producer_evidence;
   std::optional<BlockLabelId> publication_block_label;
   std::optional<std::size_t> publication_instruction_index;
 };
