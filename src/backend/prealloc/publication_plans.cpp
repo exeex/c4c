@@ -2556,58 +2556,98 @@ prepare_current_block_join_parallel_copy_source_facts(
     }
   }
 
-  std::vector<ValueNameId> pending_expression_names =
-      result.incoming_expression_value_names;
-  std::vector<ValueNameId> processed_expression_names;
-  auto append_operand = [&](const bir::Value& value) {
-    const auto value_name = existing_prepared_value_name_id(*inputs.names, value);
-    if (value_name.has_value()) {
-      pending_expression_names.push_back(*value_name);
-    }
+  struct PreparedCurrentBlockProducerDependencies {
+    std::size_t producer_count = 0;
+    std::vector<ValueNameId> operand_names;
+    bool supported = false;
   };
-  while (!pending_expression_names.empty()) {
-    const auto value_name = pending_expression_names.back();
-    pending_expression_names.pop_back();
-    if (std::find(processed_expression_names.begin(),
-                  processed_expression_names.end(),
-                  value_name) != processed_expression_names.end()) {
+  std::unordered_map<ValueNameId, PreparedCurrentBlockProducerDependencies>
+      producer_dependencies;
+  for (const auto& inst : inputs.block->insts) {
+    const auto* result_value =
+        prepared_current_block_join_instruction_result_value_ref(inst);
+    if (result_value == nullptr) {
       continue;
     }
-    processed_expression_names.push_back(value_name);
-    append_value_name(result.incoming_expression_value_names, value_name);
-    const bir::Inst* producer = nullptr;
-    for (const auto& inst : inputs.block->insts) {
-      const auto* inst_result =
-          prepared_current_block_join_instruction_result_value_ref(inst);
-      if (inst_result == nullptr) {
-        continue;
-      }
-      const auto inst_result_name =
-          existing_prepared_value_name_id(*inputs.names, *inst_result);
-      if (inst_result_name == std::optional<ValueNameId>{value_name}) {
-        producer = &inst;
-        break;
-      }
-    }
-    if (producer == nullptr) {
+    const auto result_name =
+        existing_prepared_value_name_id(*inputs.names, *result_value);
+    if (!result_name.has_value()) {
       continue;
     }
+    auto& dependencies = producer_dependencies[*result_name];
+    ++dependencies.producer_count;
+    std::vector<ValueNameId> operand_names;
+    auto append_operand_name = [&](const bir::Value& value) {
+      const auto operand_name =
+          existing_prepared_value_name_id(*inputs.names, value);
+      if (operand_name.has_value() &&
+          std::find(operand_names.begin(), operand_names.end(), *operand_name) ==
+              operand_names.end()) {
+        operand_names.push_back(*operand_name);
+      }
+    };
+    bool supported = false;
     std::visit(
         [&](const auto& typed_inst) {
           using T = std::decay_t<decltype(typed_inst)>;
           if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-            append_operand(typed_inst.lhs);
-            append_operand(typed_inst.rhs);
+            supported = true;
+            append_operand_name(typed_inst.lhs);
+            append_operand_name(typed_inst.rhs);
           } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-            append_operand(typed_inst.operand);
+            supported = true;
+            append_operand_name(typed_inst.operand);
           } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-            append_operand(typed_inst.lhs);
-            append_operand(typed_inst.rhs);
-            append_operand(typed_inst.true_value);
-            append_operand(typed_inst.false_value);
+            supported = true;
+            append_operand_name(typed_inst.lhs);
+            append_operand_name(typed_inst.rhs);
+            append_operand_name(typed_inst.true_value);
+            append_operand_name(typed_inst.false_value);
           }
         },
-        *producer);
+        inst);
+    if (dependencies.producer_count == 1) {
+      std::sort(operand_names.begin(), operand_names.end());
+      dependencies.operand_names = std::move(operand_names);
+      dependencies.supported = supported;
+    } else {
+      dependencies.operand_names.clear();
+      dependencies.supported = false;
+    }
+  }
+
+  const auto direct_expression_names = result.incoming_expression_value_names;
+  result.incoming_expression_value_names.clear();
+  result.incoming_expression_value_ids.clear();
+  std::vector<ValueNameId> pending_expression_names = direct_expression_names;
+  std::unordered_set<ValueNameId> direct_expression_name_set(
+      direct_expression_names.begin(), direct_expression_names.end());
+  std::unordered_set<ValueNameId> processed_expression_names;
+  while (!pending_expression_names.empty()) {
+    const auto value_name = pending_expression_names.back();
+    pending_expression_names.pop_back();
+    if (!processed_expression_names.insert(value_name).second) {
+      continue;
+    }
+    const auto producer = producer_dependencies.find(value_name);
+    const bool direct_expression =
+        direct_expression_name_set.find(value_name) !=
+        direct_expression_name_set.end();
+    if (!direct_expression &&
+        (producer == producer_dependencies.end() ||
+         producer->second.producer_count != 1 ||
+         !producer->second.supported)) {
+      continue;
+    }
+    append_value_name(result.incoming_expression_value_names, value_name);
+    if (producer == producer_dependencies.end() ||
+        producer->second.producer_count != 1 || !producer->second.supported) {
+      continue;
+    }
+    for (auto operand = producer->second.operand_names.rbegin();
+         operand != producer->second.operand_names.rend(); ++operand) {
+      pending_expression_names.push_back(*operand);
+    }
   }
 
   for (const auto value_name : result.incoming_expression_value_names) {

@@ -179,6 +179,20 @@ int main() {
     return 1;
   }
 
+  // Producer discovery and closure membership must not depend on instruction
+  // order.
+  Fixture reordered_fixture;
+  std::reverse(reordered_fixture.block.insts.begin() + 1,
+               reordered_fixture.block.insts.end());
+  const auto reordered = query(reordered_fixture);
+  auto transitive_names = transitive.incoming_expression_value_names;
+  auto reordered_names = reordered.incoming_expression_value_names;
+  std::sort(transitive_names.begin(), transitive_names.end());
+  std::sort(reordered_names.begin(), reordered_names.end());
+  if (transitive_names != reordered_names) {
+    return 2;
+  }
+
   // A cycle must terminate and must not duplicate closure members.
   fixture.block.insts[3] = bir::CastInst{
       .opcode = bir::CastOpcode::Bitcast,
@@ -192,7 +206,7 @@ int main() {
                      fixture.middle_name) ||
       !contains_once(cyclic.incoming_expression_value_names,
                      fixture.leaf_name)) {
-    return 2;
+    return 3;
   }
 
   // Missing producer evidence must fail closed rather than authorize a leaf
@@ -203,24 +217,35 @@ int main() {
                 missing_edge.incoming_expression_value_names.end(),
                 fixture.leaf_name) !=
       missing_edge.incoming_expression_value_names.end()) {
-    return 3;
+    return 4;
   }
 
-  // Conflicting producers for one result must fail closed rather than select
-  // the first instruction encountered.
-  fixture.block.insts.push_back(bir::BinaryInst{
+  // Even equivalent duplicate producer evidence is ambiguous and must not
+  // authorize a path.
+  fixture.block.insts.push_back(fixture.block.insts[2]);
+  const auto ambiguous = query(fixture);
+  if (std::find(ambiguous.incoming_expression_value_names.begin(),
+                ambiguous.incoming_expression_value_names.end(),
+                fixture.middle_name) !=
+      ambiguous.incoming_expression_value_names.end()) {
+    return 5;
+  }
+
+  // Conflicting producer paths must fail closed rather than select whichever
+  // instruction happens to appear first.
+  fixture.block.insts.back() = bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "%closure.middle"),
       .operand_type = bir::TypeKind::I32,
       .lhs = bir::Value::named(bir::TypeKind::I32, "%closure.leaf"),
       .rhs = bir::Value::immediate_i32(9),
-  });
+  };
   const auto conflicting = query(fixture);
   if (std::find(conflicting.incoming_expression_value_names.begin(),
                 conflicting.incoming_expression_value_names.end(),
                 fixture.middle_name) !=
       conflicting.incoming_expression_value_names.end()) {
-    return 4;
+    return 6;
   }
   return 0;
 }

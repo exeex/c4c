@@ -3,36 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/718_transitive_current_block_incoming_expression_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Implement direct publication-source identity authority
+Current Step ID: 7
+Current Step Title: Implement transitive producer-dependency closure
 
 ## Just Finished
 
-- Completed plan Step 6 by making direct named operand authority validate an
-  available publication's exact source plus its id/name/home consistency and,
-  when producer evidence is present, the producer's preserved result identity.
-- Strengthened the focused probe for dependency, producer-conflicting rewrite,
-  missing id/home, conflicting name/home, and non-consumer fail-closed cases.
+- Completed plan Step 7 with a deterministic worklist closure over a complete
+  current-block producer index. Direct publication identities remain roots;
+  transitive named operands require exactly one supported producer.
+- Strengthened the focused probe for multiple depths, instruction-order
+  invariance, cycles, missing producer edges, equivalent ambiguity, and
+  conflicting producer paths.
 
 ## Suggested Next
 
-- Execute plan Step 7 as the bounded transitive producer-closure packet without
-  changing the direct identity query or selecting a producer by instruction
-  order.
+- Execute plan Step 8 as the bounded no-policy and zero-owner-fact semantics
+  packet through the existing prepared state boundary.
 
 ## Watchouts
 
-- Direct identity intentionally does not traverse producer operands; Step 7
-  owns closure. Legacy publications without producer evidence retain their
-  existing id/name/home validation, while supplied producer evidence must agree
-  exactly with the preserved source.
-- The backend subset still has the known Step 7 transitive-closure and Step 9
-  stable-key focused gaps; no unrelated regression remains in this packet.
+- Closure is producer-index driven and does not select by instruction order;
+  duplicate producers fail closed even when their payloads are equivalent.
+- The backend subset now has only the known Step 9 stable-key composition
+  focused gap; no unrelated regression remains in this packet.
 
 ## Proof
 
 - Ran `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' > test_after.log 2>&1` exactly as delegated.
-- Build passed; 322/324 backend tests passed. The direct publication identity
-  probe is green. Only the known transitive dependency closure and stable-key
-  composition focused probes remain red. Proof log: `test_after.log`.
+- Build passed; 323/324 backend tests passed. The transitive dependency closure
+  probe is green. Only the known stable-key composition focused probe remains
+  red. Proof log: `test_after.log`.
