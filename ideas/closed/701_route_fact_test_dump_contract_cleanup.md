@@ -1,6 +1,6 @@
 # Route Fact Test And Dump Contract Cleanup
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -100,3 +100,19 @@ as executable authority.
   consumer migration.
 - Reject retaining the same route-only assertion under a renamed expected
   output file.
+
+## Closure Notes
+
+Closed after the Route 4 block-entry publication attribution/printer vocabulary
+was rewritten behind the named prepared block-entry publication proof surface.
+Legacy `route4_*` fields remain only as private compatibility mirrors where
+existing prepared-printer and BIR compatibility consumers still need them.
+
+Close-time proof used the focused prepared-fact backend scope:
+
+```sh
+cmake --preset default -DC4C_ENABLE_PREPARED_FACT_TESTS=ON && cmake --build --preset default --target backend_prealloc_block_entry_publications_test c4cll && ctest --test-dir build -R '^(backend_prealloc_block_entry_publications|backend_cli_dump_prepared_bir_exposes_contract_sections)$' --output-on-failure | tee test_after.log
+```
+
+`c4c-regression-guard` passed against the rolled focused baseline at 2/2 tests
+passed before and after, with no new failures.
