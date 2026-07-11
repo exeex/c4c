@@ -1,6 +1,6 @@
 # LIR Import Context Extraction
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Order: 1 of 6 in the `LIR -> BIR` adapter boundary first wave
 Parent: `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
@@ -79,6 +79,27 @@ unless the implementation touches shared non-adapter surfaces.
 - Import-local maps and scratch state remain adapter-owned and do not move into
   public BIR, prepared/prealloc, target, or MIR ownership.
 - The proving command is recorded in `todo.md` and is behavior-preserving.
+
+## Closure Notes
+
+Closed after the CFG/phi scratch narrowing slice made `BlockLookup`,
+`BranchChain`, `PhiBlockPlanMap`, `PendingAggregatePhiCopy`,
+`PendingAggregatePhiCopyMap`, `PendingScalarPhiProducer`, and
+`PendingScalarPhiProducerMap` private to `BirFunctionLowerer` in
+`src/backend/bir/lir_to_bir/lowering.hpp`.
+
+Public adapter entry behavior was left untouched: no public entry declarations,
+options, result envelope, diagnostics, tests, expectations, unsupported
+markers, allowlists, or public adapter files changed. `PhiLoweringPlan` remains
+public because `module.cpp` still names it from an anonymous-namespace helper;
+that adjacent helper contraction belongs to the later private detail header
+contraction work rather than this order-1 import-context extraction.
+
+Closure proof was the supervisor/executor backend guard evidence:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+passed with 302/302 backend tests, and the matching backend regression guard
+passed with before=302 failed=0 total=302 and after=302 failed=0 total=302
+using `--allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
