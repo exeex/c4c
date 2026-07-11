@@ -1,34 +1,35 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/703_bir_mir_contract_abstraction_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Generate the ordered follow-up idea queue
+Current Step ID: 4
+Current Step Title: Audit the handoff and prepare lifecycle closure
 
 ## Just Finished
 
-- Completed `plan.md` Step 3: wrote the dependency-ordered follow-up queue and
-  generated ideas 704-712 with single first owners, dependencies, first
-  consumers, proof surfaces, retirement guards, acceptance criteria, and
-  concrete reviewer reject signals.
+- Completed `plan.md` Step 4: audited every current route-vocabulary guard-hit
+  family to an explicit shrink/retirement owner or conditional BIR-private
+  compatibility state, reconciled the handoff documents, and prepared all
+  source-idea Closure Note Requirements for plan-owner review.
 
 ## Suggested Next
 
-- Delegate `plan.md` Step 4 to audit the handoff, map every guarded dependency
-  to its shrink/retirement owner, and prepare closure-note evidence for
-  plan-owner review without implementing or closing the umbrella.
+- Ask the plan owner for formal close/deactivate/split review and required
+  regression-guard handling; do not infer source-idea closure from runbook
+  exhaustion.
 
 ## Watchouts
 
-- Keep ideas 647 and 655 parked until idea 707 proves the complete positive
-  prepared producer row and fail-closed MIR consumption; generating the gate
-  idea is not evidence that the gate has passed.
-- Treat target ideas 708-710 as ownership siblings after common MIR migration,
-  not as route-number ordering, and keep route quarantine/test cleanup behind
-  all semantic consumers.
-- Step 4 must classify every remaining guard hit; do not call unowned route
-  vocabulary generic later cleanup.
+- Ideas 647 and 655 remain parked until accepted idea 707 evidence proves a
+  unique complete positive prepared producer row, fail-closed MIR consumption,
+  and positive plus negative proof; generating the gate is not passing it.
+- Private compatibility is limited to BIR-internal builders/indexes/facades or
+  adapters behind narrow named views. It may not cross into prealloc, MIR,
+  targets, prepared records, or public tests, and idea 711 owns its shrink.
+- Closure-note evidence is in
+  `docs/bir_mir_contract_abstraction/04_handoff_audit_and_closure_evidence.md`;
+  formal closure remains a plan-owner decision.
 
 ## Proof
 
