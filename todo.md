@@ -3,35 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/717_current_block_routed_value_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove routed-operand and immediate-destination authority
+Current Step ID: 4
+Current Step Title: Prove all-applicable-edge invariance
 
 ## Just Finished
 
-- Step 3 added and registered
-  `backend_prealloc_current_block_routed_operand_authority_test.cpp`.
-- The focused query now gives `BinaryInst`, `CastInst`, and `SelectInst`
-  operands explicit prepared-source authority, while immediate sources require
-  complete destination-home identity and authorize that destination.
-- Unrelated operands, conflicting source or destination metadata, and source
-  identity rewriting fail closed; no AArch64 behavior or expectations changed.
+- Step 4 completed the all-applicable-edge invariance contract and registered
+  `backend_prealloc_current_block_all_edge_invariance`.
+- Distinct predecessors remain valid only when every destination, source, and
+  semantic-origin identity agrees; parallel-destination conflicts and exact
+  duplicate families fail closed as `Ambiguous`.
+- Destination and source IDs/names are covered independently, and mixed
+  non-Available families now report deterministic status precedence regardless
+  of input order. No AArch64 behavior or expectation changed.
 
 ## Suggested Next
 
-- Execute the bounded Step 4 all-applicable-edge invariance packet, keeping it
-  independent of AArch64 consumption.
+- Execute Step 5 composition at the owner-attached query boundary, preserving
+  the three focused authority contracts and unchanged AArch64 integration
+  expectations.
 
 ## Watchouts
 
-- Routed-operand authority deliberately does not decide predecessor or
-  parallel-edge agreement; Step 4 owns that complete fact-family invariant.
-- Keep the prepared source identity pointer distinct from the authoritative
-  destination returned for immediate sources.
+- Negative-status precedence is explicit: `Ambiguous`, `Mismatched`,
+  `Unsupported`, `Incomplete`, then `Missing`; every negative remains
+  non-authoritative.
+- Keep Step 5 composition owner-attached and do not reintroduce successor-only
+  or target-local reconstruction.
 
 ## Proof
 
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- Result: 319/319 backend tests passed, including
-  `backend_prealloc_current_block_routed_operand_authority`.
+- Result: 320/320 backend tests passed, including the focused all-edge matrix,
+  corrected parallel-destination probes, incoming-expression authority, and
+  unchanged AArch64 current-block routing integration.
 - Canonical proof log: `test_after.log`.

@@ -2221,6 +2221,26 @@ c4c_set_backend_test_labels(
 
 add_subdirectory(bir)
 
+add_executable(backend_prealloc_current_block_all_edge_invariance_test
+  "${BACKEND_TEST_ROOT}/bir/backend_prealloc_current_block_all_edge_invariance_test.cpp"
+)
+target_include_directories(backend_prealloc_current_block_all_edge_invariance_test PRIVATE
+  "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prealloc_current_block_all_edge_invariance_test PRIVATE
+  c4c_backend
+)
+set_target_properties(backend_prealloc_current_block_all_edge_invariance_test PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_prealloc_current_block_all_edge_invariance
+  COMMAND $<TARGET_FILE:backend_prealloc_current_block_all_edge_invariance_test>)
+c4c_set_backend_test_labels(
+  backend_prealloc_current_block_all_edge_invariance
+  internal
+  cpp
+)
+
 get_property(C4C_BACKEND_MIR_TARGETS
   DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/mir"
   PROPERTY BUILDSYSTEM_TARGETS

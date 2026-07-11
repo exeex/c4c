@@ -226,7 +226,7 @@ int parallel_predecessors_remain_independently_available() {
   return 0;
 }
 
-int parallel_destinations_remain_independently_available() {
+int conflicting_parallel_destinations_are_explicitly_ambiguous() {
   const auto first = routing_fact();
   auto second = first;
   second.destination_value_id = prepare::PreparedValueId{11};
@@ -234,8 +234,8 @@ int parallel_destinations_remain_independently_available() {
   const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts{first,
                                                                        second};
   const auto consumed = consume_routing_facts(facts, first);
-  if (!consumed || consumed.edge_fact_count != 2) {
-    return fail("parallel destinations must have one invariant result answer");
+  if (consumed.status != prepare::PreparedFactBoundaryStatus::Ambiguous) {
+    return fail("conflicting parallel destinations must fail closed as ambiguous");
   }
   return 0;
 }
@@ -371,7 +371,7 @@ int main(int argc, char** argv) {
       return parallel_predecessors_remain_independently_available();
     }
     if (probe == "parallel-destinations") {
-      return parallel_destinations_remain_independently_available();
+      return conflicting_parallel_destinations_are_explicitly_ambiguous();
     }
     if (probe == "wrong-successor") {
       return wrong_successor_is_explicitly_mismatched();
@@ -402,7 +402,8 @@ int main(int argc, char** argv) {
       status != 0) {
     return status;
   }
-  if (const int status = parallel_destinations_remain_independently_available();
+  if (const int status =
+          conflicting_parallel_destinations_are_explicitly_ambiguous();
       status != 0) {
     return status;
   }

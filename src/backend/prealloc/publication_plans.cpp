@@ -1189,10 +1189,32 @@ query_prepared_current_block_join_routing_consumption(
     return result;
   }
 
+  const auto negative_status_rank = [](PreparedFactBoundaryStatus status) {
+    switch (status) {
+      case PreparedFactBoundaryStatus::Available:
+        return 0;
+      case PreparedFactBoundaryStatus::Missing:
+        return 1;
+      case PreparedFactBoundaryStatus::Incomplete:
+        return 2;
+      case PreparedFactBoundaryStatus::Unsupported:
+        return 3;
+      case PreparedFactBoundaryStatus::Mismatched:
+        return 4;
+      case PreparedFactBoundaryStatus::Ambiguous:
+        return 5;
+    }
+    return 0;
+  };
+  std::optional<PreparedFactBoundaryStatus> negative_status;
   for (const auto* candidate : applicable) {
     if (!*candidate) {
-      result.status = candidate->status;
-      return result;
+      if (!negative_status.has_value() ||
+          negative_status_rank(candidate->status) >
+              negative_status_rank(*negative_status)) {
+        negative_status = candidate->status;
+      }
+      continue;
     }
     if (candidate->predecessor_label == kInvalidBlockLabel ||
         candidate->successor_label != successor_label ||
@@ -1207,6 +1229,10 @@ query_prepared_current_block_join_routing_consumption(
       result.status = PreparedFactBoundaryStatus::Mismatched;
       return result;
     }
+  }
+  if (negative_status.has_value()) {
+    result.status = *negative_status;
+    return result;
   }
 
   const auto same_semantic_edge = [](const auto& lhs, const auto& rhs) {
@@ -1231,8 +1257,18 @@ query_prepared_current_block_join_routing_consumption(
   }
 
   const auto invariant_origin = applicable.front()->publication_semantic_origin;
+  const auto invariant_destination_value_id =
+      applicable.front()->destination_value_id;
+  const auto invariant_destination_value_name =
+      applicable.front()->destination_value_name;
+  const auto invariant_source_value_id = applicable.front()->source_value_id;
+  const auto invariant_source_value_name = applicable.front()->source_value_name;
   for (const auto* candidate : applicable) {
-    if (candidate->publication_semantic_origin != invariant_origin) {
+    if (candidate->destination_value_id != invariant_destination_value_id ||
+        candidate->destination_value_name != invariant_destination_value_name ||
+        candidate->source_value_id != invariant_source_value_id ||
+        candidate->source_value_name != invariant_source_value_name ||
+        candidate->publication_semantic_origin != invariant_origin) {
       result.status = PreparedFactBoundaryStatus::Ambiguous;
       return result;
     }

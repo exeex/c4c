@@ -54,12 +54,11 @@ int main() {
     return 1;
   }
 
-  // Parallel predecessors and destinations are distinct applicable edge facts,
-  // and are authoritative when each independently carries complete semantics.
+  // A result-level family cannot select a unique destination subset merely
+  // because each edge is independently complete.
   if (query({fact(c4c::BlockLabelId{1}, prepare::PreparedValueId{10}),
              fact(c4c::BlockLabelId{2}, prepare::PreparedValueId{11})},
-            &edge_count) != prepare::PreparedFactBoundaryStatus::Available ||
-      edge_count != 2) {
+            &edge_count) != prepare::PreparedFactBoundaryStatus::Ambiguous) {
     return 2;
   }
 
