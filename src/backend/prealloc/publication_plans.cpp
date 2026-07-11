@@ -126,15 +126,21 @@ namespace {
     return false;
   }
 
-  if (inputs.source_producer->kind ==
-      PreparedEdgePublicationSourceProducerKind::Binary) {
+  const bool named_producer_evidence_applicable =
+      inputs.source_producer->kind ==
+          PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      inputs.source_producer->kind ==
+          PreparedEdgePublicationSourceProducerKind::Binary;
+  if (named_producer_evidence_applicable) {
     if (!inputs.source_producer_evidence.has_value()) {
       return false;
     }
     const auto& evidence = *inputs.source_producer_evidence;
     if (evidence.status != bir::BirViewStatus::Available ||
         evidence.kind != bir_producer_kind(inputs.source_producer->kind) ||
-        evidence.instruction_index != inputs.source_producer->instruction_index) {
+        evidence.instruction_index != inputs.source_producer->instruction_index ||
+        inputs.source_producer_block_label.empty() ||
+        evidence.block_label != inputs.source_producer_block_label) {
       return false;
     }
   }
@@ -160,8 +166,7 @@ namespace {
     return false;
   }
   const bool applicable_evidence_agrees =
-      inputs.source_producer->kind !=
-          PreparedEdgePublicationSourceProducerKind::Binary ||
+      !named_producer_evidence_applicable ||
       (inputs.source_producer_evidence->produced_value != nullptr &&
        *inputs.source_producer_evidence->produced_value == *produced_value);
   return applicable_evidence_agrees &&
@@ -7934,6 +7939,7 @@ plan_pending_prepared_store_global_publications(
             bir::find_same_block_producer(bir::make_bir_producer_view(*block),
                                           store->value,
                                           index),
+        .source_producer_block_label = block->label,
         .publication_block_label = block_label,
         .publication_instruction_index = index,
     });
@@ -8078,6 +8084,7 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
             .duplicate_publication = duplicate_publication,
             .source_producer = source_producer,
             .source_producer_evidence = source_producer_evidence,
+            .source_producer_block_label = block.label,
             .publication_block_label = block_label,
             .publication_instruction_index = inst_index,
         });

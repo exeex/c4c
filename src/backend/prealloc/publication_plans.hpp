@@ -2121,6 +2121,7 @@ struct PreparedStoreSourcePublicationInputs {
   bool duplicate_publication = false;
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
   std::optional<bir::BirProducerResult> source_producer_evidence;
+  std::string_view source_producer_block_label;
   std::optional<BlockLabelId> publication_block_label;
   std::optional<std::size_t> publication_instruction_index;
 };

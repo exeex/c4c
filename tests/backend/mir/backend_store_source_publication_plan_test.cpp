@@ -515,12 +515,21 @@ int classifies_byval_load_local_source_from_prepared_authority() {
   const auto source = bir::Value::named(bir::TypeKind::I32, "%loaded");
   auto destination_access = frame_slot_store_access(102, 9, 0);
   destination_access.block_label = block_label;
+  const bir::BirProducerResult producer_evidence{
+      .status = bir::BirViewStatus::Available,
+      .kind = bir::BirProducerKind::LoadLocal,
+      .produced_value = &load.result,
+      .instruction_index = 3,
+      .block_label = "entry",
+  };
   const auto plan = prepare::plan_prepared_store_source_publication({
       .source_value = &source,
       .destination_access = &destination_access,
       .byval_load_local_source = classified,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = &producer,
+      .source_producer_evidence = producer_evidence,
+      .source_producer_block_label = "entry",
   });
 
   if (!classified || !prepare::prepared_store_source_publication_available(plan) ||
@@ -529,6 +538,54 @@ int classifies_byval_load_local_source_from_prepared_authority() {
           prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
       plan.source_load_local != &load) {
     return fail("expected byval load-local source from prepared authority");
+  }
+
+  const auto plan_with_evidence = [&](bir::BirProducerResult evidence) {
+    return prepare::plan_prepared_store_source_publication({
+        .source_value = &source,
+        .destination_access = &destination_access,
+        .byval_load_local_source = classified,
+        .intent =
+            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+        .source_producer = &producer,
+        .source_producer_evidence = evidence,
+        .source_producer_block_label = "entry",
+    });
+  };
+  const auto expect_rejected_evidence = [&](bir::BirProducerResult evidence) {
+    const auto rejected = plan_with_evidence(evidence);
+    return rejected.source_producer_kind ==
+               prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
+           rejected.source_load_local == nullptr;
+  };
+  auto ambiguous_evidence = producer_evidence;
+  ambiguous_evidence.status = bir::BirViewStatus::Ambiguous;
+  auto mismatched_kind_evidence = producer_evidence;
+  mismatched_kind_evidence.kind = bir::BirProducerKind::Binary;
+  auto mismatched_index_evidence = producer_evidence;
+  mismatched_index_evidence.instruction_index = 2;
+  auto mismatched_block_evidence = producer_evidence;
+  mismatched_block_evidence.block_label = "other";
+  auto mismatched_value_evidence = producer_evidence;
+  const auto other_value = bir::Value::named(bir::TypeKind::I32, "%other");
+  mismatched_value_evidence.produced_value = &other_value;
+  const auto missing_evidence = prepare::plan_prepared_store_source_publication({
+      .source_value = &source,
+      .destination_access = &destination_access,
+      .byval_load_local_source = classified,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = &producer,
+  });
+  if (missing_evidence.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+      missing_evidence.source_load_local != nullptr ||
+      !expect_rejected_evidence(ambiguous_evidence) ||
+      !expect_rejected_evidence(mismatched_kind_evidence) ||
+      !expect_rejected_evidence(mismatched_index_evidence) ||
+      !expect_rejected_evidence(mismatched_block_evidence) ||
+      !expect_rejected_evidence(mismatched_value_evidence)) {
+    return fail(
+        "load-local store publication should fail closed for missing, ambiguous, or mismatched named producer evidence");
   }
 
   auto frame_slot_addressing = addressing;
@@ -1601,6 +1658,7 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
   const auto tail_name = c4c::ValueNameId{702};
   const auto global_name = c4c::LinkNameId{17};
   const bir::Block block{
+      .label = "entry",
       .insts =
           {bir::SelectInst{
                .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
