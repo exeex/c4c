@@ -1,46 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/693_bir_route_index_retirement_research.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Recommend Follow-Up Ideas
+Current Step ID: 8
+Current Step Title: Define Stack View And Destination Authority Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 7: Recommend Follow-Up Ideas by writing
-`docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md`.
-The document dependency-orders follow-up implementation and umbrella ideas,
-separates route facade cleanup, named view extraction, publication boundary
-cleanup, dump/test vocabulary rewrite, and stack destination authority follow-up,
-and records prerequisites for revisiting ideas 647 and 655 without opening or
-editing actual idea files.
+Completed Step 8: Define Stack View And Destination Authority Handoff by writing
+`docs/bir_route_index_retirement_research/08_stack_view_and_destination_authority_handoff.md`.
+The document assigns BIR semantic view, prealloc/prepared producer, and MIR
+consumer responsibilities; proposes first-cut frame layout, value home, move
+bundle, and destination authority view shapes; explains Route 4, Route 5, and
+Route 7 feed boundaries; records positive producer evidence required before
+ideas 647 or 655 can resume; and states fail-closed MIR behavior for stack
+destination fan-in without explicit prepared authority.
 
 ## Suggested Next
 
-Proceed to Step 8 by writing the stack view and destination authority handoff.
-The next packet should define the BIR/prepared/MIR responsibility split for
-frame layout, value homes, move bundles, freshness, aggregate stack sources,
-and destination authority, including fail-closed MIR behavior and the positive
-producer evidence required before ideas 647 or 655 can resume.
+Proceed to Step 9 by assembling `docs/bir_route_index_retirement_research/index.md`
+and verifying the research package. The next packet should link all eight
+answer files, summarize the route-retirement strategy without replacing the
+answer files, and check the package has exactly the required index plus eight
+numbered documents.
 
 ## Watchouts
 
-- Step 8 should keep stack destination authority out of Route 4, Route 5, Route
-  7, facade status, and dump rows; named BIR views may feed prepared authority
-  production but should not become direct MIR-side destination inference.
-- Ideas 647 and 655 remain blocked until file 08 identifies explicit prepared
-  producer evidence, MIR fail-closed checks, and proof above route dumps.
+- Step 9 should not collapse the answer files into the index; the index should
+  summarize and link them.
+- Preserve the Step 8 boundary in the package summary: Route 4, Route 5, and
+  Route 7 may feed prepared producers through named BIR views, but MIR must
+  consume explicit prepared stack authority and fail closed on route-only
+  evidence.
 - Do not edit `plan.md`, `ideas/open/*`, `ideas/closed/*`, implementation
   files, tests, expectations, allowlists, runtime behavior, or root-level log
-  files in the Step 8 docs packet.
+  files in the Step 9 assembly packet.
 
 ## Proof
 
 Docs-only proof. No build required. Ran:
 
 ```sh
-test -f docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md && rg -n "follow-up|dependency|Route 4|Route 5|Route 7|named view|facade|dump|publication|stack destination|647|655|prerequisite" docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md
+test -f docs/bir_route_index_retirement_research/08_stack_view_and_destination_authority_handoff.md && rg -n "BIR semantic view|prealloc|prepared|MIR|frame layout|value home|move bundle|destination authority|freshness|aggregate stack|fail closed|Route 4|Route 5|Route 7|647|655|positive producer evidence" docs/bir_route_index_retirement_research/08_stack_view_and_destination_authority_handoff.md
 ```
 
 The delegated proof writes no root-level log; `test_after.log` was intentionally
