@@ -125,6 +125,34 @@ std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(
   return std::nullopt;
 }
 
+enum class SemanticPointerParamAbiRole {
+  Sret,
+  Byval,
+};
+
+std::optional<bir::CallArgAbiInfo> lower_semantic_pointer_param_abi(
+    const c4c::TargetProfile& target_profile,
+    SemanticPointerParamAbiRole role,
+    std::size_t size_bytes = 0,
+    std::size_t align_bytes = 0) {
+  auto abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, bir::TypeKind::Ptr);
+  if (!abi.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (role) {
+    case SemanticPointerParamAbiRole::Sret:
+      abi->sret_pointer = true;
+      return abi;
+    case SemanticPointerParamAbiRole::Byval:
+      abi->size_bytes = size_bytes;
+      abi->align_bytes = align_bytes;
+      abi->byval_copy = true;
+      return abi;
+  }
+  return std::nullopt;
+}
+
 bool enforce_structured_signature_aggregate_layouts(
     const c4c::TargetProfile& target_profile) {
   return target_profile.arch == c4c::TargetArch::Aarch64;
@@ -650,14 +678,8 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
         .name = "%ret.sret",
         .size_bytes = return_info->size_bytes,
         .align_bytes = return_info->align_bytes,
-        .abi =
-            [&]() -> std::optional<bir::CallArgAbiInfo> {
-          auto abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, bir::TypeKind::Ptr);
-          if (abi.has_value()) {
-            abi->sret_pointer = true;
-          }
-          return abi;
-      }(),
+        .abi = lower_semantic_pointer_param_abi(target_profile,
+                                                SemanticPointerParamAbiRole::Sret),
         .is_sret = true,
     });
   }
@@ -736,16 +758,10 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
             .name = param.operand,
             .size_bytes = layout->size_bytes,
             .align_bytes = layout->align_bytes,
-            .abi =
-                [&]() -> std::optional<bir::CallArgAbiInfo> {
-              auto abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, bir::TypeKind::Ptr);
-              if (abi.has_value()) {
-                abi->size_bytes = layout->size_bytes;
-                abi->align_bytes = layout->align_bytes;
-                abi->byval_copy = true;
-              }
-              return abi;
-            }(),
+            .abi = lower_semantic_pointer_param_abi(target_profile,
+                                                    SemanticPointerParamAbiRole::Byval,
+                                                    layout->size_bytes,
+                                                    layout->align_bytes),
             .is_byval = true,
         });
         continue;
@@ -793,16 +809,10 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
           .name = param.first,
           .size_bytes = layout->size_bytes,
           .align_bytes = layout->align_bytes,
-          .abi =
-              [&]() -> std::optional<bir::CallArgAbiInfo> {
-            auto abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, bir::TypeKind::Ptr);
-            if (abi.has_value()) {
-              abi->size_bytes = layout->size_bytes;
-              abi->align_bytes = layout->align_bytes;
-              abi->byval_copy = true;
-            }
-            return abi;
-          }(),
+          .abi = lower_semantic_pointer_param_abi(target_profile,
+                                                  SemanticPointerParamAbiRole::Byval,
+                                                  layout->size_bytes,
+                                                  layout->align_bytes),
           .is_byval = true,
       });
       continue;
@@ -868,16 +878,10 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
         .name = param.operand,
         .size_bytes = layout->size_bytes,
         .align_bytes = layout->align_bytes,
-        .abi =
-            [&]() -> std::optional<bir::CallArgAbiInfo> {
-          auto abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, bir::TypeKind::Ptr);
-          if (abi.has_value()) {
-            abi->size_bytes = layout->size_bytes;
-            abi->align_bytes = layout->align_bytes;
-            abi->byval_copy = true;
-          }
-          return abi;
-        }(),
+        .abi = lower_semantic_pointer_param_abi(target_profile,
+                                                SemanticPointerParamAbiRole::Byval,
+                                                layout->size_bytes,
+                                                layout->align_bytes),
         .is_byval = true,
     });
   }
