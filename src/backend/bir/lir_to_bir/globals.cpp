@@ -84,7 +84,7 @@ bool ImportedFunctionSymbolIndex::contains_link_name_id(LinkNameId link_name_id)
          link_name_ids.find(link_name_id) != link_name_ids.end();
 }
 
-std::optional<LinkNameId> ImportedFunctionSymbolIndex::find_raw_symbol_link_name_id(
+std::optional<LinkNameId> ImportedFunctionSymbolIndex::no_id_compatibility_link_name_id(
     std::string_view raw_symbol_name) const {
   const auto it = raw_symbol_link_name_ids.find(std::string(raw_symbol_name));
   if (it == raw_symbol_link_name_ids.end()) {
@@ -217,7 +217,7 @@ bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
   // function identity with a missing id cannot recover through raw initializer
   // spelling here. Remove this bridge when LIR pointer initializers and aggregate
   // pointer fields carry resolvable LinkNameId metadata.
-  return function_symbols.find_raw_symbol_link_name_id(raw_symbol_name).has_value();
+  return function_symbols.no_id_compatibility_link_name_id(raw_symbol_name).has_value();
 }
 
 bool is_known_function_global_address(const GlobalAddress& address,
@@ -353,7 +353,7 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
           // Metadata-rich addresses must already have passed LinkNameId membership
           // above, so this must not become raw spelling recovery for bad ids.
           const auto link_name_id =
-              function_symbols.find_raw_symbol_link_name_id(address.global_name);
+              function_symbols.no_id_compatibility_link_name_id(address.global_name);
           if (link_name_id.has_value()) {
             address.link_name_id = *link_name_id;
           }

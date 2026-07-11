@@ -87,8 +87,12 @@ struct ImportedFunctionSymbolIndex {
   void reserve(std::size_t size);
   void insert_function(std::string raw_symbol_name, LinkNameId link_name_id);
   [[nodiscard]] bool contains_link_name_id(LinkNameId link_name_id) const;
-  [[nodiscard]] std::optional<LinkNameId> find_raw_symbol_link_name_id(
+  [[nodiscard]] std::optional<LinkNameId> no_id_compatibility_link_name_id(
       std::string_view raw_symbol_name) const;
+  [[nodiscard]] std::optional<LinkNameId> find_raw_symbol_link_name_id(
+      std::string_view raw_symbol_name) const {
+    return no_id_compatibility_link_name_id(raw_symbol_name);
+  }
 
  private:
   std::unordered_set<LinkNameId> link_name_ids;

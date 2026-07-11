@@ -832,7 +832,7 @@ c4c::LinkNameId resolve_initializer_symbol_link_name_id(
     return global_it->second.link_name_id;
   }
   if (const auto function_link_name_id =
-          function_symbols.find_raw_symbol_link_name_id(symbol_name);
+          function_symbols.no_id_compatibility_link_name_id(symbol_name);
       function_link_name_id.has_value()) {
     return *function_link_name_id;
   }
