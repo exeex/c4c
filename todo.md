@@ -1,36 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/687_structured_layout_bridge_isolation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Clarify Aggregate Layout Lookup Boundaries
+Current Step ID: 5
+Current Step Title: Prove Behavior Preservation
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3, `Clarify Aggregate Layout Lookup Boundaries`, with
-one behavior-preserving aggregate copy contraction. `append_local_aggregate_copy_to_pointer`
-and `append_local_aggregate_copy_to_global` now resolve the source
-`AggregateTypeLayout` once at the copy boundary and pass that resolved layout
-into leaf collection instead of hiding the rendered-text lookup behind
-`collect_sorted_leaf_slots(source_slots)`.
+Completed `plan.md` Step 5, `Prove Behavior Preservation`, with a fresh
+supervisor-selected behavior-preservation proof for the active structured
+layout bridge isolation runbook. No implementation, tests, expectations,
+unsupported markers, allowlists, harness policy, `plan.md`, source idea, or
+review artifacts were changed by this validation packet.
 
 ## Suggested Next
 
-Proceed with one more Step 3 packet only if the supervisor wants the remaining
-raw-text aggregate lookup sites audited; otherwise route to Step 5 behavior
-preservation proof for this runbook.
+From the executor perspective, the ordered runbook now appears complete and is
+ready for supervisor/plan-owner lifecycle review. Do not close lifecycle state
+from the executor role.
 
 ## Watchouts
 
-This packet intentionally did not change LocalAggregateSlots ownership or carry
-layout state into memory helpers. Keep nested `AggregateTypeLayout` ownership
-adapter-private, and avoid letting aggregate layout lookup move into public BIR,
-target aggregate transport, prepared/prealloc, MIR, byval ABI placement,
-initializer, memory/provenance, or call ABI policy.
+This was proof-only work. The green backend subset is behavior-preservation
+evidence for the already-touched adapter slice; lifecycle closure and any
+broader acceptance decision remain supervisor-owned.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`;
-passed, 100% tests passed, 0 tests failed out of 302. Proof log:
+passed, 100% tests passed, 0 tests failed out of 302. Fresh proof log:
 `test_after.log`.
