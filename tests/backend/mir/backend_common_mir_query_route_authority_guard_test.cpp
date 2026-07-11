@@ -80,6 +80,27 @@ int main() {
     }
   }
 
+  const auto memory_adapter_begin =
+      implementation.find("BirMemoryAccessIdentity find_bir_memory_access_identity(");
+  const auto memory_adapter_end = implementation.find(
+      "BirCurrentBlockPublicationIdentity\nfind_bir_current_block_publication_identity(",
+      memory_adapter_begin);
+  if (memory_adapter_begin == std::string::npos ||
+      memory_adapter_end == std::string::npos) {
+    return fail("could not isolate the bounded named memory-access adapter");
+  }
+  const auto memory_adapter = implementation.substr(
+      memory_adapter_begin, memory_adapter_end - memory_adapter_begin);
+  if (memory_adapter.find("named_memory_access_to_mir(result)") ==
+          std::string::npos ||
+      memory_adapter.find("Route3") != std::string::npos ||
+      memory_adapter.find("route3_") != std::string::npos ||
+      memory_adapter.find("base_name") != std::string::npos ||
+      memory_adapter.find("std::get") != std::string::npos ||
+      memory_adapter.find("std::visit") != std::string::npos) {
+    return fail("bounded memory-access query reconstructed named BIR evidence");
+  }
+
   // The sole current public route payload is the Route 5 edge/join index.
   // This check catches route records, indexes, and route-return wrappers added
   // under otherwise generic common-query names.

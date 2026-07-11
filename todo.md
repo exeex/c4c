@@ -3,35 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Establish and consume source-semantic named results
+Current Step ID: 2.4
+Current Step Title: Adapt common MIR to the named memory-access result
 
 ## Just Finished
 
-- Step 2.2 Route 2 ownership correction is complete: the BIR select-dependency
-  result now owns type-less named lookup plus root producer kind,
-  materialization availability, value identity, and instruction identity.
-- `find_select_chain_view_result` now only adapts a complete BIR-owned result;
-  it no longer scans instructions, classifies producer kinds, rediscovers
-  candidate roots, or derives materialization completeness.
-- `SameBlockSelectProducer` truth now requires `Available` and complete value
-  identity, and the prepared AArch64 compatibility construction populates that
-  carrier coherently. Focused contracts cover positive identity, type-less
-  lookup, and missing/incomplete/ambiguous/mismatched/unavailable failures.
+- Step 2.4 now adapts `find_bir_memory_access_identity` through the complete
+  named `BirMemoryAccessResult` payload and one status-preserving copier.
+- The adapter copies instruction, block, value, address-space, volatility,
+  alignment, slot/link, and distinct local/global/string identities without
+  BIR instruction look-through, base-name inference, or Route 3 discovery.
+- Request/result kind, block, instruction-index, and instruction-pointer
+  disagreement fails closed. The source authority guard prevents route or raw
+  instruction reconstruction from returning to this bounded function.
 
 ## Suggested Next
 
-- Supervisor review of the completed Step 2.2 correction, then select the next
-  plan packet if the ownership audit accepts Route 2 retirement.
+- Supervisor review of the completed Step 2.4 adapter, then select the first
+  bounded Step 3 placement-query migration packet if accepted.
 
 ## Watchouts
 
-- Preserve Step 2.1 select-arm short-circuit and operand-order semantics; this
-  packet transfers ownership and must not broaden dependency discovery.
-- Keep the carrier correction bounded. Do not migrate target materializers or
-  introduce target policy while repairing explicit status semantics.
-- Remaining Route 3 helpers in common MIR serve publication identity; do not
-  mechanically migrate them.
+- Remaining Route 3 helpers in common MIR serve the separate Route 5
+  publication/edge identity family; do not mechanically migrate them or lower
+  the guard inventory until their owning family is migrated.
 - Preserve missing, incomplete, ambiguous, unsupported, and mismatched
   fail-closed behavior at the common-MIR boundary.
 - Eighteen Route 1 spellings remain in other bounded memory/publication/
@@ -44,7 +39,7 @@ Current Step Title: Establish and consume source-semantic named results
 
 ## Proof
 
-- Passed required acceptance proof (331/331 backend tests):
+- Passed the supervisor-selected exact acceptance proof (331/331 backend tests):
   `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`
 - Canonical proof log: `test_after.log`.

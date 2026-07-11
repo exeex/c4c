@@ -151,25 +151,35 @@ namespace {
 [[nodiscard]] BirMemoryAccessIdentity named_memory_access_to_mir(
     const bir::BirMemoryAccessResult& result) {
   if (!result) {
-    return {};
+    return BirMemoryAccessIdentity{.status = result.status};
+  }
+  const auto node_kind = named_memory_kind_to_mir(result.kind);
+  const auto base_kind = named_memory_base_to_mir(result.base_kind);
+  if (result.instruction == nullptr || node_kind == BirMemoryAccessNodeKind::Unknown ||
+      base_kind == BirMemoryAccessBaseKind::None) {
+    return BirMemoryAccessIdentity{.status = bir::BirViewStatus::Incomplete};
   }
   return BirMemoryAccessIdentity{
       .status = result.status,
       .inst = result.instruction,
       .block_label = result.block_label,
       .instruction_index = result.instruction_index,
-      .node_kind = named_memory_kind_to_mir(result.kind),
+      .node_kind = node_kind,
       .result_value_name = result.result_value_name,
       .stored_value_name = result.stored_value_name,
       .address_space = result.address_space,
       .is_volatile = result.is_volatile,
-      .base_kind = named_memory_base_to_mir(result.base_kind),
+      .base_kind = base_kind,
       .local_slot_name = result.local_slot_name,
       .local_slot_id = result.local_slot_id,
       .global_name = result.global_name,
       .global_name_id = result.global_name_id,
+      .pointer_base = result.pointer_base,
       .pointer_value_name = result.pointer_base_name,
       .string_constant_name = result.string_constant_name,
+      .string_constant_name_id = result.string_constant_name_id,
+      .result_value = result.result_value,
+      .stored_value = result.stored_value,
       .byte_offset = result.byte_offset,
       .size_bytes = result.size_bytes,
       .align_bytes = result.align_bytes,
@@ -1367,41 +1377,17 @@ evaluate_same_block_integer_constant(
   }
   const auto view = bir::make_bir_memory_access_view(*request.block);
   const auto result = bir::find_memory_access(view, request.instruction_index);
-  const auto node_kind = named_memory_kind_to_mir(result.kind);
-  const auto base_kind = named_memory_base_to_mir(result.base_kind);
-  if (!result) {
-    return BirMemoryAccessIdentity{.status = result.status};
+  const auto identity = named_memory_access_to_mir(result);
+  if (!identity) {
+    return identity;
   }
-  if (node_kind != request.node_kind ||
-      base_kind == BirMemoryAccessBaseKind::None ||
-      result.block_label != request.block->label) {
+  if (identity.node_kind != request.node_kind ||
+      identity.block_label != request.block->label ||
+      identity.instruction_index != request.instruction_index ||
+      identity.inst != &request.block->insts[request.instruction_index]) {
     return {};
   }
-  return BirMemoryAccessIdentity{
-      .status = result.status,
-      .inst = result.instruction,
-      .block_label = result.block_label,
-      .instruction_index = result.instruction_index,
-      .node_kind = node_kind,
-      .result_value_name = result.result_value_name,
-      .stored_value_name = result.stored_value_name,
-      .address_space = result.address_space,
-      .is_volatile = result.is_volatile,
-      .base_kind = base_kind,
-      .local_slot_name = result.local_slot_name,
-      .local_slot_id = result.local_slot_id,
-      .global_name = result.global_name,
-      .global_name_id = result.global_name_id,
-      .pointer_base = result.pointer_base,
-      .pointer_value_name = result.pointer_base_name,
-      .string_constant_name = result.string_constant_name,
-      .string_constant_name_id = result.string_constant_name_id,
-      .result_value = result.result_value,
-      .stored_value = result.stored_value,
-      .byte_offset = result.byte_offset,
-      .size_bytes = result.size_bytes,
-      .align_bytes = result.align_bytes,
-  };
+  return identity;
 }
 
 [[nodiscard]] BirCurrentBlockPublicationIdentity
