@@ -8,30 +8,32 @@ Current Step Title: Isolate Type Declaration And Typed Operand Compatibility
 
 ## Just Finished
 
-Completed `plan.md` Step 2 selected contraction for local aggregate copy leaf
-collection.
+Completed `plan.md` Step 2 selected contraction for recursive local aggregate
+slot expansion.
 
-`append_local_aggregate_copy_from_slots` now reuses the already-resolved target
-`AggregateTypeLayout` when collecting target leaves instead of calling the
-rendered-text `collect_sorted_leaf_slots(target_slots)` entrypoint. The
-existing source/target compatibility decision, slot type checks, and emitted
-load/store copy sequence are intended unchanged.
+`append_local_aggregate_scalar_slots` now reuses the already-resolved array
+element `AggregateTypeLayout` for each element's recursive slot expansion
+instead of re-entering the rendered-text overload for every element. The
+existing element layout validation, byte offsets, slot naming, and emitted local
+slot declarations are intended unchanged.
 
 ## Suggested Next
 
 Choose the next structured-layout bridge contraction from the remaining
-rendered-text lookup sites, likely recursive local aggregate slot expansion or
-another `LocalAggregateSlots` path that still only carries rendered type text.
+rendered-text lookup sites, likely struct-field recursion in local aggregate
+slot expansion or another `LocalAggregateSlots` path that still only carries
+rendered type text.
 
 ## Watchouts
 
-This removes only the redundant target leaf-collection lookup after local copy
-compatibility has already resolved the target layout. Source/target size
-validation still uses the existing rendered-text compatibility bridge, recursive
-child expansion still follows layout field type text, and unrelated legacy
-callers still use text-based helpers. Avoid treating this as a broader policy
-move into public BIR type/model authority, prepared/prealloc, target transport,
-MIR, initializer lowering, memory/provenance policy, or call ABI placement.
+This removes only the repeated per-element recursion through the rendered-text
+overload after the array element layout has already been resolved. Struct-field
+recursion still follows layout field type text, local aggregate copy
+source/target size validation still uses the existing rendered-text
+compatibility bridge, and unrelated legacy callers still use text-based helpers.
+Avoid treating this as a broader policy move into public BIR type/model
+authority, prepared/prealloc, target transport, MIR, initializer lowering,
+memory/provenance policy, or call ABI placement.
 
 ## Proof
 
