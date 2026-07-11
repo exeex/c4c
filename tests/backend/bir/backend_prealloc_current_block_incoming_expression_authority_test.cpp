@@ -76,6 +76,19 @@ int main() {
     return 5;
   }
 
+  // Unrelated routed values and roles do not participate in the applicable
+  // edge family and therefore cannot veto otherwise complete authority.
+  auto unrelated_value = fact(c4c::BlockLabelId{2}, prepare::PreparedValueId{11});
+  unrelated_value.routed_value_id = prepare::PreparedValueId{21};
+  unrelated_value.routed_value_name = c4c::ValueNameId{21};
+  auto unrelated_role = fact(c4c::BlockLabelId{2}, prepare::PreparedValueId{11});
+  unrelated_role.role = prepare::PreparedCurrentBlockJoinRoutingRole::Source;
+  if (query({unrelated_value, fact(), unrelated_role}, &edge_count) !=
+          prepare::PreparedFactBoundaryStatus::Available ||
+      edge_count != 1) {
+    return 9;
+  }
+
   auto wrong_successor = fact(c4c::BlockLabelId{2}, prepare::PreparedValueId{11});
   wrong_successor.successor_label = c4c::BlockLabelId{4};
   if (query({fact(), wrong_successor}) !=

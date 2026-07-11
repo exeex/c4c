@@ -8,28 +8,39 @@ Current Step Title: Repair complete invariant owner-prepared fact coverage
 
 ## Just Finished
 
-- Repaired the runbook after the Step 6.2 owner-only consumption proof exposed
-  incomplete owner-prepared fact coverage; bounded AArch64 adoption is now
-  Step 6.3 and remains gated on the new Step 6.2 prerequisite.
+- Completed plan Step 6.2 by validating the repaired owner-prepared routing
+  fact model produced by the routed-value decomposition work: aggregate
+  transfer destinations fail closed, composed scalar dependencies retain the
+  direct edge source identity, and all applicable facts require invariant
+  destination/source/origin semantics.
+- Extended the focused authority matrix to prove that unrelated routed values
+  and roles do not enter the applicable edge family while related mismatches,
+  duplicate facts, multiple predecessors, and parallel destinations continue
+  to fail closed under their established contracts.
 
 ## Suggested Next
 
-- Execute plan Step 6.2 as a preallocation-owned packet: prove complete,
-  invariant owner-prepared facts for the unchanged incoming-expression
-  contract before retrying owner-only AArch64 consumption in Step 6.3.
+- Execute plan Step 6.3 as a bounded AArch64 packet that consumes only the
+  owner-attached stable-key facts and preserves the unchanged supported
+  incoming-expression expectations.
 
 ## Watchouts
 
-- Do not reconstruct authority in AArch64, promote Route 5, rewrite source
-  identity while appending facts, add a target-local authority builder or
-  fallback, or change supported expectations.
-- Do not accept scalar-operand or immediate-destination authority without a
-  focused semantic contract covering positive, unrelated, mismatched, and
-  multiple-applicable-edge cases.
-- Preserve or prove the transfer-level destination invariant; owner attachment
-  alone is not proof of complete authority.
+- Step 6.3 must remove Route 5 and target-local authority reconstruction rather
+  than treating their current green integration behavior as authority proof.
+- Preserve direct publication source ID/name pairs on composed dependency
+  facts; only the stable routed key identifies a scalar dependency.
+- Immediate operands have no stable prepared value identity and therefore do
+  not independently receive routing facts; the focused immediate contract
+  authorizes only a complete prepared publication's named destination where
+  semantically applicable.
 - Ideas 713 and 705 remain blocked until idea 716 completes its handback.
 
 ## Proof
 
-- Lifecycle-only runbook repair; no implementation proof run.
+- Ran `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' > test_after.log 2>&1` exactly as delegated.
+- Build passed and all 324/324 backend tests passed, including the focused
+  destination-consistency, routed-operand, all-edge invariance, prepared-owner
+  attachment, and unchanged AArch64 integration contracts. The delegated
+  proof was sufficient; proof log: `test_after.log`.
