@@ -2,8 +2,10 @@
 
 Status: Open
 Type: Research and architecture documentation
-Parent: `ideas/closed/585_target_abi_contract_and_value_consumption_research.md`
+After: `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
+Parent: `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
 Related:
+- `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
 - `ideas/closed/585_target_abi_contract_and_value_consumption_research.md`
 - `ideas/open/589_direct_edge_publication_move_freshness_ownership.md`
 - `ideas/open/590_branch_stack_load_freshness_contract.md`
