@@ -283,7 +283,7 @@ void BirFunctionLowerer::record_pointer_global_object_alias(
     std::string_view result_name,
     const GlobalInfo& global_info,
     const GlobalTypes& global_types,
-    GlobalObjectPointerMap& global_object_pointer_slots) {
+    c4c::backend::GlobalObjectPointerMap& global_object_pointer_slots) {
   if (global_info.initializer_symbol_name.empty() ||
       global_info.initializer_offset_type != bir::TypeKind::Void ||
       global_info.initializer_byte_offset != 0) {
@@ -531,7 +531,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     const c4c::backend::GlobalPointerValueSlots& global_pointer_value_slots,
     const c4c::backend::AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
     c4c::backend::GlobalPointerMap* global_pointer_slots,
-    GlobalObjectPointerMap* global_object_pointer_slots,
+    c4c::backend::GlobalObjectPointerMap* global_object_pointer_slots,
     PointerAddressMap* pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
@@ -741,7 +741,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     const c4c::backend::GlobalPointerMap& global_pointer_slots,
-    const GlobalObjectPointerMap& global_object_pointer_slots,
+    const c4c::backend::GlobalObjectPointerMap& global_object_pointer_slots,
     const PointerAddressMap& pointer_value_addresses,
     GlobalAddressSlots* global_address_slots,
     AddressedGlobalPointerSlots* addressed_global_pointer_slots,

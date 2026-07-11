@@ -337,7 +337,6 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  using GlobalObjectPointerMap = c4c::backend::GlobalObjectPointerMap;
   using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
   using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
@@ -835,7 +834,7 @@ class BirFunctionLowerer {
       std::string_view result_name,
       const lir_to_bir_detail::GlobalInfo& global_info,
       const GlobalTypes& global_types,
-      GlobalObjectPointerMap& global_object_pointer_slots);
+      c4c::backend::GlobalObjectPointerMap& global_object_pointer_slots);
   static std::optional<GlobalAddress> resolve_pointer_store_address(
       const c4c::codegen::lir::LirOperand& operand,
       const c4c::backend::GlobalPointerMap& global_pointer_slots,
@@ -1342,7 +1341,7 @@ class BirFunctionLowerer {
       const c4c::backend::GlobalPointerValueSlots& global_pointer_value_slots,
       const c4c::backend::AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
       c4c::backend::GlobalPointerMap* global_pointer_slots,
-      GlobalObjectPointerMap* global_object_pointer_slots,
+      c4c::backend::GlobalObjectPointerMap* global_object_pointer_slots,
       PointerAddressMap* pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
   static std::optional<bool> try_lower_global_provenance_store(
@@ -1353,7 +1352,7 @@ class BirFunctionLowerer {
       const GlobalTypes& global_types,
       const ImportedFunctionSymbolIndex& function_symbols,
       const c4c::backend::GlobalPointerMap& global_pointer_slots,
-      const GlobalObjectPointerMap& global_object_pointer_slots,
+      const c4c::backend::GlobalObjectPointerMap& global_object_pointer_slots,
       const PointerAddressMap& pointer_value_addresses,
       GlobalAddressSlots* global_address_slots,
       AddressedGlobalPointerSlots* addressed_global_pointer_slots,
@@ -1482,7 +1481,7 @@ class BirFunctionLowerer {
   DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays_;
   DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays_;
   DynamicGlobalScalarArrayMap dynamic_global_scalar_arrays_;
-  GlobalObjectPointerMap global_object_pointer_slots_;
+  c4c::backend::GlobalObjectPointerMap global_object_pointer_slots_;
   GlobalAddressIntMap global_address_ints_;
   GlobalObjectAddressIntMap global_object_address_ints_;
   std::vector<bir::Inst> hoisted_alloca_scratch_;
