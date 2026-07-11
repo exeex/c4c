@@ -8,19 +8,18 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned global
-dynamic-array access/map alias family.
+Completed Step 3 import-boundary contraction for the memory-owned addressed
+global pointer slot key/state alias family.
 
 - Removed the `BirFunctionLowerer` compatibility aliases for
-  `DynamicGlobalPointerArrayAccess`, `DynamicGlobalPointerArrayMap`,
-  `DynamicGlobalAggregateArrayAccess`, `DynamicGlobalAggregateArrayMap`,
-  `DynamicGlobalScalarArrayAccess`, and `DynamicGlobalScalarArrayMap`.
-- Updated the affected memory implementation references to use the
-  memory-owned declarations directly from
+  `GlobalPointerSlotKey`, `GlobalPointerSlotKeyHash`, and
+  `AddressedGlobalPointerSlots`.
+- Updated the affected provenance adapter reference to use the memory-owned
+  `GlobalPointerSlotKey` declaration directly from
   `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-- Did not change dynamic global array fields, map definitions, BIR route
-  records, prepared data, target/MIR paths, runtime behavior, tests,
-  expectations, allowlists, or public BIR query APIs.
+- Did not change addressed global pointer slot map fields, key/hash
+  definitions, BIR route records, prepared data, target/MIR paths, runtime
+  behavior, tests, expectations, allowlists, or public BIR query APIs.
 
 ## Suggested Next
 
@@ -32,8 +31,9 @@ selects for the same declaration-boundary cleanup.
 - This packet intentionally did not edit string-authority classification data;
   the declarations were already memory-owned and this slice only removed
   lowerer re-export/import coupling.
-- The dynamic global array access and map types are now found through the
-  enclosing `c4c::backend` namespace instead of through `BirFunctionLowerer::`.
+- `GlobalPointerSlotKey`, `GlobalPointerSlotKeyHash`, and
+  `AddressedGlobalPointerSlots` are now found through the enclosing
+  `c4c::backend` namespace instead of through `BirFunctionLowerer::`.
 - Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.

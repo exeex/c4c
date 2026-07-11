@@ -9,7 +9,6 @@
 namespace c4c::backend {
 
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
-using GlobalPointerSlotKey = BirFunctionLowerer::GlobalPointerSlotKey;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::is_known_function_global_address;

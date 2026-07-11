@@ -340,9 +340,6 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  using GlobalPointerSlotKey = c4c::backend::GlobalPointerSlotKey;
-  using GlobalPointerSlotKeyHash = c4c::backend::GlobalPointerSlotKeyHash;
-
   using GlobalPointerMap = c4c::backend::GlobalPointerMap;
   using GlobalObjectPointerMap = c4c::backend::GlobalObjectPointerMap;
   using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
@@ -352,7 +349,6 @@ class BirFunctionLowerer {
   using LocalSlotAddressSlots = c4c::backend::LocalSlotAddressSlots;
   using LocalSlotPointerValues = c4c::backend::LocalSlotPointerValues;
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
-  using AddressedGlobalPointerSlots = c4c::backend::AddressedGlobalPointerSlots;
 
   using LocalAggregateSlots = c4c::backend::LocalAggregateSlots;
 
