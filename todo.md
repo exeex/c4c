@@ -8,16 +8,15 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned local slot
-address type.
+Completed Step 3 import-boundary contraction for the memory-owned local
+aggregate field-slot set type.
 
-- Removed the `BirFunctionLowerer::LocalSlotAddress` compatibility alias
+- Removed the `BirFunctionLowerer::LocalAggregateFieldSet` compatibility alias
   from `src/backend/bir/lir_to_bir/lowering.hpp`.
-- Updated lowerer declarations in the owned header to use
-  `c4c::backend::LocalSlotAddress` directly.
-- Left adapter-local `.cpp` definitions unchanged because they already use the
-  memory-owned type inside the backend namespace and do not depend on the
-  removed lowerer alias.
+- Updated lowerer declarations and the lowerer member in the owned header to
+  use `c4c::backend::LocalAggregateFieldSet` directly.
+- Updated the matching memory-owned local-slot definitions to use
+  `c4c::backend::LocalAggregateFieldSet` directly.
 
 ## Suggested Next
 
@@ -28,15 +27,18 @@ contract.
 
 ## Watchouts
 
-- This packet intentionally only contracted the local slot address type
-  alias; it did not change GEP semantics, BIR route records, prepared data,
+- This packet intentionally only contracted the local aggregate field-slot set
+  type alias; it did not change GEP semantics, BIR route records, prepared data,
   target/MIR paths, runtime behavior, tests, expectations, unsupported markers,
   allowlists, or public BIR query APIs.
 - `BirFunctionLowerer` no longer re-exports `LocalSlotTypes`,
   `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
-  `LocalAggregateGepTarget`, `AggregateArrayExtent`, or `LocalSlotAddress`.
-- `rg 'BirFunctionLowerer::LocalSlotAddress|using LocalSlotAddress = c4c::backend::LocalSlotAddress' src/backend/bir/lir_to_bir`
-  returns no matches after this packet.
+  `LocalAggregateGepTarget`, `AggregateArrayExtent`, `LocalSlotAddress`, or
+  `LocalAggregateFieldSet`.
+- `rg 'BirFunctionLowerer::LocalAggregateFieldSet|using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet|const LocalAggregateFieldSet&' src/backend/bir/lir_to_bir`
+  returns no lowerer alias or unqualified parameter matches after this packet;
+  the remaining header references are the direct
+  `c4c::backend::LocalAggregateFieldSet` type.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,
   runtime behavior, or harness policy.

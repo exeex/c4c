@@ -342,7 +342,6 @@ class BirFunctionLowerer {
   using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
   using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
-  using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet;
 
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
@@ -1122,7 +1121,7 @@ class BirFunctionLowerer {
       const ImportedFunctionSymbolIndex& function_symbols,
       const c4c::backend::LocalPointerSlots& local_pointer_slots,
       const c4c::backend::LocalSlotTypes& local_slot_types,
-      const LocalAggregateFieldSet& local_aggregate_field_slots,
+      const c4c::backend::LocalAggregateFieldSet& local_aggregate_field_slots,
       const LocalArraySlotMap& local_array_slots,
       const c4c::backend::LocalAggregateSlotMap& local_aggregate_slots,
       const LocalPointerArrayBaseMap& local_pointer_array_bases,
@@ -1142,7 +1141,7 @@ class BirFunctionLowerer {
       bir::TypeKind value_type,
       const c4c::backend::LocalPointerSlots& local_pointer_slots,
       const c4c::backend::LocalSlotTypes& local_slot_types,
-      const LocalAggregateFieldSet& local_aggregate_field_slots,
+      const c4c::backend::LocalAggregateFieldSet& local_aggregate_field_slots,
       const LocalArraySlotMap& local_array_slots,
       const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases,
       const TypeDeclMap& type_decls,
@@ -1170,7 +1169,7 @@ class BirFunctionLowerer {
   bool try_lower_tracked_local_pointer_slot_load(
       std::string_view result_name,
       std::string_view slot_name,
-      const LocalAggregateFieldSet& local_aggregate_field_slots,
+      const c4c::backend::LocalAggregateFieldSet& local_aggregate_field_slots,
       const LocalArraySlotMap& local_array_slots,
       const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases,
       const TypeDeclMap& type_decls,
@@ -1464,7 +1463,7 @@ class BirFunctionLowerer {
   DynamicLocalAggregateArrayMap dynamic_local_aggregate_arrays_;
   DynamicPointerValueArrayMap dynamic_pointer_value_arrays_;
   c4c::backend::LocalAggregateSlotMap local_aggregate_slots_;
-  LocalAggregateFieldSet local_aggregate_field_slots_;
+  c4c::backend::LocalAggregateFieldSet local_aggregate_field_slots_;
   c4c::backend::LocalPointerValueAliasMap local_pointer_value_aliases_;
   ValueMap local_scalar_slot_values_;
   ValueMap loaded_local_scalar_immediates_;
