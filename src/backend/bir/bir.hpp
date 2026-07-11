@@ -15,6 +15,8 @@
 #include "bir_producer_view.hpp"
 #include "bir_memory_access_view.hpp"
 #include "bir_publication_view.hpp"
+#include "bir_return_view.hpp"
+#include "bir_control_flow_view.hpp"
 
 namespace c4c::backend::bir {
 
