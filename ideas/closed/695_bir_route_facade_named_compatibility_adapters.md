@@ -1,6 +1,6 @@
 # BIR Route Facade Named Compatibility Adapters
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -100,3 +100,26 @@ destination, frame-layout, branch stack-load, move-bundle, or MIR authority.
   timeout/accounting changes, or weaker runtime checks as progress.
 - Reject helper renames or classification-only changes claimed as facade
   contraction if a real consumer still depends on the old public facade.
+
+## Completion Note
+
+Closed after commit `817e56ef3` completed the first-consumer adapter migration.
+The slice added the named BIR publication validation adapter
+`bir::validate_block_entry_publication_reference` over existing Route 4
+publication validation and migrated the selected prealloc block-entry
+publication attribution caller without changing prepared authority, target
+lowering, tests, expectations, or runtime behavior.
+
+Close proof:
+
+- focused implementation proof:
+  `cmake --build --preset default && build/tests/backend/bir/backend_prealloc_block_entry_publications_test`
+- backend before/after guard:
+  `ctest --test-dir build -j --output-on-failure -R backend`, 305 passed /
+  0 failed before and after, accepted with `--allow-non-decreasing-passed`
+- full baseline candidate accepted separately: 3333 passed / 0 failed
+
+Remaining Route 4, Route 7, prealloc consumer migration, publication cleanup,
+test/dump cleanup, and stack-authority prerequisite work belongs to the
+separate follow-up ideas already parked under `ideas/open/`, not to this
+closed first-consumer facade-adapter packet.
