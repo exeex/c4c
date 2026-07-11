@@ -153,7 +153,32 @@ Completion check:
 - The registered fixture contract distinguishes all axes without changing the
   existing integration vectors.
 
-### Step 6: Adopt bounded AArch64 consumption
+### Step 6.1: Attach complete routing facts at the prepared owner boundary
+
+Goal: make the already-queryable complete routing authority part of the
+owner-bound `PreparedFunctionLookups` artifact before target consumption.
+
+Actions:
+
+- Add an owned current-block routing fact collection to
+  `PreparedFunctionLookups` with the same function-context lifetime and copied
+  block-context visibility proven by Step 2.
+- Populate that collection during prepared lookup construction from the
+  complete edge-derived facts proven by Step 4.
+- Make the stable-key query read the owner-attached collection directly; do
+  not require an external routing-fact vector at the consumption boundary.
+- Preserve explicit missing, ambiguous, and mismatched outcomes and keep Route
+  5 diagnostic-only.
+- Extend the focused prepared-lookup contracts to prove attachment, query
+  availability, and fail-closed behavior without AArch64 reconstruction.
+
+Completion check:
+
+- A `PreparedFunctionLookups` owner carries the complete routing fact
+  collection and the stable-key query consumes it without an externally
+  supplied vector; focused build and authority/lifetime proof are green.
+
+### Step 6.2: Adopt bounded AArch64 consumption
 
 Goal: consume the proven owner-attached query without reconstruction.
 
@@ -163,6 +188,8 @@ Primary target:
 Actions:
 
 - Keep AArch64 limited to the stable consumption key and attached lookup.
+- Remove local construction of routing facts from Route 5, MIR, value-home,
+  publication-plan, or other target-local inputs.
 - Preserve unchanged supported integration expectations.
 - Run all focused contracts, the integration test, and fresh broader backend
   proof.

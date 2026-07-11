@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/716_prealloc_current_block_routing_authority_closure.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Separate fixture policy from attachment
+Current Step ID: 6.1
+Current Step Title: Attach complete routing facts at the prepared owner boundary
 
 ## Just Finished
 
@@ -16,13 +16,21 @@ Current Step Title: Separate fixture policy from attachment
 
 ## Suggested Next
 
-- Execute Step 6, preserving the independently proven policy/attachment axes
-  while continuing the active runbook.
+- Execute Step 6.1 by adding owner-bound current-block routing fact storage to
+  `PreparedFunctionLookups`, populating it from complete prepared edge facts,
+  and making the stable-key query consume that storage without an external
+  vector.
 
 ## Watchouts
 
 - Detachment must remove both the prepared lookup pointer and fallback value
   lookup paths; otherwise the query can reconstruct policy from module state.
+- Step 6 is blocked at the owner boundary: complete routing facts are
+  queryable, but `PreparedFunctionLookups` does not store them, and
+  `query_prepared_current_block_join_routing_consumption` currently requires
+  an external vector.
+- Do not advance to Step 6.2 while AArch64 reconstructs routing facts locally
+  from Route 5, MIR, value-home, or publication inputs.
 - Ideas 713 and 705 remain open and blocked pending handback.
 
 ## Proof
