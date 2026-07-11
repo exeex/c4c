@@ -258,8 +258,16 @@ def is_docs_path(path: str) -> bool:
     return path == "docs" or path.startswith("docs/")
 
 
+def is_markdown_path(path: str) -> bool:
+    return path.lower().endswith(".md")
+
+
 def review_relevant_paths(paths: set[str]) -> set[str]:
-    return {path for path in paths if not is_docs_path(path)}
+    return {
+        path for path in paths
+        if not is_docs_path(path) and not is_markdown_path(path)
+    }
+
 
 
 def ensure_state(todo_path: Path, state_path: Path) -> dict:
