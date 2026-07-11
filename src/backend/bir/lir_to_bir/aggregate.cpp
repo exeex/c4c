@@ -172,6 +172,12 @@ std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sor
       selected_aggregate_type_layout(aggregate_slots.type_text,
                                      type_decls_,
                                      structured_layouts_);
+  return collect_sorted_leaf_slots(aggregate_slots, layout);
+}
+
+std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sorted_leaf_slots(
+    const LocalAggregateSlots& aggregate_slots,
+    const AggregateTypeLayout& layout) const {
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
       layout.size_bytes == 0 || layout.align_bytes == 0) {
@@ -288,6 +294,19 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
   const auto layout = selected_aggregate_type_layout(type_text,
                                                      type_decls_,
                                                      structured_layouts_);
+  return append_local_aggregate_scalar_slots(layout,
+                                             slot_prefix,
+                                             byte_offset,
+                                             align_bytes,
+                                             aggregate_slots);
+}
+
+bool BirFunctionLowerer::append_local_aggregate_scalar_slots(
+    const AggregateTypeLayout& layout,
+    std::string_view slot_prefix,
+    std::size_t byte_offset,
+    std::size_t align_bytes,
+    LocalAggregateSlots* aggregate_slots) {
   if (layout.kind == AggregateTypeLayout::Kind::Invalid ||
       layout.align_bytes == 0 ||
       (layout.kind == AggregateTypeLayout::Kind::Scalar && layout.size_bytes == 0)) {
@@ -360,6 +379,13 @@ bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_tex
   const auto aggregate_layout = selected_aggregate_type_layout(type_text,
                                                                type_decls_,
                                                                structured_layouts_);
+  return declare_local_aggregate_slots(type_text, aggregate_layout, slot_name, align_bytes);
+}
+
+bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_text,
+                                                       const AggregateTypeLayout& aggregate_layout,
+                                                       std::string_view slot_name,
+                                                       std::size_t align_bytes) {
   if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
       aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
     return false;
@@ -370,7 +396,7 @@ bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_tex
       .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(type_text)),
       .base_byte_offset = 0,
   };
-  if (!append_local_aggregate_scalar_slots(type_text,
+  if (!append_local_aggregate_scalar_slots(aggregate_layout,
                                            slot_name,
                                            0,
                                            align_bytes,
@@ -534,7 +560,10 @@ bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::In
       return false;
     }
     const auto slot_base = aggregate_param_slot_base(param_name);
-    if (!declare_local_aggregate_slots(info.type_text, slot_base, info.layout.align_bytes)) {
+    if (!declare_local_aggregate_slots(info.type_text,
+                                       info.layout,
+                                       slot_base,
+                                       info.layout.align_bytes)) {
       return false;
     }
 
@@ -545,7 +574,7 @@ bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::In
 
     aggregate_value_aliases_[param_name] = slot_base;
 
-    const auto leaves = collect_sorted_leaf_slots(aggregate_it->second);
+    const auto leaves = collect_sorted_leaf_slots(aggregate_it->second, info.layout);
     for (const auto& [byte_offset, slot_name] : leaves) {
       const auto slot_type_it = local_slot_types_.find(slot_name);
       if (slot_type_it == local_slot_types_.end()) {

@@ -631,13 +631,25 @@ class BirFunctionLowerer {
   // Aggregate lowering helpers.
   std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
       const LocalAggregateSlots& aggregate_slots) const;
+  std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
+      const LocalAggregateSlots& aggregate_slots,
+      const AggregateTypeLayout& layout) const;
   AggregateParamMap collect_aggregate_params() const;
   bool append_local_aggregate_scalar_slots(std::string_view type_text,
                                            std::string_view slot_prefix,
                                            std::size_t byte_offset,
                                            std::size_t align_bytes,
                                            LocalAggregateSlots* aggregate_slots);
+  bool append_local_aggregate_scalar_slots(const AggregateTypeLayout& layout,
+                                           std::string_view slot_prefix,
+                                           std::size_t byte_offset,
+                                           std::size_t align_bytes,
+                                           LocalAggregateSlots* aggregate_slots);
   bool declare_local_aggregate_slots(std::string_view type_text,
+                                     std::string_view slot_name,
+                                     std::size_t align_bytes);
+  bool declare_local_aggregate_slots(std::string_view type_text,
+                                     const AggregateTypeLayout& layout,
                                      std::string_view slot_name,
                                      std::size_t align_bytes);
   bool append_local_aggregate_copy_from_slots(const LocalAggregateSlots& source_slots,
