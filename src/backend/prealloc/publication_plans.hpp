@@ -1738,6 +1738,11 @@ struct PreparedCurrentBlockJoinPolicyQueryResult {
   PreparedCurrentBlockJoinPolicyState state =
       PreparedCurrentBlockJoinPolicyState::AbsentPolicy;
   PreparedCurrentBlockJoinRoutingConsumption consumption;
+
+  [[nodiscard]] explicit operator bool() const {
+    return state == PreparedCurrentBlockJoinPolicyState::AuthoritativeFacts &&
+           static_cast<bool>(consumption);
+  }
 };
 
 struct PreparedCurrentBlockRoutedOperandAuthority {

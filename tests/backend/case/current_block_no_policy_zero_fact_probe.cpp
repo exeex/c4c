@@ -41,13 +41,14 @@ prepare::PreparedCurrentBlockJoinPolicyQueryResult query(
 int main() {
   const auto absent_policy = query(nullptr);
   if (absent_policy.state != PolicyState::AbsentPolicy ||
-      absent_policy.consumption) {
+      absent_policy.consumption || absent_policy) {
     return 1;
   }
 
   const prepare::PreparedCurrentBlockJoinRoutingPolicy absent_owner;
   const auto no_owner = query(&absent_owner);
-  if (no_owner.state != PolicyState::AbsentOwner || no_owner.consumption) {
+  if (no_owner.state != PolicyState::AbsentOwner || no_owner.consumption ||
+      no_owner) {
     return 2;
   }
 
@@ -55,8 +56,19 @@ int main() {
   zero_fact_owner.owner_facts.emplace();
   const auto zero_facts = query(&zero_fact_owner);
   if (zero_facts.state != PolicyState::AttachedOwnerWithoutApplicableFacts ||
-      zero_facts.consumption) {
+      zero_facts.consumption || zero_facts) {
     return 3;
+  }
+
+  prepare::PreparedCurrentBlockJoinRoutingPolicy nonapplicable_owner;
+  nonapplicable_owner.owner_facts = {authoritative_fact()};
+  nonapplicable_owner.owner_facts->front().successor_label =
+      c4c::BlockLabelId{10};
+  const auto nonapplicable = query(&nonapplicable_owner);
+  if (nonapplicable.state !=
+          PolicyState::AttachedOwnerWithoutApplicableFacts ||
+      nonapplicable.consumption || nonapplicable) {
+    return 4;
   }
 
   prepare::PreparedCurrentBlockJoinRoutingPolicy authoritative_owner;
@@ -64,8 +76,8 @@ int main() {
   const auto authoritative = query(&authoritative_owner);
   if (authoritative.state != PolicyState::AuthoritativeFacts ||
       !authoritative.consumption ||
-      authoritative.consumption.edge_fact_count != 1) {
-    return 4;
+      authoritative.consumption.edge_fact_count != 1 || !authoritative) {
+    return 5;
   }
 
   return 0;
