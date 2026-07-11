@@ -3,6 +3,7 @@
 Status: Open
 Type: backend contract decomposition
 Unblocks: `ideas/open/705_prepared_fact_boundary_from_bir_views.md`
+Blocked By: `ideas/open/716_prealloc_current_block_routing_authority_closure.md` pending handback
 
 ## Goal
 

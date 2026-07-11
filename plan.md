@@ -1,139 +1,189 @@
-# Current-Block Edge-Bound Routing Consumption Decomposition Runbook
+# Prealloc Current-Block Routing Authority Closure Runbook
 
 Status: Active
-Source Idea: ideas/open/713_current_block_edge_bound_routing_consumption_decomposition.md
-Supersedes active execution of: ideas/open/705_prepared_fact_boundary_from_bir_views.md
+Source Idea: ideas/open/716_prealloc_current_block_routing_authority_closure.md
+Supersedes active execution of: ideas/open/713_current_block_edge_bound_routing_consumption_decomposition.md
 
 ## Purpose
 
-Decompose the blocked result-level versus edge-bound routing interface before
-resuming Route 5 retirement in idea 705.
+Separate attachment, diagnostic identity, edge authority, and fixture semantics
+before returning to bounded AArch64 consumption.
+
+## Goal
+
+Prove that only complete, invariant edge-derived prepared facts authorize a
+current-block incoming-expression answer.
 
 ## Core Rule
 
-Improve the proof and ownership boundary first. Do not patch AArch64 routing or
-collapse edge facts until registered probes define when a result-level answer
-is semantically unique.
+Establish each authority boundary with its own registered contract. Route 5 is
+diagnostic-only, attachment is not policy evidence, and the AArch64 integration
+test is adopted only after the focused probes are green.
 
 ## Read First
 
+- `ideas/open/716_prealloc_current_block_routing_authority_closure.md`
 - `ideas/open/713_current_block_edge_bound_routing_consumption_decomposition.md`
-- `ideas/open/705_prepared_fact_boundary_from_bir_views.md`
-- `review/reviewA.md` if present in history
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- `review/step4_aarch64_consumption_review.md`
+- `review/step4_aarch64_consumption_rereview.md`
+- `src/backend/prealloc/prepared_lookups.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
 - `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+
+## Current Targets
+
+- Function-context ownership and prepared-lookup lifetime.
+- Route 5 diagnostic-only enforcement.
+- Complete edge-derived incoming-expression authority.
+- Integration fixture policy-versus-attachment separation.
+- Bounded AArch64 adoption after focused proof.
 
 ## Non-Goals
 
-- Do not resume idea 705 Route 5 public payload removal during baseline/probe work.
-- Do not migrate common MIR queries or unrelated targets.
-- Do not use function-wide scans, pointer identity, first-match selection, or
-  expectation downgrades.
-- Do not treat lifecycle switching as backend capability progress.
+- Do not retire Route 5 payloads or resume broader idea 705 work.
+- Do not use target reconstruction, function-wide scans, pointer identity,
+  successor-only identity, or unique Route 5 selection as authority.
+- Do not rewrite supported integration vectors or change fixture semantics to
+  preserve them.
+- Do not combine independent probes into the existing integration test.
 
 ## Execution Rules
 
-- Use registered tests only as acceptance proof.
-- Keep one primary identity/collision contract per probe.
-- Preserve the existing AArch64 routing test as integration proof, not the
-  discovery surface.
-- Bind every proposed aggregate/query to explicit ownership and negative status.
-- Run build plus focused proof for each step and the broader backend proof at
-  integration.
+- Establish a fresh registered baseline before semantic changes.
+- Keep one primary contract per focused C++ probe under `tests/backend/bir/` or
+  `tests/backend/mir/`.
+- Prove authority without consulting Route 5 before target adoption.
+- For every code-changing step run build, the named focused test, and the
+  supervisor-selected matching proof command.
+- Run fresh broader backend proof at the integration and handback checkpoints.
 
 ## Ordered Steps
 
-### Step 1: Establish the result-level versus edge-bound baseline
+### Step 1: Establish the authority-collision baseline
 
-Goal: capture the blocked interface mismatch in one registered focused contract
-without changing backend selection.
-
-Actions:
-
-- Record the stable identities available to the result-level consumer and the
-  additional predecessor/destination identities owned by prealloc facts.
-- Add a registered baseline proving that one BIR result can correspond to more
-  than one valid edge-bound fact.
-- Keep the current AArch64 integration test unchanged.
-
-Completion check:
-
-- A registered focused test deterministically reproduces the mismatch and the
-  proof names the first identity lost between prealloc and the consumer.
-
-### Step 2: Extract collision-family probes
-
-Goal: split the blocked family into independent, registered contracts.
+Goal: record the two rejected Step 4 routes and identify the first authoritative
+fact each one lacks.
 
 Actions:
 
-- Add one-primary-contract probes for parallel predecessors, parallel
-  destinations, wrong successor, and duplicate semantic edge.
-- Assert explicit available, missing, ambiguous, or mismatched outcomes without
-  target code changes.
-- Reject probes that are smaller copies of the integration fixture but do not
-  isolate one ownership seam.
+- Preserve the owner-attachment correction as a candidate independent seam.
+- Record where Route 5 currently becomes incoming-expression authority.
+- Record how policy construction and lookup attachment are coupled in the
+  integration fixture.
+- Register or select the five primary contracts named by the source idea.
 
 Completion check:
 
-- All four collision families have reachable registered proof and no probe
-  depends on Route 5 agreement.
+- Each collision maps to one owned seam and one registered primary contract;
+  no AArch64 behavior change is attempted.
 
-### Step 3: Define the prealloc-owned result-consumption query
+### Step 2: Prove owner attachment and lifetime independently
 
-Goal: map edge-bound facts to the result-level consumption point without moving
-authority into the target.
+Goal: retain the valid ownership correction without granting routing authority.
+
+Primary target:
+`tests/backend/mir/backend_prealloc_current_block_lookup_attachment_lifetime_test.cpp`
 
 Actions:
 
-- Define the stable query key available at the consumer.
-- Return a positive aggregate only when prealloc proves the requested routing
-  answer is invariant across all applicable edge-bound facts.
-- Preserve explicit missing, ambiguous, and mismatched results.
-- Prove the query against every Step 2 collision probe before target adoption.
+- Prove lookup construction occurs at the prealloc/function-context owner.
+- Prove copied block contexts retain valid shared lookup lifetime.
+- Prove missing attachment fails closed.
+- Do not require Route 5 or a positive incoming-expression answer.
 
 Completion check:
 
-- The query is prealloc-owned, pointer-free, collision-complete, and green for
-  all focused probes without function-wide target scans.
+- The registered lifetime contract is green and independent of routing policy.
 
-### Step 4: Correct and prove bounded AArch64 consumption
+### Step 3: Enforce Route 5 diagnostic-only non-authority
 
-Goal: make the bounded consumer read only the Step 3 query result.
+Goal: make Route 5 unable to seed, replace, erase, or authorize routing facts.
+
+Primary target:
+`tests/backend/bir/backend_prealloc_route5_diagnostic_non_authority_test.cpp`
 
 Actions:
 
-- Build and attach `PreparedFunctionLookups::current_block_join_routing_facts`
-  at the prealloc/function-context owner boundary before target consumption.
-- Transport only the stable result-consumption key from AArch64 and fail closed
-  when the owner-attached lookup is absent.
-- Delete the AArch64-triggered fallback that calls the function-wide prepared
-  lookup builder; do not reconstruct routing authority from the target.
-- Restore the existing supported integration expectations without weakening or
-  reclassifying them.
-- Run the focused probes, the restored AArch64 integration test, and fresh
-  broader backend proof after the correction.
+- Exercise missing, unique, agreeing, and conflicting Route 5 diagnostics.
+- Hold authoritative prepared edge facts constant while Route 5 varies.
+- Remove any Route 5-to-`Available` synthesis or replacement path.
 
 Completion check:
 
-- Precomputed routing facts are attached by their prealloc/function-context
-  owner; AArch64 has no fallback builder or reconstruction path; the existing
-  supported integration contract is restored; all focused, integration, and
-  broader backend proof is freshly green; and idea 705 can resume at Route 5
-  retirement.
+- The authoritative fact set and query status are unchanged by Route 5 input;
+  build and focused proof are green.
 
-### Step 5: Hand back to idea 705
+### Step 4: Bind complete edge-derived incoming-expression authority
 
-Goal: preserve the proven query contract and switch lifecycle execution back to
-the still-open prepared fact boundary idea.
+Goal: authorize `Available` only from complete and invariant prepared edge
+facts.
+
+Primary target:
+`tests/backend/bir/backend_prealloc_current_block_incoming_expression_authority_test.cpp`
 
 Actions:
 
-- Record the completed contract and proof in this idea.
-- Switch the active plan back to idea 705 at its repaired Step 2.3b.3 boundary.
+- Carry predecessor, destination, source semantics, and semantic origin from
+  the prepared edge fact into query authority.
+- Require agreement across every applicable edge fact.
+- Prove available, missing, ambiguous, and mismatched outcomes, including
+  parallel predecessors and destinations.
 
 Completion check:
 
-- Idea 713 is ready to close and idea 705 resumes with no unresolved identity
-  ambiguity.
+- No successor-only or result-name collapse can produce `Available`; the full
+  focused authority matrix is green without Route 5.
+
+### Step 5: Separate fixture policy from attachment
+
+Goal: make integration setup state exactly which policy exists and whether its
+lookup is attached.
+
+Primary target:
+`tests/backend/mir/backend_aarch64_current_block_fixture_policy_attachment_test.cpp`
+
+Actions:
+
+- Provide independent policy-present and attachment-present controls.
+- Prove a supported positive contains real complete edge authority.
+- Prove detached and policy-absent cases fail closed as separate negatives.
+
+Completion check:
+
+- The registered fixture contract distinguishes all axes without changing the
+  existing integration vectors.
+
+### Step 6: Adopt bounded AArch64 consumption
+
+Goal: consume the proven owner-attached query without reconstruction.
+
+Primary target:
+`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+
+Actions:
+
+- Keep AArch64 limited to the stable consumption key and attached lookup.
+- Preserve unchanged supported integration expectations.
+- Run all focused contracts, the integration test, and fresh broader backend
+  proof.
+
+Completion check:
+
+- Focused, integration, and broader proof are green; AArch64 contains no
+  authority builder or fallback; no positive depends on Route 5.
+
+### Step 7: Hand back to idea 713
+
+Goal: return the closed authority contract to the still-open bounded-consumption
+initiative.
+
+Actions:
+
+- Record durable completed contract and proof in idea 716.
+- Switch lifecycle execution back to idea 713 at its Step 4 boundary.
+- Keep idea 705 blocked until idea 713 completes its handback.
+
+Completion check:
+
+- Idea 716 is ready to close and idea 713 can resume without unresolved Route 5,
+  edge-identity, attachment, or fixture-policy ambiguity.

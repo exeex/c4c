@@ -4,6 +4,7 @@ Status: Open
 Type: prealloc/prepared contract implementation
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/704_bir_semantic_handoff_views.md`
+Blocked By: `ideas/open/716_prealloc_current_block_routing_authority_closure.md` pending handback through idea 713
 
 ## First Owner And Scope
 
