@@ -2244,13 +2244,21 @@ find_indexed_prepared_frame_address_offset_for_value_id(
   };
 }
 
-void attribute_route4_block_entry_publication_if_agreeing(
+void attribute_block_entry_publication_proof_if_agreeing(
     const PreparedCurrentBlockEntryPublicationQueryInputs& query,
     PreparedCurrentBlockEntryPublication& result) {
+  const auto* proof_successor_block =
+      query.block_entry_publication_proof_successor_block != nullptr
+          ? query.block_entry_publication_proof_successor_block
+          : query.route4_successor_block;
+  const auto* proof_destination_value =
+      query.block_entry_publication_proof_destination_value != nullptr
+          ? query.block_entry_publication_proof_destination_value
+          : query.route4_destination_value;
   if (result.status != PreparedCurrentBlockEntryPublicationStatus::Available ||
       !prepared_block_entry_publication_available(result.publication) ||
-      query.route4_successor_block == nullptr ||
-      query.route4_destination_value == nullptr ||
+      proof_successor_block == nullptr ||
+      proof_destination_value == nullptr ||
       query.successor_label == kInvalidBlockLabel ||
       result.destination_value_id == PreparedValueId{0} ||
       result.destination_value_name == kInvalidValueName ||
@@ -2258,40 +2266,51 @@ void attribute_route4_block_entry_publication_if_agreeing(
     return;
   }
 
-  bir::Function route4_function;
-  route4_function.blocks.push_back(*query.route4_successor_block);
-  const auto& route4_successor = route4_function.blocks.front();
-  const auto route4_publications =
-      bir::make_bir_publication_view(route4_function);
-  const auto route4_reference =
+  bir::Function compatibility_function;
+  compatibility_function.blocks.push_back(*proof_successor_block);
+  const auto& compatibility_successor = compatibility_function.blocks.front();
+  const auto compatibility_publications =
+      bir::make_bir_publication_view(compatibility_function);
+  const auto proof_reference =
       bir::validate_block_entry_publication_reference(
-          route4_publications, route4_successor, *query.route4_destination_value);
+          compatibility_publications, compatibility_successor, *proof_destination_value);
 
-  result.route4_block_entry_publication_status = route4_reference.status;
+  result.block_entry_publication_proof_status = proof_reference.status;
+  result.block_entry_publication_compatibility_status =
+      proof_reference.route_status;
+  result.route4_block_entry_publication_status =
+      result.block_entry_publication_proof_status;
   result.route4_block_entry_publication_route_status =
-      route4_reference.route_status;
-  if (!route4_reference || route4_reference.block_entry_record == nullptr) {
+      result.block_entry_publication_compatibility_status;
+  if (!proof_reference || proof_reference.block_entry_record == nullptr) {
     return;
   }
 
-  const auto route4 = bir::route4_block_entry_publication_record(
-      query.route4_successor_block,
-      *query.route4_destination_value,
+  const auto compatibility_publication = bir::route4_block_entry_publication_record(
+      proof_successor_block,
+      *proof_destination_value,
       result.destination_value_name);
+  result.block_entry_publication_proof_instruction_index =
+      compatibility_publication.destination_instruction_index;
   result.route4_block_entry_publication_instruction_index =
-      route4.destination_instruction_index;
-  if (!route4 ||
-      route4.successor_label_id != query.successor_label ||
-      route4.destination_value_name_id != result.destination_value_name ||
-      route4.destination_value.name != query.route4_destination_value->name ||
-      route4.destination_value.type != query.route4_destination_value->type ||
-      route4.destination_value_type != query.route4_destination_value->type ||
-      route4.destination_instruction_index !=
+      result.block_entry_publication_proof_instruction_index;
+  if (!compatibility_publication ||
+      compatibility_publication.successor_label_id != query.successor_label ||
+      compatibility_publication.destination_value_name_id != result.destination_value_name ||
+      compatibility_publication.destination_value.name !=
+          proof_destination_value->name ||
+      compatibility_publication.destination_value.type !=
+          proof_destination_value->type ||
+      compatibility_publication.destination_value_type !=
+          proof_destination_value->type ||
+      compatibility_publication.destination_instruction_index !=
           result.publication.bundle->instruction_index) {
     return;
   }
 
-  result.route4_block_entry_publication_attributed = true;
+  result.block_entry_publication_proof_attributed = true;
+  result.route4_block_entry_publication_attributed =
+      result.block_entry_publication_proof_attributed;
 }
 
 PreparedCurrentBlockEntryPublication
@@ -2341,7 +2360,7 @@ find_prepared_current_block_entry_publication(
       result.publication = publication;
       result.destination_home = publication.home;
       result.destination_value_name = publication.destination_value_name;
-      attribute_route4_block_entry_publication_if_agreeing(query, result);
+      attribute_block_entry_publication_proof_if_agreeing(query, result);
       return result;
     }
   }

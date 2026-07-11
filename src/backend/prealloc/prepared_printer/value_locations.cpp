@@ -160,7 +160,7 @@ void append_register_placement(std::ostringstream& out,
 }
 
 [[nodiscard]] std::optional<PreparedCurrentBlockEntryPublication>
-find_agreeing_route4_block_entry_publication(
+find_agreeing_block_entry_publication_proof(
     const PreparedBirModule& module,
     const PreparedValueLocationFunction& function_locations,
     const PreparedValueHomeLookups& value_home_lookups,
@@ -180,13 +180,13 @@ find_agreeing_route4_block_entry_publication(
       .value_locations = &function_locations,
       .value_home_lookups = &value_home_lookups,
       .successor_label = successor_label,
-      .route4_successor_block = successor_block,
-      .route4_destination_value = destination_value,
+      .block_entry_publication_proof_successor_block = successor_block,
+      .block_entry_publication_proof_destination_value = destination_value,
   };
   auto attributed = find_prepared_current_block_entry_publication(
       query, publication.destination_value_id);
   if (attributed.status != PreparedCurrentBlockEntryPublicationStatus::Available ||
-      !attributed.route4_block_entry_publication_attributed ||
+      !attributed.block_entry_publication_proof_attributed ||
       attributed.publication.bundle != publication.bundle ||
       attributed.publication.move != publication.move) {
     return std::nullopt;
@@ -366,7 +366,7 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
           collect_prepared_block_entry_publications(&function_locations, successor_label);
       for (const auto& publication : publications) {
         const auto attributed_publication =
-            find_agreeing_route4_block_entry_publication(module,
+            find_agreeing_block_entry_publication_proof(module,
                                                          function_locations,
                                                          value_home_lookups,
                                                          successor_label,

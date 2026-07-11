@@ -1,54 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/701_route_fact_test_dump_contract_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Rewrite or gate the selected route vocabulary
+Current Step ID: 3
+Current Step Title: Prove the cleanup did not weaken coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected one eligible route vocabulary family for cleanup:
-Route 4 block-entry publication attribution/printer vocabulary.
+Step 2 rewrote the selected Route 4 block-entry publication
+attribution/printer vocabulary behind the named prepared block-entry
+publication proof surface.
 
-Selected family: Route 4 block-entry publication compatibility wording around
-prepared current-block-entry publication lookup and prepared-printer agreement.
-This family is eligible because the named proof surface already exists above
-route dumps:
+Files changed:
 
-- `backend_prealloc_block_entry_publications` exercises
-  `PreparedCurrentBlockEntryPublication`,
-  `PreparedBlockEntryPublication`, and
-  `find_bir_block_entry_publication_identity()` positive and fail-closed
-  behavior, including agreeing, missing, mismatched, wrong-successor,
-  wrong-key, duplicate, and prepared-fallback cases.
-- `backend_cli_dump_prepared_bir_exposes_contract_sections` already checks the
-  prepared dump section `--- prepared-block-entry-publications ---` and named
-  `block_entry_publication ...` rows.
+- `src/backend/prealloc/value_locations.hpp`: added named
+  `block_entry_publication_proof_*` query/result fields while retaining legacy
+  `route4_*` compatibility mirrors.
+- `src/backend/prealloc/prepared_lookups.cpp`: renamed the attribution helper
+  to `attribute_block_entry_publication_proof_if_agreeing()`, made it prefer
+  the named proof inputs, and mirrored results back to legacy compatibility
+  fields when old callers still use them.
+- `src/backend/prealloc/prepared_printer/value_locations.cpp`: renamed the
+  prepared-printer agreement helper to
+  `find_agreeing_block_entry_publication_proof()`.
+- `tests/backend/bir/backend_prealloc_block_entry_publications_test.cpp`:
+  moved the selected assertions to named block-entry publication proof wording
+  and fields.
 
-Why this is not route-dump-only proof: the selected surface is a prepared
-contract/lookup proof plus prepared dump contract coverage. Route 4 evidence
-remains compatibility attribution only; executable or prepared availability is
-not authorized by the route label.
+Remaining compatibility labels:
 
-Expected files for the next packet:
+- Legacy `route4_successor_block`, `route4_destination_value`, and
+  `route4_block_entry_publication_*` fields remain as compatibility mirrors
+  because an unselected prepared-printer test surface still consumes them.
+- The internal call to `bir::route4_block_entry_publication_record()` remains
+  private compatibility implementation for validating BIR block-entry
+  publication proof agreement.
 
-- `src/backend/prealloc/value_locations.hpp` if route-numbered field names need
-  named compatibility aliases or comments.
-- `src/backend/prealloc/prepared_lookups.cpp` for Route 4 block-entry
-  attribution helper/vocabulary cleanup if needed.
-- `src/backend/prealloc/prepared_printer/value_locations.cpp` for prepared
-  block-entry publication printer wording if needed.
-- `tests/backend/bir/backend_prealloc_block_entry_publications_test.cpp` for
-  test assertion vocabulary cleanup.
-- `todo.md` and `test_after.log`.
+No executable prepared availability or object behavior was changed; the named
+prepared block-entry publication contract remains the proof owner.
 
 ## Suggested Next
 
-Delegate Step 2 to rewrite or gate the selected Route 4 block-entry
-publication attribution/printer vocabulary behind the named prepared
-block-entry publication proof surface. Keep the slice narrow to this selected
-family.
+Delegate Step 3 to decide whether the focused proof recorded below is
+sufficient for the runbook proof step, or run any supervisor-selected broader
+validation if needed.
 
 ## Watchouts
 
@@ -66,13 +62,18 @@ family.
   residue.
 - Do not broaden into Route 7 comparison vocabulary in this packet; it has its
   own AArch64 comparison proof surface and should be a separate family.
+- The remaining `route4_*` fields are compatibility mirrors only. Do not treat
+  them as the public/default proof vocabulary for new assertions.
 
 ## Proof
 
-No build/test proof required for this todo-only selection packet.
+Fresh proof passed and is recorded in `test_after.log`.
 
-Recommended supervisor proof command for the next code packet:
+Command run:
 
 ```sh
 cmake --preset default -DC4C_ENABLE_PREPARED_FACT_TESTS=ON && cmake --build --preset default --target backend_prealloc_block_entry_publications_test c4cll && ctest --test-dir build -R '^(backend_prealloc_block_entry_publications|backend_cli_dump_prepared_bir_exposes_contract_sections)$' --output-on-failure | tee test_after.log
 ```
+
+Result: `backend_prealloc_block_entry_publications` and
+`backend_cli_dump_prepared_bir_exposes_contract_sections` both passed.
