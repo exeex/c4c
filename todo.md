@@ -8,23 +8,21 @@ Current Step Title: Establish and consume source-semantic named results
 
 ## Just Finished
 
-- Step 2.2 migrated the bounded same-block load-local source query from Route 3
-  index/raw-record reconstruction to `BirSameBlockLoadLocalResult`.
-- The BIR-owned result preserves stable instruction, load, result-value, and
-  local-slot identity, rejects invalidated sources, and reports unavailable,
-  incomplete, and ambiguous states explicitly; common MIR fails closed on
-  every non-available result.
-- Focused contracts cover available identity, type-mismatch unavailability,
-  same-slot invalidation as incomplete, and duplicate matching loads as
-  ambiguous; both non-success producer statuses also fail closed through the
-  common-MIR adapter. The common-query guard ratcheted Route 1 from 21 to 20
-  and Route 3 from 47 to 27.
+- Step 2.2 migrated the bounded same-block load-local stored-value source
+  family from Route 3 index/raw-record reconstruction to
+  `BirSameBlockLoadLocalStoredValueResult`.
+- The BIR-owned result preserves exact load/store instruction and memory
+  identity, loaded/stored value identity, and local-slot identity. Missing,
+  incomplete, ambiguous, type-mismatched, and overlapping-range evidence all
+  fail closed through common MIR.
+- Focused contracts cover the available identity and each non-success status.
+  The common-query guard honestly ratcheted Route 1 from 20 to 18 and Route 3
+  from 27 to 22 for only this family.
 
 ## Suggested Next
 
 - Execute the next bounded Step 2 family selected by the supervisor, leaving
-  the adjacent load-local stored-value and store-local families with their
-  owning packets.
+  the adjacent store-local and publication families with their owning packets.
 
 ## Watchouts
 
@@ -33,12 +31,11 @@ Current Step Title: Establish and consume source-semantic named results
   contract and must not reconstruct operand traversal.
 - Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
   select dependency interpretation in later common-query packets.
-- Remaining Route 3 helpers in common MIR still serve the adjacent load-local
-  stored-value, store-local, and publication families; do not mechanically
-  migrate them.
+- Remaining Route 3 helpers in common MIR still serve adjacent store-local and
+  publication families; do not mechanically migrate them.
 - Preserve missing, incomplete, ambiguous, unsupported, and mismatched
   fail-closed behavior at the common-MIR boundary.
-- Twenty Route 1 spellings remain in other bounded memory/publication/
+- Eighteen Route 1 spellings remain in other bounded memory/publication/
   edge-join adapters; they are not same-block producer authority and should
   migrate with their owning families rather than being mechanically renamed.
 - Route 5 remains the only public-header breach and the largest family; leave

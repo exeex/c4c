@@ -1743,6 +1743,31 @@ struct Route3SameBlockLoadLocalStoredValueSourceRecord {
   }
 };
 
+// Source-semantic result for the value stored into the local slot consumed by
+// a same-block LoadLocal.  Route-index records remain an implementation detail
+// of BIR; consumers receive stable instruction, value, and memory identities.
+struct BirSameBlockLoadLocalStoredValueResult {
+  BirViewStatus status = BirViewStatus::Unavailable;
+  BirMemoryAccessResult load_access;
+  BirMemoryAccessResult store_access;
+  const LoadLocalInst* load = nullptr;
+  const StoreLocalInst* store = nullptr;
+  const Value* loaded_value = nullptr;
+  const Value* stored_value = nullptr;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == BirViewStatus::Available && load_access && store_access &&
+           load != nullptr && store != nullptr && loaded_value != nullptr &&
+           stored_value != nullptr;
+  }
+};
+
+[[nodiscard]] BirSameBlockLoadLocalStoredValueResult
+find_same_block_load_local_stored_value_source(
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index);
+
 [[nodiscard]] Route3MemoryAccessNodeKind route3_memory_access_node_kind(
     const Inst& inst);
 

@@ -148,6 +148,34 @@ namespace {
   return BirMemoryAccessBaseKind::None;
 }
 
+[[nodiscard]] BirMemoryAccessIdentity named_memory_access_to_mir(
+    const bir::BirMemoryAccessResult& result) {
+  if (!result) {
+    return {};
+  }
+  return BirMemoryAccessIdentity{
+      .status = result.status,
+      .inst = result.instruction,
+      .block_label = result.block_label,
+      .instruction_index = result.instruction_index,
+      .node_kind = named_memory_kind_to_mir(result.kind),
+      .result_value_name = result.result_value_name,
+      .stored_value_name = result.stored_value_name,
+      .address_space = result.address_space,
+      .is_volatile = result.is_volatile,
+      .base_kind = named_memory_base_to_mir(result.base_kind),
+      .local_slot_name = result.local_slot_name,
+      .local_slot_id = result.local_slot_id,
+      .global_name = result.global_name,
+      .global_name_id = result.global_name_id,
+      .pointer_value_name = result.pointer_base_name,
+      .string_constant_name = result.string_constant_name,
+      .byte_offset = result.byte_offset,
+      .size_bytes = result.size_bytes,
+      .align_bytes = result.align_bytes,
+  };
+}
+
 [[nodiscard]] BirMemoryAccessBaseKind route3_base_kind_to_mir(
     bir::Route3MemoryAccessBaseKind kind) {
   switch (kind) {
@@ -2007,34 +2035,17 @@ find_bir_same_block_load_local_stored_value_source_identity(
   if (value_type == bir::TypeKind::Void) {
     return {};
   }
-  const auto index = bir::route3_build_memory_access_index(*request.block);
   const auto before = std::min(request.before_instruction_index,
                                request.block->insts.size());
-  const auto record =
-      bir::route3_find_same_block_load_local_stored_value_source(
-          bir::Route3MemoryAccessQuery{
-              .index = &index,
-              .before_instruction_index = before,
-          },
-          bir::Value::named(value_type, std::string(value_name)));
-  if (!record) {
+  const auto result = bir::find_same_block_load_local_stored_value_source(
+      *request.block,
+      bir::Value::named(value_type, std::string(value_name)),
+      before);
+  if (!result) {
     return {};
   }
-  const auto* load_local =
-      record.load_access.instruction != nullptr
-          ? std::get_if<bir::LoadLocalInst>(record.load_access.instruction)
-          : nullptr;
-  const auto* store_local =
-      record.store_access.instruction != nullptr
-          ? std::get_if<bir::StoreLocalInst>(record.store_access.instruction)
-          : nullptr;
-  if (load_local == nullptr || store_local == nullptr) {
-    return {};
-  }
-  const auto load_memory_access =
-      route3_memory_access_to_mir(record.load_access);
-  const auto store_memory_access =
-      route3_memory_access_to_mir(record.store_access);
+  const auto load_memory_access = named_memory_access_to_mir(result.load_access);
+  const auto store_memory_access = named_memory_access_to_mir(result.store_access);
   if (!load_memory_access ||
       !store_memory_access ||
       load_memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
@@ -2045,11 +2056,10 @@ find_bir_same_block_load_local_stored_value_source_identity(
   return BirSameBlockLoadLocalStoredValueSourceIdentity{
       .load_memory_access = load_memory_access,
       .store_memory_access = store_memory_access,
-      .load_local = load_local,
-      .store_local = store_local,
-      .loaded_value = route1_source_value_identity_to_same_block(record.root_value),
-      .stored_value =
-          route1_source_value_identity_to_same_block(record.stored_value),
+      .load_local = result.load,
+      .store_local = result.store,
+      .loaded_value = same_block_value_identity(*result.loaded_value),
+      .stored_value = same_block_value_identity(*result.stored_value),
       .root_value_name = value_name,
       .root_value_type = value_type,
       .before_instruction_index = request.before_instruction_index,

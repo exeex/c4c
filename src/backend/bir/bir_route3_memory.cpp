@@ -629,4 +629,92 @@ route3_find_same_block_load_local_stored_value_source(
   return record;
 }
 
+BirSameBlockLoadLocalStoredValueResult
+find_same_block_load_local_stored_value_source(
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind != Value::Kind::Named || value.name.empty() ||
+      value.type == TypeKind::Void) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+
+  const auto view = make_bir_memory_access_view(block);
+  const auto before = std::min(before_instruction_index, block.insts.size());
+  const auto load_access = find_memory_access_source(view, value, before);
+  if (load_access.status != BirViewStatus::Available) {
+    return {.status = load_access.status};
+  }
+  if (load_access.kind != BirMemoryAccessKind::LoadLocal ||
+      load_access.base_kind != BirMemoryBaseKind::LocalSlot ||
+      load_access.instruction == nullptr || load_access.result_value == nullptr) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+  if (load_access.size_bytes == 0) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+  const auto* load = std::get_if<LoadLocalInst>(load_access.instruction);
+  if (load == nullptr || load_access.result_value != &load->result ||
+      load->result.kind != Value::Kind::Named ||
+      load->result.name != value.name || load->result.type != value.type) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+
+  BirMemoryAccessResult matched_store;
+  const StoreLocalInst* matched_store_inst = nullptr;
+  for (std::size_t index = load_access.instruction_index; index-- > 0;) {
+    const auto candidate = find_memory_access(view, index);
+    if (candidate.status == BirViewStatus::Ambiguous) {
+      return {.status = BirViewStatus::Ambiguous};
+    }
+    if (candidate.status == BirViewStatus::Incomplete) {
+      return {.status = BirViewStatus::Incomplete};
+    }
+    const bool same_slot =
+        candidate.local_slot_id != kInvalidSlotName &&
+                load_access.local_slot_id != kInvalidSlotName
+            ? candidate.local_slot_id == load_access.local_slot_id
+            : !candidate.local_slot_name.empty() &&
+                  candidate.local_slot_name == load_access.local_slot_name;
+    if (!candidate || candidate.kind != BirMemoryAccessKind::StoreLocal ||
+        candidate.base_kind != BirMemoryBaseKind::LocalSlot || !same_slot) {
+      continue;
+    }
+    if (candidate.byte_offset != load_access.byte_offset ||
+        candidate.size_bytes != load_access.size_bytes) {
+      const auto candidate_end = candidate.byte_offset +
+                                 static_cast<std::int64_t>(candidate.size_bytes);
+      const auto load_end = load_access.byte_offset +
+                            static_cast<std::int64_t>(load_access.size_bytes);
+      if (candidate.byte_offset < load_end && load_access.byte_offset < candidate_end) {
+        return {.status = BirViewStatus::Incomplete};
+      }
+      continue;
+    }
+    const auto* store = candidate.instruction != nullptr
+                            ? std::get_if<StoreLocalInst>(candidate.instruction)
+                            : nullptr;
+    if (store == nullptr || candidate.stored_value == nullptr ||
+        candidate.stored_value != &store->value || candidate.size_bytes == 0) {
+      return {.status = BirViewStatus::Incomplete};
+    }
+    matched_store = candidate;
+    matched_store_inst = store;
+    break;
+  }
+  if (!matched_store || matched_store_inst == nullptr) {
+    return {};
+  }
+
+  return {
+      .status = BirViewStatus::Available,
+      .load_access = load_access,
+      .store_access = matched_store,
+      .load = load,
+      .store = matched_store_inst,
+      .loaded_value = load_access.result_value,
+      .stored_value = matched_store.stored_value,
+  };
+}
+
 }  // namespace c4c::backend::bir

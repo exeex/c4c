@@ -42,6 +42,21 @@ bir::LoadGlobalInst global_load(const char* result, const char* name,
           .address = address};
 }
 
+bir::StoreLocalInst store(const char* value, const char* slot,
+                          c4c::SlotNameId slot_id, std::int64_t offset = 0,
+                          std::size_t size = 8) {
+  bir::MemoryAddress address;
+  address.base_kind = bir::MemoryAddress::BaseKind::LocalSlot;
+  address.base_name = slot;
+  address.base_slot_id = slot_id;
+  address.byte_offset = offset;
+  address.size_bytes = size;
+  address.align_bytes = 8;
+  return {.slot_name = slot,
+          .value = bir::Value::named(bir::TypeKind::I64, value),
+          .address = address};
+}
+
 int memory_states() {
   bir::Block block;
   block.label = "memory";
@@ -105,6 +120,44 @@ int memory_identity_fails_closed() {
   return 0;
 }
 
+int stored_value_source_states() {
+  bir::Block exact;
+  exact.label = "stored-value";
+  exact.insts.emplace_back(store("%stored", "slot.a", 31));
+  exact.insts.emplace_back(load("%loaded", "slot.a", 31));
+  const auto available = bir::find_same_block_load_local_stored_value_source(
+      exact, bir::Value::named(bir::TypeKind::I64, "%loaded"), exact.insts.size());
+  const auto mismatched = bir::find_same_block_load_local_stored_value_source(
+      exact, bir::Value::named(bir::TypeKind::I32, "%loaded"), exact.insts.size());
+  const auto incomplete = bir::find_same_block_load_local_stored_value_source(
+      exact, bir::Value::named(bir::TypeKind::I64, ""), exact.insts.size());
+  if (!available || available.load != &std::get<bir::LoadLocalInst>(exact.insts[1]) ||
+      available.store != &std::get<bir::StoreLocalInst>(exact.insts[0]) ||
+      available.loaded_value != &available.load->result ||
+      available.stored_value != &available.store->value ||
+      available.load_access.local_slot_id != 31 ||
+      available.store_access.local_slot_id != 31 ||
+      mismatched.status != bir::BirViewStatus::Unavailable || mismatched ||
+      incomplete.status != bir::BirViewStatus::Incomplete || incomplete) {
+    return fail("stored-value source did not preserve identity or explicit fail-closed states");
+  }
+
+  auto ambiguous = exact;
+  ambiguous.insts.emplace_back(load("%loaded", "slot.a", 31));
+  const auto duplicate = bir::find_same_block_load_local_stored_value_source(
+      ambiguous, bir::Value::named(bir::TypeKind::I64, "%loaded"),
+      ambiguous.insts.size());
+  auto overlap = exact;
+  std::get<bir::LoadLocalInst>(overlap.insts[1]).address->byte_offset = 4;
+  const auto partial = bir::find_same_block_load_local_stored_value_source(
+      overlap, bir::Value::named(bir::TypeKind::I64, "%loaded"), overlap.insts.size());
+  if (duplicate.status != bir::BirViewStatus::Ambiguous || duplicate ||
+      partial.status != bir::BirViewStatus::Incomplete || partial) {
+    return fail("stored-value source accepted ambiguous or partial-range evidence");
+  }
+  return 0;
+}
+
 bir::BinaryInst producer(const char* name) {
   return {.opcode = bir::BinaryOpcode::Add,
           .result = bir::Value::named(bir::TypeKind::I64, name),
@@ -163,6 +216,7 @@ int main() {
   static_assert(std::is_default_constructible_v<bir::BirPublicationView>);
   if (const int status = memory_states(); status != 0) return status;
   if (const int status = memory_identity_fails_closed(); status != 0) return status;
+  if (const int status = stored_value_source_states(); status != 0) return status;
   if (const int status = publication_states(); status != 0) return status;
   return headers_are_route_free();
 }
