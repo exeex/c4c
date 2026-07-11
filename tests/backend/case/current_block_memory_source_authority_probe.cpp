@@ -61,5 +61,35 @@ int main() {
           home_only, consumer, source)) {
     return 3;
   }
+  auto attachment_only = publication;
+  attachment_only.source_home = nullptr;
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          attachment_only, consumer, source)) {
+    return 4;
+  }
+  auto missing_origin = publication;
+  missing_origin.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  missing_origin.source_binary = nullptr;
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          missing_origin, consumer, source)) {
+    return 5;
+  }
+  auto incomplete_home = stack_home;
+  incomplete_home.slot_id.reset();
+  auto incomplete = publication;
+  incomplete.source_home = &incomplete_home;
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          incomplete, consumer, source)) {
+    return 6;
+  }
+  auto mismatched_home = stack_home;
+  mismatched_home.value_name = c4c::ValueNameId{52};
+  auto mismatched = publication;
+  mismatched.source_home = &mismatched_home;
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          mismatched, consumer, source)) {
+    return 7;
+  }
   return 0;
 }

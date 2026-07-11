@@ -3,39 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/718_prepared_routing_root_dependency_classification_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Implement composed dependency preservation
+Current Step ID: 6
+Current Step Title: Implement memory-backed source/home authority
 
 ## Just Finished
 
-- Step 5 proved that the existing generic stable-key owner query already
-  implements composed dependency preservation, so no code or test change was
-  manufactured. A dependency is authoritative only under its complete
-  `(routed_value_id, routed_value_name, IncomingExpression)` composition key;
-  unrelated ids, names, or roles are not applicable.
-- The query evaluates every applicable fact and fails closed for negative or
-  incomplete facts, invalid destination/source fields, unknown semantic
-  origin, duplicate semantic edges, and multiple/parallel
-  destination/source/origin disagreement. The focused positive preserves the
-  composed dependency independently while direct-root incoming-expression
-  rejection remains green.
+- Step 6 bound memory-backed routed operands to a complete prepared source/home
+  contract at the generic owner query. Memory-backed stack authority now
+  requires a concrete prepared producer origin whose result is the published
+  source, and stack homes require complete nonzero slot layout in addition to
+  matching source id, name, and home kind. Register-backed named authority
+  retains its established producer-optional contract, while any producer that
+  is present must still agree with the published source.
+- Extended the focused memory probe to reject attachment-only, home-only,
+  missing-origin, incomplete-stack-home, and mismatched-home cases. The prior
+  direct-root and composed-dependency probes remain green; their stable-key
+  owner boundary continues to fail closed on duplicate, multiple, and parallel
+  applicable-fact disagreement.
 
 ## Suggested Next
 
-- Execute the next supervisor-selected packet from the active plan after
-  accepting the Step 5 proof-only result.
+- Execute the supervisor-selected Step 7 short-circuit dependency-composition
+  packet after accepting the Step 6 source/home contract.
 
 ## Watchouts
 
-- Step 5 was already present at the owner boundary. Unrelated pre-existing
-  dirty hunks in owned files were inspected and preserved exactly.
-- The routed dependency key is independent of the preserved direct
-  publication destination/source/origin; membership, names, numeric fixture
-  identities, or storage alone grant no authority.
+- `src/backend/prealloc/publication_plans.cpp` contains an unrelated
+  pre-existing dirty candidate hunk around join-source semantic-origin
+  preparation; Step 6 preserved it exactly and does not claim it.
+- The stack home remains supporting evidence only: attachment or storage
+  identity without the matching prepared source and producer origin grants no
+  routed-operand authority.
 
 ## Proof
 
 - Ran `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_current_block_(direct_root_classification|composed_dependency_authority)_probe$'
-  > test_after.log 2>&1` exactly as delegated. Build passed and both focused
-  probes passed (2/2). Proof log: `test_after.log`.
+  --output-on-failure -R '^backend_(current_block_(direct_root_classification|composed_dependency_authority|memory_source_authority)_probe|prealloc_current_block_routed_operand_authority)$'
+  > test_after.log 2>&1` exactly as delegated. Build passed and all three
+  focused probes plus the established routed-operand authority contract passed
+  (4/4). Proof log: `test_after.log`.

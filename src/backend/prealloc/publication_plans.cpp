@@ -1350,6 +1350,8 @@ query_prepared_current_block_routed_operand_authority(
     if (!publication.source_value_id.has_value() ||
         publication.source_value_name == kInvalidValueName ||
         publication.source_home == nullptr ||
+        (publication.source_home->kind == PreparedValueHomeKind::StackSlot &&
+         preserved_source == nullptr) ||
         (preserved_source != nullptr &&
          *preserved_source != publication.source_value) ||
         publication.source_home->value_id != *publication.source_value_id ||
@@ -1847,10 +1849,19 @@ validate_prepared_edge_copy_publication_source_facts(
 
 [[nodiscard]] bool prepared_edge_publication_source_home_matches_source(
     const PreparedEdgePublication& publication) {
-  return publication.status == PreparedEdgePublicationLookupStatus::Available &&
-         publication.source_home != nullptr &&
-         publication.source_home->value_name == publication.source_value_name &&
-         publication.source_home->kind == publication.source_home_kind;
+  if (publication.status != PreparedEdgePublicationLookupStatus::Available ||
+      publication.source_home == nullptr ||
+      publication.source_home->value_name != publication.source_value_name ||
+      publication.source_home->kind != publication.source_home_kind) {
+    return false;
+  }
+  const auto& home = *publication.source_home;
+  if (home.kind == PreparedValueHomeKind::StackSlot) {
+    return home.slot_id.has_value() && home.offset_bytes.has_value() &&
+           home.size_bytes.has_value() && *home.size_bytes != 0 &&
+           home.align_bytes.has_value() && *home.align_bytes != 0;
+  }
+  return true;
 }
 
 [[nodiscard]] bool prepared_edge_publication_source_memory_matches_access(
