@@ -267,6 +267,34 @@ Value Value::named_symbol_pointer(std::string value_name, LinkNameId link_name_i
   return result;
 }
 
+BirProducerView make_bir_producer_view(const Block& block) {
+  return BirProducerView{route1_build_producer_index(block)};
+}
+
+std::optional<Route1SameBlockScalarProducer> find_same_block_scalar_producer(
+    const BirProducerView& view,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  return route1_find_same_block_scalar_producer(
+      Route1SameBlockProducerQuery{
+          .index = &view.route1_index_,
+          .before_instruction_index = before_instruction_index,
+      },
+      value);
+}
+
+Route1MaterializationAvailability find_materialization_availability(
+    const BirProducerView& view,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  return route1_find_materialization_availability(
+      Route1SameBlockProducerQuery{
+          .index = &view.route1_index_,
+          .before_instruction_index = before_instruction_index,
+      },
+      value);
+}
+
 const StructuredTypeDeclSpelling* StructuredTypeSpellingContext::find_struct_decl(
     std::string_view name) const {
   for (const auto& declaration : declarations) {

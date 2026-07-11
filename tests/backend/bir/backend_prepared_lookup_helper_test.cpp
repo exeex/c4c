@@ -8525,14 +8525,9 @@ int verify_prepared_same_block_scalar_source_facts() {
       .block_label = "entry",
       .before_instruction_index = block.insts.size(),
   };
-  const auto route1_index = bir::route1_build_producer_index(block);
-  const auto route1_query = bir::Route1SameBlockProducerQuery{
-      .index = &route1_index,
-      .before_instruction_index = block.insts.size(),
-  };
-  if (!route1_index ||
-      route1_index.records.size() != 8U) {
-    return fail("BIR Route 1 producer index should contain one record per scalar producer instruction");
+  const auto bir_producer_view = bir::make_bir_producer_view(block);
+  if (!bir_producer_view) {
+    return fail("BIR producer view should be available for the block");
   }
   const auto memory_accesses =
       prepare::make_prepared_memory_access_lookups(&addressing);
@@ -8549,8 +8544,10 @@ int verify_prepared_same_block_scalar_source_facts() {
     return fail("BIR same-block scalar producer query should match prepared scalar producer oracle");
   }
   const auto route1_sum =
-      bir::route1_find_same_block_scalar_producer(
-          route1_query, bir::Value::named(bir::TypeKind::I64, "%sum"));
+      bir::find_same_block_scalar_producer(
+          bir_producer_view,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          block.insts.size());
   if (!route1_sum.has_value() ||
       route1_sum->record == nullptr ||
       route1_sum->record->kind != bir::Route1ProducerKind::Binary ||
@@ -8561,8 +8558,10 @@ int verify_prepared_same_block_scalar_source_facts() {
     return fail("BIR Route 1 same-block scalar producer query should match prepared scalar producer oracle");
   }
   const auto route1_sum_materialization =
-      bir::route1_find_materialization_availability(
-          route1_query, bir::Value::named(bir::TypeKind::I64, "%sum"));
+      bir::find_materialization_availability(
+          bir_producer_view,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          block.insts.size());
   if (!route1_sum_materialization ||
       !route1_sum_materialization.scalar_materialization_available ||
       route1_sum_materialization.producer_kind !=

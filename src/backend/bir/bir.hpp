@@ -1443,6 +1443,33 @@ struct Route1SameBlockScalarProducer {
   }
 };
 
+class BirProducerView {
+ public:
+  BirProducerView() = default;
+
+  [[nodiscard]] explicit operator bool() const {
+    return static_cast<bool>(route1_index_);
+  }
+
+ private:
+  explicit BirProducerView(Route1ProducerIndex route1_index)
+      : route1_index_(std::move(route1_index)) {}
+
+  Route1ProducerIndex route1_index_;
+
+  friend BirProducerView make_bir_producer_view(const Block& block);
+  friend std::optional<Route1SameBlockScalarProducer>
+  find_same_block_scalar_producer(
+      const BirProducerView& view,
+      const Value& value,
+      std::size_t before_instruction_index);
+  friend Route1MaterializationAvailability
+  find_materialization_availability(
+      const BirProducerView& view,
+      const Value& value,
+      std::size_t before_instruction_index);
+};
+
 [[nodiscard]] Route1ProducerKind route1_producer_kind(const Inst& inst);
 
 [[nodiscard]] const Value* route1_produced_value(const Inst& inst);
@@ -1467,6 +1494,20 @@ route1_find_same_block_scalar_producer(
 route1_find_materialization_availability(
     Route1SameBlockProducerQuery query,
     const Value& value);
+
+[[nodiscard]] BirProducerView make_bir_producer_view(const Block& block);
+
+[[nodiscard]] std::optional<Route1SameBlockScalarProducer>
+find_same_block_scalar_producer(
+    const BirProducerView& view,
+    const Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] Route1MaterializationAvailability
+find_materialization_availability(
+    const BirProducerView& view,
+    const Value& value,
+    std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
 route1_evaluate_same_block_integer_constant(
