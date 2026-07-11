@@ -8,34 +8,32 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the dynamic local
-pointer/aggregate array and local pointer-array base state family.
+Completed Step 3 import-boundary contraction for the pointer-address
+provenance state alias family.
 
-- Removed the `BirFunctionLowerer` compatibility aliases for
-  `LocalArraySlots`, `LocalArraySlotMap`,
-  `DynamicLocalPointerArrayAccess`, `DynamicLocalPointerArrayMap`,
-  `DynamicLocalAggregateArrayAccess`, `DynamicLocalAggregateArrayMap`,
-  `DynamicPointerValueArrayAccess`, `DynamicPointerValueArrayMap`,
-  `LocalPointerArrayBase`, and `LocalPointerArrayBaseMap`.
-- Updated memory implementation files that still imported those names through
-  `BirFunctionLowerer::` to use the memory-owned declarations in
-  `src/backend/bir/lir_to_bir/memory/memory_types.hpp` directly.
-- Did not change the map definitions, access record fields, BIR route records,
+- Removed the `BirFunctionLowerer` compatibility aliases for `PointerAddress`,
+  `PointerAddressMap`, and `PointerAddressIntMap`.
+- Updated the remaining memory implementation references and the module phi
+  merge helper to use the memory-owned `PointerAddress` declarations directly
+  from `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
+- Did not change `PointerAddress` fields, map definitions, BIR route records,
   prepared data, target/MIR paths, runtime behavior, tests, expectations,
   allowlists, or public BIR query APIs.
 
 ## Suggested Next
 
-Continue Step 3 with the next adapter-local pointer/provenance state family,
-preferably `PointerAddressMap`/`PointerAddressIntMap` or the remaining global
-dynamic-array aliases if the supervisor wants the same declaration-boundary
-shape.
+Continue Step 3 with the remaining memory-owned global dynamic-array alias
+family or another adapter-local state alias family the supervisor selects for
+the same declaration-boundary cleanup.
 
 ## Watchouts
 
 - This packet intentionally did not edit string-authority classification data;
   the declarations were already memory-owned and this slice only removed
   lowerer re-export/import coupling.
+- `PointerAddress`, `PointerAddressMap`, and `PointerAddressIntMap` are now
+  found through the enclosing `c4c::backend` namespace instead of through
+  `BirFunctionLowerer::`.
 - Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.
@@ -58,7 +56,7 @@ shape.
 Delegated proof:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)' | tee test_after.log
 ```
 
 Result: passed. Build completed and 303 selected tests passed with 0 failures,

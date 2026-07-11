@@ -51,7 +51,7 @@ static bool can_cover_scalar_access_with_byte_storage(
 }
 
 static bool is_aarch64_va_list_vr_top_pointer_address(
-    const BirFunctionLowerer::PointerAddress& address,
+    const PointerAddress& address,
     const BirFunctionLowerer::TypeDeclMap& type_decls) {
   if (address.value_type != bir::TypeKind::Ptr ||
       c4c::codegen::lir::trim_lir_arg_text(address.storage_type_text) !=
@@ -80,7 +80,7 @@ enum class ScalarSubobjectAddressability : unsigned char {
 }
 
 [[nodiscard]] static bool is_runtime_pointer_value_opaque_compatibility_access(
-    const BirFunctionLowerer::PointerAddress& address,
+    const PointerAddress& address,
     bir::TypeKind access_type,
     const BirFunctionLowerer::TypeDeclMap& type_decls) {
   if (address.byte_offset != 0 ||
@@ -182,7 +182,7 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
 }
 
 static bir::MemoryAccessProvenance pointer_value_memory_provenance(
-    const BirFunctionLowerer::PointerAddress& pointer_address,
+    const PointerAddress& pointer_address,
     std::int64_t byte_offset,
     std::size_t size_bytes) {
   bir::MemoryAccessProvenance provenance = pointer_address.provenance;
@@ -218,7 +218,7 @@ static bir::MemoryAccessProvenance pointer_value_memory_provenance(
 }
 
 static bir::MemoryAccessProvenance pointer_value_memory_provenance_with_layout_authority(
-    const BirFunctionLowerer::PointerAddress& pointer_address,
+    const PointerAddress& pointer_address,
     std::int64_t byte_offset,
     std::size_t size_bytes,
     ScalarSubobjectAddressability addressability) {
@@ -306,13 +306,13 @@ void BirFunctionLowerer::record_pointer_global_object_alias(
   };
 }
 
-static std::optional<BirFunctionLowerer::PointerAddress> make_runtime_global_pointer_address(
+static std::optional<PointerAddress> make_runtime_global_pointer_address(
     std::string_view result_name,
     const lir_to_bir_detail::GlobalInfo& global_info) {
   if (global_info.runtime_element_count == 0 || global_info.runtime_element_stride_bytes == 0) {
     return std::nullopt;
   }
-  return BirFunctionLowerer::PointerAddress{
+  return PointerAddress{
       .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
       .dynamic_element_count = global_info.runtime_element_count,
       .dynamic_element_stride_bytes = global_info.runtime_element_stride_bytes,
@@ -369,9 +369,9 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
   return global_ptr_it->second;
 }
 
-static std::optional<BirFunctionLowerer::PointerAddress> resolve_pointer_store_value_address(
+static std::optional<PointerAddress> resolve_pointer_store_value_address(
     const c4c::codegen::lir::LirOperand& operand,
-    const BirFunctionLowerer::PointerAddressMap& pointer_value_addresses) {
+    const PointerAddressMap& pointer_value_addresses) {
   if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
     return std::nullopt;
   }

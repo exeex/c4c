@@ -13,7 +13,6 @@ using DynamicGlobalAggregateArrayAccess = BirFunctionLowerer::DynamicGlobalAggre
 using DynamicGlobalPointerArrayAccess = BirFunctionLowerer::DynamicGlobalPointerArrayAccess;
 using DynamicGlobalScalarArrayAccess = BirFunctionLowerer::DynamicGlobalScalarArrayAccess;
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
-using PointerAddress = BirFunctionLowerer::PointerAddress;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::parse_typed_operand;

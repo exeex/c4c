@@ -371,10 +371,6 @@ class BirFunctionLowerer {
   using LocalAggregateSlotMap = c4c::backend::LocalAggregateSlotMap;
   using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet;
   using LocalPointerValueAliasMap = c4c::backend::LocalPointerValueAliasMap;
-  using PointerAddress = c4c::backend::PointerAddress;
-
-  using PointerAddressMap = c4c::backend::PointerAddressMap;
-  using PointerAddressIntMap = c4c::backend::PointerAddressIntMap;
   using GlobalPointerValueSlots = c4c::backend::GlobalPointerValueSlots;
   using AddressedGlobalPointerValueSlots = c4c::backend::AddressedGlobalPointerValueSlots;
 

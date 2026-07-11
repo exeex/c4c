@@ -416,7 +416,7 @@ bool same_runtime_pointer_address_shape(const PointerAddress& lhs, const Pointer
 
 std::optional<PointerAddress> merge_runtime_pointer_phi_address(
     const BirFunctionLowerer::PhiLoweringPlan& phi_plan,
-    const BirFunctionLowerer::PointerAddressMap& pointer_value_addresses) {
+    const PointerAddressMap& pointer_value_addresses) {
   if (phi_plan.type != bir::TypeKind::Ptr || phi_plan.incomings.empty()) {
     return std::nullopt;
   }

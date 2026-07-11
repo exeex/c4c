@@ -70,7 +70,7 @@ struct LocalMemsetLeafStore {
 }
 
 [[nodiscard]] bir::MemoryAccessProvenance pointer_address_access_provenance(
-    const BirFunctionLowerer::PointerAddress& address,
+    const PointerAddress& address,
     std::int64_t byte_offset,
     std::size_t size_bytes) {
   auto provenance = address.provenance;

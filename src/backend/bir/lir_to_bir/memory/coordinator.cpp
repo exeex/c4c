@@ -14,7 +14,6 @@ using DynamicGlobalAggregateArrayAccess = BirFunctionLowerer::DynamicGlobalAggre
 using DynamicGlobalPointerArrayAccess = BirFunctionLowerer::DynamicGlobalPointerArrayAccess;
 using DynamicGlobalScalarArrayAccess = BirFunctionLowerer::DynamicGlobalScalarArrayAccess;
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
-using PointerAddress = BirFunctionLowerer::PointerAddress;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
