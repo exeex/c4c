@@ -4794,25 +4794,19 @@ bool append_prepared_local_slot_return_function(
     c4c::backend::x86::core::Text& out,
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::bir::Function& function,
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const Data& data) {
   if (function.return_type != c4c::backend::bir::TypeKind::I32 ||
       function.blocks.size() != 1) {
     return false;
   }
 
-  const auto function_name =
-      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
-  if (!function_name.has_value()) {
+  if (function_view.function_name_text() != function.name) {
     return false;
   }
-  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
-  const auto* function_locations =
-      c4c::backend::prepare::find_prepared_value_location_function(module, *function_name);
-  const auto* addressing =
-      c4c::backend::prepare::find_prepared_addressing(module, *function_name);
-  if (function_locations == nullptr || addressing == nullptr) {
-    return false;
-  }
+  const auto consumed = c4c::backend::x86::consume_plans(module, function_view);
+  const auto& function_locations = function_view.value_locations();
+  const auto& addressing = function_view.addressing();
 
   const auto& block = function.blocks.front();
   if (block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -4827,8 +4821,8 @@ bool append_prepared_local_slot_return_function(
   }
 
   const auto frame_adjust_bytes =
-      normalize_x86_local_frame_adjust(addressing->frame_size_bytes != 0
-                                           ? addressing->frame_size_bytes
+      normalize_x86_local_frame_adjust(addressing.frame_size_bytes != 0
+                                           ? addressing.frame_size_bytes
                                            : module.stack_layout.frame_size_bytes);
   if (frame_adjust_bytes == 0) {
     return false;
@@ -4843,12 +4837,12 @@ bool append_prepared_local_slot_return_function(
 
   const auto& return_home =
       require_prepared_i32_value_home(module,
-                                      *function_locations,
+                                      function_locations,
                                       function,
                                       block.terminator.value->name,
                                       "local-slot return value");
   const auto& return_move =
-      require_prepared_i32_return_move(*function_locations, function, block, 0);
+      require_prepared_i32_return_move(function_locations, function, block, 0);
   if (return_move.from_value_id != return_home.value_id) {
     throw_prepared_value_location_handoff_error("defined function '" + function.name +
                                                 "' local-slot return move source drifted from value home");
@@ -4879,7 +4873,7 @@ bool append_prepared_local_slot_return_function(
       }
       const auto memory = render_prepared_local_slot_statement_memory_operand(
           module,
-          *addressing,
+          addressing,
           *block_label,
           inst_index,
           store->value.type,
@@ -4909,11 +4903,11 @@ bool append_prepared_local_slot_return_function(
                                                     "' local-slot load has no prepared value id");
       }
       const auto& load_home = require_prepared_i32_value_home(
-          module, *function_locations, function, load->result.name, "local-slot load result value");
+          module, function_locations, function, load->result.name, "local-slot load result value");
       const auto memory = render_agreed_route3_load_local_statement_memory_operand(
           module,
           consumed,
-          *addressing,
+          addressing,
           block,
           *block_label,
           inst_index,
@@ -6375,6 +6369,8 @@ bool append_prepared_i32_immediate_guard_chain_function(
 bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
+                                      const c4c::backend::mir::prepared::PreparedMirFunctionView&
+                                          function_view,
                                       const Data& data) {
   if (append_prepared_trivial_void_return_function(out, module, function, data)) {
     return true;
@@ -6382,7 +6378,7 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
   if (append_prepared_loop_join_countdown_function(out, module, function, data)) {
     return true;
   }
-  if (append_prepared_local_slot_return_function(out, module, function, data)) {
+  if (append_prepared_local_slot_return_function(out, module, function, function_view, data)) {
     return true;
   }
   if (append_prepared_local_slot_immediate_guard_function(out, module, function, data)) {
@@ -6490,7 +6486,9 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module,
       continue;
     }
     const auto function_name = view.resolve_function_name(function->name);
-    if (!function_name.has_value() || !view.function_view(*function_name).has_value()) {
+    const auto function_view =
+        function_name.has_value() ? view.function_view(*function_name) : std::nullopt;
+    if (!function_view.has_value()) {
       throw std::invalid_argument("x86::module::emit requires prepared core facts for every "
                                   "defined function");
     }
@@ -6499,7 +6497,7 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module,
       out.append_line(".text");
     }
     emitted_any_function = true;
-    if (!append_supported_scalar_function(out, module, *function, data)) {
+    if (!append_supported_scalar_function(out, module, *function, *function_view, data)) {
       emitted_only_supported_scalar_functions = false;
       if (defined_function_count > 1) {
         throw_unsupported_x86_multi_function_handoff_shape();

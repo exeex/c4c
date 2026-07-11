@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../prepared_view.hpp"
 #include "../../prealloc/prealloc.hpp"
 #include "../../prealloc/prepared_lookups.hpp"
 #include "abi/abi.hpp"
@@ -18,11 +19,15 @@ struct ConsumedPlans {
   const c4c::backend::prepare::PreparedCallPlansFunction* calls = nullptr;
   const c4c::backend::prepare::PreparedRegallocFunction* regalloc = nullptr;
   const c4c::backend::prepare::PreparedStoragePlanFunction* storage = nullptr;
+  const c4c::backend::prepare::PreparedFunctionLookups* prepared_lookups_ref = nullptr;
   std::optional<c4c::backend::prepare::PreparedFunctionLookups> prepared_lookups;
   std::optional<c4c::backend::bir::Route6CallUseSourceIndex> route6_call_use_sources;
 
   [[nodiscard]] const c4c::backend::prepare::PreparedFunctionLookups*
   shared_function_lookups() const {
+    if (prepared_lookups_ref != nullptr) {
+      return prepared_lookups_ref;
+    }
     return prepared_lookups.has_value() ? &*prepared_lookups : nullptr;
   }
 
@@ -187,6 +192,37 @@ find_consumed_call_result_plan(const ConsumedPlans& consumed,
         }
         return c4c::backend::bir::route6_build_call_use_source_index(*function);
       }(),
+  };
+}
+
+[[nodiscard]] inline ConsumedPlans consume_plans(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view) {
+  const auto function_name = function_view.function_name();
+  return ConsumedPlans{
+      .frame = c4c::backend::prepare::find_prepared_frame_plan(module, function_name),
+      .dynamic_stack =
+          c4c::backend::prepare::find_prepared_dynamic_stack_plan(module, function_name),
+      .control_flow = &function_view.control_flow(),
+      .calls = c4c::backend::prepare::find_prepared_call_plans(module, function_name),
+      .regalloc = [&]() -> const c4c::backend::prepare::PreparedRegallocFunction* {
+        for (const auto& function_regalloc : module.regalloc.functions) {
+          if (function_regalloc.function_name == function_name) {
+            return &function_regalloc;
+          }
+        }
+        return nullptr;
+      }(),
+      .storage = c4c::backend::prepare::find_prepared_storage_plan(module, function_name),
+      .prepared_lookups_ref = &function_view.prepared_lookups(),
+      .route6_call_use_sources =
+          [&]() -> std::optional<c4c::backend::bir::Route6CallUseSourceIndex> {
+            const auto* function = find_consumed_bir_function(module, function_name);
+            if (function == nullptr) {
+              return std::nullopt;
+            }
+            return c4c::backend::bir::route6_build_call_use_source_index(*function);
+          }(),
   };
 }
 

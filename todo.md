@@ -1,28 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/684_bir_mir_interface_cleanup_from_prepared_mir_view_docs.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate X86 Internal Module Emission Entry
+Current Step ID: 3
+Current Step Title: Move X86 Per-Function Consumption Behind The View
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 (`Migrate X86 Internal Module Emission Entry`) kept
-`x86::api::emit_prepared_module(const PreparedBirModule&)` as the public
-compatibility wrapper while constructing a `PreparedMirCoreView` and routing
-the internal x86 module emitter through a view-taking `x86::module::emit`
-surface. Module-entry target identity/triple handling, module data access,
-defined-function iteration, and function-view admission now go through the
-core view; broad per-function lowering still uses the legacy
-`PreparedBirModule` path for Step 3.
+Step 3 (`Move X86 Per-Function Consumption Behind The View`) added a
+view-backed `consume_plans(module, PreparedMirFunctionView)` path and migrated
+the x86 local-slot return module-emission helper to use it. That migrated path
+now takes its function id, control flow, value locations, addressing, stack
+layout, and prepared lookup cache from `PreparedMirFunctionView`; frame,
+dynamic-stack, call, regalloc, storage, and Route 6 compatibility facts remain
+on the legacy `PreparedBirModule` path for later feature-view packets.
 
 ## Suggested Next
 
-Start Step 3 by moving the first selected x86 per-function consumption path
-behind `PreparedMirFunctionView` or a narrow view-backed input while keeping
-Route 6, call, publication, storage, and regalloc authority unchanged unless
-explicitly carried by the chosen view-backed handoff.
+Start Step 4 by adding the first raw dependency gate for migrated x86 surfaces,
+classifying current direct `PreparedBirModule` / broad prealloc include hits as
+adapter bridge, compatibility wrapper, or still-unmigrated per-function paths.
 
 ## Watchouts
 
@@ -30,9 +28,12 @@ explicitly carried by the chosen view-backed handoff.
   `PreparedBirModule` paths until their own explicit migration packets.
 - The internal x86 module entry now fails closed if a defined function has no
   corresponding core function view.
+- The new view-backed consumed-plan overload intentionally keeps feature-like
+  frame, call, regalloc, storage, and Route 6 authorities on compatibility
+  lookups; do not treat that as a completed feature-view migration.
 
 ## Proof
 
-- Required Step 2 proof command ran and wrote `test_after.log`:
+- Required Step 3 proof command ran and wrote `test_after.log`:
   `set -o pipefail; (cmake --build build --target c4c_backend backend_prepared_mir_core_view_test -j && ctest --test-dir build -R '^backend_prepared_mir_core_view$|^backend_x86_shared_producer_query$|^backend_codegen_route_x86_64_.*observe_semantic_bir$' --output-on-failure) > test_after.log 2>&1`
-- Required Step 2 proof result: passed, 78/78 tests passed.
+- Required Step 3 proof result: passed, 78/78 tests passed.
