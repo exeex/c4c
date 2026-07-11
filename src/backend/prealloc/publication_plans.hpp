@@ -1701,6 +1701,24 @@ struct PreparedCurrentBlockJoinRoutingFact {
   }
 };
 
+struct PreparedCurrentBlockJoinRoutingConsumption {
+  PreparedFactBoundaryStatus status = PreparedFactBoundaryStatus::Missing;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId routed_value_id = 0;
+  ValueNameId routed_value_name = kInvalidValueName;
+  PreparedCurrentBlockJoinRoutingRole role =
+      PreparedCurrentBlockJoinRoutingRole::IncomingExpression;
+  PreparedCurrentBlockJoinParallelCopySourceFact::PublicationSemanticOrigin
+      publication_semantic_origin =
+          PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::Unknown;
+  std::size_t edge_fact_count = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == PreparedFactBoundaryStatus::Available;
+  }
+};
+
 struct PreparedCurrentBlockJoinParallelCopySourceFacts {
   PreparedCurrentBlockJoinParallelCopySourceStatus status =
       PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
@@ -1749,6 +1767,14 @@ select_prepared_current_block_join_routing_fact(
     ValueNameId destination_value_name,
     std::optional<PreparedValueId> source_value_id,
     ValueNameId source_value_name,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role);
+
+[[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
+query_prepared_current_block_join_routing_consumption(
+    const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
+    BlockLabelId successor_label,
     PreparedValueId routed_value_id,
     ValueNameId routed_value_name,
     PreparedCurrentBlockJoinRoutingRole role);

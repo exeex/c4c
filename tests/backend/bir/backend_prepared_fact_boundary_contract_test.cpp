@@ -156,6 +156,24 @@ int current_block_routing_facts_are_edge_bound_and_unique() {
       duplicate.status != prepare::PreparedFactBoundaryStatus::Ambiguous) {
     return fail("current-block routing facts should be unique and edge-bound");
   }
+  auto conflicting_origin = fact;
+  conflicting_origin.predecessor_label = c4c::BlockLabelId{3};
+  conflicting_origin.publication_semantic_origin =
+      prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+          PublicationSemanticOrigin::BirPhi;
+  const auto consume = [&](const auto& candidates) {
+    return prepare::query_prepared_current_block_join_routing_consumption(
+        candidates, fact.successor_label, fact.routed_value_id,
+        fact.routed_value_name, fact.role);
+  };
+  if (consume(std::vector<prepare::PreparedCurrentBlockJoinRoutingFact>{}).status !=
+          prepare::PreparedFactBoundaryStatus::Missing ||
+      consume(std::vector<prepare::PreparedCurrentBlockJoinRoutingFact>{
+                  fact, conflicting_origin})
+              .status !=
+          prepare::PreparedFactBoundaryStatus::Ambiguous) {
+    return fail("result consumption should preserve missing and reject non-invariant answers");
+  }
   return 0;
 }
 
@@ -187,17 +205,23 @@ prepare::PreparedCurrentBlockJoinRoutingFact select_routing_fact(
       key.role);
 }
 
+prepare::PreparedCurrentBlockJoinRoutingConsumption consume_routing_facts(
+    const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact>& facts,
+    const prepare::PreparedCurrentBlockJoinRoutingFact& key) {
+  return prepare::query_prepared_current_block_join_routing_consumption(
+      facts, key.successor_label, key.routed_value_id, key.routed_value_name,
+      key.role);
+}
+
 int parallel_predecessors_remain_independently_available() {
   const auto first = routing_fact();
   auto second = first;
   second.predecessor_label = c4c::BlockLabelId{3};
   const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts{first,
                                                                        second};
-  if (select_routing_fact(facts, first).status !=
-          prepare::PreparedFactBoundaryStatus::Available ||
-      select_routing_fact(facts, second).status !=
-          prepare::PreparedFactBoundaryStatus::Available) {
-    return fail("parallel predecessors must remain independently available");
+  const auto consumed = consume_routing_facts(facts, first);
+  if (!consumed || consumed.edge_fact_count != 2) {
+    return fail("parallel predecessors must have one invariant result answer");
   }
   return 0;
 }
@@ -209,11 +233,9 @@ int parallel_destinations_remain_independently_available() {
   second.destination_value_name = c4c::ValueNameId{11};
   const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts{first,
                                                                        second};
-  if (select_routing_fact(facts, first).status !=
-          prepare::PreparedFactBoundaryStatus::Available ||
-      select_routing_fact(facts, second).status !=
-          prepare::PreparedFactBoundaryStatus::Available) {
-    return fail("parallel destinations must remain independently available");
+  const auto consumed = consume_routing_facts(facts, first);
+  if (!consumed || consumed.edge_fact_count != 2) {
+    return fail("parallel destinations must have one invariant result answer");
   }
   return 0;
 }
@@ -222,7 +244,7 @@ int wrong_successor_is_explicitly_mismatched() {
   const auto fact = routing_fact();
   auto wrong_successor = fact;
   wrong_successor.successor_label = c4c::BlockLabelId{4};
-  if (select_routing_fact({fact}, wrong_successor).status !=
+  if (consume_routing_facts({fact}, wrong_successor).status !=
       prepare::PreparedFactBoundaryStatus::Mismatched) {
     return fail("wrong successor must be explicitly mismatched");
   }
@@ -231,7 +253,7 @@ int wrong_successor_is_explicitly_mismatched() {
 
 int duplicate_semantic_edge_is_explicitly_ambiguous() {
   const auto fact = routing_fact();
-  if (select_routing_fact({fact, fact}, fact).status !=
+  if (consume_routing_facts({fact, fact}, fact).status !=
       prepare::PreparedFactBoundaryStatus::Ambiguous) {
     return fail("duplicate semantic edge must be explicitly ambiguous");
   }

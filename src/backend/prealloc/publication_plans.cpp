@@ -1151,6 +1151,81 @@ select_prepared_current_block_join_routing_fact(
   return *selected;
 }
 
+PreparedCurrentBlockJoinRoutingConsumption
+query_prepared_current_block_join_routing_consumption(
+    const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role) {
+  PreparedCurrentBlockJoinRoutingConsumption result{
+      .successor_label = successor_label,
+      .routed_value_id = routed_value_id,
+      .routed_value_name = routed_value_name,
+      .role = role,
+  };
+  std::optional<PreparedFactBoundaryStatus> negative_status;
+  std::vector<const PreparedCurrentBlockJoinRoutingFact*> applicable;
+  bool related_mismatch = false;
+  for (const auto& candidate : facts) {
+    if (candidate.routed_value_id != routed_value_id ||
+        candidate.routed_value_name != routed_value_name ||
+        candidate.role != role) {
+      continue;
+    }
+    if (!candidate) {
+      if (!negative_status.has_value()) {
+        negative_status = candidate.status;
+      }
+      continue;
+    }
+    if (candidate.successor_label != successor_label) {
+      related_mismatch = true;
+      continue;
+    }
+    applicable.push_back(&candidate);
+  }
+  if (applicable.empty()) {
+    result.status = negative_status.value_or(
+        related_mismatch ? PreparedFactBoundaryStatus::Mismatched
+                         : PreparedFactBoundaryStatus::Missing);
+    return result;
+  }
+
+  const auto same_semantic_edge = [](const auto& lhs, const auto& rhs) {
+    return lhs.predecessor_label == rhs.predecessor_label &&
+           lhs.successor_label == rhs.successor_label &&
+           lhs.destination_value_id == rhs.destination_value_id &&
+           lhs.destination_value_name == rhs.destination_value_name &&
+           lhs.source_value_id == rhs.source_value_id &&
+           lhs.source_value_name == rhs.source_value_name &&
+           lhs.routed_value_id == rhs.routed_value_id &&
+           lhs.routed_value_name == rhs.routed_value_name &&
+           lhs.role == rhs.role &&
+           lhs.publication_semantic_origin == rhs.publication_semantic_origin;
+  };
+  for (std::size_t i = 0; i < applicable.size(); ++i) {
+    for (std::size_t j = i + 1; j < applicable.size(); ++j) {
+      if (same_semantic_edge(*applicable[i], *applicable[j])) {
+        result.status = PreparedFactBoundaryStatus::Ambiguous;
+        return result;
+      }
+    }
+  }
+
+  const auto invariant_origin = applicable.front()->publication_semantic_origin;
+  for (const auto* candidate : applicable) {
+    if (candidate->publication_semantic_origin != invariant_origin) {
+      result.status = PreparedFactBoundaryStatus::Ambiguous;
+      return result;
+    }
+  }
+  result.status = PreparedFactBoundaryStatus::Available;
+  result.publication_semantic_origin = invariant_origin;
+  result.edge_fact_count = applicable.size();
+  return result;
+}
+
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
