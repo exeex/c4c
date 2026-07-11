@@ -218,6 +218,43 @@ struct PreparedMirDirectEdgePublicationSourceQuery {
   std::vector<PreparedMirDirectEdgePublicationSourceView> sources;
 };
 
+struct PreparedMirBranchStackLoadAuthorityView {
+  bool freshness_required = false;
+  bool available = true;
+  prepare::PreparedBranchStackLoadAuthorityStatus authority_status =
+      prepare::PreparedBranchStackLoadAuthorityStatus::Available;
+  prepare::PreparedValueFreshnessQueryStatus source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::Selected;
+  std::size_t source_freshness_candidate_count = 0;
+  prepare::PreparedBranchStackLoadRole role =
+      prepare::PreparedBranchStackLoadRole::Condition;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t block_index = 0;
+  std::size_t terminator_instruction_index = 0;
+  prepare::PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  prepare::PreparedValueFreshnessUseKind freshness_use_kind =
+      prepare::PreparedValueFreshnessUseKind::Unknown;
+  prepare::PreparedValueFreshnessSourceKind freshness_source_kind =
+      prepare::PreparedValueFreshnessSourceKind::Unknown;
+  prepare::PreparedValueFreshnessProofKind freshness_proof_kind =
+      prepare::PreparedValueFreshnessProofKind::Unknown;
+  prepare::PreparedValueFreshnessSourceRank freshness_rank =
+      prepare::PreparedValueFreshnessSourceRank::None;
+};
+
+[[nodiscard]] PreparedMirBranchStackLoadAuthorityView
+query_prepared_mir_branch_stack_load_authority(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups& lookups,
+    FunctionNameId function_name,
+    const bir::Value* value,
+    const prepare::PreparedValueHome* home,
+    prepare::PreparedBranchStackLoadRole role,
+    BlockLabelId block_label,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index);
+
 class PreparedMirFunctionView {
  public:
   PreparedMirFunctionView() = default;
@@ -240,6 +277,13 @@ class PreparedMirFunctionView {
       std::size_t instruction_index) const;
   [[nodiscard]] PreparedMirDirectEdgePublicationSourceQuery
   current_block_direct_edge_publication_sources(std::size_t block_index) const;
+  [[nodiscard]] PreparedMirBranchStackLoadAuthorityView branch_stack_load_authority(
+      const bir::Value* value,
+      const prepare::PreparedValueHome* home,
+      prepare::PreparedBranchStackLoadRole role,
+      BlockLabelId block_label,
+      std::size_t block_index,
+      std::size_t terminator_instruction_index) const;
 
  private:
   friend class PreparedMirCoreView;

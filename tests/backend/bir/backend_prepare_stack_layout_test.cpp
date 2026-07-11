@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/mir/prepared_view.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/prepared_object_traversal.hpp"
@@ -20,6 +21,7 @@ namespace {
 
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
+namespace mir_prepared = c4c::backend::mir::prepared;
 namespace prepare = c4c::backend::prepare;
 
 struct PointerCarrierContractFixture {
@@ -8299,6 +8301,9 @@ int check_branch_stack_load_authority_contract() {
       .align_bytes = std::size_t{8},
   });
   prepared.value_locations.functions.push_back(std::move(prepared_locations));
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = prepared_function_name,
+  });
   prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
       .object_id = 11,
       .function_name = prepared_function_name,
@@ -8455,6 +8460,38 @@ int check_branch_stack_load_authority_contract() {
     return fail("expected collected branch rhs stack-load row to require selected pointer freshness");
   }
 
+  const mir_prepared::PreparedMirCoreView prepared_mir_view(prepared);
+  const auto prepared_mir_function =
+      prepared_mir_view.function_view(prepared_function_name);
+  if (!prepared_mir_function.has_value()) {
+    return fail("expected prepared MIR view for branch stack-load collector");
+  }
+  const auto lhs_mir_authority =
+      prepared_mir_function->branch_stack_load_authority(
+          &prepared_lhs,
+          &prepared.value_locations.functions.front().value_homes[1],
+          prepare::PreparedBranchStackLoadRole::Lhs,
+          prepared_entry_label,
+          0,
+          2);
+  if (!lhs_mir_authority.freshness_required ||
+      !lhs_mir_authority.available ||
+      lhs_mir_authority.authority_status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::Available ||
+      lhs_mir_authority.source_freshness_status !=
+          prepare::PreparedValueFreshnessQueryStatus::Selected ||
+      lhs_mir_authority.source_freshness_candidate_count != 1 ||
+      lhs_mir_authority.freshness_use_kind !=
+          prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource ||
+      lhs_mir_authority.freshness_source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::BranchStackSlot ||
+      lhs_mir_authority.freshness_proof_kind !=
+          prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering ||
+      lhs_mir_authority.freshness_rank !=
+          prepare::PreparedValueFreshnessSourceRank::BranchStackSlot) {
+    return fail("prepared MIR branch stack-load authority view should expose selected lhs authority");
+  }
+
   const std::string dump = prepare::print(prepared);
   if (dump.find("--- prepared-branch-stack-load-authorities ---") ==
       std::string::npos) {
@@ -8544,6 +8581,7 @@ int check_branch_stack_load_authority_contract() {
               .align_bytes = 8,
           },
   });
+  same_slot_clobber.addressing.functions.clear();
   same_slot_clobber.addressing.functions.push_back(
       std::move(same_slot_addressing));
   const auto same_slot_records =
@@ -8559,6 +8597,27 @@ int check_branch_stack_load_authority_contract() {
       same_slot_records.records[2].authority.status !=
           prepare::PreparedBranchStackLoadAuthorityStatus::Available) {
     return fail("expected exact same-slot intervening write to reject only the clobbered branch stack load");
+  }
+  const mir_prepared::PreparedMirCoreView same_slot_mir_view(same_slot_clobber);
+  const auto same_slot_mir_function =
+      same_slot_mir_view.function_view(prepared_function_name);
+  if (!same_slot_mir_function.has_value()) {
+    return fail("expected prepared MIR view for same-slot branch stack-load collector");
+  }
+  const auto same_slot_lhs_mir_authority =
+      same_slot_mir_function->branch_stack_load_authority(
+          &prepared_lhs,
+          &same_slot_clobber.value_locations.functions.front().value_homes[1],
+          prepare::PreparedBranchStackLoadRole::Lhs,
+          prepared_entry_label,
+          0,
+          3);
+  if (!same_slot_lhs_mir_authority.freshness_required ||
+      same_slot_lhs_mir_authority.available ||
+      same_slot_lhs_mir_authority.authority_status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::
+              MissingStackClobberSafety) {
+    return fail("prepared MIR branch stack-load authority view should fail closed for same-slot clobber");
   }
 
   auto call_without_preservation = prepared;

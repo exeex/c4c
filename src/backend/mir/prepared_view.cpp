@@ -350,6 +350,138 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
   return view_query;
 }
 
+PreparedMirBranchStackLoadAuthorityView
+query_prepared_mir_branch_stack_load_authority(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups& lookups,
+    FunctionNameId function_name,
+    const bir::Value* value,
+    const prepare::PreparedValueHome* home,
+    prepare::PreparedBranchStackLoadRole role,
+    BlockLabelId block_label,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) {
+  PreparedMirBranchStackLoadAuthorityView view{
+      .role = role,
+      .block_label = block_label,
+      .block_index = block_index,
+      .terminator_instruction_index = terminator_instruction_index,
+  };
+  if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return view;
+  }
+
+  view.freshness_required = true;
+  view.available = false;
+  view.authority_status =
+      prepare::PreparedBranchStackLoadAuthorityStatus::MissingSourceFreshnessAuthority;
+  view.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+
+  if (value == nullptr || value->kind != bir::Value::Kind::Named ||
+      value->name.empty()) {
+    view.authority_status =
+        prepare::PreparedBranchStackLoadAuthorityStatus::UnsupportedBranchValue;
+    view.source_freshness_status =
+        prepare::PreparedValueFreshnessQueryStatus::MissingValue;
+    return view;
+  }
+
+  const auto value_name = names.value_names.find(value->name);
+  if (value_name == kInvalidValueName || value_name != home->value_name ||
+      home->value_id == prepare::PreparedValueId{0}) {
+    view.authority_status =
+        prepare::PreparedBranchStackLoadAuthorityStatus::HomeValueMismatch;
+    view.source_freshness_status =
+        prepare::PreparedValueFreshnessQueryStatus::MissingValue;
+    return view;
+  }
+
+  for (const auto& record : lookups.branch_stack_load_authorities.records) {
+    const auto& authority = record.authority;
+    if (record.function_name != function_name ||
+        record.role != role ||
+        record.block_label != block_label ||
+        authority.value_id != home->value_id ||
+        authority.value_name != home->value_name ||
+        authority.branch_block_index != block_index ||
+        authority.branch_terminator_instruction_index !=
+            terminator_instruction_index) {
+      continue;
+    }
+
+    view.authority_status = authority.status;
+    view.source_freshness_status = authority.source_freshness_status;
+    view.source_freshness_candidate_count =
+        authority.source_freshness_authorities.size();
+    view.value_id = authority.value_id;
+    view.value_name = authority.value_name;
+    if (!prepare::prepared_branch_stack_load_authority_available(authority) ||
+        authority.source_freshness_status !=
+            prepare::PreparedValueFreshnessQueryStatus::Selected ||
+        !authority.source_freshness_authority.has_value()) {
+      return view;
+    }
+
+    const auto& freshness = *authority.source_freshness_authority;
+    view.freshness_use_kind = freshness.use_kind;
+    view.freshness_source_kind = freshness.source_kind;
+    view.freshness_proof_kind = freshness.proof_kind;
+    view.freshness_rank = freshness.rank;
+    if (freshness.value_id == home->value_id &&
+        freshness.value_name == home->value_name &&
+        freshness.use_kind ==
+            prepare::PreparedValueFreshnessUseKind::BranchStackLoadSource &&
+        freshness.source_kind ==
+            prepare::PreparedValueFreshnessSourceKind::BranchStackSlot &&
+        freshness.proof_kind ==
+            prepare::PreparedValueFreshnessProofKind::BranchTerminatorOrdering &&
+        freshness.rank ==
+            prepare::PreparedValueFreshnessSourceRank::BranchStackSlot &&
+        freshness.reference.home == home &&
+        freshness.reference.block_index == block_index &&
+        freshness.reference.instruction_index == terminator_instruction_index) {
+      view.available = true;
+      return view;
+    }
+
+    view.authority_status =
+        prepare::PreparedBranchStackLoadAuthorityStatus::
+            UnsupportedSourceFreshnessAuthority;
+    return view;
+  }
+
+  return view;
+}
+
+PreparedMirBranchStackLoadAuthorityView
+PreparedMirFunctionView::branch_stack_load_authority(
+    const bir::Value* value,
+    const prepare::PreparedValueHome* home,
+    prepare::PreparedBranchStackLoadRole role,
+    BlockLabelId block_label,
+    std::size_t block_index,
+    std::size_t terminator_instruction_index) const {
+  if (!*this) {
+    return PreparedMirBranchStackLoadAuthorityView{
+        .role = role,
+        .block_label = block_label,
+        .block_index = block_index,
+        .terminator_instruction_index = terminator_instruction_index,
+    };
+  }
+  return query_prepared_mir_branch_stack_load_authority(
+      core_->prepared_names(),
+      entry_->prepared_lookups,
+      entry_->function_name,
+      value,
+      home,
+      role,
+      block_label,
+      block_index,
+      terminator_instruction_index);
+}
+
 PreparedMirCoreView::PreparedMirCoreView(const prepare::PreparedBirModule& module)
     : module_(&module) {
   for (const auto& function : module.module.functions) {

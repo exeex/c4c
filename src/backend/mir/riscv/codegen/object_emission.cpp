@@ -1,5 +1,6 @@
 #include "object_emission.hpp"
 
+#include "../../prepared_view.hpp"
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/formal_publications.hpp"
 #include "../../../prealloc/prepared_contract_verifier.hpp"
@@ -40,6 +41,7 @@ namespace c4c::backend::riscv::codegen {
 namespace {
 
 namespace object = c4c::backend::mir::object;
+namespace mir_prepared = c4c::backend::mir::prepared;
 namespace prepare = c4c::backend::prepare;
 
 constexpr std::uint32_t kRv64VaStartOverflowAreaScratch = 6;  // t1
@@ -13382,8 +13384,10 @@ struct Rv64SelectedBranchStackLoadSourceFreshnessStatus {
 
 Rv64SelectedBranchStackLoadSourceFreshnessStatus
 selected_branch_stack_load_source_freshness_status(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::bir::Value* value,
     const c4c::backend::prepare::PreparedValueHome* home,
     c4c::backend::prepare::PreparedBranchStackLoadRole role,
@@ -13391,7 +13395,7 @@ selected_branch_stack_load_source_freshness_status(
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   Rv64SelectedBranchStackLoadSourceFreshnessStatus status;
-  if (lookups == nullptr || home == nullptr ||
+  if (home == nullptr ||
       home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
     return status;
   }
@@ -13402,88 +13406,63 @@ selected_branch_stack_load_source_freshness_status(
           MissingSourceFreshnessAuthority;
   status.source_freshness_status =
       c4c::backend::prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
-  if (value == nullptr ||
-      value->kind != c4c::backend::bir::Value::Kind::Named ||
-      value->name.empty()) {
-    status.authority_status =
-        c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-            UnsupportedBranchValue;
-    status.source_freshness_status =
-        c4c::backend::prepare::PreparedValueFreshnessQueryStatus::MissingValue;
-    return status;
-  }
-  const auto value_name = names.value_names.find(value->name);
-  if (value_name == c4c::kInvalidValueName || value_name != home->value_name ||
-      home->value_id == c4c::backend::prepare::PreparedValueId{0}) {
-    status.authority_status =
-        c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-            HomeValueMismatch;
-    status.source_freshness_status =
-        c4c::backend::prepare::PreparedValueFreshnessQueryStatus::MissingValue;
+  if (prepared_mir_function == nullptr) {
+    if (lookups == nullptr) {
+      return status;
+    }
+    const auto authority =
+        mir_prepared::query_prepared_mir_branch_stack_load_authority(
+            names,
+            *lookups,
+            function_name,
+            value,
+            home,
+            role,
+            block_label_id,
+            block_index,
+            terminator_instruction_index);
+    status.freshness_required = authority.freshness_required;
+    status.available = authority.available;
+    status.authority_status = authority.authority_status;
+    status.source_freshness_status = authority.source_freshness_status;
+    status.source_freshness_candidates =
+        authority.source_freshness_candidate_count;
     return status;
   }
 
-  for (const auto& record : lookups->branch_stack_load_authorities.records) {
-    const auto& authority = record.authority;
-    if (record.role != role ||
-        record.block_label != block_label_id ||
-        authority.value_id != home->value_id ||
-        authority.value_name != home->value_name ||
-        authority.branch_block_index != block_index ||
-        authority.branch_terminator_instruction_index !=
-            terminator_instruction_index) {
-      continue;
-    }
-    status.authority_status = authority.status;
-    status.source_freshness_status = authority.source_freshness_status;
-    status.source_freshness_candidates =
-        authority.source_freshness_authorities.size();
-    if (!c4c::backend::prepare::prepared_branch_stack_load_authority_available(
-            authority) ||
-        !authority.source_freshness_authority.has_value()) {
-      return status;
-    }
-    const auto& freshness = *authority.source_freshness_authority;
-    if (freshness.value_id == home->value_id &&
-        freshness.value_name == home->value_name &&
-        freshness.use_kind ==
-            c4c::backend::prepare::PreparedValueFreshnessUseKind::
-                BranchStackLoadSource &&
-        freshness.source_kind ==
-            c4c::backend::prepare::PreparedValueFreshnessSourceKind::
-                BranchStackSlot &&
-        freshness.proof_kind ==
-            c4c::backend::prepare::PreparedValueFreshnessProofKind::
-                BranchTerminatorOrdering &&
-        freshness.rank ==
-            c4c::backend::prepare::PreparedValueFreshnessSourceRank::
-                BranchStackSlot &&
-        freshness.reference.home == home &&
-        freshness.reference.block_index == block_index &&
-        freshness.reference.instruction_index ==
-            terminator_instruction_index) {
-      status.available = true;
-      return status;
-    }
-    status.authority_status =
-        c4c::backend::prepare::PreparedBranchStackLoadAuthorityStatus::
-            UnsupportedSourceFreshnessAuthority;
-  }
+  const auto authority =
+      prepared_mir_function->branch_stack_load_authority(
+          value,
+          home,
+          role,
+          block_label_id,
+          block_index,
+          terminator_instruction_index);
+  status.freshness_required = authority.freshness_required;
+  status.available = authority.available;
+  status.authority_status = authority.authority_status;
+  status.source_freshness_status = authority.source_freshness_status;
+  status.source_freshness_candidates =
+      authority.source_freshness_candidate_count;
   return status;
 }
 
 Rv64SelectedBranchStackLoadSourceFreshnessStatus
 selected_lhs_branch_stack_load_source_freshness_status(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::prepare::PreparedValueHome* lhs_home,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   return selected_branch_stack_load_source_freshness_status(
+      prepared_mir_function,
       names,
       lookups,
+      function_name,
       branch_condition.lhs.has_value() ? &*branch_condition.lhs : nullptr,
       lhs_home,
       c4c::backend::prepare::PreparedBranchStackLoadRole::Lhs,
@@ -13494,16 +13473,20 @@ selected_lhs_branch_stack_load_source_freshness_status(
 
 Rv64SelectedBranchStackLoadSourceFreshnessStatus
 selected_rhs_branch_stack_load_source_freshness_status(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::prepare::PreparedValueHome* rhs_home,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   return selected_branch_stack_load_source_freshness_status(
+      prepared_mir_function,
       names,
       lookups,
+      function_name,
       branch_condition.rhs.has_value() ? &*branch_condition.rhs : nullptr,
       rhs_home,
       c4c::backend::prepare::PreparedBranchStackLoadRole::Rhs,
@@ -13514,16 +13497,20 @@ selected_rhs_branch_stack_load_source_freshness_status(
 
 Rv64SelectedBranchStackLoadSourceFreshnessStatus
 selected_condition_branch_stack_load_source_freshness_status(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::prepare::PreparedValueHome* condition_home,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   return selected_branch_stack_load_source_freshness_status(
+      prepared_mir_function,
       names,
       lookups,
+      function_name,
       &branch_condition.condition_value,
       condition_home,
       c4c::backend::prepare::PreparedBranchStackLoadRole::Condition,
@@ -13533,16 +13520,20 @@ selected_condition_branch_stack_load_source_freshness_status(
 }
 
 bool selected_lhs_branch_stack_load_source_freshness_available(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::prepare::PreparedValueHome* lhs_home,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   return selected_lhs_branch_stack_load_source_freshness_status(
+             prepared_mir_function,
              names,
              lookups,
+             function_name,
              branch_condition,
              lhs_home,
              block_label_id,
@@ -13552,16 +13543,20 @@ bool selected_lhs_branch_stack_load_source_freshness_available(
 }
 
 bool selected_rhs_branch_stack_load_source_freshness_available(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::prepare::PreparedValueHome* rhs_home,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   return selected_rhs_branch_stack_load_source_freshness_status(
+             prepared_mir_function,
              names,
              lookups,
+             function_name,
              branch_condition,
              rhs_home,
              block_label_id,
@@ -13571,16 +13566,20 @@ bool selected_rhs_branch_stack_load_source_freshness_available(
 }
 
 bool selected_condition_branch_stack_load_source_freshness_available(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::prepare::PreparedValueHome* condition_home,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index,
     std::size_t terminator_instruction_index) {
   return selected_condition_branch_stack_load_source_freshness_status(
+             prepared_mir_function,
              names,
              lookups,
+             function_name,
              branch_condition,
              condition_home,
              block_label_id,
@@ -13739,6 +13738,7 @@ std::string rv64_branch_stack_load_freshness_diagnostic(
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedValueLocationFunction* value_locations,
@@ -13763,8 +13763,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
   const auto* rhs_home =
       prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.rhs);
   if (!selected_condition_branch_stack_load_source_freshness_available(
+          prepared_mir_function,
           names,
           lookups,
+          branch_condition.function_name,
           branch_condition,
           condition_home,
           block_label_id,
@@ -13773,8 +13775,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     return std::nullopt;
   }
   if (!selected_lhs_branch_stack_load_source_freshness_available(
+          prepared_mir_function,
           names,
           lookups,
+          branch_condition.function_name,
           branch_condition,
           lhs_home,
           block_label_id,
@@ -13783,8 +13787,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     return std::nullopt;
   }
   if (!selected_rhs_branch_stack_load_source_freshness_available(
+          prepared_mir_function,
           names,
           lookups,
+          branch_condition.function_name,
           branch_condition,
           rhs_home,
           block_label_id,
@@ -13865,6 +13871,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
 std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Function& function,
@@ -13949,6 +13956,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
           branch_condition->rhs.has_value()) {
         if (prepared_branch_condition_is_supported_pointer_branch(*branch_condition)) {
           return fragment_for_prepared_fused_pointer_branch(prepared.stack_layout,
+                                                            prepared_mir_function,
                                                             names,
                                                             lookups,
                                                             value_locations,
@@ -14025,6 +14033,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
 
 std::optional<std::string>
 diagnose_unsupported_prepared_terminator_fragment(
+    const mir_prepared::PreparedMirFunctionView* prepared_mir_function,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups& lookups,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -14048,8 +14057,10 @@ diagnose_unsupported_prepared_terminator_fragment(
       prepared_value_home_for(names, &lookups, branch_condition->condition_value);
   const auto condition_status =
       selected_condition_branch_stack_load_source_freshness_status(
+          prepared_mir_function,
           names,
           &lookups,
+          function_name,
           *branch_condition,
           condition_home,
           block_label_id,
@@ -14074,8 +14085,10 @@ diagnose_unsupported_prepared_terminator_fragment(
                                                *branch_condition->lhs);
   const auto lhs_status =
       selected_lhs_branch_stack_load_source_freshness_status(
+          prepared_mir_function,
           names,
           &lookups,
+          function_name,
           *branch_condition,
           lhs_home,
           block_label_id,
@@ -14100,8 +14113,10 @@ diagnose_unsupported_prepared_terminator_fragment(
                                                *branch_condition->rhs);
   const auto rhs_status =
       selected_rhs_branch_stack_load_source_freshness_status(
+          prepared_mir_function,
           names,
           &lookups,
+          function_name,
           *branch_condition,
           rhs_home,
           block_label_id,
@@ -15236,6 +15251,11 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const std::string& function_name = admission.function_name;
   const auto* function = admission.function;
   const auto& lookups = admission.lookups;
+  const mir_prepared::PreparedMirCoreView prepared_mir_view(prepared);
+  const auto prepared_mir_function_view =
+      prepared_mir_view.function_view(control_flow.function_name);
+  const auto* prepared_mir_function =
+      prepared_mir_function_view.has_value() ? &*prepared_mir_function_view : nullptr;
   const auto& dependency_operand_authorities =
       admission.dependency_operand_authorities;
   const auto& carrier_alias_authorities = admission.carrier_alias_authorities;
@@ -15628,6 +15648,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
             terminator_fragment =
                 fragment_for_prepared_terminator(prepared,
                                                  control_flow,
+                                                 prepared_mir_function,
                                                  prepared.names,
                                                  &lookups,
                                                  *function,
@@ -15644,6 +15665,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           if (!terminator_fragment.has_value()) {
             if (auto diagnostic =
                     diagnose_unsupported_prepared_terminator_fragment(
+                        prepared_mir_function,
                         prepared.names,
                         lookups,
                         control_flow,
@@ -15746,6 +15768,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     auto terminator_fragment =
         fragment_for_prepared_terminator(prepared,
                                          control_flow,
+                                         prepared_mir_function,
                                          prepared.names,
                                          &lookups,
                                          *function,
@@ -15761,6 +15784,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     if (!terminator_fragment.has_value()) {
       if (auto diagnostic =
               diagnose_unsupported_prepared_terminator_fragment(
+                  prepared_mir_function,
                   prepared.names,
                   lookups,
                   control_flow,
@@ -16074,7 +16098,8 @@ diagnose_rv64_prepared_terminator_fragment_for_authority_status(
     c4c::FunctionNameId function_name,
     c4c::BlockLabelId block_label_id,
     std::size_t block_index) {
-  return diagnose_unsupported_prepared_terminator_fragment(names,
+  return diagnose_unsupported_prepared_terminator_fragment(nullptr,
+                                                           names,
                                                            lookups,
                                                            control_flow,
                                                            block,
