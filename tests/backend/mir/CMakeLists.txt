@@ -49,6 +49,11 @@ function(c4c_add_mir_cpp_test test_name)
   )
 endfunction()
 
+c4c_add_aarch64_cpp_test(backend_common_mir_query_route_authority_guard SOURCE_TEXT_AUDIT)
+set_tests_properties(backend_common_mir_query_route_authority_guard PROPERTIES
+  LABELS "backend;internal;cpp;mir;contract"
+)
+
 c4c_add_mir_cpp_test(backend_x86_shared_producer_query)
 set_tests_properties(backend_x86_shared_producer_query PROPERTIES
   LABELS "backend;internal;cpp;x86"
