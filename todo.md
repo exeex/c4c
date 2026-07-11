@@ -3,33 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/718_transitive_current_block_incoming_expression_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 9
-Current Step Title: Compose stable-key owner facts upstream
+Current Step ID: 10
+Current Step Title: Validate unchanged integration and hand back to idea 717
 
 ## Just Finished
 
-- Completed plan Step 9 by composing each direct publication-source routing
-  fact with only its proven transitive producer dependencies at the upstream
-  preallocation owner-fact boundary.
-- Preserved direct source identity and authoritative policy ownership while
-  making dependency identity the stable routed key; all four focused probes
-  and the broader backend subset are green without target-local construction.
+- Completed plan Step 10 by validating the unchanged AArch64 current-block
+  join routing integration against the upstream owner-attached stable-key
+  facts; no implementation edit was required.
+- Confirmed `backend_aarch64_current_block_join_routing` and all 324 backend
+  tests pass without Route 5 or target-local authority construction/source
+  rewrite, so the decomposition is ready to hand back to idea 717.
 
 ## Suggested Next
 
-- Execute plan Step 10's unchanged integration validation and handoff packet.
+- Ask the plan owner to perform the lifecycle handback to idea 717.
 
 ## Watchouts
 
-- A composed dependency fact deliberately retains the direct publication's
-  source ID/name pair; only its routed ID/name pair changes to the dependency.
-- Dependency closure is tracked per direct source so unrelated direct
-  publication families are not cross-composed.
+- AArch64 still builds its routing from prepared owner facts; its Route 5
+  identity is retained only for agreement/fallback classification and does not
+  construct stable-key authority locally.
+- Preserve the unchanged integration vectors and avoid reopening target-local
+  source rewriting during the idea 717 handback.
 
 ## Proof
 
 - Ran `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' > test_after.log 2>&1` exactly as delegated.
-- Build passed; all 324/324 backend tests passed, including the direct identity,
-  transitive dependency, stable-key composition, and no-policy/zero-fact
-  focused probes. Proof log: `test_after.log`.
+- Build passed; all 324/324 backend tests passed, including
+  `backend_aarch64_current_block_join_routing`. The supervisor-selected proof
+  was sufficient. Proof log: `test_after.log`.
