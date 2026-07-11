@@ -2,6 +2,7 @@
 
 #include "../prealloc/module.hpp"
 
+#include <string>
 #include <utility>
 
 namespace c4c::backend::mir::prepared {
@@ -223,6 +224,157 @@ std::optional<PreparedMirFunctionView> PreparedMirCoreView::function_view(
     return std::nullopt;
   }
   return function_view(*id);
+}
+
+std::string PreparedMirCoreView::canonical_dump() const {
+  std::string out;
+  const auto append_line = [&](std::string line) {
+    out += std::move(line);
+    out += '\n';
+  };
+  const auto bool_text = [](bool value) -> const char* {
+    return value ? "1" : "0";
+  };
+  const auto id_text = [](auto id) {
+    return std::to_string(static_cast<std::size_t>(id));
+  };
+  const auto block_label_text = [&](BlockLabelId id) {
+    const std::string_view label = prepare::prepared_block_label(prepared_names(), id);
+    return label.empty() ? std::string{"<invalid>"} : std::string{label};
+  };
+  const auto value_name_text = [&](ValueNameId id) {
+    const std::string_view name = prepare::prepared_value_name(prepared_names(), id);
+    return name.empty() ? std::string{"<invalid>"} : std::string{name};
+  };
+
+  append_line("prepared_mir_core_view schema=1");
+  append_line("target triple=" + std::string(target_triple()) +
+              " profile_triple=" + target_profile().triple +
+              " arch=" + c4c::target_arch_name(target_profile().arch) +
+              " os=" + c4c::target_os_name(target_profile().os) +
+              " abi=" + c4c::backend_abi_name(target_profile().backend_abi) +
+              " relocation=" +
+              c4c::target_relocation_model_name(target_profile().relocation_model) +
+              " float_args=" + bool_text(target_profile().has_float_arg_registers) +
+              " float_returns=" + bool_text(target_profile().has_float_return_registers));
+  append_line("module functions=" + std::to_string(functions().size()) +
+              " defined_functions=" + std::to_string(defined_functions().size()) +
+              " globals=" + std::to_string(globals().size()) +
+              " strings=" + std::to_string(string_constants().size()));
+
+  for (std::size_t index = 0; index < functions().size(); ++index) {
+    const auto& function = functions()[index];
+    const auto function_id = resolve_function_name(function.name);
+    const bool has_view = function_id.has_value() && function_view(*function_id).has_value();
+    append_line("function index=" + std::to_string(index) +
+                " name=" + function.name +
+                " id=" + (function_id.has_value() ? id_text(*function_id) : std::string{"invalid"}) +
+                " declaration=" + bool_text(function.is_declaration) +
+                " blocks=" + std::to_string(function.blocks.size()) +
+                " view=" + bool_text(has_view));
+  }
+
+  for (std::size_t index = 0; index < defined_functions().size(); ++index) {
+    const auto* function = defined_functions()[index];
+    append_line("defined_function index=" + std::to_string(index) +
+                " name=" + (function != nullptr ? function->name : std::string{"<null>"}));
+  }
+
+  for (std::size_t index = 0; index < globals().size(); ++index) {
+    const auto& global = globals()[index];
+    append_line("global index=" + std::to_string(index) +
+                " name=" + global.name +
+                " link_id=" + id_text(global.link_name_id) +
+                " type=" + std::to_string(static_cast<unsigned>(global.type)) +
+                " extern=" + bool_text(global.is_extern) +
+                " constant=" + bool_text(global.is_constant) +
+                " size=" + std::to_string(global.size_bytes) +
+                " align=" + std::to_string(global.align_bytes));
+  }
+
+  for (std::size_t index = 0; index < string_constants().size(); ++index) {
+    const auto& constant = string_constants()[index];
+    append_line("string index=" + std::to_string(index) +
+                " name=" + constant.name +
+                " bytes=" + std::to_string(constant.bytes.size()) +
+                " align=" + std::to_string(constant.align_bytes));
+  }
+
+  for (const auto& entry : function_entries_) {
+    const PreparedMirFunctionView view{this, &entry};
+    const auto& control_flow = view.control_flow();
+    const auto& value_locations = view.value_locations();
+    const auto& addressing = view.addressing();
+    const auto& lookups = view.prepared_lookups();
+
+    append_line("function_view name=" + std::string(view.function_name_text()) +
+                " id=" + id_text(view.function_name()) +
+                " bir_blocks=" + std::to_string(view.bir_function().blocks.size()) +
+                " prepared_blocks=" + std::to_string(control_flow.blocks.size()));
+    append_line("control_flow function=" + std::string(view.function_name_text()) +
+                " blocks=" + std::to_string(control_flow.blocks.size()) +
+                " branch_conditions=" + std::to_string(control_flow.branch_conditions.size()) +
+                " join_transfers=" + std::to_string(control_flow.join_transfers.size()) +
+                " parallel_copy_bundles=" +
+                std::to_string(control_flow.parallel_copy_bundles.size()));
+    append_line("value_locations function=" + std::string(view.function_name_text()) +
+                " homes=" + std::to_string(value_locations.value_homes.size()) +
+                " move_bundles=" + std::to_string(value_locations.move_bundles.size()));
+    for (const auto& home : value_locations.value_homes) {
+      append_line("value_home function=" + std::string(view.function_name_text()) +
+                  " value_id=" + std::to_string(home.value_id) +
+                  " value_name=" + value_name_text(home.value_name) +
+                  " kind=" + std::string(prepare::prepared_value_home_kind_name(home.kind)));
+    }
+    append_line("stack_layout function=" + std::string(view.function_name_text()) +
+                " objects=" + std::to_string(view.stack_layout().objects.size()) +
+                " frame_slots=" + std::to_string(view.stack_layout().frame_slots.size()) +
+                " frame_size=" + std::to_string(view.stack_layout().frame_size_bytes) +
+                " frame_align=" + std::to_string(view.stack_layout().frame_alignment_bytes));
+    append_line("addressing function=" + std::string(view.function_name_text()) +
+                " accesses=" + std::to_string(addressing.accesses.size()) +
+                " materializations=" +
+                std::to_string(addressing.address_materializations.size()) +
+                " frame_size=" + std::to_string(addressing.frame_size_bytes) +
+                " frame_align=" + std::to_string(addressing.frame_alignment_bytes));
+    append_line("lookups function=" + std::string(view.function_name_text()) +
+                " calls=" + std::to_string(lookups.call_plans.calls_by_position.size()) +
+                " address_blocks=" +
+                std::to_string(lookups.address_materializations.materializations_by_block.size()) +
+                " memory_positions=" +
+                std::to_string(lookups.memory_accesses.accesses_by_position.size()) +
+                " value_homes=" + std::to_string(lookups.value_homes.homes_by_id.size()) +
+                " move_bundles=" +
+                std::to_string(lookups.move_bundles.bundles_by_position.size()) +
+                " edge_publications=" +
+                std::to_string(lookups.edge_publications.publications.size()) +
+                " edge_source_producers=" +
+                std::to_string(lookups.edge_publication_source_producers.producers_by_value_name.size()) +
+                " branch_stack_loads=" +
+                std::to_string(lookups.branch_stack_load_authorities.records.size()));
+
+    for (const auto& block : view.blocks()) {
+      const std::size_t instruction_count =
+          block.block != nullptr ? block.block->insts.size() : 0;
+      append_line("block function=" + std::string(view.function_name_text()) +
+                  " index=" + std::to_string(block.block_index) +
+                  " label=" + block_label_text(block.block_label) +
+                  " bir_present=" + bool_text(block.block != nullptr) +
+                  " prepared_present=" + bool_text(block.control_flow != nullptr) +
+                  " instructions=" + std::to_string(instruction_count));
+      for (std::size_t instruction_index = 0; instruction_index < instruction_count;
+           ++instruction_index) {
+        const auto cursor = view.instruction(block.block_index, instruction_index);
+        append_line("cursor function=" + std::string(view.function_name_text()) +
+                    " block_index=" + std::to_string(block.block_index) +
+                    " instruction_index=" + std::to_string(instruction_index) +
+                    " label=" + block_label_text(block.block_label) +
+                    " bound=" + bool_text(cursor.has_value()));
+      }
+    }
+  }
+
+  return out;
 }
 
 const PreparedMirFunctionEntry* PreparedMirCoreView::entry(

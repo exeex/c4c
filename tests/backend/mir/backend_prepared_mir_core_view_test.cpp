@@ -3,6 +3,7 @@
 #include "src/target_profile.hpp"
 
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -102,6 +103,11 @@ prepare::PreparedBirModule make_fixture() {
       .blocks = {prepare::PreparedControlFlowBlock{.block_label = entry_label}},
   });
 
+  module.completed_phases.push_back("phase-sentinel-not-core");
+  module.notes.push_back(prepare::PrepareNote{
+      .phase = "diagnostic-phase-sentinel",
+      .message = "prepare-note-sentinel-not-core",
+  });
   if (declaration_name == c4c::kInvalidFunctionName) {
     module.notes.push_back(prepare::PrepareNote{
         .phase = "test",
@@ -187,8 +193,61 @@ int verify_core_view() {
   return 0;
 }
 
+bool contains(std::string_view text, std::string_view needle) {
+  return text.find(needle) != std::string_view::npos;
+}
+
+int verify_core_view_canonical_dump() {
+  const auto module = make_fixture();
+  const prepared::PreparedMirCoreView view(module);
+  const std::string dump = view.canonical_dump();
+  const std::string repeat_dump = view.canonical_dump();
+
+  if (dump != repeat_dump) {
+    return fail("expected canonical core view dump to be deterministic");
+  }
+  if (!contains(dump, "prepared_mir_core_view schema=1\n") ||
+      !contains(dump, "target triple=x86_64-test-c4c") ||
+      !contains(dump, "arch=x86_64") ||
+      !contains(dump, "module functions=3 defined_functions=2 globals=1 strings=1\n")) {
+    return fail("expected canonical dump to include target and module core summary");
+  }
+  if (!contains(dump, "function index=0 name=main") ||
+      !contains(dump, "declaration=0 blocks=1 view=1") ||
+      !contains(dump, "function index=1 name=extern_fn") ||
+      !contains(dump, "declaration=1 blocks=0 view=0") ||
+      !contains(dump, "function index=2 name=missing_facts") ||
+      !contains(dump, "declaration=0 blocks=1 view=0")) {
+    return fail("expected canonical dump to include all/defined traversal and view admission");
+  }
+  if (!contains(dump, "global index=0 name=global_i32") ||
+      !contains(dump, "string index=0 name=.str0 bytes=3 align=1") ||
+      !contains(dump, "function_view name=main") ||
+      !contains(dump, "control_flow function=main blocks=1") ||
+      !contains(dump, "value_locations function=main homes=1 move_bundles=0") ||
+      !contains(dump, "value_home function=main value_id=1 value_name=%v") ||
+      !contains(dump, "addressing function=main accesses=0 materializations=0") ||
+      !contains(dump, "lookups function=main") ||
+      !contains(dump, "value_homes=1") ||
+      !contains(dump, "block function=main index=0 label=entry") ||
+      !contains(dump, "cursor function=main block_index=0 instruction_index=0 label=entry bound=1")) {
+    return fail("expected canonical dump to include view-exposed core function facts");
+  }
+  if (contains(dump, "prepare-note-sentinel-not-core") ||
+      contains(dump, "diagnostic-phase-sentinel") ||
+      contains(dump, "phase-sentinel-not-core") ||
+      contains(dump, "semantic_bir_shared")) {
+    return fail("expected canonical dump to exclude diagnostic and prepared-history fields");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
-  return verify_core_view();
+  if (const int status = verify_core_view(); status != 0) {
+    return status;
+  }
+  return verify_core_view_canonical_dump();
 }

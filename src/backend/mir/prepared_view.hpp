@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -108,6 +109,7 @@ class PreparedMirCoreView {
       FunctionNameId id) const;
   [[nodiscard]] std::optional<PreparedMirFunctionView> function_view(
       std::string_view name) const;
+  [[nodiscard]] std::string canonical_dump() const;
 
  private:
   friend class PreparedMirFunctionView;
