@@ -5,7 +5,8 @@ namespace prepare = c4c::backend::prepare;
 
 namespace {
 
-prepare::PreparedEdgePublication publication(const bir::Value& source) {
+prepare::PreparedEdgePublication publication(const bir::Value& source,
+                                             const bir::BinaryInst& producer) {
   static prepare::PreparedValueHome home{
       .value_id = prepare::PreparedValueId{41},
       .value_name = c4c::ValueNameId{41},
@@ -17,6 +18,9 @@ prepare::PreparedEdgePublication publication(const bir::Value& source) {
       .source_value_id = prepare::PreparedValueId{41},
       .source_value_name = c4c::ValueNameId{41},
       .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_binary = &producer,
       .source_home = &home,
       .source_home_kind = prepare::PreparedValueHomeKind::Register,
   };
@@ -28,6 +32,12 @@ int main() {
   const auto published = bir::Value::named(bir::TypeKind::I32, "%published");
   const auto dependency = bir::Value::named(bir::TypeKind::I32, "%dependency");
   const auto result = bir::Value::named(bir::TypeKind::I32, "%result");
+  const bir::BinaryInst producer{
+      .result = published,
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  };
   const bir::Inst consumer = bir::BinaryInst{
       .result = result,
       .operand_type = bir::TypeKind::I32,
@@ -35,7 +45,7 @@ int main() {
       .rhs = dependency,
   };
 
-  const auto direct = publication(published);
+  const auto direct = publication(published, producer);
   const auto authority =
       prepare::query_prepared_current_block_routed_operand_authority(
           direct, consumer, published);
@@ -60,6 +70,34 @@ int main() {
   if (prepare::query_prepared_current_block_routed_operand_authority(
           conflicting_name, consumer, published)) {
     return 4;
+  }
+  auto missing_id = direct;
+  missing_id.source_value_id.reset();
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          missing_id, consumer, published)) {
+    return 5;
+  }
+  auto missing_home = direct;
+  missing_home.source_home = nullptr;
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          missing_home, consumer, published)) {
+    return 6;
+  }
+  auto conflicting_home = direct;
+  auto other_home = *direct.source_home;
+  other_home.value_id = prepare::PreparedValueId{42};
+  conflicting_home.source_home = &other_home;
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          conflicting_home, consumer, published)) {
+    return 7;
+  }
+  const bir::Inst non_consumer = bir::CastInst{
+      .result = result,
+      .operand = dependency,
+  };
+  if (prepare::query_prepared_current_block_routed_operand_authority(
+          direct, non_consumer, published)) {
+    return 8;
   }
   return 0;
 }

@@ -1337,9 +1337,20 @@ query_prepared_current_block_routed_operand_authority(
   }
 
   if (operand.kind == bir::Value::Kind::Named) {
+    const auto* preserved_source = prepared_source_producer_result_value(
+        PreparedEdgePublicationSourceProducer{
+            .kind = publication.source_producer_kind,
+            .load_local = publication.source_load_local,
+            .load_global = publication.source_load_global,
+            .cast = publication.source_cast,
+            .binary = publication.source_binary,
+            .select = publication.source_select,
+        });
     if (!publication.source_value_id.has_value() ||
         publication.source_value_name == kInvalidValueName ||
         publication.source_home == nullptr ||
+        (preserved_source != nullptr &&
+         *preserved_source != publication.source_value) ||
         publication.source_home->value_id != *publication.source_value_id ||
         !prepared_edge_publication_source_home_matches_source(publication)) {
       result.status = PreparedFactBoundaryStatus::Mismatched;
