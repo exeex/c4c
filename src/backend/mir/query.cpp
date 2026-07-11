@@ -114,21 +114,38 @@ namespace {
   return BirMemoryAccessNodeKind::Unknown;
 }
 
-[[nodiscard]] bir::Route3MemoryAccessNodeKind route3_node_kind_from_mir(
-    BirMemoryAccessNodeKind kind) {
+[[nodiscard]] BirMemoryAccessNodeKind named_memory_kind_to_mir(
+    bir::BirMemoryAccessKind kind) {
   switch (kind) {
-    case BirMemoryAccessNodeKind::LoadLocal:
-      return bir::Route3MemoryAccessNodeKind::LoadLocal;
-    case BirMemoryAccessNodeKind::LoadGlobal:
-      return bir::Route3MemoryAccessNodeKind::LoadGlobal;
-    case BirMemoryAccessNodeKind::StoreLocal:
-      return bir::Route3MemoryAccessNodeKind::StoreLocal;
-    case BirMemoryAccessNodeKind::StoreGlobal:
-      return bir::Route3MemoryAccessNodeKind::StoreGlobal;
-    case BirMemoryAccessNodeKind::Unknown:
-      return bir::Route3MemoryAccessNodeKind::Unknown;
+    case bir::BirMemoryAccessKind::LoadLocal:
+      return BirMemoryAccessNodeKind::LoadLocal;
+    case bir::BirMemoryAccessKind::LoadGlobal:
+      return BirMemoryAccessNodeKind::LoadGlobal;
+    case bir::BirMemoryAccessKind::StoreLocal:
+      return BirMemoryAccessNodeKind::StoreLocal;
+    case bir::BirMemoryAccessKind::StoreGlobal:
+      return BirMemoryAccessNodeKind::StoreGlobal;
+    case bir::BirMemoryAccessKind::Unknown:
+      return BirMemoryAccessNodeKind::Unknown;
   }
-  return bir::Route3MemoryAccessNodeKind::Unknown;
+  return BirMemoryAccessNodeKind::Unknown;
+}
+
+[[nodiscard]] BirMemoryAccessBaseKind named_memory_base_to_mir(
+    bir::BirMemoryBaseKind kind) {
+  switch (kind) {
+    case bir::BirMemoryBaseKind::LocalSlot:
+      return BirMemoryAccessBaseKind::LocalSlot;
+    case bir::BirMemoryBaseKind::GlobalSymbol:
+      return BirMemoryAccessBaseKind::GlobalSymbol;
+    case bir::BirMemoryBaseKind::PointerValue:
+      return BirMemoryAccessBaseKind::PointerValue;
+    case bir::BirMemoryBaseKind::StringConstant:
+      return BirMemoryAccessBaseKind::StringConstant;
+    case bir::BirMemoryBaseKind::None:
+      return BirMemoryAccessBaseKind::None;
+  }
+  return BirMemoryAccessBaseKind::None;
 }
 
 [[nodiscard]] BirMemoryAccessBaseKind route3_base_kind_to_mir(
@@ -164,6 +181,7 @@ namespace {
     return {};
   }
   return BirMemoryAccessIdentity{
+      .status = bir::BirViewStatus::Available,
       .inst = record.instruction,
       .block_label = record.block_label,
       .instruction_index = record.instruction_index,
@@ -1515,17 +1533,43 @@ evaluate_same_block_integer_constant(
   if (!request.block_label.empty() && request.block_label != request.block->label) {
     return {};
   }
-  const auto index = bir::route3_build_memory_access_index(*request.block);
-  const auto* record = bir::route3_find_memory_access_record(
-      index,
-      request.instruction_index,
-      route3_node_kind_from_mir(request.node_kind));
-  if (record == nullptr) {
+  const auto view = bir::make_bir_memory_access_view(*request.block);
+  const auto result = bir::find_memory_access(view, request.instruction_index);
+  const auto node_kind = named_memory_kind_to_mir(result.kind);
+  const auto base_kind = named_memory_base_to_mir(result.base_kind);
+  if (!result) {
+    return BirMemoryAccessIdentity{.status = result.status};
+  }
+  if (node_kind != request.node_kind ||
+      base_kind == BirMemoryAccessBaseKind::None ||
+      result.block_label != request.block->label) {
     return {};
   }
-  auto identity = route3_memory_access_to_mir(*record);
-  identity.block_label = normalized_block_label(*request.block, request.block_label);
-  return identity;
+  return BirMemoryAccessIdentity{
+      .status = result.status,
+      .inst = result.instruction,
+      .block_label = result.block_label,
+      .instruction_index = result.instruction_index,
+      .node_kind = node_kind,
+      .result_value_name = result.result_value_name,
+      .stored_value_name = result.stored_value_name,
+      .address_space = result.address_space,
+      .is_volatile = result.is_volatile,
+      .base_kind = base_kind,
+      .local_slot_name = result.local_slot_name,
+      .local_slot_id = result.local_slot_id,
+      .global_name = result.global_name,
+      .global_name_id = result.global_name_id,
+      .pointer_base = result.pointer_base,
+      .pointer_value_name = result.pointer_base_name,
+      .string_constant_name = result.string_constant_name,
+      .string_constant_name_id = result.string_constant_name_id,
+      .result_value = result.result_value,
+      .stored_value = result.stored_value,
+      .byte_offset = result.byte_offset,
+      .size_bytes = result.size_bytes,
+      .align_bytes = result.align_bytes,
+  };
 }
 
 [[nodiscard]] BirCurrentBlockPublicationIdentity

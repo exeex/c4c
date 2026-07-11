@@ -3,24 +3,24 @@
 Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2.3
-Current Step Title: Enrich the BIR-owned memory-access result
+Current Step ID: 2.4
+Current Step Title: Adapt common MIR to the named memory-access result
 
 ## Just Finished
 
-- Step 2.3 enriched `BirMemoryAccessResult` with the BIR instruction pointer,
-  address space, volatility, alignment, stable slot/link ids, distinct
-  local/global/string base names, and stable pointer/result/stored value names.
-- The named producer now returns a closed failure state for missing instruction,
-  kind, base, role value, stable id/name pairs, conflicting base evidence, and
-  incompatible local/global node/base evidence.
-- Focused contracts prove complete local/global/string identities and reject
-  incomplete and mismatched identities without changing common MIR or targets.
+- Step 2.4 replaced the bounded common memory-access query's Route 3 index and
+  raw-record reconstruction with a narrow adapter over `BirMemoryAccessResult`.
+- The adapter preserves producer status, instruction/value pointers and names,
+  instruction index, address facts, slot/link ids, and distinct local/global/
+  string identities, and fails closed for unavailable, incomplete, mismatched,
+  or unknown results.
+- Focused contracts cover available load/store identity and explicit incomplete
+  status; the Route 3 common-query guard ratcheted from 71 to 59.
 
 ## Suggested Next
 
-- Execute Step 2.4: adapt the common MIR memory query exclusively from the now
-  complete named BIR result, preserving the producer's fail-closed status.
+- Execute the next bounded Step 2 family selected by the supervisor, leaving
+  the remaining adjacent Route 3 consumers with their owning migration packet.
 
 ## Watchouts
 
@@ -29,8 +29,9 @@ Current Step Title: Enrich the BIR-owned memory-access result
   contract and must not reconstruct operand traversal.
 - Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
   select dependency interpretation in later common-query packets.
-- Step 2.4 must consume the named fields directly; do not reconstruct identity
-  from `instruction_index`, `base_name`, generic value pointers, or raw BIR.
+- Remaining Route 3 helpers in common MIR still serve adjacent publication and
+  same-block source families; do not mechanically migrate them as part of this
+  completed direct memory-access packet.
 - Preserve missing, incomplete, ambiguous, unsupported, and mismatched
   fail-closed behavior at the common-MIR boundary.
 - Twenty-three Route 1 spellings remain in other bounded memory/publication/
@@ -46,6 +47,5 @@ Current Step Title: Enrich the BIR-owned memory-access result
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`
 - The supervisor-selected exact backend proof passed 331/331, including the
-  enriched `backend_bir_memory_publication_view_contract` and unchanged
-  `backend_aarch64_instruction_dispatch`; `test_after.log` is the canonical
-  proof log.
+  common-query route guard, focused memory contracts, and unchanged target
+  backend coverage; `test_after.log` is the canonical proof log.

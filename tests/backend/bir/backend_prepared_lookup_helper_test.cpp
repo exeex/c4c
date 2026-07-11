@@ -7411,6 +7411,10 @@ int verify_bir_direct_memory_access_identity_lookup() {
   const auto* prepared_load =
       prepare::find_prepared_memory_access(addressing, block_label_id, 0);
   if (!load || prepared_load == nullptr ||
+      load.status != bir::BirViewStatus::Available ||
+      load.inst != &block.insts[0] || load.instruction_index != 0 ||
+      load.result_value != &std::get<bir::LoadLocalInst>(block.insts[0]).result ||
+      load.stored_value != nullptr ||
       names.value_names.find(load.result_value_name) !=
           prepared_load->result_value_name.value_or(c4c::kInvalidValueName) ||
       load.stored_value_name != std::string_view{} ||
@@ -7431,6 +7435,10 @@ int verify_bir_direct_memory_access_identity_lookup() {
   const auto* prepared_store =
       prepare::find_prepared_memory_access(addressing, block_label_id, 1);
   if (!store || prepared_store == nullptr ||
+      store.status != bir::BirViewStatus::Available ||
+      store.inst != &block.insts[1] || store.instruction_index != 1 ||
+      store.stored_value != &std::get<bir::StoreGlobalInst>(block.insts[1]).value ||
+      store.result_value != nullptr ||
       names.value_names.find(store.stored_value_name) !=
           prepared_store->stored_value_name.value_or(c4c::kInvalidValueName) ||
       store.result_value_name != std::string_view{} ||
@@ -7467,6 +7475,29 @@ int verify_bir_direct_memory_access_identity_lookup() {
               .node_kind = mir::BirMemoryAccessNodeKind::LoadLocal,
           })) {
     return fail("BIR memory identity should reject missing instruction indexes");
+  }
+
+  bir::Block incomplete_block;
+  incomplete_block.label = "entry";
+  incomplete_block.insts = {bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%incomplete"),
+      .slot_name = "missing-id",
+      .slot_id = c4c::kInvalidSlotName,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "missing-id",
+      },
+  }};
+  const auto incomplete = mir::find_bir_memory_access_identity(
+      mir::BirMemoryAccessIdentityRequest{
+          .block = &incomplete_block,
+          .block_label = "entry",
+          .instruction_index = 0,
+          .node_kind = mir::BirMemoryAccessNodeKind::LoadLocal,
+      });
+  if (incomplete || incomplete.status != bir::BirViewStatus::Incomplete ||
+      incomplete.inst != nullptr) {
+    return fail("BIR memory identity should preserve incomplete status and fail closed");
   }
 
   return 0;

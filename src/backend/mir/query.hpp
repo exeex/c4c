@@ -49,6 +49,7 @@ struct BirMemoryAccessIdentityRequest {
 };
 
 struct BirMemoryAccessIdentity {
+  bir::BirViewStatus status = bir::BirViewStatus::Unavailable;
   const bir::Inst* inst = nullptr;
   std::string_view block_label;
   std::size_t instruction_index = 0;
@@ -62,13 +63,19 @@ struct BirMemoryAccessIdentity {
   c4c::SlotNameId local_slot_id = c4c::kInvalidSlotName;
   std::string_view global_name;
   c4c::LinkNameId global_name_id = c4c::kInvalidLinkName;
+  const bir::Value* pointer_base = nullptr;
   std::string_view pointer_value_name;
   std::string_view string_constant_name;
+  c4c::LinkNameId string_constant_name_id = c4c::kInvalidLinkName;
+  const bir::Value* result_value = nullptr;
+  const bir::Value* stored_value = nullptr;
   std::int64_t byte_offset = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
 
-  [[nodiscard]] explicit operator bool() const { return inst != nullptr; }
+  [[nodiscard]] explicit operator bool() const {
+    return status == bir::BirViewStatus::Available && inst != nullptr;
+  }
 };
 
 struct SameBlockProducerIdentityRequest {

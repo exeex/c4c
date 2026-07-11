@@ -682,12 +682,14 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
   auto fixture = make_fixture();
   const bir::LoadLocalInst load{
       .result = named_value(bir::TypeKind::I32, "%load"),
+      .slot_name = "slot.5",
       .slot_id = c4c::SlotNameId{5},
       .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot.5",
               .byte_offset = 8,
               .size_bytes = 4,
               .align_bytes = 4,
@@ -794,6 +796,7 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
 int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
   auto fixture = make_fixture();
   const bir::StoreGlobalInst store{
+      .global_name = "g.counter",
       .global_name_id = fixture.global_name,
       .value = named_value(bir::TypeKind::I32, "%stored"),
       .byte_offset = 0,
@@ -801,6 +804,7 @@ int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
       .address =
           bir::MemoryAddress{
               .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.counter",
               .byte_offset = 16,
               .size_bytes = 4,
               .align_bytes = 4,
@@ -1054,7 +1058,6 @@ int same_block_global_load_access_identity_matches_prepared_oracle() {
 int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
   auto fixture = make_fixture();
   const bir::StoreLocalInst store{
-      .slot_id = c4c::SlotNameId{5},
       .value = named_value(bir::TypeKind::I32, "%stored"),
       .byte_offset = 0,
       .align_bytes = 8,
@@ -1269,6 +1272,7 @@ int pointer_value_load_combines_selected_address_and_member_offsets() {
 int frame_slot_store_conversion_selects_structured_register_source() {
   auto fixture = make_fixture();
   const bir::StoreLocalInst store{
+      .slot_name = "slot.5",
       .slot_id = c4c::SlotNameId{5},
       .value = named_value(bir::TypeKind::I32, "%stored"),
       .byte_offset = 0,
@@ -1276,6 +1280,7 @@ int frame_slot_store_conversion_selects_structured_register_source() {
       .address =
           bir::MemoryAddress{
               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot.5",
               .byte_offset = 12,
               .size_bytes = 4,
               .align_bytes = 4,
@@ -1440,6 +1445,7 @@ int string_constant_load_conversion_preserves_prepared_and_bir_facts() {
               .align_bytes = 8,
               .address_space = bir::AddressSpace::Gs,
               .is_volatile = true,
+              .base_link_name_id = fixture.string_symbol_name,
           },
   };
 
