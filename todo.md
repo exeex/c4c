@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Migrate formal publication production
+Current Step ID: 2.3
+Current Step Title: Contract block-entry, edge, and current-block publication state
 
 ## Just Finished
 
