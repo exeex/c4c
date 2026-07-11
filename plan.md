@@ -42,13 +42,24 @@ explicitly, and never promote route status or route agreement into authority.
   those migrated producer seams.
 - Explicit missing, incomplete, ambiguous, mismatched, and unsupported input
   states at the prepared boundary.
+- The bounded AArch64 compatibility adapter needed to consume or transport an
+  already prealloc-owned store-source publication fact after its producer
+  contract changes; this does not make the target an owner of that fact.
 
 ## Non-Goals
 
 - Do not migrate the common MIR query layer owned by idea 706.
 - Do not implement the positive stack-destination authority gate owned by idea
   707.
-- Do not migrate x86, AArch64, or RV64 target materializers.
+- Do not migrate x86, AArch64, or RV64 target materializers.  Step 2.1 may
+  narrowly adapt the existing AArch64 store-local compatibility seam only to
+  consume the unique precomputed prealloc publication record or, if that
+  record cannot be reached without broader migration, transport the named
+  producer evidence and block identity already available to its lowering
+  context into the common prealloc planner.
+- Do not let the Step 2.1 AArch64 adapter replan publication semantics, select
+  executable publication authority, synthesize named evidence, or add
+  testcase- or producer-shape exceptions.
 - Do not delete private BIR route builders needed behind named views.
 - Do not create parallel frame, home, move, freshness, publication, call-plan,
   lookup, or control authority merely to adopt a proposed contract name.
@@ -157,13 +168,26 @@ Actions:
 - Confirm the normal population, pending-global, direct-global, and fixed-
   formal callers all pass through the same fail-closed store-source selection
   boundary without route discovery fallback.
+- Adapt the existing AArch64 store-local compatibility caller as one bounded
+  packet. Prefer lookup and consumption of the unique store-source publication
+  record already produced by prealloc. If that record is not addressable at
+  this seam without migrating the target materializer, narrowly transport the
+  named producer result and its BIR block-label identity already available in
+  `BlockLoweringContext` to the common prealloc planner instead.
+- Keep all executable publication selection in prealloc. The adapter may only
+  consume or transport prealloc inputs/results; it must not derive target-side
+  authority, fabricate identity evidence, dispatch on a named testcase or
+  producer shape, weaken a supported expectation, or broaden into target
+  materializer migration.
 
 Completion check:
 
 - Cast and select cannot disable required named producer evidence by omitting
   the block label; every residual store-source family has an explicit evidence
-  applicability classification; and focused positive plus missing,
-  incomplete, ambiguous, and mismatched proof is green.
+  applicability classification; the supported AArch64 compatibility paths
+  consume or transport the same prealloc-owned decision without target-side
+  authority; and focused positive plus missing, incomplete, ambiguous, and
+  mismatched proof and the supervisor-delegated backend proof are green.
 
 #### Step 2.2: Migrate formal publication production
 

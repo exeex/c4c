@@ -8,33 +8,50 @@ Current Step Title: Close and inventory the store-source boundary
 
 ## Just Finished
 
-- Step 2 — migrated select store-source publication production to require the
-  applicable named `BirProducerResult` plus existing prepared producer, home,
-  access, and ordering authority. Missing, ambiguous, or mismatched named
-  producer evidence now fails closed while existing supported select behavior
-  remains green.
+- Step 2.1 — derived cast/select named-producer applicability from producer
+  family rather than the presence of a producer block-label string. Both
+  families now fail closed when that identity is absent, with focused negative
+  coverage added for each family.
+- Residual family inventory: load-local, cast, binary, and select
+  materialization require available, kind/index/block/value-matching named BIR
+  producer evidence; load-global remains payload/home/access/order checked but
+  is not currently evidence-applicable; immediate is authorized only by the
+  separate global-immediate path; unknown always fails closed.
+- Caller inventory: normal population and pending-global planning populate
+  named evidence and the BIR block label; direct-global planning initially has
+  no producer and therefore shares the fail-closed metadata boundary (with
+  immediate handled separately); fixed-formal planning delegates unchanged to
+  the same planner and inherits the boundary from its supplied store inputs.
 
 ## Suggested Next
 
-- Execute Step 2.1: make cast/select producer-family classification require
-  named producer identity even when the block label is missing, add the two
-  negative cases, and inventory residual store-source producer families.
+- Execute the bounded Step 2.1 AArch64 compatibility-adapter packet: prefer
+  consuming the unique precomputed prealloc store-source publication record;
+  only if that cannot be reached without broader target migration, transport
+  the named BIR producer result and block-label identity already available in
+  `BlockLoweringContext` into the common prealloc planner. Then rerun the exact
+  delegated backend proof.
 
 ## Watchouts
 
-- The named producer evidence requirement is now applicable to load-local,
-  binary, and publication-produced cast and select store-source families.
-- Cast and select evidence applicability is identified by the named producer
-  block label already supplied by publication production. Target-side ad hoc
-  compatibility planning remains unchanged and is outside this packet.
-- Production store-source population and pending global publication derive the
-  named producer evidence directly from the BIR block and publication index.
-- Do not widen into call plans, prepared lookups, target materializers, or the
-  common MIR migration owned by idea 706.
+- The delegated proof remains incomplete because the AArch64
+  `plan_store_local_source_publication` compatibility caller supplies a
+  cast producer but neither `source_producer_evidence` nor
+  `source_producer_block_label`. The supported prepared-memory and instruction
+  dispatch cast-publication positives consequently fail closed as required by
+  the new boundary.
+- Do not weaken the family-derived requirement or downgrade those supported
+  positives. The authorized exception is adapter-only: consume or transport a
+  prealloc-owned fact/input, with no target-side selection authority,
+  synthesized evidence, testcase/producer-shape exception, or broader target
+  materializer migration.
 
 ## Proof
 
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- Result: passed, 309/309 backend tests; canonical proof log:
+- Result: build passed; 307/309 backend tests passed. Failures:
+  `backend_aarch64_prepared_memory_operand_records` and
+  `backend_aarch64_instruction_dispatch`, both supported cast-publication paths
+  through the unowned target-side caller described above. Canonical proof log:
   `test_after.log`.
