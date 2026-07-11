@@ -54,7 +54,7 @@ proved through the connected MIR/runtime/object surfaces.
 
 ## Research Questions And Required Answer Files
 
-There are seven research questions. The delivery must contain exactly seven
+There are eight research questions. The delivery must contain exactly eight
 question-answer Markdown files, one for each question, plus one `index.md`.
 Each answer file must answer only its assigned question and may link to the
 other answer files for supporting context.
@@ -143,6 +143,24 @@ other answer files for supporting context.
    - state which recommendations are prerequisites for revisiting ideas 647 and
      655
 
+8. `08_stack_view_and_destination_authority_handoff.md`
+
+   Question: Where should stack/frame/value-home/destination-authority analysis
+   happen, and what stack-oriented prepared MIR view contract should MIR
+   consume?
+
+   Required answer shape:
+   - state which responsibilities belong to BIR semantic views, prealloc or
+     prepared producers, and MIR consumers
+   - propose the first-cut frame layout, value home, move bundle, and
+     destination-authority view shapes that MIR may consume
+   - explain how route publication facts may feed stack authority production
+     without becoming direct MIR-side inference
+   - identify the minimum positive producer evidence needed before ideas 647
+     or 655 can resume
+   - state fail-closed behavior when a stack destination fan-in lacks explicit
+     prepared authority
+
 ## Required Documentation Output
 
 Create the research documents in:
@@ -161,8 +179,9 @@ Required files:
 - `docs/bir_route_index_retirement_research/05_retirement_sequence.md`
 - `docs/bir_route_index_retirement_research/06_test_and_dump_policy_after_route_retirement.md`
 - `docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md`
+- `docs/bir_route_index_retirement_research/08_stack_view_and_destination_authority_handoff.md`
 
-`index.md` must link to all seven answer files and summarize the recommended
+`index.md` must link to all eight answer files and summarize the recommended
 route-retirement strategy. It must not replace any required answer file.
 
 ## In Scope
@@ -172,6 +191,8 @@ route-retirement strategy. It must not replace any required answer file.
 - Design named BIR view replacements for the BIR-to-prealloc handoff.
 - Define how route dump/proof artifacts should be gated, deleted, or replaced
   now that MIR and runtime/object proof are connected.
+- Define where stack/frame/value-home/destination-authority analysis belongs
+  and what explicit view MIR should consume.
 - Recommend follow-up ideas and dependency ordering.
 
 ## Out Of Scope
@@ -193,6 +214,9 @@ route-retirement strategy. It must not replace any required answer file.
   on generic architecture claims.
 - The research clearly states which route facts are required codegen inputs and
   which are diagnostic/proof artifacts.
+- The research clearly states that MIR consumes explicit prepared stack facts
+  and must not rediscover stack destination authority from route-numbered
+  records.
 - The research recommends an ordered follow-up queue and names prerequisites
   for revisiting ideas 647 and 655.
 - No implementation files, tests, expectations, unsupported markers, allowlists,
@@ -206,6 +230,8 @@ route-retirement strategy. It must not replace any required answer file.
 - Reject claims that a route fact is semantic authority without tracing its
   producer and consumer.
 - Reject treating diagnostic, proof, or dump-only artifacts as codegen inputs.
+- Reject designs that make MIR infer stack destination fan-in authority from
+  raw route records instead of consuming explicit prepared/prealloc facts.
 - Reject implementation edits, expectation rewrites, unsupported-marker
   changes, allowlist changes, runtime-output changes, or baseline-policy
   changes under this research idea.

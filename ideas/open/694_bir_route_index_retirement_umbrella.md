@@ -14,6 +14,7 @@ Consumes:
 - `docs/bir_route_index_retirement_research/05_retirement_sequence.md`
 - `docs/bir_route_index_retirement_research/06_test_and_dump_policy_after_route_retirement.md`
 - `docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md`
+- `docs/bir_route_index_retirement_research/08_stack_view_and_destination_authority_handoff.md`
 Related:
 - `ideas/open/693_bir_route_index_retirement_research.md`
 - `ideas/open/647_ordered_or_exclusive_stack_destination_fan_in_authority.md`
@@ -62,8 +63,8 @@ destination testcase repair.
 - Generate ordered follow-up ideas under `ideas/open/`.
 - Classify each follow-up by first owning layer:
   BIR named view extraction, route facade contraction, BIR publication boundary,
-  prealloc consumer migration, test/dump contract cleanup, or residual stack
-  authority prerequisite.
+  prealloc consumer migration, prepared/MIR stack view contract, test/dump
+  contract cleanup, or residual stack authority prerequisite.
 - Record which route-numbered APIs may remain private compatibility during
   migration.
 
@@ -86,8 +87,9 @@ Order follow-up ideas by dependency and blast-radius reduction:
    change.
 2. Consumer migration from numbered route APIs to named BIR views.
 3. Route publication/authority boundary cleanup.
-4. Test and dump contract retirement or gating cleanup.
-5. Residual stack destination authority revisit only after the BIR publication
+4. Stack/frame/value-home/destination-authority handoff cleanup.
+5. Test and dump contract retirement or gating cleanup.
+6. Residual stack destination authority revisit only after the BIR publication
    boundary exposes a positive producer seam.
 
 Prefer small behavior-preserving extractions with fresh build and focused
@@ -106,6 +108,8 @@ split:
   return-chain route facts.
 - `Prealloc route consumer migration`: owning layer BIR-to-prealloc consumer
   interface.
+- `Prepared MIR stack view contract`: owning layer prealloc/prepared stack fact
+  production and MIR stack consumption.
 - `Route fact test and dump contract cleanup`: owning layer backend test policy
   and debug dump compatibility.
 
@@ -122,6 +126,9 @@ architecture.
 - Each follow-up idea names its first owning layer and avoids mixing BIR view
   extraction, prealloc consumer migration, test policy, and stack authority
   repair.
+- The handoff explicitly records whether stack/frame/value-home and
+  destination-authority facts belong to BIR semantic views, prepared/prealloc
+  producers, or MIR consumers.
 - The umbrella does not change implementation, tests, expectations,
   unsupported markers, allowlists, runtime behavior, default harness contracts,
   or baseline policy.
@@ -141,6 +148,8 @@ must happen before ideas 647 and 655 can be revisited.
 - Reject follow-up ideas that mix BIR named view extraction with prealloc
   consumer migration, test-policy changes, or stack destination authority
   repair.
+- Reject follow-up ideas that make MIR rediscover stack destination authority
+  from raw route records instead of consuming explicit prepared/prealloc facts.
 - Reject reintroducing intermediate dump comparisons as the main correctness
   proof after the connected MIR/object/runtime proof path exists.
 - Reject testcase-shaped shortcuts, expectation rewrites, unsupported
