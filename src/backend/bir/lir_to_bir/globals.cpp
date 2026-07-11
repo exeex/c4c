@@ -66,24 +66,25 @@ std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text) 
   }
 }
 
-void FunctionSymbolSet::reserve(std::size_t size) {
+void ImportedFunctionSymbolIndex::reserve(std::size_t size) {
   link_name_ids.reserve(size);
   raw_symbol_link_name_ids.reserve(size);
 }
 
-void FunctionSymbolSet::insert_function(std::string raw_symbol_name, LinkNameId link_name_id) {
+void ImportedFunctionSymbolIndex::insert_function(std::string raw_symbol_name,
+                                                  LinkNameId link_name_id) {
   if (link_name_id != kInvalidLinkName) {
     link_name_ids.insert(link_name_id);
   }
   raw_symbol_link_name_ids.emplace(std::move(raw_symbol_name), link_name_id);
 }
 
-bool FunctionSymbolSet::contains_link_name_id(LinkNameId link_name_id) const {
+bool ImportedFunctionSymbolIndex::contains_link_name_id(LinkNameId link_name_id) const {
   return link_name_id != kInvalidLinkName &&
          link_name_ids.find(link_name_id) != link_name_ids.end();
 }
 
-std::optional<LinkNameId> FunctionSymbolSet::find_raw_symbol_link_name_id(
+std::optional<LinkNameId> ImportedFunctionSymbolIndex::find_raw_symbol_link_name_id(
     std::string_view raw_symbol_name) const {
   const auto it = raw_symbol_link_name_ids.find(std::string(raw_symbol_name));
   if (it == raw_symbol_link_name_ids.end()) {
@@ -202,16 +203,16 @@ bool requires_structured_global_type_ref(const c4c::codegen::lir::LirGlobal& glo
 namespace {
 
 bool is_known_function_link_name_id(LinkNameId link_name_id,
-                                    const FunctionSymbolSet& function_symbols) {
+                                    const ImportedFunctionSymbolIndex& function_symbols) {
   return function_symbols.contains_link_name_id(link_name_id);
 }
 
 }  // namespace
 
 bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
-                                  const FunctionSymbolSet& function_symbols) {
+                                  const ImportedFunctionSymbolIndex& function_symbols) {
   // Step 3 fence: this raw lookup is the globals pointer-initializer/global-address
-  // no-id compatibility bridge for imported function symbols. FunctionSymbolSet is
+  // no-id compatibility bridge for imported function symbols. ImportedFunctionSymbolIndex is
   // populated only after module-boundary LinkNameId resolution, so metadata-rich
   // function identity with a missing id cannot recover through raw initializer
   // spelling here. Remove this bridge when LIR pointer initializers and aggregate
@@ -220,7 +221,7 @@ bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
 }
 
 bool is_known_function_global_address(const GlobalAddress& address,
-                                      const FunctionSymbolSet& function_symbols) {
+                                      const ImportedFunctionSymbolIndex& function_symbols) {
   if (address.link_name_id != kInvalidLinkName) {
     return is_known_function_link_name_id(address.link_name_id, function_symbols);
   }
@@ -229,7 +230,7 @@ bool is_known_function_global_address(const GlobalAddress& address,
 
 std::optional<GlobalAddress> resolve_known_global_address(std::string_view global_name,
                                                           GlobalTypes& global_types,
-                                                          const FunctionSymbolSet& function_symbols,
+                                                          const ImportedFunctionSymbolIndex& function_symbols,
                                                           std::unordered_set<std::string>* active) {
   const auto it = global_types.find(std::string(global_name));
   if (it == global_types.end()) {
@@ -322,7 +323,7 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
 }
 
 bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
-                                         const FunctionSymbolSet& function_symbols) {
+                                         const ImportedFunctionSymbolIndex& function_symbols) {
   std::unordered_set<std::string> resolving_global_addresses;
   for (auto& [global_name, info] : global_types) {
     (void)global_name;

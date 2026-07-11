@@ -83,7 +83,7 @@ struct GlobalInfo {
 // identity is available, and those ids are the authority.
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 using TypeDeclMap = std::unordered_map<std::string, std::string>;
-struct FunctionSymbolSet {
+struct ImportedFunctionSymbolIndex {
   void reserve(std::size_t size);
   void insert_function(std::string raw_symbol_name, LinkNameId link_name_id);
   [[nodiscard]] bool contains_link_name_id(LinkNameId link_name_id) const;
@@ -261,16 +261,16 @@ std::optional<bir::Global> lower_string_constant_global(
     const c4c::codegen::lir::LirStringConst& string_constant,
     GlobalInfo* info);
 bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
-                                         const FunctionSymbolSet& function_symbols);
+                                         const ImportedFunctionSymbolIndex& function_symbols);
 std::optional<GlobalAddress> resolve_known_global_address(
     std::string_view global_name,
     GlobalTypes& global_types,
-    const FunctionSymbolSet& function_symbols,
+    const ImportedFunctionSymbolIndex& function_symbols,
     std::unordered_set<std::string>* active);
 bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
-                                  const FunctionSymbolSet& function_symbols);
+                                  const ImportedFunctionSymbolIndex& function_symbols);
 bool is_known_function_global_address(const GlobalAddress& address,
-                                      const FunctionSymbolSet& function_symbols);
+                                      const ImportedFunctionSymbolIndex& function_symbols);
 
 }  // namespace lir_to_bir_detail
 
@@ -299,7 +299,7 @@ class BirFunctionLowerer {
   BirFunctionLowerer(BirLoweringContext& context,
                      const c4c::codegen::lir::LirFunction& function,
                      const lir_to_bir_detail::GlobalTypes& global_types,
-                     const lir_to_bir_detail::FunctionSymbolSet& function_symbols,
+                     const lir_to_bir_detail::ImportedFunctionSymbolIndex& function_symbols,
                      const lir_to_bir_detail::TypeDeclMap& type_decls,
                      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
 
@@ -331,7 +331,8 @@ class BirFunctionLowerer {
   // Shared type buckets used by the split lowering translation units.
   using ValueMap = lir_to_bir_detail::ValueMap;
   using AggregateTypeLayout = lir_to_bir_detail::AggregateTypeLayout;
-  using FunctionSymbolSet = lir_to_bir_detail::FunctionSymbolSet;
+  using ImportedFunctionSymbolIndex = lir_to_bir_detail::ImportedFunctionSymbolIndex;
+  using FunctionSymbolSet = ImportedFunctionSymbolIndex;
   using GlobalAddress = lir_to_bir_detail::GlobalAddress;
   using GlobalTypes = lir_to_bir_detail::GlobalTypes;
   using LocalIndirectPointerSlotSet = lir_to_bir_detail::LocalIndirectPointerSlotSet;
@@ -889,7 +890,7 @@ class BirFunctionLowerer {
   static std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
       const DynamicGlobalPointerArrayAccess& access,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols);
+      const ImportedFunctionSymbolIndex& function_symbols);
   static void record_pointer_global_object_alias(
       std::string_view result_name,
       const lir_to_bir_detail::GlobalInfo& global_info,
@@ -899,7 +900,7 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirOperand& operand,
       const GlobalPointerMap& global_pointer_slots,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols);
+      const ImportedFunctionSymbolIndex& function_symbols);
   static std::optional<std::string> resolve_local_aggregate_gep_slot(
       std::string_view base_type_text,
       const c4c::codegen::lir::LirGepOp& gep,
@@ -1163,7 +1164,7 @@ class BirFunctionLowerer {
       const LocalAddressSlots& local_address_slots,
       const LocalSlotAddressSlots& local_slot_address_slots,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       LocalSlotPointerValues* local_slot_pointer_values,
       GlobalPointerMap* global_pointer_slots,
@@ -1176,7 +1177,7 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       const LocalPointerSlots& local_pointer_slots,
       const LocalSlotTypes& local_slot_types,
       const LocalAggregateFieldSet& local_aggregate_field_slots,
@@ -1208,7 +1209,7 @@ class BirFunctionLowerer {
       const LocalSlotAddressSlots& local_slot_address_slots,
       const PointerAddressMap& local_pointer_slot_addresses,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       LocalSlotPointerValues* local_slot_pointer_values,
       LocalAggregateSlotMap* local_aggregate_slots,
@@ -1236,7 +1237,7 @@ class BirFunctionLowerer {
       const LocalSlotAddressSlots& local_slot_address_slots,
       const PointerAddressMap& local_pointer_slot_addresses,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       LocalSlotPointerValues* local_slot_pointer_values,
       LocalAggregateSlotMap* local_aggregate_slots,
@@ -1311,7 +1312,7 @@ class BirFunctionLowerer {
       const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
       const LocalPointerValueAliasMap& local_pointer_value_aliases,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       std::vector<bir::Inst>* lowered_insts);
   std::optional<bir::Value> load_dynamic_pointer_value_array_value(
@@ -1376,13 +1377,13 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirOperand& operand,
       const ValueMap& value_aliases,
       const LocalAggregateSlotMap& local_aggregate_slots,
-      const FunctionSymbolSet& function_symbols);
+      const ImportedFunctionSymbolIndex& function_symbols);
   static std::optional<bir::Value> lower_call_pointer_arg_value(
       const c4c::codegen::lir::LirOperand& operand,
       const ValueMap& value_aliases,
       const LocalAggregateSlotMap& local_aggregate_slots,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols);
+      const ImportedFunctionSymbolIndex& function_symbols);
   static std::optional<GlobalAddress> resolve_honest_pointer_base(
       const GlobalAddress& address,
       const GlobalTypes& global_types);
@@ -1410,7 +1411,7 @@ class BirFunctionLowerer {
       const bir::Value& value,
       const TypeDeclMap& type_decls,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       const GlobalPointerMap& global_pointer_slots,
       const GlobalObjectPointerMap& global_object_pointer_slots,
       const PointerAddressMap& pointer_value_addresses,
@@ -1445,7 +1446,7 @@ class BirFunctionLowerer {
       const LocalAddressSlots& local_address_slots,
       const LocalSlotAddressSlots& local_slot_address_slots,
       const GlobalTypes& global_types,
-      const FunctionSymbolSet& function_symbols,
+      const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
       LocalSlotPointerValues* local_slot_pointer_values,
       GlobalPointerMap* global_pointer_slots,
@@ -1499,7 +1500,7 @@ class BirFunctionLowerer {
   BirLoweringContext& context_;
   const c4c::codegen::lir::LirFunction& function_;
   const GlobalTypes& global_types_;
-  const FunctionSymbolSet& function_symbols_;
+  const ImportedFunctionSymbolIndex& function_symbols_;
   const TypeDeclMap& type_decls_;
   const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts_;
 

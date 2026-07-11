@@ -17,7 +17,7 @@ namespace {
 using lir_to_bir_detail::build_type_decl_map;
 using lir_to_bir_detail::build_backend_structured_layout_table;
 using lir_to_bir_detail::build_bir_structured_type_spelling_context;
-using lir_to_bir_detail::FunctionSymbolSet;
+using lir_to_bir_detail::ImportedFunctionSymbolIndex;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::GlobalTypes;
 using lir_to_bir_detail::lower_integer_type;
@@ -817,7 +817,7 @@ c4c::LinkNameId resolve_initializer_symbol_link_name_id(
     std::string_view symbol_name,
     c4c::LinkNameId initializer_function_link_name_id,
     const GlobalTypes& global_types,
-    const FunctionSymbolSet& function_symbols) {
+    const ImportedFunctionSymbolIndex& function_symbols) {
   // Function initializer ids are semantic authority when present. The raw
   // symbol tables below are compatibility lookups for no-id imported BIR/LIR
   // payloads only, so a present-but-unknown id must fail closed here.
@@ -1029,7 +1029,7 @@ void intern_known_local_slots(bir::Module* module, bir::Function* function) {
 BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
                                        const c4c::codegen::lir::LirFunction& function,
                                        const GlobalTypes& global_types,
-                                       const FunctionSymbolSet& function_symbols,
+                                       const ImportedFunctionSymbolIndex& function_symbols,
                                        const TypeDeclMap& type_decls,
                                        const lir_to_bir_detail::BackendStructuredLayoutTable&
                                            structured_layouts)
@@ -1850,7 +1850,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   GlobalTypes global_types;
-  FunctionSymbolSet function_symbols;
+  ImportedFunctionSymbolIndex function_symbols;
   global_types.reserve(context.lir_module.globals.size() + context.lir_module.string_pool.size());
   function_symbols.reserve(context.lir_module.extern_decls.size() +
                            context.lir_module.functions.size());
