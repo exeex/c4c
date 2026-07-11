@@ -1,48 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/693_bir_route_index_retirement_research.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Define Test And Dump Policy
+Current Step ID: 7
+Current Step Title: Recommend Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 6: Define Test And Dump Policy by writing
-`docs/bir_route_index_retirement_research/06_test_and_dump_policy_after_route_retirement.md`.
-The document maps current route/prepared fact tests to keep, gate, rewrite, or
-delete decisions, explains how MIR, object, runtime, and object-runtime proof
-replace intermediate route dump comparison, defines when a new route-view test
-is justified, and records specific Route 4, Route 5, and Route 7 dump-policy
-rules.
+Completed Step 7: Recommend Follow-Up Ideas by writing
+`docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md`.
+The document dependency-orders follow-up implementation and umbrella ideas,
+separates route facade cleanup, named view extraction, publication boundary
+cleanup, dump/test vocabulary rewrite, and stack destination authority follow-up,
+and records prerequisites for revisiting ideas 647 and 655 without opening or
+editing actual idea files.
 
 ## Suggested Next
 
-Proceed to Step 7 by writing the follow-up idea recommendations. The next
-packet should dependency-order the implementation ideas that follow this
-research, including named view wrappers, Route 4 proof migration, Route 7
-comparison adapter migration, Route 5 publication proof migration, dump
-rewrites, and deferred higher-risk route families.
+Proceed to Step 8 by writing the stack view and destination authority handoff.
+The next packet should define the BIR/prepared/MIR responsibility split for
+frame layout, value homes, move bundles, freshness, aggregate stack sources,
+and destination authority, including fail-closed MIR behavior and the positive
+producer evidence required before ideas 647 or 655 can resume.
 
 ## Watchouts
 
-- Follow-up recommendations should preserve the proof hierarchy from Step 6:
-  runtime/object-runtime and object proof outrank MIR/prepared proof, and named
-  route-view proof is only justified for BIR view or compatibility-adapter
-  migration.
-- Route-numbered dump snippets such as Route 4 attribution, `route5_status`,
-  `route5_agrees`, and Route 7 validation status should be treated as
-  transitional baseline text, not durable correctness gates.
-- Do not recommend expectation downgrades, unsupported-marker changes,
-  allowlist changes, baseline-only acceptance, or route-view tests that prove
-  only a narrow named case.
+- Step 8 should keep stack destination authority out of Route 4, Route 5, Route
+  7, facade status, and dump rows; named BIR views may feed prepared authority
+  production but should not become direct MIR-side destination inference.
+- Ideas 647 and 655 remain blocked until file 08 identifies explicit prepared
+  producer evidence, MIR fail-closed checks, and proof above route dumps.
+- Do not edit `plan.md`, `ideas/open/*`, `ideas/closed/*`, implementation
+  files, tests, expectations, allowlists, runtime behavior, or root-level log
+  files in the Step 8 docs packet.
 
 ## Proof
 
 Docs-only proof. No build required. Ran:
 
 ```sh
-test -f docs/bir_route_index_retirement_research/06_test_and_dump_policy_after_route_retirement.md && rg -n "keep|gate|rewrite|delete|dump|baseline|MIR|object|runtime|route-view test|intermediate|proof|Route 4|Route 5|Route 7" docs/bir_route_index_retirement_research/06_test_and_dump_policy_after_route_retirement.md
+test -f docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md && rg -n "follow-up|dependency|Route 4|Route 5|Route 7|named view|facade|dump|publication|stack destination|647|655|prerequisite" docs/bir_route_index_retirement_research/07_followup_idea_recommendations.md
 ```
 
 The delegated proof writes no root-level log; `test_after.log` was intentionally
