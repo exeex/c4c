@@ -1,58 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/689_memory_address_provenance_import_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Continue Pointer And Provenance Import Isolation
+Current Step ID: Step 4
+Current Step Title: Final Boundary Audit And Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned
-global-address-slots side-table map type.
+Completed Step 4 final boundary audit for the memory/address provenance import
+cleanup.
 
-- Removed the `BirFunctionLowerer::GlobalAddressSlots` compatibility alias
-  from `src/backend/bir/lir_to_bir/lowering.hpp`.
-- Updated the owned lowerer helper signatures, provenance definitions, and
-  lowerer member to use `c4c::backend::GlobalAddressSlots` directly.
-- Left the memory-owned alias definition in
-  `src/backend/bir/lir_to_bir/memory/memory_types.hpp` as the direct backend
-  type owner.
+- Confirmed the recent alias-contraction route removed the remaining lowerer
+  re-export aliases for `LocalAggregateFieldSet`, `GlobalPointerMap`,
+  `GlobalObjectPointerMap`, `GlobalAddressIntMap`,
+  `GlobalObjectAddressIntMap`, and `GlobalAddressSlots`.
+- Confirmed current references to those side-table types now use direct
+  `c4c::backend::...` spelling from adapter memory-owned definitions in
+  `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
+- Confirmed the route preserved public BIR Route 3 authority and did not move
+  adapter-local memory/provenance side tables into public BIR, prepared,
+  target, MIR, runtime, tests, expectations, unsupported markers, or allowlists.
+- Found no remaining follow-up inside the recently reviewed lowerer re-export
+  alias-contraction route.
 
 ## Suggested Next
 
-Continue Step 3 with the next supervisor-selected import-boundary alias family
-still re-exported by `BirFunctionLowerer`, one state family at a time. The next
-coherent nearby candidate is an addressed/global pointer side-table family if
-the supervisor selects it; this packet intentionally did not widen past the
-global-address-slots boundary.
+Supervisor/plan-owner lifecycle review: decide whether the active runbook is
+ready to close or whether a separate follow-up idea is needed for any broader
+memory/provenance cleanup outside the completed alias-contraction route.
 
 ## Watchouts
 
-- This packet intentionally only contracted the global-address-slots side-table
-  map type alias; it did not change pointer provenance semantics, BIR route
-  records, prepared data, target/MIR paths, runtime behavior, tests,
-  expectations, unsupported markers, allowlists, or public BIR query APIs.
-- `BirFunctionLowerer` no longer re-exports `LocalSlotTypes`,
-  `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
-  `LocalAggregateGepTarget`, `AggregateArrayExtent`, `LocalSlotAddress`, or
-  `LocalAggregateFieldSet`, `GlobalPointerMap`, or
-  `GlobalObjectPointerMap`, or `GlobalAddressIntMap`, or
-  `GlobalObjectAddressIntMap`, or `GlobalAddressSlots`.
-- `rg 'BirFunctionLowerer::GlobalAddressSlots|using GlobalAddressSlots = c4c::backend::GlobalAddressSlots|\\bGlobalAddressSlots\\b' src/backend/bir/lir_to_bir/lowering.hpp src/backend/bir/lir_to_bir/memory/provenance.cpp src/backend/bir/lir_to_bir/memory/memory_types.hpp src/backend/bir/lir_to_bir/memory/memory_helpers.hpp`
-  returns only the memory-owned alias definition in `memory_types.hpp` plus
-  direct `c4c::backend::GlobalAddressSlots` lowerer/provenance uses.
-- Do not edit prepared frame/storage policy, target addressing legality, MIR
-  memory emission, tests, expectations, unsupported markers, allowlists,
-  runtime behavior, or harness policy.
-- Do not move public BIR Route 3 authority into private lowering.
-- Do not widen `memory_helpers.hpp`; it should remain pure layout/projection
-  helper declarations, not a home for stateful lowerer policy.
-- Do not move `GlobalAddress`, `GlobalInfo`, `GlobalTypes`, function-symbol
-  lookup, or known-global-address authority as part of this cleanup family.
-- Do not touch canonical BIR memory route records or query APIs in
-  `bir.hpp`/`bir.cpp`; the selected target should compile without any public
-  BIR schema or downstream prepared/target/MIR edits.
+- The audit found no testcase-shaped shortcut, expectation rewrite,
+  unsupported downgrade, allowlist edit, or weaker proof command used as
+  progress.
+- Public BIR route records/query APIs and downstream prepared/target/MIR
+  behavior remain ownership boundaries for later source ideas, not this
+  adapter-local cleanup.
+- Existing untracked review reports under `review/` are transient supervisor
+  artifacts and were not modified by this packet.
 
 ## Proof
 
