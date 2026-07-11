@@ -1,6 +1,6 @@
 # Residual Stack Authority Revisit Prerequisites
 
-Status: Open
+Status: Closed
 Type: Decomposition
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Related:
@@ -92,6 +92,28 @@ compatibility or as inputs to named prepared producers through named BIR views.
   proof surfaces before implementation starts.
 - Ideas 647 and 655 remain parked unless the prepared producer threshold is
   met.
+
+## Completion Summary
+
+Closed after todo-only prerequisite classification. The activation threshold is
+prepared-owned positive producer evidence above route dumps, with matching
+negative fail-closed proof, for exactly one named future producer family before
+ideas 647 or 655 can resume.
+
+No positive residual stack-destination fan-in seam was proven in this runbook.
+Ideas 647 and 655 remain parked. Route-only evidence remains rejected as direct
+stack authority, including Route 4 publication rows, Route 5 status or
+agreement rows, Route 7 comparison validation rows, `RouteIndexReferenceFacade`,
+route dumps, dump labels, expectations, allowlists, diagnostics, final assembly,
+ABI/runtime behavior, testcase identity, source order, value ids, block labels,
+move-vector order, frame-slot existence, source freshness alone, and
+string-label pointer authority.
+
+Future lifecycle work may revisit ideas 647 or 655 only after a focused
+positive producer proof and matching negative fail-closed proof satisfy the
+threshold for ordered final-state authority, mutual-exclusion authority,
+explicit merge authority, aggregate stack-source authority, or another
+explicitly named non-637 destination-authority producer family.
 
 ## Reviewer Reject Signals
 
