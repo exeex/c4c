@@ -1243,6 +1243,69 @@ query_prepared_current_block_join_routing_consumption(
   return result;
 }
 
+PreparedCurrentBlockRoutedOperandAuthority
+query_prepared_current_block_routed_operand_authority(
+    const PreparedEdgePublication& publication,
+    const bir::Inst& consumer,
+    const bir::Value& operand) {
+  PreparedCurrentBlockRoutedOperandAuthority result{
+      .prepared_source_identity = &publication.source_value,
+  };
+  const bool is_consumer_operand = std::visit(
+      [&operand](const auto& inst) {
+        using T = std::decay_t<decltype(inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+          return inst.lhs == operand || inst.rhs == operand;
+        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+          return inst.operand == operand;
+        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+          return inst.lhs == operand || inst.rhs == operand ||
+                 inst.true_value == operand || inst.false_value == operand;
+        }
+        return false;
+      },
+      consumer);
+  if (publication.status != PreparedEdgePublicationLookupStatus::Available ||
+      !is_consumer_operand || publication.source_value != operand ||
+      publication.source_value_kind != publication.source_value.kind) {
+    result.status = PreparedFactBoundaryStatus::Mismatched;
+    return result;
+  }
+
+  if (operand.kind == bir::Value::Kind::Named) {
+    if (!publication.source_value_id.has_value() ||
+        publication.source_value_name == kInvalidValueName ||
+        publication.source_home == nullptr ||
+        publication.source_home->value_id != *publication.source_value_id ||
+        !prepared_edge_publication_source_home_matches_source(publication)) {
+      result.status = PreparedFactBoundaryStatus::Mismatched;
+      return result;
+    }
+    result.status = PreparedFactBoundaryStatus::Available;
+    result.authoritative_value = &publication.source_value;
+    return result;
+  }
+
+  if (operand.kind == bir::Value::Kind::Immediate &&
+      !publication.source_value_id.has_value() &&
+      publication.source_value_name == kInvalidValueName &&
+      publication.source_home == nullptr && publication.destination_home != nullptr &&
+      publication.destination_value.kind == bir::Value::Kind::Named &&
+      publication.destination_value_id != PreparedValueId{0} &&
+      publication.destination_value_name != kInvalidValueName &&
+      publication.destination_home->value_id == publication.destination_value_id &&
+      publication.destination_home->value_name == publication.destination_value_name &&
+      publication.destination_home->kind == publication.destination_home_kind) {
+    result.status = PreparedFactBoundaryStatus::Available;
+    result.authoritative_value = &publication.destination_value;
+    result.immediate_destination_authority = true;
+    return result;
+  }
+
+  result.status = PreparedFactBoundaryStatus::Mismatched;
+  return result;
+}
+
 PreparedCurrentBlockJoinRoutingConsumption
 query_prepared_current_block_join_routing_consumption(
     const PreparedFunctionLookups& lookups,

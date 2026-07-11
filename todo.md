@@ -3,35 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/717_current_block_routed_value_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prove join-transfer destination consistency
+Current Step ID: 3
+Current Step Title: Prove routed-operand and immediate-destination authority
 
 ## Just Finished
 
-- Step 2 added and registered
-  `backend_prealloc_join_transfer_destination_consistency_test.cpp`.
-- The focused probe proves that transfer result, edge-transfer destination, and
-  publication destination must match, and that every mismatch or missing
-  authority link fails closed.
-- The existing prepared join-transfer completeness path now uses the same
-  generic destination-consistency predicate; no routed-operand or AArch64
-  behavior or expectations changed.
+- Step 3 added and registered
+  `backend_prealloc_current_block_routed_operand_authority_test.cpp`.
+- The focused query now gives `BinaryInst`, `CastInst`, and `SelectInst`
+  operands explicit prepared-source authority, while immediate sources require
+  complete destination-home identity and authorize that destination.
+- Unrelated operands, conflicting source or destination metadata, and source
+  identity rewriting fail closed; no AArch64 behavior or expectations changed.
 
 ## Suggested Next
 
-- Execute the bounded Step 3 routed-operand authority packet and keep it
-  independent of predecessor/all-edge invariance and AArch64 consumption.
+- Execute the bounded Step 4 all-applicable-edge invariance packet, keeping it
+  independent of AArch64 consumption.
 
 ## Watchouts
 
-- Destination consistency is now a separate proven seam; Step 3 must not fold
-  predecessor or parallel-edge invariance into routed-operand authority.
-- Keep AArch64 integration tests unchanged until the planned consumer step.
+- Routed-operand authority deliberately does not decide predecessor or
+  parallel-edge agreement; Step 4 owns that complete fact-family invariant.
+- Keep the prepared source identity pointer distinct from the authoritative
+  destination returned for immediate sources.
 
 ## Proof
 
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- Result: 318/318 backend tests passed, including
-  `backend_prealloc_join_transfer_destination_consistency`.
+- Result: 319/319 backend tests passed, including
+  `backend_prealloc_current_block_routed_operand_authority`.
 - Canonical proof log: `test_after.log`.

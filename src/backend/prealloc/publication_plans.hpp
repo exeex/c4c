@@ -1723,6 +1723,17 @@ struct PreparedCurrentBlockJoinRoutingConsumption {
   }
 };
 
+struct PreparedCurrentBlockRoutedOperandAuthority {
+  PreparedFactBoundaryStatus status = PreparedFactBoundaryStatus::Missing;
+  const bir::Value* prepared_source_identity = nullptr;
+  const bir::Value* authoritative_value = nullptr;
+  bool immediate_destination_authority = false;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == PreparedFactBoundaryStatus::Available;
+  }
+};
+
 struct PreparedCurrentBlockJoinParallelCopySourceFacts {
   PreparedCurrentBlockJoinParallelCopySourceStatus status =
       PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
@@ -1782,6 +1793,12 @@ query_prepared_current_block_join_routing_consumption(
     PreparedValueId routed_value_id,
     ValueNameId routed_value_name,
     PreparedCurrentBlockJoinRoutingRole role);
+
+[[nodiscard]] PreparedCurrentBlockRoutedOperandAuthority
+query_prepared_current_block_routed_operand_authority(
+    const PreparedEdgePublication& publication,
+    const bir::Inst& consumer,
+    const bir::Value& operand);
 
 [[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
 query_prepared_current_block_join_routing_consumption(
