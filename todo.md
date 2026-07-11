@@ -1,40 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/687_structured_layout_bridge_isolation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Isolate Type Declaration And Typed Operand Compatibility
+Current Step ID: 3
+Current Step Title: Clarify Aggregate Layout Lookup Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 final selected contraction for local aggregate array
-slot recursion.
+Absorbed `review/structured_layout_step2_review.md` after the Step 2 review
+trigger.
 
-`AggregateTypeLayout` now retains the adapter-private resolved array element
-layout when structured or legacy aggregate layouts are built, and
-`append_local_aggregate_scalar_slots` recurses through that cached layout
-instead of re-entering rendered `element_type_text` for each array element. The
-compatibility element type text remains available for existing adapter
-boundaries, and produced local aggregate slots are intended unchanged.
+The review found no testcase-overfit, no expectation or harness downgrades, and
+no public BIR, target, prepared, MIR, or ABI policy drift. It judged the
+typed-operand contraction as clean Step 2 work and noted that the aggregate
+layout reuse contractions remain source-idea aligned but belong under Step 3's
+aggregate-layout boundary rather than continued Step 2 filing.
 
 ## Suggested Next
 
-Ask the supervisor to review whether Step 2 has enough completed contractions
-to move to plan review or the next planned boundary; no further narrow Step 2
-contraction was selected by this packet.
+Proceed under `plan.md` Step 3, `Clarify Aggregate Layout Lookup Boundaries`.
+The next executor packet should trace or narrow aggregate layout lookup/fallback
+ownership at the adapter boundary, or the supervisor may route directly to Step
+5 proof if it decides the existing Step 3-adjacent contractions are enough for
+this runbook.
 
 ## Watchouts
 
-This removes only the repeated array element layout lookup in local aggregate
-slot expansion. Element type text is still retained for compatibility callers,
-diagnostics, and unresolved no-id bridge paths. Avoid widening this into memory
-addressing policy, public BIR type/model authority, prepared/prealloc, target
-transport, MIR, initializer lowering, memory/provenance policy, or call ABI
-placement.
+Do not file more aggregate-layout contractions under Step 2. Keep nested
+`AggregateTypeLayout` ownership adapter-private, and avoid letting the cached
+layout graph become public BIR, target aggregate transport, prepared/prealloc,
+MIR, byval ABI placement, initializer, memory/provenance, or call ABI policy.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-Result: passed; 100% tests passed, 0 tests failed out of 302. Proof log:
+Lifecycle-only update. No build or test proof was run in this packet. The
+review accepted the existing executor proof for the Step 2 implementation path:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`;
+passed, 100% tests passed, 0 tests failed out of 302, proof log
 `test_after.log`.
