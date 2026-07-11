@@ -54,6 +54,11 @@ set_tests_properties(backend_x86_shared_producer_query PROPERTIES
   LABELS "backend;internal;cpp;x86"
 )
 
+c4c_add_mir_cpp_test(backend_prepared_mir_core_view)
+set_tests_properties(backend_prepared_mir_core_view PROPERTIES
+  LABELS "backend;internal;cpp;mir"
+)
+
 c4c_add_mir_cpp_test(backend_publication_plan_record)
 set_tests_properties(backend_publication_plan_record PROPERTIES
   LABELS "backend;internal;cpp"
