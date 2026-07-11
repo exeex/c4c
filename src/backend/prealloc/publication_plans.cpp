@@ -1890,8 +1890,7 @@ void attach_named_current_block_join_source_evidence(
   }
   const PreparedJoinTransfer* selected = nullptr;
   for (const auto& transfer : control_flow->join_transfers) {
-    if (&transfer != fact.publication->join_transfer ||
-        transfer.function_name != control_flow->function_name ||
+    if (transfer.function_name != control_flow->function_name ||
         transfer.join_block_label != fact.successor_label ||
         transfer.result != fact.publication->destination_value) {
       continue;
@@ -1909,7 +1908,7 @@ void attach_named_current_block_join_source_evidence(
     }
     selected = &transfer;
   }
-  return selected != nullptr;
+  return selected == fact.publication->join_transfer;
 }
 
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts

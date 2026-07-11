@@ -8,21 +8,32 @@ Current Step Title: Contract publication selection at the prealloc boundary
 
 ## Just Finished
 
-- None for the repaired Step 2.3a packet.
+- Step 2.3a — confirmed current-block publication selection uses applicable
+  named producer evidence plus prepared publication, home, move, freshness,
+  and control authority while Route 5 compatibility fields remain
+  observational only.
+- Strengthened prepared-originated non-PHI `JoinTransfer` authority selection
+  to reject duplicate semantic transfer candidates and added focused ambiguous
+  prepared-authority proof alongside the existing available and fail-closed
+  named-evidence coverage.
 
 ## Suggested Next
 
-- Execute Step 2.3a within the prealloc publication boundary and its directly
-  affected prepared publication tests.
+- Execute Step 2.3b to retire the bounded Route 5 public compatibility payload
+  and migrate only its known AArch64 dispatch, printer, and contract-test
+  consumers to the Step 2.3a boundary.
 
 ## Watchouts
 
-- Do not remove the Route 5 compatibility payload until Step 2.3b; Step 2.3a
-  must first prove it is observational and no longer selects prealloc facts.
-- Do not synthesize BIR CFG-edge publication evidence for prepared-originated
-  non-PHI `JoinTransfer` publications such as `dispatch.edge.add`.
+- Step 2.3b must keep the AArch64 change to the existing compatibility consumer;
+  do not migrate unrelated target materializers or replan publication authority
+  in the target.
+- Preserve the non-PHI prepared `JoinTransfer` path without synthesizing a BIR
+  CFG-edge publication relation.
 
 ## Proof
 
-- Pending supervisor-delegated Step 2.3a proof; preserve the result in
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
+- Result: build passed; all 309/309 backend tests passed. Canonical proof log:
   `test_after.log`.

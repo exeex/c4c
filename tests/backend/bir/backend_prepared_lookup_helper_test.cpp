@@ -5163,6 +5163,31 @@ int verify_current_block_join_parallel_copy_source_query() {
               PublicationSemanticOrigin::Unknown) {
     return fail("incomplete prepared JoinTransfer publication should fail closed");
   }
+  auto ambiguous_control_flow = control_flow;
+  ambiguous_control_flow.join_transfers.push_back(
+      ambiguous_control_flow.join_transfers.front());
+  const auto ambiguous_prepared_only =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .control_flow = &ambiguous_control_flow,
+              .join_source_evidence = {named_join_evidence},
+              .block = &prepared_only_block,
+              .successor_label = successor_label,
+          });
+  if (ambiguous_prepared_only.facts.empty() ||
+      ambiguous_prepared_only.facts.front().status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer ||
+      ambiguous_prepared_only.facts.front().publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::Unknown ||
+      ambiguous_prepared_only.facts.front()
+          .prepared_join_transfer_authority_complete) {
+    return fail("ambiguous prepared JoinTransfer publication should fail closed");
+  }
   if (route5_supported_query.facts[1].route5_join_source_agrees ||
       route5_supported_query.facts[2].route5_join_source_agrees ||
       route5_supported_query.facts[3].route5_join_source_agrees ||
