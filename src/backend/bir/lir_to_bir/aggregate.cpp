@@ -464,7 +464,12 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
     std::string_view temp_prefix,
     bir::MemoryAccessProvenance target_provenance,
     std::vector<bir::Inst>* lowered_insts) const {
-  const auto source_leaves = collect_sorted_leaf_slots(source_slots);
+  // Step 3 compatibility boundary: copy lowering still owns LocalAggregateSlots
+  // keyed by rendered type text. Resolve that text once at the copy boundary
+  // and keep leaf collection layout-driven.
+  const auto source_layout =
+      selected_aggregate_type_layout(source_slots.type_text, type_decls_, structured_layouts_);
+  const auto source_leaves = collect_sorted_leaf_slots(source_slots, source_layout);
   for (const auto& [byte_offset, source_slot_name] : source_leaves) {
     const auto slot_type_it = local_slot_types_.find(source_slot_name);
     if (slot_type_it == local_slot_types_.end()) {
@@ -526,7 +531,12 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_global(
     std::size_t target_align_bytes,
     std::string_view temp_prefix,
     std::vector<bir::Inst>* lowered_insts) const {
-  const auto source_leaves = collect_sorted_leaf_slots(source_slots);
+  // Step 3 compatibility boundary: copy lowering still owns LocalAggregateSlots
+  // keyed by rendered type text. Resolve that text once at the copy boundary
+  // and keep leaf collection layout-driven.
+  const auto source_layout =
+      selected_aggregate_type_layout(source_slots.type_text, type_decls_, structured_layouts_);
+  const auto source_leaves = collect_sorted_leaf_slots(source_slots, source_layout);
   for (const auto& [byte_offset, source_slot_name] : source_leaves) {
     const auto slot_type_it = local_slot_types_.find(source_slot_name);
     if (slot_type_it == local_slot_types_.end()) {
