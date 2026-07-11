@@ -1,6 +1,6 @@
 # Current-Block Routed-Value Authority Decomposition
 
-Status: Open
+Status: Complete
 Type: backend authority decomposition
 Blocks:
 - `ideas/open/716_prealloc_current_block_routing_authority_closure.md`
@@ -112,3 +112,26 @@ registered and green, their rules compose without contradiction, unchanged
 AArch64 integration vectors are ready for owner-only consumption, and fresh
 broader backend proof shows no regression. Keep ideas 713 and 705 blocked until
 idea 716 completes its own handback.
+
+## Completion Record
+
+Completed after Step 7 acceptance in commit `97c1e2da9`.
+
+- The focused contracts now require transfer result, selected edge
+  destination, and publication destination consistency; preserve direct
+  publication-source identity; define scalar-operand and immediate-destination
+  authority; and require agreement across every applicable fact, including
+  parallel edges.
+- The completed transitive authority contract supplies deterministic producer
+  closure and explicit absent-policy, absent-owner, zero-fact, missing,
+  ambiguous, conflicting, cyclic, and incomplete fail-closed outcomes.
+- Those contracts compose into owner-attached stable-key facts. AArch64 remains
+  an owner-only consumer: Route 5 is diagnostic-only, and no target-local
+  authority reconstruction, source rewriting, fallback, or supported-vector
+  expectation change is permitted.
+- The unchanged `backend_aarch64_current_block_join_routing` integration
+  contract passes. Canonical matching backend logs record 324/324 before and
+  after, and the close-time non-decreasing regression guard passes with no new
+  failures.
+- No routed-value authority seam remains. Execution returns to idea 716 at
+  Step 6.2, bounded AArch64 consumption of the owner-attached query.
