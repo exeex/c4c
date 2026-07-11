@@ -2689,7 +2689,11 @@ prepare_current_block_join_parallel_copy_source_facts(
     for (const auto& [direct_name, dependency_name] :
          processed_expression_names) {
       if (direct_name != direct_fact.routed_value_name ||
-          dependency_name == direct_name) {
+          dependency_name == direct_name ||
+          std::find(result.incoming_expression_value_names.begin(),
+                    result.incoming_expression_value_names.end(),
+                    dependency_name) ==
+              result.incoming_expression_value_names.end()) {
         continue;
       }
       const auto dependency_id = find_indexed_prepared_value_id(

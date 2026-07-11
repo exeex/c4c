@@ -62,6 +62,8 @@ struct Fixture {
         .join_transfers = {prepare::PreparedJoinTransfer{
             .function_name = function_name,
             .join_block_label = successor,
+            .result = bir::Value::named(bir::TypeKind::I32,
+                                        "%short.destination"),
             .kind = prepare::PreparedJoinTransferKind::PhiEdge,
             .edge_transfers = {prepare::PreparedEdgeValueTransfer{
                 .predecessor_label = predecessor,
@@ -142,6 +144,20 @@ prepare::PreparedCurrentBlockJoinParallelCopySourceFacts query(Fixture& fixture)
   });
 }
 
+bool authoritative(
+    const prepare::PreparedCurrentBlockJoinParallelCopySourceFacts& facts,
+    const Fixture& fixture,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name) {
+  return static_cast<bool>(
+      prepare::query_prepared_current_block_join_routing_consumption(
+          facts.routing_facts,
+          fixture.successor,
+          value_id,
+          value_name,
+          prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression));
+}
+
 bool contains(const std::vector<c4c::ValueNameId>& names, c4c::ValueNameId name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -153,7 +169,13 @@ int main() {
   const auto composed = query(fixture);
   if (!contains(composed.incoming_expression_value_names, fixture.selected_name) ||
       !contains(composed.incoming_expression_value_names, fixture.add_name) ||
-      !contains(composed.incoming_expression_value_names, fixture.leaf_name)) {
+      !contains(composed.incoming_expression_value_names, fixture.leaf_name) ||
+      !authoritative(composed, fixture, prepare::PreparedValueId{41},
+                     fixture.selected_name) ||
+      !authoritative(composed, fixture, prepare::PreparedValueId{42},
+                     fixture.add_name) ||
+      !authoritative(composed, fixture, prepare::PreparedValueId{43},
+                     fixture.leaf_name)) {
     return 1;
   }
 
@@ -161,8 +183,36 @@ int main() {
   fixture.block.insts.erase(fixture.block.insts.begin() + 2);
   const auto missing_add = query(fixture);
   if (contains(missing_add.incoming_expression_value_names, fixture.add_name) ||
-      contains(missing_add.incoming_expression_value_names, fixture.leaf_name)) {
+      contains(missing_add.incoming_expression_value_names, fixture.leaf_name) ||
+      authoritative(missing_add, fixture, prepare::PreparedValueId{42},
+                    fixture.add_name) ||
+      authoritative(missing_add, fixture, prepare::PreparedValueId{43},
+                    fixture.leaf_name)) {
     return 2;
+  }
+
+  Fixture mismatched_destination;
+  auto& phi = std::get<bir::PhiInst>(mismatched_destination.block.insts.front());
+  phi.result = bir::Value::named(bir::TypeKind::I32, "%other.destination");
+  mismatched_destination.control_flow.join_transfers.front().result =
+      bir::Value::named(bir::TypeKind::I32, "%other.transfer");
+  const auto mismatched = query(mismatched_destination);
+  if (authoritative(mismatched,
+                    mismatched_destination,
+                    prepare::PreparedValueId{42},
+                    mismatched_destination.add_name)) {
+    return 3;
+  }
+
+  Fixture incomplete_transfer;
+  incomplete_transfer.block.insts.erase(incomplete_transfer.block.insts.begin());
+  incomplete_transfer.control_flow.join_transfers.front().edge_transfers.clear();
+  const auto incomplete = query(incomplete_transfer);
+  if (authoritative(incomplete,
+                    incomplete_transfer,
+                    prepare::PreparedValueId{42},
+                    incomplete_transfer.add_name)) {
+    return 4;
   }
   return 0;
 }
