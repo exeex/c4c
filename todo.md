@@ -1,77 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/702_residual_stack_authority_revisit_prerequisites.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Bind Follow-Up Routing
+Current Step ID: 4
+Current Step Title: Validate And Hand Off
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 defined the prepared-owned positive producer threshold required before
-any future reactivation of ideas 647 or 655.
+Step 3 bound follow-up routing for residual stack authority prerequisites.
 
-A future residual stack-destination fan-in implementation may start only after
-a named prepared/prealloc producer family proves all participating facts at the
-consumer program point:
+No eligible positive residual stack-destination fan-in seam has been proven
+yet, so no future implementation family is selected now and no durable notes in
+ideas 647 or 655 are required for this packet.
 
-- destination value identity: the exact destination value id/name targeted by
-  the fan-in;
-- destination home: the stack slot or destination home authorized for that
-  value;
-- destination storage kind: explicit stack-destination storage, not inferred
-  from route success or final assembly;
-- source value/home: every participating source value and its selected home at
-  the fan-in point;
-- selected move evidence: either a selected move bundle or selected move
-  resolution that ties the participating sources to the destination;
-- selected freshness: freshness for the selected destination-authority family,
-  not only `BranchStackLoadSource`;
-- stack object or aggregate source authority: stack object identity or
-  aggregate stack-source authority when the selected family depends on an
-  aggregate or stack-object source;
-- producer fact: one explicit non-637 family such as ordered final-state,
-  mutual-exclusion, explicit merge, aggregate stack-source, or another named
-  prepared producer family;
-- MIR fail-closed statuses: missing, unsupported, ambiguous, stale, and
-  bundle-versus-move mismatched authority must remain unavailable before any
-  RV64/materialized stack path.
+Future routing condition: if a later packet proves the Step 2 threshold, map
+that proof to exactly one named prepared producer family before implementation
+starts. Valid future family names include ordered final-state authority,
+mutual-exclusion authority, explicit merge authority, aggregate stack-source
+authority, or another explicitly named non-637 destination-authority producer
+family. The selected family must publish destination value identity,
+destination home, destination storage kind, source value/home, selected move
+bundle or move resolution, selected freshness, stack object or aggregate
+source authority when applicable, and MIR fail-closed statuses at the consumer
+program point.
 
-Eligible producer families for a future reactivation are limited to prepared
-producer seams that can publish the facts above, for example ordered
-final-state authority, mutual-exclusion authority, explicit merge authority,
-aggregate stack-source authority, or another named prepared-owned destination
-authority family. `PreparedBranchStackLoadAuthority` remains valid evidence for
-branch stack-load source freshness only; it is not a stack-destination fan-in
-producer threshold by itself.
+Still-rejected seams and reasons:
 
-Insufficient route compatibility evidence remains rejected as direct stack
-authority: Route 4 publication rows, Route 5 status or agreement rows, Route 7
-comparison validation rows, `RouteIndexReferenceFacade`, route dumps, dump
-labels, expected output, expectations, allowlists, unsupported-marker policy,
-timeout/pass-fail accounting, diagnostic wording, final assembly, ABI or
-runtime behavior, testcase identity, source order, value ids, block labels,
-move-vector order, frame-slot existence, source freshness alone, and
-string-label pointer authority.
+- `PreparedBranchStackLoadAuthority`: positive evidence exists only for branch
+  stack-load source freshness, not residual stack-destination fan-in.
+- Route compatibility evidence: Route 4 publication rows, Route 5 status or
+  agreement rows, Route 7 comparison validation rows,
+  `RouteIndexReferenceFacade`, route dumps, dump labels, expectations,
+  allowlists, diagnostics, final assembly, ABI/runtime behavior, testcase
+  identity, source order, value ids, block labels, move-vector order,
+  frame-slot existence, source freshness alone, and string-label pointer
+  authority remain rejected as direct stack authority.
+- Idea 637 select-materialized semantic merge: remains a closed contract and
+  must not be reused as non-637 idea 647 progress.
+- Ordered final-state authority: remains unavailable until a prepared producer
+  designates one final authoritative stack-slot state at the consumer point.
+- Mutual-exclusion authority: remains unavailable until a prepared producer
+  proves exactly one candidate write is active through predicate, edge,
+  selected-active-candidate, guarded-copy, or consumer-point carrier metadata.
+- Explicit merge authority: remains unavailable until a prepared producer
+  proves semantic equivalence or an explicit merge operation for all candidate
+  sources targeting the same stack destination.
+- Aggregate stack-source authority: remains unavailable until a prepared
+  producer names the aggregate/stack object source and ties it to the selected
+  destination fan-in.
 
-Required positive proof surface before any future 647/655 implementation idea
-can start: one focused prepared/prealloc contract or backend probe for the
-selected family that publishes the named producer fact with destination value,
-destination home/storage kind, participating source value/homes, selected move
-bundle or move resolution, selected freshness, and stack object or aggregate
-source authority where applicable.
-
-Required negative fail-closed proof surface before any future 647/655
-implementation idea can start: one focused prepared/prealloc contract or
-backend probe proving missing, unsupported, ambiguous, stale, or
-bundle-versus-move mismatched destination authority remains unavailable and
-does not permit RV64 target materialization.
+Ideas 647 and 655 remain parked. A later lifecycle packet may revisit them
+only after a focused positive producer proof and a matching negative
+fail-closed proof satisfy the Step 2 threshold for one named family.
 
 ## Suggested Next
 
-Start Step 3 by binding follow-up routing: map any eligible positive seam to
-one named future producer family, keep unrelated or still-negative seams
-rejected, and leave ideas 647 and 655 parked unless this threshold is met.
+Start Step 4 by validating and handing off the prerequisite runbook. Because
+Steps 1 through 3 were todo-only classification packets, no build/test proof is
+needed unless the supervisor requires a lifecycle-only validation note.
 
 ## Watchouts
 
@@ -86,7 +73,9 @@ rejected, and leave ideas 647 and 655 parked unless this threshold is met.
 - A future Step 3 routing note should not invite implementation from route
   compatibility evidence; it should name the producer family and proof surfaces
   that would unblock a later lifecycle packet.
+- Step 4 should preserve the routing result: 647 and 655 remain parked because
+  no positive residual stack-destination producer seam has been proven.
 
 ## Proof
 
-No build/test proof required for this todo-only Step 2 threshold definition.
+No build/test proof required for this todo-only Step 3 routing classification.
