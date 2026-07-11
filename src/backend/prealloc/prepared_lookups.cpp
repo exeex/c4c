@@ -2288,13 +2288,9 @@ void attribute_block_entry_publication_proof_if_agreeing(
     const PreparedCurrentBlockEntryPublicationQueryInputs& query,
     PreparedCurrentBlockEntryPublication& result) {
   const auto* proof_successor_block =
-      query.block_entry_publication_proof_successor_block != nullptr
-          ? query.block_entry_publication_proof_successor_block
-          : query.route4_successor_block;
+      query.block_entry_publication_proof_successor_block;
   const auto* proof_destination_value =
-      query.block_entry_publication_proof_destination_value != nullptr
-          ? query.block_entry_publication_proof_destination_value
-          : query.route4_destination_value;
+      query.block_entry_publication_proof_destination_value;
   if (result.status != PreparedCurrentBlockEntryPublicationStatus::Available ||
       !prepared_block_entry_publication_available(result.publication) ||
       proof_successor_block == nullptr ||
@@ -2311,46 +2307,32 @@ void attribute_block_entry_publication_proof_if_agreeing(
   const auto& compatibility_successor = compatibility_function.blocks.front();
   const auto compatibility_publications =
       bir::make_bir_publication_view(compatibility_function);
-  const auto proof_reference =
-      bir::validate_block_entry_publication_reference(
-          compatibility_publications, compatibility_successor, *proof_destination_value);
+  const auto proof_reference = bir::find_block_entry_publication(
+      compatibility_publications, compatibility_successor, *proof_destination_value);
 
   result.block_entry_publication_proof_status = proof_reference.status;
-  result.block_entry_publication_compatibility_status =
-      proof_reference.route_status;
-  result.route4_block_entry_publication_status =
-      result.block_entry_publication_proof_status;
-  result.route4_block_entry_publication_route_status =
-      result.block_entry_publication_compatibility_status;
-  if (!proof_reference || proof_reference.block_entry_record == nullptr) {
+  if (!proof_reference || proof_reference.published_value == nullptr ||
+      proof_reference.source_value == nullptr) {
     return;
   }
 
-  const auto compatibility_publication = bir::route4_block_entry_publication_record(
-      proof_successor_block,
-      *proof_destination_value,
-      result.destination_value_name);
   result.block_entry_publication_proof_instruction_index =
-      compatibility_publication.destination_instruction_index;
-  result.route4_block_entry_publication_instruction_index =
-      result.block_entry_publication_proof_instruction_index;
-  if (!compatibility_publication ||
-      compatibility_publication.successor_label_id != query.successor_label ||
-      compatibility_publication.destination_value_name_id != result.destination_value_name ||
-      compatibility_publication.destination_value.name !=
-          proof_destination_value->name ||
-      compatibility_publication.destination_value.type !=
-          proof_destination_value->type ||
-      compatibility_publication.destination_value_type !=
-          proof_destination_value->type ||
-      compatibility_publication.destination_instruction_index !=
+      proof_reference.instruction_index;
+  const auto proof_successor_label = query.names == nullptr
+                                         ? std::string_view{}
+                                         : prepared_block_label(*query.names,
+                                                                query.successor_label);
+  if (proof_reference.kind != bir::BirPublicationKind::BlockEntry ||
+      proof_reference.published_value != proof_destination_value ||
+      proof_reference.published_value->name != proof_destination_value->name ||
+      proof_reference.published_value->type != proof_destination_value->type ||
+      proof_reference.block_label != proof_successor_label ||
+      proof_reference.instruction_index !=
           result.publication.bundle->instruction_index) {
     return;
   }
 
   result.block_entry_publication_proof_attributed = true;
-  result.route4_block_entry_publication_attributed =
-      result.block_entry_publication_proof_attributed;
 }
 
 PreparedCurrentBlockEntryPublication

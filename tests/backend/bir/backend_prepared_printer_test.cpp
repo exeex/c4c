@@ -499,8 +499,8 @@ find_block_entry_publication_printer_row_agreement(
           .value_locations = locations,
           .value_home_lookups = &value_home_lookups,
           .successor_label = successor_label,
-          .route4_successor_block = successor_block,
-          .route4_destination_value = destination_value,
+          .block_entry_publication_proof_successor_block = successor_block,
+          .block_entry_publication_proof_destination_value = destination_value,
       },
       prepare::PreparedValueId{42});
 }
@@ -6480,7 +6480,7 @@ int main() {
           block_entry_publication_prepared);
   if (prepared_only_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
-      prepared_only_agreement.route4_block_entry_publication_attributed) {
+      prepared_only_agreement.block_entry_publication_proof_attributed) {
     std::cerr << "[FAIL] prepared-only block-entry printer row should fall back without Route 4 attribution\n";
     return EXIT_FAILURE;
   }
@@ -6496,9 +6496,9 @@ int main() {
   if (route4_block_entry_publication_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       !route4_block_entry_publication_agreement
-           .route4_block_entry_publication_attributed ||
+           .block_entry_publication_proof_attributed ||
       route4_block_entry_publication_agreement
-              .route4_block_entry_publication_instruction_index !=
+              .block_entry_publication_proof_instruction_index !=
           std::size_t{5}) {
     std::cerr << "[FAIL] agreeing Route 4 evidence should attribute the block-entry printer row through the prepared lookup boundary\n";
     return EXIT_FAILURE;
@@ -6520,7 +6520,7 @@ int main() {
   if (missing_phi_block_entry_publication_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       missing_phi_block_entry_publication_agreement
-          .route4_block_entry_publication_attributed) {
+          .block_entry_publication_proof_attributed) {
     std::cerr << "[FAIL] missing-PHI Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
     return EXIT_FAILURE;
   }
@@ -6541,7 +6541,7 @@ int main() {
   if (wrong_destination_block_entry_publication_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       wrong_destination_block_entry_publication_agreement
-          .route4_block_entry_publication_attributed) {
+          .block_entry_publication_proof_attributed) {
     std::cerr << "[FAIL] wrong-destination Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
     return EXIT_FAILURE;
   }
@@ -6563,7 +6563,7 @@ int main() {
   if (wrong_successor_block_entry_publication_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       wrong_successor_block_entry_publication_agreement
-          .route4_block_entry_publication_attributed) {
+          .block_entry_publication_proof_attributed) {
     std::cerr << "[FAIL] wrong-successor Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
     return EXIT_FAILURE;
   }
@@ -6585,7 +6585,7 @@ int main() {
   if (wrong_index_block_entry_publication_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       wrong_index_block_entry_publication_agreement
-          .route4_block_entry_publication_attributed) {
+          .block_entry_publication_proof_attributed) {
     std::cerr << "[FAIL] wrong-instruction Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
     return EXIT_FAILURE;
   }
@@ -6606,10 +6606,10 @@ int main() {
   if (duplicate_block_entry_publication_agreement.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       duplicate_block_entry_publication_agreement
-          .route4_block_entry_publication_attributed ||
+          .block_entry_publication_proof_attributed ||
       duplicate_block_entry_publication_agreement
-              .route4_block_entry_publication_status !=
-          bir::RouteIndexValidationStatus::DuplicateReference) {
+              .block_entry_publication_proof_status !=
+          bir::BirViewStatus::Ambiguous) {
     std::cerr << "[FAIL] duplicate Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
     return EXIT_FAILURE;
   }

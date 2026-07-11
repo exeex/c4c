@@ -326,11 +326,9 @@ int result_level_key_loses_predecessor_before_destination_identity() {
 }
 
 int public_headers_have_only_inventoried_compatibility_payloads() {
-  // Step 1 inventory: these are legacy public compatibility/proof payloads.
-  // The guard makes additions fail while their owning producer seams migrate.
-  const std::unordered_map<std::string, std::size_t> expected_hits{
-      {"value_locations.hpp", 6},
-  };
+  // Migrated prepared records must not expose route-numbered records, indexes,
+  // status aliases, or query inputs.
+  const std::unordered_map<std::string, std::size_t> expected_hits{};
   const std::regex forbidden(
       R"(\b(Route[0-9][A-Za-z0-9_]*(Record|Index)|route[0-9]_[A-Za-z0-9_]+)\b)");
   std::unordered_map<std::string, std::size_t> actual_hits;

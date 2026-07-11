@@ -495,11 +495,8 @@ int check_current_block_entry_publication_query() {
       !expect(block_entry_proof_attributed.block_entry_publication_proof_attributed,
               "agreeing block-entry publication proof should attribute the available block-entry publication") ||
       !expect(block_entry_proof_attributed.block_entry_publication_proof_status ==
-                  bir::RouteIndexValidationStatus::Valid,
-              "agreeing block-entry publication proof should validate through the compatibility proof view") ||
-      !expect(block_entry_proof_attributed.block_entry_publication_compatibility_status ==
-                  bir::Route4PublicationAvailabilityStatus::Available,
-              "agreeing block-entry publication proof should preserve compatibility availability") ||
+                  bir::BirViewStatus::Available,
+              "agreeing block-entry publication proof should validate through the named publication view") ||
       !expect(block_entry_proof_attributed.block_entry_publication_proof_instruction_index ==
                   std::size_t{0},
               "block-entry publication proof should preserve the PHI instruction index") ||
@@ -596,8 +593,8 @@ int check_current_block_entry_publication_query() {
       !expect(!mismatched_block_entry_proof.block_entry_publication_proof_attributed,
               "mismatched block-entry publication proof should fall back without attribution") ||
       !expect(mismatched_block_entry_proof.block_entry_publication_proof_status ==
-                  bir::RouteIndexValidationStatus::Valid,
-              "mismatched block-entry publication proof should still record the validated compatibility proof")) {
+                  bir::BirViewStatus::Available,
+              "mismatched block-entry publication proof should still record the available named fact")) {
     return 1;
   }
 
@@ -625,8 +622,8 @@ int check_current_block_entry_publication_query() {
               "wrong-successor block-entry publication proof should fall back without attribution") ||
       !expect(wrong_successor_block_entry_proof
                       .block_entry_publication_proof_status ==
-                  bir::RouteIndexValidationStatus::Valid,
-              "wrong-successor block-entry publication proof should remain a valid compatibility proof before prepared agreement rejects it")) {
+                  bir::BirViewStatus::Available,
+              "wrong-successor block-entry publication proof should remain available before prepared agreement rejects it")) {
     return 1;
   }
 
@@ -652,12 +649,8 @@ int check_current_block_entry_publication_query() {
               "wrong-key block-entry publication proof should fall back without attribution") ||
       !expect(wrong_type_block_entry_proof
                       .block_entry_publication_proof_status ==
-                  bir::RouteIndexValidationStatus::WrongKey,
-              "wrong-key block-entry publication proof should expose the compatibility validation failure") ||
-      !expect(wrong_type_block_entry_proof
-                      .block_entry_publication_compatibility_status ==
-                  bir::Route4PublicationAvailabilityStatus::NoMatch,
-              "wrong-key block-entry publication proof should preserve the no-match compatibility status")) {
+                  bir::BirViewStatus::Unavailable,
+              "wrong-key block-entry publication proof should expose unavailable named evidence")) {
     return 1;
   }
 
@@ -684,12 +677,8 @@ int check_current_block_entry_publication_query() {
       !expect(!duplicate_block_entry_proof.block_entry_publication_proof_attributed,
               "duplicate block-entry publication proof should fall back without attribution") ||
       !expect(duplicate_block_entry_proof.block_entry_publication_proof_status ==
-                  bir::RouteIndexValidationStatus::DuplicateReference,
-              "duplicate block-entry publication proof should expose duplicate-reference validation") ||
-      !expect(duplicate_block_entry_proof
-                      .block_entry_publication_compatibility_status ==
-                  bir::Route4PublicationAvailabilityStatus::NoMatch,
-              "duplicate block-entry publication proof should preserve the no-match compatibility status")) {
+                  bir::BirViewStatus::Ambiguous,
+              "duplicate block-entry publication proof should expose ambiguous named evidence")) {
     return 1;
   }
 
