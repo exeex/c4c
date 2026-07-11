@@ -5266,25 +5266,18 @@ int verify_current_block_join_parallel_copy_source_query() {
           .prepared_join_transfer_authority_complete) {
     return fail("ambiguous prepared JoinTransfer publication should fail closed");
   }
-  if (route5_supported_query.facts[1].route5_join_source_agrees ||
-      route5_supported_query.facts[2].route5_join_source_agrees ||
-      route5_supported_query.facts[3].route5_join_source_agrees ||
-      route5_supported_query.facts[3].status !=
+  if (route5_supported_query.facts[3].status !=
           prepare::PreparedEdgeCopySourceFactsStatus::UnsupportedMove) {
     return fail("current-block join helper row should keep adjacent facts prepared-owned");
   }
   auto require_selected_join_route5_fallback =
       [&](const prepare::PreparedCurrentBlockJoinParallelCopySourceFacts& facts,
-          bir::Route5PublicationStatus expected_status,
           std::string_view message) {
         if (facts.status !=
                 prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
             facts.facts.size() != query.facts.size() ||
             facts.facts[0].status !=
                 prepare::PreparedEdgeCopySourceFactsStatus::Available ||
-            facts.facts[0].route5_join_source_agrees ||
-            facts.facts[0].route5_join_source != nullptr ||
-            facts.facts[0].route5_join_source_status != expected_status ||
             facts.facts[0].source_value_id != incoming_id ||
             facts.facts[0].source_home != &locations.value_homes[0] ||
             facts.facts[0].destination_home != &locations.value_homes[1] ||
@@ -5295,12 +5288,6 @@ int verify_current_block_join_parallel_copy_source_query() {
         }
         return 0;
       };
-  if (query.facts[0].route5_join_source_agrees ||
-      query.facts[0].route5_join_source != nullptr ||
-      query.facts[0].route5_join_source_status !=
-          bir::Route5PublicationStatus::Unavailable) {
-    return fail("prepared-only current-block join helper row should not claim Route 5 evidence");
-  }
   const auto indexed_bir_query =
       mir::find_bir_current_block_join_source_identity(
           mir::BirCurrentBlockJoinSourceRequest{
@@ -5325,7 +5312,6 @@ int verify_current_block_join_parallel_copy_source_query() {
       mir::find_bir_current_block_join_source_identity(
           mir::BirCurrentBlockJoinSourceRequest{
               .successor_block = &route5_join_block,
-              .route5_edge_join_sources = &empty_route5_join_index,
               .successor_label = "current_join.succ",
               .successor_label_id = successor_label,
           });
@@ -5347,7 +5333,6 @@ int verify_current_block_join_parallel_copy_source_query() {
           });
   if (require_selected_join_route5_fallback(
           empty_index_route5_supported_query,
-          bir::Route5PublicationStatus::MissingSuccessor,
           "current-block join helper row should keep prepared facts without Route 5 source data")) {
     return 1;
   }
@@ -5362,13 +5347,11 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &no_source_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
   if (require_selected_join_route5_fallback(
           no_source_route5_supported_query,
-          bir::Route5PublicationStatus::NoSource,
           "current-block join helper row should keep prepared facts on Route 5 no-source evidence")) {
     return 1;
   }
@@ -5382,13 +5365,11 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &source_mismatch_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
   if (require_selected_join_route5_fallback(
           source_mismatch_route5_supported_query,
-          bir::Route5PublicationStatus::MissingSourceValue,
           "current-block join helper row should keep prepared facts on Route 5 source mismatch")) {
     return 1;
   }
@@ -5402,14 +5383,11 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources =
-                  &destination_type_mismatch_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
   if (require_selected_join_route5_fallback(
           destination_type_mismatch_route5_supported_query,
-          bir::Route5PublicationStatus::NoMatch,
           "current-block join helper row should keep prepared facts on Route 5 destination mismatch")) {
     return 1;
   }
@@ -5426,13 +5404,11 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &memory_source_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
   if (require_selected_join_route5_fallback(
           memory_source_route5_supported_query,
-          bir::Route5PublicationStatus::MemorySource,
           "current-block join helper row should keep prepared facts on Route 5 memory-source evidence")) {
     return 1;
   }
@@ -5446,13 +5422,11 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &duplicate_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
   if (require_selected_join_route5_fallback(
           duplicate_route5_supported_query,
-          bir::Route5PublicationStatus::NoMatch,
           "current-block join helper row should reject duplicate Route 5 evidence")) {
     return 1;
   }
@@ -5481,13 +5455,11 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &wrong_predecessor_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
   if (require_selected_join_route5_fallback(
           wrong_predecessor_route5_supported_query,
-          bir::Route5PublicationStatus::Available,
           "current-block join helper row should keep prepared facts on Route 5 predecessor mismatch")) {
     return 1;
   }

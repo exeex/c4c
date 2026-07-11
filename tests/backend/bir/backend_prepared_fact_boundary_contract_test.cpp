@@ -329,7 +329,6 @@ int public_headers_have_only_inventoried_compatibility_payloads() {
   // Step 1 inventory: these are legacy public compatibility/proof payloads.
   // The guard makes additions fail while their owning producer seams migrate.
   const std::unordered_map<std::string, std::size_t> expected_hits{
-      {"publication_plans.hpp", 6},
       {"value_locations.hpp", 6},
   };
   const std::regex forbidden(

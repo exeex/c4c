@@ -280,10 +280,7 @@ void append_current_block_join_parallel_copy_source_row(
       << " immediate_source=" << yes_no(fact.immediate_source)
       << " incoming_expression="
       << yes_no(fact.source_is_incoming_expression)
-      << " source_value_identity=" << yes_no(fact.source_is_source_value)
-      << " route5_status="
-      << bir::route5_publication_status_name(fact.route5_join_source_status)
-      << " route5_agrees=" << yes_no(fact.route5_join_source_agrees);
+      << " source_value_identity=" << yes_no(fact.source_is_source_value);
   if (fact.destination_register_name.has_value()) {
     out << " destination_reg=" << *fact.destination_register_name;
   }
