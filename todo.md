@@ -3,34 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
 Source Plan Path: plan.md
-Current Step ID: 2.3c
-Current Step Title: Integrate and prove publication-family closure
+Current Step ID: 3
+Current Step Title: Migrate prepared call-plan production
 
 ## Just Finished
 
-- Completed Step 2.3c: audited the public block-entry, edge, and current-block
-  publication payloads and selection seams; no Route 4/5 record, status,
-  index, agreement predicate, fallback, or synthesized BIR publication
-  relation remains in the migrated public publication boundary.
-- Confirmed BIR-originated publication paths remain named-evidence-bound and
-  fail closed, while prepared-originated `JoinTransfer` paths retain complete,
-  unique prepared authority plus applicable producer identity.
+- Completed Step 3: prepared call-plan production now consumes
+  `BirCallBoundaryView` plus named argument-source facts without mutating BIR
+  to backfill Route 6 relationships.
+- Preserved prealloc ownership of argument/result homes, ABI lanes/resources,
+  moves, and materialization while rejecting unavailable, incomplete,
+  ambiguous, and mismatched call/value evidence.
 
 ## Suggested Next
 
-- Execute Step 3: migrate prepared call-plan production to named BIR
-  call-boundary and producer facts while retaining prepared ABI authority.
+- Execute Step 4: migrate prepared lookup attribution to named BIR facts while
+  preserving prepared lookup, home, and freshness authority.
 
 ## Watchouts
 
-- Common MIR Route 4/5 query/index implementation remains intentionally
-  separate from the closed prepared publication payload.
-- Preserve the completed publication-family boundary while Step 3 removes
-  Route 6 inputs from prepared call-plan attribution.
+- Aggregate routing metadata remains a BIR semantic input for identifying
+  grouped carriers; all ABI placement and materialization choices remain in
+  prealloc.
+- Keep the new call-plan boundary fail-closed; do not restore relationship
+  synthesis or route-discovery fallback in later lookup work.
 
 ## Proof
 
 - Passed `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`.
-- Result: 329/329 backend tests passed; canonical proof log is
-  `test_after.log`.
+- Result: 329/329 backend tests passed, including focused available direct
+  call/result and missing, incomplete, ambiguous, and mismatched-value call
+  boundary coverage; canonical proof log is `test_after.log`.

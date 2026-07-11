@@ -15,6 +15,7 @@
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/mir/printer.hpp"
+#include "src/backend/prealloc/call_plans.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/regalloc/call_return_abi.hpp"
 #include "src/target_profile.hpp"
@@ -5091,6 +5092,7 @@ prepare::PreparedBirModule prepared_semantic_f128_constant_call_argument() {
       .args = {bir::Value::immediate_f128_bits(0x0123456789abcdefULL,
                                                0x3fff800000000000ULL)},
       .arg_types = {bir::TypeKind::F128},
+      .arg_sources = {bir::CallArgumentSourceRelationship{.arg_index = 0}},
       .return_type = bir::TypeKind::Void,
       .calling_convention = bir::CallingConv::C,
   });
@@ -5141,6 +5143,11 @@ prepare::PreparedBirModule prepared_semantic_aarch64_stack_call_argument() {
       .callee = "consume_byval",
       .args = {bir::Value::named(bir::TypeKind::Ptr, "payload")},
       .arg_types = {bir::TypeKind::Ptr},
+      .arg_sources = {bir::CallArgumentSourceRelationship{
+          .arg_index = 0,
+          .source_encoding = bir::CallArgumentSourceEncodingKind::FrameSlot,
+          .source_value_name = std::string{"payload"},
+      }},
       .arg_abi = {bir::CallArgAbiInfo{
           .type = bir::TypeKind::Ptr,
           .size_bytes = 8,
@@ -5232,6 +5239,11 @@ prepare::PreparedBirModule prepared_semantic_split_sret_memory_return() {
       .callee = "make_split_sret",
       .args = {bir::Value::named(bir::TypeKind::Ptr, "ret")},
       .arg_types = {bir::TypeKind::Ptr},
+      .arg_sources = {bir::CallArgumentSourceRelationship{
+          .arg_index = 0,
+          .source_encoding = bir::CallArgumentSourceEncodingKind::FrameSlot,
+          .source_value_name = std::string{"ret"},
+      }},
       .arg_abi = {bir::CallArgAbiInfo{
           .type = bir::TypeKind::Ptr,
           .size_bytes = 16,
@@ -17199,6 +17211,75 @@ int semantic_stack_call_argument_publishes_destination_offset() {
     return fail("expected before-call stack argument records to carry dest stack offset 0");
   }
 
+  return 0;
+}
+
+int prepared_call_plan_production_fails_closed_on_named_boundary_states() {
+  const auto fixture = [] {
+    prepare::PreparedBirModule prepared;
+    prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+    prepared.names.function_names.intern("call.boundary.fixture");
+    prepared.names.value_names.intern("%source");
+    prepared.module.functions.push_back(bir::Function{
+        .name = "call.boundary.fixture",
+        .return_type = bir::TypeKind::Void,
+        .blocks = {bir::Block{
+            .label = "entry",
+            .insts = {bir::CallInst{
+                .result = bir::Value::named(bir::TypeKind::I32, "%result"),
+                .callee = "direct_target",
+                .args = {bir::Value::named(bir::TypeKind::I32, "%source")},
+                .arg_types = {bir::TypeKind::I32},
+                .arg_sources = {bir::CallArgumentSourceRelationship{
+                    .arg_index = 0,
+                    .source_encoding = bir::CallArgumentSourceEncodingKind::Register,
+                    .source_value_name = std::string{"%source"},
+                }},
+                .return_type = bir::TypeKind::I32,
+                .calling_convention = bir::CallingConv::C,
+            }},
+            .terminator = bir::ReturnTerminator{},
+        }},
+    });
+    return prepared;
+  };
+  const auto call_count = [](prepare::PreparedBirModule prepared) {
+    prepare::populate_call_plans(prepared);
+    return prepared.call_plans.functions.empty()
+               ? std::size_t{0}
+               : prepared.call_plans.functions.front().calls.size();
+  };
+
+  if (call_count(fixture()) != 1) {
+    return fail("prepared call-plan production rejected available named boundary facts");
+  }
+  auto missing = fixture();
+  auto& missing_call = std::get<bir::CallInst>(missing.module.functions.front().blocks.front().insts.front());
+  missing_call.arg_sources.clear();
+  if (call_count(std::move(missing)) != 0) {
+    return fail("prepared call-plan production accepted missing call-argument boundary fact");
+  }
+
+  auto ambiguous = fixture();
+  auto& ambiguous_call = std::get<bir::CallInst>(ambiguous.module.functions.front().blocks.front().insts.front());
+  ambiguous_call.arg_sources.push_back(ambiguous_call.arg_sources.front());
+  if (call_count(std::move(ambiguous)) != 0) {
+    return fail("prepared call-plan production accepted ambiguous call-argument boundary fact");
+  }
+
+  auto mismatched_value = fixture();
+  auto& mismatched_value_call = std::get<bir::CallInst>(mismatched_value.module.functions.front().blocks.front().insts.front());
+  mismatched_value_call.arg_sources.front().source_value_name = "%other";
+  if (call_count(std::move(mismatched_value)) != 0) {
+    return fail("prepared call-plan production accepted mismatched argument-source identity");
+  }
+
+  auto incomplete_call = fixture();
+  auto& incomplete = std::get<bir::CallInst>(incomplete_call.module.functions.front().blocks.front().insts.front());
+  incomplete.callee.clear();
+  if (call_count(std::move(incomplete_call)) != 0) {
+    return fail("prepared call-plan production accepted incomplete call identity");
+  }
   return 0;
 }
 
@@ -36428,6 +36509,11 @@ int main() {
   }
   if (const int status =
           semantic_f128_constant_argument_reaches_call_boundary_selection();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_call_plan_production_fails_closed_on_named_boundary_states();
       status != 0) {
     return status;
   }
