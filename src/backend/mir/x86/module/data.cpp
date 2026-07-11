@@ -61,10 +61,10 @@ std::string_view logical_symbol_name(std::string_view symbol_name) {
 }
 
 const c4c::backend::bir::Global* find_defined_same_module_global(
-    const c4c::backend::bir::Module& module,
+    const std::vector<c4c::backend::bir::Global>& globals,
     std::string_view symbol_name) {
   const auto logical_name = logical_symbol_name(symbol_name);
-  for (const auto& global : module.globals) {
+  for (const auto& global : globals) {
     if (global.name == logical_name && !global.is_extern && !global.is_thread_local) {
       return &global;
     }
@@ -73,22 +73,22 @@ const c4c::backend::bir::Global* find_defined_same_module_global(
 }
 
 bool symbol_name_initializer_targets_mixed_pointer_global(
-    const c4c::backend::bir::Module& module,
+    const std::vector<c4c::backend::bir::Global>& globals,
     const c4c::backend::bir::Global& global) {
   if (!global.initializer_symbol_name.has_value()) {
     return false;
   }
-  const auto* target = find_defined_same_module_global(module, *global.initializer_symbol_name);
+  const auto* target = find_defined_same_module_global(globals, *global.initializer_symbol_name);
   return target != nullptr && has_named_pointer_initializer_element(*target);
 }
 
 std::optional<std::string> render_global_initializer_directive(
     const c4c::backend::bir::Value& value,
-    const c4c::backend::bir::Module& module,
+    const std::vector<c4c::backend::bir::Global>& globals,
     std::string_view target_triple) {
   if (value.kind == c4c::backend::bir::Value::Kind::Named) {
     if (value.type != c4c::backend::bir::TypeKind::Ptr || value.name.empty() ||
-        find_defined_same_module_global(module, value.name) == nullptr) {
+        find_defined_same_module_global(globals, value.name) == nullptr) {
       return std::nullopt;
     }
     return ".quad " + c4c::backend::x86::abi::render_asm_symbol_name(
@@ -119,12 +119,12 @@ std::optional<std::string> render_global_initializer_directive(
 }
 
 bool emit_global_initializer(c4c::backend::x86::core::Text& out,
-                             const c4c::backend::bir::Module& module,
+                             const std::vector<c4c::backend::bir::Global>& globals,
                              const c4c::backend::bir::Global& global,
                              std::string_view target_triple) {
   if (global.initializer.has_value()) {
     const auto directive = render_global_initializer_directive(*global.initializer,
-                                                               module,
+                                                               globals,
                                                                target_triple);
     if (!directive.has_value()) {
       return false;
@@ -134,7 +134,7 @@ bool emit_global_initializer(c4c::backend::x86::core::Text& out,
   }
   if (!global.initializer_elements.empty()) {
     for (const auto& element : global.initializer_elements) {
-      const auto directive = render_global_initializer_directive(element, module, target_triple);
+      const auto directive = render_global_initializer_directive(element, globals, target_triple);
       if (!directive.has_value()) {
         return false;
       }
@@ -143,7 +143,7 @@ bool emit_global_initializer(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (global.initializer_symbol_name.has_value()) {
-    if (!symbol_name_initializer_targets_mixed_pointer_global(module, global)) {
+    if (!symbol_name_initializer_targets_mixed_pointer_global(globals, global)) {
       return false;
     }
     out.append_line("    .quad " +
@@ -169,34 +169,35 @@ std::string Data::render_private_data_label(std::string_view pool_name) const {
 }
 
 std::string Data::emit_data() const {
-  if (module == nullptr) {
+  if (view == nullptr) {
     return {};
   }
 
   c4c::backend::x86::core::Text out;
-  if (!module->module.string_constants.empty()) {
+  if (!view->string_constants().empty()) {
     out.append_line(".section .rodata");
-    for (const auto& constant : module->module.string_constants) {
+    for (const auto& constant : view->string_constants()) {
       out.append_line(render_private_data_label(constant.name) + ":");
       out.append_line("    # string constant deferred to behavior-recovery packet");
     }
   }
 
+  const auto& globals = view->globals();
   const auto has_zero_global =
-      std::any_of(module->module.globals.begin(),
-                  module->module.globals.end(),
+      std::any_of(globals.begin(),
+                  globals.end(),
                   [](const c4c::backend::bir::Global& global) {
                     return is_zero_initialized_global(global);
                   });
   const auto has_nonzero_global =
-      std::any_of(module->module.globals.begin(),
-                  module->module.globals.end(),
+      std::any_of(globals.begin(),
+                  globals.end(),
                   [](const c4c::backend::bir::Global& global) {
                     return !is_zero_initialized_global(global);
                   });
 
   const auto emit_globals_in_section = [&](bool zero_section) {
-    for (const auto& global : module->module.globals) {
+    for (const auto& global : globals) {
       if (is_zero_initialized_global(global) != zero_section) {
         continue;
       }
@@ -208,7 +209,7 @@ std::string Data::emit_data() const {
         out.append_line(".p2align " + std::to_string(p2align_for_alignment(global.align_bytes)));
       }
       out.append_line(render_asm_symbol_name(global.name) + ":");
-      if (!emit_global_initializer(out, module->module, global, target_triple)) {
+      if (!emit_global_initializer(out, globals, global, target_triple)) {
         out.append_line("    # global data emission deferred to behavior-recovery packet");
       }
     }
@@ -226,10 +227,10 @@ std::string Data::emit_data() const {
   return out.take_text();
 }
 
-Data make_data(const c4c::backend::prepare::PreparedBirModule& module,
+Data make_data(const c4c::backend::mir::prepared::PreparedMirCoreView& view,
                std::string_view target_triple) {
   return Data{
-      .module = &module,
+      .view = &view,
       .target_triple = target_triple,
   };
 }

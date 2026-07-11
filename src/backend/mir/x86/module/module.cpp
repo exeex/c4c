@@ -52,6 +52,20 @@ namespace {
       "or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
 }
 
+std::string resolve_target_triple(
+    const c4c::backend::mir::prepared::PreparedMirCoreView& view) {
+  return view.target_triple().empty() ? c4c::default_host_target_triple()
+                                      : std::string(view.target_triple());
+}
+
+c4c::TargetProfile resolve_target_profile(
+    const c4c::backend::mir::prepared::PreparedMirCoreView& view) {
+  if (view.target_profile().arch != c4c::TargetArch::Unknown) {
+    return view.target_profile();
+  }
+  return c4c::target_profile_from_triple(resolve_target_triple(view));
+}
+
 std::string render_prepared_label_id(c4c::BlockLabelId label) {
   if (label == c4c::kInvalidBlockLabel) {
     return "<invalid>";
@@ -6450,40 +6464,48 @@ void append_function_stub(c4c::backend::x86::core::Text& out,
 }  // namespace
 
 std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
-  const auto target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
+  const c4c::backend::mir::prepared::PreparedMirCoreView view(module);
+  return emit(module, view);
+}
+
+std::string emit(const c4c::backend::prepare::PreparedBirModule& module,
+                 const c4c::backend::mir::prepared::PreparedMirCoreView& view) {
+  const auto target_profile = resolve_target_profile(view);
   if (!c4c::backend::x86::abi::is_x86_target(target_profile)) {
     throw std::invalid_argument("x86::module::emit requires an x86 target profile");
   }
 
-  const auto target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
-  const auto data = make_data(module, target_triple);
+  const auto target_triple = resolve_target_triple(view);
+  const auto data = make_data(view, target_triple);
 
   c4c::backend::x86::core::Text out;
   out.append_line(".intel_syntax noprefix");
   out.append_line(".text");
 
-  const auto defined_function_count = static_cast<std::size_t>(std::count_if(
-      module.module.functions.begin(), module.module.functions.end(), [](const auto& function) {
-        return !function.is_declaration;
-      }));
+  const auto defined_function_count = view.defined_functions().size();
   bool emitted_any_function = false;
   bool emitted_only_supported_scalar_functions = true;
-  for (const auto& function : module.module.functions) {
-    if (function.is_declaration) {
+  for (const auto* function : view.defined_functions()) {
+    if (function == nullptr) {
       continue;
+    }
+    const auto function_name = view.resolve_function_name(function->name);
+    if (!function_name.has_value() || !view.function_view(*function_name).has_value()) {
+      throw std::invalid_argument("x86::module::emit requires prepared core facts for every "
+                                  "defined function");
     }
     if (emitted_any_function) {
       out.append_line(".intel_syntax noprefix");
       out.append_line(".text");
     }
     emitted_any_function = true;
-    if (!append_supported_scalar_function(out, module, function, data)) {
+    if (!append_supported_scalar_function(out, module, *function, data)) {
       emitted_only_supported_scalar_functions = false;
       if (defined_function_count > 1) {
         throw_unsupported_x86_multi_function_handoff_shape();
       }
       out.append_line("# x86 backend contract-first module emitter");
-      append_function_stub(out, module, function, data);
+      append_function_stub(out, module, *function, data);
     }
   }
 
@@ -6492,7 +6514,7 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
   }
 
   if (!(emitted_any_function && emitted_only_supported_scalar_functions) ||
-      !module.module.globals.empty()) {
+      !view.globals().empty()) {
     out.append_raw(data.emit_data());
   }
   return out.take_text();

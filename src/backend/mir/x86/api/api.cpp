@@ -1,5 +1,6 @@
 #include "api.hpp"
 
+#include "../../prepared_view.hpp"
 #include "../module/module.hpp"
 
 #include <stdexcept>
@@ -54,7 +55,8 @@ c4c::backend::BackendAssembleResult assemble_module(
 }
 
 std::string emit_prepared_module(const c4c::backend::prepare::PreparedBirModule& module) {
-  return c4c::backend::x86::module::emit(module);
+  const c4c::backend::mir::prepared::PreparedMirCoreView view(module);
+  return c4c::backend::x86::module::emit(module, view);
 }
 
 }  // namespace c4c::backend::x86::api

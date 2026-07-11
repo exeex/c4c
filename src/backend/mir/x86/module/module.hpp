@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../bir/bir.hpp"
+#include "../../prepared_view.hpp"
 #include "../../../prealloc/prealloc.hpp"
 
 #include <string>
@@ -9,7 +10,7 @@
 namespace c4c::backend::x86::module {
 
 struct Data {
-  const c4c::backend::prepare::PreparedBirModule* module = nullptr;
+  const c4c::backend::mir::prepared::PreparedMirCoreView* view = nullptr;
   std::string_view target_triple;
 
   [[nodiscard]] std::string render_asm_symbol_name(std::string_view logical_name) const;
@@ -17,9 +18,13 @@ struct Data {
   [[nodiscard]] std::string emit_data() const;
 };
 
-[[nodiscard]] Data make_data(const c4c::backend::prepare::PreparedBirModule& module,
-                             std::string_view target_triple);
+[[nodiscard]] Data make_data(
+    const c4c::backend::mir::prepared::PreparedMirCoreView& view,
+    std::string_view target_triple);
 [[nodiscard]] std::string emit(const c4c::backend::prepare::PreparedBirModule& module);
+[[nodiscard]] std::string emit(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::mir::prepared::PreparedMirCoreView& view);
 
 // Module emission is allowed to:
 // - spell GPR/FPR/VREG registers and stack operands from prepared plans
