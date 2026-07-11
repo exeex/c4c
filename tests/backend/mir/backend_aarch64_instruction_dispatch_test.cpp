@@ -59,12 +59,18 @@ mir::MachinePrintResult print_route_block(
 void attach_prepared_function_lookups(
     aarch64_module::FunctionLoweringContext& function_context,
     const prepare::PreparedFunctionLookups& prepared_lookups) {
-  function_context.prepared_lookups = &prepared_lookups;
-  function_context.call_plan_lookups = &prepared_lookups.call_plans;
+  function_context.prepared_lookups_owner =
+      std::make_shared<prepare::PreparedFunctionLookups>(prepared_lookups);
+  function_context.prepared_lookups =
+      function_context.prepared_lookups_owner.get();
+  function_context.call_plan_lookups =
+      &function_context.prepared_lookups->call_plans;
   function_context.address_materialization_lookups =
-      &prepared_lookups.address_materializations;
-  function_context.move_bundle_lookups = &prepared_lookups.move_bundles;
-  function_context.value_home_lookups = &prepared_lookups.value_homes;
+      &function_context.prepared_lookups->address_materializations;
+  function_context.move_bundle_lookups =
+      &function_context.prepared_lookups->move_bundles;
+  function_context.value_home_lookups =
+      &function_context.prepared_lookups->value_homes;
 }
 
 prepare::PreparedAggregateTransportPlan byval_register_lanes_transport(

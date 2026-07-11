@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -39,12 +40,18 @@ int fail(std::string_view message) {
 void attach_prepared_function_lookups(
     aarch64_module::FunctionLoweringContext& function_context,
     const prepare::PreparedFunctionLookups& prepared_lookups) {
-  function_context.prepared_lookups = &prepared_lookups;
-  function_context.call_plan_lookups = &prepared_lookups.call_plans;
+  function_context.prepared_lookups_owner =
+      std::make_shared<prepare::PreparedFunctionLookups>(prepared_lookups);
+  function_context.prepared_lookups =
+      function_context.prepared_lookups_owner.get();
+  function_context.call_plan_lookups =
+      &function_context.prepared_lookups->call_plans;
   function_context.address_materialization_lookups =
-      &prepared_lookups.address_materializations;
-  function_context.move_bundle_lookups = &prepared_lookups.move_bundles;
-  function_context.value_home_lookups = &prepared_lookups.value_homes;
+      &function_context.prepared_lookups->address_materializations;
+  function_context.move_bundle_lookups =
+      &function_context.prepared_lookups->move_bundles;
+  function_context.value_home_lookups =
+      &function_context.prepared_lookups->value_homes;
 }
 
 prepare::PreparedBirModule make_current_join_routing_prepared(
@@ -346,6 +353,19 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
       prepared, prepared.target_profile, function_cf);
   if (attach_prepared_policy) {
     attach_prepared_function_lookups(function_context, prepared_lookups);
+  }
+  if (function_context.prepared_lookups_owner == nullptr ||
+      function_context.prepared_lookups !=
+          function_context.prepared_lookups_owner.get()) {
+    return fail("expected current-block join entry to retain its prepared lookup owner");
+  }
+  const bool expects_authoritative_source =
+      std::find(expected_sources.begin(), expected_sources.end(), true) !=
+      expected_sources.end();
+  if (expects_authoritative_source &&
+      function_context.prepared_lookups->current_block_join_routing_facts.empty()) {
+    return fail(
+        "expected supported current-block join entry to carry authoritative owner facts");
   }
   const auto join_context =
       aarch64_codegen::make_block_lowering_context(function_context,
