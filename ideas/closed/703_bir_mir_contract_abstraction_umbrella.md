@@ -1,6 +1,6 @@
 # BIR MIR Contract Abstraction Umbrella
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and follow-up idea generator
 After: `ideas/closed/694_bir_route_index_retirement_umbrella.md`
 Parent: `ideas/closed/694_bir_route_index_retirement_umbrella.md`
@@ -174,6 +174,43 @@ which handoff documents were written; which follow-up ideas were generated;
 how route-vocabulary guards are expected to shrink; which route-numbered APIs
 remain private compatibility; and what explicit prepared/prealloc stack
 authority evidence is required before ideas 647 and 655 can resume.
+
+## Closure Note
+
+Closed on 2026-07-11 after the four-step umbrella runbook completed and the
+matching close-time regression guard passed with 2/2 tests before and after.
+Because this umbrella changed only planning and documentation artifacts, the
+guard used the maintenance policy permitting an unchanged pass count.
+
+The audit used the fresh broad scan
+`rg -n "route[1-8]_|Route[1-8]|bir_route[1-8]|RouteIndex|route_index"
+src/backend/bir src/backend/prealloc src/backend/mir tests`, the four documents
+under `docs/bir_mir_contract_abstraction/`, and closed ideas 683, 684, 693,
+and 694. The handoff documents are the current dependency inventory, ownership
+and named-contract proposal, ordered follow-up queue, and handoff audit and
+closure evidence.
+
+The umbrella generated ideas 704 through 712: BIR semantic views, the prepared
+fact boundary, common MIR query migration, the positive stack-destination
+authority gate, x86/AArch64/RV64 target migrations, BIR route quarantine, and
+trailing debug/test vocabulary cleanup. The guard is expected to shrink first
+through producer and common-consumer work in 704-706, then target work in
+708-710, private implementation quarantine in 711, and final proof vocabulary
+cleanup in 712.
+
+Only BIR-private builders, prerequisite walkers, indexes, facades, and narrow
+route-to-named adapters may remain as temporary route-numbered compatibility.
+They may not expose complete route records to prealloc, MIR, targets, prepared
+records, public headers, or public tests, and idea 711 owns their shrink or
+retirement.
+
+Ideas 647 and 655 remain parked until idea 707 is accepted with a unique,
+complete positive prepared producer row containing destination and source
+homes, selected move and freshness, publication, and relevant stack-source or
+branch-load evidence; cursor-bound MIR consumption must accept only
+`Available`, and positive plus fail-closed negative proof must pass. Merely
+creating idea 707 or observing route agreement or dumps does not satisfy this
+gate.
 
 ## Reviewer Reject Signals
 
