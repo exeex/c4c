@@ -1,307 +1,205 @@
-# Prealloc Current-Block Routing Authority Closure Runbook
+# Prepared Routing Root/Dependency Classification Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/716_prealloc_current_block_routing_authority_closure.md
-Resumed after completion of: ideas/closed/717_current_block_routed_value_authority_decomposition.md
+Source Idea: ideas/open/718_prepared_routing_root_dependency_classification_decomposition.md
+Activated from blocked: ideas/open/716_prealloc_current_block_routing_authority_closure.md
 
 ## Purpose
 
-Separate attachment, diagnostic identity, edge authority, and fixture semantics
-before returning to bounded AArch64 consumption.
+Replace the repeated integration-driven root/dependency collision with focused,
+owned classification contracts before further backend implementation.
 
 ## Goal
 
-Prove that only complete, invariant edge-derived prepared facts authorize a
-current-block incoming-expression answer.
+Reject mismatched direct publication roots without discarding legitimate
+composed dependencies, then hand the proven authority rule back to idea 716.
 
 ## Core Rule
 
-Establish each authority boundary with its own registered contract. Route 5 is
-diagnostic-only, attachment is not policy evidence, and the AArch64 integration
-test is adopted only after the focused probes are green.
+Direct-root classification, composed dependency authority, memory-backed
+source/home routing, and short-circuit composition are separate seams. Prove
+each independently before rerunning unchanged AArch64 integration.
 
 ## Read First
 
+- `ideas/open/718_prepared_routing_root_dependency_classification_decomposition.md`
 - `ideas/open/716_prealloc_current_block_routing_authority_closure.md`
-- `ideas/open/713_current_block_edge_bound_routing_consumption_decomposition.md`
-- `review/step4_aarch64_consumption_review.md`
-- `review/step4_aarch64_consumption_rereview.md`
+- `review/step6_2_final_acceptance_review.md`
 - `src/backend/prealloc/prepared_lookups.hpp`
 - `src/backend/prealloc/publication_plans.cpp`
-- `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+- `tests/backend/case/current_block_direct_publication_identity_probe.cpp`
+- `tests/backend/case/current_block_transitive_dependency_closure_probe.cpp`
 
 ## Current Targets
 
-- Function-context ownership and prepared-lookup lifetime.
-- Route 5 diagnostic-only enforcement.
-- Complete edge-derived incoming-expression authority.
-- Integration fixture policy-versus-attachment separation.
-- Bounded AArch64 adoption after focused proof.
+- Direct publication-root classification.
+- Composed operand-dependency authority.
+- Memory-backed source/home authority.
+- Short-circuit add/select dependency composition.
+- Stable-key owner-query behavior across all applicable facts.
 
 ## Non-Goals
 
-- Do not retire Route 5 payloads or resume broader idea 705 work.
-- Do not use target reconstruction, function-wide scans, pointer identity,
-  successor-only identity, or unique Route 5 selection as authority.
-- Do not rewrite supported integration vectors or change fixture semantics to
-  preserve them.
-- Do not combine independent probes into the existing integration test.
+- Do not modify supported integration vectors or original fixture producers.
+- Do not infer authority in AArch64 or from Route 5, names, numeric identities,
+  successor-only keys, attachment, or memory homes alone.
+- Do not treat the current dirty implementation/test candidates as accepted
+  progress; they are unaccepted evidence until this runbook proves them.
+- Do not resume idea 716 integration implementation before focused seams are
+  bound and green.
 
 ## Execution Rules
 
-- Establish a fresh registered baseline before semantic changes.
-- Keep one primary contract per focused C++ probe under `tests/backend/bir/` or
-  `tests/backend/mir/`.
-- Prove authority without consulting Route 5 before target adoption.
-- For every code-changing step run build, the named focused test, and the
-  supervisor-selected matching proof command.
-- Run fresh broader backend proof at the integration and handback checkpoints.
+- Keep one primary authority contract per focused registered probe.
+- Establish matching baseline and after commands for every code-changing step.
+- Bind each probe to an owner-side semantic boundary before implementation.
+- Preserve complete destination, semantic origin, and all-applicable-fact
+  agreement; incomplete or inconsistent facts fail closed.
+- Use the large AArch64 tests only as final integration proof.
 
 ## Ordered Steps
 
-### Step 1: Establish the authority-collision baseline
+### Step 1: Establish the blocked failure-family baseline
 
-Goal: record the two rejected Step 4 routes and identify the first authoritative
-fact each one lacks.
+Goal: record the restored-contract failures and separate accepted facts from
+unaccepted dirty candidates.
 
 Actions:
 
-- Preserve the owner-attachment correction as a candidate independent seam.
-- Record where Route 5 currently becomes incoming-expression authority.
-- Record how policy construction and lookup attachment are coupled in the
-  integration fixture.
-- Register or select the five primary contracts named by the source idea.
+- Reproduce the supervisor-selected backend baseline with the original
+  policy-present vectors and `%rhs.add`/`%short.selected` producers restored.
+- Record direct root 811 as incorrectly incoming-authoritative and dependency
+  810 as legitimately required, without encoding either number in a rule.
+- Record the independent memory-source and short-circuit failure statuses.
+- Inventory existing registered probes and registration conventions before
+  choosing whether to add or extend a focused contract.
 
 Completion check:
 
-- Each collision maps to one owned seam and one registered primary contract;
-  no AArch64 behavior change is attempted.
+- The failure family, first bad fact, proving command, and candidate-versus-
+  accepted distinction are explicit; no implementation or expectation change
+  is claimed as progress.
 
-### Step 2: Prove owner attachment and lifetime independently
+### Step 2: Extract four focused classification probes
 
-Goal: retain the valid ownership correction without granting routing authority.
-
-Primary target:
-`tests/backend/mir/backend_prealloc_current_block_lookup_attachment_lifetime_test.cpp`
+Goal: replace the monolithic integration discovery surface with four
+single-seam registered contracts.
 
 Actions:
 
-- Prove lookup construction occurs at the prealloc/function-context owner.
-- Prove copied block contexts retain valid shared lookup lifetime.
-- Prove missing attachment fails closed.
-- Do not require Route 5 or a positive incoming-expression answer.
+- Add or select one probe each for direct roots, composed dependencies,
+  memory-backed source/home authority, and short-circuit dependency
+  composition.
+- Make every probe state positive and fail-closed negative outcomes without
+  importing unrelated integration behavior.
+- Register each probe through the repository-native test path.
 
 Completion check:
 
-- The registered lifetime contract is green and independent of routing policy.
+- Four independently runnable probes fail for their owned missing capability
+  and do not rely on AArch64 integration expectation changes.
 
-### Step 3: Enforce Route 5 diagnostic-only non-authority
+### Step 3: Bind each probe to one owned backend seam
 
-Goal: make Route 5 unable to seed, replace, erase, or authorize routing facts.
-
-Primary target:
-`tests/backend/bir/backend_prealloc_route5_diagnostic_non_authority_test.cpp`
+Goal: identify the smallest semantic owner responsible for each classification.
 
 Actions:
 
-- Exercise missing, unique, agreeing, and conflicting Route 5 diagnostics.
-- Hold authoritative prepared edge facts constant while Route 5 varies.
-- Remove any Route 5-to-`Available` synthesis or replacement path.
+- Define the distinction between a routed value's direct publication root and
+  its legitimate composed operand dependencies.
+- Map stable-key owner-query inputs and outputs for each focused probe.
+- Define memory source/home evidence and short-circuit composition without
+  granting authority from membership or storage identity alone.
+- Specify how multiple and parallel applicable facts must agree.
 
 Completion check:
 
-- The authoritative fact set and query status are unchanged by Route 5 input;
-  build and focused proof are green.
+- Every probe maps to one owner-side rule and one implementation surface; no
+  target-local or testcase-named classification remains.
 
-### Step 4: Bind complete edge-derived incoming-expression authority
+### Step 4: Implement direct-root classification
 
-Goal: authorize `Available` only from complete and invariant prepared edge
-facts.
-
-Primary target:
-`tests/backend/bir/backend_prealloc_current_block_incoming_expression_authority_test.cpp`
+Goal: reject a mismatched direct publication root without broad filtering.
 
 Actions:
 
-- Carry predecessor, destination, source semantics, and semantic origin from
-  the prepared edge fact into query authority.
-- Require agreement across every applicable edge fact.
-- Prove available, missing, ambiguous, and mismatched outcomes, including
-  parallel predecessors and destinations.
+- Implement the narrowest generic owner-side distinction proven by the direct
+  root probe.
+- Preserve destination, semantic-origin, and complete-transfer gates.
+- Run build, the direct-root probe, and the matching delegated subset.
 
 Completion check:
 
-- No successor-only or result-name collapse can produce `Available`; the full
-  focused authority matrix is green without Route 5.
+- The direct-root positive/negative matrix is green without changing composed
+  dependency behavior or using named-value shortcuts.
 
-### Step 5: Separate fixture policy from attachment
+### Step 5: Implement composed dependency preservation
 
-Goal: make integration setup state exactly which policy exists and whether its
-lookup is attached.
-
-Primary target:
-`tests/backend/mir/backend_aarch64_current_block_fixture_policy_attachment_test.cpp`
+Goal: keep a legitimate composed operand authoritative when its enclosing
+direct root is rejected.
 
 Actions:
 
-- Provide independent policy-present and attachment-present controls.
-- Prove a supported positive contains real complete edge authority.
-- Prove detached and policy-absent cases fail closed as separate negatives.
+- Implement dependency authority only from the complete prepared composition
+  contract at the owner boundary.
+- Prove unrelated operands and incomplete or mismatched composition fail
+  closed.
+- Prove multiple and parallel applicable facts require agreement.
 
 Completion check:
 
-- The registered fixture contract distinguishes all axes without changing the
-  existing integration vectors.
+- The composed-dependency probe is green alongside the direct-root probe; root
+  rejection does not erase legitimate dependency authority.
 
-### Step 6.1: Attach complete routing facts at the prepared owner boundary
+### Step 6: Implement memory-backed source/home authority
 
-Goal: make the already-queryable complete routing authority part of the
-owner-bound `PreparedFunctionLookups` artifact before target consumption.
+Goal: resolve memory-backed routing independently of root/dependency
+classification.
 
 Actions:
 
-- Add an owned current-block routing fact collection to
-  `PreparedFunctionLookups` with the same function-context lifetime and copied
-  block-context visibility proven by Step 2.
-- Populate that collection during prepared lookup construction from the
-  complete edge-derived facts proven by Step 4.
-- Make the stable-key query read the owner-attached collection directly; do
-  not require an external routing-fact vector at the consumption boundary.
-- Preserve explicit missing, ambiguous, and mismatched outcomes and keep Route
-  5 diagnostic-only.
-- Extend the focused prepared-lookup contracts to prove attachment, query
-  availability, and fail-closed behavior without AArch64 reconstruction.
+- Bind memory-backed source/home evidence to its complete prepared semantic
+  contract.
+- Reject attachment-only, home-only, missing-origin, and mismatched cases.
+- Run the focused memory probe with the prior focused probes.
 
 Completion check:
 
-- A `PreparedFunctionLookups` owner carries the complete routing fact
-  collection and the stable-key query consumes it without an externally
-  supplied vector; focused build and authority/lifetime proof are green.
+- Memory-backed positives and negatives are green without target
+  reconstruction or supported-vector reclassification.
 
-### Step 6.2.1: Establish generic publication semantic origin at the prepared owner
+### Step 7: Implement short-circuit dependency composition
 
-Goal: ensure every unchanged supported incoming-expression fixture publishes
-complete, non-`Unknown` semantic origin into the owner-attached artifact before
-any target consumes it.
-
-Primary targets:
-`tests/backend/bir/backend_prealloc_current_block_incoming_expression_authority_test.cpp`
-and the prepared-lookup focused contracts extended by Step 6.1.
+Goal: prove the original add/select producer chain through generic composition.
 
 Actions:
 
-- Trace the prepared publication path used by the unchanged supported AArch64
-  fixtures and identify why otherwise complete owner-attached facts retain
-  `Unknown` semantic origin.
-- Publish semantic origin from the prepared edge/publication contract at the
-  owner boundary; do not infer or patch it in AArch64 consumption.
-- Restore or prove the transfer-level destination invariant: an aggregate
-  prepared transfer whose result disagrees with its selected edge or
-  publication must fail closed rather than establish semantic origin.
-- Define which routed values a complete prepared edge semantically authorizes;
-  derive each value's source identity from that edge contract rather than
-  rewriting source identity while appending a fact.
-- Add a focused matrix for every value category required by the unchanged
-  incoming-expression integration contract, including scalar operands and
-  immediate-backed values if they are genuinely authorized, plus unrelated
-  operands and mismatched transfer destinations as negative cases.
-- Prove agreement across every applicable fact for predecessor, destination,
-  source semantics, and semantic origin, including multiple and parallel edge
-  facts for the same routed value.
-- Keep fact preparation at the `PreparedFunctionLookups` owner boundary and
-  keep Route 5, AArch64 inputs, result-name matching, and target-local scans out
-  of authority construction.
-- Re-run the unchanged supported fixture matrix and prove that its positive
-  owner facts have a concrete semantic origin while missing or genuinely
-  incomplete publication remains fail closed.
+- Preserve the original producer semantics in the focused contract.
+- Bind add/select dependencies through complete owner-prepared composition.
+- Reject missing producer, mismatched destination, and incomplete transfer
+  authority without weakening the fixture.
 
 Completion check:
 
-- Focused authority and prepared-lookup contracts prove non-`Unknown`
-  publication semantic origin and complete coverage for every unchanged
-  supported incoming-expression case, while incomplete, inconsistent,
-  unrelated, ambiguous, and mismatched facts fail closed; no expectation
-  rewrite or testcase-shaped authority synthesis is used.
+- The short-circuit probe and all earlier probes are green with both producer
+  roles represented and no named-case rule.
 
-Route checkpoint:
+### Step 8: Prove unchanged integration and hand back
 
-- The generic owner-bound publication-origin correction, owner-only consumer,
-  policy-absent negative, and complete-transfer/fail-closed focused matrix are
-  separable candidates from the rejected integration edits.
-- Do not accept this step while either policy-present supported vector is
-  rewritten or the short-circuit integration fixture omits its original
-  `%rhs.add` and `%short.selected` producers.
-
-### Step 6.2.2: Restore unchanged integration contracts under owner authority
-
-Goal: prove the generic owner publication correction against the original
-policy-present vectors and short-circuit fixture semantics.
-
-Primary targets:
-`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`,
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`, and the
-prepared-lookup focused contracts extended in Step 6.2.1.
+Goal: validate the decomposed authority family against idea 716's unchanged
+contracts.
 
 Actions:
 
-- Restore the policy-present `MismatchedSource` and `MemorySource` routing
-  expectations that preceded the rejected Step 6.2 dirty slice; repair generic
-  prepared authority so both pass without reclassification.
-- Restore the `%rhs.add` and `%short.selected` short-circuit fixture producers
-  and preserve their original uses; complete the owner publication metadata
-  without weakening or replacing the fixture.
-- Retain the genuinely policy-absent, unattached row as an explicit negative;
-  do not use that negative to justify changes to policy-present rows.
-- Retain complete `PreparedJoinTransfer.result` destination authority and the
-  focused fail-closed cases for missing, incomplete, mismatched, duplicate,
-  unrelated, ambiguous, multiple, and parallel applicable facts.
-- Keep semantic-origin construction generic and owner-bound. Do not add
-  testcase-shaped matching, target-local reconstruction, Route 5 authority,
-  result-name shortcuts, or fixture-only source rewriting.
-- Run focused prepared-lookup and authority proofs, both restored integration
-  contracts, and the supervisor-selected matching broader backend proof.
-
-Completion check:
-
-- Both original policy-present vectors and both restored short-circuit
-  producers pass under the generic owner-attached query; the policy-absent row
-  remains negative; complete transfer-result authority succeeds only when all
-  applicable facts agree and every incomplete or inconsistent case fails
-  closed; no supported expectation or fixture semantic is weakened.
-
-### Step 6.3: Adopt bounded AArch64 consumption
-
-Goal: consume the proven owner-attached query without reconstruction.
-
-Primary target:
-`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
-
-Actions:
-
-- Keep AArch64 limited to the stable consumption key and attached lookup.
-- Remove local construction of routing facts from Route 5, MIR, value-home,
-  publication-plan, or other target-local inputs.
-- Preserve unchanged supported integration expectations.
-- Run all focused contracts, the integration test, and fresh broader backend
+- Rerun the original policy-present routing vectors and instruction-dispatch
+  fixture with `%rhs.add` and `%short.selected` present.
+- Run all focused contracts and fresh supervisor-selected broader backend
   proof.
+- Record the generic authority handback and remaining status for idea 716.
+- Ask the plan owner to close this initiative and reactivate idea 716 only when
+  the source idea and regression gate are satisfied.
 
 Completion check:
 
-- Focused, integration, and broader proof are green; AArch64 contains no
-  authority builder or fallback; no positive depends on Route 5.
-
-### Step 7: Hand back to idea 713
-
-Goal: return the closed authority contract to the still-open bounded-consumption
-initiative.
-
-Actions:
-
-- Record durable completed contract and proof in idea 716.
-- Switch lifecycle execution back to idea 713 at its Step 4 boundary.
-- Keep idea 705 blocked until idea 713 completes its handback.
-
-Completion check:
-
-- Idea 716 is ready to close and idea 713 can resume without unresolved Route 5,
-  edge-identity, attachment, or fixture-policy ambiguity.
+- Focused and unchanged integration proof are green, no rejected fixture edit
+  is present, and idea 716 can resume with a generic proven authority contract.
