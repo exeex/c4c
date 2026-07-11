@@ -178,7 +178,43 @@ Completion check:
   collection and the stable-key query consumes it without an externally
   supplied vector; focused build and authority/lifetime proof are green.
 
-### Step 6.2: Adopt bounded AArch64 consumption
+### Step 6.2: Repair complete invariant owner-prepared fact coverage
+
+Goal: prove that the owner-attached artifact covers the unchanged
+incoming-expression contract from complete prepared edge semantics before any
+target consumes it.
+
+Primary targets:
+`tests/backend/bir/backend_prealloc_current_block_incoming_expression_authority_test.cpp`
+and the prepared-lookup focused contracts extended by Step 6.1.
+
+Actions:
+
+- Restore or prove the transfer-level destination invariant: an aggregate
+  prepared transfer whose result disagrees with its selected edge or
+  publication must fail closed rather than establish semantic origin.
+- Define which routed values a complete prepared edge semantically authorizes;
+  derive each value's source identity from that edge contract rather than
+  rewriting source identity while appending a fact.
+- Add a focused matrix for every value category required by the unchanged
+  incoming-expression integration contract, including scalar operands and
+  immediate-backed values if they are genuinely authorized, plus unrelated
+  operands and mismatched transfer destinations as negative cases.
+- Prove agreement across every applicable fact for predecessor, destination,
+  source semantics, and semantic origin, including multiple and parallel edge
+  facts for the same routed value.
+- Keep fact preparation at the `PreparedFunctionLookups` owner boundary and
+  keep Route 5, AArch64 inputs, result-name matching, and target-local scans out
+  of authority construction.
+
+Completion check:
+
+- Focused authority and prepared-lookup contracts prove complete coverage for
+  the unchanged supported incoming-expression cases and fail closed for
+  incomplete, inconsistent, unrelated, ambiguous, and mismatched facts; no
+  expectation rewrite or testcase-shaped authority synthesis is used.
+
+### Step 6.3: Adopt bounded AArch64 consumption
 
 Goal: consume the proven owner-attached query without reconstruction.
 
