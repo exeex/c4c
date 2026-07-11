@@ -1,54 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/688_initializer_lowering_bridge_isolation.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Narrow Initializer Value Materialization
+Current Step ID: Step 5
+Current Step Title: Verify Known Global Address Import Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the initializer value materialization narrowing in
-`src/backend/bir/lir_to_bir/global_initializers.cpp`.
+Step 5 verified the known global-address import/publication boundaries without
+source changes.
 
-Exact files/helpers touched:
-- Added `AggregateInitializerMaterialization` as the adapter-local carrier for
-  type declarations, structured-layout compatibility, emitted values, pointer
-  initializer offsets, and pointer value-index publication.
-- Added pointer-specific helpers for parsing, recording, and clearing aggregate
-  pointer initializer slots so the spelling-to-fact conversion stays private to
-  initializer lowering.
-- Split aggregate materialization into scalar, array, struct, and zero-fill
-  helpers while keeping the exported `lower_aggregate_initializer*()` entry
-  points and recursive behavior unchanged.
+Boundary findings:
+- `resolve_known_global_address()` remains the only known global-address
+  publisher; it writes `GlobalInfo::known_global_address` in
+  `src/backend/bir/lir_to_bir/globals.cpp`.
+- The module adapter call order still resolves aggregate pointer initializer
+  offsets, string-pointer target ids, and resolved pointer value ids before
+  publishing known global-address aliases in
+  `src/backend/bir/lir_to_bir/module.cpp`.
+- `is_known_function_global_address()` and the fenced raw-symbol bridge still
+  have existing memory-lowering consumers, so removing or renaming them from
+  `lowering.hpp` would cross into unowned memory files rather than tighten this
+  packet's owned boundary.
 
-Behavioral scope: no scalar, byte-string, array, aggregate, pointer initializer
-parsing semantics, relocation spelling, prepared object-data publication, BIR
-output, diagnostics, runtime behavior, expectations, unsupported markers,
-tests, allowlists, or harness policy were changed.
+No helper signature/name tightening was useful inside the owned files. No
+emitted BIR facts, prepared object data, relocation spelling, target behavior,
+diagnostics, expectations, unsupported markers, tests, allowlists, or harness
+policy were changed.
 
 ## Suggested Next
 
-Next coherent packet: Step 5 should verify known global-address import
-boundaries, focusing on whether known global-address publication and consumers
-remain local to the LIR-to-BIR adapter without changing emitted BIR facts or
-downstream prepared/target behavior.
+Next coherent packet: supervisor should decide whether Step 5 is complete as a
+verified no-op or whether a broader packet should include the memory-lowering
+consumers before any public helper signature/name tightening is attempted.
 
 ## Watchouts
 
-- The public `lower_aggregate_initializer*()` helper signatures remain
-  unchanged; this packet narrowed implementation ownership only.
-- Pointer initializer value indices still record `out->size()` before pushing
-  the named pointer value, preserving relocation-slot/value-index publication
-  order.
-- The byte-string and integer-array fast paths still run before recursive array
-  descent; Step 5 should avoid turning known global-address cleanup into
-  semantic initializer repair.
+- `src/backend/bir/lir_to_bir/memory/provenance.cpp` and
+  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` consume
+  `is_known_function_global_address()` from `lowering.hpp`; they were inspected
+  only to establish the boundary and were not edited.
+- `GlobalInfo::known_global_address` is still consumed by memory provenance
+  lowering after the module adapter publishes it. Tightening that data shape is
+  broader than this packet's owned files.
+- Avoid turning future boundary cleanup into classification-only churn; a
+  useful follow-up should either remove an actual cross-file dependency or keep
+  behavior bit-for-bit identical.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)'`
 
-Result: passed. Build completed and 303 selected tests passed with 0 failures,
-including `string_authority_guard`. Fresh proof output is preserved in
-`test_after.log`.
+Result: passed. Build completed and the selected backend plus
+`string_authority_guard` subset passed with 0 failures. Fresh proof output is
+preserved in `test_after.log`.
