@@ -1097,6 +1097,60 @@ PreparedFactBoundaryEvidence select_prepared_current_block_join_source_evidence(
       producer_instruction_index);
 }
 
+PreparedCurrentBlockJoinRoutingFact
+select_prepared_current_block_join_routing_fact(
+    const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id,
+    ValueNameId destination_value_name,
+    std::optional<PreparedValueId> source_value_id,
+    ValueNameId source_value_name,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role) {
+  PreparedCurrentBlockJoinRoutingFact result{
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .destination_value_id = destination_value_id,
+      .destination_value_name = destination_value_name,
+      .source_value_id = source_value_id,
+      .source_value_name = source_value_name,
+      .routed_value_id = routed_value_id,
+      .routed_value_name = routed_value_name,
+      .role = role,
+  };
+  const PreparedCurrentBlockJoinRoutingFact* selected = nullptr;
+  bool related_mismatch = false;
+  for (const auto& candidate : facts) {
+    if (!candidate || candidate.role != role ||
+        candidate.routed_value_id != routed_value_id ||
+        candidate.routed_value_name != routed_value_name) {
+      continue;
+    }
+    if (candidate.predecessor_label != predecessor_label ||
+        candidate.successor_label != successor_label ||
+        candidate.destination_value_id != destination_value_id ||
+        candidate.destination_value_name != destination_value_name ||
+        candidate.source_value_id != source_value_id ||
+        candidate.source_value_name != source_value_name) {
+      related_mismatch = true;
+      continue;
+    }
+    if (selected != nullptr) {
+      result.status = PreparedFactBoundaryStatus::Ambiguous;
+      return result;
+    }
+    selected = &candidate;
+  }
+  if (selected == nullptr) {
+    result.status = related_mismatch ? PreparedFactBoundaryStatus::Mismatched
+                                     : PreparedFactBoundaryStatus::Missing;
+    return result;
+  }
+  return *selected;
+}
+
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
@@ -1993,7 +2047,7 @@ void attach_named_current_block_join_source_evidence(
     }
     selected = &transfer;
   }
-  return selected == fact.publication->join_transfer;
+  return selected != nullptr;
 }
 
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
@@ -2063,6 +2117,35 @@ prepare_current_block_join_parallel_copy_source_facts(
     }
     append_value_id(result.incoming_expression_value_ids, home->value_id);
     append_value_name(result.incoming_expression_value_names, home->value_name);
+  };
+  auto append_routing_fact = [&result](
+                                 const PreparedCurrentBlockJoinParallelCopySourceFact& fact,
+                                 const PreparedValueHome* routed_home,
+                                 PreparedCurrentBlockJoinRoutingRole role) {
+    if (fact.status != PreparedEdgeCopySourceFactsStatus::Available ||
+        fact.publication == nullptr || fact.move == nullptr ||
+        (!fact.immediate_source &&
+         (fact.source_freshness_status !=
+              PreparedValueFreshnessQueryStatus::Selected ||
+          !fact.source_freshness_authority.has_value())) ||
+        routed_home == nullptr ||
+        routed_home->value_id == PreparedValueId{0} ||
+        routed_home->value_name == kInvalidValueName) {
+      return;
+    }
+    result.routing_facts.push_back(PreparedCurrentBlockJoinRoutingFact{
+        .status = PreparedFactBoundaryStatus::Available,
+        .predecessor_label = fact.predecessor_label,
+        .successor_label = fact.successor_label,
+        .destination_value_id = fact.destination_value_id,
+        .destination_value_name = fact.destination_value_name,
+        .source_value_id = fact.source_value_id,
+        .source_value_name = fact.source_value_name,
+        .routed_value_id = routed_home->value_id,
+        .routed_value_name = routed_home->value_name,
+        .role = role,
+        .publication_semantic_origin = fact.publication_semantic_origin,
+    });
   };
 
   for (const auto& bundle : inputs.value_locations->move_bundles) {
@@ -2206,6 +2289,22 @@ prepare_current_block_join_parallel_copy_source_facts(
         // only. Prepared selection above is driven solely by named evidence.
         attach_route5_current_block_join_source_if_agrees(
             *inputs.names, inputs.route5_edge_join_sources, inputs.block, fact);
+        if (fact.source_is_incoming_expression) {
+          append_routing_fact(
+              fact,
+              fact.source_home,
+              PreparedCurrentBlockJoinRoutingRole::IncomingExpression);
+        }
+        if (fact.destination_is_source_value) {
+          append_routing_fact(fact,
+                              fact.destination_home,
+                              PreparedCurrentBlockJoinRoutingRole::Source);
+        }
+        if (fact.source_is_source_value) {
+          append_routing_fact(fact,
+                              fact.source_home,
+                              PreparedCurrentBlockJoinRoutingRole::Source);
+        }
       }
 
       result.facts.push_back(fact);

@@ -1674,6 +1674,33 @@ struct PreparedCurrentBlockJoinParallelCopySourceFact {
   bool immediate_source = false;
 };
 
+enum class PreparedCurrentBlockJoinRoutingRole {
+  IncomingExpression,
+  Source,
+};
+
+struct PreparedCurrentBlockJoinRoutingFact {
+  PreparedFactBoundaryStatus status = PreparedFactBoundaryStatus::Missing;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  PreparedValueId routed_value_id = 0;
+  ValueNameId routed_value_name = kInvalidValueName;
+  PreparedCurrentBlockJoinRoutingRole role =
+      PreparedCurrentBlockJoinRoutingRole::IncomingExpression;
+  PreparedCurrentBlockJoinParallelCopySourceFact::PublicationSemanticOrigin
+      publication_semantic_origin =
+          PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::Unknown;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == PreparedFactBoundaryStatus::Available;
+  }
+};
+
 struct PreparedCurrentBlockJoinParallelCopySourceFacts {
   PreparedCurrentBlockJoinParallelCopySourceStatus status =
       PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
@@ -1682,6 +1709,7 @@ struct PreparedCurrentBlockJoinParallelCopySourceFacts {
   std::vector<ValueNameId> incoming_expression_value_names;
   std::vector<PreparedValueId> source_value_ids;
   std::vector<ValueNameId> source_value_names;
+  std::vector<PreparedCurrentBlockJoinRoutingFact> routing_facts;
 };
 
 struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
@@ -1711,6 +1739,19 @@ select_prepared_current_block_join_source_evidence(
     BlockLabelId producer_block_label,
     ValueNameId produced_value_name,
     std::size_t producer_instruction_index);
+
+[[nodiscard]] PreparedCurrentBlockJoinRoutingFact
+select_prepared_current_block_join_routing_fact(
+    const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id,
+    ValueNameId destination_value_name,
+    std::optional<PreparedValueId> source_value_id,
+    ValueNameId source_value_name,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role);
 
 enum class PreparedTypedStackSourcePublicationStatus {
   Available,

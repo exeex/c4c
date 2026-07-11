@@ -101,6 +101,63 @@ int current_block_named_producer_evidence_is_independent_and_unique() {
   return 0;
 }
 
+int current_block_routing_facts_are_edge_bound_and_unique() {
+  const prepare::PreparedCurrentBlockJoinRoutingFact fact{
+      .status = prepare::PreparedFactBoundaryStatus::Available,
+      .predecessor_label = c4c::BlockLabelId{1},
+      .successor_label = c4c::BlockLabelId{2},
+      .destination_value_id = prepare::PreparedValueId{10},
+      .destination_value_name = c4c::ValueNameId{10},
+      .source_value_id = prepare::PreparedValueId{20},
+      .source_value_name = c4c::ValueNameId{20},
+      .routed_value_id = prepare::PreparedValueId{20},
+      .routed_value_name = c4c::ValueNameId{20},
+      .role = prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression,
+      .publication_semantic_origin =
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::PreparedJoinTransfer,
+  };
+  auto select = [&](const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact>& facts,
+                    c4c::BlockLabelId predecessor,
+                    c4c::BlockLabelId successor,
+                    prepare::PreparedValueId destination) {
+    return prepare::select_prepared_current_block_join_routing_fact(
+        facts,
+        predecessor,
+        successor,
+        destination,
+        c4c::ValueNameId{10},
+        prepare::PreparedValueId{20},
+        c4c::ValueNameId{20},
+        prepare::PreparedValueId{20},
+        c4c::ValueNameId{20},
+        prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression);
+  };
+  const auto selected = select({fact}, c4c::BlockLabelId{1},
+                               c4c::BlockLabelId{2},
+                               prepare::PreparedValueId{10});
+  const auto parallel_edge = select({fact}, c4c::BlockLabelId{3},
+                                    c4c::BlockLabelId{2},
+                                    prepare::PreparedValueId{10});
+  const auto wrong_successor = select({fact}, c4c::BlockLabelId{1},
+                                      c4c::BlockLabelId{4},
+                                      prepare::PreparedValueId{10});
+  const auto wrong_destination = select({fact}, c4c::BlockLabelId{1},
+                                        c4c::BlockLabelId{2},
+                                        prepare::PreparedValueId{11});
+  const auto duplicate = select({fact, fact}, c4c::BlockLabelId{1},
+                                c4c::BlockLabelId{2},
+                                prepare::PreparedValueId{10});
+  if (!selected ||
+      parallel_edge.status != prepare::PreparedFactBoundaryStatus::Mismatched ||
+      wrong_successor.status != prepare::PreparedFactBoundaryStatus::Mismatched ||
+      wrong_destination.status != prepare::PreparedFactBoundaryStatus::Mismatched ||
+      duplicate.status != prepare::PreparedFactBoundaryStatus::Ambiguous) {
+    return fail("current-block routing facts should be unique and edge-bound");
+  }
+  return 0;
+}
+
 int public_headers_have_only_inventoried_compatibility_payloads() {
   // Step 1 inventory: these are legacy public compatibility/proof payloads.
   // The guard makes additions fail while their owning producer seams migrate.
@@ -146,6 +203,10 @@ int main() {
   }
   if (const int status =
           current_block_named_producer_evidence_is_independent_and_unique();
+      status != 0) {
+    return status;
+  }
+  if (const int status = current_block_routing_facts_are_edge_bound_and_unique();
       status != 0) {
     return status;
   }
