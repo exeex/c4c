@@ -151,7 +151,40 @@ Completion check:
 - Focused and broader proof are green and review finds no unresolved authority
   collision.
 
-### Step 6: Adopt owner-only AArch64 consumption
+### Step 6.1: Prepare and attach owner facts on every supported entry path
+
+Goal: make the already-proven owner authority available before target
+consumption on every supported integration path.
+
+Primary target:
+`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+
+Actions:
+
+- Inventory each supported dispatch and fixture entry path before changing the
+  AArch64 consumer; distinguish a missing owner, an attached owner with no
+  applicable facts, and an attached owner with authoritative facts.
+- Route every supported positive through the existing prealloc preparation and
+  owner-attachment boundary so its already-proven semantic inputs produce the
+  required owner facts. Do not synthesize facts in AArch64 or add a second
+  authority builder.
+- Preserve all supported expected routing vectors and their semantic policy
+  meaning. Fixture setup may expose the production owner boundary, but must not
+  inject testcase-shaped facts or relabel an owner-absent case as equivalent
+  proof.
+- Keep an explicit missing-owner/no-authoritative-fact negative that proves
+  fail-closed behavior.
+- Run the focused authority contracts, unchanged integration vectors, and the
+  supervisor-selected matching proof command.
+
+Completion check:
+
+- Every supported positive reaches AArch64 with an attached prepared owner and
+  authoritative facts produced by the shared upstream semantic route; explicit
+  absence still fails closed; unchanged focused, integration, and broader proof
+  is green.
+
+### Step 6.2: Adopt owner-only AArch64 consumption
 
 Goal: consume the proven owner-attached stable-key query without reconstruction.
 
@@ -161,13 +194,16 @@ Primary target:
 Actions:
 
 - Remove target-local authority construction and fallbacks.
+- Treat a missing owner or absent owner fact as unavailable; do not compensate
+  for incomplete Step 6.1 preparation inside the consumer.
 - Preserve every supported integration vector unchanged.
 - Run focused contracts, integration proof, and fresh broader backend proof.
 
 Completion check:
 
-- AArch64 only consumes the owner query, supported vectors are unchanged, and
-  focused, integration, and broader proof are green.
+- AArch64 only consumes the owner query, all supported entry paths were proven
+  prepared in Step 6.1, supported vectors are unchanged, and focused,
+  integration, and broader proof are green.
 
 ### Step 7: Hand back to idea 716
 
