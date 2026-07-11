@@ -1,6 +1,6 @@
 # LIR To BIR Adapter Boundary Umbrella
 
-Status: Open
+Status: Closed
 Type: Umbrella triage and follow-up idea generator
 Parent: `none`
 Handoff Directory: `docs/lir_bir_adapter_boundary/`
@@ -146,6 +146,42 @@ proof surface, and the downstream layers it must not edit.
 The closure note must state which RV64 scan and existing docs were used, which
 handoff documents were written, which follow-up ideas were generated, how they
 were ordered, and which adapter responsibilities remain intentionally deferred.
+
+## Closure Note
+
+Closed after the Step 5 readiness check confirmed the umbrella content satisfied
+the acceptance criteria. The durable handoff used the 2026-07-10 RV64 GCC
+torture backend scan pointers
+`build/agent_state/rv64_gcc_c_torture_backend_summary.tsv` and
+`build/agent_state/rv64_gcc_c_torture_backend_failed.txt`, plus existing
+context from `docs/bir_core_cleanup/`, `docs/bir_prealloc_fusion/`, and
+`docs/rv64_gcc_torture_post_contract/`.
+
+The umbrella wrote the durable handoff documents
+`docs/lir_bir_adapter_boundary/interface_inventory_handoff.md`,
+`docs/lir_bir_adapter_boundary/responsibility_classification_handoff.md`, and
+`docs/lir_bir_adapter_boundary/ordered_followup_plan.md`, with supporting
+step evidence in the same directory.
+
+Generated follow-up ideas are ordered by boundary clarity and blast-radius
+reduction:
+
+1. `ideas/open/685_lir_import_context_extraction.md`
+2. `ideas/open/686_private_detail_header_contraction.md`
+3. `ideas/open/687_structured_layout_bridge_isolation.md`
+4. `ideas/open/688_initializer_lowering_bridge_isolation.md`
+5. `ideas/open/689_memory_address_provenance_import_cleanup.md`
+6. `ideas/open/690_call_abi_import_boundary_cleanup.md`
+
+Deferred responsibilities remain assigned to future ideas or later umbrellas:
+canonical BIR route records and query surfaces, prepared/prealloc homes and
+frame/stack/call/storage products, carriers, wrappers, MIR consumers, target
+emission policy, and RV64/AArch64/x86-specific facts.
+
+Close-time regression guard passed with matching full-suite canonical logs:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+reported `before: passed=3331 failed=0 total=3331` and
+`after : passed=3331 failed=0 total=3331`.
 
 ## Reviewer Reject Signals
 
