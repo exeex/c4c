@@ -10931,6 +10931,15 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
     return fail("cast store-source metadata should publish for unique matching named BIR evidence");
   }
 
+  auto cast_missing_block_label = cast_inputs;
+  cast_missing_block_label.source_producer_block_label.clear();
+  if (const int result = expect_fail_closed(
+          cast_missing_block_label,
+          "cast missing named BIR producer block label");
+      result != 0) {
+    return result;
+  }
+
   auto cast_missing_evidence = cast_inputs;
   cast_missing_evidence.source_producer_evidence = std::nullopt;
   if (const int result = expect_fail_closed(

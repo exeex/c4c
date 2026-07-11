@@ -740,11 +740,23 @@ int requires_named_select_store_source_producer_evidence() {
            !plan.source_producer_instruction_index.has_value() &&
            plan.source_select == nullptr;
   };
+  const auto missing_block_label =
+      prepare::plan_prepared_store_source_publication({
+          .source_value = &store->value,
+          .destination_access = &destination_access,
+          .source_home = &home,
+          .intent =
+              prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+          .source_producer = &producer,
+          .source_producer_evidence = evidence,
+          .publication_instruction_index = 1,
+      });
   auto ambiguous = evidence;
   ambiguous.status = bir::BirViewStatus::Ambiguous;
   auto mismatched = evidence;
   mismatched.kind = bir::BirProducerKind::Binary;
-  if (!producer_metadata_absent(plan_with_evidence(std::nullopt)) ||
+  if (!producer_metadata_absent(missing_block_label) ||
+      !producer_metadata_absent(plan_with_evidence(std::nullopt)) ||
       !producer_metadata_absent(plan_with_evidence(ambiguous)) ||
       !producer_metadata_absent(plan_with_evidence(mismatched))) {
     return fail(

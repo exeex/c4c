@@ -3963,11 +3963,44 @@ prepared_store_source_producer(
   }
   return find_stack_object(context.function.prepared->stack_layout, slot->object_id);
 }
+[[nodiscard]] const prepare::PreparedStoreSourcePublicationPlan*
+find_precomputed_store_local_source_publication(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return nullptr;
+  }
+
+  const prepare::PreparedStoreSourcePublicationPlan* selected = nullptr;
+  for (const auto& record :
+       context.function.prepared->store_source_publications.records) {
+    if (record.function_name != context.function.control_flow->function_name ||
+        record.block_label != context.control_flow_block->block_label ||
+        record.instruction_index != instruction_index ||
+        record.plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &record.plan;
+  }
+  return selected;
+}
 [[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
 plan_store_local_source_publication(
     const module::BlockLoweringContext& context,
     const bir::StoreLocalInst& store,
     std::size_t instruction_index) {
+  if (const auto* precomputed =
+          find_precomputed_store_local_source_publication(context,
+                                                          instruction_index);
+      precomputed != nullptr) {
+    return *precomputed;
+  }
   const auto* access = prepared_memory_access(context, instruction_index);
   const auto* destination_slot =
       store_local_destination_frame_slot(context, access);
@@ -4006,6 +4039,15 @@ plan_store_local_source_publication(
             *context.function.control_flow);
     source_producers = &*fallback_source_producers;
   }
+  const auto source_producer_evidence =
+      source_producer != nullptr &&
+              context.function.prepared_lookups != nullptr &&
+              context.bir_block != nullptr
+          ? std::optional<bir::BirProducerResult>{bir::find_same_block_producer(
+                bir::make_bir_producer_view(*context.bir_block),
+                store.value,
+                instruction_index)}
+          : std::nullopt;
   prepare::PreparedStoreSourceDirectGlobalSelectChainDependency
       direct_global_select_chain;
   if (context.function.prepared != nullptr &&
@@ -4041,6 +4083,10 @@ plan_store_local_source_publication(
           direct_global_select_chain.root_instruction_index,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = source_producer,
+      .source_producer_evidence = source_producer_evidence,
+      .source_producer_block_label =
+          context.bir_block != nullptr ? context.bir_block->label
+                                       : std::string_view{},
   });
 }
 [[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
