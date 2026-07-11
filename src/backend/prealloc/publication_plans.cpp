@@ -1185,7 +1185,8 @@ query_prepared_current_block_join_routing_consumption(
     applicable.push_back(&candidate);
   }
   if (applicable.empty()) {
-    result.status = PreparedFactBoundaryStatus::Missing;
+    result.status = facts.empty() ? PreparedFactBoundaryStatus::Missing
+                                  : PreparedFactBoundaryStatus::Mismatched;
     return result;
   }
 
@@ -1220,9 +1221,9 @@ query_prepared_current_block_join_routing_consumption(
         candidate->successor_label != successor_label ||
         candidate->destination_value_id == 0 ||
         candidate->destination_value_name == kInvalidValueName ||
-        candidate->source_value_id !=
-            std::optional<PreparedValueId>{routed_value_id} ||
-        candidate->source_value_name != routed_value_name ||
+        ((candidate->source_value_id ==
+          std::optional<PreparedValueId>{routed_value_id}) !=
+         (candidate->source_value_name == routed_value_name)) ||
         candidate->publication_semantic_origin ==
             PreparedCurrentBlockJoinParallelCopySourceFact::
                 PublicationSemanticOrigin::Unknown) {
@@ -2619,20 +2620,24 @@ prepare_current_block_join_parallel_copy_source_facts(
   const auto direct_expression_names = result.incoming_expression_value_names;
   result.incoming_expression_value_names.clear();
   result.incoming_expression_value_ids.clear();
-  std::vector<ValueNameId> pending_expression_names = direct_expression_names;
-  std::unordered_set<ValueNameId> direct_expression_name_set(
-      direct_expression_names.begin(), direct_expression_names.end());
-  std::unordered_set<ValueNameId> processed_expression_names;
+  using DirectDependency = std::pair<ValueNameId, ValueNameId>;
+  std::vector<DirectDependency> pending_expression_names;
+  std::vector<DirectDependency> processed_expression_names;
+  for (const auto direct_name : direct_expression_names) {
+    pending_expression_names.emplace_back(direct_name, direct_name);
+  }
   while (!pending_expression_names.empty()) {
-    const auto value_name = pending_expression_names.back();
+    const auto [direct_name, value_name] = pending_expression_names.back();
     pending_expression_names.pop_back();
-    if (!processed_expression_names.insert(value_name).second) {
+    const DirectDependency direct_dependency{direct_name, value_name};
+    if (std::find(processed_expression_names.begin(),
+                  processed_expression_names.end(),
+                  direct_dependency) != processed_expression_names.end()) {
       continue;
     }
+    processed_expression_names.push_back(direct_dependency);
     const auto producer = producer_dependencies.find(value_name);
-    const bool direct_expression =
-        direct_expression_name_set.find(value_name) !=
-        direct_expression_name_set.end();
+    const bool direct_expression = value_name == direct_name;
     if (!direct_expression &&
         (producer == producer_dependencies.end() ||
          producer->second.producer_count != 1 ||
@@ -2646,7 +2651,7 @@ prepare_current_block_join_parallel_copy_source_facts(
     }
     for (auto operand = producer->second.operand_names.rbegin();
          operand != producer->second.operand_names.rend(); ++operand) {
-      pending_expression_names.push_back(*operand);
+      pending_expression_names.emplace_back(direct_name, *operand);
     }
   }
 
@@ -2657,6 +2662,55 @@ prepare_current_block_join_parallel_copy_source_facts(
                                                         value_name);
     if (value_id.has_value()) {
       append_value_id(result.incoming_expression_value_ids, *value_id);
+    }
+  }
+
+  // Compose the preserved publication identity and its proven producer
+  // dependency closure into stable-key facts.  The publication fields remain
+  // those of the direct edge source; only the routed key identifies the
+  // authorized dependency.
+  const auto direct_routing_facts = result.routing_facts;
+  for (const auto& direct_fact : direct_routing_facts) {
+    if (direct_fact.role !=
+        PreparedCurrentBlockJoinRoutingRole::IncomingExpression) {
+      continue;
+    }
+    for (const auto& [direct_name, dependency_name] :
+         processed_expression_names) {
+      if (direct_name != direct_fact.routed_value_name ||
+          dependency_name == direct_name) {
+        continue;
+      }
+      const auto dependency_id = find_indexed_prepared_value_id(
+          inputs.value_home_lookups,
+          inputs.regalloc,
+          inputs.value_locations,
+          dependency_name);
+      if (!dependency_id.has_value()) {
+        continue;
+      }
+      auto composed = direct_fact;
+      composed.routed_value_id = *dependency_id;
+      composed.routed_value_name = dependency_name;
+      const auto duplicate = std::find_if(
+          result.routing_facts.begin(),
+          result.routing_facts.end(),
+          [&](const PreparedCurrentBlockJoinRoutingFact& candidate) {
+            return candidate.predecessor_label == composed.predecessor_label &&
+                   candidate.successor_label == composed.successor_label &&
+                   candidate.destination_value_id == composed.destination_value_id &&
+                   candidate.destination_value_name == composed.destination_value_name &&
+                   candidate.source_value_id == composed.source_value_id &&
+                   candidate.source_value_name == composed.source_value_name &&
+                   candidate.routed_value_id == composed.routed_value_id &&
+                   candidate.routed_value_name == composed.routed_value_name &&
+                   candidate.role == composed.role &&
+                   candidate.publication_semantic_origin ==
+                       composed.publication_semantic_origin;
+          });
+      if (duplicate == result.routing_facts.end()) {
+        result.routing_facts.push_back(std::move(composed));
+      }
     }
   }
   return result;
