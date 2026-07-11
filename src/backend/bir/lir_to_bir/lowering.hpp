@@ -337,7 +337,6 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
   using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
   using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
 
@@ -1126,7 +1125,7 @@ class BirFunctionLowerer {
       const c4c::backend::LocalSlotPointerValues& local_slot_pointer_values,
       const PointerAddressMap& pointer_value_addresses,
       const c4c::backend::GlobalPointerMap& global_pointer_slots,
-      const GlobalAddressIntMap& global_address_ints,
+      const c4c::backend::GlobalAddressIntMap& global_address_ints,
       c4c::backend::LocalPointerValueAliasMap* local_pointer_value_aliases,
       c4c::backend::LocalIndirectPointerSlotSet* local_indirect_pointer_slots,
       PointerAddressMap* local_pointer_slot_addresses,
@@ -1155,14 +1154,14 @@ class BirFunctionLowerer {
       LocalPointerArrayBaseMap* local_pointer_array_bases,
       c4c::backend::GlobalPointerMap* global_pointer_slots,
       PointerAddressMap* pointer_value_addresses,
-      GlobalAddressIntMap* global_address_ints,
+      c4c::backend::GlobalAddressIntMap* global_address_ints,
       std::vector<bir::Inst>* lowered_insts);
   static bool try_lower_nonpointer_local_slot_load(
       std::string_view result_name,
       std::string_view slot_name,
       bir::TypeKind value_type,
       const c4c::backend::LocalAddressSlots& local_address_slots,
-      GlobalAddressIntMap* global_address_ints,
+      c4c::backend::GlobalAddressIntMap* global_address_ints,
       std::vector<bir::Inst>* lowered_insts);
   bool try_lower_tracked_local_pointer_slot_load(
       std::string_view result_name,
@@ -1482,7 +1481,7 @@ class BirFunctionLowerer {
   DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays_;
   DynamicGlobalScalarArrayMap dynamic_global_scalar_arrays_;
   c4c::backend::GlobalObjectPointerMap global_object_pointer_slots_;
-  GlobalAddressIntMap global_address_ints_;
+  c4c::backend::GlobalAddressIntMap global_address_ints_;
   GlobalObjectAddressIntMap global_object_address_ints_;
   std::vector<bir::Inst> hoisted_alloca_scratch_;
 };

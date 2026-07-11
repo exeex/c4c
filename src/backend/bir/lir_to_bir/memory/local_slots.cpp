@@ -2183,7 +2183,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
     const c4c::backend::LocalSlotPointerValues& local_slot_pointer_values,
     const PointerAddressMap& pointer_value_addresses,
     const c4c::backend::GlobalPointerMap& global_pointer_slots,
-    const GlobalAddressIntMap& global_address_ints,
+    const c4c::backend::GlobalAddressIntMap& global_address_ints,
     c4c::backend::LocalPointerValueAliasMap* local_pointer_value_aliases,
     c4c::backend::LocalIndirectPointerSlotSet* local_indirect_pointer_slots,
     PointerAddressMap* local_pointer_slot_addresses,
@@ -2487,7 +2487,7 @@ bool BirFunctionLowerer::try_lower_nonpointer_local_slot_load(
     std::string_view slot_name,
     bir::TypeKind value_type,
     const c4c::backend::LocalAddressSlots& local_address_slots,
-    GlobalAddressIntMap* global_address_ints,
+    c4c::backend::GlobalAddressIntMap* global_address_ints,
     std::vector<bir::Inst>* lowered_insts) {
   const auto result = std::string(result_name);
   const auto slot = std::string(slot_name);
@@ -2529,7 +2529,7 @@ BirFunctionLowerer::LocalSlotLoadResult BirFunctionLowerer::try_lower_local_slot
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     c4c::backend::GlobalPointerMap* global_pointer_slots,
     PointerAddressMap* pointer_value_addresses,
-    GlobalAddressIntMap* global_address_ints,
+    c4c::backend::GlobalAddressIntMap* global_address_ints,
     std::vector<bir::Inst>* lowered_insts) {
   const auto ptr_it = local_pointer_slots.find(std::string(ptr_name));
   if (ptr_it == local_pointer_slots.end()) {
