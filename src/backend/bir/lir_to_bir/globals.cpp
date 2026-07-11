@@ -199,10 +199,14 @@ bool requires_structured_global_type_ref(const c4c::codegen::lir::LirGlobal& glo
 
 }  // namespace
 
+namespace {
+
 bool is_known_function_link_name_id(LinkNameId link_name_id,
                                     const FunctionSymbolSet& function_symbols) {
   return function_symbols.contains_link_name_id(link_name_id);
 }
+
+}  // namespace
 
 bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
                                   const FunctionSymbolSet& function_symbols) {

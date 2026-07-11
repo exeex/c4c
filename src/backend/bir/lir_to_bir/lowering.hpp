@@ -260,8 +260,6 @@ std::optional<GlobalAddress> resolve_known_global_address(
     GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     std::unordered_set<std::string>* active);
-bool is_known_function_link_name_id(LinkNameId link_name_id,
-                                    const FunctionSymbolSet& function_symbols);
 bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
                                   const FunctionSymbolSet& function_symbols);
 bool is_known_function_global_address(const GlobalAddress& address,
