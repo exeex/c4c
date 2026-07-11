@@ -231,7 +231,7 @@ static bir::MemoryAccessProvenance pointer_value_memory_provenance_with_layout_a
 
 std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer_values(
     const std::vector<std::string>& element_slots,
-    const LocalPointerValueAliasMap& local_pointer_value_aliases) {
+    const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases) {
   if (element_slots.empty()) {
     return std::nullopt;
   }

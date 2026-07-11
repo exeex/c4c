@@ -354,7 +354,6 @@ class BirFunctionLowerer {
 
   using LocalAggregateSlotMap = c4c::backend::LocalAggregateSlotMap;
   using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet;
-  using LocalPointerValueAliasMap = c4c::backend::LocalPointerValueAliasMap;
 
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
@@ -843,7 +842,7 @@ class BirFunctionLowerer {
       std::vector<bir::Inst>* lowered_insts);
   static std::optional<std::vector<bir::Value>> collect_local_pointer_values(
       const std::vector<std::string>& element_slots,
-      const LocalPointerValueAliasMap& local_pointer_value_aliases);
+      const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases);
   static std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
       const DynamicGlobalPointerArrayAccess& access,
       const GlobalTypes& global_types,
@@ -1145,7 +1144,7 @@ class BirFunctionLowerer {
       const PointerAddressMap& pointer_value_addresses,
       const GlobalPointerMap& global_pointer_slots,
       const GlobalAddressIntMap& global_address_ints,
-      LocalPointerValueAliasMap* local_pointer_value_aliases,
+      c4c::backend::LocalPointerValueAliasMap* local_pointer_value_aliases,
       LocalIndirectPointerSlotSet* local_indirect_pointer_slots,
       PointerAddressMap* local_pointer_slot_addresses,
       LocalSlotAddressSlots* local_slot_address_slots,
@@ -1159,7 +1158,7 @@ class BirFunctionLowerer {
       const LocalSlotTypes& local_slot_types,
       const LocalAggregateFieldSet& local_aggregate_field_slots,
       const LocalArraySlotMap& local_array_slots,
-      const LocalPointerValueAliasMap& local_pointer_value_aliases,
+      const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases,
       const TypeDeclMap& type_decls,
       const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
       const LocalAddressSlots& local_address_slots,
@@ -1187,7 +1186,7 @@ class BirFunctionLowerer {
       std::string_view slot_name,
       const LocalAggregateFieldSet& local_aggregate_field_slots,
       const LocalArraySlotMap& local_array_slots,
-      const LocalPointerValueAliasMap& local_pointer_value_aliases,
+      const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases,
       const TypeDeclMap& type_decls,
       const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
       const LocalAddressSlots& local_address_slots,
@@ -1267,7 +1266,7 @@ class BirFunctionLowerer {
       std::string_view ptr_name,
       const DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
       const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
-      const LocalPointerValueAliasMap& local_pointer_value_aliases,
+      const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases,
       const GlobalTypes& global_types,
       const ImportedFunctionSymbolIndex& function_symbols,
       ValueMap* value_aliases,
@@ -1480,7 +1479,7 @@ class BirFunctionLowerer {
   DynamicPointerValueArrayMap dynamic_pointer_value_arrays_;
   LocalAggregateSlotMap local_aggregate_slots_;
   LocalAggregateFieldSet local_aggregate_field_slots_;
-  LocalPointerValueAliasMap local_pointer_value_aliases_;
+  c4c::backend::LocalPointerValueAliasMap local_pointer_value_aliases_;
   ValueMap local_scalar_slot_values_;
   ValueMap loaded_local_scalar_immediates_;
   std::unordered_set<std::string> loaded_local_integer_pointer_values_;

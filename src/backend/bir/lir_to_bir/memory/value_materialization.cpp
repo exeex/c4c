@@ -387,7 +387,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_dynamic_pointer_array_load(
     std::string_view ptr_name,
     const DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
     const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
-    const LocalPointerValueAliasMap& local_pointer_value_aliases,
+    const c4c::backend::LocalPointerValueAliasMap& local_pointer_value_aliases,
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
