@@ -138,34 +138,100 @@ Primary targets:
 
 Actions:
 
-- Inventory the remaining publication seams by semantic origin before the next
-  migration: BIR source-semantic publication, prepared-originated
-  `JoinTransfer`, formal, or store-source.  Record which named BIR facts are
-  applicable to each family and which prepared facts authorize the executable
-  publication.
-- Replace direct Route 4/5 publication record and index inputs at the migrated
+#### Step 2.1: Close and inventory the store-source boundary
+
+Goal: close the remaining named-producer applicability hole and establish the
+complete residual store-source producer-family inventory before migrating
+another publication family.
+
+Actions:
+
+- Derive cast/select named producer evidence applicability from the producer
+  family, not from the presence of `source_producer_block_label`.
+- Treat a missing block label for a cast or select as incomplete required
+  identity evidence and fail closed; add focused negative proof for both
+  families.
+- Inventory every residual store-source producer family and record which named
+  BIR producer, memory, publication, or control facts apply and which prepared
+  home, access, freshness, and ordering facts authorize selection.
+- Confirm the normal population, pending-global, direct-global, and fixed-
+  formal callers all pass through the same fail-closed store-source selection
+  boundary without route discovery fallback.
+
+Completion check:
+
+- Cast and select cannot disable required named producer evidence by omitting
+  the block label; every residual store-source family has an explicit evidence
+  applicability classification; and focused positive plus missing,
+  incomplete, ambiguous, and mismatched proof is green.
+
+#### Step 2.2: Migrate formal publication production
+
+Goal: make formal publication consume the applicable named BIR evidence while
+retaining prepared home, move, freshness, frame, and publication authority.
+
+Actions:
+
+- Inventory formal publication origins and distinguish BIR source-semantic
+  relationships from prepared composition, including fixed-formal
+  store-source composition.
+- Replace direct Route 4/5 record or index inputs at migrated BIR-origin formal
+  seams with stable named BIR view queries or narrow facts.
+- Require complete, unique, identity-matched applicable evidence and reject
+  missing, incomplete, ambiguous, or mismatched input without a route fallback.
+- Preserve formal destination, selected home, frame, move, freshness, and
+  publication status as prealloc-owned decisions.
+- Add focused formal positive and negative proof, including composition with
+  the Step 2.1 store-source boundary.
+
+Completion check:
+
+- Formal publication selection uses only applicable named BIR input plus
+  prepared authority, carries no route-numbered executable authority in its
+  migrated public payload, and its focused positive and fail-closed negative
+  proof is green.
+
+#### Step 2.3: Contract block-entry, edge, and current-block publication state
+
+Goal: finish the publication-family migration by removing Route 4/5 selection
+and public payload authority from block-entry, edge, and current-block facts.
+
+Actions:
+
+- Replace remaining direct Route 4/5 publication record and index inputs at
   BIR source-semantic seams with stable named BIR view queries or narrow facts.
 - For a valid non-PHI prepared `JoinTransfer` edge publication, require the
   unique cursor/edge, source/destination value, home, move, freshness, carrier,
-  and control facts already owned by the prepared producer.  Use applicable
+  and control facts already owned by the prepared producer. Use applicable
   named BIR producer or control evidence to bind source identities, but do not
   require or synthesize a BIR CFG-edge publication relation that does not exist
   in the BIR program.
-- Make evidence applicability explicit before selection.  If a named BIR fact
+- Make evidence applicability explicit before selection. If a named BIR fact
   is required for the classified family, missing, incomplete, ambiguous, or
-  mismatched evidence fails closed.  If the fact is non-applicable to a
-  prepared-originated family, proceed only through the independently
-  authoritative prepared path; do not reinterpret `MissingPublication` as
-  success and do not consult a route fallback.
+  mismatched evidence fails closed. If the fact is non-applicable to a
+  prepared-originated family, proceed only through independently authoritative
+  prepared state; do not reinterpret `MissingPublication` as success and do
+  not consult a route fallback.
 - Preserve prepared source/destination homes, selected moves, freshness,
   cursor/edge identity, and publication status as prealloc-owned decisions.
-- Keep any route agreement as private observational proof only, then remove it
-  from executable selection and public publication payloads.
-- Add focused block-entry, current-block, edge, formal, and store-source proof
-  for available and missing/incomplete/ambiguous/mismatched applicable inputs.
-  Include a non-PHI prepared `JoinTransfer` edge case such as
-  `dispatch.edge.add` proving that non-applicable CFG-edge publication evidence
-  neither rejects valid prepared behavior nor becomes an implicit fallback.
+- Remove route agreement from executable selection and remove route records,
+  route statuses, and route indexes from migrated public publication payloads;
+  retain only explicitly classified private observational compatibility.
+- Add focused block-entry, current-block, and edge proof for available and
+  missing/incomplete/ambiguous/mismatched applicable inputs. Include a non-PHI
+  prepared `JoinTransfer` edge case such as `dispatch.edge.add` proving that
+  non-applicable CFG-edge publication evidence neither rejects valid prepared
+  behavior nor becomes an implicit fallback.
+- Run the supervisor-selected broader backend proof before treating Step 2 as
+  complete, and preserve its canonical result in `test_after.log`.
+
+Completion check:
+
+- Block-entry, edge, and current-block selection branches only on applicable
+  named BIR evidence plus prepared authority; migrated public payloads expose
+  no route-numbered executable state; focused publication negatives and the
+  broader backend proof are green; and no route fallback or synthesized BIR
+  publication relation remains.
 
 Completion check:
 

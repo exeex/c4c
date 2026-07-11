@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate prepared publication production
+Current Step ID: 2.1
+Current Step Title: Close and inventory the store-source boundary
 
 ## Just Finished
 
@@ -16,8 +16,9 @@ Current Step Title: Migrate prepared publication production
 
 ## Suggested Next
 
-- Have the supervisor assess Step 2 completion and select the next coherent
-  packet from the active runbook.
+- Execute Step 2.1: make cast/select producer-family classification require
+  named producer identity even when the block label is missing, add the two
+  negative cases, and inventory residual store-source producer families.
 
 ## Watchouts
 
