@@ -3,30 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/716_prealloc_current_block_routing_authority_closure.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Bind complete edge-derived incoming-expression authority
+Current Step ID: 5
+Current Step Title: Separate fixture policy from attachment
 
 ## Just Finished
 
-- Step 4 bound `Available` incoming-expression consumption to complete prepared
-  facts carrying predecessor, successor, destination, source identity, routed
-  identity, role, and non-unknown semantic origin.
-- The registered focused matrix proves missing, ambiguous, and mismatched
-  outcomes, rejects successor-only and result-name collapse, and preserves
-  valid agreement across parallel predecessors and destinations.
-- Every applicable fact now participates in authority: negative, incomplete,
-  or mismatched facts cannot be ignored in favor of one positive fact.
+- Step 5 replaced the fixture's boolean-only policy marker with real prepared
+  lookup policy and exercised the AArch64 current-block source query.
+- The supported axis now carries complete edge-derived authority and succeeds
+  only when that policy is attached; policy-absent and detached axes fail
+  closed independently.
 
 ## Suggested Next
 
-- Execute Step 5, “Separate fixture policy from attachment,” using the named
-  AArch64 fixture-policy contract while preserving the now-proven prepared
-  authority boundary.
+- Execute Step 6, preserving the independently proven policy/attachment axes
+  while continuing the active runbook.
 
 ## Watchouts
 
-- Parallel predecessor and destination facts may differ in edge identity, but
-  all must independently be complete and agree on semantic origin.
+- Detachment must remove both the prepared lookup pointer and fallback value
+  lookup paths; otherwise the query can reconstruct policy from module state.
 - Ideas 713 and 705 remain open and blocked pending handback.
 
 ## Proof
