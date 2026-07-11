@@ -632,6 +632,23 @@ add_test(NAME backend_prealloc_current_block_incoming_expression_authority
 set_tests_properties(backend_prealloc_current_block_incoming_expression_authority PROPERTIES
   LABELS "backend;internal;cpp")
 
+add_executable(backend_prealloc_join_transfer_destination_consistency_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prealloc_join_transfer_destination_consistency_test.cpp"
+)
+target_include_directories(backend_prealloc_join_transfer_destination_consistency_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prealloc_join_transfer_destination_consistency_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prealloc_join_transfer_destination_consistency_test PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_prealloc_join_transfer_destination_consistency
+  COMMAND $<TARGET_FILE:backend_prealloc_join_transfer_destination_consistency_test>)
+set_tests_properties(backend_prealloc_join_transfer_destination_consistency PROPERTIES
+  LABELS "backend;internal;cpp")
+
 add_test(
   NAME backend_cli_dump_bir_is_semantic
   COMMAND "${CMAKE_COMMAND}"

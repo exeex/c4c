@@ -1566,6 +1566,9 @@ struct PreparedEdgePublicationLookups {
       publications_by_edge_destination;
 };
 
+[[nodiscard]] bool prepared_join_transfer_destination_consistent(
+    const PreparedEdgePublication& publication);
+
 [[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
     const PreparedNameTables& names,
     const PreparedControlFlowFunction& function,

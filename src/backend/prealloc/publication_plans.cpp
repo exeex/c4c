@@ -1099,6 +1099,15 @@ PreparedFactBoundaryEvidence select_prepared_current_block_join_source_evidence(
       producer_instruction_index);
 }
 
+bool prepared_join_transfer_destination_consistent(
+    const PreparedEdgePublication& publication) {
+  return publication.join_transfer != nullptr &&
+         publication.edge_transfer != nullptr &&
+         publication.join_transfer->result == publication.destination_value &&
+         publication.edge_transfer->destination_value ==
+             publication.destination_value;
+}
+
 PreparedCurrentBlockJoinRoutingFact
 select_prepared_current_block_join_routing_fact(
     const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
@@ -2122,14 +2131,14 @@ void attach_named_current_block_join_source_evidence(
     const PreparedControlFlowFunction* control_flow,
     const PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
   if (control_flow == nullptr || fact.publication == nullptr ||
-      fact.publication->join_transfer == nullptr) {
+      !prepared_join_transfer_destination_consistent(*fact.publication)) {
     return false;
   }
   const PreparedJoinTransfer* selected = nullptr;
   for (const auto& transfer : control_flow->join_transfers) {
     if (transfer.function_name != control_flow->function_name ||
         transfer.join_block_label != fact.successor_label ||
-        transfer.result != fact.publication->destination_value) {
+        &transfer != fact.publication->join_transfer) {
       continue;
     }
     const auto matching_edges = std::count_if(
