@@ -25,6 +25,14 @@ RouteIndexReferenceFacade route_index_reference_facade(
   };
 }
 
+Route4IndexReferenceValidation validate_block_entry_publication_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& successor_block,
+    const Value& destination_value) {
+  return route4_validate_block_entry_publication_reference(
+      index, successor_block, destination_value);
+}
+
 Route4IndexReferenceValidation
 route_index_validate_current_block_publication_reference(
     const RouteIndexReferenceFacade& facade,

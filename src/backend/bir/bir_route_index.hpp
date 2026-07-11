@@ -115,6 +115,11 @@ route4_validate_block_entry_publication_reference(
     const Route4PublicationAvailabilityIndex& index,
     const Block& successor_block,
     const Value& destination_value);
+[[nodiscard]] Route4IndexReferenceValidation
+validate_block_entry_publication_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& successor_block,
+    const Value& destination_value);
 [[nodiscard]] Route7IndexReferenceValidation
 route7_validate_comparison_instruction_reference(
     const Route7ComparisonConditionIndex& index,

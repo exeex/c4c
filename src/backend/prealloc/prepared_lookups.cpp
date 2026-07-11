@@ -2263,10 +2263,9 @@ void attribute_route4_block_entry_publication_if_agreeing(
   const auto& route4_successor = route4_function.blocks.front();
   const auto route4_publications =
       bir::route4_build_publication_availability_index(route4_function);
-  const auto route4_facade = bir::route_index_reference_facade(route4_publications);
   const auto route4_reference =
-      bir::route_index_validate_block_entry_publication_reference(
-          route4_facade, route4_successor, *query.route4_destination_value);
+      bir::validate_block_entry_publication_reference(
+          route4_publications, route4_successor, *query.route4_destination_value);
 
   result.route4_block_entry_publication_status = route4_reference.status;
   result.route4_block_entry_publication_route_status =
