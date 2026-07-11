@@ -1,6 +1,6 @@
 # Prepared MIR Source Dependency Freshness View Contract
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 After: `ideas/closed/684_bir_mir_interface_cleanup_from_prepared_mir_view_docs.md`
 Parent: `ideas/closed/683_prepared_mir_view_contract_research.md`
@@ -66,6 +66,36 @@ without letting targets rediscover authority from raw prepared internals.
 - Focused tests or backend proof cover both accepted and rejected authority
   paths for the selected family.
 - Fresh build plus focused backend tests pass.
+
+## Completion Notes
+
+Closed on 2026-07-11 after implementing the first typed Prepared MIR
+source/freshness view contract for direct edge-publication move sources and
+migrating one x86 consumer path to use that view for source/freshness
+authority.
+
+Closure evidence:
+
+- `PreparedMirFunctionView::current_block_direct_edge_publication_sources(...)`
+  exposes accepted direct edge-publication source/freshness facts through a
+  typed view.
+- Missing, stale, ambiguous, wrong-use, wrong-value, destination-only, and
+  lookup-failure states remain fail-closed query/source statuses rather than
+  lowering inputs.
+- `x86::prepared::consume_edge_publication_move_intent(...)` selects source
+  and destination operands from an accepted typed row instead of rediscovering
+  source/freshness authority from raw prepared internals.
+- The remaining raw publication pointer in the migrated path is constrained to
+  compatibility/type/Route 5 agreement checks after typed admission, not source
+  operand or freshness authority.
+- Focused before/after proof used the same backend prepared MIR and selected
+  x86 route scope in `test_before.log` and `test_after.log`; the close-time
+  regression guard passed with 79/79 tests passing before and after.
+
+Follow-up scope intentionally remains outside this first contract: additional
+x86 consumers, other source/freshness families such as branch stack-load
+freshness, typed or aggregate stack-source publication, select or alias
+freshness, non-x86 target migrations, and any broader raw-dependency gates.
 
 ## Reviewer Reject Signals
 
