@@ -690,6 +690,10 @@ Route6CallUseSourceIndex route6_build_call_use_source_index(
   return index;
 }
 
+BirCallBoundaryView make_bir_call_boundary_view(const Function& function) {
+  return BirCallBoundaryView{route6_build_call_use_source_index(function)};
+}
+
 Route6CallArgumentSourceRecord route6_find_call_argument_source(
     const Route6CallUseSourceIndex& index,
     const Block& block,
@@ -853,6 +857,79 @@ Route6CallResultLaneSourceRecord route6_find_call_result_lane_source(
           route6_values_match(*record.lane_value, lane_value)) {
         return record;
       }
+    }
+  }
+  return Route6CallResultLaneSourceRecord{
+      .status = route6_missing_call_status(
+          index, block, call_instruction_index, callee),
+      .result_source =
+          Route6CallResultSourceRecord{.call_instruction_index =
+                                           call_instruction_index,
+                                       .block_label = block.label,
+                                       .block_label_id = block.label_id,
+                                       .callee = callee},
+  };
+}
+
+Route6CallResultSourceRecord find_call_result_source(
+    const BirCallBoundaryView& view,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& result_value) {
+  const auto& index = view.route6_index_;
+  for (const auto& record : index.result_records) {
+    if (!route6_call_key_matches(record.block_label, record.block_label_id,
+                                 record.call_instruction_index, record.callee,
+                                 block, call_instruction_index, callee)) {
+      continue;
+    }
+    if (record.status != Route6CallUseStatus::Available) {
+      return record;
+    }
+    if (record.result_value != nullptr &&
+        route6_values_match(*record.result_value, result_value)) {
+      return record;
+    }
+    auto no_match = record;
+    no_match.available = false;
+    no_match.status = Route6CallUseStatus::NoMatch;
+    return no_match;
+  }
+  return Route6CallResultSourceRecord{
+      .status = route6_missing_call_status(
+          index, block, call_instruction_index, callee),
+      .call_instruction_index = call_instruction_index,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .callee = callee,
+  };
+}
+
+Route6CallResultLaneSourceRecord find_call_result_lane_source(
+    const BirCallBoundaryView& view,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& lane_value) {
+  const auto& index = view.route6_index_;
+  for (const auto& record : index.result_lane_records) {
+    const auto& source = record.result_source;
+    if (!route6_call_key_matches(source.block_label, source.block_label_id,
+                                 source.call_instruction_index, source.callee,
+                                 block, call_instruction_index, callee)) {
+      continue;
+    }
+    if (record.status == Route6CallUseStatus::DuplicateResultLane &&
+        record.lane_value == nullptr &&
+        record.lane_identity.name == lane_value.name &&
+        record.lane_identity.type == lane_value.type &&
+        record.lane_identity.value_kind == lane_value.kind) {
+      return record;
+    }
+    if (record.lane_value != nullptr &&
+        route6_values_match(*record.lane_value, lane_value)) {
+      return record;
     }
   }
   return Route6CallResultLaneSourceRecord{

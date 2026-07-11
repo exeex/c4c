@@ -2385,6 +2385,36 @@ struct Route6CallUseSourceIndex {
   [[nodiscard]] explicit operator bool() const { return function != nullptr; }
 };
 
+class BirCallBoundaryView {
+ public:
+  BirCallBoundaryView() = default;
+
+  [[nodiscard]] explicit operator bool() const {
+    return static_cast<bool>(route6_index_);
+  }
+
+ private:
+  explicit BirCallBoundaryView(Route6CallUseSourceIndex route6_index)
+      : route6_index_(std::move(route6_index)) {}
+
+  Route6CallUseSourceIndex route6_index_;
+
+  friend BirCallBoundaryView make_bir_call_boundary_view(
+      const Function& function);
+  friend Route6CallResultSourceRecord find_call_result_source(
+      const BirCallBoundaryView& view,
+      const Block& block,
+      std::size_t call_instruction_index,
+      std::string_view callee,
+      const Value& result_value);
+  friend Route6CallResultLaneSourceRecord find_call_result_lane_source(
+      const BirCallBoundaryView& view,
+      const Block& block,
+      std::size_t call_instruction_index,
+      std::string_view callee,
+      const Value& lane_value);
+};
+
 enum class ComparisonProducerKind : unsigned char {
   Unknown,
   Immediate,
@@ -2981,6 +3011,8 @@ route6_call_result_lane_source_record(
     const Value& value);
 [[nodiscard]] Route6CallUseSourceIndex route6_build_call_use_source_index(
     const Function& function);
+[[nodiscard]] BirCallBoundaryView make_bir_call_boundary_view(
+    const Function& function);
 [[nodiscard]] Route6CallArgumentSourceRecord
 route6_find_call_argument_source(
     const Route6CallUseSourceIndex& index,
@@ -3024,6 +3056,18 @@ route6_find_call_argument_publication_source(
 [[nodiscard]] Route6CallResultLaneSourceRecord
 route6_find_call_result_lane_source(
     const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& lane_value);
+[[nodiscard]] Route6CallResultSourceRecord find_call_result_source(
+    const BirCallBoundaryView& view,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& result_value);
+[[nodiscard]] Route6CallResultLaneSourceRecord find_call_result_lane_source(
+    const BirCallBoundaryView& view,
     const Block& block,
     std::size_t call_instruction_index,
     std::string_view callee,

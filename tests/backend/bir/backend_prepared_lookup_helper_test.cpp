@@ -14256,8 +14256,8 @@ int verify_bir_call_result_source_identity_lookup() {
       .blocks = {block},
   };
   const auto& route6_result_block = route6_result_function.blocks.front();
-  const auto route6_result_index =
-      bir::route6_build_call_use_source_index(route6_result_function);
+  const auto call_boundary_view =
+      bir::make_bir_call_boundary_view(route6_result_function);
   const auto* route6_indexed_result_call =
       std::get_if<bir::CallInst>(
           &route6_result_block.insts[call_instruction_index]);
@@ -14266,9 +14266,9 @@ int verify_bir_call_result_source_identity_lookup() {
   }
   const auto route6_result =
       bir::route6_call_result_source_record(block, *call, call_instruction_index);
-  const auto indexed_route6_result =
-      bir::route6_find_call_result_source(
-          route6_result_index,
+  const auto call_boundary_result =
+      bir::find_call_result_source(
+          call_boundary_view,
           route6_result_block,
           call_instruction_index,
           "produce_result_identity",
@@ -14279,11 +14279,11 @@ int verify_bir_call_result_source_identity_lookup() {
       route6_result.result_value != &*call->result ||
       route6_result.result_identity.name != "%call.result" ||
       route6_result.value_role != bir::Route6CallUseValueRole::Result ||
-      !indexed_route6_result ||
-      indexed_route6_result.result_value !=
+      !call_boundary_result ||
+      call_boundary_result.result_value !=
           &*route6_indexed_result_call->result) {
     return fail(
-        "Route 6 call-result record/index should expose result value provenance without ABI placement");
+        "BIR call-boundary result view should expose result value provenance without ABI placement");
   }
 
   const prepare::PreparedAfterCallResultLaneBinding primary_lane{
@@ -14315,16 +14315,16 @@ int verify_bir_call_result_source_identity_lookup() {
   const auto route6_high_lane =
       bir::route6_call_result_lane_source_record(
           block, *call, call_instruction_index, high_lane);
-  const auto indexed_route6_high_lane =
-      bir::route6_find_call_result_lane_source(
-          route6_result_index,
+  const auto call_boundary_high_lane =
+      bir::find_call_result_lane_source(
+          call_boundary_view,
           route6_result_block,
           call_instruction_index,
           "produce_result_identity",
           high_lane);
-  const auto indexed_route6_missing_lane =
-      bir::route6_find_call_result_lane_source(
-          route6_result_index,
+  const auto call_boundary_missing_lane =
+      bir::find_call_result_lane_source(
+          call_boundary_view,
           route6_result_block,
           call_instruction_index,
           "produce_result_identity",
@@ -14337,12 +14337,12 @@ int verify_bir_call_result_source_identity_lookup() {
       route6_high_lane.lane_index != 1 ||
       route6_high_lane.aliases_primary_result ||
       route6_high_lane.lane_identity.name != "%call.result.high" ||
-      !indexed_route6_high_lane ||
-      indexed_route6_high_lane.lane_index != 1 ||
-      indexed_route6_missing_lane ||
-      indexed_route6_missing_lane.status != bir::Route6CallUseStatus::NoMatch) {
+      !call_boundary_high_lane ||
+      call_boundary_high_lane.lane_index != 1 ||
+      call_boundary_missing_lane ||
+      call_boundary_missing_lane.status != bir::Route6CallUseStatus::NoMatch) {
     return fail(
-        "Route 6 call-result lane record/index should expose lane provenance and no-match behavior");
+        "BIR call-boundary lane view should expose lane provenance and no-match behavior");
   }
 
   auto duplicate_lane_block = block;
@@ -14369,18 +14369,18 @@ int verify_bir_call_result_source_identity_lookup() {
       .name = "route6_duplicate_lanes",
       .blocks = {duplicate_lane_block},
   };
-  const auto route6_duplicate_lane_index =
-      bir::route6_build_call_use_source_index(route6_duplicate_lane_function);
-  const auto indexed_route6_duplicate_lane =
-      bir::route6_find_call_result_lane_source(
-          route6_duplicate_lane_index,
+  const auto duplicate_lane_call_boundary_view =
+      bir::make_bir_call_boundary_view(route6_duplicate_lane_function);
+  const auto call_boundary_duplicate_lane =
+      bir::find_call_result_lane_source(
+          duplicate_lane_call_boundary_view,
           route6_duplicate_lane_function.blocks.front(),
           call_instruction_index,
           "produce_result_identity",
           high_lane);
-  const auto indexed_route6_duplicate_missing_lane =
-      bir::route6_find_call_result_lane_source(
-          route6_duplicate_lane_index,
+  const auto call_boundary_duplicate_missing_lane =
+      bir::find_call_result_lane_source(
+          duplicate_lane_call_boundary_view,
           route6_duplicate_lane_function.blocks.front(),
           call_instruction_index,
           "produce_result_identity",
@@ -14390,14 +14390,14 @@ int verify_bir_call_result_source_identity_lookup() {
           bir::Route6CallUseStatus::DuplicateResultLane ||
       route6_duplicate_lane.lane_value != nullptr ||
       route6_duplicate_lane.lane_identity.name != "%call.result.high" ||
-      indexed_route6_duplicate_lane ||
-      indexed_route6_duplicate_lane.status !=
+      call_boundary_duplicate_lane ||
+      call_boundary_duplicate_lane.status !=
           bir::Route6CallUseStatus::DuplicateResultLane ||
-      indexed_route6_duplicate_missing_lane ||
-      indexed_route6_duplicate_missing_lane.status !=
+      call_boundary_duplicate_missing_lane ||
+      call_boundary_duplicate_missing_lane.status !=
           bir::Route6CallUseStatus::NoMatch) {
     return fail(
-        "Route 6 call-result lane record/index should report duplicate status only for the duplicated lane identity");
+        "BIR call-boundary lane view should report duplicate status only for the duplicated lane identity");
   }
 
   bir::Block no_result_block{
@@ -14434,6 +14434,25 @@ int verify_bir_call_result_source_identity_lookup() {
     return fail(
         "Route 6 call-result record should explicitly report missing result values");
   }
+  const bir::Function no_result_function{
+      .name = "call_boundary_missing_result",
+      .blocks = {no_result_block},
+  };
+  const auto no_result_call_boundary_view =
+      bir::make_bir_call_boundary_view(no_result_function);
+  const auto call_boundary_missing_result =
+      bir::find_call_result_source(
+          no_result_call_boundary_view,
+          no_result_function.blocks.front(),
+          0,
+          "abi_only_result_identity_is_unavailable",
+          bir::Value::named(bir::TypeKind::I64, "%missing.result"));
+  if (call_boundary_missing_result ||
+      call_boundary_missing_result.status !=
+          bir::Route6CallUseStatus::MissingResult) {
+    return fail(
+        "BIR call-boundary result view should preserve missing-result status");
+  }
   auto detached_call = *call;
   if (bir::find_call_result_source_identity(
           block, detached_call, call_instruction_index)
@@ -14453,6 +14472,28 @@ int verify_bir_call_result_source_identity_lookup() {
       route6_missing_call.status != bir::Route6CallUseStatus::MissingCall) {
     return fail(
         "Route 6 call-result record should distinguish wrong-call and missing-call boundaries");
+  }
+  const auto call_boundary_wrong_call =
+      bir::find_call_result_source(
+          call_boundary_view,
+          route6_result_block,
+          call_instruction_index,
+          "wrong_result_callee",
+          result_value);
+  const auto call_boundary_missing_call =
+      bir::find_call_result_source(
+          call_boundary_view,
+          route6_result_block,
+          1,
+          "produce_result_identity",
+          result_value);
+  if (call_boundary_wrong_call ||
+      call_boundary_wrong_call.status != bir::Route6CallUseStatus::WrongCall ||
+      call_boundary_missing_call ||
+      call_boundary_missing_call.status !=
+          bir::Route6CallUseStatus::MissingCall) {
+    return fail(
+        "BIR call-boundary result view should preserve wrong-call and missing-call statuses");
   }
 
   return 0;
