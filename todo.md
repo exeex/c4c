@@ -1,7 +1,7 @@
 Status: Active
 Source Idea Path: ideas/open/690_call_abi_import_boundary_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
+Current Step ID: Step 2
 Current Step Title: Narrow Adapter-Owned Call ABI Helper Boundaries
 
 # Current Packet
