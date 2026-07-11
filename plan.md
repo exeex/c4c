@@ -1,221 +1,194 @@
-# Current-Block Routed-Value Authority Decomposition Runbook
+# Transitive Current-Block Incoming-Expression Authority Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/717_current_block_routed_value_authority_decomposition.md
-Supersedes active execution of: ideas/open/716_prealloc_current_block_routing_authority_closure.md
+Source Idea: ideas/open/718_transitive_current_block_incoming_expression_authority_decomposition.md
+Supersedes active execution of: ideas/open/717_current_block_routed_value_authority_decomposition.md
 
 ## Purpose
 
-Replace the blocked Step 6.2 route with focused prepared-fact authority probes
-before returning to owner-only AArch64 consumption.
+Replace the blocked integration-driven route with focused probes for direct
+source identity, transitive producer closure, zero-fact semantics, and upstream
+stable-key owner-fact composition.
 
 ## Goal
 
-Prove destination consistency, routed-operand identity, and all-edge invariance
-as independent contracts, then compose them without changing supported vectors.
+Prove each authority seam independently before implementation or AArch64
+integration resumes.
 
 ## Core Rule
 
-Do not discover or define authority in the AArch64 integration test. A routed
-value is available only under rules already proven by the focused BIR probes.
+Do not define authority in the AArch64 integration test. Preserve publication
+source identity, and authorize dependencies only through a focused, general
+semantic contract composed upstream into owner facts.
 
 ## Read First
 
+- `ideas/open/718_transitive_current_block_incoming_expression_authority_decomposition.md`
 - `ideas/open/717_current_block_routed_value_authority_decomposition.md`
-- `ideas/open/716_prealloc_current_block_routing_authority_closure.md`
-- `review/step6_2_owner_consumption_review.md`
+- `todo.md`
 - `src/backend/prealloc/publication_plans.cpp`
 - `src/backend/prealloc/prepared_lookups.hpp`
 
 ## Current Targets
 
-- `tests/backend/bir/backend_prealloc_join_transfer_destination_consistency_test.cpp`
-- `tests/backend/bir/backend_prealloc_current_block_routed_operand_authority_test.cpp`
-- `tests/backend/bir/backend_prealloc_current_block_all_edge_invariance_test.cpp`
-- `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+- focused registered probes under `tests/backend/case/`
+- upstream prepared publication and stable-key owner-fact boundaries
+- `backend_aarch64_current_block_join_routing` as integration-only proof
 
 ## Non-Goals
 
+- Do not use Route 5, target-local reconstruction, or source-identity rewriting.
+- Do not change supported integration vectors.
 - Do not reopen accepted owner storage or lookup lifetime work.
-- Do not grant Route 5, target reconstruction, result names, or successor-only
-  identity authority.
-- Do not rewrite supported integration vectors.
-- Do not close ideas 716, 713, or 705 in this runbook.
+- Do not close ideas 717, 716, 713, or 705 in this runbook.
 
 ## Execution Rules
 
-- Establish a fresh registered baseline and inventory before semantic edits.
-- Keep one primary authority contract per focused test.
-- Prefer fail-closed semantic rules over instruction- or testcase-shaped
-  matching.
-- For code-changing steps, run build, the named focused test, and the exact
+- Keep exactly one primary semantic seam per focused probe.
+- Extract and register probes before semantic implementation edits.
+- Fail closed on missing, ambiguous, conflicting, cyclic, or incomplete facts.
+- Treat probe registration and decomposition as route correction, not backend
+  capability progress.
+- For code-changing steps, run build, the named focused proof, and the exact
   supervisor-selected matching proof command.
-- Run fresh broader backend proof before integration adoption and handback.
+- Require fresh broader backend proof before integration adoption and handback.
 
 ## Ordered Steps
 
-### Step 1: Establish the blocked-family baseline and authority inventory
+### Step 1: Establish the blocked-family baseline and seam inventory
 
-Goal: freeze the accepted owner boundary and map every rejected Step 6.2 fact
-to one focused contract.
-
-Actions:
-
-- Record accepted HEAD `d253152e0` and the unchanged supported integration
-  vectors as the starting contract.
-- Inventory transfer result, edge destination, publication source, routed
-  operand, immediate destination, predecessor, and parallel-edge facts.
-- Confirm each proposed focused test is registered or identify the exact
-  registration work required.
-- Select a matching baseline/proof command without changing implementation or
-  test expectations.
-
-Completion check:
-
-- Every rejected authority expansion maps to exactly one focused probe, the
-  baseline is recorded, and no AArch64 behavior change has been attempted.
-
-### Step 2: Prove join-transfer destination consistency
-
-Goal: define the consistency rule between aggregate transfer result, selected
-edge destination, and publication destination.
-
-Primary target:
-`tests/backend/bir/backend_prealloc_join_transfer_destination_consistency_test.cpp`
+Goal: freeze the unchanged supported contract and map every collision to one
+independently owned semantic seam.
 
 Actions:
 
-- Prove matching and mismatching aggregate/edge/publication destinations.
-- Fail closed on internal inconsistency unless construction itself proves the
-  state impossible through a directly tested invariant.
-- Keep routed operands and AArch64 consumption outside this probe.
+- Record the 317/320 consumer-only result and preparation trace showing the
+  same `%source` plus `%operand` collision.
+- Inventory direct publication identity, producer dependency edges, policy
+  state, owner state, zero-fact state, stable keys, and composition boundaries.
+- Select the supervisor-owned matching baseline/proof command.
+- Confirm the integration test remains unchanged and integration-only.
 
 Completion check:
 
-- Destination consistency has one explicit, registered contract and focused
-  build/proof is green.
+- Every blocked fact maps to exactly one of the four source-idea seams, the
+  baseline command is recorded, and no implementation or expectation changed.
 
-### Step 3: Prove routed-operand and immediate-destination authority
+### Step 2: Extract and register one focused probe per seam
 
-Goal: define whether and how publication authority applies to scalar operands
-and immediate-source destination homes.
-
-Primary target:
-`tests/backend/bir/backend_prealloc_current_block_routed_operand_authority_test.cpp`
+Goal: create minimal backend-owned contracts before backend surgery.
 
 Actions:
 
-- Cover `BinaryInst`, `CastInst`, and `SelectInst` operands independently.
-- Cover immediate-source destination authority, unrelated operands, and
-  conflicting source semantics.
-- Preserve prepared source identity; do not rewrite it merely to satisfy the
-  stable query.
+- Choose repo-conforming files under `tests/backend/case/` when supported.
+- Extract separate probes for direct source identity, transitive dependency
+  closure, no-policy/zero-fact semantics, and stable-key composition.
+- Give each probe positive and fail-closed negative cases without copying the
+  integration fixture or naming its vectors.
+- Keep `backend_aarch64_current_block_join_routing` integration-only.
 
 Completion check:
 
-- Every supported routed-value category has a semantic rule and negative
-  matrix independent of the integration fixture; focused proof is green.
+- Four focused probes are registered, each has one primary contract, and their
+  initial results identify capability gaps without expectation weakening.
 
-### Step 4: Prove all-applicable-edge invariance
+### Step 3: Bind each probe to one owned backend capability
 
-Goal: require agreement across the complete applicable fact family.
-
-Primary target:
-`tests/backend/bir/backend_prealloc_current_block_all_edge_invariance_test.cpp`
+Goal: locate the narrowest upstream ownership boundary for each contract.
 
 Actions:
 
-- Cover distinct predecessors, destinations, sources, and semantic origins.
-- Include parallel edges, missing facts, conflicting facts, and ambiguous
-  duplicate families.
-- Reject first-match, unique-subset, or successor-only selection.
+- Bind direct identity to preserved publication-source facts.
+- Bind transitive closure to a deterministic producer-dependency rule with
+  explicit termination and conflict handling.
+- Bind no-policy/zero-fact behavior to an explicit semantic policy contract.
+- Bind composition to stable-key owner-fact production upstream of AArch64.
+- Reject any seam that can only be implemented through Route 5, target scans,
+  source rewriting, or integration-vector matching.
 
 Completion check:
 
-- `Available` requires complete agreement across every applicable fact and the
-  focused invariance matrix is green.
+- Each probe names one upstream capability owner and a semantic rule precise
+  enough for an implementation packet; no AArch64 authority is required.
 
-### Step 5: Compose the focused authority contracts
+### Step 4: Implement direct publication-source identity authority
 
-Goal: show the three rules coexist at the owner-attached query boundary.
+Goal: prove preserved publication identity without dependency conflation.
 
 Actions:
 
-- Run all focused authority and owner-lifetime contracts together.
-- Inspect the composed implementation for testcase-shaped rules or hidden
-  source-identity rewriting.
-- Run fresh broader backend proof before target consumption.
+- Implement the narrowest general upstream rule owned by the direct-source
+  probe.
+- Preserve source IDs and names; do not rewrite them to queried dependencies.
+- Run build, focused proof, and the delegated matching subset.
 
 Completion check:
 
-- Focused and broader proof are green and review finds no unresolved authority
-  collision.
+- Direct source positives and negative identity conflicts are green with
+  preserved source identity.
 
-### Step 6.1: Prepare and attach owner facts on every supported entry path
+### Step 5: Implement transitive producer-dependency closure
 
-Goal: make the already-proven owner authority available before target
-consumption on every supported integration path.
-
-Primary target:
-`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+Goal: authorize producer dependencies through a general, deterministic closure.
 
 Actions:
 
-- Inventory each supported dispatch and fixture entry path before changing the
-  AArch64 consumer; distinguish a missing owner, an attached owner with no
-  applicable facts, and an attached owner with authoritative facts.
-- Route every supported positive through the existing prealloc preparation and
-  owner-attachment boundary so its already-proven semantic inputs produce the
-  required owner facts. Do not synthesize facts in AArch64 or add a second
-  authority builder.
-- Preserve all supported expected routing vectors and their semantic policy
-  meaning. Fixture setup may expose the production owner boundary, but must not
-  inject testcase-shaped facts or relabel an owner-absent case as equivalent
-  proof.
-- Keep an explicit missing-owner/no-authoritative-fact negative that proves
-  fail-closed behavior.
-- Run the focused authority contracts, unchanged integration vectors, and the
-  supervisor-selected matching proof command.
+- Implement closure at the Step 3 owner boundary.
+- Prove multiple depths, termination, cycles, missing edges, ambiguity, and
+  conflicting producer paths.
+- Run build, focused proof, and the delegated matching subset.
 
 Completion check:
 
-- Every supported positive reaches AArch64 with an attached prepared owner and
-  authoritative facts produced by the shared upstream semantic route; explicit
-  absence still fails closed; unchanged focused, integration, and broader proof
-  is green.
+- The dependency probe is green without fixed-depth, named-operand, or
+  target-local shortcuts.
 
-### Step 6.2: Adopt owner-only AArch64 consumption
+### Step 6: Implement no-policy and zero-owner-fact semantics
 
-Goal: consume the proven owner-attached stable-key query without reconstruction.
-
-Primary target:
-`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+Goal: distinguish supported policy absence from missing authority.
 
 Actions:
 
-- Remove target-local authority construction and fallbacks.
-- Treat a missing owner or absent owner fact as unavailable; do not compensate
-  for incomplete Step 6.1 preparation inside the consumer.
-- Preserve every supported integration vector unchanged.
-- Run focused contracts, integration proof, and fresh broader backend proof.
+- Implement the explicit semantic contract identified in Step 3.
+- Prove absent owner, absent policy, zero facts, and authoritative facts as
+  distinct states.
+- Do not make owner presence alone authoritative.
+- Run build, focused proof, and the delegated matching subset.
 
 Completion check:
 
-- AArch64 only consumes the owner query, all supported entry paths were proven
-  prepared in Step 6.1, supported vectors are unchanged, and focused,
-  integration, and broader proof are green.
+- The focused state matrix is green and the supported zero-fact behavior has a
+  semantic explanation independent of integration expectations.
 
-### Step 7: Hand back to idea 716
+### Step 7: Compose stable-key owner facts upstream
 
-Goal: return the composed authority contract to the blocked closure initiative.
+Goal: combine the three proven authorities into target-independent owner facts.
 
 Actions:
 
-- Record the durable completed contract and proof in idea 717.
-- Switch lifecycle execution back to idea 716 at Step 6.2.
-- Keep ideas 713 and 705 blocked pending idea 716 handback.
+- Implement composition only at the upstream owner-fact boundary from Step 3.
+- Run all four focused probes together and inspect for hidden Route 5,
+  source-rewrite, or target reconstruction paths.
+- Run fresh broader backend proof before integration adoption.
 
 Completion check:
 
-- Idea 717 is ready to close and idea 716 can resume with no unresolved
-  routed-value authority seam.
+- Focused and broader proof are green and stable-key owner facts represent each
+  proven category without AArch64 authority construction.
+
+### Step 8: Validate unchanged integration and hand back to idea 717
+
+Goal: prove composition on the existing integration contract and resume the
+blocked parent initiative.
+
+Actions:
+
+- Consume only owner-attached stable-key facts in AArch64.
+- Run unchanged integration vectors plus fresh broader backend proof.
+- Record the durable completed contract in idea 718 and switch execution back
+  to idea 717 only when its handback criteria are satisfied.
+
+Completion check:
+
+- Unchanged integration and broader proof are green, idea 718 is ready to
+  close, and idea 717 can resume without the transitive or zero-fact collision.
