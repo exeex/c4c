@@ -1,6 +1,6 @@
 # Transitive Current-Block Incoming-Expression Authority Decomposition
 
-Status: Open
+Status: Complete
 Type: backend authority decomposition
 Blocks:
 - `ideas/open/717_current_block_routed_value_authority_decomposition.md`
@@ -112,3 +112,27 @@ the integration monolith.
 Hand back to idea 717 only after all four seams are independently registered,
 green, and composed into upstream owner facts; unchanged integration vectors
 and fresh broader backend proof must then pass without target-local authority.
+
+## Completion Record
+
+- Direct publication-source identity remains preserved and independently
+  queryable.
+- Producer dependency authority is a deterministic transitive closure that
+  fails closed on missing, ambiguous, conflicting, cyclic, or incomplete
+  evidence.
+- Absent policy, absent owner, attached owner with zero applicable facts, and
+  authoritative owner facts are represented distinctly; owner presence alone
+  grants no authority.
+- Stable-key owner facts compose these contracts upstream, and AArch64 only
+  consumes the attached prepared facts without Route 5 authority construction,
+  target-local reconstruction, or source-identity rewriting.
+- All four focused contracts, the unchanged
+  `backend_aarch64_current_block_join_routing` integration vectors, and the
+  fresh broader backend proof are green.
+- Close-time regression guard compared the matching backend commands in
+  `test_before.log` and `test_after.log`: both passed 324/324 tests with no new
+  failures.
+
+The handback criteria are satisfied. Execution returns to idea 717 with the
+transitive `%source`/`%operand` and zero-fact collision resolved by the durable
+upstream authority contract above.
