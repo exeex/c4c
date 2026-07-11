@@ -258,6 +258,24 @@ int x86_facing_code_can_consume_shared_query_records() {
   if (ambiguous_identity || ambiguous_scalar.has_value()) {
     return fail("expected shared producer queries to fail closed for ambiguous view results");
   }
+  if (mir::find_same_block_binary_producer(
+          &ambiguous_block, named(bir::TypeKind::I64, "%duplicate")) ||
+      mir::evaluate_same_block_integer_constant(
+          &ambiguous_block, named(bir::TypeKind::I64, "%duplicate"))
+          .has_value()) {
+    return fail("expected common producer/constant queries to fail closed for ambiguous view results");
+  }
+  const auto mismatched_label_constant =
+      mir::evaluate_same_block_integer_constant(
+          mir::SameBlockValueMaterializationQuery{
+              .block = &block,
+              .block_label = "not-entry",
+              .before_instruction_index = block.insts.size(),
+          },
+          sum);
+  if (mismatched_label_constant.has_value()) {
+    return fail("expected constant query to fail closed for a mismatched block label");
+  }
 
   if (!mir::select_chain_contains_dependency(
           &block, choice, block.insts.size(), matches_load_local_dependency)) {

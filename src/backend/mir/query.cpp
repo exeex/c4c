@@ -1082,18 +1082,6 @@ find_route2_select_chain_value_record(BirSelectChainIdentityRequest request) {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<SameBlockIntegerConstant>
-route1_integer_constant_to_same_block(
-    const std::optional<bir::Route1ImmediateIntegerConstant>& constant) {
-  if (!constant.has_value()) {
-    return std::nullopt;
-  }
-  return SameBlockIntegerConstant{
-      .value = constant->value,
-      .depth = constant->depth,
-  };
-}
-
 [[nodiscard]] std::string_view root_value_name(
     const BirSelectChainIdentityRequest& request) {
   if (!request.root_value_name.empty()) {
@@ -1344,7 +1332,142 @@ void append_bir_expression_operands(
 evaluate_same_block_integer_constant(
     SameBlockValueMaterializationQuery query,
     const bir::Value& value,
-    unsigned depth);
+    unsigned depth) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return SameBlockIntegerConstant{.value = value.immediate, .depth = depth};
+  }
+  if (!query || depth > 4U || value.kind != bir::Value::Kind::Named ||
+      value.name.empty() ||
+      (!query.block_label.empty() && query.block_label != query.block->label)) {
+    return std::nullopt;
+  }
+  const auto before =
+      std::min(query.before_instruction_index, query.block->insts.size());
+  const auto result = bir::find_same_block_producer(
+      bir::make_bir_producer_view(*query.block), value, before);
+  if (!result || !result.scalar_materialization_available ||
+      result.instruction_index >= query.block->insts.size()) {
+    return std::nullopt;
+  }
+  if (result.immediate_integer_constant.has_value()) {
+    return SameBlockIntegerConstant{
+        .value = *result.immediate_integer_constant,
+        .depth = depth,
+    };
+  }
+  const auto* binary =
+      std::get_if<bir::BinaryInst>(&query.block->insts[result.instruction_index]);
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto nested_query = SameBlockValueMaterializationQuery{
+      .block = query.block,
+      .block_label = query.block_label,
+      .before_instruction_index = result.instruction_index,
+  };
+  const auto lhs = evaluate_same_block_integer_constant(
+      nested_query, binary->lhs, depth + 1U);
+  const auto rhs = evaluate_same_block_integer_constant(
+      nested_query, binary->rhs, depth + 1U);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  const auto lhs_value = lhs->value;
+  const auto rhs_value = rhs->value;
+  const auto unsigned_lhs = static_cast<std::uint64_t>(lhs_value);
+  const auto unsigned_rhs = static_cast<std::uint64_t>(rhs_value);
+  std::optional<std::int64_t> evaluated;
+  switch (binary->opcode) {
+    case bir::BinaryOpcode::Add:
+      evaluated = static_cast<std::int64_t>(unsigned_lhs + unsigned_rhs);
+      break;
+    case bir::BinaryOpcode::Sub:
+      evaluated = static_cast<std::int64_t>(unsigned_lhs - unsigned_rhs);
+      break;
+    case bir::BinaryOpcode::Mul:
+      evaluated = static_cast<std::int64_t>(unsigned_lhs * unsigned_rhs);
+      break;
+    case bir::BinaryOpcode::And:
+      evaluated = static_cast<std::int64_t>(unsigned_lhs & unsigned_rhs);
+      break;
+    case bir::BinaryOpcode::Or:
+      evaluated = static_cast<std::int64_t>(unsigned_lhs | unsigned_rhs);
+      break;
+    case bir::BinaryOpcode::Xor:
+      evaluated = static_cast<std::int64_t>(unsigned_lhs ^ unsigned_rhs);
+      break;
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      if (binary->opcode == bir::BinaryOpcode::Shl) {
+        evaluated = static_cast<std::int64_t>(
+            unsigned_lhs << static_cast<unsigned>(rhs_value));
+      } else if (binary->opcode == bir::BinaryOpcode::LShr) {
+        evaluated = static_cast<std::int64_t>(
+            unsigned_lhs >> static_cast<unsigned>(rhs_value));
+      } else {
+        evaluated = lhs_value >> static_cast<unsigned>(rhs_value);
+      }
+      break;
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+      if (rhs_value == 0) {
+        return std::nullopt;
+      }
+      if (binary->opcode == bir::BinaryOpcode::SDiv) {
+        evaluated = lhs_value / rhs_value;
+      } else if (binary->opcode == bir::BinaryOpcode::UDiv) {
+        evaluated = static_cast<std::int64_t>(unsigned_lhs / unsigned_rhs);
+      } else if (binary->opcode == bir::BinaryOpcode::SRem) {
+        evaluated = lhs_value % rhs_value;
+      } else {
+        evaluated = static_cast<std::int64_t>(unsigned_lhs % unsigned_rhs);
+      }
+      break;
+    case bir::BinaryOpcode::Eq:
+      evaluated = lhs_value == rhs_value ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Ne:
+      evaluated = lhs_value != rhs_value ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Slt:
+      evaluated = lhs_value < rhs_value ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Sle:
+      evaluated = lhs_value <= rhs_value ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Sgt:
+      evaluated = lhs_value > rhs_value ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Sge:
+      evaluated = lhs_value >= rhs_value ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Ult:
+      evaluated = unsigned_lhs < unsigned_rhs ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Ule:
+      evaluated = unsigned_lhs <= unsigned_rhs ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Ugt:
+      evaluated = unsigned_lhs > unsigned_rhs ? 1 : 0;
+      break;
+    case bir::BinaryOpcode::Uge:
+      evaluated = unsigned_lhs >= unsigned_rhs ? 1 : 0;
+      break;
+  }
+  if (!evaluated.has_value()) {
+    return std::nullopt;
+  }
+  return SameBlockIntegerConstant{
+      .value = *evaluated,
+      .depth = depth,
+  };
+}
 
 }  // namespace
 
@@ -1940,15 +2063,18 @@ find_bir_same_block_load_local_stored_value_source_identity(
       value.name.empty()) {
     return {};
   }
-  for (std::size_t index = 0; index < block->insts.size(); ++index) {
-    const auto* binary = std::get_if<bir::BinaryInst>(&block->insts[index]);
-    if (binary != nullptr &&
-        binary->result.kind == bir::Value::Kind::Named &&
-        binary->result.name == value.name) {
-      return SameBlockBinaryProducer{.binary = binary, .instruction_index = index};
-    }
+  const auto result = bir::find_same_block_producer(
+      bir::make_bir_producer_view(*block), value, block->insts.size());
+  if (!result || result.kind != bir::BirProducerKind::Binary ||
+      result.instruction_index >= block->insts.size()) {
+    return {};
   }
-  return {};
+  const auto* binary =
+      std::get_if<bir::BinaryInst>(&block->insts[result.instruction_index]);
+  return binary == nullptr
+             ? SameBlockBinaryProducer{}
+             : SameBlockBinaryProducer{.binary = binary,
+                                       .instruction_index = result.instruction_index};
 }
 
 [[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
@@ -1961,17 +2087,18 @@ find_bir_same_block_load_local_stored_value_source_identity(
     return {};
   }
   const auto before = std::min(before_instruction_index, block->insts.size());
-  for (std::size_t index = before; index > 0; --index) {
-    const std::size_t candidate_index = index - 1;
-    const auto* select = std::get_if<bir::SelectInst>(&block->insts[candidate_index]);
-    if (select != nullptr &&
-        select->result.kind == bir::Value::Kind::Named &&
-        select->result.name == value.name) {
-      return SameBlockSelectProducer{.select = select,
-                                     .instruction_index = candidate_index};
-    }
+  const auto result = bir::find_same_block_producer(
+      bir::make_bir_producer_view(*block), value, before);
+  if (!result || result.kind != bir::BirProducerKind::SelectMaterialization ||
+      result.instruction_index >= block->insts.size()) {
+    return {};
   }
-  return {};
+  const auto* select =
+      std::get_if<bir::SelectInst>(&block->insts[result.instruction_index]);
+  return select == nullptr
+             ? SameBlockSelectProducer{}
+             : SameBlockSelectProducer{.select = select,
+                                       .instruction_index = result.instruction_index};
 }
 
 [[nodiscard]] SameBlockProducerRecord find_same_block_named_producer_record(
@@ -2153,15 +2280,14 @@ evaluate_same_block_integer_constant(
   if (block == nullptr) {
     return std::nullopt;
   }
-  const auto index = bir::route1_build_producer_index(*block);
-  return route1_integer_constant_to_same_block(
-      bir::route1_evaluate_same_block_integer_constant(
-          bir::Route1SameBlockProducerQuery{
-              .index = &index,
-              .before_instruction_index = block->insts.size(),
-          },
-          value,
-          depth));
+  return evaluate_same_block_integer_constant(
+      SameBlockValueMaterializationQuery{
+          .block = block,
+          .block_label = block->label,
+          .before_instruction_index = block->insts.size(),
+      },
+      value,
+      depth);
 }
 
 [[nodiscard]] std::optional<SameBlockIntegerConstant>
@@ -2171,20 +2297,7 @@ evaluate_same_block_integer_constant(
   if (value.kind == bir::Value::Kind::Immediate) {
     return SameBlockIntegerConstant{.value = value.immediate, .depth = 0U};
   }
-  if (!query) {
-    return std::nullopt;
-  }
-  const auto index = bir::route1_build_producer_index(*query.block);
-  return route1_integer_constant_to_same_block(
-      bir::route1_evaluate_same_block_integer_constant(
-          bir::Route1SameBlockProducerQuery{
-              .index = &index,
-              .before_instruction_index =
-                  std::min(query.before_instruction_index,
-                           query.block->insts.size()),
-          },
-          value,
-          0U));
+  return evaluate_same_block_integer_constant(query, value, 0U);
 }
 
 [[nodiscard]] bool select_chain_contains_dependency(
