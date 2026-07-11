@@ -107,6 +107,8 @@ using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;
 struct ParsedTypedOperand {
   // Compatibility LIR type text retained only until the operand is lowered.
   std::string type_text;
+  // Adapter-private scalar type resolved at the raw typed-operand boundary.
+  std::optional<bir::TypeKind> lowered_type;
   c4c::codegen::lir::LirOperand operand;
 };
 

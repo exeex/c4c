@@ -442,8 +442,10 @@ std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text) {
   if (space == std::string_view::npos || space == 0 || space + 1 >= text.size()) {
     return std::nullopt;
   }
+  const auto type_text = text.substr(0, space);
   return ParsedTypedOperand{
-      .type_text = std::string(text.substr(0, space)),
+      .type_text = std::string(type_text),
+      .lowered_type = lower_integer_type(type_text),
       .operand = c4c::codegen::lir::LirOperand(std::string(text.substr(space + 1))),
   };
 }

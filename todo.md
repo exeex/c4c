@@ -8,34 +8,30 @@ Current Step Title: Isolate Type Declaration And Typed Operand Compatibility
 
 ## Just Finished
 
-Completed `plan.md` Step 2 selected contraction for struct-field recursive
-local aggregate slot expansion.
+Completed `plan.md` Step 2 selected contraction for typed-index operand
+lowering.
 
-`AggregateField` now retains the already-computed field `AggregateTypeLayout`
-when structured and legacy aggregate layouts are built, and
-`append_local_aggregate_scalar_slots` reuses that cached field layout for
-struct-field recursion instead of re-entering the rendered-text overload. The
-existing field layout validation, byte offsets, slot naming, and emitted local
-slot declarations are intended unchanged.
+`ParsedTypedOperand` now records the adapter-private lowered scalar type when
+raw LIR typed operand text is parsed, and `lower_typed_index_value` consumes
+that cached type instead of re-entering integer type lowering from
+`type_text`. The original compatibility type text remains available for the
+existing adapter boundary, and produced index values are intended unchanged.
 
 ## Suggested Next
 
 Choose the next structured-layout bridge contraction from the remaining
-rendered-text lookup sites, likely another `LocalAggregateSlots` path that still
-only carries rendered type text or a narrowly-owned typed operand compatibility
-site from Step 2.
+rendered-text lookup sites, likely an adapter-private type declaration or
+aggregate layout lookup path that still re-enters raw text after a typed helper
+has already resolved the relevant fact.
 
 ## Watchouts
 
-This removes only struct-field recursion through the rendered-text overload
-after the field layout has already been resolved during layout construction.
-Array element recursion and target leaf collection already had matching cached
-layout contractions from earlier packets. Local aggregate copy source/target
-size validation still uses the existing rendered-text compatibility bridge, and
-unrelated legacy callers still use text-based helpers. Avoid treating this as a
-broader policy move into public BIR type/model authority, prepared/prealloc,
-target transport, MIR, initializer lowering, memory/provenance policy, or call
-ABI placement.
+This removes only the repeated scalar integer type parse in the typed-index
+value consumer; typed operand text is still retained at the raw LIR adapter
+boundary for compatibility and diagnostics. Avoid widening this into memory
+addressing policy, public BIR type/model authority, prepared/prealloc, target
+transport, MIR, initializer lowering, memory/provenance policy, or call ABI
+placement.
 
 ## Proof
 

@@ -8,7 +8,6 @@
 
 namespace c4c::backend {
 
-using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
 namespace {
@@ -98,12 +97,14 @@ std::optional<bir::Value> BirFunctionLowerer::lower_repeated_byte_initializer_va
 std::optional<bir::Value> BirFunctionLowerer::lower_typed_index_value(
     const ParsedTypedOperand& index_operand,
     const ValueMap& value_aliases) {
-  const auto index_type = lower_integer_type(index_operand.type_text);
-  if (!index_type.has_value() ||
-      (*index_type != bir::TypeKind::I32 && *index_type != bir::TypeKind::I64)) {
+  if (!index_operand.lowered_type.has_value() ||
+      (*index_operand.lowered_type != bir::TypeKind::I32 &&
+       *index_operand.lowered_type != bir::TypeKind::I64)) {
     return std::nullopt;
   }
-  return BirFunctionLowerer::lower_value(index_operand.operand, *index_type, value_aliases);
+  return BirFunctionLowerer::lower_value(index_operand.operand,
+                                         *index_operand.lowered_type,
+                                         value_aliases);
 }
 
 std::optional<bir::Value> BirFunctionLowerer::make_index_immediate(bir::TypeKind type,
