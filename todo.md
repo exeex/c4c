@@ -1,34 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/716_prealloc_current_block_routing_authority_closure.md
+Source Idea Path: ideas/open/717_current_block_routed_value_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 6.1
-Current Step Title: Attach complete routing facts at the prepared owner boundary
+Current Step ID: 1
+Current Step Title: Establish the blocked-family baseline and authority inventory
 
 ## Just Finished
 
-- Step 6.1 attached complete edge-derived current-block routing facts to
-  `PreparedFunctionLookups` during owner construction.
-- The stable-key consumption query now accepts the prepared owner directly;
-  its owner-backed contract covers available, missing, ambiguous, and
-  mismatched states, and lookup-owner copies retain the attached collection.
+- Lifecycle switched from blocked idea 716 execution to the new idea 717
+  decomposition runbook; no implementation progress is claimed.
 
 ## Suggested Next
 
-- Execute Step 6.2 by switching AArch64 current-block consumption to the
-  owner-backed stable-key query and removing local routing-fact reconstruction.
+- Execute Step 1 by recording the accepted baseline, inventorying the rejected
+  authority facts, and mapping each fact to one focused registered probe.
 
 ## Watchouts
 
-- The vector-based query remains as a low-level compatibility helper; the
-  stable owner-based overload is the boundary Step 6.2 should consume.
-- AArch64 still reconstructs per-block facts locally and must be switched in
-  Step 6.2 without treating Route 5 as authority.
-- Ideas 713 and 705 remain open and blocked pending handback.
+- Accepted HEAD `d253152e0` contains Step 6.1 owner storage; do not reopen it.
+- Ideas 716, 713, and 705 remain open and blocked.
+- Keep the AArch64 integration test as integration proof, not discovery.
 
 ## Proof
 
-- Passed `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`.
-- Result: 317/317 backend tests passed; the supervisor-selected proof was
-  sufficient; proof log: `test_after.log`.
+- Pending: supervisor-selected baseline and inventory proof for Step 1.
