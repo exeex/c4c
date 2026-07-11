@@ -129,6 +129,9 @@ namespace {
   const bool named_producer_evidence_applicable =
       inputs.source_producer->kind ==
           PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      (inputs.source_producer->kind ==
+           PreparedEdgePublicationSourceProducerKind::Cast &&
+       !inputs.source_producer_block_label.empty()) ||
       inputs.source_producer->kind ==
           PreparedEdgePublicationSourceProducerKind::Binary;
   if (named_producer_evidence_applicable) {

@@ -10888,6 +10888,75 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
     return result;
   }
 
+  bir::Block cast_block;
+  cast_block.label = "entry";
+  cast_block.label_id = block_label;
+  cast_block.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::ZExt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%sum"),
+      .operand = bir::Value::named(bir::TypeKind::I32, "%input"),
+  });
+  cast_block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "local0",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .value = bir::Value::named(bir::TypeKind::I64, "%sum"),
+  });
+  const auto* cast = std::get_if<bir::CastInst>(&cast_block.insts[0]);
+  const auto* cast_store =
+      std::get_if<bir::StoreLocalInst>(&cast_block.insts[1]);
+  if (cast == nullptr || cast_store == nullptr) {
+    return fail("cast store-source fixture should contain cast/store instructions");
+  }
+  const prepare::PreparedEdgePublicationSourceProducer cast_producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::Cast,
+      .block_label = block_label,
+      .instruction_index = 0,
+      .cast = cast,
+  };
+  auto cast_inputs = base_inputs;
+  cast_inputs.source_value = &cast_store->value;
+  cast_inputs.source_producer = &cast_producer;
+  cast_inputs.source_producer_block_label = "entry";
+  cast_inputs.source_producer_evidence = bir::find_same_block_producer(
+      bir::make_bir_producer_view(cast_block), cast_store->value, 1);
+
+  const auto cast_agreed =
+      prepare::plan_prepared_store_source_publication(cast_inputs);
+  if (!prepare::prepared_store_source_publication_available(cast_agreed) ||
+      cast_agreed.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast ||
+      cast_agreed.source_producer_block_label != block_label ||
+      cast_agreed.source_producer_instruction_index != std::size_t{0} ||
+      cast_agreed.source_cast != cast) {
+    return fail("cast store-source metadata should publish for unique matching named BIR evidence");
+  }
+
+  auto cast_missing_evidence = cast_inputs;
+  cast_missing_evidence.source_producer_evidence = std::nullopt;
+  if (const int result = expect_fail_closed(
+          cast_missing_evidence, "cast missing named BIR producer evidence");
+      result != 0) {
+    return result;
+  }
+
+  auto cast_ambiguous_evidence = cast_inputs;
+  cast_ambiguous_evidence.source_producer_evidence->status =
+      bir::BirViewStatus::Ambiguous;
+  if (const int result = expect_fail_closed(
+          cast_ambiguous_evidence, "cast ambiguous named BIR producer evidence");
+      result != 0) {
+    return result;
+  }
+
+  auto cast_mismatched_evidence = cast_inputs;
+  cast_mismatched_evidence.source_producer_evidence->kind =
+      bir::BirProducerKind::Binary;
+  if (const int result = expect_fail_closed(
+          cast_mismatched_evidence, "cast mismatched named BIR producer evidence");
+      result != 0) {
+    return result;
+  }
+
   return 0;
 }
 

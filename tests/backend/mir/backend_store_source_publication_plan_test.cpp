@@ -1352,6 +1352,12 @@ int records_cast_source_producer_from_prepared_lookup() {
       .source_home = &home,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = producer,
+      .source_producer_evidence = bir::find_same_block_producer(
+          bir::make_bir_producer_view(
+              prepared.module.functions.front().blocks.front()),
+          source,
+          1),
+      .source_producer_block_label = "entry",
   });
 
   if (!prepare::prepared_store_source_publication_available(plan) ||
