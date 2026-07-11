@@ -1,5 +1,7 @@
 #include "publication_plans.hpp"
 
+#include "prepared_lookups.hpp"
+
 #include "mir/query.hpp"
 
 #include "lookup_agreement.hpp"
@@ -1230,6 +1232,21 @@ query_prepared_current_block_join_routing_consumption(
   result.publication_semantic_origin = invariant_origin;
   result.edge_fact_count = applicable.size();
   return result;
+}
+
+PreparedCurrentBlockJoinRoutingConsumption
+query_prepared_current_block_join_routing_consumption(
+    const PreparedFunctionLookups& lookups,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role) {
+  return query_prepared_current_block_join_routing_consumption(
+      lookups.current_block_join_routing_facts,
+      successor_label,
+      routed_value_id,
+      routed_value_name,
+      role);
 }
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(

@@ -8,29 +8,23 @@ Current Step Title: Attach complete routing facts at the prepared owner boundary
 
 ## Just Finished
 
-- Step 5 replaced the fixture's boolean-only policy marker with real prepared
-  lookup policy and exercised the AArch64 current-block source query.
-- The supported axis now carries complete edge-derived authority and succeeds
-  only when that policy is attached; policy-absent and detached axes fail
-  closed independently.
+- Step 6.1 attached complete edge-derived current-block routing facts to
+  `PreparedFunctionLookups` during owner construction.
+- The stable-key consumption query now accepts the prepared owner directly;
+  its owner-backed contract covers available, missing, ambiguous, and
+  mismatched states, and lookup-owner copies retain the attached collection.
 
 ## Suggested Next
 
-- Execute Step 6.1 by adding owner-bound current-block routing fact storage to
-  `PreparedFunctionLookups`, populating it from complete prepared edge facts,
-  and making the stable-key query consume that storage without an external
-  vector.
+- Execute Step 6.2 by switching AArch64 current-block consumption to the
+  owner-backed stable-key query and removing local routing-fact reconstruction.
 
 ## Watchouts
 
-- Detachment must remove both the prepared lookup pointer and fallback value
-  lookup paths; otherwise the query can reconstruct policy from module state.
-- Step 6 is blocked at the owner boundary: complete routing facts are
-  queryable, but `PreparedFunctionLookups` does not store them, and
-  `query_prepared_current_block_join_routing_consumption` currently requires
-  an external vector.
-- Do not advance to Step 6.2 while AArch64 reconstructs routing facts locally
-  from Route 5, MIR, value-home, or publication inputs.
+- The vector-based query remains as a low-level compatibility helper; the
+  stable owner-based overload is the boundary Step 6.2 should consume.
+- AArch64 still reconstructs per-block facts locally and must be switched in
+  Step 6.2 without treating Route 5 as authority.
 - Ideas 713 and 705 remain open and blocked pending handback.
 
 ## Proof

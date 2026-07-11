@@ -34,6 +34,11 @@ int main() {
     return 1;
   }
 
+  if (&copied.prepared_lookups->current_block_join_routing_facts !=
+      &copied.prepared_lookups_owner->current_block_join_routing_facts) {
+    return 3;
+  }
+
   module::FunctionLoweringContext missing;
   if (missing.prepared_lookups_owner != nullptr ||
       missing.prepared_lookups != nullptr) {

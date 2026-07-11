@@ -21,6 +21,7 @@ struct PreparedFunctionLookups {
   PreparedEdgePublicationLookups edge_publications;
   PreparedEdgePublicationSourceProducerLookups edge_publication_source_producers;
   PreparedBranchStackLoadAuthorityRecords branch_stack_load_authorities;
+  std::vector<PreparedCurrentBlockJoinRoutingFact> current_block_join_routing_facts;
 };
 
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(

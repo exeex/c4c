@@ -1,4 +1,4 @@
-#include "src/backend/prealloc/publication_plans.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
 
 #include <vector>
 
@@ -29,11 +29,13 @@ prepare::PreparedCurrentBlockJoinRoutingFact fact(
 }
 
 prepare::PreparedFactBoundaryStatus query(
-    const std::vector<prepare::PreparedCurrentBlockJoinRoutingFact>& facts,
+    std::vector<prepare::PreparedCurrentBlockJoinRoutingFact> facts,
     std::size_t* edge_count = nullptr) {
+  prepare::PreparedFunctionLookups owner;
+  owner.current_block_join_routing_facts = std::move(facts);
   const auto result =
       prepare::query_prepared_current_block_join_routing_consumption(
-          facts, c4c::BlockLabelId{3}, prepare::PreparedValueId{20},
+          owner, c4c::BlockLabelId{3}, prepare::PreparedValueId{20},
           c4c::ValueNameId{20},
           prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression);
   if (edge_count != nullptr) {

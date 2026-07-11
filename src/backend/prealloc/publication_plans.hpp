@@ -22,6 +22,7 @@
 namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
+struct PreparedFunctionLookups;
 struct PreparedEdgePublication;
 struct PreparedEdgePublicationSourceProducer;
 struct PreparedEdgePublicationSourceProducerLookups;
@@ -1774,6 +1775,14 @@ select_prepared_current_block_join_routing_fact(
 [[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
 query_prepared_current_block_join_routing_consumption(
     const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role);
+
+[[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
+query_prepared_current_block_join_routing_consumption(
+    const PreparedFunctionLookups& lookups,
     BlockLabelId successor_label,
     PreparedValueId routed_value_id,
     ValueNameId routed_value_name,

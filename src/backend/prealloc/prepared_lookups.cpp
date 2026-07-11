@@ -1959,6 +1959,32 @@ void repair_prepared_memory_access_position_lookups(
                        return record.function_name != function.function_name;
                      }),
       branch_stack_load_authorities.records.end());
+  std::vector<PreparedCurrentBlockJoinRoutingFact> current_block_join_routing_facts;
+  if (const auto* bir_function =
+          find_prepared_bir_function(prepared, function.function_name)) {
+    for (const auto& block : bir_function->blocks) {
+      const auto successor_label =
+          resolve_prepared_block_label_id(prepared.names, block.label);
+      if (!successor_label.has_value()) {
+        continue;
+      }
+      auto facts = prepare_current_block_join_parallel_copy_source_facts(
+          PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &prepared.names,
+              .value_locations = value_locations,
+              .value_home_lookups = &value_home_lookups,
+              .edge_publications = &edge_publication_lookups,
+              .control_flow = &function,
+              .bir_function = bir_function,
+              .block = &block,
+              .successor_label = *successor_label,
+          });
+      current_block_join_routing_facts.insert(
+          current_block_join_routing_facts.end(),
+          std::make_move_iterator(facts.routing_facts.begin()),
+          std::make_move_iterator(facts.routing_facts.end()));
+    }
+  }
   return PreparedFunctionLookups{
       .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
       .address_materializations =
@@ -1969,6 +1995,8 @@ void repair_prepared_memory_access_position_lookups(
       .edge_publications = std::move(edge_publication_lookups),
       .edge_publication_source_producers = std::move(source_producer_lookups),
       .branch_stack_load_authorities = std::move(branch_stack_load_authorities),
+      .current_block_join_routing_facts =
+          std::move(current_block_join_routing_facts),
   };
 }
 
