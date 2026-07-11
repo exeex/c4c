@@ -1,43 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/693_bir_route_index_retirement_research.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Separate Required BIR-To-Prealloc Inputs
+Current Step ID: 3
+Current Step Title: Propose Named BIR View Replacements
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: Separate Required BIR-To-Prealloc Inputs by writing
-`docs/bir_route_index_retirement_research/02_required_bir_to_prealloc_inputs.md`.
-The document separates minimum prepared/codegen inputs from route-index
-proof/debug fields, identifies Route 4/Route 5/Route 7 agreement facts that
-should be recomputed locally instead of stored in prepared state, and cites the
-current `PreparedFunctionLookups` and `PreparedMirCoreView` boundaries.
+Completed Step 3: Propose Named BIR View Replacements by writing
+`docs/bir_route_index_retirement_research/03_named_view_replacement_shape.md`.
+The document proposes first-cut named C++ ownership boundaries for Producer,
+Memory access, Publication, Control-flow value, Call boundary, and Return-chain
+views; maps Route 1 through Route 8 records into those views; marks each view as
+public, private, or compatibility-only; and cites the current
+`PreparedFunctionLookups` and `PreparedMirCoreView` boundaries.
 
 ## Suggested Next
 
-Proceed to Step 3 by defining the named view replacement shape for the
-route-index retirement path, using `PreparedFunctionLookups` and
-`PreparedMirCoreView` as the prepared-side ownership boundary.
+Proceed to Step 4 by classifying publication and authority boundaries, with
+special attention to keeping Route 4, Route 5, and Route 7 agreement records as
+diagnostic/proof surfaces unless a named prepared authority explicitly owns the
+fact.
 
 ## Watchouts
 
-- Route-index state is not a minimum codegen input; the durable prepared
-  boundary is the semantic lookup data in `PreparedFunctionLookups` plus the
-  BIR binding exposed by `PreparedMirCoreView`.
-- Route 4 block-entry attribution, Route 5 join-source agreement, and Route 7
-  comparison validation should remain local proof/debug recomputation surfaces
-  until later implementation work replaces those diagnostics.
-- Keep subsequent work documentation-only until the supervisor delegates an
-  implementation packet.
+- The Step 3 shape intentionally keeps `RouteIndexReferenceFacade`,
+  `Route4IndexReferenceValidation`, and `Route7IndexReferenceValidation` in a
+  compatibility/proof layer rather than making them the durable public model.
+- Publication facts may be public BIR semantic facts, but prepared execution
+  authority remains in `PreparedEdgePublicationLookups`,
+  `PreparedMoveBundleLookups`, value homes, and `PreparedMirCoreView`.
+- Step 4 should sharpen reject rules for authority claims sourced only from
+  route-numbered debug or agreement records.
 
 ## Proof
 
 Docs-only proof. No build required. Ran:
 
 ```sh
-test -f docs/bir_route_index_retirement_research/02_required_bir_to_prealloc_inputs.md && rg -n "codegen input|debug|proof|diagnostic|recomput|prealloc|PreparedFunctionLookups|PreparedMirCoreView|Route4|Route5|route-index" docs/bir_route_index_retirement_research/02_required_bir_to_prealloc_inputs.md
+test -f docs/bir_route_index_retirement_research/03_named_view_replacement_shape.md && rg -n "Producer|Memory|Publication|Control|Call|Return|public|private|compatibility|Route1|Route2|Route3|Route4|Route5|Route6|Route7|Route8|PreparedFunctionLookups|PreparedMirCoreView" docs/bir_route_index_retirement_research/03_named_view_replacement_shape.md
 ```
 
 The delegated proof writes no root-level log; `test_after.log` was intentionally
