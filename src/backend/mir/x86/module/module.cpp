@@ -2518,10 +2518,12 @@ void append_prepared_compare_join_parallel_copy(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::x86::ConsumedPlans& consumed,
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    std::size_t successor_block_index,
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     bool emit_publication_moves) {
@@ -2561,7 +2563,12 @@ void append_prepared_compare_join_parallel_copy(
     }
     const auto intent =
         c4c::backend::x86::prepared::consume_edge_publication_move_intent(
-            consumed, predecessor_label, successor_label, value_location_move->to_value_id);
+            function_view,
+            consumed,
+            successor_block_index,
+            predecessor_label,
+            successor_label,
+            value_location_move->to_value_id);
     switch (intent.status) {
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::Available:
         if (emit_publication_moves &&
@@ -2874,6 +2881,7 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     c4c::backend::x86::core::Text& out,
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::bir::Function& function,
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const Data& data) {
   const auto function_name =
       c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
@@ -3026,10 +3034,12 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     append_prepared_compare_join_parallel_copy(function_out,
                                                module,
                                                consumed,
+                                               function_view,
                                                module.names,
                                                function,
                                                *control_flow,
                                                *function_locations,
+                                               *join_block_index,
                                                join_context.true_transfer->predecessor_label,
                                                join_context.true_transfer->successor_label,
                                                true);
@@ -3053,10 +3063,12 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     append_prepared_compare_join_parallel_copy(function_out,
                                                module,
                                                consumed,
+                                               function_view,
                                                module.names,
                                                function,
                                                *control_flow,
                                                *function_locations,
+                                               *join_block_index,
                                                join_context.false_transfer->predecessor_label,
                                                join_context.false_transfer->successor_label,
                                                true);
@@ -6415,7 +6427,8 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
   if (append_prepared_direct_extern_call_return_function(out, module, function, data)) {
     return true;
   }
-  if (append_prepared_i32_param_zero_compare_join_return_function(out, module, function, data)) {
+  if (append_prepared_i32_param_zero_compare_join_return_function(
+          out, module, function, function_view, data)) {
     return true;
   }
   if (append_prepared_i32_param_zero_branch_return_function(out, module, function, data)) {

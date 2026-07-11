@@ -8,22 +8,40 @@ namespace c4c::backend::x86::prepared {
 namespace {
 
 std::string render_edge_publication_source_operand(
-    const c4c::backend::prepare::PreparedValueHome& source_home) {
-  namespace prepare = c4c::backend::prepare;
-
-  if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
-      source_home.offset_bytes.has_value()) {
-    return "DWORD PTR [rsp + " + std::to_string(*source_home.offset_bytes) + "]";
+    const c4c::backend::mir::prepared::PreparedMirDirectEdgePublicationSourceView&
+        source) {
+  if (source.source_stack_offset_bytes.has_value()) {
+    return "DWORD PTR [rsp + " + std::to_string(*source.source_stack_offset_bytes) + "]";
   }
-  if (source_home.kind == prepare::PreparedValueHomeKind::Register &&
-      source_home.register_name.has_value()) {
-    return *source_home.register_name;
+  if (source.source_register_name.has_value()) {
+    return *source.source_register_name;
   }
-  if (source_home.kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
-      source_home.immediate_i32.has_value()) {
-    return std::to_string(*source_home.immediate_i32);
+  if (source.source_immediate_i32.has_value()) {
+    return std::to_string(*source.source_immediate_i32);
   }
   return {};
+}
+
+c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus intent_status_from_query_status(
+    c4c::backend::mir::prepared::PreparedMirDirectEdgePublicationSourceQueryStatus status) {
+  namespace mir_prepared = c4c::backend::mir::prepared;
+
+  switch (status) {
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available:
+      return EdgePublicationMoveIntentStatus::Available;
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::MissingLookups:
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::
+        MissingEdgePublicationLookups:
+      return EdgePublicationMoveIntentStatus::MissingSharedLookups;
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::MissingFunctionView:
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::MissingBlock:
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::
+        MissingValueLocations:
+    case mir_prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::
+        MissingSuccessorLabel:
+      return EdgePublicationMoveIntentStatus::MissingPublication;
+  }
+  return EdgePublicationMoveIntentStatus::MissingPublication;
 }
 
 }  // namespace
@@ -53,75 +71,92 @@ FastPath classify_module_fast_path(const c4c::backend::prepare::PreparedBirModul
 }
 
 EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const c4c::backend::x86::ConsumedPlans& consumed,
+    std::size_t successor_block_index,
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     c4c::backend::prepare::PreparedValueId destination_value_id) {
   namespace prepare = c4c::backend::prepare;
 
-  const auto* lookups = consumed.shared_function_lookups();
-  if (lookups == nullptr) {
+  const auto sources =
+      function_view.current_block_direct_edge_publication_sources(successor_block_index);
+  if (sources.status !=
+      c4c::backend::mir::prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::
+          Available) {
     return EdgePublicationMoveIntent{
-        .status = EdgePublicationMoveIntentStatus::MissingSharedLookups,
+        .status = intent_status_from_query_status(sources.status),
     };
   }
 
-  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
-      &lookups->edge_publications, predecessor_label, successor_label,
-      destination_value_id);
-  if (publication == nullptr) {
+  const c4c::backend::mir::prepared::PreparedMirDirectEdgePublicationSourceView*
+      accepted_source = nullptr;
+  for (const auto& source : sources.sources) {
+    if (source.status == c4c::backend::mir::prepared::
+                             PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        source.predecessor_label == predecessor_label &&
+        source.successor_label == successor_label &&
+        source.destination_value_id == destination_value_id) {
+      accepted_source = &source;
+      break;
+    }
+  }
+  if (accepted_source == nullptr) {
     return EdgePublicationMoveIntent{
         .status = EdgePublicationMoveIntentStatus::MissingPublication,
     };
   }
 
+  const auto* lookups = consumed.shared_function_lookups();
+  const auto* publication =
+      lookups == nullptr
+          ? nullptr
+          : prepare::find_unique_indexed_prepared_edge_publication(
+                &lookups->edge_publications,
+                predecessor_label,
+                successor_label,
+                destination_value_id);
   EdgePublicationMoveIntent intent{
-      .status = EdgePublicationMoveIntentStatus::UnsupportedPublication,
+      .status = EdgePublicationMoveIntentStatus::Available,
       .publication = publication,
-      .destination_value_id = publication->destination_value_id,
+      .destination_value_id = accepted_source->destination_value_id,
   };
-  if (publication->source_value_id.has_value()) {
-    intent.source_value_id = *publication->source_value_id;
+  if (accepted_source->source_value_id.has_value()) {
+    intent.source_value_id = *accepted_source->source_value_id;
   }
 
-  if (publication->status != prepare::PreparedEdgePublicationLookupStatus::Available ||
-      publication->move == nullptr ||
-      publication->move->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
-    return intent;
-  }
-  if (publication->source_home == nullptr) {
-    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
-    return intent;
-  }
-  if (publication->destination_home == nullptr ||
-      publication->destination_home->kind != prepare::PreparedValueHomeKind::Register ||
-      !publication->destination_home->register_name.has_value()) {
+  if (!accepted_source->destination_register_name.has_value()) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
     return intent;
   }
 
-  const auto source_operand =
-      render_edge_publication_source_operand(*publication->source_home);
+  const auto source_operand = render_edge_publication_source_operand(*accepted_source);
   if (source_operand.empty()) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
   }
 
-  intent.status = EdgePublicationMoveIntentStatus::Available;
   intent.source_operand = source_operand;
-  intent.destination_operand = *publication->destination_home->register_name;
+  intent.destination_operand = *accepted_source->destination_register_name;
   intent.instruction_text = "mov " + intent.destination_operand + ", " + intent.source_operand;
   return intent;
 }
 
 EdgePublicationMoveIntent append_edge_publication_move_instruction(
     std::string& output,
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const c4c::backend::x86::ConsumedPlans& consumed,
+    std::size_t successor_block_index,
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     c4c::backend::prepare::PreparedValueId destination_value_id) {
   auto intent = consume_edge_publication_move_intent(
-      consumed, predecessor_label, successor_label, destination_value_id);
+      function_view,
+      consumed,
+      successor_block_index,
+      predecessor_label,
+      successor_label,
+      destination_value_id);
   if (intent.status == EdgePublicationMoveIntentStatus::Available) {
     output += "    " + intent.instruction_text + "\n";
   }

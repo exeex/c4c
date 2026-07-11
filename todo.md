@@ -1,53 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/692_prepared_mir_source_dependency_freshness_view_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Typed Freshness View Contract
+Current Step ID: 3
+Current Step Title: Migrate One Low-Risk x86 Consumer Or Comparator Path
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by adding a typed, reference-only direct edge-publication
-current-block join source freshness view on `PreparedMirFunctionView`.
+Completed Step 3 by migrating the selected x86 direct edge-publication move
+consumer, `x86::prepared::consume_edge_publication_move_intent(...)`, to use
+`PreparedMirFunctionView::current_block_direct_edge_publication_sources(...)`
+as the source/freshness lowering authority.
 
-New view surface:
+The module compare-join lowering path now passes the existing
+`PreparedMirFunctionView` and join block index into the consumer. The consumer
+only renders source/destination operands from an accepted typed
+`PreparedMirDirectEdgePublicationSourceView` row matching the requested
+predecessor, successor, and destination value. Rejected or missing typed rows
+fail closed without exposing operands.
 
-- `PreparedMirDirectEdgePublicationSourceQueryStatus`
-- `PreparedMirDirectEdgePublicationSourceStatus`
-- `PreparedMirDirectEdgePublicationSourceView`
-- `PreparedMirDirectEdgePublicationSourceQuery`
-- `PreparedMirFunctionView::current_block_direct_edge_publication_sources(...)`
-
-Accepted rows expose typed source/destination ids, home kinds, destination
-register, source register/stack/immediate descriptors where applicable, and
-selected `DirectEdgePublicationSource` freshness enum metadata. Rejected rows
-keep lowering-authority fields empty and report a fail-closed status instead
-of returning raw publication rows.
-
-Extended `backend_prepared_mir_core_comparator` with deterministic in-memory
-prepared MIR fixtures covering one accepted named direct-edge publication
-source freshness row and one rejected missing-publication row with no exposed
-lowering authority.
+The legacy raw `PreparedEdgePublication` pointer remains only as compatibility
+metadata for the existing Route 5 agreement/type checks after typed admission;
+it is no longer used to derive source operands, destination operands, or
+freshness authority in this selected path.
 
 ## Suggested Next
 
-Proceed to Step 3 when delegated: migrate the selected low-risk x86 consumer
-program point, `x86::prepared::consume_edge_publication_move_intent(...)`, to
-consume this typed view result instead of raw edge-publication lookup authority.
+Proceed to Step 4 when delegated: audit the freshness-view boundary and close
+readiness for this first direct edge-publication source/freshness contract.
+Record any remaining consumer migrations or source/freshness families as
+follow-up scope rather than expanding this active plan.
 
 ## Watchouts
 
-- Keep Step 2 source/freshness authority on the closed idea 589 producer
-  contract. Do not infer it from raw publication shape, move-bundle
-  completeness, destination register legality, source-home completeness, Route
-  5 text, diagnostics, or prepared printer output.
-- Step 2 intentionally did not migrate x86; that remains Step 3 scope.
-- Rejected view rows are status-only for lowering purposes. Do not populate
-  source/destination operand authority on rejected rows in the x86 migration.
+- Rejected view rows remain status-only for lowering purposes. The x86
+  migrated path must continue to avoid sourcing operands from rejected rows or
+  raw publication shape.
+- Raw `PreparedEdgePublication` is still present in the intent only for the
+  existing Route 5 compatibility/type checks. Do not treat that pointer as
+  permission to reintroduce raw source/freshness authority.
 - Do not reopen idea 590 or branch stack-load freshness in this first view
-  slice. Branch stack-loads have producer ownership too, but there is no
-  comparable x86 consumer surface in the inspected files.
+  family. Branch stack-loads have producer ownership too, but they are not the
+  selected consumer for this packet.
 - Do not rewrite shared-prealloc producers or broaden into typed/aggregate
   stack-source publication, select/alias freshness, RV64, AArch64, or broad
   target migration.
@@ -58,10 +53,9 @@ consume this typed view result instead of raw edge-publication lookup authority.
 ## Proof
 
 Required proof passed and wrote canonical `test_after.log`:
-`set -o pipefail; (cmake --build build --target c4c_backend backend_prepared_mir_core_view_test backend_prepared_mir_core_comparator_test -j && ctest --test-dir build -R '^backend_prepared_mir_' --output-on-failure) > test_after.log 2>&1`
+`set -o pipefail; (cmake --build build --target c4c_backend backend_prepared_mir_core_view_test backend_prepared_mir_core_comparator_test -j && ctest --test-dir build -R '^backend_prepared_mir_|^backend_x86_shared_producer_query$|^backend_codegen_route_x86_64_.*observe_semantic_bir$' --output-on-failure) > test_after.log 2>&1`
 
-Result: 2/2 selected tests passed (`backend_prepared_mir_core_view`,
-`backend_prepared_mir_core_comparator`).
+Result: 79/79 selected tests passed.
 
 Diff hygiene passed:
-`git diff --check -- src/backend/mir/prepared_view.hpp src/backend/mir/prepared_view.cpp tests/backend/mir/backend_prepared_mir_core_comparator_test.cpp todo.md`
+`git diff --check -- src/backend/mir/x86/prepared/prepared.hpp src/backend/mir/x86/prepared/dispatch.cpp src/backend/mir/x86/module/module.cpp todo.md`

@@ -13,6 +13,10 @@ namespace c4c::backend::x86 {
 struct ConsumedPlans;
 }
 
+namespace c4c::backend::mir::prepared {
+class PreparedMirFunctionView;
+}
+
 namespace c4c::backend::x86::prepared {
 
 struct Query {
@@ -177,13 +181,17 @@ struct EdgePublicationMoveIntent {
 [[nodiscard]] std::optional<Operand> render_immediate_operand(
     const c4c::backend::bir::Value& value);
 [[nodiscard]] EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const c4c::backend::x86::ConsumedPlans& consumed,
+    std::size_t successor_block_index,
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     c4c::backend::prepare::PreparedValueId destination_value_id);
 [[nodiscard]] EdgePublicationMoveIntent append_edge_publication_move_instruction(
     std::string& output,
+    const c4c::backend::mir::prepared::PreparedMirFunctionView& function_view,
     const c4c::backend::x86::ConsumedPlans& consumed,
+    std::size_t successor_block_index,
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     c4c::backend::prepare::PreparedValueId destination_value_id);
