@@ -266,6 +266,8 @@ std::optional<bir::Global> lower_string_constant_global(
     GlobalInfo* info);
 bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
                                          const ImportedFunctionSymbolIndex& function_symbols);
+void apply_string_pointer_initializer_target_ids(GlobalTypes& global_types,
+                                                 c4c::LinkNameTable& link_names);
 std::optional<GlobalAddress> resolve_known_global_address(
     std::string_view global_name,
     GlobalTypes& global_types,

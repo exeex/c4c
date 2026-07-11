@@ -17,6 +17,7 @@ namespace {
 using lir_to_bir_detail::build_type_decl_map;
 using lir_to_bir_detail::build_backend_structured_layout_table;
 using lir_to_bir_detail::build_bir_structured_type_spelling_context;
+using lir_to_bir_detail::apply_string_pointer_initializer_target_ids;
 using lir_to_bir_detail::ImportedFunctionSymbolIndex;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::GlobalTypes;
@@ -904,28 +905,6 @@ void apply_resolved_pointer_initializer_value_ids(bir::Module* module,
       if (value.kind == bir::Value::Kind::Named && value.type == bir::TypeKind::Ptr) {
         value = bir::Value::named_symbol_pointer(value.name, address.link_name_id);
       }
-    }
-  }
-}
-
-void apply_string_pointer_initializer_target_ids(bir::Module* module,
-                                                 GlobalTypes* global_types) {
-  if (module == nullptr || global_types == nullptr) {
-    return;
-  }
-  for (auto& [global_name, info] : *global_types) {
-    (void)global_name;
-    for (auto& [byte_offset, address] : info.pointer_initializer_offsets) {
-      (void)byte_offset;
-      if (address.link_name_id != c4c::kInvalidLinkName) {
-        continue;
-      }
-      const auto target_it = global_types->find(address.global_name);
-      if (target_it == global_types->end() ||
-          !target_it->second.is_string_constant) {
-        continue;
-      }
-      address.link_name_id = module->names.link_names.intern(address.global_name);
     }
   }
 }
@@ -1948,7 +1927,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
         "bootstrap lir_to_bir only supports aggregate pointer fields initialized from addressable globals right now");
     return std::nullopt;
   }
-  apply_string_pointer_initializer_target_ids(&module, &global_types);
+  apply_string_pointer_initializer_target_ids(global_types, module.names.link_names);
   apply_resolved_pointer_initializer_value_ids(&module, global_types);
 
   std::unordered_set<std::string> resolving_global_addresses;

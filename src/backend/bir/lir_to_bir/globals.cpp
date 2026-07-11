@@ -393,6 +393,24 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
   return true;
 }
 
+void apply_string_pointer_initializer_target_ids(GlobalTypes& global_types,
+                                                 c4c::LinkNameTable& link_names) {
+  for (auto& [global_name, info] : global_types) {
+    (void)global_name;
+    for (auto& [byte_offset, address] : info.pointer_initializer_offsets) {
+      (void)byte_offset;
+      if (address.link_name_id != c4c::kInvalidLinkName) {
+        continue;
+      }
+      const auto target_it = global_types.find(address.global_name);
+      if (target_it == global_types.end() || !target_it->second.is_string_constant) {
+        continue;
+      }
+      address.link_name_id = link_names.intern(address.global_name);
+    }
+  }
+}
+
 std::optional<bir::Global> lower_minimal_global_impl(
     const c4c::codegen::lir::LirGlobal& global,
     const TypeDeclMap& type_decls,

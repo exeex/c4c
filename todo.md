@@ -1,48 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/688_initializer_lowering_bridge_isolation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Narrow Global Declaration Import State
+Current Step ID: Step 3
+Current Step Title: Isolate String Constant Rewrite State
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 follow-up completed for the string authority guard regression introduced
-by the imported function symbol bridge rename.
+Step 3 completed the string-constant target-id rewrite isolation by moving the
+rewrite helper out of module-local ownership and into the initializer/global
+adapter path.
 
 Exact files/helpers touched:
-- `src/backend/bir/lir_to_bir/lowering.hpp`: added the neutral
-  `ImportedFunctionSymbolIndex::no_id_compatibility_link_name_id()` accessor
-  and kept the existing `find_raw_symbol_link_name_id()` wrapper for split
-  lowerer files outside this packet.
-- `src/backend/bir/lir_to_bir/globals.cpp`: moved the out-of-line lookup
-  definition and Step 2 globals call sites to the neutral accessor, eliminating
-  the declaration-level `find_raw_symbol_link_name_id` guard hit without
-  changing storage, lookup order, or fallback behavior.
-- `src/backend/bir/lir_to_bir/module.cpp`: updated the initializer symbol
-  resolver to use the neutral no-id compatibility accessor.
+- `src/backend/bir/lir_to_bir/lowering.hpp`: declared
+  `apply_string_pointer_initializer_target_ids(GlobalTypes&, LinkNameTable&)`
+  alongside pointer-initializer resolution helpers.
+- `src/backend/bir/lir_to_bir/globals.cpp`: added the adapter-owned helper that
+  interns target ids for aggregate pointer-initializer addresses whose target is
+  a string constant and whose address does not already carry a LinkNameId.
+- `src/backend/bir/lir_to_bir/module.cpp`: removed the module-local helper and
+  kept the same call ordering before relocation-slot/value-id publication.
 
-Behavioral scope: no prepared object-data behavior, target relocation spelling,
-diagnostics, runtime behavior, expectations, unsupported markers, tests, guard
-classifications, allowlists, or harness policy were changed.
+Behavioral scope: no BIR output contract, relocation-slot publication,
+prepared object-data behavior, string data layout, diagnostics, runtime
+behavior, expectations, unsupported markers, tests, allowlists, or harness
+policy were changed.
 
 ## Suggested Next
 
-Next coherent packet: isolate the string-constant target-id rewrite path after
-the declaration/import bridge rename, keeping relocation-slot publication and
-prepared object-data behavior unchanged.
+Next coherent packet: Step 4 should narrow initializer value materialization in
+`src/backend/bir/lir_to_bir/global_initializers.cpp`, keeping scalar, byte
+string, array, aggregate, and pointer initializer spelling compatibility behind
+adapter-owned helpers without changing emitted initializer facts.
 
 ## Watchouts
 
-- The split lowering translation units outside this packet still rely on
-  `ImportedFunctionSymbolIndex::find_raw_symbol_link_name_id()`; `lowering.hpp`
-  keeps that inline wrapper so this packet does not touch unowned implementation
-  files.
-- `GlobalTypes` remains shared by memory/addressing/provenance code and should
-  still be isolated in a separate packet if that becomes the selected route.
-- Keep the next packet from changing relocation spelling or prepared object-data
-  publication while moving string constant rewrite state.
+- The rewrite still intentionally runs before
+  `apply_resolved_pointer_initializer_value_ids()` so relocation slots and
+  named pointer initializer values see the same string target ids as before.
+- `GlobalInfo::is_string_constant` remains the existing adapter-private marker
+  consumed by memory lowering; this packet did not widen or rename that shared
+  state.
+- Step 4 should avoid changing pointer initializer parsing semantics,
+  relocation spelling, prepared object-data publication, or expectation files.
 
 ## Proof
 
