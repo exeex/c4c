@@ -8,7 +8,8 @@ Current Step Title: Confirm Prepared Authority Boundaries
 
 ## Just Finished
 
-Completed `plan.md` Step 2 authority-boundary confirmation for
+Repaired the `plan.md` Step 2 recorded future proof command while preserving
+the completed `plan.md` Step 2 authority-boundary confirmation for
 `prepare::attribute_route4_block_entry_publication_if_agreeing`.
 
 The data produced inside that helper is diagnostic/agreement-only:
@@ -33,6 +34,14 @@ their source producer, source home, source memory, parallel-copy, move-bundle,
 aggregate stack-source, and freshness fields; Route 4 status must not replace
 those records.
 
+The previously recorded CTest filter,
+`ctest --test-dir build -R '^backend_prealloc_block_entry_publications$'
+--output-on-failure`, is not runnable in this checkout because the active
+CTest registry returns zero tests for that exact name. The focused test binary
+`./build/tests/backend/bir/backend_prealloc_block_entry_publications_test`
+exists and runs successfully, so it is the narrowest currently runnable proof
+surface for the selected prepared current block-entry publication lookup path.
+
 ## Suggested Next
 
 Add or reuse the block-entry
@@ -42,6 +51,12 @@ const Block&, const Value&)` adapter, then migrate only
 while preserving the existing attribution fields and fail-closed behavior.
 
 ## Watchouts
+
+`tests/backend/bir/CMakeLists.txt` contains an `add_test` entry for
+`backend_prealloc_block_entry_publications`, but the current `build/` CTest
+inventory does not register it. Until the build-tree registration mismatch is
+fixed or regenerated in a way that exposes the CTest, use the direct binary
+command below for the focused future proof.
 
 Do not copy Route 4 validity, route status, instruction index, successor
 identity, PHI identity, or destination type into prepared authority. The
@@ -60,10 +75,17 @@ dump rows unchanged until a later packet explicitly migrates that consumer.
 
 ## Proof
 
-No build or ctest was run for this inspection-only packet, per delegated
-proof.
-Future implementation proof command:
-`cmake --build --preset default && ctest --test-dir build -R '^backend_prealloc_block_entry_publications$' --output-on-failure`.
+No build or CTest proof was required for this proof-command repair packet, per
+delegated proof.
 
-No `test_after.log` was produced because this packet is read-only inspection
-plus `todo.md` recording.
+Checked runnable proof surfaces:
+`ctest --test-dir build -N -R '^backend_prealloc_block_entry_publications$'`
+reported `Total Tests: 0`, while
+`./build/tests/backend/bir/backend_prealloc_block_entry_publications_test`
+exited 0.
+
+Future implementation proof command:
+`cmake --build --preset default && ./build/tests/backend/bir/backend_prealloc_block_entry_publications_test`.
+
+No `test_after.log` was produced because this packet only repairs the recorded
+future proof command in `todo.md`.
