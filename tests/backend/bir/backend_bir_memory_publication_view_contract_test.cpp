@@ -12,22 +12,46 @@ namespace bir = c4c::backend::bir;
 
 int fail(const char* message) { std::cerr << message << '\n'; return 1; }
 
-bir::LoadLocalInst load(const char* result, const char* slot) {
+bir::LoadLocalInst load(const char* result, const char* slot,
+                        c4c::SlotNameId slot_id) {
   bir::MemoryAddress address;
   address.base_kind = bir::MemoryAddress::BaseKind::LocalSlot;
   address.base_name = slot;
+  address.base_slot_id = slot_id;
   address.size_bytes = 8;
+  address.align_bytes = 8;
+  address.address_space = bir::AddressSpace::Fs;
+  address.is_volatile = true;
   return {.result = bir::Value::named(bir::TypeKind::I64, result),
           .slot_name = slot,
+          .address = address};
+}
+
+bir::LoadGlobalInst global_load(const char* result, const char* name,
+                                c4c::LinkNameId name_id,
+                                bir::MemoryAddress::BaseKind base_kind) {
+  bir::MemoryAddress address;
+  address.base_kind = base_kind;
+  address.base_name = name;
+  address.base_link_name_id = name_id;
+  address.size_bytes = 8;
+  address.align_bytes = 4;
+  return {.result = bir::Value::named(bir::TypeKind::I64, result),
+          .global_name = name,
+          .global_name_id = name_id,
           .address = address};
 }
 
 int memory_states() {
   bir::Block block;
   block.label = "memory";
-  block.insts.emplace_back(load("%unique", "slot.a"));
-  block.insts.emplace_back(load("%duplicate", "slot.b"));
-  block.insts.emplace_back(load("%duplicate", "slot.c"));
+  block.insts.emplace_back(load("%unique", "slot.a", 11));
+  block.insts.emplace_back(load("%duplicate", "slot.b", 12));
+  block.insts.emplace_back(load("%duplicate", "slot.c", 13));
+  block.insts.emplace_back(global_load("%global", "global.a", 21,
+                                       bir::MemoryAddress::BaseKind::GlobalSymbol));
+  block.insts.emplace_back(global_load("%string", ".str.0", 22,
+                                       bir::MemoryAddress::BaseKind::StringConstant));
   const auto view = bir::make_bir_memory_access_view(block);
   const auto available = bir::find_memory_access(view, 0);
   const auto unavailable = bir::find_memory_access(view, 10);
@@ -35,13 +59,48 @@ int memory_states() {
       view, bir::Value::named(bir::TypeKind::I64, ""), 3);
   const auto ambiguous = bir::find_memory_access_source(
       view, bir::Value::named(bir::TypeKind::I64, "%duplicate"), 3);
+  const auto global = bir::find_memory_access(view, 3);
+  const auto string = bir::find_memory_access(view, 4);
   if (!available || available.kind != bir::BirMemoryAccessKind::LoadLocal ||
       available.base_kind != bir::BirMemoryBaseKind::LocalSlot ||
-      available.base_name != "slot.a" || available.result_value == nullptr ||
+      available.instruction != &block.insts[0] ||
+      available.base_name != "slot.a" || available.local_slot_name != "slot.a" ||
+      available.local_slot_id != 11 || !available.global_name.empty() ||
+      !available.string_constant_name.empty() || available.global_name_id != 0 ||
+      available.string_constant_name_id != 0 ||
+      available.address_space != bir::AddressSpace::Fs ||
+      !available.is_volatile || available.align_bytes != 8 ||
+      available.result_value == nullptr || available.result_value_name != "%unique" ||
+      !available.stored_value_name.empty() || !available.pointer_base_name.empty() ||
       unavailable.status != bir::BirViewStatus::Unavailable || unavailable ||
       incomplete.status != bir::BirViewStatus::Incomplete || incomplete ||
       ambiguous.status != bir::BirViewStatus::Ambiguous || ambiguous) {
     return fail("memory view did not expose all explicit states");
+  }
+  if (!global || global.global_name != "global.a" || global.global_name_id != 21 ||
+      !global.local_slot_name.empty() || !global.string_constant_name.empty() ||
+      !string || string.string_constant_name != ".str.0" ||
+      string.string_constant_name_id != 22 || !string.local_slot_name.empty() ||
+      !string.global_name.empty()) {
+    return fail("memory view did not preserve distinct applicable base identities");
+  }
+  return 0;
+}
+
+int memory_identity_fails_closed() {
+  bir::Block block;
+  block.label = "invalid-memory";
+  block.insts.emplace_back(load("%missing-id", "slot.a", c4c::kInvalidSlotName));
+  block.insts.emplace_back(load("%conflicting", "slot.b", 12));
+  auto& conflicting = std::get<bir::LoadLocalInst>(block.insts.back());
+  conflicting.address->base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol;
+  conflicting.address->base_link_name_id = 22;
+  const auto view = bir::make_bir_memory_access_view(block);
+  const auto incomplete = bir::find_memory_access(view, 0);
+  const auto mismatched = bir::find_memory_access(view, 1);
+  if (incomplete || incomplete.status != bir::BirViewStatus::Incomplete ||
+      mismatched || mismatched.status != bir::BirViewStatus::Incomplete) {
+    return fail("memory view accepted incomplete or mismatched stable identity");
   }
   return 0;
 }
@@ -103,6 +162,7 @@ int main() {
   static_assert(std::is_default_constructible_v<bir::BirMemoryAccessView>);
   static_assert(std::is_default_constructible_v<bir::BirPublicationView>);
   if (const int status = memory_states(); status != 0) return status;
+  if (const int status = memory_identity_fails_closed(); status != 0) return status;
   if (const int status = publication_states(); status != 0) return status;
   return headers_are_route_free();
 }

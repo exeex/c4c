@@ -36,18 +36,87 @@ BirMemoryBaseKind named_memory_base(Route3MemoryAccessBaseKind kind) {
 }
 
 BirMemoryAccessResult named_memory_result(const Route3MemoryAccessRecord& record) {
+  if (!record || record.instruction == nullptr ||
+      record.node_kind == Route3MemoryAccessNodeKind::Unknown ||
+      record.base_kind == Route3MemoryAccessBaseKind::None) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+
+  const bool has_local = !record.local_slot_name.empty() ||
+                         record.local_slot_id != kInvalidSlotName;
+  const bool has_global = !record.global_name.empty() ||
+                          record.global_name_id != kInvalidLinkName;
+  const bool has_string = !record.string_constant_name.empty() ||
+                          record.string_constant_name_id != kInvalidLinkName;
+  const bool has_pointer = record.pointer_value.value != nullptr;
+  const unsigned base_evidence_count = static_cast<unsigned>(has_local) +
+                                       static_cast<unsigned>(has_global) +
+                                       static_cast<unsigned>(has_string) +
+                                       static_cast<unsigned>(has_pointer);
+  if (base_evidence_count != 1) {
+    return {.status = base_evidence_count > 1 ? BirViewStatus::Ambiguous
+                                              : BirViewStatus::Incomplete};
+  }
+
+  const bool complete_base =
+      (record.base_kind == Route3MemoryAccessBaseKind::LocalSlot &&
+       !record.local_slot_name.empty() &&
+       record.local_slot_id != kInvalidSlotName) ||
+      (record.base_kind == Route3MemoryAccessBaseKind::GlobalSymbol &&
+       !record.global_name.empty() &&
+       record.global_name_id != kInvalidLinkName) ||
+      (record.base_kind == Route3MemoryAccessBaseKind::StringConstant &&
+       !record.string_constant_name.empty() &&
+       record.string_constant_name_id != kInvalidLinkName) ||
+      (record.base_kind == Route3MemoryAccessBaseKind::PointerValue &&
+       record.pointer_value && !record.pointer_value.name.empty());
+  const bool complete_value =
+      ((record.node_kind == Route3MemoryAccessNodeKind::LoadLocal ||
+        record.node_kind == Route3MemoryAccessNodeKind::LoadGlobal) &&
+       record.result_value && !record.result_value.name.empty() &&
+       !record.stored_value) ||
+      ((record.node_kind == Route3MemoryAccessNodeKind::StoreLocal ||
+        record.node_kind == Route3MemoryAccessNodeKind::StoreGlobal) &&
+       record.stored_value && !record.result_value);
+  const bool compatible_kind =
+      ((record.node_kind == Route3MemoryAccessNodeKind::LoadLocal ||
+        record.node_kind == Route3MemoryAccessNodeKind::StoreLocal) &&
+       (record.base_kind == Route3MemoryAccessBaseKind::LocalSlot ||
+        record.base_kind == Route3MemoryAccessBaseKind::PointerValue)) ||
+      ((record.node_kind == Route3MemoryAccessNodeKind::LoadGlobal ||
+        record.node_kind == Route3MemoryAccessNodeKind::StoreGlobal) &&
+       (record.base_kind == Route3MemoryAccessBaseKind::GlobalSymbol ||
+        record.base_kind == Route3MemoryAccessBaseKind::StringConstant ||
+        record.base_kind == Route3MemoryAccessBaseKind::PointerValue));
+  if (!complete_base || !complete_value || !compatible_kind) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+
   return BirMemoryAccessResult{
       .status = BirViewStatus::Available,
       .kind = named_memory_kind(record.node_kind),
       .base_kind = named_memory_base(record.base_kind),
+      .instruction = record.instruction,
       .instruction_index = record.instruction_index,
       .block_label = record.block_label,
       .base_name = !record.local_slot_name.empty() ? record.local_slot_name
                    : !record.global_name.empty() ? record.global_name
                                                  : record.string_constant_name,
+      .address_space = record.address_space,
+      .is_volatile = record.is_volatile,
+      .align_bytes = record.align_bytes,
+      .local_slot_name = record.local_slot_name,
+      .local_slot_id = record.local_slot_id,
+      .global_name = record.global_name,
+      .global_name_id = record.global_name_id,
+      .string_constant_name = record.string_constant_name,
+      .string_constant_name_id = record.string_constant_name_id,
       .pointer_base = record.pointer_value.value,
+      .pointer_base_name = record.pointer_value.name,
       .result_value = record.result_value.value,
+      .result_value_name = record.result_value.name,
       .stored_value = record.stored_value.value,
+      .stored_value_name = record.stored_value.name,
       .byte_offset = record.byte_offset,
       .size_bytes = record.size_bytes,
   };
