@@ -1,6 +1,6 @@
 # Call ABI Import Boundary Cleanup
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Order: 6 of 6 in the `LIR -> BIR` adapter boundary first wave
 After: `ideas/open/689_memory_address_provenance_import_cleanup.md`
@@ -68,6 +68,18 @@ placement, split that downstream work into a separate idea and escalate proof.
 - Prepared call plans, wrappers, helper protocols, target emission, object
   output, and runtime behavior remain unchanged.
 - Proof is recorded in `todo.md`.
+
+## Completion Notes
+
+Closed after Step 5 final proof. The completed slice narrowed or clarified
+adapter-owned call ABI import boundaries in `call_abi.cpp` and `calling.cpp`
+without changing prepared call plans, wrappers, helper protocols, target
+emission, object output, runtime behavior, tests, expectations, unsupported
+markers, allowlists, or harness policy.
+
+Close proof used the focused call/ABI adapter subset recorded in
+`test_before.log` and refreshed in `test_after.log`; the close-time regression
+guard passed with no new failures and no pass-count loss.
 
 ## Reviewer Reject Signals
 
