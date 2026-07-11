@@ -690,8 +690,8 @@ Route6CallUseSourceIndex route6_build_call_use_source_index(
   return index;
 }
 
-BirCallBoundaryView make_bir_call_boundary_view(const Function& function) {
-  return BirCallBoundaryView{route6_build_call_use_source_index(function)};
+Route6CallBoundaryAdapter make_bir_call_boundary_view(const Function& function) {
+  return Route6CallBoundaryAdapter{route6_build_call_use_source_index(function)};
 }
 
 Route6CallArgumentSourceRecord route6_find_call_argument_source(
@@ -872,7 +872,7 @@ Route6CallResultLaneSourceRecord route6_find_call_result_lane_source(
 }
 
 Route6CallResultSourceRecord find_call_result_source(
-    const BirCallBoundaryView& view,
+    const Route6CallBoundaryAdapter& view,
     const Block& block,
     std::size_t call_instruction_index,
     std::string_view callee,
@@ -907,7 +907,7 @@ Route6CallResultSourceRecord find_call_result_source(
 }
 
 Route6CallResultLaneSourceRecord find_call_result_lane_source(
-    const BirCallBoundaryView& view,
+    const Route6CallBoundaryAdapter& view,
     const Block& block,
     std::size_t call_instruction_index,
     std::string_view callee,
