@@ -1,6 +1,6 @@
 # Prealloc Named BIR Proof Consumer Migration
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -85,6 +85,15 @@ copied into prepared authority records as stable route-numbered state.
 - Rollback to the old route consumer remains possible for the migrated
   surface.
 - Proof covers the actual migrated consumer, not only a route dump row.
+
+## Closure Note
+
+Closed on 2026-07-11 after the first Route 4 block-entry attribution consumer
+was migrated through the named BIR publication proof view while preserving
+prepared executable authority and local rollback compatibility. Close-time
+backend regression evidence compared canonical `test_before.log` and
+`test_after.log` for `^backend_` and passed with 304/304 tests before and
+after, no new failures, and no new tests over 30 seconds.
 
 ## Reviewer Reject Signals
 
