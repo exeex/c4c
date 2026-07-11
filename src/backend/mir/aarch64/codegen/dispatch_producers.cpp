@@ -147,6 +147,7 @@ prepare_current_block_join_parallel_copy_source_facts(
           .value_locations = context.function.value_locations,
           .value_home_lookups = value_home_lookups,
           .edge_publications = edge_publications,
+          .control_flow = context.function.control_flow,
           .block = context.bir_block,
           .successor_label =
               context.control_flow_block != nullptr
@@ -552,6 +553,7 @@ build_current_block_join_prepared_query_routing(
           .value_locations = context.function.value_locations,
           .value_home_lookups = value_home_lookups,
           .edge_publications = edge_publications,
+          .control_flow = context.function.control_flow,
           .route5_edge_join_sources =
               route5_join_sources.has_value() ? &*route5_join_sources : nullptr,
           .block = context.bir_block,

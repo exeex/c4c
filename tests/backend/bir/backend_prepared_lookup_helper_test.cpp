@@ -4908,6 +4908,7 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
+              .control_flow = &control_flow,
               .join_source_evidence = {named_join_evidence},
               .block = &block,
               .successor_label = successor_label,
@@ -4952,7 +4953,11 @@ int verify_current_block_join_parallel_copy_source_query() {
       query.facts[0].source_freshness_authority->reference.edge_publication !=
           query.facts[0].publication ||
       query.facts[0].source_freshness_authority->reference.move !=
-          query.facts[0].move) {
+          query.facts[0].move ||
+      query.facts[0].publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::BirPhi ||
+      !query.facts[0].join_source_evidence_applicable) {
     return fail("current-block join query should require selected direct-edge source freshness");
   }
   if (query.facts[1].status !=
@@ -5040,6 +5045,7 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
+              .control_flow = &control_flow,
               .join_source_evidence = {named_join_evidence},
               .block = &route5_join_block,
               .successor_label = successor_label,
@@ -5070,6 +5076,7 @@ int verify_current_block_join_parallel_copy_source_query() {
                     .regalloc = &regalloc,
                     .value_locations = &locations,
                     .edge_publications = &edge_publications,
+                    .control_flow = &control_flow,
                     .join_source_evidence = std::move(evidence),
                     .block = &route5_join_block,
                     .successor_label = successor_label,
@@ -5107,6 +5114,54 @@ int verify_current_block_join_parallel_copy_source_query() {
           prepare::PreparedFactBoundaryStatus::Mismatched,
           "mismatched named publication evidence should fail closed")) {
     return 1;
+  }
+
+  auto prepared_only_block = route5_join_block;
+  prepared_only_block.insts.erase(prepared_only_block.insts.begin(),
+                                  prepared_only_block.insts.begin() + 3);
+  const auto prepared_only =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .control_flow = &control_flow,
+              .join_source_evidence = {named_join_evidence},
+              .block = &prepared_only_block,
+              .successor_label = successor_label,
+          });
+  if (prepared_only.facts.empty() ||
+      prepared_only.facts.front().status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      prepared_only.facts.front().publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::PreparedJoinTransfer ||
+      !prepared_only.facts.front().prepared_join_transfer_authority_complete ||
+      !prepared_only.facts.front().join_source_evidence) {
+    return fail("complete prepared JoinTransfer publication should support a non-PHI edge");
+  }
+  auto incomplete_control_flow = control_flow;
+  incomplete_control_flow.join_transfers.front().edge_transfers.clear();
+  const auto incomplete_prepared_only =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .control_flow = &incomplete_control_flow,
+              .join_source_evidence = {named_join_evidence},
+              .block = &prepared_only_block,
+              .successor_label = successor_label,
+          });
+  if (incomplete_prepared_only.facts.empty() ||
+      incomplete_prepared_only.facts.front().status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer ||
+      incomplete_prepared_only.facts.front().publication_semantic_origin !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
+              PublicationSemanticOrigin::Unknown) {
+    return fail("incomplete prepared JoinTransfer publication should fail closed");
   }
   if (route5_supported_query.facts[1].route5_join_source_agrees ||
       route5_supported_query.facts[2].route5_join_source_agrees ||

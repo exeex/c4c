@@ -1810,6 +1810,58 @@ void attach_named_current_block_join_source_evidence(
   fact.join_source_evidence = *selected;
 }
 
+[[nodiscard]] bool block_has_matching_phi_publication(
+    const bir::Block& block,
+    const PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
+  if (fact.publication == nullptr) {
+    return false;
+  }
+  for (const auto& inst : block.insts) {
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr || phi->result != fact.publication->destination_value) {
+      continue;
+    }
+    const auto matching = std::count_if(
+        phi->incomings.begin(), phi->incomings.end(), [&](const auto& incoming) {
+          return incoming.label_id == fact.predecessor_label &&
+                 incoming.value == fact.publication->source_value;
+        });
+    return matching == 1;
+  }
+  return false;
+}
+
+[[nodiscard]] bool has_unique_complete_prepared_join_transfer_authority(
+    const PreparedControlFlowFunction* control_flow,
+    const PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
+  if (control_flow == nullptr || fact.publication == nullptr ||
+      fact.publication->join_transfer == nullptr) {
+    return false;
+  }
+  const PreparedJoinTransfer* selected = nullptr;
+  for (const auto& transfer : control_flow->join_transfers) {
+    if (&transfer != fact.publication->join_transfer ||
+        transfer.function_name != control_flow->function_name ||
+        transfer.join_block_label != fact.successor_label ||
+        transfer.result != fact.publication->destination_value) {
+      continue;
+    }
+    const auto matching_edges = std::count_if(
+        transfer.edge_transfers.begin(), transfer.edge_transfers.end(),
+        [&](const auto& edge) {
+          return edge.predecessor_label == fact.predecessor_label &&
+                 edge.successor_label == fact.successor_label &&
+                 edge.incoming_value == fact.publication->source_value &&
+                 edge.destination_value == fact.publication->destination_value;
+        });
+    if (matching_edges != 1 || selected != nullptr) {
+      return false;
+    }
+    selected = &transfer;
+  }
+  return selected != nullptr;
+}
+
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(
     const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs) {
@@ -1975,13 +2027,35 @@ prepare_current_block_join_parallel_copy_source_facts(
         if (fact.source_is_source_value) {
           append_source_value(fact.source_home);
         }
+        fact.join_source_evidence_applicable =
+            !fact.immediate_source && fact.source_is_incoming_expression &&
+            fact.destination_is_source_value && !fact.source_is_source_value &&
+            !fact.source_home_is_stack;
+        if (fact.join_source_evidence_applicable) {
+          if (block_has_matching_phi_publication(*inputs.block, fact)) {
+            fact.publication_semantic_origin =
+                PreparedCurrentBlockJoinParallelCopySourceFact::
+                    PublicationSemanticOrigin::BirPhi;
+          } else {
+            fact.prepared_join_transfer_authority_complete =
+                has_unique_complete_prepared_join_transfer_authority(
+                    inputs.control_flow, fact);
+            if (fact.prepared_join_transfer_authority_complete) {
+              fact.publication_semantic_origin =
+                  PreparedCurrentBlockJoinParallelCopySourceFact::
+                      PublicationSemanticOrigin::PreparedJoinTransfer;
+            }
+          }
+        }
         attach_named_current_block_join_source_evidence(
             inputs.value_locations->function_name,
             inputs.join_source_evidence,
             fact);
-        if (!fact.immediate_source && fact.source_is_incoming_expression &&
-            fact.destination_is_source_value && !fact.source_is_source_value &&
-            !fact.source_home_is_stack && !fact.join_source_evidence) {
+        if (fact.join_source_evidence_applicable &&
+            (fact.publication_semantic_origin ==
+                 PreparedCurrentBlockJoinParallelCopySourceFact::
+                     PublicationSemanticOrigin::Unknown ||
+             !fact.join_source_evidence)) {
           fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
         }
         // Retain the legacy Route 5 fields as diagnostic compatibility payload

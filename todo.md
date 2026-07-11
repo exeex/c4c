@@ -8,24 +8,37 @@ Current Step Title: Migrate prepared publication production
 
 ## Just Finished
 
-- None since the Step 2 route repair.
+- Step 2 — classified current-block edge publication facts by semantic origin
+  (`BirPhi` versus prepared `JoinTransfer`) and made named evidence applicability
+  explicit. A non-PHI edge is accepted only with complete unique prepared
+  transfer authority and matching named producer evidence; incomplete prepared
+  authority and missing, ambiguous, or mismatched applicable evidence fail
+  closed.
 
 ## Suggested Next
 
-- Classify the next Step 2 publication seam by semantic origin and implement
-  the evidence-applicability boundary, including the supported non-PHI
-  prepared `JoinTransfer` edge-publication case.
+- Continue Step 2 with the next prepared publication-production seam selected
+  by the supervisor.
 
 ## Watchouts
 
-- `MissingPublication` must remain fail-closed whenever a BIR CFG-edge
-  publication fact is applicable.  Do not convert it into success.
-- A prepared-originated `JoinTransfer` path is not a fallback from failed named
-  evidence.  Select it only after classifying the family and proving complete,
-  unique prepared authority; do not synthesize a BIR PHI/publication relation.
+- `backend_prepared_lookup_helper_test` becomes available when configured with
+  `C4C_ENABLE_PREPARED_FACT_TESTS=ON`, but a direct focused compile currently
+  fails later on pre-existing undeclared `route1_query` / `route1_index`
+  errors. The new focused case therefore could not execute in that target.
+- Production query-input callsites now pass their existing
+  `PreparedControlFlowFunction`; a null control-flow input remains
+  intentionally fail-closed for non-PHI prepared publication authority.
 - Do not widen into call plans, prepared lookups, target materializers, or the
   common MIR migration owned by idea 706.
 
 ## Proof
 
-- Pending for the repaired Step 2 packet.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
+- Result: passed, 309/309 backend tests; canonical proof log:
+  `test_after.log`.
+- Supervisor focused compile: configured prepared-fact tests exposed
+  `backend_prepared_lookup_helper_test`, but compilation stopped on the
+  pre-existing undeclared `route1_query` / `route1_index` errors before the new
+  case could run.

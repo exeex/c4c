@@ -1659,6 +1659,13 @@ struct PreparedCurrentBlockJoinParallelCopySourceFact {
       bir::Route5PublicationStatus::Unavailable;
   bool route5_join_source_agrees = false;
   PreparedFactBoundaryEvidence join_source_evidence;
+  enum class PublicationSemanticOrigin {
+    Unknown,
+    BirPhi,
+    PreparedJoinTransfer,
+  } publication_semantic_origin = PublicationSemanticOrigin::Unknown;
+  bool join_source_evidence_applicable = false;
+  bool prepared_join_transfer_authority_complete = false;
   bool source_is_incoming_expression = false;
   bool destination_is_source_value = false;
   bool source_is_source_value = false;
@@ -1683,6 +1690,7 @@ struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
   const PreparedValueLocationFunction* value_locations = nullptr;
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
   const PreparedEdgePublicationLookups* edge_publications = nullptr;
+  const PreparedControlFlowFunction* control_flow = nullptr;
   const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources = nullptr;
   std::vector<PreparedFactBoundaryEvidence> join_source_evidence;
   const bir::Block* block = nullptr;

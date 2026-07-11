@@ -318,6 +318,7 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
               .value_locations = entry_->value_locations,
               .value_home_lookups = &entry_->prepared_lookups.value_homes,
               .edge_publications = &entry_->prepared_lookups.edge_publications,
+              .control_flow = entry_->control_flow,
               .join_source_evidence = std::move(join_source_evidence),
               .block = block.block,
               .successor_label = block.block_label,

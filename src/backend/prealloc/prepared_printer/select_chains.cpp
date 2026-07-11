@@ -423,6 +423,7 @@ void append_current_block_join_parallel_copy_sources(std::ostringstream& out,
                   .regalloc = function_regalloc,
                   .value_locations = &function_locations,
                   .edge_publications = &edge_publications,
+                  .control_flow = function_cf,
                   .block = &block,
                   .successor_label = successor_label,
               });
