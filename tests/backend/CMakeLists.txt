@@ -2250,6 +2250,22 @@ c4c_add_current_block_authority_probe(
   backend_current_block_no_policy_zero_fact_probe
   current_block_no_policy_zero_fact_probe.cpp
 )
+c4c_add_current_block_authority_probe(
+  backend_current_block_direct_root_classification_probe
+  current_block_direct_root_classification_probe.cpp
+)
+c4c_add_current_block_authority_probe(
+  backend_current_block_composed_dependency_authority_probe
+  current_block_composed_dependency_authority_probe.cpp
+)
+c4c_add_current_block_authority_probe(
+  backend_current_block_memory_source_authority_probe
+  current_block_memory_source_authority_probe.cpp
+)
+c4c_add_current_block_authority_probe(
+  backend_current_block_short_circuit_dependency_probe
+  current_block_short_circuit_dependency_probe.cpp
+)
 
 add_executable(backend_prealloc_current_block_all_edge_invariance_test
   "${BACKEND_TEST_ROOT}/bir/backend_prealloc_current_block_all_edge_invariance_test.cpp"
