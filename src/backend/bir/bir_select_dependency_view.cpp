@@ -36,7 +36,7 @@ DependencyWalkResult walk_dependency(const BirProducerView& view,
                                      std::size_t before_instruction_index,
                                      unsigned depth) {
   if (value.kind == Value::Kind::Immediate) {
-    return {.status = BirSelectDependencyStatus::CompleteNoDependency};
+    return {.status = BirSelectDependencyStatus::CompleteStopped};
   }
   if (depth > 64U || value.kind != Value::Kind::Named || value.name.empty()) {
     return {.status = BirSelectDependencyStatus::Incomplete};
@@ -60,6 +60,9 @@ DependencyWalkResult walk_dependency(const BirProducerView& view,
         .dependency_instruction_index = producer.instruction_index,
     };
   }
+  if (std::get_if<LoadLocalInst>(&instruction) != nullptr) {
+    return {.status = BirSelectDependencyStatus::CompleteNoDependency};
+  }
 
   const auto inspect = [&](const Value& operand) {
     return walk_dependency(view, block, operand, producer.instruction_index,
@@ -68,7 +71,10 @@ DependencyWalkResult walk_dependency(const BirProducerView& view,
   const auto inspect_pair = [&](const Value& first, const Value& second) {
     auto result = inspect(first);
     if (result.status != BirSelectDependencyStatus::CompleteNoDependency) {
-      return result;
+      return result.status == BirSelectDependencyStatus::CompleteDirectGlobal
+                 ? result
+                 : DependencyWalkResult{
+                       .status = BirSelectDependencyStatus::CompleteStopped};
     }
     return inspect(second);
   };
@@ -81,7 +87,7 @@ DependencyWalkResult walk_dependency(const BirProducerView& view,
   if (const auto* binary = std::get_if<BinaryInst>(&instruction)) {
     return inspect_pair(binary->lhs, binary->rhs);
   }
-  return {.status = BirSelectDependencyStatus::CompleteNoDependency};
+  return {.status = BirSelectDependencyStatus::Incomplete};
 }
 
 }  // namespace

@@ -72,13 +72,88 @@ int direct_global_dependency_has_stable_identity() {
 int complete_no_dependency_is_explicit() {
   bir::Block block;
   block.label = "entry";
-  block.insts.emplace_back(immediate_binary("%root"));
-  const auto& root = std::get<bir::BinaryInst>(block.insts[0]).result;
+  block.insts.emplace_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%root"),
+      .slot_name = "slot",
+  });
+  const auto& root = std::get<bir::LoadLocalInst>(block.insts[0]).result;
   const auto result = query(block, root, 1U);
   if (result.status != bir::BirSelectDependencyStatus::CompleteNoDependency ||
       !result.complete() || result.root_value != &root ||
       result.dependency_load != nullptr) {
     return fail("complete no-dependency result was not explicit");
+  }
+  return 0;
+}
+
+int select_arm_order_preserves_legacy_short_circuit() {
+  bir::Block block;
+  block.label = "entry";
+  block.insts.emplace_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%global"),
+      .global_name = "source",
+  });
+  block.insts.emplace_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I64, "%immediate_first"),
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(0),
+      .rhs = bir::Value::immediate_i64(0),
+      .true_value = bir::Value::immediate_i64(7),
+      .false_value = bir::Value::named(bir::TypeKind::I64, "%global"),
+  });
+  block.insts.emplace_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I64, "%global_first"),
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(0),
+      .rhs = bir::Value::immediate_i64(0),
+      .true_value = bir::Value::named(bir::TypeKind::I64, "%global"),
+      .false_value = bir::Value::immediate_i64(7),
+  });
+  const auto& immediate_first =
+      std::get<bir::SelectInst>(block.insts[1]).result;
+  const auto& global_first = std::get<bir::SelectInst>(block.insts[2]).result;
+  const auto* load = &std::get<bir::LoadGlobalInst>(block.insts[0]);
+  const auto stopped = query(block, immediate_first, block.insts.size());
+  const auto found = query(block, global_first, block.insts.size());
+  if (stopped.status != bir::BirSelectDependencyStatus::CompleteStopped ||
+      !stopped.complete() || stopped.dependency_load != nullptr ||
+      found.status != bir::BirSelectDependencyStatus::CompleteDirectGlobal ||
+      found.dependency_load != load || found.dependency_value != &load->result ||
+      found.dependency_instruction_index != 0U) {
+    return fail("select-arm ordering did not preserve legacy short-circuit semantics");
+  }
+  return 0;
+}
+
+int traversable_dependency_free_first_arm_may_continue() {
+  bir::Block block;
+  block.label = "entry";
+  block.insts.emplace_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%local"),
+      .slot_name = "slot",
+  });
+  block.insts.emplace_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%global"),
+      .global_name = "source",
+  });
+  block.insts.emplace_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I64, "%root"),
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(0),
+      .rhs = bir::Value::immediate_i64(0),
+      .true_value = bir::Value::named(bir::TypeKind::I64, "%local"),
+      .false_value = bir::Value::named(bir::TypeKind::I64, "%global"),
+  });
+  const auto& root = std::get<bir::SelectInst>(block.insts[2]).result;
+  const auto* load = &std::get<bir::LoadGlobalInst>(block.insts[1]);
+  const auto result = query(block, root, block.insts.size());
+  if (result.status != bir::BirSelectDependencyStatus::CompleteDirectGlobal ||
+      result.dependency_load != load ||
+      result.dependency_instruction_index != 1U) {
+    return fail("traversable dependency-free first arm did not continue");
   }
   return 0;
 }
@@ -124,6 +199,13 @@ int main() {
     return status;
   }
   if (const int status = complete_no_dependency_is_explicit(); status) {
+    return status;
+  }
+  if (const int status = select_arm_order_preserves_legacy_short_circuit(); status) {
+    return status;
+  }
+  if (const int status = traversable_dependency_free_first_arm_may_continue();
+      status) {
     return status;
   }
   return negative_statuses_and_before_index_fail_closed();

@@ -12,6 +12,7 @@ struct Value;
 enum class BirSelectDependencyStatus : unsigned char {
   CompleteDirectGlobal,
   CompleteNoDependency,
+  CompleteStopped,
   Unavailable,
   Incomplete,
   Ambiguous,
@@ -38,7 +39,8 @@ struct BirSelectDependencyResult {
 
   [[nodiscard]] bool complete() const {
     return status == BirSelectDependencyStatus::CompleteDirectGlobal ||
-           status == BirSelectDependencyStatus::CompleteNoDependency;
+           status == BirSelectDependencyStatus::CompleteNoDependency ||
+           status == BirSelectDependencyStatus::CompleteStopped;
   }
 };
 

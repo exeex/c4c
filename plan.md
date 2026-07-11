@@ -99,6 +99,11 @@ Actions:
 - Define a named BIR select-chain/dependency result with explicit status and
   stable root/dependency identity before changing the corresponding common MIR
   query.
+- Preserve legacy Route 2 select-arm short-circuit behavior in the named
+  result: an immediate, non-named, missing, or otherwise unresolved first arm
+  is a stop/unavailable outcome and must not expose a dependency from the
+  second arm. Keep that outcome distinct from a conclusively dependency-free,
+  traversable first arm, which may continue to the second arm.
 - Keep recursive interpretation of `SelectInst`, `CastInst`, `BinaryInst`, and
   `LoadGlobalInst` in the BIR-owned producer/view implementation; common MIR
   must not reconstruct that traversal from a same-block producer primitive.
@@ -106,16 +111,26 @@ Actions:
   and incomplete/ambiguous/mismatched outcomes in the named result.
 - Add focused BIR-side proof for those outcomes and preserve the existing
   before-index and identity rules.
+- Add operand-order compatibility proof for immediate-first/global-second and
+  global-first/immediate-second select arms, alongside a conclusively
+  dependency-free first arm that permits traversal to a later dependency.
+- Do not broaden dependency discovery semantics in idea 706; any such semantic
+  change requires separate ownership and target-policy planning.
 
 Completion check:
 
 - A BIR-owned named select/dependency producer and result expose the complete
-  semantic answer with explicit status and stable identities, and focused proof
-  covers direct-global positive, complete no-dependency, and incomplete plus
-  ambiguous/mismatched negatives. No common MIR select-chain traversal is part
+  behavior-preserving Route 2 semantic answer with explicit status and stable
+  identities. Focused proof covers direct-global positive, complete
+  no-dependency, incomplete plus ambiguous/mismatched negatives, and both
+  immediate/global operand orderings without allowing an immediate first arm
+  to reveal the later dependency. No common MIR select-chain traversal is part
   of this completion claim.
 
 #### Step 2.2: Adapt common MIR to named source-semantic results
+
+Dependency: resume this step only after Step 2.1's behavior-preserving
+select-arm semantics and operand-order proof are green.
 
 Actions:
 
