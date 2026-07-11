@@ -1,9 +1,20 @@
 # BIR Semantic Handoff Views
 
-Status: Open
+Status: Complete
 Type: BIR contract implementation
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: umbrella Step 3 handoff
+
+## Completion
+
+Closed after all seven ownership-named semantic views were implemented with
+stable identities and explicit availability states, the first common-MIR
+producer/source-semantic entry points migrated, and the public named boundary
+passed the route-vocabulary audit. Focused contract proof covers positive and
+negative states, private compatibility adapters gained no new downstream
+callers, and the matching backend regression guard passed 308/308 before and
+after with no failures. Remaining prepared-consumer migration stays with idea
+705.
 
 ## First Owner And Scope
 
