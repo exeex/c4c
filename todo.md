@@ -8,30 +8,51 @@ Current Step Title: Establish and consume source-semantic named results
 
 ## Just Finished
 
-- Step 2.2 migrated the bounded same-block select-producer common-MIR adapter
-  to consume the existing ownership-correct `BirProducerResult` contract.
-- `SameBlockSelectProducer` now preserves explicit `BirViewStatus`, produced
-  value identity, block identity, and instruction index. Missing, malformed,
-  wrong-kind, wrong-type, future, ambiguous, and internally mismatched evidence
-  fails closed without route fallback or recursive select interpretation.
-- The focused shared-producer contract covers the positive select identity and
-  bounded negative statuses while preserving existing target-carrier
-  compatibility.
+- The Step 2.2 checkpoint review found no testcase overfit, expectation
+  downgrade, or target-policy drift, and confirmed that `plan.md` still
+  matches idea 706.
+- The review rejected the Route 2 retirement claim because
+  `find_select_chain_view_result` still scans and classifies BIR instructions
+  in common MIR, including the type-less lookup path, instead of consuming a
+  complete BIR-owned named answer.
+- The review also identified a truthy/unavailable state in the shared
+  `SameBlockSelectProducer` carrier. The prior select-producer packet did pass
+  its 331/331 broad backend proof; after the monotonic guard passed, that
+  canonical result was rolled forward from `test_after.log` to
+  `test_before.log` under the supervisor workflow.
 
 ## Suggested Next
 
-- Inventory the next bounded Route 1 common-MIR adapter family and select one
-  semantic owner for migration; keep publication and indexed edge/join helpers
-  out of a mechanical rename packet.
+- Reopen Step 2.2 as one bounded Route 2 corrective packet before any Route 1
+  or Route 3 migration:
+  1. Extend the BIR-owned select/dependency result with the root producer
+     kind/materialization identity and type-less lookup outcome needed by the
+     adapter, or consume an existing separately named BIR producer result
+     directly.
+  2. Make `find_select_chain_view_result` a narrow status/identity adapter:
+     remove common-MIR instruction scanning, producer-kind classification,
+     candidate-root rediscovery, and locally derived materialization
+     completeness.
+  3. Normalize `SameBlockSelectProducer` status semantics by either populating
+     a complete `Available` carrier in prepared target compatibility paths
+     before making truth require availability, or separating the target-only
+     compatibility carrier from the common-query result.
+  4. Add focused positive and fail-closed proof for preserved root identity,
+     producer kind/materialization identity, type-less lookup behavior, and
+     unavailable/mismatched carrier states.
+- After focused proof is green, rerun the supervisor-selected exact backend
+  build/test command and retain its output as canonical `test_after.log`.
+  Route 2 may reach zero only after both the ownership audit and retained broad
+  proof are green.
 
 ## Watchouts
 
-- `SameBlockSelectProducer::operator bool` remains pointer-based because target
-  prepared adapters also use this shared carrier and were explicitly outside
-  this packet; direct common-MIR query results nevertheless always carry and
-  test explicit status/value/block/index identity.
-- Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
-  select dependency interpretation in later common-query packets.
+- Route 2 is not retired while common MIR scans or classifies BIR instructions,
+  rediscovers type-less candidate roots, or derives producer completeness.
+- Preserve Step 2.1 select-arm short-circuit and operand-order semantics; this
+  packet transfers ownership and must not broaden dependency discovery.
+- Keep the carrier correction bounded. Do not migrate target materializers or
+  introduce target policy while repairing explicit status semantics.
 - Remaining Route 3 helpers in common MIR serve publication identity; do not
   mechanically migrate them.
 - Preserve missing, incomplete, ambiguous, unsupported, and mismatched
@@ -46,8 +67,14 @@ Current Step Title: Establish and consume source-semantic named results
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
+- Required focused proof: the directly affected BIR select/dependency and
+  common-MIR select-chain/producer contracts must cover positive identity,
+  type-less lookup, and missing/incomplete/ambiguous/mismatched/unavailable
+  negatives without common-layer instruction reconstruction.
+- Required acceptance proof:
+  `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`
-- The supervisor-selected exact backend proof passed 331/331, including the
-  focused shared select-producer status/identity contract and route-authority
-  guard; `test_after.log` is the canonical proof log.
+- The prior select-producer packet's rolled-forward 331/331 proof remains
+  valid, but it does not accept this reopened ownership correction. Fresh
+  `test_after.log` proof for this packet remains pending and must include the
+  common-query route guard and all backend families.
