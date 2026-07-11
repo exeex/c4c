@@ -4894,6 +4894,13 @@ int verify_current_block_join_parallel_copy_source_query() {
   const auto edge_publications =
       prepare::make_prepared_edge_publication_lookups(
           names, control_flow, &locations, &value_home_lookups);
+  const prepare::PreparedFactBoundaryEvidence named_join_evidence{
+      .status = prepare::PreparedFactBoundaryStatus::Available,
+      .function_name = function_name,
+      .block_label = successor_label,
+      .value_name = incoming_name,
+      .instruction_index = 3,
+  };
   const auto query =
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
@@ -4901,6 +4908,7 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
+              .join_source_evidence = {named_join_evidence},
               .block = &block,
               .successor_label = successor_label,
           });
@@ -5032,7 +5040,7 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &route5_join_index,
+              .join_source_evidence = {named_join_evidence},
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
@@ -5041,19 +5049,64 @@ int verify_current_block_join_parallel_copy_source_query() {
       route5_supported_query.facts.size() != query.facts.size() ||
       route5_supported_query.facts[0].status !=
           prepare::PreparedEdgeCopySourceFactsStatus::Available ||
-      !route5_supported_query.facts[0].route5_join_source_agrees ||
-      route5_supported_query.facts[0].route5_join_source_status !=
-          bir::Route5PublicationStatus::Available ||
-      route5_supported_query.facts[0].route5_join_source == nullptr ||
-      route5_supported_query.facts[0].route5_join_source->source_value_name !=
-          "%current.incoming" ||
-      route5_supported_query.facts[0].route5_join_source->destination_value_name !=
-          "%current.destination" ||
+      !route5_supported_query.facts[0].join_source_evidence ||
+      route5_supported_query.facts[0].join_source_evidence.status !=
+          prepare::PreparedFactBoundaryStatus::Available ||
+      route5_supported_query.facts[0].join_source_evidence.value_name != incoming_name ||
       route5_supported_query.facts[0].source_value_id != incoming_id ||
       route5_supported_query.facts[0].source_home != &locations.value_homes[0] ||
       route5_supported_query.facts[0].destination_home !=
           &locations.value_homes[1]) {
-    return fail("current-block join helper row should carry agreeing Route 5 evidence");
+    return fail("current-block join helper row should carry agreeing named BIR evidence");
+  }
+  auto require_named_boundary_status =
+      [&](std::vector<prepare::PreparedFactBoundaryEvidence> evidence,
+          prepare::PreparedFactBoundaryStatus expected,
+          std::string_view message) {
+        const auto facts =
+            prepare::prepare_current_block_join_parallel_copy_source_facts(
+                prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+                    .names = &names,
+                    .regalloc = &regalloc,
+                    .value_locations = &locations,
+                    .edge_publications = &edge_publications,
+                    .join_source_evidence = std::move(evidence),
+                    .block = &route5_join_block,
+                    .successor_label = successor_label,
+                });
+        if (facts.facts.empty() ||
+            facts.facts.front().join_source_evidence.status != expected ||
+            (expected == prepare::PreparedFactBoundaryStatus::Available
+                 ? facts.facts.front().status !=
+                       prepare::PreparedEdgeCopySourceFactsStatus::Available
+                 : facts.facts.front().status !=
+                       prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer)) {
+          return fail(message);
+        }
+        return 0;
+      };
+  if (require_named_boundary_status({},
+                                    prepare::PreparedFactBoundaryStatus::Missing,
+                                    "missing named publication evidence should fail closed") ||
+      require_named_boundary_status(
+          {prepare::PreparedFactBoundaryEvidence{
+              .status = prepare::PreparedFactBoundaryStatus::Incomplete}},
+          prepare::PreparedFactBoundaryStatus::Incomplete,
+          "incomplete named publication evidence should fail closed") ||
+      require_named_boundary_status(
+          {named_join_evidence, named_join_evidence},
+          prepare::PreparedFactBoundaryStatus::Ambiguous,
+          "ambiguous named publication evidence should fail closed") ||
+      require_named_boundary_status(
+          {prepare::PreparedFactBoundaryEvidence{
+              .status = prepare::PreparedFactBoundaryStatus::Available,
+              .function_name = function_name,
+              .block_label = successor_label,
+              .value_name = operand_name,
+              .instruction_index = 3}},
+          prepare::PreparedFactBoundaryStatus::Mismatched,
+          "mismatched named publication evidence should fail closed")) {
+    return 1;
   }
   if (route5_supported_query.facts[1].route5_join_source_agrees ||
       route5_supported_query.facts[2].route5_join_source_agrees ||

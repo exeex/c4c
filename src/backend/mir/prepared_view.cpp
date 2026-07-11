@@ -1,4 +1,5 @@
 #include "prepared_view.hpp"
+#include "query.hpp"
 
 #include "../prealloc/module.hpp"
 
@@ -276,6 +277,39 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
   const auto& block = entry_->blocks[block_index];
   const auto* regalloc = find_regalloc_function(core_->module_->regalloc,
                                                 entry_->function_name);
+  const auto bir_identity = find_bir_current_block_join_source_identity(
+      BirCurrentBlockJoinSourceRequest{
+          .successor_block = block.block,
+          .successor_label = block.block->label,
+          .successor_label_id = block.block_label,
+      });
+  std::vector<prepare::PreparedFactBoundaryEvidence> join_source_evidence;
+  if (bir_identity.status == BirCurrentBlockJoinSourceStatus::Available) {
+    for (const auto& fact : bir_identity.facts) {
+      if (fact.status != BirCurrentBlockJoinSourceStatus::Available ||
+          fact.source_value_kind != bir::Value::Kind::Named ||
+          !fact.source_producer_instruction_index.has_value()) {
+        continue;
+      }
+      join_source_evidence.push_back(prepare::PreparedFactBoundaryEvidence{
+          .status = prepare::PreparedFactBoundaryStatus::Available,
+          .function_name = entry_->function_name,
+          .block_label = block.block_label,
+          .value_name = core_->prepared_names().value_names.find(
+              fact.source_value_name),
+          .instruction_index = *fact.source_producer_instruction_index,
+      });
+    }
+  } else {
+    join_source_evidence.push_back(prepare::PreparedFactBoundaryEvidence{
+        .status = bir_identity.status ==
+                          BirCurrentBlockJoinSourceStatus::MissingSourceProducer
+                      ? prepare::PreparedFactBoundaryStatus::Incomplete
+                      : prepare::PreparedFactBoundaryStatus::Missing,
+        .function_name = entry_->function_name,
+        .block_label = block.block_label,
+    });
+  }
   const auto source_facts =
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
@@ -284,6 +318,7 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
               .value_locations = entry_->value_locations,
               .value_home_lookups = &entry_->prepared_lookups.value_homes,
               .edge_publications = &entry_->prepared_lookups.edge_publications,
+              .join_source_evidence = std::move(join_source_evidence),
               .block = block.block,
               .successor_label = block.block_label,
           });

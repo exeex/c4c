@@ -1759,6 +1759,57 @@ void attach_route5_current_block_join_source_if_agrees(
   fact.route5_join_source_agrees = true;
 }
 
+void attach_named_current_block_join_source_evidence(
+    FunctionNameId function_name,
+    const std::vector<PreparedFactBoundaryEvidence>& evidence,
+    PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
+  if (fact.publication == nullptr ||
+      fact.status != PreparedEdgeCopySourceFactsStatus::Available ||
+      fact.immediate_source || !fact.source_is_incoming_expression ||
+      !fact.destination_is_source_value || fact.source_is_source_value ||
+      fact.source_home_is_stack) {
+    return;
+  }
+  if (evidence.empty()) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Missing;
+    return;
+  }
+  if (!fact.publication->source_producer_block_label.has_value() ||
+      !fact.publication->source_producer_instruction_index.has_value() ||
+      fact.source_value_name == kInvalidValueName) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Incomplete;
+    return;
+  }
+  const PreparedFactBoundaryEvidence* selected = nullptr;
+  std::optional<PreparedFactBoundaryStatus> negative_status;
+  for (const auto& candidate : evidence) {
+    if (!candidate) {
+      if (!negative_status.has_value()) {
+        negative_status = candidate.status;
+      }
+      continue;
+    }
+    if (candidate.function_name != function_name ||
+        candidate.block_label != *fact.publication->source_producer_block_label ||
+        candidate.value_name != fact.source_value_name ||
+        candidate.instruction_index !=
+            *fact.publication->source_producer_instruction_index) {
+      continue;
+    }
+    if (selected != nullptr) {
+      fact.join_source_evidence.status = PreparedFactBoundaryStatus::Ambiguous;
+      return;
+    }
+    selected = &candidate;
+  }
+  if (selected == nullptr) {
+    fact.join_source_evidence.status = negative_status.value_or(
+        PreparedFactBoundaryStatus::Mismatched);
+    return;
+  }
+  fact.join_source_evidence = *selected;
+}
+
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(
     const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs) {
@@ -1924,6 +1975,17 @@ prepare_current_block_join_parallel_copy_source_facts(
         if (fact.source_is_source_value) {
           append_source_value(fact.source_home);
         }
+        attach_named_current_block_join_source_evidence(
+            inputs.value_locations->function_name,
+            inputs.join_source_evidence,
+            fact);
+        if (!fact.immediate_source && fact.source_is_incoming_expression &&
+            fact.destination_is_source_value && !fact.source_is_source_value &&
+            !fact.source_home_is_stack && !fact.join_source_evidence) {
+          fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+        }
+        // Retain the legacy Route 5 fields as diagnostic compatibility payload
+        // only. Prepared selection above is driven solely by named evidence.
         attach_route5_current_block_join_source_if_agrees(
             *inputs.names, inputs.route5_edge_join_sources, inputs.block, fact);
       }

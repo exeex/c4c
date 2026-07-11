@@ -6,6 +6,7 @@
 #include "formal_publications.hpp"
 #include "frame.hpp"
 #include "names.hpp"
+#include "prepared_fact_boundary.hpp"
 #include "value_locations.hpp"
 
 #include "../bir/bir.hpp"
@@ -1657,6 +1658,7 @@ struct PreparedCurrentBlockJoinParallelCopySourceFact {
   bir::Route5PublicationStatus route5_join_source_status =
       bir::Route5PublicationStatus::Unavailable;
   bool route5_join_source_agrees = false;
+  PreparedFactBoundaryEvidence join_source_evidence;
   bool source_is_incoming_expression = false;
   bool destination_is_source_value = false;
   bool source_is_source_value = false;
@@ -1682,6 +1684,7 @@ struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
   const PreparedEdgePublicationLookups* edge_publications = nullptr;
   const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources = nullptr;
+  std::vector<PreparedFactBoundaryEvidence> join_source_evidence;
   const bir::Block* block = nullptr;
   BlockLabelId successor_label = kInvalidBlockLabel;
 };
