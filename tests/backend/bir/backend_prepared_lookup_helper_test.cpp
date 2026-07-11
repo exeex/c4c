@@ -8543,30 +8543,17 @@ int verify_prepared_same_block_scalar_source_facts() {
       bir_sum->produced_value->name != "%sum") {
     return fail("BIR same-block scalar producer query should match prepared scalar producer oracle");
   }
-  const auto route1_sum =
-      bir::find_same_block_scalar_producer(
+  const auto named_sum =
+      bir::find_same_block_producer(
           bir_producer_view,
           bir::Value::named(bir::TypeKind::I64, "%sum"),
           block.insts.size());
-  if (!route1_sum.has_value() ||
-      route1_sum->record == nullptr ||
-      route1_sum->record->kind != bir::Route1ProducerKind::Binary ||
-      route1_sum->instruction != prepared_sum->instruction ||
-      route1_sum->instruction_index != prepared_sum->instruction_index ||
-      route1_sum->produced_value == nullptr ||
-      route1_sum->produced_value->name != "%sum") {
-    return fail("BIR Route 1 same-block scalar producer query should match prepared scalar producer oracle");
-  }
-  const auto route1_sum_materialization =
-      bir::find_materialization_availability(
-          bir_producer_view,
-          bir::Value::named(bir::TypeKind::I64, "%sum"),
-          block.insts.size());
-  if (!route1_sum_materialization ||
-      !route1_sum_materialization.scalar_materialization_available ||
-      route1_sum_materialization.producer_kind !=
-          bir::Route1ProducerKind::Binary) {
-    return fail("BIR Route 1 materialization query should use producer record payloads");
+  if (!named_sum || named_sum.kind != bir::BirProducerKind::Binary ||
+      named_sum.instruction_index != prepared_sum->instruction_index ||
+      named_sum.produced_value == nullptr ||
+      named_sum.produced_value->name != "%sum" ||
+      !named_sum.scalar_materialization_available) {
+    return fail("named BIR same-block producer query should match prepared scalar producer oracle");
   }
   if (!prepared_and_bir_scalar_producers_match(
           names,

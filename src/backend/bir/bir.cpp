@@ -7,6 +7,32 @@
 
 namespace c4c::backend::bir {
 
+struct BirProducerView::Implementation {
+  Route1ProducerIndex producer_index;
+};
+
+namespace {
+
+[[nodiscard]] BirProducerKind public_producer_kind(Route1ProducerKind kind) {
+  switch (kind) {
+    case Route1ProducerKind::LoadLocal:
+      return BirProducerKind::LoadLocal;
+    case Route1ProducerKind::LoadGlobal:
+      return BirProducerKind::LoadGlobal;
+    case Route1ProducerKind::Cast:
+      return BirProducerKind::Cast;
+    case Route1ProducerKind::Binary:
+      return BirProducerKind::Binary;
+    case Route1ProducerKind::SelectMaterialization:
+      return BirProducerKind::SelectMaterialization;
+    case Route1ProducerKind::Unknown:
+      return BirProducerKind::Unknown;
+  }
+  return BirProducerKind::Unknown;
+}
+
+}  // namespace
+
 [[nodiscard]] const Value* produced_value_for_comparison_producer(
     const Inst& inst) {
   return std::visit(
@@ -268,31 +294,59 @@ Value Value::named_symbol_pointer(std::string value_name, LinkNameId link_name_i
 }
 
 BirProducerView make_bir_producer_view(const Block& block) {
-  return BirProducerView{route1_build_producer_index(block)};
+  auto implementation = std::make_shared<BirProducerView::Implementation>();
+  implementation->producer_index = route1_build_producer_index(block);
+  return BirProducerView{std::move(implementation)};
 }
 
-std::optional<Route1SameBlockScalarProducer> find_same_block_scalar_producer(
+BirProducerResult find_same_block_producer(
     const BirProducerView& view,
     const Value& value,
     std::size_t before_instruction_index) {
-  return route1_find_same_block_scalar_producer(
-      Route1SameBlockProducerQuery{
-          .index = &view.route1_index_,
-          .before_instruction_index = before_instruction_index,
-      },
-      value);
-}
+  if (!view.implementation_) {
+    return {.status = BirViewStatus::Unavailable};
+  }
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    return {.status = BirViewStatus::Incomplete};
+  }
 
-Route1MaterializationAvailability find_materialization_availability(
-    const BirProducerView& view,
-    const Value& value,
-    std::size_t before_instruction_index) {
-  return route1_find_materialization_availability(
-      Route1SameBlockProducerQuery{
-          .index = &view.route1_index_,
-          .before_instruction_index = before_instruction_index,
-      },
-      value);
+  const auto& index = view.implementation_->producer_index;
+  const Route1ProducerRecord* match = nullptr;
+  for (const auto& record : index.records) {
+    if (!record || !record.producer_instruction || !record.source_value ||
+        record.producer_instruction.instruction_index >= before_instruction_index ||
+        record.source_value.value == nullptr ||
+        record.source_value.value_kind != Value::Kind::Named ||
+        record.source_value.name != value.name || record.source_value.type != value.type) {
+      continue;
+    }
+    if (match != nullptr) {
+      return {.status = BirViewStatus::Ambiguous};
+    }
+    match = &record;
+  }
+  if (match == nullptr) {
+    return {.status = BirViewStatus::Unavailable};
+  }
+  if (match->producer_instruction.instruction == nullptr ||
+      match->source_value.value == nullptr ||
+      match->kind == Route1ProducerKind::Unknown) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+
+  return {
+      .status = BirViewStatus::Available,
+      .kind = public_producer_kind(match->kind),
+      .produced_value = match->source_value.value,
+      .instruction_index = match->producer_instruction.instruction_index,
+      .block_label = match->producer_instruction.block_label,
+      .scalar_materialization_available =
+          match->materialization.scalar_materialization_available,
+      .immediate_integer_constant =
+          match->integer_constant
+              ? std::optional<std::int64_t>{match->integer_constant.value}
+              : std::nullopt,
+  };
 }
 
 const StructuredTypeDeclSpelling* StructuredTypeSpellingContext::find_struct_decl(
