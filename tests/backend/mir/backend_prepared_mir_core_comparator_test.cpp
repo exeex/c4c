@@ -1,4 +1,5 @@
 #include "src/backend/mir/prepared_view.hpp"
+#include "src/backend/mir/query.hpp"
 #include "src/backend/prealloc/module.hpp"
 #include "src/target_profile.hpp"
 
@@ -12,6 +13,7 @@ namespace {
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 namespace prepared = c4c::backend::mir::prepared;
+namespace mir = c4c::backend::mir;
 
 int fail(std::string_view message) {
   std::cerr << message << "\n";
@@ -380,6 +382,15 @@ int verify_direct_edge_publication_source_freshness_view() {
   }
   const auto rejected_query =
       rejected_function->current_block_direct_edge_publication_sources(0);
+  const auto route_discovery = mir::find_bir_current_block_join_source_identity(
+      mir::BirCurrentBlockJoinSourceRequest{
+          .successor_block = &rejected_module.module.functions.front().blocks.front(),
+          .successor_label_id =
+              rejected_module.module.functions.front().blocks.front().label_id,
+      });
+  if (route_discovery.status != mir::BirCurrentBlockJoinSourceStatus::Available) {
+    return fail("expected negative fixture to retain BIR route discovery for the no-fallback contract");
+  }
   if (rejected_query.status !=
           prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available ||
       rejected_query.sources.size() != 1 ||
@@ -391,7 +402,7 @@ int verify_direct_edge_publication_source_freshness_view() {
       rejected_query.sources.front().source_freshness_candidate_count != 0 ||
       rejected_query.sources.front().freshness_use_kind !=
           prepare::PreparedValueFreshnessUseKind::Unknown) {
-    return fail("expected rejected direct-edge source freshness to expose no lowering authority");
+    return fail("expected prepared direct-edge query to reject missing authority without BIR route fallback");
   }
 
   return 0;

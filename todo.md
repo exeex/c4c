@@ -3,27 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2.4
-Current Step Title: Adapt common MIR to the named memory-access result
+Current Step ID: 3
+Current Step Title: Migrate placement and executable-authority queries
 
 ## Just Finished
 
-- Step 2.4 now adapts `find_bir_memory_access_identity` through the complete
-  named `BirMemoryAccessResult` payload and one status-preserving copier.
-- The adapter copies instruction, block, value, address-space, volatility,
-  alignment, slot/link, and distinct local/global/string identities without
-  BIR instruction look-through, base-name inference, or Route 3 discovery.
-- Request/result kind, block, instruction-index, and instruction-pointer
-  disagreement fails closed. The source authority guard prevents route or raw
-  instruction reconstruction from returning to this bounded function.
+- Step 3's first bounded placement family now makes
+  `PreparedMirFunctionView::current_block_direct_edge_publication_sources`
+  consume only prepared names, value homes, edge-publication lookups, control
+  flow, and move/freshness authority.
+- Removed the common-MIR caller's Route 5/BIR join-source discovery and evidence
+  agreement fallback. Missing prepared join-transfer authority fails closed
+  even when the raw BIR route remains discoverable.
 
 ## Suggested Next
 
-- Supervisor review of the completed Step 2.4 adapter, then select the first
-  bounded Step 3 placement-query migration packet if accepted.
+- Migrate the public `find_bir_cfg_edge_publication_source_identity` family once
+  a prepared view/result carries its required producer kind/index, value type,
+  and memory-access identity fields with unique edge/destination binding.
 
 ## Watchouts
 
+- `PreparedMirDirectEdgePublicationSourceView` currently carries placement and
+  freshness authority but not the producer/type/memory fields required to
+  migrate `find_bir_cfg_edge_publication_source_identity`; do not invent a
+  partial request-pointer adapter or discard those contracts.
 - Remaining Route 3 helpers in common MIR serve the separate Route 5
   publication/edge identity family; do not mechanically migrate them or lower
   the guard inventory until their owning family is migrated.
