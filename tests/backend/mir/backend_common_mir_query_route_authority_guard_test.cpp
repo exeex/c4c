@@ -19,9 +19,9 @@ struct RouteInventory {
 // Step 1 inventory.  Counts are deliberately exact: later migration packets may
 // only ratchet them down (and update this inventory), never add new authority.
 constexpr std::array<RouteInventory, 8> kInventory{{
-    {1, 22, "BIR same-block producer semantics", "named producer view"},
+    {1, 21, "BIR same-block producer semantics", "named producer view"},
     {2, 0, "BIR select-chain semantics", "named select/dependency view"},
-    {3, 59, "BIR memory-access semantics", "named memory-access view"},
+    {3, 47, "BIR memory-access semantics", "named memory-access view"},
     {4, 31, "BIR publication semantics", "named publication view"},
     {5, 133, "BIR edge/join semantics", "named edge/join publication view"},
     {6, 0, "BIR call-boundary semantics", "named call-boundary view"},

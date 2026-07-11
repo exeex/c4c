@@ -3,24 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2.4
-Current Step Title: Adapt common MIR to the named memory-access result
+Current Step ID: 2.2
+Current Step Title: Establish and consume source-semantic named results
 
 ## Just Finished
 
-- Step 2.4 replaced the bounded common memory-access query's Route 3 index and
-  raw-record reconstruction with a narrow adapter over `BirMemoryAccessResult`.
-- The adapter preserves producer status, instruction/value pointers and names,
-  instruction index, address facts, slot/link ids, and distinct local/global/
-  string identities, and fails closed for unavailable, incomplete, mismatched,
-  or unknown results.
-- Focused contracts cover available load/store identity and explicit incomplete
-  status; the Route 3 common-query guard ratcheted from 71 to 59.
+- Step 2.2 migrated the bounded same-block global-load source query from Route 3
+  index/raw-record reconstruction to `BirSameBlockGlobalLoadResult`.
+- The BIR-owned result preserves stable instruction, load, result-value, and
+  global-symbol identity and reports unavailable, incomplete, and ambiguous
+  states explicitly; common MIR fails closed on every non-available result.
+- Focused contracts cover the available identity and a type-mismatch negative;
+  the common-query guard ratcheted Route 3 from 59 to 47.
 
 ## Suggested Next
 
 - Execute the next bounded Step 2 family selected by the supervisor, leaving
-  the remaining adjacent Route 3 consumers with their owning migration packet.
+  the adjacent Route 3 load-local/store-local families with their owning packet.
 
 ## Watchouts
 
@@ -29,9 +28,8 @@ Current Step Title: Adapt common MIR to the named memory-access result
   contract and must not reconstruct operand traversal.
 - Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
   select dependency interpretation in later common-query packets.
-- Remaining Route 3 helpers in common MIR still serve adjacent publication and
-  same-block source families; do not mechanically migrate them as part of this
-  completed direct memory-access packet.
+- Remaining Route 3 helpers in common MIR still serve adjacent load-local,
+  store-local, and publication families; do not mechanically migrate them.
 - Preserve missing, incomplete, ambiguous, unsupported, and mismatched
   fail-closed behavior at the common-MIR boundary.
 - Twenty-three Route 1 spellings remain in other bounded memory/publication/

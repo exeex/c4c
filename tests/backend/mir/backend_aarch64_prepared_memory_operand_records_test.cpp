@@ -903,6 +903,30 @@ int same_block_global_load_access_identity_matches_prepared_oracle() {
   });
   const auto block = block_with_instruction("entry", 8, load);
   const auto* load_global = std::get_if<bir::LoadGlobalInst>(&block.insts[8]);
+  const auto bir_global_load = bir::find_same_block_global_load(
+      bir::BirSameBlockGlobalLoadRequest{
+          .block = &block,
+          .value = &loaded,
+          .value_type = loaded.type,
+          .before_instruction_index = 9,
+      });
+  if (!bir_global_load || bir_global_load.load != load_global ||
+      bir_global_load.result_value != &load_global->result ||
+      bir_global_load.access.instruction_index != 8 ||
+      bir_global_load.access.global_name_id != fixture.global_name) {
+    return fail("expected named BIR same-block global-load result to preserve stable producer and symbol identity");
+  }
+  const auto missing_bir_global_load = bir::find_same_block_global_load(
+      bir::BirSameBlockGlobalLoadRequest{
+          .block = &block,
+          .value_name = loaded.name,
+          .value_type = bir::TypeKind::I64,
+          .before_instruction_index = 9,
+      });
+  if (missing_bir_global_load.status != bir::BirViewStatus::Unavailable ||
+      missing_bir_global_load) {
+    return fail("expected named BIR same-block global-load type mismatch to fail closed explicitly");
+  }
   prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
   source_producers.producers_by_value_name.emplace(
       fixture.load_name,

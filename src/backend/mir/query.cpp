@@ -242,49 +242,6 @@ namespace {
          lhs.local_slot_name == rhs.local_slot_name;
 }
 
-[[nodiscard]] bir::Route3SameBlockGlobalLoadAccessRecord
-find_route3_global_load_access(
-    const bir::Route3MemoryAccessIndex& index,
-    std::size_t before_instruction_index,
-    std::string_view value_name,
-    bir::TypeKind value_type) {
-  if (value_name.empty()) {
-    return {};
-  }
-  if (value_type != bir::TypeKind::Void) {
-    return bir::route3_find_same_block_global_load_access(
-        bir::Route3MemoryAccessQuery{
-            .index = &index,
-            .before_instruction_index = before_instruction_index,
-        },
-        bir::Value::named(value_type, std::string(value_name)));
-  }
-  bir::Route3SameBlockGlobalLoadAccessRecord result{
-      .available = true,
-      .root_value =
-          bir::Route1SourceValueIdentity{
-              .value_kind = bir::Value::Kind::Named,
-              .name = value_name,
-          },
-  };
-  for (auto it = index.records.rbegin(); it != index.records.rend(); ++it) {
-    const auto& candidate = *it;
-    if (!candidate ||
-        candidate.node_kind != bir::Route3MemoryAccessNodeKind::LoadGlobal ||
-        candidate.base_kind != bir::Route3MemoryAccessBaseKind::GlobalSymbol ||
-        candidate.instruction_index >= before_instruction_index ||
-        candidate.result_value.value_kind != bir::Value::Kind::Named ||
-        candidate.result_value.name != value_name) {
-      continue;
-    }
-    result.load_instruction_index = candidate.instruction_index;
-    result.load_access = candidate;
-    result.access_available = true;
-    return result;
-  }
-  return result;
-}
-
 [[nodiscard]] bir::Route3SameBlockLoadLocalSourceRecord
 find_route3_load_local_source(
     const bir::Route3MemoryAccessIndex& index,
@@ -1989,25 +1946,47 @@ find_bir_same_block_global_load_access_identity(
     return {};
   }
   const auto value_type = root_value_type(request);
-  const auto index = bir::route3_build_memory_access_index(*request.block);
   const auto before = std::min(request.before_instruction_index,
                                request.block->insts.size());
-  const auto record =
-      find_route3_global_load_access(index, before, value_name, value_type);
-  if (!record) {
+  if (value_type == bir::TypeKind::Void) {
     return {};
   }
-  const auto* load_global =
-      record.load_access.instruction != nullptr
-          ? std::get_if<bir::LoadGlobalInst>(record.load_access.instruction)
-          : nullptr;
-  if (load_global == nullptr) {
+  const auto result = bir::find_same_block_global_load(
+      bir::BirSameBlockGlobalLoadRequest{
+          .block = request.block,
+          .value_name = value_name,
+          .value_type = value_type,
+          .before_instruction_index = before,
+      });
+  if (!result) {
     return {};
   }
-  const auto memory_access = route3_memory_access_to_mir(record.load_access);
-  const auto producer =
-      route3_load_access_to_producer(record.load_access,
-                                     request.before_instruction_index);
+  const auto memory_access = BirMemoryAccessIdentity{
+      .status = result.status,
+      .inst = result.access.instruction,
+      .block_label = result.access.block_label,
+      .instruction_index = result.access.instruction_index,
+      .node_kind = named_memory_kind_to_mir(result.access.kind),
+      .result_value_name = result.access.result_value_name,
+      .address_space = result.access.address_space,
+      .is_volatile = result.access.is_volatile,
+      .base_kind = named_memory_base_to_mir(result.access.base_kind),
+      .global_name = result.access.global_name,
+      .global_name_id = result.access.global_name_id,
+      .result_value = result.result_value,
+      .byte_offset = result.access.byte_offset,
+      .size_bytes = result.access.size_bytes,
+      .align_bytes = result.access.align_bytes,
+  };
+  const auto producer = SameBlockProducerIdentity{
+      .inst = result.access.instruction,
+      .instruction_index = result.access.instruction_index,
+      .kind = SameBlockProducerKind::LoadGlobal,
+      .block_label = result.access.block_label,
+      .before_instruction_index = request.before_instruction_index,
+      .produced_value = same_block_value_identity(*result.result_value),
+      .materialization_available = true,
+  };
   if (!memory_access ||
       memory_access.base_kind != BirMemoryAccessBaseKind::GlobalSymbol ||
       memory_access.result_value_name != value_name) {
@@ -2016,7 +1995,7 @@ find_bir_same_block_global_load_access_identity(
   return BirSameBlockGlobalLoadAccessIdentity{
       .producer = producer,
       .memory_access = memory_access,
-      .load_global = load_global,
+      .load_global = result.load,
       .result_value = producer.produced_value,
       .root_value_name = value_name,
       .root_value_type = value_type,

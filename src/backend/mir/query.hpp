@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../bir/bir.hpp"
+#include "../bir/query.hpp"
 
 #include <cstddef>
 #include <cstdint>
