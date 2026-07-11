@@ -1,9 +1,9 @@
 # BIR MIR Interface Cleanup From Prepared MIR View Docs
 
-Status: Open
+Status: Closed
 Type: Implementation idea
-After: `ideas/open/683_prepared_mir_view_contract_research.md`
-Parent: `ideas/open/683_prepared_mir_view_contract_research.md`
+After: `ideas/closed/683_prepared_mir_view_contract_research.md`
+Parent: `ideas/closed/683_prepared_mir_view_contract_research.md`
 Consumes:
 - `docs/prepared_mir_view_contract_research/index.md`
 - `docs/prepared_mir_view_contract_research/01_current_mir_dependencies_on_prepared_bir.md`
@@ -14,8 +14,8 @@ Consumes:
 - `docs/prepared_mir_view_contract_research/06_incremental_migration_plan_for_mir_consumers.md`
 - `docs/prepared_mir_view_contract_research/07_open_questions_and_followup_implementation_ideas.md`
 Related:
-- `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
-- `ideas/open/683_prepared_mir_view_contract_research.md`
+- `ideas/closed/678_lir_to_bir_adapter_boundary_umbrella.md`
+- `ideas/closed/683_prepared_mir_view_contract_research.md`
 - `src/backend/prealloc/module.hpp`
 - `src/backend/prealloc/`
 - `src/backend/mir/`
@@ -23,6 +23,34 @@ Related:
 - `src/backend/riscv/`
 - `src/backend/aarch64/`
 Owning Layer: BIR/prepared to MIR consumer interface boundary
+
+## Closure Summary
+
+Closed on 2026-07-11 after the first behavior-preserving prepared-to-MIR
+interface cleanup landed.
+
+Completed implementation:
+
+- added a reference-only `PreparedMirCoreView` / `PreparedMirFunctionView`
+  adapter over the current `prepare::PreparedBirModule`;
+- routed the x86 internal module-emission path through the prepared MIR view
+  while keeping the public compatibility wrapper stable;
+- moved the selected x86 local-slot return consumption behind
+  `PreparedMirFunctionView`;
+- added `scripts/x86_raw_prepared_dependency_guard.py` to make raw
+  `PreparedBirModule` and broad prealloc dependencies visible under migrated
+  x86 MIR surfaces.
+
+Close proof used the focused x86/backend scope recorded in `test_before.log`
+and `test_after.log`: both logs show 78/78 tests passing, and the regression
+guard passes in non-decreasing mode because this slice is behavior-preserving.
+The raw dependency guard reports only classified existing hits.
+
+Follow-up source ideas were opened for the next work instead of expanding this
+first cleanup slice:
+
+- `ideas/open/691_prepared_mir_view_equivalence_dump_comparator_mvp.md`
+- `ideas/open/692_prepared_mir_source_dependency_freshness_view_contract.md`
 
 ## Goal
 
