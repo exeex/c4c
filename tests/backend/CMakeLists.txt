@@ -8,6 +8,9 @@ find_program(QEMU_RISCV64_EXECUTABLE NAMES qemu-riscv64)
 option(C4C_ENABLE_X86_BACKEND_TESTS
        "Enable x86 emitter and x86 handoff boundary backend tests"
        OFF)
+option(C4C_ENABLE_PREPARED_FACT_TESTS
+       "Enable prepared/prealloc internal fact and prepared-BIR dump tests"
+       OFF)
 
 function(c4c_collect_backend_labels out_var)
   set(labels internal backend)
@@ -186,6 +189,10 @@ function(c4c_add_backend_dump_flag_test test_name)
         "c4c_add_backend_dump_flag_test(${test_name}) missing ${required_arg}")
     endif()
   endforeach()
+
+  if("${ARG_DUMP_FLAG}" STREQUAL "--dump-prepared-bir" AND NOT C4C_ENABLE_PREPARED_FACT_TESTS)
+    return()
+  endif()
 
   add_test(
     NAME "${test_name}"

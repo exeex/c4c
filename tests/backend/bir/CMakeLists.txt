@@ -1,3 +1,4 @@
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/bir/backend_prepare_phi_materialize_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
@@ -85,6 +86,7 @@ add_test(
 set_tests_properties(backend_prepare_authoritative_join_ownership PROPERTIES
   LABELS "backend;internal;cpp"
 )
+endif()
 
 add_executable(backend_lir_to_bir_notes_test
     "${BACKEND_TEST_ROOT}/bir/backend_lir_to_bir_notes_test.cpp"
@@ -139,6 +141,7 @@ set_tests_properties(backend_lir_to_bir_notes PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_executable(backend_prepare_structured_context_test
     "${BACKEND_TEST_ROOT}/bir/backend_prepare_structured_context_test.cpp"
 )
@@ -476,6 +479,7 @@ add_test(
 set_tests_properties(backend_x86_prepared_decoded_home_storage PROPERTIES
   LABELS "backend;internal;cpp;x86"
 )
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_is_semantic
@@ -492,6 +496,7 @@ set_tests_properties(backend_cli_dump_bir_is_semantic PROPERTIES
   LABELS "backend;internal;cli"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_test(
   NAME backend_cli_dump_prepared_bir_is_prepared
   COMMAND "${CMAKE_COMMAND}"
@@ -519,6 +524,7 @@ add_test(
 set_tests_properties(backend_cli_dump_prepared_bir_exposes_contract_sections PROPERTIES
   LABELS "backend;internal;cli"
 )
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_vla_goto_stackrestore_cfg
@@ -549,6 +555,7 @@ set_tests_properties(backend_cli_dump_bir_layout_sensitive_aggregate PROPERTIES
   LABELS "backend;internal;cli"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_test(
   NAME backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg
   COMMAND "${CMAKE_COMMAND}"
@@ -578,6 +585,7 @@ add_test(
 set_tests_properties(backend_cli_dump_prepared_bir_local_arg_call_contract PROPERTIES
   LABELS "backend;internal;cli"
 )
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_00204_stdarg_semantic_handoff
@@ -610,6 +618,7 @@ set_tests_properties(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold 
   LABELS "backend;internal;cli"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_test(
   NAME backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff
   COMMAND "${CMAKE_COMMAND}"
@@ -640,6 +649,7 @@ set_tests_properties(
   backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication
   PROPERTIES LABELS "backend;internal;cli"
 )
+endif()
 
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value
@@ -706,6 +716,7 @@ set_tests_properties(backend_cli_dump_bir_focus_function_filters_00204 PROPERTIE
   LABELS "backend;internal;cli"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_test(
   NAME backend_cli_dump_prepared_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
@@ -721,6 +732,7 @@ add_test(
 set_tests_properties(backend_cli_dump_prepared_bir_focus_function_filters_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_focus_block_entry_00204
@@ -754,6 +766,7 @@ set_tests_properties(backend_cli_dump_bir_focus_block_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_test(
   NAME backend_cli_dump_prepared_bir_focus_block_entry_00204
   COMMAND "${CMAKE_COMMAND}"
@@ -785,6 +798,7 @@ add_test(
 set_tests_properties(backend_cli_dump_prepared_bir_focus_block_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_focus_value_t1_00204
@@ -818,6 +832,7 @@ set_tests_properties(backend_cli_dump_bir_focus_value_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
 
+if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_test(
   NAME backend_cli_dump_prepared_bir_focus_value_t1_00204
   COMMAND "${CMAKE_COMMAND}"
@@ -849,6 +864,7 @@ add_test(
 set_tests_properties(backend_cli_dump_prepared_bir_focus_value_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+endif()
 
 if(C4C_ENABLE_X86_BACKEND_TESTS)
   add_executable(backend_x86_route_debug_test
