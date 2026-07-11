@@ -359,7 +359,8 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(
     }
     case AggregateTypeLayout::Kind::Struct:
       for (const auto& field : layout.fields) {
-        if (!append_local_aggregate_scalar_slots(field.type_text,
+        if (field.layout == nullptr ||
+            !append_local_aggregate_scalar_slots(*field.layout,
                                                  slot_prefix,
                                                  byte_offset + field.byte_offset,
                                                  align_bytes,

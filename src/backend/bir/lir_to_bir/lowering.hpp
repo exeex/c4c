@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -109,11 +110,14 @@ struct ParsedTypedOperand {
   c4c::codegen::lir::LirOperand operand;
 };
 
+struct AggregateTypeLayout;
+
 struct AggregateField {
   std::size_t byte_offset = 0;
-  // Compatibility/structured type spelling used to recurse through aggregate
-  // layouts.
+  // Compatibility/structured type spelling retained for legacy layout users
+  // that have not yet been contracted to resolved field layout.
   std::string type_text;
+  std::shared_ptr<const AggregateTypeLayout> layout;
 };
 
 struct AggregateTypeLayout {

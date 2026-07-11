@@ -140,6 +140,7 @@ AggregateTypeLayout compute_structured_decl_layout(
     layout.fields.push_back(AggregateField{
         .byte_offset = current_offset,
         .type_text = std::string(field_type),
+        .layout = std::make_shared<AggregateTypeLayout>(field_layout),
     });
     current_offset += field_layout.size_bytes;
     if (!decl.is_packed) {
@@ -533,6 +534,7 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
     layout.fields.push_back(AggregateField{
         .byte_offset = current_offset,
         .type_text = std::string(field_type),
+        .layout = std::make_shared<AggregateTypeLayout>(field_layout),
     });
     current_offset += field_layout.size_bytes;
     if (!is_packed_struct) {
