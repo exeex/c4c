@@ -1,6 +1,6 @@
 # Initializer Lowering Bridge Isolation
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Order: 4 of 6 in the `LIR -> BIR` adapter boundary first wave
 After: `ideas/open/687_structured_layout_bridge_isolation.md`
@@ -69,6 +69,21 @@ a separate idea when needed.
   proves a stable public contract.
 - Prepared object-data and target data emission behavior is unchanged.
 - Proof is recorded in `todo.md`.
+
+## Closure Notes
+
+Closed after the active runbook narrowed imported function symbol compatibility
+state, string-pointer target-id rewriting, and initializer value
+materialization behind LIR-to-BIR adapter helpers without changing public BIR
+schemas, prepared object-data plans, target data emission, tests,
+expectations, unsupported markers, allowlists, runtime harness policy, or
+runtime behavior.
+
+Close-scope regression guard used matching full-suite commands:
+`cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
+The activation baseline at `8c65ee593` recorded 3330 passed and 1 failed
+(`string_authority_guard`), and the closing state at `56afd320a` recorded
+3331 passed and 0 failed. The guard reported no new failing tests.
 
 ## Reviewer Reject Signals
 
