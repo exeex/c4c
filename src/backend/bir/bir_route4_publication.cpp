@@ -329,6 +329,19 @@ Route4PublicationAvailabilityIndex route4_build_publication_availability_index(
   return index;
 }
 
+BirPublicationView make_bir_publication_view(const Function& function) {
+  return BirPublicationView{route4_build_publication_availability_index(function)};
+}
+
+Route4IndexReferenceValidation validate_current_block_publication_reference(
+    const BirPublicationView& view,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  return route4_validate_current_block_publication_reference(
+      view.route4_index_, block, value, before_instruction_index);
+}
+
 Route4CurrentBlockPublicationRecord route4_find_current_block_publication(
     const Route4PublicationAvailabilityIndex& index,
     const Block& block,

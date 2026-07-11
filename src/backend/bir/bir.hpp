@@ -2618,6 +2618,39 @@ struct Route8ReturnChainIndex {
 
 namespace c4c::backend::bir {
 
+class BirPublicationView {
+ public:
+  BirPublicationView() = default;
+
+  [[nodiscard]] explicit operator bool() const {
+    return static_cast<bool>(route4_index_);
+  }
+
+ private:
+  explicit BirPublicationView(Route4PublicationAvailabilityIndex route4_index)
+      : route4_index_(std::move(route4_index)) {}
+
+  Route4PublicationAvailabilityIndex route4_index_;
+
+  friend BirPublicationView make_bir_publication_view(const Function& function);
+  friend Route4IndexReferenceValidation
+  validate_current_block_publication_reference(
+      const BirPublicationView& view,
+      const Block& block,
+      const Value& value,
+      std::size_t before_instruction_index);
+};
+
+[[nodiscard]] BirPublicationView make_bir_publication_view(
+    const Function& function);
+
+[[nodiscard]] Route4IndexReferenceValidation
+validate_current_block_publication_reference(
+    const BirPublicationView& view,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index);
+
 struct CallResultSourceIdentity {
   bool available = false;
   std::size_t call_instruction_index = 0;

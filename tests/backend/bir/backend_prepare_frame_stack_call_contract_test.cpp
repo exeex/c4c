@@ -5483,12 +5483,12 @@ int check_call_argument_source_producer_materializability_contract() {
       .blocks = {block},
   };
   const auto& route4_block = route4_function.blocks.front();
-  const auto route4_index =
-      bir::route4_build_publication_availability_index(route4_function);
+  const auto route4_publication_view =
+      bir::make_bir_publication_view(route4_function);
   const auto route4_sum_value = bir::Value::named(bir::TypeKind::I32, "%sum");
   const auto route4_sum_reference =
-      bir::route4_validate_current_block_publication_reference(
-          route4_index, route4_block, route4_sum_value, 3);
+      bir::validate_current_block_publication_reference(
+          route4_publication_view, route4_block, route4_sum_value, 3);
   if (!route4_sum_reference ||
       route4_sum_reference.status != bir::RouteIndexValidationStatus::Valid ||
       route4_sum_reference.route_status !=
@@ -5499,42 +5499,63 @@ int check_call_argument_source_producer_materializability_contract() {
         "call-argument producer materializability contract: Route 4 current-block reference should validate matching source identity");
   }
   const auto route4_missing_reference =
-      bir::route4_validate_current_block_publication_reference(
-          route4_index,
+      bir::validate_current_block_publication_reference(
+          route4_publication_view,
           route4_block,
           bir::Value::named(bir::TypeKind::I32, "%missing"),
           3);
   const auto route4_wrong_type_reference =
-      bir::route4_validate_current_block_publication_reference(
-          route4_index,
+      bir::validate_current_block_publication_reference(
+          route4_publication_view,
           route4_block,
           bir::Value::named(bir::TypeKind::I64, "%sum"),
           3);
-  auto route4_duplicate_index = route4_index;
-  route4_duplicate_index.current_block_records.push_back(
-      route4_index.current_block_records[1]);
-  const auto route4_duplicate_reference =
-      bir::route4_validate_current_block_publication_reference(
-          route4_duplicate_index, route4_block, route4_sum_value, 3);
-  const auto route4_stale_reference =
-      bir::route4_validate_current_block_publication_reference(
-          route4_index, block, route4_sum_value, 3);
-  auto route4_wrong_relationship_index = route4_index;
-  route4_wrong_relationship_index.current_block_records.clear();
-  route4_wrong_relationship_index.value_records.push_back(
-      bir::Route4PublicationValueRecord{
-          .available = true,
-          .scope = bir::Route4PublicationScope::BlockEntry,
-          .status = bir::Route4PublicationAvailabilityStatus::Available,
-          .value_role = bir::Route4PublicationValueRole::Produced,
-          .value = bir::route1_source_value_identity(route4_sum_value, sum_name),
-          .block_label = route4_block.label,
-          .block_label_id = route4_block.label_id,
-          .instruction_index = 1,
+  auto route4_duplicate_function = route4_function;
+  auto& route4_duplicate_block = route4_duplicate_function.blocks.front();
+  route4_duplicate_block.insts.insert(
+      route4_duplicate_block.insts.begin() + 2,
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+          .operand_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          .rhs = bir::Value::immediate_i32(10),
       });
+  const auto route4_duplicate_view =
+      bir::make_bir_publication_view(route4_duplicate_function);
+  const auto route4_duplicate_reference =
+      bir::validate_current_block_publication_reference(
+          route4_duplicate_view, route4_duplicate_block, route4_sum_value, 3);
+  const auto route4_stale_reference =
+      bir::validate_current_block_publication_reference(
+          route4_publication_view, block, route4_sum_value, 3);
+  bir::Block route4_wrong_relationship_block;
+  route4_wrong_relationship_block.label = "entry";
+  route4_wrong_relationship_block.label_id = block_label;
+  route4_wrong_relationship_block.insts.push_back(
+      bir::PhiInst{
+          .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+          .incomings = {
+              bir::PhiIncoming{
+                  .label = "pred",
+                  .value = bir::Value::named(bir::TypeKind::I32, "%sum.in"),
+              },
+          },
+      });
+  bir::Function route4_wrong_relationship_function{
+      .name = "call_argument_source_producer_contract",
+      .blocks = {route4_wrong_relationship_block},
+  };
+  const auto& route4_wrong_relationship_indexed_block =
+      route4_wrong_relationship_function.blocks.front();
+  const auto route4_wrong_relationship_view =
+      bir::make_bir_publication_view(route4_wrong_relationship_function);
   const auto route4_wrong_relationship_reference =
-      bir::route4_validate_current_block_publication_reference(
-          route4_wrong_relationship_index, route4_block, route4_sum_value, 3);
+      bir::validate_current_block_publication_reference(
+          route4_wrong_relationship_view,
+          route4_wrong_relationship_indexed_block,
+          route4_sum_value,
+          3);
   if (route4_missing_reference ||
       route4_missing_reference.status !=
           bir::RouteIndexValidationStatus::MissingRecord ||
