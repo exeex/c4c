@@ -66,6 +66,32 @@ std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text) 
   }
 }
 
+void FunctionSymbolSet::reserve(std::size_t size) {
+  link_name_ids.reserve(size);
+  raw_symbol_link_name_ids.reserve(size);
+}
+
+void FunctionSymbolSet::insert_function(std::string raw_symbol_name, LinkNameId link_name_id) {
+  if (link_name_id != kInvalidLinkName) {
+    link_name_ids.insert(link_name_id);
+  }
+  raw_symbol_link_name_ids.emplace(std::move(raw_symbol_name), link_name_id);
+}
+
+bool FunctionSymbolSet::contains_link_name_id(LinkNameId link_name_id) const {
+  return link_name_id != kInvalidLinkName &&
+         link_name_ids.find(link_name_id) != link_name_ids.end();
+}
+
+std::optional<LinkNameId> FunctionSymbolSet::find_raw_symbol_link_name_id(
+    std::string_view raw_symbol_name) const {
+  const auto it = raw_symbol_link_name_ids.find(std::string(raw_symbol_name));
+  if (it == raw_symbol_link_name_ids.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
 namespace {
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
