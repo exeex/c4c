@@ -1,6 +1,6 @@
 # Prepared Fact Boundary From Named BIR Views
 
-Status: Open
+Status: Closed
 Type: prealloc/prepared contract implementation
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/704_bir_semantic_handoff_views.md`
@@ -51,3 +51,12 @@ semantic ambiguity is preserved, and no target reconstruction or function-wide
 publication/transfer scan survives in the bounded consumer. Resume at Step
 2.3b.3 to retire the now-obsolete Route 5 public compatibility payload without
 replanning the accepted consumer authority.
+
+## Completion
+
+Closed after the prepared publication, call-plan, and lookup producer seams
+were migrated to named BIR inputs with explicit fail-closed boundary states.
+Public prepared records no longer expose route-numbered executable authority;
+remaining route/agreement vocabulary is private observational compatibility,
+debug/proof vocabulary, or deferred target/materialization scope. The final
+boundary audit and matching backend regression guard passed 329/329 tests.
