@@ -2085,21 +2085,33 @@ find_bir_same_block_load_local_stored_value_source_identity(
   if (block == nullptr ||
       value.kind != bir::Value::Kind::Named ||
       value.name.empty()) {
-    return {};
+    return {.status = block == nullptr ? bir::BirViewStatus::Unavailable
+                                      : bir::BirViewStatus::Incomplete};
   }
   const auto before = std::min(before_instruction_index, block->insts.size());
   const auto result = bir::find_same_block_producer(
       bir::make_bir_producer_view(*block), value, before);
-  if (!result || result.kind != bir::BirProducerKind::SelectMaterialization ||
+  if (!result) {
+    return {.status = result.status};
+  }
+  if (result.kind != bir::BirProducerKind::SelectMaterialization ||
+      result.produced_value == nullptr || result.block_label != block->label ||
+      result.instruction_index >= before ||
       result.instruction_index >= block->insts.size()) {
-    return {};
+    return {.status = bir::BirViewStatus::Incomplete};
   }
   const auto* select =
       std::get_if<bir::SelectInst>(&block->insts[result.instruction_index]);
-  return select == nullptr
-             ? SameBlockSelectProducer{}
-             : SameBlockSelectProducer{.select = select,
-                                       .instruction_index = result.instruction_index};
+  if (select == nullptr || result.produced_value != &select->result ||
+      select->result.kind != bir::Value::Kind::Named ||
+      select->result.name != value.name || select->result.type != value.type) {
+    return {.status = bir::BirViewStatus::Incomplete};
+  }
+  return SameBlockSelectProducer{.status = result.status,
+                                 .select = select,
+                                 .produced_value = result.produced_value,
+                                 .block_label = result.block_label,
+                                 .instruction_index = result.instruction_index};
 }
 
 [[nodiscard]] SameBlockProducerRecord find_same_block_named_producer_record(

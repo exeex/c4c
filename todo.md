@@ -8,28 +8,28 @@ Current Step Title: Establish and consume source-semantic named results
 
 ## Just Finished
 
-- Step 2.2 migrated the bounded same-block binary-producer common-MIR family
+- Step 2.2 migrated the bounded same-block select-producer common-MIR adapter
   to consume the existing ownership-correct `BirProducerResult` contract.
-- `SameBlockBinaryProducer` now preserves explicit `BirViewStatus`, produced
+- `SameBlockSelectProducer` now preserves explicit `BirViewStatus`, produced
   value identity, block identity, and instruction index. Missing, malformed,
-  wrong-kind, wrong-type, ambiguous, and internally mismatched evidence fails
-  closed without reconstructing producer semantics in common MIR.
-- The focused shared-producer contract covers the positive identity and all
-  bounded negative statuses. The route-authority inventory remains exact: this
-  family already used only the named producer view and contained no route
-  vocabulary to retire.
+  wrong-kind, wrong-type, future, ambiguous, and internally mismatched evidence
+  fails closed without route fallback or recursive select interpretation.
+- The focused shared-producer contract covers the positive select identity and
+  bounded negative statuses while preserving existing target-carrier
+  compatibility.
 
 ## Suggested Next
 
-- Migrate the adjacent same-block select-producer adapter to preserve the
-  existing named producer result's explicit status and identity, leaving
-  select dependency traversal, publication, and prepared-placement families
-  unchanged.
+- Inventory the next bounded Route 1 common-MIR adapter family and select one
+  semantic owner for migration; keep publication and indexed edge/join helpers
+  out of a mechanical rename packet.
 
 ## Watchouts
 
-- The next select-producer packet is only the direct producer adapter; do not
-  widen it into select-chain dependency traversal or target materialization.
+- `SameBlockSelectProducer::operator bool` remains pointer-based because target
+  prepared adapters also use this shared carrier and were explicitly outside
+  this packet; direct common-MIR query results nevertheless always carry and
+  test explicit status/value/block/index identity.
 - Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
   select dependency interpretation in later common-query packets.
 - Remaining Route 3 helpers in common MIR serve publication identity; do not
@@ -49,5 +49,5 @@ Current Step Title: Establish and consume source-semantic named results
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`
 - The supervisor-selected exact backend proof passed 331/331, including the
-  focused shared binary-producer status/identity contract and route-authority
+  focused shared select-producer status/identity contract and route-authority
   guard; `test_after.log` is the canonical proof log.

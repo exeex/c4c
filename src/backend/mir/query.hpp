@@ -413,10 +413,15 @@ struct SameBlockBinaryProducer {
 };
 
 struct SameBlockSelectProducer {
+  bir::BirViewStatus status = bir::BirViewStatus::Unavailable;
   const bir::SelectInst* select = nullptr;
+  const bir::Value* produced_value = nullptr;
+  std::string_view block_label;
   std::size_t instruction_index = 0;
 
-  [[nodiscard]] explicit operator bool() const { return select != nullptr; }
+  [[nodiscard]] explicit operator bool() const {
+    return select != nullptr;
+  }
 };
 
 struct SameBlockIntegerConstant {

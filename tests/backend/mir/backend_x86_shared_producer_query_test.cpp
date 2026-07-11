@@ -157,8 +157,35 @@ int x86_facing_code_can_consume_shared_query_records() {
   const auto select_producer =
       mir::find_same_block_select_producer(&block, choice, block.insts.size());
   if (!select_producer || select_producer.instruction_index != 4U ||
-      select_producer.select->false_value.name != "%from_slot") {
+      select_producer.select->false_value.name != "%from_slot" ||
+      select_producer.status != bir::BirViewStatus::Available ||
+      select_producer.produced_value != &select_producer.select->result ||
+      select_producer.produced_value->name != choice.name ||
+      select_producer.produced_value->type != choice.type ||
+      select_producer.block_label != block.label) {
     return fail("expected shared query to find same-block select producer");
+  }
+  const auto missing_select = mir::find_same_block_select_producer(
+      &block, named(bir::TypeKind::I64, "%missing"), block.insts.size());
+  const auto malformed_select = mir::find_same_block_select_producer(
+      &block, bir::Value::immediate_i64(1), block.insts.size());
+  const auto wrong_kind_select = mir::find_same_block_select_producer(
+      &block, sum, block.insts.size());
+  const auto wrong_type_select = mir::find_same_block_select_producer(
+      &block, named(bir::TypeKind::I32, "%choice"), block.insts.size());
+  const auto future_select = mir::find_same_block_select_producer(
+      &block, choice, 4U);
+  if (missing_select ||
+      missing_select.status != bir::BirViewStatus::Unavailable ||
+      malformed_select ||
+      malformed_select.status != bir::BirViewStatus::Incomplete ||
+      wrong_kind_select ||
+      wrong_kind_select.status != bir::BirViewStatus::Incomplete ||
+      wrong_type_select ||
+      wrong_type_select.status != bir::BirViewStatus::Unavailable ||
+      future_select ||
+      future_select.status != bir::BirViewStatus::Unavailable) {
+    return fail("expected select producer statuses and identity mismatches to fail closed");
   }
 
   const auto cast_record =
@@ -283,8 +310,13 @@ int x86_facing_code_can_consume_shared_query_records() {
   }
   const auto ambiguous_binary = mir::find_same_block_binary_producer(
       &ambiguous_block, named(bir::TypeKind::I64, "%duplicate"));
+  const auto ambiguous_select = mir::find_same_block_select_producer(
+      &ambiguous_block, named(bir::TypeKind::I64, "%duplicate"),
+      ambiguous_block.insts.size());
   if (ambiguous_binary ||
       ambiguous_binary.status != bir::BirViewStatus::Ambiguous ||
+      ambiguous_select ||
+      ambiguous_select.status != bir::BirViewStatus::Ambiguous ||
       mir::evaluate_same_block_integer_constant(
           &ambiguous_block, named(bir::TypeKind::I64, "%duplicate"))
           .has_value()) {
