@@ -10,8 +10,6 @@
 
 namespace c4c::backend {
 
-using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
-using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerArrayAccess;
 using LocalAggregateGepTarget = BirFunctionLowerer::LocalAggregateGepTarget;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;

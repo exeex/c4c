@@ -1,41 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/689_memory_address_provenance_import_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Narrow One Adapter-Local Memory State Boundary
+Current Step ID: Step 3
+Current Step Title: Continue Pointer And Provenance Import Isolation
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 declaration-owner contraction for the route-local memory
-slot/provenance maps.
+Completed Step 3 import-boundary contraction for the dynamic local
+pointer/aggregate array and local pointer-array base state family.
 
-- Moved the definitions of `LocalSlotTypes`, `LocalPointerSlots`, and
-  `LocalIndirectPointerSlotSet` from `lir_to_bir_detail` in
-  `src/backend/bir/lir_to_bir/lowering.hpp` into
-  `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-- Preserved the existing
-  `BirFunctionLowerer::{LocalSlotTypes,LocalPointerSlots,LocalIndirectPointerSlotSet}`
-  compatibility aliases by retargeting them to the memory-owned aliases.
-- Updated only the existing `LocalSlotTypes`, `LocalPointerSlots`, and
-  `LocalIndirectPointerSlotSet` string-authority classifications to follow the
-  moved aliases at
-  `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-- Did not change map key/value types, BIR memory records, prepared data,
-  target/MIR paths, tests, expectations, allowlists, or runtime behavior.
+- Removed the `BirFunctionLowerer` compatibility aliases for
+  `LocalArraySlots`, `LocalArraySlotMap`,
+  `DynamicLocalPointerArrayAccess`, `DynamicLocalPointerArrayMap`,
+  `DynamicLocalAggregateArrayAccess`, `DynamicLocalAggregateArrayMap`,
+  `DynamicPointerValueArrayAccess`, `DynamicPointerValueArrayMap`,
+  `LocalPointerArrayBase`, and `LocalPointerArrayBaseMap`.
+- Updated memory implementation files that still imported those names through
+  `BirFunctionLowerer::` to use the memory-owned declarations in
+  `src/backend/bir/lir_to_bir/memory/memory_types.hpp` directly.
+- Did not change the map definitions, access record fields, BIR route records,
+  prepared data, target/MIR paths, runtime behavior, tests, expectations,
+  allowlists, or public BIR query APIs.
 
 ## Suggested Next
 
-Continue with the supervisor-selected next Step 3 packet for memory address
-provenance import cleanup.
+Continue Step 3 with the next adapter-local pointer/provenance state family,
+preferably `PointerAddressMap`/`PointerAddressIntMap` or the remaining global
+dynamic-array aliases if the supervisor wants the same declaration-boundary
+shape.
 
 ## Watchouts
 
-- The string-authority classification update was allowed only because it
-  follows the real declaration-owner move for these three aliases.
-- Do not broaden this into unrelated guard metadata churn.
-- Keep the work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
+- This packet intentionally did not edit string-authority classification data;
+  the declarations were already memory-owned and this slice only removed
+  lowerer re-export/import coupling.
+- Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
@@ -60,6 +61,7 @@ Delegated proof:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)'
 ```
 
-Result: passed. Build completed and 303 selected tests passed with 0 failures.
+Result: passed. Build completed and 303 selected tests passed with 0 failures,
+including `string_authority_guard`.
 
 Proof log path: `test_after.log`.

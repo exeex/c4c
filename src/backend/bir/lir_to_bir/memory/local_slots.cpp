@@ -10,7 +10,6 @@
 
 namespace c4c::backend {
 
-using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::is_known_function_global_address;
@@ -509,7 +508,7 @@ std::optional<bool> try_lower_byte_array_base_store(
     std::string_view ptr_name,
     bir::TypeKind value_type,
     const bir::Value& value,
-    const BirFunctionLowerer::LocalPointerArrayBaseMap& local_pointer_array_bases,
+    const LocalPointerArrayBaseMap& local_pointer_array_bases,
     const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
     std::vector<bir::LocalSlot>* local_slots,
     std::vector<bir::Inst>* lowered_insts) {
@@ -567,7 +566,7 @@ std::optional<bool> try_lower_byte_array_base_load(
     std::string_view result_name,
     std::string_view ptr_name,
     bir::TypeKind value_type,
-    const BirFunctionLowerer::LocalPointerArrayBaseMap& local_pointer_array_bases,
+    const LocalPointerArrayBaseMap& local_pointer_array_bases,
     const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
     std::vector<bir::LocalSlot>* local_slots,
     std::vector<bir::Inst>* lowered_insts) {
