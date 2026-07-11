@@ -528,8 +528,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     const TypeDeclMap& type_decls,
     const GlobalAddressSlots& global_address_slots,
     const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
-    const GlobalPointerValueSlots& global_pointer_value_slots,
-    const AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
+    const c4c::backend::GlobalPointerValueSlots& global_pointer_value_slots,
+    const c4c::backend::AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
     GlobalPointerMap* global_pointer_slots,
     GlobalObjectPointerMap* global_object_pointer_slots,
     PointerAddressMap* pointer_value_addresses,
@@ -745,8 +745,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     const PointerAddressMap& pointer_value_addresses,
     GlobalAddressSlots* global_address_slots,
     AddressedGlobalPointerSlots* addressed_global_pointer_slots,
-    GlobalPointerValueSlots* global_pointer_value_slots,
-    AddressedGlobalPointerValueSlots* addressed_global_pointer_value_slots,
+    c4c::backend::GlobalPointerValueSlots* global_pointer_value_slots,
+    c4c::backend::AddressedGlobalPointerValueSlots* addressed_global_pointer_value_slots,
     std::vector<bir::Inst>* lowered_insts) {
   if (store.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
     const std::string global_name = store.ptr.str().substr(1);

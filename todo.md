@@ -8,18 +8,17 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned addressed
-global pointer slot key/state alias family.
+Completed Step 3 import-boundary contraction for the memory-owned global
+pointer value slot alias pair.
 
 - Removed the `BirFunctionLowerer` compatibility aliases for
-  `GlobalPointerSlotKey`, `GlobalPointerSlotKeyHash`, and
-  `AddressedGlobalPointerSlots`.
-- Updated the affected provenance adapter reference to use the memory-owned
-  `GlobalPointerSlotKey` declaration directly from
+  `GlobalPointerValueSlots` and `AddressedGlobalPointerValueSlots`.
+- Updated the affected provenance adapter load/store signatures and lowerer
+  member declarations to use the memory-owned declarations directly from
   `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-- Did not change addressed global pointer slot map fields, key/hash
-  definitions, BIR route records, prepared data, target/MIR paths, runtime
-  behavior, tests, expectations, allowlists, or public BIR query APIs.
+- Did not change pointer value side-table behavior, BIR route records,
+  prepared data, target/MIR paths, runtime behavior, tests, expectations,
+  allowlists, or public BIR query APIs.
 
 ## Suggested Next
 
@@ -31,9 +30,9 @@ selects for the same declaration-boundary cleanup.
 - This packet intentionally did not edit string-authority classification data;
   the declarations were already memory-owned and this slice only removed
   lowerer re-export/import coupling.
-- `GlobalPointerSlotKey`, `GlobalPointerSlotKeyHash`, and
-  `AddressedGlobalPointerSlots` are now found through the enclosing
-  `c4c::backend` namespace instead of through `BirFunctionLowerer::`.
+- `GlobalPointerValueSlots` and `AddressedGlobalPointerValueSlots` are now
+  referenced through the memory-owned `c4c::backend` declarations instead of
+  through `BirFunctionLowerer` aliases.
 - Keep follow-up work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.
