@@ -1,16 +1,29 @@
 # Prepared MIR View Contract Research
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
-After: `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
-Parent: `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
+After: `ideas/closed/678_lir_to_bir_adapter_boundary_umbrella.md`
+Parent: `ideas/closed/678_lir_to_bir_adapter_boundary_umbrella.md`
 Related:
-- `ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md`
+- `ideas/closed/678_lir_to_bir_adapter_boundary_umbrella.md`
 - `ideas/closed/585_target_abi_contract_and_value_consumption_research.md`
-- `ideas/open/589_direct_edge_publication_move_freshness_ownership.md`
-- `ideas/open/590_branch_stack_load_freshness_contract.md`
+- `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
+- `ideas/closed/590_branch_stack_load_freshness_contract.md`
 Owning Layer: PreparedBir-to-MIR interface contract, MIR input views, old/new
 BIR compatibility boundary, and backend consumption dependencies
+
+## Closure Note
+
+Closed on 2026-07-11 after the research runbook produced exactly the required
+documentation set under `docs/prepared_mir_view_contract_research/`: one
+`index.md` plus the seven numbered answer files listed below. The final index
+links the answer files, summarizes the recommended adapter-first
+`PreparedMirView` design, audits the source-idea acceptance criteria, and
+classifies follow-ups as documentation, narrow implementation ideas, or
+discussion-required architecture work.
+
+No implementation files, tests, expectations, unsupported markers, allowlists,
+runtime harness policy, or build files were part of this source idea's close.
 
 ## Goal
 
