@@ -51,6 +51,124 @@ const std::vector<PreparedMirBlockView>& PreparedMirFunctionView::blocks() const
   return entry_->blocks;
 }
 
+bool PreparedMirCoreComparisonReport::equal() const {
+  return status == PreparedMirCoreComparisonStatus::Equal &&
+         blocking_differences.empty() &&
+         unsupported_reasons.empty();
+}
+
+namespace {
+
+std::string bytes_hex(std::string_view bytes) {
+  constexpr char kHexDigits[] = "0123456789abcdef";
+  std::string out;
+  out.reserve(bytes.size() * 2);
+  for (const unsigned char byte : bytes) {
+    out.push_back(kHexDigits[byte >> 4]);
+    out.push_back(kHexDigits[byte & 0x0f]);
+  }
+  return out;
+}
+
+bool same_target_snapshot(const PreparedMirCoreTargetSnapshot& lhs,
+                          const PreparedMirCoreTargetSnapshot& rhs) {
+  return lhs.target_triple == rhs.target_triple &&
+         lhs.profile_triple == rhs.profile_triple &&
+         lhs.arch == rhs.arch &&
+         lhs.os == rhs.os &&
+         lhs.abi == rhs.abi &&
+         lhs.relocation == rhs.relocation &&
+         lhs.has_float_arg_registers == rhs.has_float_arg_registers &&
+         lhs.has_float_return_registers == rhs.has_float_return_registers;
+}
+
+bool same_function_snapshot(const PreparedMirCoreFunctionSnapshot& lhs,
+                            const PreparedMirCoreFunctionSnapshot& rhs) {
+  return lhs.index == rhs.index &&
+         lhs.name == rhs.name &&
+         lhs.function_id == rhs.function_id &&
+         lhs.has_function_id == rhs.has_function_id &&
+         lhs.is_declaration == rhs.is_declaration &&
+         lhs.block_count == rhs.block_count &&
+         lhs.has_function_view == rhs.has_function_view;
+}
+
+bool same_global_snapshot(const PreparedMirCoreGlobalSnapshot& lhs,
+                          const PreparedMirCoreGlobalSnapshot& rhs) {
+  return lhs.index == rhs.index &&
+         lhs.name == rhs.name &&
+         lhs.link_name_id == rhs.link_name_id &&
+         lhs.type == rhs.type &&
+         lhs.is_extern == rhs.is_extern &&
+         lhs.is_constant == rhs.is_constant &&
+         lhs.size_bytes == rhs.size_bytes &&
+         lhs.align_bytes == rhs.align_bytes;
+}
+
+bool same_string_snapshot(const PreparedMirCoreStringSnapshot& lhs,
+                          const PreparedMirCoreStringSnapshot& rhs) {
+  return lhs.index == rhs.index &&
+         lhs.name == rhs.name &&
+         lhs.byte_count == rhs.byte_count &&
+         lhs.bytes_hex == rhs.bytes_hex &&
+         lhs.align_bytes == rhs.align_bytes;
+}
+
+bool same_block_snapshot(const PreparedMirCoreBlockSnapshot& lhs,
+                         const PreparedMirCoreBlockSnapshot& rhs) {
+  return lhs.index == rhs.index &&
+         lhs.label == rhs.label &&
+         lhs.bir_present == rhs.bir_present &&
+         lhs.prepared_present == rhs.prepared_present &&
+         lhs.instruction_count == rhs.instruction_count &&
+         lhs.cursor_count == rhs.cursor_count;
+}
+
+template <typename T, typename Equal>
+bool same_snapshot_vector(const std::vector<T>& lhs,
+                          const std::vector<T>& rhs,
+                          Equal equal) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < lhs.size(); ++index) {
+    if (!equal(lhs[index], rhs[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool same_function_view_snapshot(const PreparedMirCoreFunctionViewSnapshot& lhs,
+                                 const PreparedMirCoreFunctionViewSnapshot& rhs) {
+  return lhs.name == rhs.name &&
+         lhs.function_id == rhs.function_id &&
+         lhs.bir_block_count == rhs.bir_block_count &&
+         lhs.prepared_block_count == rhs.prepared_block_count &&
+         lhs.branch_condition_count == rhs.branch_condition_count &&
+         lhs.join_transfer_count == rhs.join_transfer_count &&
+         lhs.parallel_copy_bundle_count == rhs.parallel_copy_bundle_count &&
+         lhs.value_home_count == rhs.value_home_count &&
+         lhs.move_bundle_count == rhs.move_bundle_count &&
+         lhs.stack_object_count == rhs.stack_object_count &&
+         lhs.stack_frame_slot_count == rhs.stack_frame_slot_count &&
+         lhs.frame_size_bytes == rhs.frame_size_bytes &&
+         lhs.frame_alignment_bytes == rhs.frame_alignment_bytes &&
+         lhs.memory_access_count == rhs.memory_access_count &&
+         lhs.address_materialization_count == rhs.address_materialization_count &&
+         lhs.lookup_call_count == rhs.lookup_call_count &&
+         lhs.lookup_address_block_count == rhs.lookup_address_block_count &&
+         lhs.lookup_memory_position_count == rhs.lookup_memory_position_count &&
+         lhs.lookup_value_home_count == rhs.lookup_value_home_count &&
+         lhs.lookup_move_bundle_count == rhs.lookup_move_bundle_count &&
+         lhs.lookup_edge_publication_count == rhs.lookup_edge_publication_count &&
+         lhs.lookup_edge_source_producer_count == rhs.lookup_edge_source_producer_count &&
+         lhs.lookup_branch_stack_load_count == rhs.lookup_branch_stack_load_count &&
+         same_snapshot_vector(lhs.blocks, rhs.blocks, same_block_snapshot);
+}
+
+}  // namespace
+
 std::optional<PreparedMirInstructionCursor> PreparedMirFunctionView::instruction(
     std::size_t block_index,
     std::size_t instruction_index) const {
@@ -226,6 +344,133 @@ std::optional<PreparedMirFunctionView> PreparedMirCoreView::function_view(
   return function_view(*id);
 }
 
+PreparedMirCoreSnapshot PreparedMirCoreView::structural_snapshot() const {
+  const auto id_value = [](auto id) {
+    return static_cast<std::size_t>(id);
+  };
+  const auto block_label_text = [&](BlockLabelId id) {
+    const std::string_view label = prepare::prepared_block_label(prepared_names(), id);
+    return label.empty() ? std::string{"<invalid>"} : std::string{label};
+  };
+
+  PreparedMirCoreSnapshot snapshot;
+  snapshot.target = PreparedMirCoreTargetSnapshot{
+      .target_triple = std::string(target_triple()),
+      .profile_triple = target_profile().triple,
+      .arch = std::string(c4c::target_arch_name(target_profile().arch)),
+      .os = std::string(c4c::target_os_name(target_profile().os)),
+      .abi = std::string(c4c::backend_abi_name(target_profile().backend_abi)),
+      .relocation =
+          std::string(c4c::target_relocation_model_name(target_profile().relocation_model)),
+      .has_float_arg_registers = target_profile().has_float_arg_registers,
+      .has_float_return_registers = target_profile().has_float_return_registers,
+  };
+
+  for (std::size_t index = 0; index < functions().size(); ++index) {
+    const auto& function = functions()[index];
+    const auto function_id = resolve_function_name(function.name);
+    snapshot.functions.push_back(PreparedMirCoreFunctionSnapshot{
+        .index = index,
+        .name = function.name,
+        .function_id = function_id.has_value() ? id_value(*function_id) : 0,
+        .has_function_id = function_id.has_value(),
+        .is_declaration = function.is_declaration,
+        .block_count = function.blocks.size(),
+        .has_function_view = function_id.has_value() && function_view(*function_id).has_value(),
+    });
+  }
+
+  for (const auto* function : defined_functions()) {
+    snapshot.defined_functions.push_back(function != nullptr ? function->name : "<null>");
+  }
+
+  for (std::size_t index = 0; index < globals().size(); ++index) {
+    const auto& global = globals()[index];
+    snapshot.globals.push_back(PreparedMirCoreGlobalSnapshot{
+        .index = index,
+        .name = global.name,
+        .link_name_id = id_value(global.link_name_id),
+        .type = static_cast<std::size_t>(global.type),
+        .is_extern = global.is_extern,
+        .is_constant = global.is_constant,
+        .size_bytes = global.size_bytes,
+        .align_bytes = global.align_bytes,
+    });
+  }
+
+  for (std::size_t index = 0; index < string_constants().size(); ++index) {
+    const auto& constant = string_constants()[index];
+    snapshot.string_constants.push_back(PreparedMirCoreStringSnapshot{
+        .index = index,
+        .name = constant.name,
+        .byte_count = constant.bytes.size(),
+        .bytes_hex = bytes_hex(constant.bytes),
+        .align_bytes = constant.align_bytes,
+    });
+  }
+
+  for (const auto& entry : function_entries_) {
+    const PreparedMirFunctionView view{this, &entry};
+    const auto& control_flow = view.control_flow();
+    const auto& value_locations = view.value_locations();
+    const auto& addressing = view.addressing();
+    const auto& lookups = view.prepared_lookups();
+
+    PreparedMirCoreFunctionViewSnapshot function_snapshot{
+        .name = std::string(view.function_name_text()),
+        .function_id = id_value(view.function_name()),
+        .bir_block_count = view.bir_function().blocks.size(),
+        .prepared_block_count = control_flow.blocks.size(),
+        .branch_condition_count = control_flow.branch_conditions.size(),
+        .join_transfer_count = control_flow.join_transfers.size(),
+        .parallel_copy_bundle_count = control_flow.parallel_copy_bundles.size(),
+        .value_home_count = value_locations.value_homes.size(),
+        .move_bundle_count = value_locations.move_bundles.size(),
+        .stack_object_count = view.stack_layout().objects.size(),
+        .stack_frame_slot_count = view.stack_layout().frame_slots.size(),
+        .frame_size_bytes = view.stack_layout().frame_size_bytes,
+        .frame_alignment_bytes = view.stack_layout().frame_alignment_bytes,
+        .memory_access_count = addressing.accesses.size(),
+        .address_materialization_count = addressing.address_materializations.size(),
+        .lookup_call_count = lookups.call_plans.calls_by_position.size(),
+        .lookup_address_block_count =
+            lookups.address_materializations.materializations_by_block.size(),
+        .lookup_memory_position_count = lookups.memory_accesses.accesses_by_position.size(),
+        .lookup_value_home_count = lookups.value_homes.homes_by_id.size(),
+        .lookup_move_bundle_count = lookups.move_bundles.bundles_by_position.size(),
+        .lookup_edge_publication_count = lookups.edge_publications.publications.size(),
+        .lookup_edge_source_producer_count =
+            lookups.edge_publication_source_producers.producers_by_value_name.size(),
+        .lookup_branch_stack_load_count =
+            lookups.branch_stack_load_authorities.records.size(),
+    };
+
+    for (const auto& block : view.blocks()) {
+      const std::size_t instruction_count =
+          block.block != nullptr ? block.block->insts.size() : 0;
+      std::size_t cursor_count = 0;
+      for (std::size_t instruction_index = 0; instruction_index < instruction_count;
+           ++instruction_index) {
+        if (view.instruction(block.block_index, instruction_index).has_value()) {
+          ++cursor_count;
+        }
+      }
+      function_snapshot.blocks.push_back(PreparedMirCoreBlockSnapshot{
+          .index = block.block_index,
+          .label = block_label_text(block.block_label),
+          .bir_present = block.block != nullptr,
+          .prepared_present = block.control_flow != nullptr,
+          .instruction_count = instruction_count,
+          .cursor_count = cursor_count,
+      });
+    }
+
+    snapshot.function_views.push_back(std::move(function_snapshot));
+  }
+
+  return snapshot;
+}
+
 std::string PreparedMirCoreView::canonical_dump() const {
   std::string out;
   const auto append_line = [&](std::string line) {
@@ -297,6 +542,7 @@ std::string PreparedMirCoreView::canonical_dump() const {
     append_line("string index=" + std::to_string(index) +
                 " name=" + constant.name +
                 " bytes=" + std::to_string(constant.bytes.size()) +
+                " bytes_hex=" + bytes_hex(constant.bytes) +
                 " align=" + std::to_string(constant.align_bytes));
   }
 
@@ -395,6 +641,57 @@ const PreparedMirCoreView::BirFunctionBinding* PreparedMirCoreView::bir_binding(
     }
   }
   return nullptr;
+}
+
+PreparedMirCoreComparisonReport compare_prepared_mir_core_views(
+    const PreparedMirCoreView& lhs,
+    const PreparedMirCoreView& rhs,
+    const PreparedMirCoreComparisonOptions& options) {
+  const PreparedMirCoreSnapshot lhs_snapshot = lhs.structural_snapshot();
+  const PreparedMirCoreSnapshot rhs_snapshot = rhs.structural_snapshot();
+
+  PreparedMirCoreComparisonReport report;
+  const auto record_difference = [&](std::string difference) {
+    report.blocking_differences.push_back(std::move(difference));
+  };
+
+  if (lhs_snapshot.schema_version != rhs_snapshot.schema_version) {
+    record_difference("schema_version");
+  }
+  if (options.compare_target_identity &&
+      !same_target_snapshot(lhs_snapshot.target, rhs_snapshot.target)) {
+    record_difference("target_identity");
+  }
+  if (!same_snapshot_vector(lhs_snapshot.functions,
+                            rhs_snapshot.functions,
+                            same_function_snapshot)) {
+    record_difference("functions");
+  }
+  if (lhs_snapshot.defined_functions != rhs_snapshot.defined_functions) {
+    record_difference("defined_functions");
+  }
+  if (!same_snapshot_vector(lhs_snapshot.globals,
+                            rhs_snapshot.globals,
+                            same_global_snapshot)) {
+    record_difference("globals");
+  }
+  if (!same_snapshot_vector(lhs_snapshot.string_constants,
+                            rhs_snapshot.string_constants,
+                            same_string_snapshot)) {
+    record_difference("string_constants");
+  }
+  if (!same_snapshot_vector(lhs_snapshot.function_views,
+                            rhs_snapshot.function_views,
+                            same_function_view_snapshot)) {
+    record_difference("function_views");
+  }
+
+  if (!report.unsupported_reasons.empty()) {
+    report.status = PreparedMirCoreComparisonStatus::Unsupported;
+  } else if (!report.blocking_differences.empty()) {
+    report.status = PreparedMirCoreComparisonStatus::Different;
+  }
+  return report;
 }
 
 }  // namespace c4c::backend::mir::prepared

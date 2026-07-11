@@ -197,6 +197,16 @@ bool contains(std::string_view text, std::string_view needle) {
   return text.find(needle) != std::string_view::npos;
 }
 
+bool has_blocking_difference(const prepared::PreparedMirCoreComparisonReport& report,
+                             std::string_view expected) {
+  for (const auto& difference : report.blocking_differences) {
+    if (difference == expected) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int verify_core_view_canonical_dump() {
   const auto module = make_fixture();
   const prepared::PreparedMirCoreView view(module);
@@ -221,7 +231,7 @@ int verify_core_view_canonical_dump() {
     return fail("expected canonical dump to include all/defined traversal and view admission");
   }
   if (!contains(dump, "global index=0 name=global_i32") ||
-      !contains(dump, "string index=0 name=.str0 bytes=3 align=1") ||
+      !contains(dump, "string index=0 name=.str0 bytes=3 bytes_hex=616263 align=1") ||
       !contains(dump, "function_view name=main") ||
       !contains(dump, "control_flow function=main blocks=1") ||
       !contains(dump, "value_locations function=main homes=1 move_bundles=0") ||
@@ -243,11 +253,54 @@ int verify_core_view_canonical_dump() {
   return 0;
 }
 
+int verify_core_view_structural_comparison() {
+  const auto lhs_module = make_fixture();
+  const auto rhs_module = make_fixture();
+  const prepared::PreparedMirCoreView lhs_view(lhs_module);
+  const prepared::PreparedMirCoreView rhs_view(rhs_module);
+
+  const auto equal_report = prepared::compare_prepared_mir_core_views(lhs_view, rhs_view);
+  if (!equal_report.equal() ||
+      equal_report.status != prepared::PreparedMirCoreComparisonStatus::Equal ||
+      !equal_report.blocking_differences.empty()) {
+    return fail("expected identical core view snapshots to compare equal");
+  }
+
+  auto diagnostic_only_module = make_fixture();
+  diagnostic_only_module.completed_phases.push_back("another-phase-not-core");
+  diagnostic_only_module.notes.push_back(prepare::PrepareNote{
+      .phase = "another-diagnostic-phase",
+      .message = "another-prepare-note-not-core",
+  });
+  const prepared::PreparedMirCoreView diagnostic_only_view(diagnostic_only_module);
+  const auto diagnostic_report =
+      prepared::compare_prepared_mir_core_views(lhs_view, diagnostic_only_view);
+  if (!diagnostic_report.equal()) {
+    return fail("expected diagnostic and prepared-history changes to be excluded");
+  }
+
+  auto mutated_module = make_fixture();
+  mutated_module.module.string_constants.front().bytes[1] = 'z';
+  const prepared::PreparedMirCoreView mutated_view(mutated_module);
+  const auto difference_report =
+      prepared::compare_prepared_mir_core_views(lhs_view, mutated_view);
+  if (difference_report.equal() ||
+      difference_report.status != prepared::PreparedMirCoreComparisonStatus::Different ||
+      !has_blocking_difference(difference_report, "string_constants")) {
+    return fail("expected typed string-constant core fact mutation to block equality");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
   if (const int status = verify_core_view(); status != 0) {
     return status;
   }
-  return verify_core_view_canonical_dump();
+  if (const int status = verify_core_view_canonical_dump(); status != 0) {
+    return status;
+  }
+  return verify_core_view_structural_comparison();
 }

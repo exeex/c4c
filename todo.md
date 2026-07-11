@@ -1,28 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/691_prepared_mir_view_equivalence_dump_comparator_mvp.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Add Canonical Core View Dump
+Current Step ID: 2
+Current Step Title: Add Typed Structural Snapshot And Comparator Skeleton
 
 # Current Packet
 
 ## Just Finished
 
-Added `PreparedMirCoreView::canonical_dump()` as a deterministic, line-oriented
-core projection dump. The dump covers schema/version, target identity, module
-data counts, all/defined function traversal, globals, string constants,
-per-function control-flow/value-location/stack/addressing presence, lookup
-cache counts, block bindings, and instruction cursors from the view surface.
+Completed Step 2 by adding a typed `PreparedMirCoreSnapshot` projection and a
+`compare_prepared_mir_core_views(...)` comparator skeleton over view-exposed
+core facts. The comparator reports blocking category differences without using
+`canonical_dump()` string equality or raw `PreparedBirModule` layout.
 
-Extended the focused MIR core view test to prove stable repeat output, expected
-included core facts, and exclusion of prepare notes/completed phases/route-name
-sentinels.
+Extended the focused MIR core view test to prove old-vs-old equality,
+diagnostic/prepared-history exclusion, and one typed blocking string-constant
+core-fact mutation. Follow-up tightened string constants so both the canonical
+dump and typed snapshot include deterministic byte content (`bytes_hex`), and
+the blocking mutation preserves string length to prove comparison is not
+length-only.
 
 ## Suggested Next
 
-Proceed to Step 2 when delegated: build the comparator MVP on top of the dump
-format without turning raw prepared-module layout or diagnostic text into
-semantic equality authority.
+Proceed to Step 3 when delegated: add the intended test-routing or caller-side
+MVP around the typed comparator while keeping route text, diagnostics, and
+target output out of semantic equality.
 
 ## Watchouts
 
@@ -30,8 +32,10 @@ semantic equality authority.
 - Do not use route text, prepare notes, completed phases, proof text, rendered
   debug output, expectations, unsupported markers, allowlists, or target output
   as equality authority.
-- The new dump is a debug/projection aid only for this packet; structural
-  equality/comparison is intentionally deferred.
+- The comparator currently reports category-level blocking differences; finer
+  per-field diff rendering can be a later refinement if the supervisor asks.
+- String constants now compare content via typed snapshot bytes, not only
+  names/counts/lengths.
 - Keep source/freshness authority work in the separate open idea 692 unless the
   supervisor explicitly switches lifecycle state.
 
