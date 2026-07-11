@@ -1,6 +1,6 @@
 # Prepared Routing Root/Dependency Classification Decomposition
 
-Status: Open
+Status: Closed
 Type: backend authority decomposition
 Blocks:
 - `ideas/open/716_prealloc_current_block_routing_authority_closure.md`
@@ -120,3 +120,15 @@ decomposition initiative and reactivate idea 716 at its owner-publication and
 bounded-consumption boundary. Hand back the generic classification rule,
 registered proof names, and explicit remaining integration status; do not
 silently broaden idea 716 while this initiative is active.
+
+## Completion Note
+
+Closed after Step 8 and commit `1394423de`. The generic owner-preparation
+handback preserves legitimate uncovered BIR-PHI-root dependencies while exact
+negative prepared roots remain fail closed, and it retains duplicate and
+parallel ambiguity for all-applicable owner queries. The focused authority
+matrices are default-registered through
+`backend_current_block_phi_root_authority_probe`; unchanged policy-present
+routing vectors and the instruction-dispatch fixture retain the original
+`%rhs.add` and `%short.selected` producers. Final review accepted the route and
+the broader backend proof passed 329/329.
