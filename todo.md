@@ -8,27 +8,28 @@ Current Step Title: Establish and consume source-semantic named results
 
 ## Just Finished
 
-- Step 2.2 migrated the bounded same-block store-local source family to the
-  `BirSameBlockStoreLocalSourceResult` contract in `bir/query.*` and made the
-  common-MIR adapter preserve its explicit `BirViewStatus`.
-- The named result preserves the exact load/store instructions, memory/value
-  identities, and stable local-slot identity. Missing, incomplete, ambiguous,
-  type-mismatched, overlapping-range, and identity-mismatched evidence fail
-  closed without route/index/raw-record reconstruction in the adapter.
-- Focused BIR/common contracts cover success and negative status propagation.
-  Retiring the now-unused legacy conversion helper ratcheted Route 1 from 18
-  to 17 and Route 3 from 22 to 19 for only this family.
+- Step 2.2 migrated the bounded same-block binary-producer common-MIR family
+  to consume the existing ownership-correct `BirProducerResult` contract.
+- `SameBlockBinaryProducer` now preserves explicit `BirViewStatus`, produced
+  value identity, block identity, and instruction index. Missing, malformed,
+  wrong-kind, wrong-type, ambiguous, and internally mismatched evidence fails
+  closed without reconstructing producer semantics in common MIR.
+- The focused shared-producer contract covers the positive identity and all
+  bounded negative statuses. The route-authority inventory remains exact: this
+  family already used only the named producer view and contained no route
+  vocabulary to retire.
 
 ## Suggested Next
 
-- Execute the next bounded Step 2 family selected by the supervisor, leaving
-  publication and prepared-placement families with their owning packets.
+- Migrate the adjacent same-block select-producer adapter to preserve the
+  existing named producer result's explicit status and identity, leaving
+  select dependency traversal, publication, and prepared-placement families
+  unchanged.
 
 ## Watchouts
 
-- Preserve the accepted distinction between `CompleteStopped` and
-  `CompleteNoDependency`; common MIR relies only on the BIR result's complete
-  contract and must not reconstruct operand traversal.
+- The next select-producer packet is only the direct producer adapter; do not
+  widen it into select-chain dependency traversal or target materialization.
 - Route 2 is now zero. Do not reintroduce route vocabulary or hidden recursive
   select dependency interpretation in later common-query packets.
 - Remaining Route 3 helpers in common MIR serve publication identity; do not
@@ -48,5 +49,5 @@ Current Step Title: Establish and consume source-semantic named results
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' | tee test_after.log`
 - The supervisor-selected exact backend proof passed 331/331, including the
-  focused named BIR/common store-local source contract and route-authority
+  focused shared binary-producer status/identity contract and route-authority
   guard; `test_after.log` is the canonical proof log.

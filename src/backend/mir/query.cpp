@@ -2051,22 +2051,30 @@ find_bir_same_block_load_local_stored_value_source_identity(
 [[nodiscard]] SameBlockBinaryProducer find_same_block_binary_producer(
     const bir::Block* block,
     const bir::Value& value) {
-  if (block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return {};
+  if (block == nullptr) {
+    return {.status = bir::BirViewStatus::Unavailable};
+  }
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return {.status = bir::BirViewStatus::Incomplete};
   }
   const auto result = bir::find_same_block_producer(
       bir::make_bir_producer_view(*block), value, block->insts.size());
-  if (!result || result.kind != bir::BirProducerKind::Binary ||
+  if (!result) {
+    return {.status = result.status};
+  }
+  if (result.kind != bir::BirProducerKind::Binary ||
+      result.produced_value == nullptr || result.block_label != block->label ||
       result.instruction_index >= block->insts.size()) {
-    return {};
+    return {.status = bir::BirViewStatus::Incomplete};
   }
   const auto* binary =
       std::get_if<bir::BinaryInst>(&block->insts[result.instruction_index]);
   return binary == nullptr
-             ? SameBlockBinaryProducer{}
-             : SameBlockBinaryProducer{.binary = binary,
+             ? SameBlockBinaryProducer{.status = bir::BirViewStatus::Incomplete}
+             : SameBlockBinaryProducer{.status = result.status,
+                                       .binary = binary,
+                                       .produced_value = result.produced_value,
+                                       .block_label = result.block_label,
                                        .instruction_index = result.instruction_index};
 }
 

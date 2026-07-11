@@ -400,10 +400,16 @@ struct SameBlockProducerIndex {
 };
 
 struct SameBlockBinaryProducer {
+  bir::BirViewStatus status = bir::BirViewStatus::Unavailable;
   const bir::BinaryInst* binary = nullptr;
+  const bir::Value* produced_value = nullptr;
+  std::string_view block_label;
   std::size_t instruction_index = 0;
 
-  [[nodiscard]] explicit operator bool() const { return binary != nullptr; }
+  [[nodiscard]] explicit operator bool() const {
+    return status == bir::BirViewStatus::Available && binary != nullptr &&
+           produced_value != nullptr;
+  }
 };
 
 struct SameBlockSelectProducer {

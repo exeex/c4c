@@ -93,8 +93,31 @@ int x86_facing_code_can_consume_shared_query_records() {
 
   const auto sum_producer = mir::find_same_block_binary_producer(&block, sum);
   if (!sum_producer || sum_producer.instruction_index != 0U ||
-      sum_producer.binary->opcode != bir::BinaryOpcode::Add) {
+      sum_producer.binary->opcode != bir::BinaryOpcode::Add ||
+      sum_producer.status != bir::BirViewStatus::Available ||
+      sum_producer.produced_value == nullptr ||
+      sum_producer.produced_value->name != "%sum" ||
+      sum_producer.block_label != "entry") {
     return fail("expected shared query to find same-block binary producer");
+  }
+
+  const auto missing_binary = mir::find_same_block_binary_producer(
+      &block, named(bir::TypeKind::I64, "%missing"));
+  const auto malformed_binary = mir::find_same_block_binary_producer(
+      &block, bir::Value::immediate_i64(1));
+  const auto wrong_kind_binary = mir::find_same_block_binary_producer(
+      &block, named(bir::TypeKind::I64, "%choice"));
+  const auto wrong_type_binary = mir::find_same_block_binary_producer(
+      &block, named(bir::TypeKind::I32, "%sum"));
+  if (missing_binary ||
+      missing_binary.status != bir::BirViewStatus::Unavailable ||
+      malformed_binary ||
+      malformed_binary.status != bir::BirViewStatus::Incomplete ||
+      wrong_kind_binary ||
+      wrong_kind_binary.status != bir::BirViewStatus::Incomplete ||
+      wrong_type_binary ||
+      wrong_type_binary.status != bir::BirViewStatus::Unavailable) {
+    return fail("expected binary producer statuses and identity mismatches to fail closed");
   }
 
   const auto sum_constant = mir::evaluate_same_block_integer_constant(&block, sum);
@@ -258,8 +281,10 @@ int x86_facing_code_can_consume_shared_query_records() {
   if (ambiguous_identity || ambiguous_scalar.has_value()) {
     return fail("expected shared producer queries to fail closed for ambiguous view results");
   }
-  if (mir::find_same_block_binary_producer(
-          &ambiguous_block, named(bir::TypeKind::I64, "%duplicate")) ||
+  const auto ambiguous_binary = mir::find_same_block_binary_producer(
+      &ambiguous_block, named(bir::TypeKind::I64, "%duplicate"));
+  if (ambiguous_binary ||
+      ambiguous_binary.status != bir::BirViewStatus::Ambiguous ||
       mir::evaluate_same_block_integer_constant(
           &ambiguous_block, named(bir::TypeKind::I64, "%duplicate"))
           .has_value()) {
