@@ -4,7 +4,6 @@ Status: Open
 Type: prealloc/prepared contract implementation
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/704_bir_semantic_handoff_views.md`
-Blocked By: `ideas/open/716_prealloc_current_block_routing_authority_closure.md` pending handback through idea 713
 
 ## First Owner And Scope
 
@@ -40,3 +39,15 @@ headers must not branch on or expose it.
 - Route status/agreement becomes freshness, destination, or move authority.
 - A prepared record embeds a route record or route-numbered authority field.
 - Expectations are rewritten without migrating the producer seam.
+
+## Bounded Consumer Handback
+
+Idea 713 closed the current-block result-consumption dependency at commit
+`1394423de` with final accepted review and 329/329 backend proof. The
+prealloc/function-context owner constructs and attaches the complete stable-key
+routing query; AArch64 consumes only that query and fails closed when ownership
+or stable identity is absent. Route 5 remains diagnostic-only, all-applicable
+semantic ambiguity is preserved, and no target reconstruction or function-wide
+publication/transfer scan survives in the bounded consumer. Resume at Step
+2.3b.3 to retire the now-obsolete Route 5 public compatibility payload without
+replanning the accepted consumer authority.

@@ -1,6 +1,6 @@
 # Current-Block Edge-Bound Routing Consumption Decomposition
 
-Status: Open
+Status: Closed
 Type: backend contract decomposition
 Unblocks: `ideas/open/705_prepared_fact_boundary_from_bir_views.md`
 
@@ -106,3 +106,17 @@ dependencies are preserved, and duplicate or parallel disagreement remains
 ambiguous. Resume at Step 4 to adopt and verify this bounded contract; do not
 reconstruct authority in the target or reopen the completed classification
 family.
+
+## Completion Note
+
+Closed after the final Step 4 bounded-consumption review accepted commit
+`1394423de` without another code packet. Registered contracts cover the
+result-level/edge-bound identity mismatch, parallel predecessors and
+destinations, wrong-successor isolation, duplicates, and explicit missing,
+incomplete, mismatched, and ambiguous outcomes. The prealloc-owned stable-key
+query proves semantic invariance across all applicable facts. AArch64 supplies
+only stable consumption identity, reads the owner-attached query, fails closed
+when the owner is absent, and does not scan publications, `JoinTransfer`
+records, or BIR route indexes. Unchanged integration and the focused authority
+probes pass in the accepted 329/329 backend proof. The bounded consumer
+contract is handed back to idea 705 at Step 2.3b.3.
