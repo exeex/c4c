@@ -25,9 +25,28 @@ and raw-symbol fallback behavior.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2 by selecting another narrow helper family
-whose declarations must remain visible across adapter TUs but whose bodies can
-be localized to one existing implementation file.
+Lifecycle close review rejected closure for now.
+
+Remaining packet 1: continue Step 2 with one declaration family whose
+`lowering.hpp` declaration surface can actually be removed or narrowed, not
+only moved out-of-line. The completed `FunctionSymbolSet` slice moved method
+bodies into `globals.cpp` but intentionally preserved the data members and
+method declarations in `lowering.hpp`, so it is useful contraction progress but
+not enough by itself to exhaust the source idea.
+
+Remaining packet 2: after Step 2 has no more viable single-translation-unit
+localization candidates, run Step 3 only if a real cross-TU family still needs
+a narrower adapter-owned helper boundary than `lowering.hpp`.
+
+Remaining packet 3: complete Step 4 by auditing that import-local state
+authority stayed inside LIR import and did not leak into public BIR,
+prepared/prealloc, target, or MIR layers.
+
+Remaining packet 4: complete Step 5 with fresh proof recorded here. Closure
+also needs a usable matching `test_before.log` / `test_after.log` regression
+guard pair; this review found `test_after.log` absent from the worktree and
+did not recreate root proof logs because the delegation marked them out of
+scope.
 
 ## Watchouts
 
