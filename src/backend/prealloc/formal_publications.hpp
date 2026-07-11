@@ -20,6 +20,20 @@ enum class PreparedFormalPublicationAction {
   IncomingStackToHome,
 };
 
+enum class PreparedFormalPublicationOrigin {
+  IncomingAbi,
+  FixedFormalStoreSource,
+};
+
+enum class PreparedFormalBirEvidenceStatus {
+  NotApplicable,
+  Available,
+  Missing,
+  Incomplete,
+  Ambiguous,
+  Mismatched,
+};
+
 [[nodiscard]] constexpr std::string_view prepared_formal_publication_action_name(
     PreparedFormalPublicationAction action) {
   switch (action) {
@@ -89,6 +103,10 @@ struct PreparedFormalPublicationPlan {
   const PreparedValueHome* home = nullptr;
   PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
   std::optional<std::size_t> incoming_stack_offset_bytes;
+  PreparedFormalPublicationOrigin origin =
+      PreparedFormalPublicationOrigin::IncomingAbi;
+  PreparedFormalBirEvidenceStatus bir_evidence_status =
+      PreparedFormalBirEvidenceStatus::NotApplicable;
 };
 
 struct PreparedFormalPublicationInputs {
@@ -96,6 +114,14 @@ struct PreparedFormalPublicationInputs {
   const bir::Function* function = nullptr;
   const PreparedValueLocationFunction* value_locations = nullptr;
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  PreparedFormalPublicationOrigin origin =
+      PreparedFormalPublicationOrigin::IncomingAbi;
+  bool named_bir_evidence_applicable = false;
+  std::optional<bir::BirProducerResult> named_bir_evidence;
+  std::optional<bir::BirProducerKind> expected_bir_producer_kind;
+  const bir::Value* expected_bir_value = nullptr;
+  std::string_view expected_bir_block_label;
+  std::optional<std::size_t> expected_bir_instruction_index;
 };
 
 [[nodiscard]] bool prepared_formal_publication_available(

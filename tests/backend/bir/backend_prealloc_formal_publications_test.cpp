@@ -263,6 +263,64 @@ int verify_no_publication_and_collection() {
   return 0;
 }
 
+int verify_named_bir_evidence_contract() {
+  const auto fixture = make_fixture();
+  const auto value = bir::Value::named(bir::TypeKind::I32, "%reg");
+  auto inputs = inputs_for(fixture);
+  inputs.origin = prepare::PreparedFormalPublicationOrigin::FixedFormalStoreSource;
+  inputs.named_bir_evidence_applicable = true;
+  inputs.expected_bir_producer_kind = bir::BirProducerKind::LoadLocal;
+  inputs.expected_bir_value = &value;
+  inputs.expected_bir_block_label = "entry";
+  inputs.expected_bir_instruction_index = 3;
+
+  const auto missing = prepare::plan_prepared_formal_publication(inputs, 0);
+  if (!expect(missing.bir_evidence_status ==
+                  prepare::PreparedFormalBirEvidenceStatus::Missing &&
+                  !prepare::prepared_formal_publication_available(missing),
+              "applicable missing formal BIR evidence should fail closed")) {
+    return 1;
+  }
+
+  inputs.named_bir_evidence = bir::BirProducerResult{
+      .status = bir::BirViewStatus::Available,
+      .kind = bir::BirProducerKind::LoadLocal,
+      .produced_value = &value,
+      .instruction_index = 3,
+      .block_label = "entry",
+  };
+  const auto available = prepare::plan_prepared_formal_publication(inputs, 0);
+  if (!expect(prepare::prepared_formal_publication_available(available) &&
+                  available.origin ==
+                      prepare::PreparedFormalPublicationOrigin::FixedFormalStoreSource &&
+                  available.bir_evidence_status ==
+                      prepare::PreparedFormalBirEvidenceStatus::Available,
+              "complete identity-matched formal BIR evidence should be available")) {
+    return 1;
+  }
+
+  inputs.named_bir_evidence->status = bir::BirViewStatus::Incomplete;
+  const auto incomplete = prepare::plan_prepared_formal_publication(inputs, 0);
+  inputs.named_bir_evidence->status = bir::BirViewStatus::Ambiguous;
+  const auto ambiguous = prepare::plan_prepared_formal_publication(inputs, 0);
+  inputs.named_bir_evidence->status = bir::BirViewStatus::Available;
+  inputs.named_bir_evidence->instruction_index = 4;
+  const auto mismatched = prepare::plan_prepared_formal_publication(inputs, 0);
+  if (!expect(incomplete.bir_evidence_status ==
+                  prepare::PreparedFormalBirEvidenceStatus::Incomplete &&
+                  ambiguous.bir_evidence_status ==
+                      prepare::PreparedFormalBirEvidenceStatus::Ambiguous &&
+                  mismatched.bir_evidence_status ==
+                      prepare::PreparedFormalBirEvidenceStatus::Mismatched &&
+                  !prepare::prepared_formal_publication_available(incomplete) &&
+                  !prepare::prepared_formal_publication_available(ambiguous) &&
+                  !prepare::prepared_formal_publication_available(mismatched),
+              "incomplete, ambiguous, and mismatched evidence should fail closed")) {
+    return 1;
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -273,6 +331,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = verify_no_publication_and_collection(); status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = verify_named_bir_evidence_contract(); status != 0) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

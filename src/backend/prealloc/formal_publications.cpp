@@ -25,12 +25,44 @@ namespace {
 
 [[nodiscard]] PreparedFormalPublicationPlan base_plan(
     std::size_t formal_index,
-    const bir::Param* formal) {
+    const bir::Param* formal,
+    PreparedFormalPublicationOrigin origin) {
   return PreparedFormalPublicationPlan{
       .formal_index = formal_index,
       .type = formal != nullptr ? formal->type : bir::TypeKind::Void,
       .formal = formal,
+      .origin = origin,
   };
+}
+
+[[nodiscard]] PreparedFormalBirEvidenceStatus classify_bir_evidence(
+    const PreparedFormalPublicationInputs& inputs) {
+  if (!inputs.named_bir_evidence_applicable) {
+    return PreparedFormalBirEvidenceStatus::NotApplicable;
+  }
+  if (!inputs.named_bir_evidence.has_value()) {
+    return PreparedFormalBirEvidenceStatus::Missing;
+  }
+  const auto& evidence = *inputs.named_bir_evidence;
+  if (evidence.status == bir::BirViewStatus::Incomplete) {
+    return PreparedFormalBirEvidenceStatus::Incomplete;
+  }
+  if (evidence.status == bir::BirViewStatus::Ambiguous) {
+    return PreparedFormalBirEvidenceStatus::Ambiguous;
+  }
+  if (evidence.status != bir::BirViewStatus::Available ||
+      !inputs.expected_bir_producer_kind.has_value() ||
+      evidence.kind != *inputs.expected_bir_producer_kind ||
+      evidence.produced_value == nullptr ||
+      inputs.expected_bir_value == nullptr ||
+      !inputs.expected_bir_instruction_index.has_value() ||
+      inputs.expected_bir_block_label.empty() ||
+      evidence.instruction_index != *inputs.expected_bir_instruction_index ||
+      evidence.block_label != inputs.expected_bir_block_label ||
+      *evidence.produced_value != *inputs.expected_bir_value) {
+    return PreparedFormalBirEvidenceStatus::Mismatched;
+  }
+  return PreparedFormalBirEvidenceStatus::Available;
 }
 
 }  // namespace
@@ -53,7 +85,12 @@ PreparedFormalPublicationPlan plan_prepared_formal_publication(
   }
 
   const auto& formal = inputs.function->params[formal_index];
-  auto plan = base_plan(formal_index, &formal);
+  auto plan = base_plan(formal_index, &formal, inputs.origin);
+  plan.bir_evidence_status = classify_bir_evidence(inputs);
+  if (inputs.named_bir_evidence_applicable &&
+      plan.bir_evidence_status != PreparedFormalBirEvidenceStatus::Available) {
+    return plan;
+  }
   if (formal.is_varargs || formal.is_sret) {
     plan.status = PreparedFormalPublicationStatus::NoPublication;
     plan.action = PreparedFormalPublicationAction::NoPublication;

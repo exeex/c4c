@@ -8121,7 +8121,33 @@ plan_prepared_fixed_formal_store_source_publication(
     return result;
   }
 
-  const auto formal_plans = plan_prepared_formal_publications(formal_inputs);
+  auto fixed_formal_inputs = formal_inputs;
+  fixed_formal_inputs.origin =
+      PreparedFormalPublicationOrigin::FixedFormalStoreSource;
+  fixed_formal_inputs.named_bir_evidence_applicable =
+      store_inputs.source_producer != nullptr &&
+      (store_inputs.source_producer->kind ==
+           PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+       store_inputs.source_producer->kind ==
+           PreparedEdgePublicationSourceProducerKind::Cast ||
+       store_inputs.source_producer->kind ==
+           PreparedEdgePublicationSourceProducerKind::Binary ||
+       store_inputs.source_producer->kind ==
+           PreparedEdgePublicationSourceProducerKind::SelectMaterialization);
+  fixed_formal_inputs.named_bir_evidence = store_inputs.source_producer_evidence;
+  if (store_inputs.source_producer != nullptr) {
+    fixed_formal_inputs.expected_bir_producer_kind =
+        bir_producer_kind(store_inputs.source_producer->kind);
+  }
+  fixed_formal_inputs.expected_bir_value = store_inputs.source_value;
+  fixed_formal_inputs.expected_bir_block_label =
+      store_inputs.source_producer_block_label;
+  if (store_inputs.source_producer != nullptr) {
+    fixed_formal_inputs.expected_bir_instruction_index =
+        store_inputs.source_producer->instruction_index;
+  }
+  const auto formal_plans =
+      plan_prepared_formal_publications(fixed_formal_inputs);
   for (const auto& formal : formal_plans) {
     if (!prepared_formal_publication_available(formal) ||
         formal.value_name != result.store_source.source_value_name ||
