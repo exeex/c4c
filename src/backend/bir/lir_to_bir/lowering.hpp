@@ -422,8 +422,6 @@ class BirFunctionLowerer {
 
   // Selector lowering side table keyed by route-local SSA result spelling.
   using CompareMap = std::unordered_map<std::string, CompareExpr>;
-  // LIR block spelling lookup used before BIR BlockLabelId assignment.
-  using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
   // Aggregate SSA value to aggregate slot spelling within one function.
   using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
 
@@ -466,14 +464,6 @@ class BirFunctionLowerer {
   using HfaReturnLaneMap =
       std::unordered_map<HfaReturnValueKey, std::vector<bir::Value>, HfaReturnValueKeyHash>;
 
-  struct BranchChain {
-    // Selector-recognition labels are raw LIR block spellings consumed before
-    // the lowered BIR block-label table is assigned.
-    std::vector<std::string> labels;
-    std::string leaf_label;
-    std::string join_label;
-  };
-
   struct PhiLoweringPlan {
     enum class Kind : unsigned char {
       ScalarValue,
@@ -489,28 +479,6 @@ class BirFunctionLowerer {
     std::size_t aggregate_align_bytes = 0;
     std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
   };
-
-  // LIR block spelling to phi plans before BIR block-label ids exist.
-  using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
-
-  struct PendingAggregatePhiCopy {
-    c4c::codegen::lir::LirOperand source;
-    // Route-local aggregate slot spelling.
-    std::string target_slot_name;
-    // Display/final spelling prefix for generated copy temporaries.
-    std::string temp_prefix;
-  };
-
-  using PendingAggregatePhiCopyMap =
-      std::unordered_map<std::string, std::vector<PendingAggregatePhiCopy>>;
-
-  struct PendingScalarPhiProducer {
-    std::string source_name;
-    bir::TypeKind type = bir::TypeKind::Void;
-  };
-
-  using PendingScalarPhiProducerMap =
-      std::unordered_map<std::string, std::vector<PendingScalarPhiProducer>>;
 
   struct AggregateParamInfo {
     // Compatibility LIR type text retained for byval aggregate layout.
@@ -546,6 +514,40 @@ class BirFunctionLowerer {
   };
 
  private:
+  // CFG and phi scratch types are private to function import lowering.
+  // LIR block spelling lookup used before BIR BlockLabelId assignment.
+  using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
+
+  struct BranchChain {
+    // Selector-recognition labels are raw LIR block spellings consumed before
+    // the lowered BIR block-label table is assigned.
+    std::vector<std::string> labels;
+    std::string leaf_label;
+    std::string join_label;
+  };
+
+  // LIR block spelling to phi plans before BIR block-label ids exist.
+  using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
+
+  struct PendingAggregatePhiCopy {
+    c4c::codegen::lir::LirOperand source;
+    // Route-local aggregate slot spelling.
+    std::string target_slot_name;
+    // Display/final spelling prefix for generated copy temporaries.
+    std::string temp_prefix;
+  };
+
+  using PendingAggregatePhiCopyMap =
+      std::unordered_map<std::string, std::vector<PendingAggregatePhiCopy>>;
+
+  struct PendingScalarPhiProducer {
+    std::string source_name;
+    bir::TypeKind type = bir::TypeKind::Void;
+  };
+
+  using PendingScalarPhiProducerMap =
+      std::unordered_map<std::string, std::vector<PendingScalarPhiProducer>>;
+
   // Scalar lowering helpers.
   static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
       std::string_view text,
