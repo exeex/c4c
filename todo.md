@@ -3,28 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
 Source Plan Path: plan.md
-Current Step ID: 2.3b.3
-Current Step Title: Retire the bounded Route 5 compatibility consumer
+Current Step ID: 2.3c
+Current Step Title: Integrate and prove publication-family closure
 
 ## Just Finished
 
-- Completed Step 2.3b.3: removed the Route 5 record/status/agreement payload
-  and index input from the public current-block publication query, deleted its
-  construction and transport, and retired printer/test agreement contracts.
-- Confirmed the bounded AArch64 consumer remains directly attached to the
-  unique prealloc-owned stable-key routing consumption query.
+- Completed Step 2.3c: audited the public block-entry, edge, and current-block
+  publication payloads and selection seams; no Route 4/5 record, status,
+  index, agreement predicate, fallback, or synthesized BIR publication
+  relation remains in the migrated public publication boundary.
+- Confirmed BIR-originated publication paths remain named-evidence-bound and
+  fail closed, while prepared-originated `JoinTransfer` paths retain complete,
+  unique prepared authority plus applicable producer identity.
 
 ## Suggested Next
 
-- Execute Step 2.3c: audit and prove publication-family closure across the
-  completed block-entry, edge, and current-block contractions.
+- Execute Step 3: migrate prepared call-plan production to named BIR
+  call-boundary and producer facts while retaining prepared ABI authority.
 
 ## Watchouts
 
-- Common MIR Route 5 query/index coverage remains intentionally separate from
-  the retired prepared compatibility payload.
-- Preserve the owner-attached AArch64 query and its fail-closed stable-key
-  ambiguity behavior during the Step 2.3c integration audit.
+- Common MIR Route 4/5 query/index implementation remains intentionally
+  separate from the closed prepared publication payload.
+- Preserve the completed publication-family boundary while Step 3 removes
+  Route 6 inputs from prepared call-plan attribution.
 
 ## Proof
 
