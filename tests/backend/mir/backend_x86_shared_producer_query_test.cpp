@@ -226,6 +226,39 @@ int x86_facing_code_can_consume_shared_query_records() {
     return fail("expected shared query identity to fail closed for missing names");
   }
 
+  bir::Block ambiguous_block;
+  ambiguous_block.label = "ambiguous";
+  ambiguous_block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = named(bir::TypeKind::I64, "%duplicate"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(1),
+      .rhs = bir::Value::immediate_i64(2),
+  });
+  ambiguous_block.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = named(bir::TypeKind::I64, "%duplicate"),
+      .operand = bir::Value::immediate_i64(3),
+  });
+  const auto ambiguous_identity = mir::find_same_block_producer_identity(
+      mir::SameBlockProducerIdentityRequest{
+          .block = &ambiguous_block,
+          .block_label = "ambiguous",
+          .value_name = "%duplicate",
+          .value_type = bir::TypeKind::I64,
+          .before_instruction_index = ambiguous_block.insts.size(),
+      });
+  const auto ambiguous_scalar = mir::find_same_block_scalar_producer(
+      mir::SameBlockValueMaterializationQuery{
+          .block = &ambiguous_block,
+          .block_label = "ambiguous",
+          .before_instruction_index = ambiguous_block.insts.size(),
+      },
+      named(bir::TypeKind::I64, "%duplicate"));
+  if (ambiguous_identity || ambiguous_scalar.has_value()) {
+    return fail("expected shared producer queries to fail closed for ambiguous view results");
+  }
+
   if (!mir::select_chain_contains_dependency(
           &block, choice, block.insts.size(), matches_load_local_dependency)) {
     return fail("expected shared query to traverse select-chain dependencies");
