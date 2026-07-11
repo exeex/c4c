@@ -8,22 +8,36 @@ Current Step Title: Inventory Current Route Ownership
 
 ## Just Finished
 
-Lifecycle activation initialized this execution scratchpad from
-`ideas/open/693_bir_route_index_retirement_research.md`.
+Completed Step 1: Inventory Current Route Ownership by writing
+`docs/bir_route_index_retirement_research/01_current_route_inventory.md`.
+The inventory tables every `bir_route1` through `bir_route8` implementation
+file, the `bir_route_facade` and `bir_route_index` public record families, and
+the observed direct consumers in prealloc, prepared-printer, and prepared MIR
+lowering/view code.
 
 ## Suggested Next
 
-Begin Step 1 by inspecting the BIR route files, route-index headers, facade
-entry points, and direct consumers needed for
-`docs/bir_route_index_retirement_research/01_current_route_inventory.md`.
+Proceed to Step 2 by classifying which current `bir_route_index` consumers can
+move to `prepare::PreparedFunctionLookups` or `mir::prepared::PreparedMirCoreView`
+without changing runtime behavior.
 
 ## Watchouts
 
-- Keep this as research and architecture documentation only.
-- Do not edit implementation files, tests, expectations, unsupported markers,
-  allowlists, runtime behavior, baseline policy, or `ideas/closed/`.
-- Do not reactivate ideas 647 or 655 from this plan.
+- `bir_route_index` is currently a narrow Route 4/Route 7 validation facade, not
+  a registry for all `bir_routeN` files.
+- Route 1, Route 2, Route 3, Route 5, Route 6, and Route 8 have independent raw
+  route consumers that should not be treated as retired by facade cleanup alone.
+- Keep subsequent work documentation-only until the supervisor delegates an
+  implementation packet.
 
 ## Proof
 
-Lifecycle-only activation. No build or test proof required.
+Docs-only proof. No build required. Ran:
+
+```sh
+test -f docs/bir_route_index_retirement_research/01_current_route_inventory.md && rg -n "bir_route1|bir_route2|bir_route3|bir_route4|bir_route5|bir_route6|bir_route7|bir_route8|bir_route_facade|bir_route_index|prealloc|prepared_view" docs/bir_route_index_retirement_research/01_current_route_inventory.md
+```
+
+The delegated proof writes no root-level log; `test_after.log` was intentionally
+not created because the packet marked this as docs-only and forbade touching
+root-level `.log` files.
