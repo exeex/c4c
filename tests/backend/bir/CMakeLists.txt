@@ -22,6 +22,25 @@ set_tests_properties(backend_bir_producer_view_contract PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_bir_memory_publication_view_contract_test
+    "${BACKEND_TEST_ROOT}/bir/backend_bir_memory_publication_view_contract_test.cpp"
+)
+target_include_directories(backend_bir_memory_publication_view_contract_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_compile_definitions(backend_bir_memory_publication_view_contract_test PRIVATE
+    C4C_BIR_MEMORY_VIEW_HEADER="${PROJECT_SOURCE_DIR}/src/backend/bir/bir_memory_access_view.hpp"
+    C4C_BIR_PUBLICATION_VIEW_HEADER="${PROJECT_SOURCE_DIR}/src/backend/bir/bir_publication_view.hpp"
+)
+target_link_libraries(backend_bir_memory_publication_view_contract_test PRIVATE c4c_backend)
+set_target_properties(backend_bir_memory_publication_view_contract_test PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_bir_memory_publication_view_contract
+  COMMAND $<TARGET_FILE:backend_bir_memory_publication_view_contract_test>)
+set_tests_properties(backend_bir_memory_publication_view_contract PROPERTIES
+  LABELS "backend;internal;cpp")
+
 if(C4C_ENABLE_PREPARED_FACT_TESTS)
 add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/bir/backend_prepare_phi_materialize_test.cpp"

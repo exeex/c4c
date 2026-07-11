@@ -13,6 +13,8 @@
 #include "../../shared/text_id_table.hpp"
 #include "bir_route_index_prereqs.hpp"
 #include "bir_producer_view.hpp"
+#include "bir_memory_access_view.hpp"
+#include "bir_publication_view.hpp"
 
 namespace c4c::backend::bir {
 
@@ -2607,37 +2609,6 @@ struct Route8ReturnChainIndex {
 #include "bir_route_index.hpp"
 
 namespace c4c::backend::bir {
-
-class BirPublicationView {
- public:
-  BirPublicationView() = default;
-
-  [[nodiscard]] explicit operator bool() const {
-    return static_cast<bool>(route4_index_);
-  }
-
- private:
-  explicit BirPublicationView(Route4PublicationAvailabilityIndex route4_index)
-      : route4_index_(std::move(route4_index)) {}
-
-  Route4PublicationAvailabilityIndex route4_index_;
-
-  friend BirPublicationView make_bir_publication_view(const Function& function);
-  friend Route4IndexReferenceValidation
-  validate_current_block_publication_reference(
-      const BirPublicationView& view,
-      const Block& block,
-      const Value& value,
-      std::size_t before_instruction_index);
-  friend Route4IndexReferenceValidation
-  validate_block_entry_publication_reference(
-      const BirPublicationView& view,
-      const Block& successor_block,
-      const Value& destination_value);
-};
-
-[[nodiscard]] BirPublicationView make_bir_publication_view(
-    const Function& function);
 
 [[nodiscard]] Route4IndexReferenceValidation
 validate_current_block_publication_reference(

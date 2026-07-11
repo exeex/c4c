@@ -8,34 +8,33 @@ Current Step Title: Add memory and publication semantic views
 
 ## Just Finished
 
-- Completed Step 1, including its public/private boundary completion check.
-  Added the route-free
-  `bir_producer_view.hpp` public contract, moved the existing producer-index
-  adapter behind `BirProducerView::Implementation`, and replaced the named
-  query payload with explicit available, unavailable, incomplete, and
-  ambiguous outcomes plus narrow producer identity/materialization facts.
-- Added focused positive/negative producer proof and a source/compile guard for
-  forbidden route vocabulary in the named public header.
+- Completed Step 2 by adding route-free `BirMemoryAccessView` and
+  `BirPublicationView` contracts backed by private Route 3/Route 4 adapters.
+  The named results expose only access/base/value identities and publication
+  source relationships with explicit available, unavailable, incomplete, and
+  ambiguous outcomes.
+- Added focused behavior proof for every required state plus source/compile
+  guards rejecting route-numbered and route-index vocabulary in both public
+  headers.
 
 ## Suggested Next
 
-- Execute Step 2 as a bounded memory/publication semantic-view packet, reusing
-  the shared status vocabulary without widening either result into prepared
-  placement, movement, freshness, or destination authority.
+- Execute Step 3 as a bounded call-boundary/comparison semantic-view packet,
+  preserving source semantics without ABI placement or executable control
+  authority.
 
 ## Watchouts
 
-- `BirViewStatus` currently lives with the first public view; extract it only
-  when the next view needs the shared vocabulary.
-- The route-backed producer adapter remains private in `bir.cpp`; do not add
-  downstream callers to its implementation record.
+- `BirViewStatus` remains in the producer public header and is shared by the
+  two new named headers; avoid turning it into a generic route record.
+- Compatibility validation entry points still use the private publication
+  implementation adapter; new consumers should use the status-rich named
+  publication queries.
 
 ## Proof
 
-- Passed the supervisor-selected command:
-  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_x86_shared_producer_query$') 2>&1 | tee test_after.log`.
-- Passed focused contract behavior/source guard:
-  `ctest --test-dir build --output-on-failure -R '^backend_bir_producer_view_contract$'`.
-- Supervisor-side broader `^backend_` regression guard passed 304/304 before
-  the Step 1 slice and 305/305 after it.
+- Passed the supervisor-selected proof (306/306 backend tests):
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`.
+- Focused contract behavior/source guard passed:
+  `ctest --test-dir build --output-on-failure -R '^backend_bir_memory_publication_view_contract$'`.
 - Canonical proof log: `test_after.log`.

@@ -5,6 +5,92 @@
 
 namespace c4c::backend::bir {
 
+struct BirMemoryAccessView::Implementation {
+  explicit Implementation(const Block& block)
+      : index(route3_build_memory_access_index(block)) {}
+  Route3MemoryAccessIndex index;
+};
+
+namespace {
+
+BirMemoryAccessKind named_memory_kind(Route3MemoryAccessNodeKind kind) {
+  switch (kind) {
+    case Route3MemoryAccessNodeKind::LoadLocal: return BirMemoryAccessKind::LoadLocal;
+    case Route3MemoryAccessNodeKind::LoadGlobal: return BirMemoryAccessKind::LoadGlobal;
+    case Route3MemoryAccessNodeKind::StoreLocal: return BirMemoryAccessKind::StoreLocal;
+    case Route3MemoryAccessNodeKind::StoreGlobal: return BirMemoryAccessKind::StoreGlobal;
+    case Route3MemoryAccessNodeKind::Unknown: return BirMemoryAccessKind::Unknown;
+  }
+  return BirMemoryAccessKind::Unknown;
+}
+
+BirMemoryBaseKind named_memory_base(Route3MemoryAccessBaseKind kind) {
+  switch (kind) {
+    case Route3MemoryAccessBaseKind::LocalSlot: return BirMemoryBaseKind::LocalSlot;
+    case Route3MemoryAccessBaseKind::GlobalSymbol: return BirMemoryBaseKind::GlobalSymbol;
+    case Route3MemoryAccessBaseKind::PointerValue: return BirMemoryBaseKind::PointerValue;
+    case Route3MemoryAccessBaseKind::StringConstant: return BirMemoryBaseKind::StringConstant;
+    case Route3MemoryAccessBaseKind::None: return BirMemoryBaseKind::None;
+  }
+  return BirMemoryBaseKind::None;
+}
+
+BirMemoryAccessResult named_memory_result(const Route3MemoryAccessRecord& record) {
+  return BirMemoryAccessResult{
+      .status = BirViewStatus::Available,
+      .kind = named_memory_kind(record.node_kind),
+      .base_kind = named_memory_base(record.base_kind),
+      .instruction_index = record.instruction_index,
+      .block_label = record.block_label,
+      .base_name = !record.local_slot_name.empty() ? record.local_slot_name
+                   : !record.global_name.empty() ? record.global_name
+                                                 : record.string_constant_name,
+      .pointer_base = record.pointer_value.value,
+      .result_value = record.result_value.value,
+      .stored_value = record.stored_value.value,
+      .byte_offset = record.byte_offset,
+      .size_bytes = record.size_bytes,
+  };
+}
+
+}  // namespace
+
+BirMemoryAccessView make_bir_memory_access_view(const Block& block) {
+  return BirMemoryAccessView{std::make_shared<BirMemoryAccessView::Implementation>(block)};
+}
+
+BirMemoryAccessResult find_memory_access(
+    const BirMemoryAccessView& view, std::size_t instruction_index) {
+  if (!view.implementation_) return {};
+  const Route3MemoryAccessRecord* match = nullptr;
+  for (const auto& record : view.implementation_->index.records) {
+    if (record.instruction_index != instruction_index) continue;
+    if (match != nullptr) return {.status = BirViewStatus::Ambiguous};
+    match = &record;
+  }
+  return match != nullptr ? named_memory_result(*match) : BirMemoryAccessResult{};
+}
+
+BirMemoryAccessResult find_memory_access_source(
+    const BirMemoryAccessView& view,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+  if (!view.implementation_) return {};
+  const Route3MemoryAccessRecord* match = nullptr;
+  for (const auto& record : view.implementation_->index.records) {
+    if (record.instruction_index >= before_instruction_index) continue;
+    const Value* candidate = record.result_value.value;
+    if (candidate == nullptr || candidate->kind != Value::Kind::Named ||
+        candidate->name != value.name || candidate->type != value.type) continue;
+    if (match != nullptr) return {.status = BirViewStatus::Ambiguous};
+    match = &record;
+  }
+  return match != nullptr ? named_memory_result(*match) : BirMemoryAccessResult{};
+}
+
 Route3MemoryAccessNodeKind route3_memory_access_node_kind(const Inst& inst) {
   return std::visit(
       [](const auto& candidate) -> Route3MemoryAccessNodeKind {

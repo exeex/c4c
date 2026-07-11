@@ -5,6 +5,20 @@
 
 namespace c4c::backend::bir {
 
+struct BirPublicationView::Implementation {
+  explicit Implementation(const Function& function)
+      : index(route4_build_publication_availability_index(function)) {}
+  Route4PublicationAvailabilityIndex index;
+};
+
+struct BirPublicationCompatibilityAccess {
+  static const Route4PublicationAvailabilityIndex& index(
+      const BirPublicationView& view) {
+    static const Route4PublicationAvailabilityIndex empty;
+    return view.implementation_ ? view.implementation_->index : empty;
+  }
+};
+
 [[nodiscard]] bool route4_record_matches_block(
     const Function& function,
     const Block* record_block,
@@ -330,7 +344,8 @@ Route4PublicationAvailabilityIndex route4_build_publication_availability_index(
 }
 
 BirPublicationView make_bir_publication_view(const Function& function) {
-  return BirPublicationView{route4_build_publication_availability_index(function)};
+  return BirPublicationView{
+      std::make_shared<BirPublicationView::Implementation>(function)};
 }
 
 Route4IndexReferenceValidation validate_current_block_publication_reference(
@@ -339,7 +354,8 @@ Route4IndexReferenceValidation validate_current_block_publication_reference(
     const Value& value,
     std::size_t before_instruction_index) {
   return route4_validate_current_block_publication_reference(
-      view.route4_index_, block, value, before_instruction_index);
+      BirPublicationCompatibilityAccess::index(view), block, value,
+      before_instruction_index);
 }
 
 Route4IndexReferenceValidation validate_block_entry_publication_reference(
@@ -347,7 +363,60 @@ Route4IndexReferenceValidation validate_block_entry_publication_reference(
     const Block& successor_block,
     const Value& destination_value) {
   return route4_validate_block_entry_publication_reference(
-      view.route4_index_, successor_block, destination_value);
+      BirPublicationCompatibilityAccess::index(view), successor_block,
+      destination_value);
+}
+
+BirPublicationResult find_current_block_publication(
+    const BirPublicationView& view,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+  if (!view.implementation_) return {};
+  const Route4CurrentBlockPublicationRecord* match = nullptr;
+  for (const auto& record : view.implementation_->index.current_block_records) {
+    if (!record || record.block != &block || record.value_name != value.name ||
+        record.value_type != value.type ||
+        record.source_producer_instruction_index >= before_instruction_index) continue;
+    if (match != nullptr) return {.status = BirViewStatus::Ambiguous};
+    match = &record;
+  }
+  if (match == nullptr) return {};
+  return {.status = BirViewStatus::Available,
+          .kind = BirPublicationKind::CurrentBlock,
+          .published_value = match->produced_value.value,
+          .source_value = match->value.value,
+          .instruction_index = match->source_producer_instruction_index,
+          .block_label = match->block_label};
+}
+
+BirPublicationResult find_block_entry_publication(
+    const BirPublicationView& view,
+    const Block& successor_block,
+    const Value& destination_value) {
+  if (destination_value.kind != Value::Kind::Named || destination_value.name.empty()) {
+    return {.status = BirViewStatus::Incomplete};
+  }
+  if (!view.implementation_) return {};
+  const Route4BlockEntryPublicationRecord* match = nullptr;
+  for (const auto& record : view.implementation_->index.block_entry_records) {
+    if (!record || record.successor_block != &successor_block ||
+        record.destination_value_name != destination_value.name ||
+        record.destination_value_type != destination_value.type) continue;
+    if (match != nullptr) return {.status = BirViewStatus::Ambiguous};
+    match = &record;
+  }
+  if (match == nullptr) return {};
+  if (!match->source_value) return {.status = BirViewStatus::Incomplete};
+  return {.status = BirViewStatus::Available,
+          .kind = BirPublicationKind::BlockEntry,
+          .published_value = match->destination_value.value,
+          .source_value = match->source_value.value,
+          .instruction_index = match->destination_instruction_index,
+          .block_label = match->successor_label};
 }
 
 Route4CurrentBlockPublicationRecord route4_find_current_block_publication(
