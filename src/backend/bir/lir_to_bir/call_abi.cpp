@@ -374,6 +374,28 @@ std::optional<HfaReturnFacts> aarch64_hfa_return_facts(
   return HfaReturnFacts{.lane_type = *lane_type, .lane_count = lane_count};
 }
 
+std::optional<BirFunctionLowerer::LoweredReturnInfo> lower_aarch64_hfa_aggregate_return_info(
+    const c4c::TargetProfile& target_profile,
+    const BirFunctionLowerer::AggregateTypeLayout& layout) {
+  const auto hfa_return = aarch64_hfa_return_facts(target_profile, layout);
+  if (!hfa_return.has_value()) {
+    return std::nullopt;
+  }
+
+  auto abi = lir_to_bir_detail::compute_function_return_abi(
+      target_profile, hfa_return->lane_type, false);
+  if (abi.has_value()) {
+    abi->register_count = hfa_return->lane_count;
+  }
+  return BirFunctionLowerer::LoweredReturnInfo{
+      .type = hfa_return->lane_type,
+      .size_bytes = layout.size_bytes,
+      .align_bytes = layout.align_bytes,
+      .abi = abi,
+      .abi_lane_count = hfa_return->lane_count,
+  };
+}
+
 std::optional<std::int64_t> parse_positive_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -567,20 +589,10 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
   if (const auto aggregate_layout =
           lower_signature_aggregate_layout(trimmed, type_decls, structured_layouts, type_ref);
       aggregate_layout.has_value()) {
-    if (const auto hfa_return = aarch64_hfa_return_facts(target_profile, *aggregate_layout);
+    if (const auto hfa_return =
+            lower_aarch64_hfa_aggregate_return_info(target_profile, *aggregate_layout);
         hfa_return.has_value()) {
-      auto abi = lir_to_bir_detail::compute_function_return_abi(
-          target_profile, hfa_return->lane_type, false);
-      if (abi.has_value()) {
-        abi->register_count = hfa_return->lane_count;
-      }
-      return LoweredReturnInfo{
-          .type = hfa_return->lane_type,
-          .size_bytes = aggregate_layout->size_bytes,
-          .align_bytes = aggregate_layout->align_bytes,
-          .abi = abi,
-          .abi_lane_count = hfa_return->lane_count,
-      };
+      return hfa_return;
     }
     return LoweredReturnInfo{
         .type = bir::TypeKind::Void,

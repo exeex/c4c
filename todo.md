@@ -9,20 +9,22 @@ Current Step Title: Narrow Adapter-Owned Call ABI Helper Boundaries
 ## Just Finished
 
 Step 2 implementation packet for `plan.md` Step 2 completed. In
-`src/backend/bir/lir_to_bir/call_abi.cpp`, extracted the repeated imported
-semantic pointer ABI decoration for sret and byval function parameters into one
-anonymous-namespace helper, then replaced the local inline lambdas in
-`lower_function_params_with_layouts` with calls to that helper. The helper keeps
-the existing behavior: sret only marks `sret_pointer`, while byval records
-`size_bytes`, `align_bytes`, and `byval_copy` after computing the pointer ABI.
+`src/backend/bir/lir_to_bir/call_abi.cpp`, extracted the AArch64 HFA aggregate
+return semantic ABI decoration into one anonymous-namespace helper,
+`lower_aarch64_hfa_aggregate_return_info`. The helper takes the target profile
+and aggregate layout, detects AArch64 HFA return facts, computes the semantic
+`CallResultAbiInfo`, preserves the existing `register_count` decoration, and
+returns the corresponding `LoweredReturnInfo`. `lower_return_info_from_type`
+now delegates that HFA aggregate-return branch to the helper without changing
+the sret aggregate-return path.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2 by looking for another narrow
-adapter-owned call ABI import helper boundary inside `call_abi.cpp` that does
-not require changing `calling.cpp`, prepared/prealloc files, target files, MIR
-files, tests, expectations, unsupported markers, allowlists, or runtime harness
-policy.
+adapter-owned signature, argument, return, byval, vararg, or HFA helper
+boundary inside `call_abi.cpp` that does not require changing `calling.cpp`,
+prepared/prealloc files, target files, MIR files, tests, expectations,
+unsupported markers, allowlists, or runtime harness policy.
 
 ## Watchouts
 
