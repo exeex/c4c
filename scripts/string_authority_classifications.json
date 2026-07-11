@@ -351,7 +351,7 @@
       "evidence": "Adjacent comment states present LinkNameId metadata must not fall back through this table on a miss."
     },
     {
-      "path": "src/backend/bir/lir_to_bir/lowering.hpp",
+      "path": "src/backend/bir/lir_to_bir/memory/memory_types.hpp",
       "symbol": "LocalSlotTypes",
       "pattern": "string-keyed-alias",
       "owner": "backend-bir",
@@ -637,26 +637,26 @@
       "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/bir/lir_to_bir/lowering.hpp:100."
     },
     {
-      "path": "src/backend/bir/lir_to_bir/lowering.hpp",
+      "path": "src/backend/bir/lir_to_bir/memory/memory_types.hpp",
       "symbol": "LocalPointerSlots",
       "pattern": "string-keyed-alias",
       "owner": "backend-bir",
-      "domain": "current declaration-level string authority inventory",
+      "domain": "function-local pointer slot lowering",
       "category": "route-local-identity",
-      "reason": "Current declaration-level string-keyed route-local table scoped to one lowering or analysis route; it must not become cross-route semantic authority.",
+      "reason": "Alias is keyed by route-local SSA or slot spelling within one lowered function and does not carry cross-route semantic authority.",
       "removal_condition": "Remove or reclassify when the route has typed ids for this local identity.",
-      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/bir/lir_to_bir/lowering.hpp:122."
+      "evidence": "Adjacent comment says these maps are storage handles within one lowered function, not module-level semantic authority."
     },
     {
-      "path": "src/backend/bir/lir_to_bir/lowering.hpp",
+      "path": "src/backend/bir/lir_to_bir/memory/memory_types.hpp",
       "symbol": "LocalIndirectPointerSlotSet",
       "pattern": "string-keyed-container",
       "owner": "backend-bir",
-      "domain": "current declaration-level string authority inventory",
+      "domain": "function-local indirect pointer slot lowering",
       "category": "route-local-identity",
-      "reason": "Current declaration-level string-keyed route-local table scoped to one lowering or analysis route; it must not become cross-route semantic authority.",
+      "reason": "Container is keyed by route-local slot spelling within one lowered function and does not carry cross-route semantic authority.",
       "removal_condition": "Remove or reclassify when the route has typed ids for this local identity.",
-      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/bir/lir_to_bir/lowering.hpp:123."
+      "evidence": "Adjacent comment says these maps are storage handles within one lowered function, not module-level semantic authority."
     },
     {
       "path": "src/backend/bir/lir_to_bir/lowering.hpp",

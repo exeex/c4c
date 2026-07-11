@@ -101,13 +101,6 @@ struct ImportedFunctionSymbolIndex {
   // not fall back through this table on a miss.
   std::unordered_map<std::string, LinkNameId> raw_symbol_link_name_ids;
 };
-// Function-local slot/provenance maps are keyed by route-local SSA or slot
-// spellings. They are storage handles within one lowered function and are not
-// module-level semantic authority.
-using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
-using LocalPointerSlots = std::unordered_map<std::string, std::string>;
-using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;
-
 struct ParsedTypedOperand {
   // Compatibility LIR type text retained only until the operand is lowered.
   std::string type_text;
@@ -341,9 +334,9 @@ class BirFunctionLowerer {
   using FunctionSymbolSet = ImportedFunctionSymbolIndex;
   using GlobalAddress = lir_to_bir_detail::GlobalAddress;
   using GlobalTypes = lir_to_bir_detail::GlobalTypes;
-  using LocalIndirectPointerSlotSet = lir_to_bir_detail::LocalIndirectPointerSlotSet;
-  using LocalPointerSlots = lir_to_bir_detail::LocalPointerSlots;
-  using LocalSlotTypes = lir_to_bir_detail::LocalSlotTypes;
+  using LocalIndirectPointerSlotSet = c4c::backend::LocalIndirectPointerSlotSet;
+  using LocalPointerSlots = c4c::backend::LocalPointerSlots;
+  using LocalSlotTypes = c4c::backend::LocalSlotTypes;
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 

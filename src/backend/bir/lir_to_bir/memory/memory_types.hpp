@@ -19,6 +19,13 @@ struct GlobalAddress;
 
 namespace c4c::backend {
 
+// Function-local slot/provenance maps are keyed by route-local SSA or slot
+// spellings. They are storage handles within one lowered function and are not
+// module-level semantic authority.
+using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
+using LocalPointerSlots = std::unordered_map<std::string, std::string>;
+using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;
+
 struct GlobalPointerSlotKey {
   // LinkNameId is the authority when present. Raw/no-id compatibility entries
   // keep kInvalidLinkName so textual LIR operands remain distinguishable from

@@ -1,61 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/689_memory_address_provenance_import_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Memory Import Coupling
+Current Step ID: Step 2
+Current Step Title: Narrow One Adapter-Local Memory State Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 inventory for
-`ideas/open/689_memory_address_provenance_import_cleanup.md`.
+Completed Step 2 declaration-owner contraction for the route-local memory
+slot/provenance maps.
 
-Inspected the memory/provenance import surfaces with `c4c-clang-tools` plus
-targeted reads:
-
-- `src/backend/bir/lir_to_bir/memory/memory_types.hpp` owns adapter-local
-  side-table records and maps for global/local pointer slots, local slot
-  addresses, dynamic local/global arrays, local aggregate slots, pointer
-  addresses, pointer-address ints, and pointer-value slots.
-- `src/backend/bir/lir_to_bir/lowering.hpp` still defines
-  `lir_to_bir_detail::LocalSlotTypes`, `LocalPointerSlots`, and
-  `LocalIndirectPointerSlotSet` at lines 104-109, then re-exports them through
-  `BirFunctionLowerer` at lines 344-346 and stores them as function-local state
-  at lines 1523-1524 and 1536.
-- AST type-ref checks confirmed those slot/provenance maps are consumed by
-  memory lowering paths such as `local_slots.cpp`, `local_gep.cpp`, and
-  `provenance.cpp`; they are import-local scratch keyed by route-local
-  spellings, not public BIR Route 3/query authority.
-- Public BIR route/query surfaces, memory address payloads, prepared storage,
-  target addressing legality, MIR memory emission, tests, expectations, and
-  runtime policy were not edited.
+- Moved the definitions of `LocalSlotTypes`, `LocalPointerSlots`, and
+  `LocalIndirectPointerSlotSet` from `lir_to_bir_detail` in
+  `src/backend/bir/lir_to_bir/lowering.hpp` into
+  `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
+- Preserved the existing
+  `BirFunctionLowerer::{LocalSlotTypes,LocalPointerSlots,LocalIndirectPointerSlotSet}`
+  compatibility aliases by retargeting them to the memory-owned aliases.
+- Updated only the existing `LocalSlotTypes`, `LocalPointerSlots`, and
+  `LocalIndirectPointerSlotSet` string-authority classifications to follow the
+  moved aliases at
+  `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
+- Did not change map key/value types, BIR memory records, prepared data,
+  target/MIR paths, tests, expectations, allowlists, or runtime behavior.
 
 ## Suggested Next
 
-Execute Step 2 as a declaration-owner contraction for the route-local
-slot/provenance maps.
-
-Recommended owned files:
-
-- `src/backend/bir/lir_to_bir/lowering.hpp`
-- `src/backend/bir/lir_to_bir/memory/memory_types.hpp`
-- `todo.md`
-
-Recommended change:
-
-- Move the definitions of `LocalSlotTypes`, `LocalPointerSlots`, and
-  `LocalIndirectPointerSlotSet` out of `lir_to_bir_detail` in `lowering.hpp`
-  and into `memory_types.hpp` beside the rest of the memory/provenance
-  side-table aliases.
-- Preserve the existing `BirFunctionLowerer::{LocalSlotTypes,LocalPointerSlots,LocalIndirectPointerSlotSet}`
-  aliases so implementation call sites and public behavior do not change.
-- Keep this as a behavior-preserving ownership cleanup only; do not change map
-  keys, value types, publication behavior, BIR memory records, diagnostics, or
-  emitted instructions.
+Continue with the supervisor-selected next Step 3 packet for memory address
+provenance import cleanup.
 
 ## Watchouts
 
+- The string-authority classification update was allowed only because it
+  follows the real declaration-owner move for these three aliases.
+- Do not broaden this into unrelated guard metadata churn.
 - Keep the work adapter-local to `src/backend/bir/lir_to_bir/memory/`,
   `memory_types.hpp`, `memory_helpers.hpp`, and only necessary supporting
   declarations.
@@ -75,12 +54,12 @@ Recommended change:
 
 ## Proof
 
-No validation run required for this inventory-only packet.
-
-Recommended proof command for the next implementation packet:
+Delegated proof:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|string_authority_guard$)'
 ```
 
-Expected proof log path for that implementation packet: `test_after.log`.
+Result: passed. Build completed and 303 selected tests passed with 0 failures.
+
+Proof log path: `test_after.log`.
