@@ -3110,7 +3110,7 @@ prepare::PreparedBirModule prepared_module_printer_invariant_fixture() {
 int complete_module_body_text_printer_rows_are_byte_stable() {
   const std::string header =
       "prepared.module target=riscv64-unknown-linux-gnu "
-      "route=semantic_bir_shared\n";
+      "ownership=prepared_bir\n";
   const std::string empty_prepared_metadata_tail =
       "--- prepared-function-summaries ---\n"
       "--- prepared-control-flow ---\n"
@@ -6295,6 +6295,11 @@ int main() {
                        "module header")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(dump, "ownership=prepared_bir",
+                       "prepared ownership header") ||
+      !expect_not_contains(dump, " route=", "route-shaped prepared header")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(dump, "--- prepared-bir ---", "prepared bir section")) {
     return EXIT_FAILURE;
   }
@@ -7800,6 +7805,23 @@ int main() {
                        "symbol-address argument summary")) {
     return EXIT_FAILURE;
   }
+
+  auto rejected_source_shape = source_shape_prepared;
+  auto& rejected_plan = rejected_source_shape.store_source_publications.records.front().plan;
+  rejected_plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  rejected_plan.source_producer_block_label = std::nullopt;
+  rejected_plan.source_producer_instruction_index = std::nullopt;
+  rejected_plan.source_binary = nullptr;
+  const std::string rejected_source_shape_dump = prepare::print(rejected_source_shape);
+  if (!expect_contains(
+          rejected_source_shape_dump,
+          "availability=available attribution=rejected "
+          "selected_authority=register "
+          "rejection=missing_named_producer_evidence",
+          "store-source attribution rejection preserves prepared home authority")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(source_shape_dump,
                        computed_summary,
                        "computed-address argument summary")) {
@@ -7842,7 +7864,8 @@ int main() {
   }
   if (!expect_contains(source_shape_dump,
                        "store_source function=call_argument_source_shape_dump_contract "
-                       "block=entry inst=4 source=derived.seed status=available "
+                       "block=entry inst=4 source=derived.seed availability=available "
+                       "attribution=available selected_authority=register rejection=none "
                        "intent=store_local_publication source_producer=binary "
                        "source_producer_block=entry source_producer_inst=3 "
                        "source_freshness_status=selected "
@@ -7890,7 +7913,8 @@ int main() {
   }
   if (!expect_contains(select_chain_dump,
                        "store_source function=select_chain_direct_global_dump_contract "
-                       "block=entry inst=2 source=selected.arg status=available "
+                       "block=entry inst=2 source=selected.arg availability=available "
+                       "attribution=available selected_authority=register rejection=none "
                        "intent=store_local_publication source_producer=select_materialization "
                        "source_producer_block=entry source_producer_inst=1 "
                        "source_freshness_status=selected "

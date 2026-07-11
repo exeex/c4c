@@ -142,7 +142,20 @@ void append_store_source_publication_row(
       << " block=" << maybe_block_label(module.names, record.block_label)
       << " inst=" << record.instruction_index
       << " source=" << maybe_value_name(module.names, plan.source_value_name)
-      << " status=" << prepared_store_source_publication_status_name(plan.status)
+      << " availability="
+      << prepared_store_source_publication_status_name(plan.status)
+      << " attribution="
+      << (plan.source_producer_kind ==
+                  PreparedEdgePublicationSourceProducerKind::Unknown
+              ? "rejected"
+              : "available")
+      << " selected_authority="
+      << prepared_value_home_kind_name(plan.source_home_kind)
+      << " rejection="
+      << (plan.source_producer_kind ==
+                  PreparedEdgePublicationSourceProducerKind::Unknown
+              ? "missing_named_producer_evidence"
+              : "none")
       << " intent=" << prepared_store_source_publication_intent_name(plan.intent)
       << " source_producer="
       << prepared_edge_publication_source_producer_kind_name(plan.source_producer_kind);

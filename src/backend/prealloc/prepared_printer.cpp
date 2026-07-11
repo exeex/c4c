@@ -39,7 +39,7 @@ struct PreparedBirBodyTextAgreement {
 std::string print(const PreparedBirModule& module) {
   std::ostringstream out;
   out << "prepared.module target=" << module.target_profile.triple
-      << " route=" << prepare_route_name(prepared_route(module)) << "\n";
+      << " ownership=prepared_bir\n";
 
   if (!module.completed_phases.empty()) {
     out << "completed_phases:";

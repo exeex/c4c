@@ -66,16 +66,7 @@ struct PreparedBirModule {
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
-
- private:
-  friend PrepareRoute prepared_route(const PreparedBirModule& module);
-
-  PrepareRoute route_ = PrepareRoute::SemanticBirShared;
 };
-
-[[nodiscard]] inline PrepareRoute prepared_route(const PreparedBirModule& module) {
-  return module.route_;
-}
 
 [[nodiscard]] inline const PreparedRegisterGroupOverride* find_prepared_register_group_override(
     const PreparedRegisterGroupOverrides& overrides,

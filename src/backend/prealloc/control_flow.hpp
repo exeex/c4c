@@ -18,18 +18,6 @@
 
 namespace c4c::backend::prepare {
 
-enum class PrepareRoute {
-  SemanticBirShared,
-};
-
-[[nodiscard]] constexpr std::string_view prepare_route_name(PrepareRoute route) {
-  switch (route) {
-    case PrepareRoute::SemanticBirShared:
-      return "semantic_bir_shared";
-  }
-  return "unknown";
-}
-
 enum class PreparedJoinTransferKind {
   PhiEdge,
   SelectMaterialization = PhiEdge,

@@ -1741,7 +1741,7 @@ int main() {
                     c4c::backend::prepare::print(prepared),
                     "generic prepared backend dump") ||
       !expect_contains(backend_prepared_dump,
-                       "prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared",
+                       "prepared.module target=x86_64-unknown-linux-gnu ownership=prepared_bir",
                        "generic prepared backend dump header") ||
       !expect_equal(backend_summary_dump, summary, "target-local MIR summary backend dump") ||
       !expect_equal(backend_trace_dump, trace, "target-local MIR trace backend dump") ||
