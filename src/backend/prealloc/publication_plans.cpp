@@ -514,6 +514,90 @@ prepared_current_block_join_instruction_result_value_ref(const bir::Inst& inst) 
       inst);
 }
 
+std::vector<PreparedFactBoundaryEvidence>
+make_prepared_current_block_join_source_evidence_impl(
+    const PreparedNameTables& names,
+    FunctionNameId function_name,
+    const bir::Function& function) {
+  std::vector<PreparedFactBoundaryEvidence> evidence;
+  for (const auto& block : function.blocks) {
+    const auto block_label = names.block_labels.find(block.label);
+    if (block_label == kInvalidBlockLabel) {
+      continue;
+    }
+    const auto producer_view = bir::make_bir_producer_view(block);
+    for (std::size_t instruction_index = 0;
+         instruction_index < block.insts.size(); ++instruction_index) {
+      const auto* result =
+          prepared_current_block_join_instruction_result_value_ref(
+              block.insts[instruction_index]);
+      if (result == nullptr) {
+        continue;
+      }
+      const auto value_name = existing_prepared_value_name_id(names, *result);
+      if (!value_name.has_value()) {
+        continue;
+      }
+      const auto producer = bir::find_same_block_producer(
+          producer_view, *result, instruction_index + 1);
+      if (!producer || producer.produced_value == nullptr ||
+          *producer.produced_value != *result ||
+          producer.instruction_index != instruction_index ||
+          producer.block_label != block.label) {
+        continue;
+      }
+      evidence.push_back(PreparedFactBoundaryEvidence{
+          .status = PreparedFactBoundaryStatus::Available,
+          .function_name = function_name,
+          .block_label = block_label,
+          .value_name = *value_name,
+          .instruction_index = instruction_index,
+      });
+    }
+  }
+  return evidence;
+}
+
+PreparedFactBoundaryEvidence select_prepared_current_block_join_source_evidence_impl(
+    const std::vector<PreparedFactBoundaryEvidence>& evidence,
+    FunctionNameId function_name,
+    BlockLabelId producer_block_label,
+    ValueNameId produced_value_name,
+    std::size_t producer_instruction_index) {
+  PreparedFactBoundaryEvidence result;
+  if (evidence.empty()) {
+    result.status = PreparedFactBoundaryStatus::Missing;
+    return result;
+  }
+  const PreparedFactBoundaryEvidence* selected = nullptr;
+  std::optional<PreparedFactBoundaryStatus> negative_status;
+  for (const auto& candidate : evidence) {
+    if (!candidate) {
+      if (!negative_status.has_value()) {
+        negative_status = candidate.status;
+      }
+      continue;
+    }
+    if (candidate.function_name != function_name ||
+        candidate.block_label != producer_block_label ||
+        candidate.value_name != produced_value_name ||
+        candidate.instruction_index != producer_instruction_index) {
+      continue;
+    }
+    if (selected != nullptr) {
+      result.status = PreparedFactBoundaryStatus::Ambiguous;
+      return result;
+    }
+    selected = &candidate;
+  }
+  if (selected == nullptr) {
+    result.status =
+        negative_status.value_or(PreparedFactBoundaryStatus::Mismatched);
+    return result;
+  }
+  return *selected;
+}
+
 [[nodiscard]] bool prepared_load_access_matches_result(
     const PreparedNameTables& names,
     const PreparedMemoryAccess* access,
@@ -989,6 +1073,29 @@ void populate_call_argument_value_publication_plans(PreparedBirModule& prepared)
 }
 
 }  // namespace
+
+std::vector<PreparedFactBoundaryEvidence>
+make_prepared_current_block_join_source_evidence(
+    const PreparedNameTables& names,
+    FunctionNameId function_name,
+    const bir::Function& function) {
+  return make_prepared_current_block_join_source_evidence_impl(
+      names, function_name, function);
+}
+
+PreparedFactBoundaryEvidence select_prepared_current_block_join_source_evidence(
+    const std::vector<PreparedFactBoundaryEvidence>& evidence,
+    FunctionNameId function_name,
+    BlockLabelId producer_block_label,
+    ValueNameId produced_value_name,
+    std::size_t producer_instruction_index) {
+  return select_prepared_current_block_join_source_evidence_impl(
+      evidence,
+      function_name,
+      producer_block_label,
+      produced_value_name,
+      producer_instruction_index);
+}
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
@@ -1830,34 +1937,12 @@ void attach_named_current_block_join_source_evidence(
     fact.join_source_evidence.status = PreparedFactBoundaryStatus::Incomplete;
     return;
   }
-  const PreparedFactBoundaryEvidence* selected = nullptr;
-  std::optional<PreparedFactBoundaryStatus> negative_status;
-  for (const auto& candidate : evidence) {
-    if (!candidate) {
-      if (!negative_status.has_value()) {
-        negative_status = candidate.status;
-      }
-      continue;
-    }
-    if (candidate.function_name != function_name ||
-        candidate.block_label != *fact.publication->source_producer_block_label ||
-        candidate.value_name != fact.source_value_name ||
-        candidate.instruction_index !=
-            *fact.publication->source_producer_instruction_index) {
-      continue;
-    }
-    if (selected != nullptr) {
-      fact.join_source_evidence.status = PreparedFactBoundaryStatus::Ambiguous;
-      return;
-    }
-    selected = &candidate;
-  }
-  if (selected == nullptr) {
-    fact.join_source_evidence.status = negative_status.value_or(
-        PreparedFactBoundaryStatus::Mismatched);
-    return;
-  }
-  fact.join_source_evidence = *selected;
+  fact.join_source_evidence = select_prepared_current_block_join_source_evidence(
+      evidence,
+      function_name,
+      *fact.publication->source_producer_block_label,
+      fact.source_value_name,
+      *fact.publication->source_producer_instruction_index);
 }
 
 [[nodiscard]] bool block_has_matching_phi_publication(
@@ -1940,6 +2025,16 @@ prepare_current_block_join_parallel_copy_source_facts(
   }
 
   result.status = PreparedCurrentBlockJoinParallelCopySourceStatus::Available;
+  std::vector<PreparedFactBoundaryEvidence> generated_join_source_evidence;
+  const auto* join_source_evidence = &inputs.join_source_evidence;
+  if (join_source_evidence->empty() && inputs.bir_function != nullptr) {
+    generated_join_source_evidence =
+        make_prepared_current_block_join_source_evidence(
+            *inputs.names,
+            inputs.value_locations->function_name,
+            *inputs.bir_function);
+    join_source_evidence = &generated_join_source_evidence;
+  }
 
   auto append_value_id = [](std::vector<PreparedValueId>& values,
                             PreparedValueId value_id) {
@@ -2098,7 +2193,7 @@ prepare_current_block_join_parallel_copy_source_facts(
         }
         attach_named_current_block_join_source_evidence(
             inputs.value_locations->function_name,
-            inputs.join_source_evidence,
+            *join_source_evidence,
             fact);
         if (fact.join_source_evidence_applicable &&
             (fact.publication_semantic_origin ==

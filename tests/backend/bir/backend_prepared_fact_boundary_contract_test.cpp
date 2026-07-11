@@ -1,4 +1,4 @@
-#include "src/backend/prealloc/prepared_fact_boundary.hpp"
+#include "src/backend/prealloc/publication_plans.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -39,6 +39,64 @@ int statuses_are_explicit_and_fail_closed() {
     if (negative) {
       return fail("expected negative named input to fail closed");
     }
+  }
+  return 0;
+}
+
+int current_block_named_producer_evidence_is_independent_and_unique() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("named_join_evidence");
+  const auto block_label = names.block_labels.intern("entry");
+  const auto value_name = names.value_names.intern("%sum");
+  const auto other_value_name = names.value_names.intern("%other");
+  c4c::backend::bir::Function function;
+  function.name = "named_join_evidence";
+  c4c::backend::bir::Block block;
+  block.label = "entry";
+  block.label_id = block_label;
+  block.insts.push_back(c4c::backend::bir::BinaryInst{
+      .opcode = c4c::backend::bir::BinaryOpcode::Add,
+      .result = c4c::backend::bir::Value::named(
+          c4c::backend::bir::TypeKind::I32, "%sum"),
+      .operand_type = c4c::backend::bir::TypeKind::I32,
+      .lhs = c4c::backend::bir::Value::immediate_i32(1),
+      .rhs = c4c::backend::bir::Value::immediate_i32(2),
+  });
+  function.blocks.push_back(std::move(block));
+  const auto evidence =
+      prepare::make_prepared_current_block_join_source_evidence(
+          names, function_name, function);
+  if (evidence.size() != 1 || !evidence.front() ||
+      evidence.front().function_name != function_name ||
+      evidence.front().block_label != block_label ||
+      evidence.front().value_name != value_name ||
+      evidence.front().instruction_index != 0) {
+    return fail("named BIR producer query should create stable current-block evidence");
+  }
+  const auto selected =
+      prepare::select_prepared_current_block_join_source_evidence(
+          evidence, function_name, block_label, value_name, 0);
+  const auto missing =
+      prepare::select_prepared_current_block_join_source_evidence(
+          {}, function_name, block_label, value_name, 0);
+  const auto incomplete =
+      prepare::select_prepared_current_block_join_source_evidence(
+          {prepare::PreparedFactBoundaryEvidence{
+              .status = prepare::PreparedFactBoundaryStatus::Incomplete}},
+          function_name, block_label, value_name, 0);
+  const auto ambiguous =
+      prepare::select_prepared_current_block_join_source_evidence(
+          {evidence.front(), evidence.front()},
+          function_name, block_label, value_name, 0);
+  const auto mismatched =
+      prepare::select_prepared_current_block_join_source_evidence(
+          evidence, function_name, block_label, other_value_name, 0);
+  if (!selected ||
+      missing.status != prepare::PreparedFactBoundaryStatus::Missing ||
+      incomplete.status != prepare::PreparedFactBoundaryStatus::Incomplete ||
+      ambiguous.status != prepare::PreparedFactBoundaryStatus::Ambiguous ||
+      mismatched.status != prepare::PreparedFactBoundaryStatus::Mismatched) {
+    return fail("current-block evidence selection should fail closed and uniquely");
   }
   return 0;
 }
@@ -84,6 +142,11 @@ int public_headers_have_only_inventoried_compatibility_payloads() {
 
 int main() {
   if (const int status = statuses_are_explicit_and_fail_closed(); status != 0) {
+    return status;
+  }
+  if (const int status =
+          current_block_named_producer_evidence_is_independent_and_unique();
+      status != 0) {
     return status;
   }
   return public_headers_have_only_inventoried_compatibility_payloads();

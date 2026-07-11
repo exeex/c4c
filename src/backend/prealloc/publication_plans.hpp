@@ -1691,11 +1691,26 @@ struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
   const PreparedEdgePublicationLookups* edge_publications = nullptr;
   const PreparedControlFlowFunction* control_flow = nullptr;
+  const bir::Function* bir_function = nullptr;
   const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources = nullptr;
   std::vector<PreparedFactBoundaryEvidence> join_source_evidence;
   const bir::Block* block = nullptr;
   BlockLabelId successor_label = kInvalidBlockLabel;
 };
+
+[[nodiscard]] std::vector<PreparedFactBoundaryEvidence>
+make_prepared_current_block_join_source_evidence(
+    const PreparedNameTables& names,
+    FunctionNameId function_name,
+    const bir::Function& function);
+
+[[nodiscard]] PreparedFactBoundaryEvidence
+select_prepared_current_block_join_source_evidence(
+    const std::vector<PreparedFactBoundaryEvidence>& evidence,
+    FunctionNameId function_name,
+    BlockLabelId producer_block_label,
+    ValueNameId produced_value_name,
+    std::size_t producer_instruction_index);
 
 enum class PreparedTypedStackSourcePublicationStatus {
   Available,
