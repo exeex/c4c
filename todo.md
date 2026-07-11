@@ -1,34 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/678_lir_to_bir_adapter_boundary_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Write The Handoff Documents
+Current Step ID: Step 4
+Current Step Title: Generate Ordered Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by writing the durable `LIR -> BIR` adapter
-boundary handoff documents under `docs/lir_bir_adapter_boundary/`. The new
-handoff files normalize the Step 1 interface inventory, Step 2 first-owner
-classification, and ordered follow-up plan against the same durable evidence
-sources, with `build/` scan paths labeled as transient evidence pointers only.
+Completed `plan.md` Step 4 by generating the ordered first-wave follow-up
+source ideas under `ideas/open/` from
+`docs/lir_bir_adapter_boundary/ordered_followup_plan.md` and the Step 3
+handoff docs. The generated ideas are dependency ordered:
+`685_lir_import_context_extraction.md`,
+`686_private_detail_header_contraction.md`,
+`687_structured_layout_bridge_isolation.md`,
+`688_initializer_lowering_bridge_isolation.md`,
+`689_memory_address_provenance_import_cleanup.md`, and
+`690_call_abi_import_boundary_cleanup.md`.
 
 ## Suggested Next
 
-Execute `plan.md` Step 4 by generating ordered follow-up ideas under
-`ideas/open/` from the Step 3 handoff plan. The next packet should create the
-source ideas for the first adapter-boundary cleanup families while preserving
-the Step 3 ownership vocabulary and downstream guardrails.
+Execute `plan.md` Step 5 as a closure readiness check. Verify that the
+handoff docs and generated follow-up ideas satisfy the umbrella source idea's
+acceptance criteria, then prepare a closure note naming the evidence used,
+docs written, generated idea order, and intentionally deferred downstream
+responsibilities.
 
 ## Watchouts
 
-- Step 4 owns `ideas/open/` edits; this Step 3 packet did not create source
-  ideas.
-- The ordered follow-up plan names six first-wave families: LIR import context
-  extraction, private detail header contraction, structured layout bridge
-  isolation, initializer lowering bridge isolation, memory/address provenance
-  import cleanup, and call ABI import boundary cleanup.
+- Step 4 created source ideas only; it did not edit implementation files,
+  tests, expectations, unsupported markers, allowlists, root-level proof logs,
+  or `docs/lir_bir_adapter_boundary/`.
+- The ordered follow-up plan's six first-wave families are represented one to
+  one, including the private detail header contraction split documented by the
+  Step 3 plan.
 - Keep `ValueMap`, `GlobalTypes`, `TypeDeclMap`, `FunctionSymbolSet`, local
   slot/pointer maps, structured layout fallback maps, CFG/phi scratch maps, and
   `memory_types.hpp` side tables import-local unless a later idea proves a
@@ -40,9 +46,6 @@ the Step 3 ownership vocabulary and downstream guardrails.
 
 ## Proof
 
-Passed: `git diff --check -- todo.md docs/lir_bir_adapter_boundary`.
-Additional non-mutating whitespace scan passed for the three new untracked
-handoff docs, since the exact delegated `git diff --check` command does not
-inspect untracked files until they are staged or tracked.
-No `test_after.log` is expected because this docs-only packet delegated a
-direct diff-check proof and restricted root-level proof logs.
+Passed: `git diff --check -- todo.md ideas/open`.
+No `test_after.log` is expected because this lifecycle/source-idea packet has
+no implementation changes and root-level proof logs are out of scope.
