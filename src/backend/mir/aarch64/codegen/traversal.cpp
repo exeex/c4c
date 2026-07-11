@@ -60,7 +60,7 @@ module::FunctionLoweringContext make_function_lowering_context(
     const prepare::PreparedBirModule& prepared,
     const c4c::TargetProfile& target_profile,
     const prepare::PreparedControlFlowFunction& function) {
-  return module::FunctionLoweringContext{
+  auto context = module::FunctionLoweringContext{
       .prepared = &prepared,
       .target_profile = &target_profile,
       .control_flow = &function,
@@ -82,6 +82,11 @@ module::FunctionLoweringContext make_function_lowering_context(
           prepare::find_prepared_dynamic_stack_plan(prepared, function.function_name),
       .call_plans = prepare::find_prepared_call_plans(prepared, function.function_name),
   };
+  context.prepared_lookups_owner =
+      std::make_shared<prepare::PreparedFunctionLookups>(
+          prepare::make_prepared_function_lookups(prepared, function));
+  context.prepared_lookups = context.prepared_lookups_owner.get();
+  return context;
 }
 
 std::vector<module::MachineFunction> lower_prepared_functions(
@@ -97,8 +102,6 @@ std::vector<module::MachineFunction> lower_prepared_functions(
 
     auto function_context =
         make_function_lowering_context(prepared, target_profile, prepared_function);
-    const auto prepared_lookups =
-        prepare::make_prepared_function_lookups(prepared, prepared_function);
     const auto prepared_call_plan_lookups = prepare::make_prepared_call_plan_lookups(
         prepared, function_context.call_plans, prepared_function);
     const auto prepared_address_materialization_lookups =
@@ -108,7 +111,6 @@ std::vector<module::MachineFunction> lower_prepared_functions(
         prepare::make_prepared_value_home_lookups(function_context.value_locations);
     const auto prepared_move_bundle_lookups =
         prepare::make_prepared_move_bundle_lookups(prepared, prepared_function);
-    function_context.prepared_lookups = &prepared_lookups;
     function_context.call_plan_lookups = &prepared_call_plan_lookups;
     function_context.address_materialization_lookups =
         &prepared_address_materialization_lookups;

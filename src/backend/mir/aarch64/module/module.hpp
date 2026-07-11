@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -87,6 +88,7 @@ struct FunctionLoweringContext {
   const prepare::PreparedFramePlanFunction* frame_plan = nullptr;
   const prepare::PreparedDynamicStackPlanFunction* dynamic_stack_plan = nullptr;
   const prepare::PreparedCallPlansFunction* call_plans = nullptr;
+  std::shared_ptr<const prepare::PreparedFunctionLookups> prepared_lookups_owner;
   const prepare::PreparedFunctionLookups* prepared_lookups = nullptr;
   const prepare::PreparedCallPlanLookups* call_plan_lookups = nullptr;
   const prepare::PreparedAddressMaterializationLookups* address_materialization_lookups =

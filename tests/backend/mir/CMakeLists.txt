@@ -244,6 +244,16 @@ set_tests_properties(backend_aarch64_current_block_join_routing PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
+c4c_add_mir_cpp_test(backend_prealloc_current_block_lookup_attachment_lifetime)
+set_tests_properties(backend_prealloc_current_block_lookup_attachment_lifetime PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
+c4c_add_mir_cpp_test(backend_aarch64_current_block_fixture_policy_attachment)
+set_tests_properties(backend_aarch64_current_block_fixture_policy_attachment PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
 c4c_add_aarch64_cpp_test(backend_aarch64_call_boundary_owner)
 set_tests_properties(backend_aarch64_call_boundary_owner PROPERTIES
   LABELS "backend;internal;cpp;aarch64"

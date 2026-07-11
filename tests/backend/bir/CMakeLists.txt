@@ -598,6 +598,23 @@ set_tests_properties(
   PROPERTIES
   LABELS "backend;internal;cpp")
 
+add_executable(backend_prealloc_route5_diagnostic_non_authority_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prealloc_route5_diagnostic_non_authority_test.cpp"
+)
+target_include_directories(backend_prealloc_route5_diagnostic_non_authority_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prealloc_route5_diagnostic_non_authority_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prealloc_route5_diagnostic_non_authority_test PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_prealloc_route5_diagnostic_non_authority
+  COMMAND $<TARGET_FILE:backend_prealloc_route5_diagnostic_non_authority_test>)
+set_tests_properties(backend_prealloc_route5_diagnostic_non_authority PROPERTIES
+  LABELS "backend;internal;cpp")
+
 add_test(
   NAME backend_cli_dump_bir_is_semantic
   COMMAND "${CMAKE_COMMAND}"
