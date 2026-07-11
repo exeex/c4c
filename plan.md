@@ -153,6 +153,66 @@ Completion check:
   2 reaches zero only after the select/dependency focused proof and broader
   backend proof are green.
 
+#### Step 2.3: Enrich the BIR-owned memory-access result
+
+Goal: establish a complete, bounded BIR-owned Route 3 memory-access payload
+before common MIR attempts to consume that family.
+
+Actions:
+
+- Extend the named BIR memory-access result at its producer boundary so one
+  complete result carries the instruction pointer, address space, volatility,
+  alignment, slot/link identities, and the distinct local, global, and string
+  names required by `BirMemoryAccessIdentity`.
+- Preserve `instruction_index`, `base_name`, and the existing value identities
+  where they remain part of the producer contract; do not make common MIR
+  rediscover or synthesize the newly exposed fields.
+- Bind every payload field to the same function, block, instruction, and value
+  identity as the result status. Treat absent, incomplete, ambiguous,
+  unsupported, or mismatched producer evidence as explicitly unavailable.
+- Keep this substep limited to the named BIR producer/result and focused
+  producer contracts. Do not change common MIR adapters, target placement
+  policy, or materializers here.
+- Add focused positive proof for applicable local, global, and string memory
+  accesses and negative proof for missing or inconsistent identity payload.
+
+Completion check:
+
+- The named BIR memory-access result owns every field required to construct a
+  `BirMemoryAccessIdentity`, preserves stable instruction/value/slot/link and
+  local/global/string identity, and reports incomplete or mismatched evidence
+  as unavailable. Focused producer proof is green, and neither common MIR nor
+  target code reconstructs the payload.
+
+#### Step 2.4: Adapt common MIR to the named memory-access result
+
+Dependency: begin only after Step 2.3's complete identity payload and focused
+producer proof are green.
+
+Actions:
+
+- Replace the bounded Route 3 common memory-access query with a narrow adapter
+  over the Step 2.3 named result.
+- Copy status and producer-owned identity into `BirMemoryAccessIdentity`
+  without looking through BIR instructions, deriving names, or recovering
+  address space, volatility, alignment, or slot/link identities elsewhere.
+- Preserve the exact function, block, instruction pointer/index, value,
+  address-space, volatility, alignment, slot/link, and applicable
+  local/global/string identity exposed by the producer.
+- Fail closed for missing, incomplete, ambiguous, unsupported, or mismatched
+  results. Do not use route discovery, generic `base_name` inference, or
+  agreement fallback.
+- Add focused common-query positive and negative proof, then ratchet the Route
+  3 vocabulary guard only for the fully migrated family.
+
+Completion check:
+
+- The common memory-access adapter consumes only the complete Step 2.3 named
+  result, preserves every producer-owned identity field, and fails closed for
+  every non-complete or mismatched status. Focused common proof and the
+  supervisor-selected broader backend proof are green before Route 3 is
+  claimed retired.
+
 ### Step 3: Migrate placement and executable-authority queries
 
 Goal: make common placement queries consume prepared MIR views without
