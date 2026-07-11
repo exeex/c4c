@@ -845,7 +845,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_store(
     const bir::Value& value,
     const TypeDeclMap& type_decls,
     const LocalSlotTypes& local_slot_types,
-    const LocalSlotPointerValues& local_slot_pointer_values,
+    const c4c::backend::LocalSlotPointerValues& local_slot_pointer_values,
     const PointerAddressMap& pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   if (const auto addressed_store = try_lower_addressed_pointer_store(
@@ -969,7 +969,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     GlobalPointerMap* global_pointer_slots,
     const PointerAddressMap& pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {

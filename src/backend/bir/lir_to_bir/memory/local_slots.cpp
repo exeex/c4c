@@ -2086,7 +2086,7 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     GlobalPointerMap* global_pointer_slots,
     std::vector<bir::Inst>* lowered_insts) {
   const auto result = std::string(result_name);
@@ -2180,7 +2180,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
     const LocalArraySlotMap& local_array_slots,
     const LocalAggregateSlotMap& local_aggregate_slots,
     const LocalPointerArrayBaseMap& local_pointer_array_bases,
-    const LocalSlotPointerValues& local_slot_pointer_values,
+    const c4c::backend::LocalSlotPointerValues& local_slot_pointer_values,
     const PointerAddressMap& pointer_value_addresses,
     const GlobalPointerMap& global_pointer_slots,
     const GlobalAddressIntMap& global_address_ints,
@@ -2524,7 +2524,7 @@ BirFunctionLowerer::LocalSlotLoadResult BirFunctionLowerer::try_lower_local_slot
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     GlobalPointerMap* global_pointer_slots,
@@ -2599,7 +2599,7 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     GlobalPointerMap* global_pointer_slots,
@@ -2735,7 +2735,7 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
     const LocalSlotAddressSlots& local_slot_address_slots,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases) {
   record_loaded_local_pointer_slot_state(result_name,
@@ -2753,7 +2753,7 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
     std::string_view slot_name,
     const LocalSlotAddressSlots& local_slot_address_slots,
     const TypeDeclMap& type_decls,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases) {
   record_loaded_local_pointer_slot_state(result_name,
@@ -2772,7 +2772,7 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
     const LocalSlotAddressSlots& local_slot_address_slots,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases) {
   const auto local_slot_it = local_slot_address_slots.find(std::string(slot_name));

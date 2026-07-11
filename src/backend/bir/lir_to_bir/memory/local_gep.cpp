@@ -982,7 +982,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls,
     const LocalSlotTypes& local_slot_types,
-    LocalSlotPointerValues* local_slot_pointer_values) {
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values) {
   return try_lower_local_slot_pointer_gep(
       gep, value_aliases, type_decls, nullptr, local_slot_types, local_slot_pointer_values);
 }
@@ -993,7 +993,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts,
     const LocalSlotTypes& local_slot_types,
-    LocalSlotPointerValues* local_slot_pointer_values) {
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values) {
   const auto local_slot_ptr_it = local_slot_pointer_values->find(std::string(gep.ptr.str()));
   if (local_slot_ptr_it == local_slot_pointer_values->end()) {
     return std::nullopt;
@@ -1237,7 +1237,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     bir::Function* carrier_function,
     std::string_view lir_producer_block_label,
     std::optional<std::size_t> lir_producer_instruction_index) {
@@ -1266,7 +1266,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-    LocalSlotPointerValues* local_slot_pointer_values,
+    c4c::backend::LocalSlotPointerValues* local_slot_pointer_values,
     bir::Function* carrier_function,
     std::string_view lir_producer_block_label,
     std::optional<std::size_t> lir_producer_instruction_index) {
