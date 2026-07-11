@@ -1,6 +1,6 @@
 # BIR Call And Return Route View Extraction
 
-Status: Open
+Status: Closed
 Type: Implementation
 Parent: `ideas/open/694_bir_route_index_retirement_umbrella.md`
 Handoff:
@@ -80,6 +80,22 @@ authority, or MIR lowering authority.
   the semantic contract.
 - Any executable call or return behavior change is proven above route dumps.
 - Missing call or return evidence stays explicit and fail-closed.
+
+## Closure Note
+
+Closed after the selected Route 6 call-result identity proof reader was
+migrated to named `BirCallBoundaryView` vocabulary while retaining the old
+Route 6 index as private compatibility. Route 8 was explicitly deferred as not
+needed for this first reader, and no target ABI lowering, executable
+call/return lowering, MIR lowering, stack destination authority, expectation,
+unsupported marker, allowlist, or timeout changes were part of the lifecycle.
+
+Close-time backend regression evidence used matching canonical logs:
+`test_before.log` and `test_after.log` both reported 304 passed, 0 failed, 304
+total backend tests. The strict monotonic guard did not accept the unchanged
+pass count, but the documented maintenance mode
+`--allow-non-decreasing-passed` passed with no new failures and no new tests
+over 30 seconds.
 
 ## Reviewer Reject Signals
 
