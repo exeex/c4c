@@ -215,57 +215,100 @@ Completion check:
   migrated public payload, and its focused positive and fail-closed negative
   proof is green.
 
-#### Step 2.3: Contract block-entry, edge, and current-block publication state
+#### Step 2.3a: Contract publication selection at the prealloc boundary
 
-Goal: finish the publication-family migration by removing Route 4/5 selection
-and public payload authority from block-entry, edge, and current-block facts.
+Goal: make block-entry, edge, and current-block publication selection depend
+only on applicable named BIR evidence plus independently authoritative prepared
+state before changing compatibility consumers.
+
+Primary targets:
+
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/publication_plans.hpp`
+- directly affected prepared publication tests under `tests/backend/bir/`
 
 Actions:
 
 - Replace remaining direct Route 4/5 publication record and index inputs at
   BIR source-semantic seams with stable named BIR view queries or narrow facts.
-- For a valid non-PHI prepared `JoinTransfer` edge publication, require the
-  unique cursor/edge, source/destination value, home, move, freshness, carrier,
-  and control facts already owned by the prepared producer. Use applicable
-  named BIR producer or control evidence to bind source identities, but do not
-  require or synthesize a BIR CFG-edge publication relation that does not exist
-  in the BIR program.
-- Make evidence applicability explicit before selection. If a named BIR fact
-  is required for the classified family, missing, incomplete, ambiguous, or
-  mismatched evidence fails closed. If the fact is non-applicable to a
-  prepared-originated family, proceed only through independently authoritative
-  prepared state; do not reinterpret `MissingPublication` as success and do
-  not consult a route fallback.
-- Preserve prepared source/destination homes, selected moves, freshness,
-  cursor/edge identity, and publication status as prealloc-owned decisions.
-- Remove route agreement from executable selection and remove route records,
-  route statuses, and route indexes from migrated public publication payloads;
-  retain only explicitly classified private observational compatibility.
-- Add focused block-entry, current-block, and edge proof for available and
-  missing/incomplete/ambiguous/mismatched applicable inputs. Include a non-PHI
-  prepared `JoinTransfer` edge case such as `dispatch.edge.add` proving that
-  non-applicable CFG-edge publication evidence neither rejects valid prepared
-  behavior nor becomes an implicit fallback.
-- Run the supervisor-selected broader backend proof before treating Step 2 as
-  complete, and preserve its canonical result in `test_after.log`.
+- Classify evidence applicability before selection. Missing, incomplete,
+  ambiguous, or mismatched applicable evidence must fail closed without a route
+  fallback.
+- For a non-PHI prepared `JoinTransfer`, require the unique cursor/edge,
+  source/destination value, home, move, freshness, carrier, and control facts
+  already owned by prealloc. Use applicable named producer/control evidence to
+  bind source identity, but do not require or synthesize a BIR CFG-edge
+  publication relation that the BIR program does not contain.
+- Preserve the existing Route 5 compatibility payload only until Step 2.3b;
+  prove in this step that it no longer participates in prealloc selection.
+- Add focused positive and missing/incomplete/ambiguous/mismatched proof,
+  including the non-PHI `dispatch.edge.add` prepared `JoinTransfer` case.
 
 Completion check:
 
-- Block-entry, edge, and current-block selection branches only on applicable
-  named BIR evidence plus prepared authority; migrated public payloads expose
-  no route-numbered executable state; focused publication negatives and the
-  broader backend proof are green; and no route fallback or synthesized BIR
-  publication relation remains.
+- Prealloc publication selection branches only on applicable named BIR
+  evidence plus complete prepared authority; Route 5 compatibility fields are
+  observational only; `dispatch.edge.add` remains available without synthesized
+  BIR edge-publication evidence; and focused publication proof is green.
+
+#### Step 2.3b: Retire the bounded Route 5 compatibility consumer
+
+Goal: remove the route-numbered public publication payload and migrate only its
+known compatibility consumers to the Step 2.3a named/prepared contract.
+
+Primary targets:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- `src/backend/prealloc/prepared_printer/select_chains.cpp`
+- directly affected prepared and AArch64 contract tests
+
+Actions:
+
+- Remove `route5_join_source`, `route5_join_source_status`,
+  `route5_join_source_agrees`, and the Route 5 index input from the public
+  current-block publication fact/query payload.
+- Replace the AArch64 dispatch predicate that reads those fields with the
+  already-produced named evidence and prepared publication, home, move,
+  freshness, and edge identity. Do not replan publication semantics in the
+  target and do not migrate unrelated target materializers.
+- Remove Route 5 construction and transport used only by this prepared query.
+- Update the prepared printer and the directly affected contract test to expose
+  and assert the named/prepared boundary rather than route status/agreement.
+- Reject any widening into common MIR query migration, other AArch64 producer
+  families, x86/RV64 materializers, or target-owned publication authority.
 
 Completion check:
 
-- Migrated BIR-origin publication plans are selected solely from applicable
-  named BIR evidence plus prepared authority; prepared-originated
-  `JoinTransfer` publications are selected solely from complete, unique
-  prepared authority plus any applicable named producer/control identity;
-  public records carry no route-numbered executable state; and focused
-  publication tests remain green without route fallback, synthesized BIR
-  publication relations, or weakened supported cases.
+- Public prepared publication records and query inputs expose no route-numbered
+  executable state; the bounded AArch64 consumer uses the Step 2.3a authority
+  without selecting new semantics; printer/tests contain no stored Route 5
+  agreement contract; and focused prepared plus AArch64 proof is green.
+
+#### Step 2.3c: Integrate and prove publication-family closure
+
+Goal: verify the completed block-entry, edge, and current-block contraction as
+one coherent publication-family boundary.
+
+Actions:
+
+- Audit migrated public publication payloads and selection branches for Route
+  4/5 records, statuses, indexes, agreement predicates, or fallbacks.
+- Re-run focused available and missing/incomplete/ambiguous/mismatched proof for
+  block-entry, current-block, and edge families, including
+  `dispatch.edge.add`.
+- Run the supervisor-selected broader backend proof and preserve its canonical
+  result in `test_after.log`.
+
+Completion check:
+
+- Migrated BIR-origin publications use only applicable named BIR evidence plus
+  prepared authority; prepared-originated `JoinTransfer` publications use only
+  complete, unique prepared authority plus applicable named producer/control
+  identity; no route fallback or synthesized BIR publication relation remains;
+  public payloads contain no route-numbered executable state; and the broader
+  backend proof is green without weakened supported cases.
 
 ### Step 3: Migrate prepared call-plan production
 

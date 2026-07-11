@@ -3,35 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/705_prepared_fact_boundary_from_bir_views.md
 Source Plan Path: plan.md
-Current Step ID: 2.3
-Current Step Title: Contract block-entry, edge, and current-block publication state
+Current Step ID: 2.3a
+Current Step Title: Contract publication selection at the prealloc boundary
 
 ## Just Finished
 
-- Step 2.2 — classified formal publication origins as incoming ABI or
-  fixed-formal store-source composition. Applicable fixed-formal named BIR
-  producer evidence must now be complete, unique, and match producer kind,
-  block, instruction, and value identity before formal publication is
-  available.
-- Incoming ABI formals retain prepared-owned home, ABI, frame, and move
-  authority, while fixed-formal composition reuses the Step 2.1 store-source
-  evidence boundary and fails closed for missing, incomplete, ambiguous, or
-  mismatched evidence.
+- None for the repaired Step 2.3a packet.
 
 ## Suggested Next
 
-- Supervisor review Step 2.2 as complete and select the Step 2.3 publication
-  state contraction packet.
+- Execute Step 2.3a within the prealloc publication boundary and its directly
+  affected prepared publication tests.
 
 ## Watchouts
 
-- Keep the fixed-formal evidence applicability list aligned with the
-  store-source boundary; do not make incoming ABI publication require a
-  same-block producer because its semantic origin is not a BIR instruction.
+- Do not remove the Route 5 compatibility payload until Step 2.3b; Step 2.3a
+  must first prove it is observational and no longer selects prealloc facts.
+- Do not synthesize BIR CFG-edge publication evidence for prepared-originated
+  non-PHI `JoinTransfer` publications such as `dispatch.edge.add`.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- Result: build passed; all 309/309 backend tests passed. Canonical proof log:
+- Pending supervisor-delegated Step 2.3a proof; preserve the result in
   `test_after.log`.
