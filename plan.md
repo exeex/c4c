@@ -178,7 +178,7 @@ Completion check:
   collection and the stable-key query consumes it without an externally
   supplied vector; focused build and authority/lifetime proof are green.
 
-### Step 6.2: Establish complete publication semantic origin at the prepared owner
+### Step 6.2.1: Establish generic publication semantic origin at the prepared owner
 
 Goal: ensure every unchanged supported incoming-expression fixture publishes
 complete, non-`Unknown` semantic origin into the owner-attached artifact before
@@ -222,6 +222,52 @@ Completion check:
   supported incoming-expression case, while incomplete, inconsistent,
   unrelated, ambiguous, and mismatched facts fail closed; no expectation
   rewrite or testcase-shaped authority synthesis is used.
+
+Route checkpoint:
+
+- The generic owner-bound publication-origin correction, owner-only consumer,
+  policy-absent negative, and complete-transfer/fail-closed focused matrix are
+  separable candidates from the rejected integration edits.
+- Do not accept this step while either policy-present supported vector is
+  rewritten or the short-circuit integration fixture omits its original
+  `%rhs.add` and `%short.selected` producers.
+
+### Step 6.2.2: Restore unchanged integration contracts under owner authority
+
+Goal: prove the generic owner publication correction against the original
+policy-present vectors and short-circuit fixture semantics.
+
+Primary targets:
+`tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`,
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`, and the
+prepared-lookup focused contracts extended in Step 6.2.1.
+
+Actions:
+
+- Restore the policy-present `MismatchedSource` and `MemorySource` routing
+  expectations that preceded the rejected Step 6.2 dirty slice; repair generic
+  prepared authority so both pass without reclassification.
+- Restore the `%rhs.add` and `%short.selected` short-circuit fixture producers
+  and preserve their original uses; complete the owner publication metadata
+  without weakening or replacing the fixture.
+- Retain the genuinely policy-absent, unattached row as an explicit negative;
+  do not use that negative to justify changes to policy-present rows.
+- Retain complete `PreparedJoinTransfer.result` destination authority and the
+  focused fail-closed cases for missing, incomplete, mismatched, duplicate,
+  unrelated, ambiguous, multiple, and parallel applicable facts.
+- Keep semantic-origin construction generic and owner-bound. Do not add
+  testcase-shaped matching, target-local reconstruction, Route 5 authority,
+  result-name shortcuts, or fixture-only source rewriting.
+- Run focused prepared-lookup and authority proofs, both restored integration
+  contracts, and the supervisor-selected matching broader backend proof.
+
+Completion check:
+
+- Both original policy-present vectors and both restored short-circuit
+  producers pass under the generic owner-attached query; the policy-absent row
+  remains negative; complete transfer-result authority succeeds only when all
+  applicable facts agree and every incomplete or inconsistent case fails
+  closed; no supported expectation or fixture semantic is weakened.
 
 ### Step 6.3: Adopt bounded AArch64 consumption
 
