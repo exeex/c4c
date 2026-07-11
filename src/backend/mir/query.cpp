@@ -943,83 +943,29 @@ find_select_chain_view_result(BirSelectChainIdentityRequest request) {
        request.root_value->type != value_type)) {
     return std::nullopt;
   }
-  std::optional<SelectChainViewResult> selected;
-  const auto inspect = [&](const bir::Value& root_value)
-      -> std::optional<SelectChainViewResult> {
-    const auto dependency = bir::find_bir_select_dependency(
-        bir::BirSelectDependencyRequest{
-            .block = request.block,
-            .root_value = &root_value,
-            .block_label = request.block_label,
-            .before_instruction_index = before,
-        });
-    if (!dependency.complete() || dependency.root_value == nullptr ||
-        dependency.root_instruction_index >= request.block->insts.size()) {
-      return std::nullopt;
-    }
-    const auto& instruction =
-        request.block->insts[dependency.root_instruction_index];
-    return SelectChainViewResult{
-        .dependency = dependency,
-        .root = bir::BirProducerResult{
-            .status = bir::BirViewStatus::Available,
-            .kind = same_block_producer_kind(instruction) ==
-                            SameBlockProducerKind::Select
-                        ? bir::BirProducerKind::SelectMaterialization
-                        : same_block_producer_kind(instruction) ==
-                                  SameBlockProducerKind::Binary
-                              ? bir::BirProducerKind::Binary
-                              : same_block_producer_kind(instruction) ==
-                                        SameBlockProducerKind::Cast
-                                    ? bir::BirProducerKind::Cast
-                                    : same_block_producer_kind(instruction) ==
-                                              SameBlockProducerKind::LoadLocal
-                                          ? bir::BirProducerKind::LoadLocal
-                                          : same_block_producer_kind(instruction) ==
-                                                    SameBlockProducerKind::LoadGlobal
-                                                ? bir::BirProducerKind::LoadGlobal
-                                                : bir::BirProducerKind::Unknown,
-            .produced_value = dependency.root_value,
-            .instruction_index = dependency.root_instruction_index,
-            .block_label = dependency.block_label,
-            .scalar_materialization_available =
-                same_block_producer_kind_has_materialization(
-                    same_block_producer_kind(instruction)),
-        },
-    };
-  };
+  std::optional<bir::Value> lookup_value;
   if (value_type != bir::TypeKind::Void) {
-    const auto lookup_value =
-        bir::Value::named(value_type, std::string(value_name));
-    selected = inspect(lookup_value);
-  } else {
-    for (std::size_t index = 0; index < before; ++index) {
-      const auto* produced =
-          produced_value_for_same_block_identity(request.block->insts[index]);
-      if (produced == nullptr || produced->kind != bir::Value::Kind::Named ||
-          produced->name != value_name) {
-        continue;
-      }
-      const auto candidate = inspect(*produced);
-      if (!candidate.has_value()) {
-        continue;
-      }
-      if (selected.has_value() &&
-          selected->dependency.root_instruction_index !=
-              candidate->dependency.root_instruction_index) {
-        return std::nullopt;
-      }
-      selected = candidate;
-    }
+    lookup_value = bir::Value::named(value_type, std::string(value_name));
   }
-  if (!selected.has_value() || selected->root.produced_value == nullptr ||
-      selected->root.produced_value->kind != bir::Value::Kind::Named ||
-      selected->root.produced_value->name != value_name ||
+  const auto dependency = bir::find_bir_select_dependency(
+      bir::BirSelectDependencyRequest{
+          .block = request.block,
+          .root_value = lookup_value.has_value() ? &*lookup_value : nullptr,
+          .root_value_name = value_name,
+          .block_label = request.block_label,
+          .before_instruction_index = before,
+      });
+  if (!dependency.complete() || !dependency.root_producer ||
+      dependency.root_value == nullptr ||
+      dependency.root_producer.produced_value != dependency.root_value ||
+      dependency.root_value->kind != bir::Value::Kind::Named ||
+      dependency.root_value->name != value_name ||
       (value_type != bir::TypeKind::Void &&
-       selected->root.produced_value->type != value_type)) {
+       dependency.root_value->type != value_type)) {
     return std::nullopt;
   }
-  return selected;
+  return SelectChainViewResult{.dependency = dependency,
+                               .root = dependency.root_producer};
 }
 
 [[nodiscard]] std::string_view root_value_name(

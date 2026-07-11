@@ -16,6 +16,22 @@ struct DependencyWalkResult {
   std::size_t dependency_instruction_index = 0;
 };
 
+const Value* produced_value(const Inst& instruction) {
+  return std::visit(
+      [](const auto& typed) -> const Value* {
+        using T = std::decay_t<decltype(typed)>;
+        if constexpr (std::is_same_v<T, LoadLocalInst> ||
+                      std::is_same_v<T, LoadGlobalInst> ||
+                      std::is_same_v<T, CastInst> ||
+                      std::is_same_v<T, BinaryInst> ||
+                      std::is_same_v<T, SelectInst>) {
+          return &typed.result;
+        }
+        return nullptr;
+      },
+      instruction);
+}
+
 BirSelectDependencyStatus walk_status(BirViewStatus status) {
   switch (status) {
     case BirViewStatus::Unavailable:
@@ -101,7 +117,8 @@ BirSelectDependencyResult find_bir_select_dependency(
       .root_value = request.root_value,
       .before_instruction_index = request.before_instruction_index,
   };
-  if (request.block == nullptr || request.root_value == nullptr) {
+  if (request.block == nullptr ||
+      (request.root_value == nullptr && request.root_value_name.empty())) {
     result.status = BirSelectDependencyStatus::Unavailable;
     return result;
   }
@@ -109,8 +126,33 @@ BirSelectDependencyResult find_bir_select_dependency(
     result.status = BirSelectDependencyStatus::Mismatched;
     return result;
   }
+  if (request.root_value == nullptr) {
+    const auto before =
+        std::min(request.before_instruction_index, request.block->insts.size());
+    const Value* match = nullptr;
+    for (std::size_t index = 0; index < before; ++index) {
+      const auto* candidate = produced_value(request.block->insts[index]);
+      if (candidate == nullptr || candidate->kind != Value::Kind::Named ||
+          candidate->name != request.root_value_name) {
+        continue;
+      }
+      if (match != nullptr && (match->type != candidate->type || match != candidate)) {
+        result.status = BirSelectDependencyStatus::Ambiguous;
+        return result;
+      }
+      match = candidate;
+    }
+    if (match == nullptr) {
+      result.status = BirSelectDependencyStatus::Unavailable;
+      return result;
+    }
+    request.root_value = match;
+    result.root_value = match;
+  }
   if (request.root_value->kind != Value::Kind::Named ||
-      request.root_value->name.empty()) {
+      request.root_value->name.empty() ||
+      (!request.root_value_name.empty() &&
+       request.root_value->name != request.root_value_name)) {
     result.status = BirSelectDependencyStatus::Incomplete;
     return result;
   }
@@ -135,6 +177,7 @@ BirSelectDependencyResult find_bir_select_dependency(
   }
 
   result.root_value = root.produced_value;
+  result.root_producer = root;
   result.root_instruction_index = root.instruction_index;
   const auto dependency = walk_dependency(
       view, *request.block, *root.produced_value, before, 0U);

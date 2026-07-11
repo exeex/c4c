@@ -137,7 +137,10 @@ instruction_result_prepared_value_id(
       select->result.type != value.type) {
     return {};
   }
-  return SameBlockSelectProducer{.select = select,
+  return SameBlockSelectProducer{.status = bir::BirViewStatus::Available,
+                                 .select = select,
+                                 .produced_value = &select->result,
+                                 .block_label = context.bir_block->label,
                                  .instruction_index = producer.instruction_index};
 }
 

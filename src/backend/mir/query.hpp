@@ -420,7 +420,8 @@ struct SameBlockSelectProducer {
   std::size_t instruction_index = 0;
 
   [[nodiscard]] explicit operator bool() const {
-    return select != nullptr;
+    return status == bir::BirViewStatus::Available && select != nullptr &&
+           produced_value != nullptr;
   }
 };
 

@@ -60,11 +60,56 @@ int direct_global_dependency_has_stable_identity() {
   if (result.status != bir::BirSelectDependencyStatus::CompleteDirectGlobal ||
       !result.complete() || result.block != &block || result.block_label != "entry" ||
       result.root_value != root || result.root_instruction_index != 2U ||
+      !result.root_producer ||
+      result.root_producer.kind != bir::BirProducerKind::SelectMaterialization ||
+      result.root_producer.produced_value != root ||
+      !result.root_producer.scalar_materialization_available ||
       result.dependency_load != load ||
       result.dependency_value != &load->result ||
       result.dependency_instruction_index != 0U ||
       result.before_instruction_index != block.insts.size()) {
     return fail("direct-global dependency lost stable root/dependency identity");
+  }
+  return 0;
+}
+
+int typeless_named_lookup_is_owned_and_fail_closed() {
+  bir::Block block;
+  block.label = "entry";
+  block.insts.emplace_back(immediate_binary("%root"));
+  const auto& root = std::get<bir::BinaryInst>(block.insts[0]).result;
+  const auto found = bir::find_bir_select_dependency({
+      .block = &block,
+      .root_value_name = "%root",
+      .block_label = block.label,
+      .before_instruction_index = block.insts.size(),
+  });
+  const auto missing = bir::find_bir_select_dependency({
+      .block = &block,
+      .root_value_name = "%missing",
+      .block_label = block.label,
+      .before_instruction_index = block.insts.size(),
+  });
+  const bool found_is_complete_binary =
+      found.complete() && found.root_value == &root &&
+      found.root_producer.kind == bir::BirProducerKind::Binary;
+  block.insts.emplace_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%root"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i64(1),
+      .rhs = bir::Value::immediate_i64(2),
+  });
+  const auto ambiguous = bir::find_bir_select_dependency({
+      .block = &block,
+      .root_value_name = "%root",
+      .block_label = block.label,
+      .before_instruction_index = block.insts.size(),
+  });
+  if (!found_is_complete_binary ||
+      missing.status != bir::BirSelectDependencyStatus::Unavailable ||
+      ambiguous.status != bir::BirSelectDependencyStatus::Ambiguous) {
+    return fail("type-less named dependency lookup was not authoritative");
   }
   return 0;
 }
@@ -196,6 +241,9 @@ int main() {
   static_assert(std::is_same_v<decltype(bir::BirSelectDependencyResult::root_value),
                                const bir::Value*>);
   if (const int status = direct_global_dependency_has_stable_identity(); status) {
+    return status;
+  }
+  if (const int status = typeless_named_lookup_is_owned_and_fail_closed(); status) {
     return status;
   }
   if (const int status = complete_no_dependency_is_explicit(); status) {
