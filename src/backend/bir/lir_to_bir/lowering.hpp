@@ -430,8 +430,6 @@ class BirFunctionLowerer {
     std::size_t abi_lane_count = 1;
   };
 
-  using AggregateArrayExtent = c4c::backend::AggregateArrayExtent;
-
   enum class LocalSlotLoadResult {
     NotHandled,
     Lowered,
@@ -672,23 +670,23 @@ class BirFunctionLowerer {
                                std::vector<bir::Inst>* lowered_insts);
   bool lower_memory_load_inst(const c4c::codegen::lir::LirLoadOp& load,
                               std::vector<bir::Inst>* lowered_insts);
-  static std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
+  static std::optional<c4c::backend::AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
       std::string_view type_text,
       std::size_t target_offset,
       std::string_view repeated_type_text,
       const TypeDeclMap& type_decls);
-  static std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
+  static std::optional<c4c::backend::AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
       std::string_view type_text,
       std::size_t target_offset,
       std::string_view repeated_type_text,
       const TypeDeclMap& type_decls,
       const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
-  static std::optional<AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
+  static std::optional<c4c::backend::AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
       std::string_view type_text,
       std::size_t target_offset,
       std::string_view repeated_type_text,
       const TypeDeclMap& type_decls);
-  static std::optional<AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
+  static std::optional<c4c::backend::AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
       std::string_view type_text,
       std::size_t target_offset,
       std::string_view repeated_type_text,

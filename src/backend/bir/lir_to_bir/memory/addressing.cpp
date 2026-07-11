@@ -65,7 +65,7 @@ BirFunctionLowerer::AggregateTypeLayout lookup_addressing_layout(
   return lookup_addressing_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
-std::optional<BirFunctionLowerer::AggregateArrayExtent>
+std::optional<AggregateArrayExtent>
 find_repeated_aggregate_extent_at_offset_impl(
     std::string_view type_text,
     std::size_t target_offset,
@@ -87,7 +87,7 @@ find_repeated_aggregate_extent_at_offset_impl(
       if (projection->byte_offset_within_child == 0 &&
           c4c::codegen::lir::trim_lir_arg_text(projection->child_type_text) ==
               c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
-        return BirFunctionLowerer::AggregateArrayExtent{
+        return AggregateArrayExtent{
             .element_count = projection->layout.array_count - projection->child_index,
             .element_stride_bytes = projection->child_stride_bytes,
         };
@@ -120,7 +120,7 @@ find_repeated_aggregate_extent_at_offset_impl(
           ++repeated_count;
         }
         if (repeated_count != 0) {
-          return BirFunctionLowerer::AggregateArrayExtent{
+          return AggregateArrayExtent{
               .element_count = repeated_count,
               .element_stride_bytes = projection->child_stride_bytes,
           };
@@ -352,7 +352,7 @@ bool can_reinterpret_byte_storage_as_type(
   return base_imm.has_value() && *base_imm == 0 && field_imm.has_value() && *field_imm == 2;
 }
 
-std::optional<BirFunctionLowerer::AggregateArrayExtent>
+std::optional<AggregateArrayExtent>
 BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -362,7 +362,7 @@ BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
       type_text, target_offset, repeated_type_text, type_decls, nullptr, true);
 }
 
-std::optional<BirFunctionLowerer::AggregateArrayExtent>
+std::optional<AggregateArrayExtent>
 BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -373,7 +373,7 @@ BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
       type_text, target_offset, repeated_type_text, type_decls, &structured_layouts, true);
 }
 
-std::optional<BirFunctionLowerer::AggregateArrayExtent>
+std::optional<AggregateArrayExtent>
 BirFunctionLowerer::find_nested_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -383,7 +383,7 @@ BirFunctionLowerer::find_nested_repeated_aggregate_extent_at_offset(
       type_text, target_offset, repeated_type_text, type_decls, nullptr, false);
 }
 
-std::optional<BirFunctionLowerer::AggregateArrayExtent>
+std::optional<AggregateArrayExtent>
 BirFunctionLowerer::find_nested_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -574,7 +574,7 @@ std::optional<std::size_t> find_pointer_array_length_at_offset_impl(
   }
 }
 
-std::optional<BirFunctionLowerer::AggregateArrayExtent>
+std::optional<AggregateArrayExtent>
 find_scalar_array_extent_at_offset_impl(
     std::string_view type_text,
     std::size_t target_offset,
@@ -594,7 +594,7 @@ find_scalar_array_extent_at_offset_impl(
           projection->child_layout.scalar_type == element_type &&
           projection->child_stride_bytes != 0 &&
           projection->child_index < projection->layout.array_count) {
-        return BirFunctionLowerer::AggregateArrayExtent{
+        return AggregateArrayExtent{
             .element_count = projection->layout.array_count - projection->child_index,
             .element_stride_bytes = projection->child_stride_bytes,
         };

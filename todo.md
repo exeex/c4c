@@ -8,32 +8,36 @@ Current Step Title: Continue Pointer And Provenance Import Isolation
 
 ## Just Finished
 
-Completed Step 3 import-boundary contraction for the memory-owned local
-aggregate GEP target type.
+Completed Step 3 import-boundary contraction for the memory-owned aggregate
+array extent type.
 
-- Removed the `BirFunctionLowerer::LocalAggregateGepTarget` compatibility alias
+- Removed the `BirFunctionLowerer::AggregateArrayExtent` compatibility alias
   from `src/backend/bir/lir_to_bir/lowering.hpp`.
 - Updated lowerer declarations in the owned header to use
-  `c4c::backend::LocalAggregateGepTarget` directly.
+  `c4c::backend::AggregateArrayExtent` directly.
 - Updated owned memory adapter definitions in
-  `src/backend/bir/lir_to_bir/memory/local_gep.cpp` and
-  `src/backend/bir/lir_to_bir/memory/addressing.cpp` to use the memory-owned
-  `LocalAggregateGepTarget` declaration directly.
+  `src/backend/bir/lir_to_bir/memory/addressing.cpp` and
+  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` to use the memory-owned
+  `AggregateArrayExtent` declaration directly.
 
 ## Suggested Next
 
 Continue Step 3 with the next supervisor-selected adapter-local state alias
-family that still routes memory-owned declarations through `BirFunctionLowerer`.
+family that still routes memory-owned declarations through `BirFunctionLowerer`,
+or move to review if no such alias family remains in the selected memory
+adapter scope.
 
 ## Watchouts
 
-- This packet intentionally only contracted the local aggregate GEP target type
+- This packet intentionally only contracted the aggregate array extent type
   alias; it did not change GEP semantics, BIR route records, prepared data,
   target/MIR paths, runtime behavior, tests, expectations, unsupported markers,
   allowlists, or public BIR query APIs.
 - `BirFunctionLowerer` no longer re-exports `LocalSlotTypes`,
   `LocalAggregateSlots`, `LocalAggregateSlotMap`, or
-  `LocalAggregateGepTarget`.
+  `LocalAggregateGepTarget`, or `AggregateArrayExtent`.
+- `rg 'BirFunctionLowerer::AggregateArrayExtent|using AggregateArrayExtent = c4c::backend::AggregateArrayExtent' src/backend/bir/lir_to_bir`
+  returns no matches after this packet.
 - Do not edit prepared frame/storage policy, target addressing legality, MIR
   memory emission, tests, expectations, unsupported markers, allowlists,
   runtime behavior, or harness policy.
