@@ -1,6 +1,6 @@
 # Private Detail Header Contraction
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Order: 2 of 6 in the `LIR -> BIR` adapter boundary first wave
 After: `ideas/open/685_lir_import_context_extraction.md`
@@ -68,6 +68,24 @@ is changed.
   concrete ownership reason.
 - No downstream layer starts depending on adapter-private state.
 - The slice remains behavior-preserving and records proof in `todo.md`.
+
+## Closure Note
+
+Closed after contracting the private adapter detail surface in two
+behavior-preserving slices:
+
+- `FunctionSymbolSet` method bodies moved out of `lowering.hpp`.
+- `is_known_function_link_name_id` was removed from `lowering.hpp` and made
+  internal to `globals.cpp`.
+
+The remaining cross-translation-unit `is_known_function_global_address`
+declaration still has real adapter-internal consumers and stays declared in
+`lowering.hpp`. `todo.md` recorded backend proof for the final slice:
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_' > test_after.log`, passing 302/302 backend
+tests. The supervisor also reported a matching backend regression guard pass
+with before=302 failed=0 total=302 and after=302 failed=0 total=302 using
+`--allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
