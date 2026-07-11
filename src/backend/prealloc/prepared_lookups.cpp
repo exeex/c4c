@@ -2293,12 +2293,47 @@ void attribute_block_entry_publication_proof_if_agreeing(
       query.block_entry_publication_proof_destination_value;
   if (result.status != PreparedCurrentBlockEntryPublicationStatus::Available ||
       !prepared_block_entry_publication_available(result.publication) ||
-      proof_successor_block == nullptr ||
-      proof_destination_value == nullptr ||
       query.successor_label == kInvalidBlockLabel ||
       result.destination_value_id == PreparedValueId{0} ||
       result.destination_value_name == kInvalidValueName ||
       result.publication.bundle == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
+    return;
+  }
+  if (query.names == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingNames;
+    return;
+  }
+  if (proof_successor_block == nullptr || proof_destination_value == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingProof;
+    return;
+  }
+
+  const std::string_view successor_label =
+      prepared_block_label(*query.names, query.successor_label);
+  const std::string_view destination_name =
+      prepared_value_name(*query.names, result.destination_value_name);
+  if (successor_label.empty() || destination_name.empty()) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
+    return;
+  }
+  const PreparedRegallocValue* destination_value = nullptr;
+  if (query.regalloc != nullptr) {
+    for (const auto& candidate : query.regalloc->values) {
+      if (candidate.value_id != result.destination_value_id) {
+        continue;
+      }
+      if (destination_value != nullptr) {
+        result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
+        return;
+      }
+      destination_value = &candidate;
+    }
+  }
+  if (destination_value == nullptr ||
+      destination_value->value_name != result.destination_value_name ||
+      destination_value->type == bir::TypeKind::Void) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
     return;
   }
 
@@ -2311,27 +2346,38 @@ void attribute_block_entry_publication_proof_if_agreeing(
       compatibility_publications, compatibility_successor, *proof_destination_value);
 
   result.block_entry_publication_proof_status = proof_reference.status;
+  if (proof_reference.status == bir::BirViewStatus::Ambiguous) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous;
+    return;
+  }
   if (!proof_reference || proof_reference.published_value == nullptr ||
       proof_reference.source_value == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable;
     return;
   }
 
   result.block_entry_publication_proof_instruction_index =
       proof_reference.instruction_index;
-  const auto proof_successor_label = query.names == nullptr
-                                         ? std::string_view{}
-                                         : prepared_block_label(*query.names,
-                                                                query.successor_label);
   if (proof_reference.kind != bir::BirPublicationKind::BlockEntry ||
-      proof_reference.published_value != proof_destination_value ||
+      proof_reference.published_value->name != destination_name ||
       proof_reference.published_value->name != proof_destination_value->name ||
-      proof_reference.published_value->type != proof_destination_value->type ||
-      proof_reference.block_label != proof_successor_label ||
+      proof_reference.published_value->type != destination_value->type ||
+      proof_destination_value->type != destination_value->type ||
+      proof_successor_block->label_id != query.successor_label ||
+      proof_successor_block->label != successor_label ||
+      proof_reference.block_label != successor_label ||
       proof_reference.instruction_index !=
           result.publication.bundle->instruction_index) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::ProofMismatch;
     return;
   }
 
+  result.successor_label_text = std::string{successor_label};
+  result.successor_label_id = query.successor_label;
+  result.destination_value_name_text = std::string{destination_name};
+  result.destination_value_type = destination_value->type;
+  result.publication_bundle_instruction_index =
+      result.publication.bundle->instruction_index;
   result.block_entry_publication_proof_attributed = true;
 }
 

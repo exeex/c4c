@@ -550,6 +550,11 @@ enum class PreparedCurrentBlockEntryPublicationStatus {
   MissingDestinationHome,
   MissingPublication,
   PublicationUnavailable,
+  MissingProof,
+  ProofUnavailable,
+  ProofAmbiguous,
+  ProofMismatch,
+  IncompletePayload,
 };
 
 [[nodiscard]] constexpr std::string_view
@@ -572,6 +577,16 @@ prepared_current_block_entry_publication_status_name(
       return "missing_publication";
     case PreparedCurrentBlockEntryPublicationStatus::PublicationUnavailable:
       return "publication_unavailable";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingProof:
+      return "missing_proof";
+    case PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable:
+      return "proof_unavailable";
+    case PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous:
+      return "proof_ambiguous";
+    case PreparedCurrentBlockEntryPublicationStatus::ProofMismatch:
+      return "proof_mismatch";
+    case PreparedCurrentBlockEntryPublicationStatus::IncompletePayload:
+      return "incomplete_payload";
   }
   return "unknown";
 }
@@ -593,6 +608,11 @@ struct PreparedCurrentBlockEntryPublication {
   const PreparedValueHome* destination_home = nullptr;
   PreparedValueId destination_value_id = 0;
   ValueNameId destination_value_name = kInvalidValueName;
+  std::string successor_label_text;
+  BlockLabelId successor_label_id = kInvalidBlockLabel;
+  std::string destination_value_name_text;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+  std::size_t publication_bundle_instruction_index = 0;
   bool block_entry_publication_proof_attributed = false;
   bir::BirViewStatus block_entry_publication_proof_status =
       bir::BirViewStatus::Unavailable;

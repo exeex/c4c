@@ -56,6 +56,7 @@ struct Fixture {
   c4c::ValueNameId missing_register_value_name = 14;
   c4c::ValueNameId unpublished_register_value_name = 15;
   prepare::PreparedValueLocationFunction locations;
+  prepare::PreparedRegallocFunction regalloc;
 };
 
 Fixture make_fixture() {
@@ -98,6 +99,15 @@ Fixture make_fixture() {
           .register_name = std::string{"r7"},
       },
   };
+  fixture.regalloc.function_name = fixture.function_name;
+  for (const auto& home : fixture.locations.value_homes) {
+    fixture.regalloc.values.push_back(prepare::PreparedRegallocValue{
+        .value_id = home.value_id,
+        .function_name = fixture.function_name,
+        .value_name = home.value_name,
+        .type = bir::TypeKind::I32,
+    });
+  }
   fixture.locations.move_bundles = {
       prepare::PreparedMoveBundle{
           .function_name = fixture.function_name,
@@ -342,6 +352,7 @@ int check_current_block_entry_publication_query() {
   const auto value_home_lookups =
       prepare::make_prepared_value_home_lookups(&fixture.locations);
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs query{
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -350,8 +361,8 @@ int check_current_block_entry_publication_query() {
   const auto available = prepare::find_prepared_current_block_entry_publication(
       query, prepare::PreparedValueId{1});
   if (!expect(available.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "current-block entry publication query should find available publication") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::MissingNames,
+              "unnamed current-block entry publication query should fail closed") ||
       !expect(available.destination_home == &fixture.locations.value_homes[0] &&
                   available.publication.home == &fixture.locations.value_homes[0],
               "current-block entry publication query should preserve value-home facts") ||
@@ -413,6 +424,9 @@ int check_current_block_entry_publication_query() {
   }
 
   prepare::PreparedNameTables names;
+  (void)names.block_labels.intern("unused");
+  (void)names.block_labels.intern("predecessor");
+  (void)names.block_labels.intern("successor");
   const auto published_value_name = names.value_names.intern("%published");
   const auto fallback_value_name = names.value_names.intern("%fallback");
   const auto stack_value_name = names.value_names.intern("%stack_destination");
@@ -421,10 +435,15 @@ int check_current_block_entry_publication_query() {
   fixture.locations.value_homes[1].value_name = fallback_value_name;
   fixture.locations.value_homes[2].value_name = stack_value_name;
   fixture.locations.value_homes[4].value_name = bir_only_value_name;
+  fixture.regalloc.values[0].value_name = published_value_name;
+  fixture.regalloc.values[1].value_name = fallback_value_name;
+  fixture.regalloc.values[2].value_name = stack_value_name;
+  fixture.regalloc.values[4].value_name = bir_only_value_name;
   const auto named_value_home_lookups =
       prepare::make_prepared_value_home_lookups(&fixture.locations);
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs named_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -432,8 +451,8 @@ int check_current_block_entry_publication_query() {
   const auto by_bir_value = prepare::find_prepared_current_block_entry_publication(
       named_query, bir::Value::named(bir::TypeKind::I32, "%published"));
   if (!expect(by_bir_value.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "current-block entry publication query should resolve BIR named values") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof,
+              "current-block entry publication query without proof should fail closed") ||
       !expect(by_bir_value.destination_value_id == prepare::PreparedValueId{1} &&
                   by_bir_value.destination_value_name == published_value_name,
               "BIR value query should preserve resolved prepared value identity") ||
@@ -480,6 +499,7 @@ int check_current_block_entry_publication_query() {
       std::get<bir::PhiInst>(successor.insts.front()).result;
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs block_entry_proof_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -500,6 +520,20 @@ int check_current_block_entry_publication_query() {
       !expect(block_entry_proof_attributed.block_entry_publication_proof_instruction_index ==
                   std::size_t{0},
               "block-entry publication proof should preserve the PHI instruction index") ||
+      !expect(block_entry_proof_attributed.successor_label_text == "successor" &&
+                  block_entry_proof_attributed.successor_label_id ==
+                      fixture.successor_label &&
+                  block_entry_proof_attributed.destination_value_name_text ==
+                      "%published" &&
+                  block_entry_proof_attributed.destination_value_name ==
+                      published_value_name &&
+                  block_entry_proof_attributed.destination_value_id ==
+                      prepare::PreparedValueId{1} &&
+                  block_entry_proof_attributed.destination_value_type ==
+                      bir::TypeKind::I32 &&
+                  block_entry_proof_attributed.publication_bundle_instruction_index ==
+                      std::size_t{0},
+              "attributed block-entry publication should own the complete stable semantic payload") ||
       !expect(block_entry_proof_attributed.publication.destination_register_name ==
                   std::optional<std::string>{"r9"},
               "block-entry publication proof should not rewrite prepared register spelling")) {
@@ -518,7 +552,7 @@ int check_current_block_entry_publication_query() {
           .destination_value_type = bir::TypeKind::I32,
       });
   if (!expect(prepared_and_bir_available_block_entry_publication_identity_match(
-                  by_bir_value, bir_available),
+                  block_entry_proof_attributed, bir_available),
               "BIR block-entry publication identity should match prepared semantic destination fields for available PHI publication") ||
       !expect(bir_available.successor_label == successor.label &&
                   bir_available.successor_label_id == fixture.successor_label,
@@ -534,6 +568,7 @@ int check_current_block_entry_publication_query() {
   no_phi_successor.label_id = fixture.successor_label;
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs missing_block_entry_proof_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -544,8 +579,8 @@ int check_current_block_entry_publication_query() {
       prepare::find_prepared_current_block_entry_publication(
           missing_block_entry_proof_query, bir::Value::named(bir::TypeKind::I32, "%published"));
   if (!expect(missing_block_entry_proof.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "missing block-entry publication proof should preserve prepared availability") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable,
+              "missing block-entry publication evidence should fail closed") ||
       !expect(!missing_block_entry_proof.block_entry_publication_proof_attributed,
               "missing block-entry publication proof should fall back without attribution")) {
     return 1;
@@ -565,8 +600,8 @@ int check_current_block_entry_publication_query() {
               .destination_value_type = bir::TypeKind::I32,
           });
   if (!expect(prepared_home_register_fallback.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "prepared home-register fallback should remain a prepared readiness positive") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof,
+              "prepared home-register lookup without publication proof should fail closed") ||
       !expect(!bir_missing_fallback_phi &&
                   bir_missing_fallback_phi.status ==
                       mir::BirBlockEntryPublicationStatus::MissingPublication,
@@ -578,6 +613,7 @@ int check_current_block_entry_publication_query() {
       std::get<bir::PhiInst>(successor.insts[1]).result;
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs mismatched_block_entry_proof_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -588,8 +624,8 @@ int check_current_block_entry_publication_query() {
       prepare::find_prepared_current_block_entry_publication(
           mismatched_block_entry_proof_query, bir::Value::named(bir::TypeKind::I32, "%published"));
   if (!expect(mismatched_block_entry_proof.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "mismatched block-entry publication proof should preserve prepared availability") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch,
+              "mismatched block-entry publication proof should fail closed") ||
       !expect(!mismatched_block_entry_proof.block_entry_publication_proof_attributed,
               "mismatched block-entry publication proof should fall back without attribution") ||
       !expect(mismatched_block_entry_proof.block_entry_publication_proof_status ==
@@ -604,6 +640,7 @@ int check_current_block_entry_publication_query() {
       std::get<bir::PhiInst>(wrong_successor_proof_block.insts.front()).result;
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs wrong_successor_block_entry_proof_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -615,8 +652,8 @@ int check_current_block_entry_publication_query() {
           wrong_successor_block_entry_proof_query,
           bir::Value::named(bir::TypeKind::I32, "%published"));
   if (!expect(wrong_successor_block_entry_proof.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "wrong-successor block-entry publication proof should preserve prepared availability") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch,
+              "wrong-successor block-entry publication proof should fail closed") ||
       !expect(!wrong_successor_block_entry_proof
                    .block_entry_publication_proof_attributed,
               "wrong-successor block-entry publication proof should fall back without attribution") ||
@@ -631,6 +668,7 @@ int check_current_block_entry_publication_query() {
       bir::Value::named(bir::TypeKind::I64, "%published");
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs wrong_type_block_entry_proof_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -642,8 +680,8 @@ int check_current_block_entry_publication_query() {
           wrong_type_block_entry_proof_query,
           bir::Value::named(bir::TypeKind::I32, "%published"));
   if (!expect(wrong_type_block_entry_proof.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "wrong-key block-entry publication proof should preserve prepared availability") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable,
+              "wrong-key block-entry publication proof should fail closed") ||
       !expect(!wrong_type_block_entry_proof
                    .block_entry_publication_proof_attributed,
               "wrong-key block-entry publication proof should fall back without attribution") ||
@@ -661,6 +699,7 @@ int check_current_block_entry_publication_query() {
       std::get<bir::PhiInst>(duplicate_proof_successor.insts.front()).result;
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs duplicate_block_entry_proof_query{
       .names = &names,
+      .regalloc = &fixture.regalloc,
       .value_locations = &fixture.locations,
       .value_home_lookups = &named_value_home_lookups,
       .successor_label = fixture.successor_label,
@@ -672,8 +711,8 @@ int check_current_block_entry_publication_query() {
           duplicate_block_entry_proof_query,
           bir::Value::named(bir::TypeKind::I32, "%published"));
   if (!expect(duplicate_block_entry_proof.status ==
-                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
-              "duplicate block-entry publication proof should preserve prepared availability") ||
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous,
+              "duplicate block-entry publication proof should fail closed") ||
       !expect(!duplicate_block_entry_proof.block_entry_publication_proof_attributed,
               "duplicate block-entry publication proof should fall back without attribution") ||
       !expect(duplicate_block_entry_proof.block_entry_publication_proof_status ==
