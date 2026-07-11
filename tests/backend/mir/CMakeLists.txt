@@ -59,6 +59,11 @@ set_tests_properties(backend_prepared_mir_core_view PROPERTIES
   LABELS "backend;internal;cpp;mir"
 )
 
+c4c_add_mir_cpp_test(backend_prepared_mir_core_comparator)
+set_tests_properties(backend_prepared_mir_core_comparator PROPERTIES
+  LABELS "backend;internal;cpp;mir"
+)
+
 c4c_add_mir_cpp_test(backend_publication_plan_record)
 set_tests_properties(backend_publication_plan_record PROPERTIES
   LABELS "backend;internal;cpp"
