@@ -1960,8 +1960,14 @@ void repair_prepared_memory_access_position_lookups(
                      }),
       branch_stack_load_authorities.records.end());
   std::vector<PreparedCurrentBlockJoinRoutingFact> current_block_join_routing_facts;
+  std::optional<PreparedCurrentBlockJoinRoutingPolicy>
+      current_block_join_routing_policy;
   if (const auto* bir_function =
           find_prepared_bir_function(prepared, function.function_name)) {
+    current_block_join_routing_policy.emplace();
+    if (value_locations != nullptr) {
+      current_block_join_routing_policy->owner_facts.emplace();
+    }
     for (const auto& block : bir_function->blocks) {
       const auto successor_label =
           resolve_prepared_block_label_id(prepared.names, block.label);
@@ -1984,6 +1990,10 @@ void repair_prepared_memory_access_position_lookups(
           std::make_move_iterator(facts.routing_facts.begin()),
           std::make_move_iterator(facts.routing_facts.end()));
     }
+    if (current_block_join_routing_policy->owner_facts.has_value()) {
+      *current_block_join_routing_policy->owner_facts =
+          current_block_join_routing_facts;
+    }
   }
   return PreparedFunctionLookups{
       .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
@@ -1997,6 +2007,8 @@ void repair_prepared_memory_access_position_lookups(
       .branch_stack_load_authorities = std::move(branch_stack_load_authorities),
       .current_block_join_routing_facts =
           std::move(current_block_join_routing_facts),
+      .current_block_join_routing_policy =
+          std::move(current_block_join_routing_policy),
   };
 }
 

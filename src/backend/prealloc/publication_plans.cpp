@@ -1279,6 +1279,34 @@ query_prepared_current_block_join_routing_consumption(
   return result;
 }
 
+PreparedCurrentBlockJoinPolicyQueryResult
+query_prepared_current_block_join_policy(
+    const PreparedCurrentBlockJoinRoutingPolicy* policy,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role) {
+  PreparedCurrentBlockJoinPolicyQueryResult result;
+  if (policy == nullptr) {
+    return result;
+  }
+  if (!policy->owner_facts.has_value()) {
+    result.state = PreparedCurrentBlockJoinPolicyState::AbsentOwner;
+    return result;
+  }
+  result.consumption = query_prepared_current_block_join_routing_consumption(
+      *policy->owner_facts,
+      successor_label,
+      routed_value_id,
+      routed_value_name,
+      role);
+  result.state = result.consumption
+                     ? PreparedCurrentBlockJoinPolicyState::AuthoritativeFacts
+                     : PreparedCurrentBlockJoinPolicyState::
+                           AttachedOwnerWithoutApplicableFacts;
+  return result;
+}
+
 PreparedCurrentBlockRoutedOperandAuthority
 query_prepared_current_block_routed_operand_authority(
     const PreparedEdgePublication& publication,

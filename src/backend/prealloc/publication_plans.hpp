@@ -1723,6 +1723,23 @@ struct PreparedCurrentBlockJoinRoutingConsumption {
   }
 };
 
+enum class PreparedCurrentBlockJoinPolicyState {
+  AbsentPolicy,
+  AbsentOwner,
+  AttachedOwnerWithoutApplicableFacts,
+  AuthoritativeFacts,
+};
+
+struct PreparedCurrentBlockJoinRoutingPolicy {
+  std::optional<std::vector<PreparedCurrentBlockJoinRoutingFact>> owner_facts;
+};
+
+struct PreparedCurrentBlockJoinPolicyQueryResult {
+  PreparedCurrentBlockJoinPolicyState state =
+      PreparedCurrentBlockJoinPolicyState::AbsentPolicy;
+  PreparedCurrentBlockJoinRoutingConsumption consumption;
+};
+
 struct PreparedCurrentBlockRoutedOperandAuthority {
   PreparedFactBoundaryStatus status = PreparedFactBoundaryStatus::Missing;
   const bir::Value* prepared_source_identity = nullptr;
@@ -1789,6 +1806,14 @@ select_prepared_current_block_join_routing_fact(
 [[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
 query_prepared_current_block_join_routing_consumption(
     const std::vector<PreparedCurrentBlockJoinRoutingFact>& facts,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role);
+
+[[nodiscard]] PreparedCurrentBlockJoinPolicyQueryResult
+query_prepared_current_block_join_policy(
+    const PreparedCurrentBlockJoinRoutingPolicy* policy,
     BlockLabelId successor_label,
     PreparedValueId routed_value_id,
     ValueNameId routed_value_name,
