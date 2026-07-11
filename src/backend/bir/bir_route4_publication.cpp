@@ -342,6 +342,14 @@ Route4IndexReferenceValidation validate_current_block_publication_reference(
       view.route4_index_, block, value, before_instruction_index);
 }
 
+Route4IndexReferenceValidation validate_block_entry_publication_reference(
+    const BirPublicationView& view,
+    const Block& successor_block,
+    const Value& destination_value) {
+  return route4_validate_block_entry_publication_reference(
+      view.route4_index_, successor_block, destination_value);
+}
+
 Route4CurrentBlockPublicationRecord route4_find_current_block_publication(
     const Route4PublicationAvailabilityIndex& index,
     const Block& block,

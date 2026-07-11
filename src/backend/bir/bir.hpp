@@ -2669,6 +2669,11 @@ class BirPublicationView {
       const Block& block,
       const Value& value,
       std::size_t before_instruction_index);
+  friend Route4IndexReferenceValidation
+  validate_block_entry_publication_reference(
+      const BirPublicationView& view,
+      const Block& successor_block,
+      const Value& destination_value);
 };
 
 [[nodiscard]] BirPublicationView make_bir_publication_view(
@@ -2680,6 +2685,12 @@ validate_current_block_publication_reference(
     const Block& block,
     const Value& value,
     std::size_t before_instruction_index);
+
+[[nodiscard]] Route4IndexReferenceValidation
+validate_block_entry_publication_reference(
+    const BirPublicationView& view,
+    const Block& successor_block,
+    const Value& destination_value);
 
 struct CallResultSourceIdentity {
   bool available = false;

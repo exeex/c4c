@@ -2262,7 +2262,7 @@ void attribute_route4_block_entry_publication_if_agreeing(
   route4_function.blocks.push_back(*query.route4_successor_block);
   const auto& route4_successor = route4_function.blocks.front();
   const auto route4_publications =
-      bir::route4_build_publication_availability_index(route4_function);
+      bir::make_bir_publication_view(route4_function);
   const auto route4_reference =
       bir::validate_block_entry_publication_reference(
           route4_publications, route4_successor, *query.route4_destination_value);
