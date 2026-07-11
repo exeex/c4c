@@ -1,6 +1,6 @@
 # BIR Route Index Retirement Research
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
 Parent: `none`
 Related:
@@ -221,6 +221,16 @@ route-retirement strategy. It must not replace any required answer file.
   for revisiting ideas 647 and 655.
 - No implementation files, tests, expectations, unsupported markers, allowlists,
   runtime behavior, active plan state, or lifecycle history are changed.
+
+## Completion Note
+
+Closed after the active runbook completed Step 9. The delivered research
+package lives in `docs/bir_route_index_retirement_research/` and contains
+`index.md` plus the eight required numbered answer files. The package records
+the route-retirement strategy, separates required codegen inputs from
+diagnostic/proof artifacts, keeps MIR as a fail-closed consumer of explicit
+prepared stack facts, and names the ordered follow-up queue and prerequisites
+for revisiting ideas 647 and 655.
 
 ## Reviewer Reject Signals
 
