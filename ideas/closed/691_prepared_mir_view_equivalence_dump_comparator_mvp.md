@@ -1,6 +1,7 @@
 # Prepared MIR View Equivalence Dump Comparator MVP
 
-Status: Open
+Status: Closed
+Closed: 2026-07-11
 Type: Implementation idea
 After: `ideas/closed/684_bir_mir_interface_cleanup_from_prepared_mir_view_docs.md`
 Parent: `ideas/closed/683_prepared_mir_view_contract_research.md`
@@ -60,6 +61,30 @@ or object-output-only smoke tests.
   rendered debug text.
 - Focused tests cover the dump and comparator behavior.
 - Fresh build plus focused backend/comparator tests pass.
+
+## Closure Summary
+
+The MVP is complete. `PreparedMirCoreView` now exposes a deterministic
+canonical dump and a typed structural comparison path for the current core view
+shape. The focused comparator test target covers deterministic dump output,
+diagnostic/prepared-history exclusion, old-route view equality, and a typed
+blocking difference for core fact divergence. Test routing now selects both
+prepared MIR proof targets with `^backend_prepared_mir_`.
+
+Boundary audit outcome:
+- no expectation rewrites, unsupported-marker downgrades, allowlist edits, or
+  target behavior changes were used as proof
+- comparator equality is based on typed view snapshots rather than rendered
+  dump text
+- full `PreparedBirModule` compatibility is not frozen as the public proof
+  contract
+- richer source/freshness dependency authority remains in
+  `ideas/open/692_prepared_mir_source_dependency_freshness_view_contract.md`
+
+Close proof:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS with 2/2 focused prepared MIR tests passing before and after.
 
 ## Reviewer Reject Signals
 
