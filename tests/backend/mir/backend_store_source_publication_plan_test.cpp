@@ -841,6 +841,91 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
     return fail("expected indexed unpublished load-local source authority");
   }
   block.label = "entry";
+  const auto named_bir_source = bir::find_same_block_load_local_source(
+      bir::BirSameBlockLoadLocalRequest{
+          .block = &block,
+          .value_name = "%loaded",
+          .value_type = bir::TypeKind::I64,
+          .before_instruction_index = 1,
+      });
+  if (!named_bir_source || named_bir_source.load != load ||
+      named_bir_source.result_value != &load->result ||
+      named_bir_source.access.instruction_index != 0 ||
+      named_bir_source.access.local_slot_id !=
+          static_cast<c4c::SlotNameId>(slot_id)) {
+    return fail("expected named BIR load-local source to preserve stable producer, value, and slot identity");
+  }
+  const auto mismatched_named_bir_source =
+      bir::find_same_block_load_local_source(
+          bir::BirSameBlockLoadLocalRequest{
+              .block = &block,
+              .value_name = "%loaded",
+              .value_type = bir::TypeKind::I32,
+              .before_instruction_index = 1,
+          });
+  if (mismatched_named_bir_source.status != bir::BirViewStatus::Unavailable ||
+      mismatched_named_bir_source) {
+    return fail("expected named BIR load-local source type mismatch to fail closed explicitly");
+  }
+  auto invalidated_block = block;
+  invalidated_block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .value = bir::Value::named(bir::TypeKind::I64, "%replacement"),
+      .byte_offset = 0,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot",
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
+  });
+  const auto invalidated_named_bir_source =
+      bir::find_same_block_load_local_source(
+          bir::BirSameBlockLoadLocalRequest{
+              .block = &invalidated_block,
+              .value_name = "%loaded",
+              .value_type = bir::TypeKind::I64,
+              .before_instruction_index = invalidated_block.insts.size(),
+          });
+  if (invalidated_named_bir_source.status != bir::BirViewStatus::Incomplete ||
+      invalidated_named_bir_source ||
+      mir::find_bir_same_block_load_local_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &invalidated_block,
+              .block_label = invalidated_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = invalidated_block.insts.size(),
+          })) {
+    return fail("expected same-slot store invalidation to be incomplete and fail closed through common MIR");
+  }
+  auto ambiguous_block = block;
+  ambiguous_block.insts.push_back(ambiguous_block.insts.front());
+  const auto ambiguous_named_bir_source =
+      bir::find_same_block_load_local_source(
+          bir::BirSameBlockLoadLocalRequest{
+              .block = &ambiguous_block,
+              .value_name = "%loaded",
+              .value_type = bir::TypeKind::I64,
+              .before_instruction_index = ambiguous_block.insts.size(),
+          });
+  if (ambiguous_named_bir_source.status != bir::BirViewStatus::Ambiguous ||
+      ambiguous_named_bir_source ||
+      mir::find_bir_same_block_load_local_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &ambiguous_block,
+              .block_label = ambiguous_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = ambiguous_block.insts.size(),
+          })) {
+    return fail("expected duplicate load-local identity to be ambiguous and fail closed through common MIR");
+  }
   if (!prepared_and_bir_load_local_source_match(
           names,
           stack_layout,

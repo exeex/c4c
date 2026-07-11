@@ -225,83 +225,6 @@ namespace {
   };
 }
 
-[[nodiscard]] bool route3_same_local_slot(
-    const bir::Route3MemoryAccessRecord& lhs,
-    const bir::Route3MemoryAccessRecord& rhs) {
-  if (!lhs ||
-      !rhs ||
-      lhs.base_kind != bir::Route3MemoryAccessBaseKind::LocalSlot ||
-      rhs.base_kind != bir::Route3MemoryAccessBaseKind::LocalSlot) {
-    return false;
-  }
-  if (lhs.local_slot_id != c4c::kInvalidSlotName &&
-      rhs.local_slot_id != c4c::kInvalidSlotName) {
-    return lhs.local_slot_id == rhs.local_slot_id;
-  }
-  return !lhs.local_slot_name.empty() &&
-         lhs.local_slot_name == rhs.local_slot_name;
-}
-
-[[nodiscard]] bir::Route3SameBlockLoadLocalSourceRecord
-find_route3_load_local_source(
-    const bir::Route3MemoryAccessIndex& index,
-    std::size_t before_instruction_index,
-    std::string_view value_name,
-    bir::TypeKind value_type) {
-  if (value_name.empty()) {
-    return {};
-  }
-  if (value_type != bir::TypeKind::Void) {
-    return bir::route3_find_same_block_load_local_source(
-        bir::Route3MemoryAccessQuery{
-            .index = &index,
-            .before_instruction_index = before_instruction_index,
-        },
-        bir::Value::named(value_type, std::string(value_name)));
-  }
-  bir::Route3SameBlockLoadLocalSourceRecord result{
-      .available = true,
-      .root_value =
-          bir::Route1SourceValueIdentity{
-              .value_kind = bir::Value::Kind::Named,
-              .name = value_name,
-          },
-  };
-  const bir::Route3MemoryAccessRecord* load_access = nullptr;
-  for (auto it = index.records.rbegin(); it != index.records.rend(); ++it) {
-    const auto& candidate = *it;
-    if (!candidate ||
-        candidate.node_kind != bir::Route3MemoryAccessNodeKind::LoadLocal ||
-        candidate.base_kind != bir::Route3MemoryAccessBaseKind::LocalSlot ||
-        candidate.instruction_index >= before_instruction_index ||
-        candidate.result_value.value_kind != bir::Value::Kind::Named ||
-        candidate.result_value.name != value_name) {
-      continue;
-    }
-    load_access = &candidate;
-    break;
-  }
-  if (load_access == nullptr) {
-    return result;
-  }
-  result.load_instruction_index = load_access->instruction_index;
-  result.load_access = *load_access;
-  for (const auto& candidate : index.records) {
-    if (!candidate ||
-        candidate.node_kind != bir::Route3MemoryAccessNodeKind::StoreLocal ||
-        candidate.instruction_index <= load_access->instruction_index ||
-        candidate.instruction_index >= before_instruction_index ||
-        !route3_same_local_slot(*load_access, candidate)) {
-      continue;
-    }
-    result.invalidating_store_instruction_index = candidate.instruction_index;
-    result.invalidating_store_access = candidate;
-    return result;
-  }
-  result.source_available = true;
-  return result;
-}
-
 [[nodiscard]] const bir::Value* produced_value_for_same_block_identity(
     const bir::Inst& inst) {
   return std::visit(
@@ -2015,25 +1938,44 @@ find_bir_same_block_load_local_source_identity(
     return {};
   }
   const auto value_type = root_value_type(request);
-  const auto index = bir::route3_build_memory_access_index(*request.block);
   const auto before = std::min(request.before_instruction_index,
                                request.block->insts.size());
-  const auto record =
-      find_route3_load_local_source(index, before, value_name, value_type);
-  if (!record) {
+  const auto result = bir::find_same_block_load_local_source(
+      bir::BirSameBlockLoadLocalRequest{
+          .block = request.block,
+          .value_name = value_name,
+          .value_type = value_type,
+          .before_instruction_index = before,
+      });
+  if (!result) {
     return {};
   }
-  const auto* load_local =
-      record.load_access.instruction != nullptr
-          ? std::get_if<bir::LoadLocalInst>(record.load_access.instruction)
-          : nullptr;
-  if (load_local == nullptr) {
-    return {};
-  }
-  const auto memory_access = route3_memory_access_to_mir(record.load_access);
-  const auto producer =
-      route3_load_access_to_producer(record.load_access,
-                                     request.before_instruction_index);
+  const auto memory_access = BirMemoryAccessIdentity{
+      .status = result.status,
+      .inst = result.access.instruction,
+      .block_label = result.access.block_label,
+      .instruction_index = result.access.instruction_index,
+      .node_kind = named_memory_kind_to_mir(result.access.kind),
+      .result_value_name = result.access.result_value_name,
+      .address_space = result.access.address_space,
+      .is_volatile = result.access.is_volatile,
+      .base_kind = named_memory_base_to_mir(result.access.base_kind),
+      .local_slot_name = result.access.local_slot_name,
+      .local_slot_id = result.access.local_slot_id,
+      .result_value = result.result_value,
+      .byte_offset = result.access.byte_offset,
+      .size_bytes = result.access.size_bytes,
+      .align_bytes = result.access.align_bytes,
+  };
+  const auto producer = SameBlockProducerIdentity{
+      .inst = result.access.instruction,
+      .instruction_index = result.access.instruction_index,
+      .kind = SameBlockProducerKind::LoadLocal,
+      .block_label = result.access.block_label,
+      .before_instruction_index = request.before_instruction_index,
+      .produced_value = same_block_value_identity(*result.result_value),
+      .materialization_available = true,
+  };
   if (!memory_access ||
       memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
       memory_access.result_value_name != value_name) {
@@ -2042,7 +1984,7 @@ find_bir_same_block_load_local_source_identity(
   return BirSameBlockLoadLocalSourceIdentity{
       .producer = producer,
       .memory_access = memory_access,
-      .load_local = load_local,
+      .load_local = result.load,
       .result_value = producer.produced_value,
       .root_value_name = value_name,
       .root_value_type = value_type,
