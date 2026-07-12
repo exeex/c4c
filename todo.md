@@ -3,35 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Migrate direct dispatch-producer consumers
+Current Step ID: 2.3
+Current Step Title: Migrate select and comparison consumers
 
 ## Just Finished
 
-- Plan Step 2.2 removed direct same-block select-producer discovery and the
-  generated edge-publication producer-lookup fallback from
-  `dispatch_producers.cpp`. Select adaptation and publication queries now
-  require the owned, attached prepared lookups and fail closed when the common
-  producer record is absent or inconsistent.
+- Route review split the former broad Step 2 into bounded consumer families.
+  Step 2.1's return-chain authority gap was resolved through common-producer
+  ideas 727 and 728 before the AArch64 reconstruction was deleted, and Step
+  2.2's direct dispatch-producer migration is complete.
 
 ## Suggested Next
 
-- Execute Plan Step 2.3 against the select/comparison value-home lookup
-  rebuilding family.
+- Execute Plan Step 2.3 only against the select/comparison value-home lookup
+  rebuilding family. Stop for lifecycle review if no existing attached common
+  query owns a required relation.
 
 ## Watchouts
 
-- The scalability route has attached prepared function lookups; no missing
-  attachment was observed before timeout. The same case also exceeds 8 seconds
-  from parent commit `1e5c28889`, before the Step 2.2 dispatch-producer change,
-  so its runtime is not isolated to this owned consumer slice. The pre-existing
-  selected-global-load fused-branch stale-stack-home failure also remains.
+- Do not reopen the completed return-chain consumer or reproduce its relation
+  in AArch64. The scalability timeout predates Step 2.2, and the pre-existing
+  selected-global-load fused-branch stale-stack-home failure remains. Both
+  belong in the supervisor's broader proof assessment, not in Step 2.3 scope.
 
 ## Proof
 
-- The delegated proof stopped at
-  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`, which
-  deterministically exceeded its 5-second case timeout. Because the exact
-  command short-circuits there, its focused four-test `tee test_after.log`
-  stage did not run; the prior 3/4 baseline-comparable focused log remains in
-  `test_after.log`.
+- Lifecycle-only route reset; no code proof was run. Step 2.1 previously
+  passed its delegated build and 10/10 focused subset. Step 2.2 implementation
+  is complete, while its exact delegated command stopped on the pre-existing
+  scalability timeout before refreshing the focused proof log. Step 3 retains
+  the required broader AArch64 checkpoint.

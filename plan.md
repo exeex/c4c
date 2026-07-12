@@ -53,8 +53,9 @@ route indexes, or target-local semantic fallbacks under new names.
 
 ## Execution Rules
 
-- Resume at Step 2.1 and consume the successor-linked production authority
-  proven by ideas 727 and 728 without rebuilding any relation in AArch64.
+- Resume at Step 2.3. Step 2.1 consumed the successor-linked production
+  authority proven by ideas 727 and 728, and Step 2.2 migrated the direct
+  dispatch-producer family without rebuilding either relation in AArch64.
 - Require `Available` only for an actual successor-linked relation; preserve
   fail-closed `StructurallyIncomplete` for terminal-only inputs with no links.
 - Replace consumers with existing typed/common queries; do not copy producer
@@ -68,6 +69,8 @@ route indexes, or target-local semantic fallbacks under new names.
 
 ### Step 1: Inventory and migrate AArch64 dispatch authority
 
+Status: Completed before the Step 2 route reset.
+
 Goal: establish the bounded first consumer migration without duplicating route
 semantics.
 
@@ -79,6 +82,9 @@ Completion check:
   target-local behavior, and passes focused AArch64 proof.
 
 ### Step 2.1: Delete the ALU return-chain reconstruction
+
+Status: Completed by `1e5c28889` after ideas 727 and 728 supplied the missing
+common production authority.
 
 Goal: consume common traversal-attached return-chain authority and remove the
 target-local reconstruction and lookup fallback.
@@ -106,7 +112,19 @@ Completion check:
   `find_prepared_return_chain_facts` and its lookup fallback are gone, and
   focused ALU/return proof is green.
 
+Disposition:
+
+- The authority gap identified by the reviewer was real and was handled in
+  the separate common-producer ideas 727 and 728. Their successor-linked
+  relation is now consumed directly; terminal-only/no-successor inputs remain
+  fail-closed `StructurallyIncomplete`. This consumer work is complete and
+  must not be reopened as target-local reconstruction.
+
 ### Step 2.2: Migrate direct dispatch-producer consumers
+
+Status: Completed by `b4783df99`; the scalability timeout recorded in
+`todo.md` was also present at the parent commit and remains broader-validation
+debt rather than unfinished consumer migration.
 
 Goal: remove direct same-block producer reconstruction from the remaining
 dispatch-producer family.
