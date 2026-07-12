@@ -11557,6 +11557,90 @@ int verify_bir_block_entry_publication_identity_lookup() {
     return fail("BIR block-entry publication identity should match prepared available destination semantics");
   }
 
+  const auto missing_explicit_proof =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available, nullptr, nullptr);
+  if (missing_explicit_proof.available ||
+      missing_explicit_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof) {
+    return fail("BIR block-entry publication identity should require explicit proof pointers");
+  }
+
+  bir::Block wrong_successor = successor;
+  wrong_successor.label = "entry_publication.other";
+  wrong_successor.label_id = wrong_successor_label;
+  const auto& wrong_successor_destination =
+      std::get<bir::PhiInst>(wrong_successor.insts.front()).result;
+  const auto wrong_successor_proof =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available, &wrong_successor, &wrong_successor_destination);
+  if (wrong_successor_proof.available ||
+      wrong_successor_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch) {
+    return fail("BIR block-entry publication identity should reject a wrong proof successor");
+  }
+
+  const auto& wrong_destination =
+      std::get<bir::PhiInst>(successor.insts[1]).result;
+  const auto wrong_destination_proof =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available, &successor, &wrong_destination);
+  if (wrong_destination_proof.available ||
+      wrong_destination_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch) {
+    return fail("BIR block-entry publication identity should reject a wrong proof destination");
+  }
+
+  bir::Block wrong_type_successor = successor;
+  auto& wrong_type_destination =
+      std::get<bir::PhiInst>(wrong_type_successor.insts.front()).result;
+  wrong_type_destination.type = bir::TypeKind::I64;
+  const auto wrong_type_proof =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available, &wrong_type_successor, &wrong_type_destination);
+  if (wrong_type_proof.available ||
+      wrong_type_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch) {
+    return fail("BIR block-entry publication identity should reject a wrong proof type");
+  }
+
+  auto stale_coordinate_prepared = prepared_available;
+  stale_coordinate_prepared.block_entry_publication_proof_instruction_index = 1;
+  const auto stale_coordinate_proof =
+      mir::find_bir_block_entry_publication_identity(
+          stale_coordinate_prepared, &successor, &available_destination);
+  if (stale_coordinate_proof.available ||
+      stale_coordinate_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch) {
+    return fail("BIR block-entry publication identity should reject a stale proof coordinate");
+  }
+
+  bir::Block duplicate_proof_successor = successor;
+  duplicate_proof_successor.insts.insert(duplicate_proof_successor.insts.begin() + 1,
+                                         duplicate_proof_successor.insts.front());
+  const auto& duplicate_proof_destination =
+      std::get<bir::PhiInst>(duplicate_proof_successor.insts.front()).result;
+  const auto duplicate_proof =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available, &duplicate_proof_successor,
+          &duplicate_proof_destination);
+  if (duplicate_proof.available ||
+      duplicate_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous) {
+    return fail("BIR block-entry publication identity should reject duplicate proof");
+  }
+
+  auto unattributed_prepared = prepared_available;
+  unattributed_prepared.block_entry_publication_proof_attributed = false;
+  const auto unattributed_proof =
+      mir::find_bir_block_entry_publication_identity(
+          unattributed_prepared, &successor, &available_destination);
+  if (unattributed_proof.available ||
+      unattributed_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch) {
+    return fail("BIR block-entry publication identity should reject unattributed evidence");
+  }
+
   bir::Block no_phi_successor;
   no_phi_successor.label = "entry_publication.join";
   no_phi_successor.label_id = successor_label;
