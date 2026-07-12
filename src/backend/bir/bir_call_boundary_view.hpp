@@ -20,6 +20,7 @@ struct BirCallBoundaryResult {
   const Value* callee_value = nullptr;
   const Value* argument = nullptr;
   std::string_view dependency_name;
+  bool has_argument_source_relationship = false;
   const Value* result = nullptr;
   std::size_t argument_number = 0;
 

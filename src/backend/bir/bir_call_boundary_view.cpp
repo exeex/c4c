@@ -1,6 +1,7 @@
 #include "bir.hpp"
 #include "bir_call_boundary_view.hpp"
 
+
 namespace c4c::backend::bir {
 
 struct BirCallBoundaryView::Implementation {
@@ -29,7 +30,8 @@ BirCallBoundaryResult find_call(
   result.callee = call->callee;
   result.callee_value = call->callee_value ? &*call->callee_value : nullptr;
   result.result = call->result ? &*call->result : nullptr;
-  if (result.callee.empty() && result.callee_value == nullptr) {
+  if (result.callee.empty() && result.callee_value == nullptr &&
+      call->callee_link_name_id == kInvalidLinkName) {
     result.status = BirViewStatus::Incomplete;
     return result;
   }
@@ -51,6 +53,12 @@ BirCallBoundaryResult find_call_argument(
   }
   result.argument_number = argument_number;
   result.argument = &result.call->args[argument_number];
+  for (const auto& candidate : result.call->arg_sources) {
+    if (candidate.arg_index >= result.call->args.size()) {
+      result.status = BirViewStatus::Incomplete;
+      return result;
+    }
+  }
   const CallArgumentSourceRelationship* relationship = nullptr;
   for (const auto& candidate : result.call->arg_sources) {
     if (candidate.arg_index != argument_number) {
@@ -63,6 +71,16 @@ BirCallBoundaryResult find_call_argument(
     relationship = &candidate;
   }
   if (relationship == nullptr) {
+    if (result.argument->kind == Value::Kind::Named) {
+      result.dependency_name = result.argument->name;
+    }
+    return result;
+  }
+  result.has_argument_source_relationship = true;
+  if (relationship->source_value_name &&
+      result.argument->kind == Value::Kind::Named &&
+      !result.argument->name.empty() &&
+      *relationship->source_value_name != result.argument->name) {
     result.status = BirViewStatus::Incomplete;
     return result;
   }

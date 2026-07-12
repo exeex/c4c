@@ -3860,6 +3860,9 @@ find_prepared_call_argument_source_producer_materialization(
       boundary.argument_number != argument.arg_index) {
     return false;
   }
+  if (!boundary.has_argument_source_relationship) {
+    return true;
+  }
   if (!source_value_name.has_value() || *source_value_name == kInvalidValueName) {
     return boundary.dependency_name.empty() &&
            boundary.argument->kind != bir::Value::Kind::Named;

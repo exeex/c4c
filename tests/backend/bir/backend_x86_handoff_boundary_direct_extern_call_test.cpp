@@ -349,6 +349,77 @@ int check_route_consumes_prepared_direct_extern_call_contract() {
   return 0;
 }
 
+const prepare::PreparedCallPlansFunction* find_call_plans(
+    const prepare::PreparedBirModule& prepared, std::string_view function_name) {
+  const auto function_id =
+      prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_id.has_value()) {
+    return nullptr;
+  }
+  return prepare::find_prepared_call_plans(prepared, *function_id);
+}
+
+int check_cursor_exact_semantic_operand_call_plans() {
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      make_x86_direct_extern_call_lane_module(), x86_target_profile());
+  const auto* plans = find_call_plans(prepared, "main");
+  if (plans == nullptr || plans->calls.size() != 2 ||
+      plans->calls[0].block_index != 0 || plans->calls[0].instruction_index != 0 ||
+      plans->calls[1].block_index != 0 || plans->calls[1].instruction_index != 1 ||
+      plans->calls[1].arguments.size() != 2) {
+    return fail("direct extern call plans: semantic operands did not publish cursor-exact plans at 0 and 1");
+  }
+
+  auto unique = make_x86_direct_extern_call_lane_module();
+  auto* unique_call = std::get_if<bir::CallInst>(&unique.functions.back().blocks.front().insts[1]);
+  unique_call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
+      .arg_index = 1, .source_value_name = std::string{"%t0"}});
+  auto unique_prepared = prepare::prepare_semantic_bir_module_with_options(
+      std::move(unique), x86_target_profile());
+  plans = find_call_plans(unique_prepared, "main");
+  if (plans == nullptr || plans->calls.size() != 2 ||
+      plans->calls[1].instruction_index != 1 || plans->calls[1].arguments.size() != 2) {
+    return fail("direct extern call plans: unique compatible source relationship did not refine the semantic operand");
+  }
+
+  const auto rejects = [](bir::Module module) {
+    auto rejected = prepare::prepare_semantic_bir_module_with_options(
+        std::move(module), x86_target_profile());
+    const auto* rejected_plans = find_call_plans(rejected, "main");
+    return rejected_plans != nullptr && rejected_plans->calls.size() == 1 &&
+           rejected_plans->calls.front().instruction_index == 0;
+  };
+
+  auto duplicate = make_x86_direct_extern_call_lane_module();
+  auto* duplicate_call =
+      std::get_if<bir::CallInst>(&duplicate.functions.back().blocks.front().insts[1]);
+  duplicate_call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
+      .arg_index = 1, .source_value_name = std::string{"%t0"}});
+  duplicate_call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
+      .arg_index = 1, .source_value_name = std::string{"%t0"}});
+  if (!rejects(std::move(duplicate))) {
+    return fail("direct extern call plans: duplicate source relationships did not fail closed");
+  }
+
+  auto stale = make_x86_direct_extern_call_lane_module();
+  auto* stale_call = std::get_if<bir::CallInst>(&stale.functions.back().blocks.front().insts[1]);
+  stale_call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
+      .arg_index = 2, .source_value_name = std::string{"%t0"}});
+  if (!rejects(std::move(stale))) {
+    return fail("direct extern call plans: out-of-range source relationship did not fail closed");
+  }
+
+  auto contradictory = make_x86_direct_extern_call_lane_module();
+  auto* contradictory_call =
+      std::get_if<bir::CallInst>(&contradictory.functions.back().blocks.front().insts[1]);
+  contradictory_call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
+      .arg_index = 1, .source_value_name = std::string{"%wrong"}});
+  if (!rejects(std::move(contradictory))) {
+    return fail("direct extern call plans: operand-contradicting source relationship did not fail closed");
+  }
+  return 0;
+}
+
 int check_route_requires_authoritative_prepared_before_call_bundle() {
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
@@ -423,9 +494,38 @@ int check_route_requires_authoritative_prepared_after_call_bundle() {
 }
 
 int check_consumed_plans_threads_route6_scalar_call_argument_source() {
+  const auto make_route6_module = [] {
+    auto module = make_x86_direct_extern_call_lane_module();
+    auto* call = std::get_if<bir::CallInst>(
+        &module.functions.back().blocks.front().insts[1]);
+    call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
+        .arg_index = 1,
+        .source_encoding = bir::CallArgumentSourceEncodingKind::Register,
+        .source_value_name = std::string{"%t0"}});
+    return module;
+  };
+  const auto attach_prepared_source_id = [](prepare::PreparedBirModule& prepared) {
+    const auto* plans = find_call_plans(prepared, "main");
+    auto* function = find_mutable_bir_function(prepared, "main");
+    if (plans == nullptr || plans->calls.size() != 2 ||
+        plans->calls[1].arguments.size() != 2 || function == nullptr) {
+      return false;
+    }
+    auto* call = std::get_if<bir::CallInst>(&function->blocks.front().insts[1]);
+    if (call == nullptr || call->arg_sources.size() != 1 ||
+        !plans->calls[1].arguments[1].source_value_id.has_value()) {
+      return false;
+    }
+    call->arg_sources.front().source_value_id =
+        *plans->calls[1].arguments[1].source_value_id;
+    return true;
+  };
   auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+      prepare::prepare_semantic_bir_module_with_options(make_route6_module(),
                                                         x86_target_profile());
+  if (!attach_prepared_source_id(prepared)) {
+    return fail("x86 Route 6 call-use boundary: failed to attach prepared source identity");
+  }
   const auto consumed = c4c::backend::x86::consume_plans(prepared, "main");
   const auto* main_function = find_mutable_bir_function(prepared, "main");
   if (main_function == nullptr || main_function->blocks.empty()) {
@@ -458,8 +558,11 @@ int check_consumed_plans_threads_route6_scalar_call_argument_source() {
   }
 
   auto nameless_prepared =
-      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+      prepare::prepare_semantic_bir_module_with_options(make_route6_module(),
                                                         x86_target_profile());
+  if (!attach_prepared_source_id(nameless_prepared)) {
+    return fail("x86 Route 6 call-use boundary nameless fallback: failed to attach prepared source identity");
+  }
   auto* nameless_main = find_mutable_bir_function(nameless_prepared, "main");
   if (nameless_main == nullptr || nameless_main->blocks.empty()) {
     return fail("x86 Route 6 call-use boundary nameless fallback: malformed main fixture");
@@ -498,8 +601,11 @@ int check_consumed_plans_threads_route6_scalar_call_argument_source() {
   }
 
   auto fallback_prepared =
-      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+      prepare::prepare_semantic_bir_module_with_options(make_route6_module(),
                                                         x86_target_profile());
+  if (!attach_prepared_source_id(fallback_prepared)) {
+    return fail("x86 Route 6 call-use boundary fallback: failed to attach prepared source identity");
+  }
   auto* fallback_main = find_mutable_bir_function(fallback_prepared, "main");
   if (fallback_main == nullptr || fallback_main->blocks.empty()) {
     return fail("x86 Route 6 call-use boundary fallback: malformed main fixture");
@@ -550,6 +656,9 @@ int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
   }
   if (const auto status = check_route_consumes_prepared_direct_extern_call_contract();
       status != 0) {
+    return status;
+  }
+  if (const auto status = check_cursor_exact_semantic_operand_call_plans(); status != 0) {
     return status;
   }
   if (const auto status = check_route_requires_authoritative_prepared_before_call_bundle();

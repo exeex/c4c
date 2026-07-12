@@ -8,70 +8,46 @@ Current Step Title: Produce one cursor-exact plan per supported call
 
 ## Just Finished
 
-- Completed plan Step 1's missing-call producer trace. The two semantic BIR
-  calls in `make_x86_direct_extern_call_lane_module` remain at block 0,
-  instruction cursors 0 (`actual_function`, zero arguments, result `%t0`) and
-  1 (`printf`, arguments `@.str0`/`%t0`, result `%t1`, variadic). The earliest
-  incorrect fact is not cursor renumbering: `populate_call_plans` in
-  `src/backend/prealloc/call_plans.cpp` asks `find_call_argument` for every
-  argument and drops the entire call when
-  `call_argument_boundary_matches_prepared_source` rejects that boundary.
-  `find_call_argument` in `src/backend/bir/bir_call_boundary_view.cpp` marks an
-  otherwise valid semantic argument `Incomplete` when no matching
-  `CallArgumentSourceRelationship` exists. This direct-BIR fixture supplies
-  semantic `args` but no optional `arg_sources`, so cursor 1 is omitted; cursor
-  0 bypasses the argument loop and is published correctly. Thus the durable
-  idea's observation that the first call is omitted and the later call is
-  published at cursor 0 is inverted relative to the current producer code.
-- The general repair rule is to enumerate every valid semantic `CallInst` at
-  its actual block/instruction cursor and derive the base argument identity
-  from `CallInst::args[arg_index]`; an absent optional source-relationship row
-  must not erase the call. A unique relationship may refine source/base ID,
-  selection, aggregate-lane, and producer identity. Duplicate/ambiguous rows,
-  out-of-range rows, or a relationship that contradicts the semantic operand
-  must continue to fail closed. Preserve callee/link identity, indirect callee,
-  wrapper/variadic ABI classification, argument type and ABI destination,
-  result/result ABI, before/after-call move bundles, clobbers, and preserved
-  values unchanged.
-- Nearby coverage under the same rule includes the same-module, fixed-extern,
-  variadic-extern, and indirect argument-bearing direct-BIR calls in
-  `prepare_call_wrapper_dump_module`; all are constructed without
-  `arg_sources` and are expected to publish exact cursor plans. Lowered calls
-  with unique explicit `arg_sources` exercise the refinement path. Negative
-  states are duplicate relationships for one argument (`Ambiguous`), stale or
-  wrong `arg_index`, relationship/operand identity disagreement, invalid call
-  boundary/callee identity, and missing/duplicate/stale/callee-mismatched
-  prepared plans at lookup.
+- Implemented plan Step 2's common producer rule: semantic `CallInst::args`
+  now provide the base boundary identity without optional `arg_sources`;
+  unique compatible relationships refine it, while duplicate, out-of-range,
+  and operand-contradicting relationships reject the call. Added direct-extern
+  coverage for exact cursors 0 and 1 plus positive refinement and all three
+  negative relationship states.
+- The owned direct-extern tests build and advance past the new assertions, but
+  the delegated whole `backend_x86_handoff_boundary` executable later fails in
+  the unowned joined-branch fixture with `x86 module route did not emit
+  register-source shared-publication edge moves`.
+- Follow-up repaired two general semantic boundary gaps: a valid
+  `callee_link_name_id` now makes an ID-only call available, and absence of an
+  optional argument relationship is accepted before relationship-only name
+  checks, including semantic symbol-pointer operands with an empty raw name.
+  `backend_prepare_frame_stack_call_contract` now advances beyond the
+  LinkNameId and call-argument source-shape contracts to its unrelated
+  block-entry publication identity assertion.
 
 ## Suggested Next
 
-- Execute plan Step 2 as one bounded common-producer packet: adjust
-  `bir_call_boundary_view`/`populate_call_plans` argument handling so a valid
-  semantic operand is available without an optional relationship, while a
-  unique relationship refines it and ambiguous or contradictory evidence
-  rejects. Preserve the already-exact enclosing instruction cursor. Add no
-  callee, fixture, zero-argument, or two-call special case; prove exact plans
-  for both direct-extern cursors plus the nearby fixed, variadic, and indirect
-  wrapper shapes.
+- Supervisor should determine whether the joined-branch failure is a known
+  baseline failure or delegate its diagnosis to that fixture's owner, then
+  rerun the exact Step 2 proof.
 
 ## Watchouts
 
-- Preserve exact cursor/callee fail-closed validation; the rejected idea-708
-  implementation was reverted and is not implementation-complete.
-- Do not "fix" cursor accounting: `populate_call_plans` already copies the
-  enclosing semantic `instruction_index`. The apparent later-call-at-zero
-  symptom comes from the surviving vector position being mistaken for a
-  semantic cursor, not from the stored cursor field.
-- Preserve ambiguity as a negative state. Treat only absence of optional
-  relationship metadata as compatible with the semantic operand; do not
-  select the first duplicate relationship or synthesize route authority.
+- The proof blocker is outside this packet's owned files:
+  `backend_x86_handoff_boundary_joined_branch_test.cpp:8350`. The failing
+  module contains no calls, so the direct semantic-call producer route does
+  not directly explain the missing edge-publication moves.
+- `backend_prepared_lookup_helper` independently fails in the same prepared
+  MIR join/block-entry identity family. Inspection found no causal path from
+  call-plan production, so its test was not edited and ownership was not
+  expanded.
 
 ## Proof
 
-- Diagnosis-only packet; no build or test was required and no canonical log was
-  written. Evidence came from AST-backed definition/callee queries for
-  `populate_call_plans`, targeted inspection of the direct-extern fixture and
-  `BirCallBoundaryView`, and a nearby wrapper-fixture cross-check. An existing
-  `backend_prepared_printer_test` binary was sampled non-mutatingly but stopped
-  at an unrelated earlier intrinsic-carrier failure, so it is not proof for
-  this packet.
+- Ran `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R
+  '^(backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$'`;
+  build succeeded. The call contract advanced to the unrelated prepared
+  block-entry publication identity assertion, and x86 retained the same
+  unrelated joined-branch assertion. Complete output is in `test_after.log`.
