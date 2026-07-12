@@ -3,10 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory and migrate AArch64 dispatch authority
-你該做code review了
-
+Current Step ID: 2
+Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
@@ -19,14 +17,20 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Suggested Next
 
-- Continue Plan Step 1 with the next supervisor-selected AArch64 dispatch
-  authority family, keeping comparison, call-boundary, and ALU families out of
+- Begin Plan Step 2 with one narrow call-boundary packet: migrate the Route 4
+  publication-availability index in `calls.cpp` to existing common
+  named/prepared authority, then remove the unused
+  `Route6CallUseSourceIndex*` select-materialization API parameter while that
+  dead call-use surface is adjacent. Keep comparison and ALU authority out of
   this packet.
 
 ## Watchouts
 
-- The separate comparison, call-boundary, and ALU route families were not
-  changed by this packet.
+- Step 1 is complete at its dispatch-centered boundary; the remaining
+  call-boundary, comparison, and ALU route families belong to Step 2.
+- The first Step 2 packet is limited to call-boundary Route 4 publication
+  availability plus dead Route 6 select API cleanup; do not absorb comparison
+  or ALU route-index construction.
 - The common scalar select-chain producer/query contract was not defective;
   the regression was a test fixture that supplied a borrowed lookup without
   the matching owner required by dispatch authority validation.
