@@ -8,16 +8,18 @@ Current Step Title: Trace existing constraint flow
 
 ## Just Finished
 
-- Lifecycle switch parked incomplete idea 722 and activated the separate documentation-only constraint-carrier research initiative.
+- Plan Step 1 documented the complete current `PreparedAllocationConstraint` flow in `docs/pre_regalloc_value_constraints/01_existing_constraint_flow.md`: stable BIR/liveness identity, the sole constraint construction site, target-policy derivation, allocator behavior, and observational test reads.
+- The trace establishes two discontinuities without choosing a Step 2 architecture: no general named-value fixed/preferred request reaches `BirPreAlloc::run_regalloc`, and the allocator does not consume the constraint rows it publishes.
 
 ## Suggested Next
 
-- Execute Plan Step 1 by tracing existing constraint producers and consumers and writing `01_existing_constraint_flow.md`.
+- Execute Plan Step 2 by comparing BIR, prepared semantic, liveness, and regalloc ownership and deciding whether a general carrier is valid.
 
 ## Watchouts
 
-- Do not implement a carrier or use the joined-branch fixture shape as architectural evidence.
+- `PreparedAllocationConstraint` is currently descriptive: preferred/forbidden pools duplicate policy independently used by assignment, while fixed fields are always absent. Step 2 must account for both ingress and enforcement rather than treating the existing row as an active control surface.
 
 ## Proof
 
-- Lifecycle-only switch; no code proof required.
+- No build was required for this documentation-only packet.
+- Ran repository `rg` checks for every cited constraint field, producer/consumer symbol, liveness path, register-group override, target pool helper, ABI helper, and test observation; all cited paths and symbols resolved.
