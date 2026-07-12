@@ -8,17 +8,25 @@ Current Step Title: Inventory Current LIR-to-BIR Schema
 
 ## Just Finished
 
-- None; lifecycle activation initialized the runbook.
+- Completed plan.md Step 1: created the evidence-backed current LIR-to-BIR
+  schema, identity, authority, consumer, mutation-assumption, and hazard
+  inventory in `docs/backend/pass_ready_bir/01_current_lir_to_bir_schema.md`.
 
 ## Suggested Next
 
-- Execute plan.md Step 1 and create the evidence-backed current-schema inventory.
+- Execute plan.md Step 2 and classify every Step 1 field family while defining
+  the legacy compatibility quarantine.
 
 ## Watchouts
 
-- Treat unfinished 703--714 outcomes as provisional dependencies.
-- Keep this research-only: do not change implementation, tests, baselines, or source ideas.
+- Preserve the distinction between module-owned emitted side tables and
+  consumer-built route 1--8 pointer/index views.
+- The hybrid ID/name/pointer/index model makes every post-publication structural
+  mutation unsafe without rebuilding dependent views and prepared plans.
 
 ## Proof
 
-- Not run; lifecycle activation is documentation-only.
+- Supervisor-selected documentation proof passed:
+  `git diff --check && test -f docs/backend/pass_ready_bir/01_current_lir_to_bir_schema.md && rg -n "Module|Function|Block|Inst|Terminator|RAUW|split|redirect|authority|consumer" docs/backend/pass_ready_bir/01_current_lir_to_bir_schema.md`.
+- This documentation-only packet does not produce `test_after.log`; no build or
+  test subset was delegated.
