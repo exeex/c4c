@@ -1425,7 +1425,11 @@ prepared_same_block_source_producer(
     const auto& call = call_plans->calls[call_index];
     const auto call_position_key =
         prepared_call_position_key(call.block_index, call.instruction_index);
-    lookups.calls_by_position.emplace(call_position_key, &call);
+    const auto [call_it, call_inserted] =
+        lookups.calls_by_position.emplace(call_position_key, &call);
+    if (!call_inserted) {
+      call_it->second = nullptr;
+    }
     if (call.outgoing_stack_argument_area.has_value()) {
       lookups.outgoing_stack_argument_areas_by_position.emplace(
           call_position_key, &*call.outgoing_stack_argument_area);
@@ -2021,20 +2025,36 @@ void repair_prepared_memory_access_position_lookups(
     const auto it =
         lookups->calls_by_position.find(prepared_call_position_key(block_index,
                                                                    instruction_index));
-    if (it != lookups->calls_by_position.end()) {
-      return it->second;
+    if (it == lookups->calls_by_position.end() || it->second == nullptr ||
+        call_plans == nullptr) {
+      return nullptr;
     }
-    return nullptr;
+    const PreparedCallPlan* matching_call = nullptr;
+    for (const auto& call : call_plans->calls) {
+      if (call.block_index != block_index ||
+          call.instruction_index != instruction_index) {
+        continue;
+      }
+      if (matching_call != nullptr) {
+        return nullptr;
+      }
+      matching_call = &call;
+    }
+    return matching_call == it->second ? matching_call : nullptr;
   }
   if (call_plans == nullptr) {
     return nullptr;
   }
+  const PreparedCallPlan* matching_call = nullptr;
   for (const auto& call : call_plans->calls) {
     if (call.block_index == block_index && call.instruction_index == instruction_index) {
-      return &call;
+      if (matching_call != nullptr) {
+        return nullptr;
+      }
+      matching_call = &call;
     }
   }
-  return nullptr;
+  return matching_call;
 }
 
 [[nodiscard]] const PreparedCallArgumentPlan*

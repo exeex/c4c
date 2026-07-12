@@ -365,10 +365,26 @@ int check_cursor_exact_semantic_operand_call_plans() {
   const auto* plans = find_call_plans(prepared, "main");
   if (plans == nullptr || plans->calls.size() != 2 ||
       plans->calls[0].block_index != 0 || plans->calls[0].instruction_index != 0 ||
+      plans->calls[0].direct_callee_name !=
+          std::optional<std::string>{"actual_function"} ||
+      plans->calls[0].wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      !plans->calls[0].arguments.empty() ||
       plans->calls[1].block_index != 0 || plans->calls[1].instruction_index != 1 ||
-      plans->calls[1].arguments.size() != 2) {
-    return fail("direct extern call plans: semantic operands did not publish cursor-exact plans at 0 and 1");
+      plans->calls[1].direct_callee_name != std::optional<std::string>{"printf"} ||
+      plans->calls[1].wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternVariadic ||
+      plans->calls[1].arguments.size() != 2 ||
+      plans->calls[1].arguments[0].instruction_index != 1 ||
+      plans->calls[1].arguments[0].arg_index != 0 ||
+      plans->calls[1].arguments[0].source_symbol_name !=
+          std::optional<std::string>{"@.str0"} ||
+      plans->calls[1].arguments[1].instruction_index != 1 ||
+      plans->calls[1].arguments[1].arg_index != 1 ||
+      !plans->calls[1].arguments[1].source_value_id.has_value()) {
+    return fail("direct extern call plans: mixed adjacent calls lost exact cursor, callee, or argument identity");
   }
+  const auto semantic_t0_id = plans->calls[1].arguments[1].source_value_id;
 
   auto unique = make_x86_direct_extern_call_lane_module();
   auto* unique_call = std::get_if<bir::CallInst>(&unique.functions.back().blocks.front().insts[1]);
@@ -380,6 +396,11 @@ int check_cursor_exact_semantic_operand_call_plans() {
   if (plans == nullptr || plans->calls.size() != 2 ||
       plans->calls[1].instruction_index != 1 || plans->calls[1].arguments.size() != 2) {
     return fail("direct extern call plans: unique compatible source relationship did not refine the semantic operand");
+  }
+  if (plans->calls[1].arguments[1].source_value_id != semantic_t0_id ||
+      plans->calls[1].arguments[1].arg_index != 1 ||
+      plans->calls[1].direct_callee_name != std::optional<std::string>{"printf"}) {
+    return fail("direct extern call plans: unique refinement changed cursor, callee, or semantic argument identity");
   }
 
   const auto rejects = [](bir::Module module) {

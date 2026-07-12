@@ -5151,7 +5151,8 @@ int check_call_wrapper_kind_contract() {
   }
 
   const auto& same_module_call = call_plans->calls[0];
-  if (same_module_call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+  if (same_module_call.block_index != 0 || same_module_call.instruction_index != 0 ||
+      same_module_call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
       same_module_call.variadic_fpr_arg_register_count != 0 || same_module_call.is_indirect ||
       !same_module_call.direct_callee_name.has_value() ||
       same_module_call.indirect_callee.has_value() ||
@@ -5160,7 +5161,8 @@ int check_call_wrapper_kind_contract() {
   }
 
   const auto& fixed_extern_call = call_plans->calls[1];
-  if (fixed_extern_call.wrapper_kind !=
+  if (fixed_extern_call.block_index != 0 || fixed_extern_call.instruction_index != 1 ||
+      fixed_extern_call.wrapper_kind !=
           prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
       fixed_extern_call.variadic_fpr_arg_register_count != 0 ||
       fixed_extern_call.is_indirect || !fixed_extern_call.direct_callee_name.has_value() ||
@@ -5170,7 +5172,9 @@ int check_call_wrapper_kind_contract() {
   }
 
   const auto& variadic_extern_call = call_plans->calls[2];
-  if (variadic_extern_call.wrapper_kind !=
+  if (variadic_extern_call.block_index != 0 ||
+      variadic_extern_call.instruction_index != 2 ||
+      variadic_extern_call.wrapper_kind !=
           prepare::PreparedCallWrapperKind::DirectExternVariadic ||
       variadic_extern_call.variadic_fpr_arg_register_count != 1 ||
       variadic_extern_call.is_indirect || !variadic_extern_call.direct_callee_name.has_value() ||
@@ -5181,7 +5185,8 @@ int check_call_wrapper_kind_contract() {
   }
 
   const auto& indirect_call = call_plans->calls[3];
-  if (indirect_call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
+  if (indirect_call.block_index != 0 || indirect_call.instruction_index != 3 ||
+      indirect_call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
       indirect_call.variadic_fpr_arg_register_count != 0 || !indirect_call.is_indirect ||
       indirect_call.direct_callee_name.has_value() || !indirect_call.indirect_callee.has_value() ||
       prepare::prepared_value_name(prepared.names, indirect_call.indirect_callee->value_name) !=

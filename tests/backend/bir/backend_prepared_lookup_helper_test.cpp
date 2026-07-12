@@ -1971,6 +1971,79 @@ int verify_prepared_parallel_copy_register_move_helpers() {
   return 0;
 }
 
+int verify_exact_call_plan_lookup_integrity() {
+  prepare::PreparedBirModule prepared;
+  prepare::PreparedControlFlowFunction control_flow;
+  prepare::PreparedCallPlansFunction calls{
+      .calls = {
+          prepare::PreparedCallPlan{
+              .block_index = 2,
+              .instruction_index = 4,
+              .direct_callee_name = std::string{"first"},
+          },
+          prepare::PreparedCallPlan{
+              .block_index = 2,
+              .instruction_index = 5,
+              .direct_callee_name = std::string{"second"},
+          },
+      },
+  };
+  const auto lookups =
+      prepare::make_prepared_call_plan_lookups(prepared, &calls, control_flow);
+  if (prepare::find_indexed_prepared_call_plan(&lookups, &calls, 2, 4) !=
+          &calls.calls[0] ||
+      prepare::find_indexed_prepared_call_plan(&lookups, &calls, 2, 5) !=
+          &calls.calls[1] ||
+      prepare::find_indexed_prepared_call_plan(&lookups, &calls, 2, 6) !=
+          nullptr) {
+    return fail("exact call-plan lookup should preserve adjacent cursor identity");
+  }
+
+  auto duplicate_calls = calls;
+  duplicate_calls.calls[1].instruction_index = 4;
+  const auto duplicate_lookups = prepare::make_prepared_call_plan_lookups(
+      prepared, &duplicate_calls, control_flow);
+  const auto duplicate_key = prepare::prepared_call_position_key(2, 4);
+  const auto duplicate_it =
+      duplicate_lookups.calls_by_position.find(duplicate_key);
+  if (duplicate_it == duplicate_lookups.calls_by_position.end() ||
+      duplicate_it->second != nullptr ||
+      prepare::find_indexed_prepared_call_plan(
+          &duplicate_lookups, &duplicate_calls, 2, 4) != nullptr ||
+      prepare::find_indexed_prepared_call_plan(
+          nullptr, &duplicate_calls, 2, 4) != nullptr) {
+    return fail("duplicate call-plan cursors should poison exact lookup");
+  }
+
+  auto mismatched_owner = calls;
+  if (prepare::find_indexed_prepared_call_plan(
+          &lookups, &mismatched_owner, 2, 4) != nullptr) {
+    return fail("exact call-plan lookup should reject a mismatched call-plan owner");
+  }
+
+  auto stale_calls = calls;
+  const auto stale_lookups = prepare::make_prepared_call_plan_lookups(
+      prepared, &stale_calls, control_flow);
+  stale_calls.calls.reserve(stale_calls.calls.capacity() + 8);
+  if (prepare::find_indexed_prepared_call_plan(
+          &stale_lookups, &stale_calls, 2, 4) != nullptr) {
+    return fail("exact call-plan lookup should reject stale indexed pointers");
+  }
+
+  auto mismatched_cursor_calls = calls;
+  const auto mismatched_cursor_lookups =
+      prepare::make_prepared_call_plan_lookups(
+          prepared, &mismatched_cursor_calls, control_flow);
+  mismatched_cursor_calls.calls[0].instruction_index = 7;
+  if (prepare::find_indexed_prepared_call_plan(
+          &mismatched_cursor_lookups, &mismatched_cursor_calls, 2, 4) !=
+      nullptr) {
+    return fail("exact call-plan lookup should reject a mutated cursor");
+  }
+
+  return 0;
+}
+
 int verify_linear_function_lookup() {
   prepare::PreparedBirModule prepared;
   const auto function_id = prepared.names.function_names.intern("linear");
@@ -14988,6 +15061,9 @@ int main() {
   }
   if (const int result = verify_prepared_parallel_copy_register_move_helpers();
       result != 0) {
+    return result;
+  }
+  if (const int result = verify_exact_call_plan_lookup_integrity(); result != 0) {
     return result;
   }
   if (const int result = verify_linear_function_lookup(); result != 0) {
