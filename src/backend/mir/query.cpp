@@ -1063,18 +1063,6 @@ find_select_chain_view_result(BirSelectChainIdentityRequest request) {
 }
 
 [[nodiscard]] std::string_view destination_value_name(
-    const BirBlockEntryPublicationIdentityRequest& request) {
-  if (!request.destination_value_name.empty()) {
-    return request.destination_value_name;
-  }
-  if (request.destination_value != nullptr &&
-      request.destination_value->kind == bir::Value::Kind::Named) {
-    return request.destination_value->name;
-  }
-  return {};
-}
-
-[[nodiscard]] std::string_view destination_value_name(
     const BirCfgEdgePublicationSourceRequest& request) {
   if (!request.destination_value_name.empty()) {
     return request.destination_value_name;
@@ -1087,35 +1075,12 @@ find_select_chain_view_result(BirSelectChainIdentityRequest request) {
 }
 
 [[nodiscard]] bir::TypeKind destination_value_type(
-    const BirBlockEntryPublicationIdentityRequest& request) {
-  if (request.destination_value_type != bir::TypeKind::Void) {
-    return request.destination_value_type;
-  }
-  return request.destination_value != nullptr ? request.destination_value->type
-                                             : bir::TypeKind::Void;
-}
-
-[[nodiscard]] bir::TypeKind destination_value_type(
     const BirCfgEdgePublicationSourceRequest& request) {
   if (request.destination_value_type != bir::TypeKind::Void) {
     return request.destination_value_type;
   }
   return request.destination_value != nullptr ? request.destination_value->type
                                              : bir::TypeKind::Void;
-}
-
-[[nodiscard]] bool successor_block_label_matches(
-    const BirBlockEntryPublicationIdentityRequest& request) {
-  if (request.successor_block == nullptr) {
-    return false;
-  }
-  if (request.successor_label_id != c4c::kInvalidBlockLabel &&
-      request.successor_block->label_id != c4c::kInvalidBlockLabel &&
-      request.successor_label_id != request.successor_block->label_id) {
-    return false;
-  }
-  return request.successor_label.empty() ||
-         request.successor_label == request.successor_block->label;
 }
 
 [[nodiscard]] bool predecessor_block_label_matches(
@@ -1433,110 +1398,29 @@ find_bir_current_block_publication_identity(
 
 [[nodiscard]] BirBlockEntryPublicationIdentity
 find_bir_block_entry_publication_identity(
-    BirBlockEntryPublicationIdentityRequest request) {
+    const prepare::PreparedCurrentBlockEntryPublication& prepared) {
   BirBlockEntryPublicationIdentity result{
-      .destination_value_id = request.destination_value_id,
-      .destination_value_name_id = request.destination_value_name_id,
+      .status = prepared.status,
+      .instruction_index = prepared.publication_bundle_instruction_index,
+      .destination_value_id = prepared.destination_value_id,
+      .destination_value_name = prepared.destination_value_name_text,
+      .destination_value_name_id = prepared.destination_value_name,
+      .destination_value_type = prepared.destination_value_type,
+      .successor_label = prepared.successor_label_text,
+      .successor_label_id = prepared.successor_label_id,
   };
-  if (request.successor_block != nullptr) {
-    result.successor_label =
-        normalized_block_label(*request.successor_block, request.successor_label);
-    result.successor_label_id = request.successor_block->label_id != c4c::kInvalidBlockLabel
-                                    ? request.successor_block->label_id
-                                    : request.successor_label_id;
-  }
-  if (request.successor_block == nullptr || !successor_block_label_matches(request)) {
-    result.status = BirBlockEntryPublicationStatus::MissingSuccessorLabel;
-    return result;
-  }
-
-  const auto value_name = destination_value_name(request);
-  const auto value_type = destination_value_type(request);
-  if (value_name.empty()) {
-    result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
-    result.destination_value_type = value_type;
-    return result;
-  }
-  result.destination_value_name = value_name;
-  result.destination_value_type = value_type;
-
-  bir::Function function;
-  function.blocks.push_back(*request.successor_block);
-  const auto& indexed_successor = function.blocks.front();
-  const auto route4_publications =
-      bir::route4_build_publication_availability_index(function);
-  const auto route_index_facade =
-      bir::route_index_reference_facade(route4_publications);
-  const auto publication_ref =
-      bir::route_index_validate_block_entry_publication_reference(
-          route_index_facade,
-          indexed_successor,
-          bir::Value::named(value_type, std::string{value_name}));
-  const auto* publication_record = publication_ref.block_entry_record;
-
-  if (!publication_ref) {
-    switch (publication_ref.route_status) {
-      case bir::Route4PublicationAvailabilityStatus::MissingValue:
-      case bir::Route4PublicationAvailabilityStatus::NoMatch:
-        result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
-        return result;
-      case bir::Route4PublicationAvailabilityStatus::Unavailable:
-      case bir::Route4PublicationAvailabilityStatus::MissingBlock:
-      case bir::Route4PublicationAvailabilityStatus::MissingPublication:
-      case bir::Route4PublicationAvailabilityStatus::AlternateSource:
-      case bir::Route4PublicationAvailabilityStatus::Available:
-        result.status = BirBlockEntryPublicationStatus::MissingPublication;
-        return result;
-    }
-  }
-  if (publication_record == nullptr) {
-    result.status = BirBlockEntryPublicationStatus::MissingPublication;
-    return result;
-  }
-  if (!*publication_record) {
-    switch (publication_record->status) {
-      case bir::Route4PublicationAvailabilityStatus::MissingValue:
-      case bir::Route4PublicationAvailabilityStatus::NoMatch:
-        result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
-        return result;
-      case bir::Route4PublicationAvailabilityStatus::Unavailable:
-      case bir::Route4PublicationAvailabilityStatus::MissingBlock:
-      case bir::Route4PublicationAvailabilityStatus::MissingPublication:
-      case bir::Route4PublicationAvailabilityStatus::AlternateSource:
-      case bir::Route4PublicationAvailabilityStatus::Available:
-        result.status = BirBlockEntryPublicationStatus::MissingPublication;
-        return result;
-    }
-  }
-
-  if (publication_record->destination_instruction_index >=
-      request.successor_block->insts.size()) {
-    result.status = BirBlockEntryPublicationStatus::MissingPublication;
-    return result;
-  }
-  const auto& inst =
-      request.successor_block
-          ->insts[publication_record->destination_instruction_index];
-  const auto* phi = std::get_if<bir::PhiInst>(&inst);
-  if (phi == nullptr ||
-      phi->result.kind != bir::Value::Kind::Named ||
-      phi->result.name != publication_record->destination_value_name) {
-    result.status = BirBlockEntryPublicationStatus::MissingPublication;
-    return result;
-  }
-  if (value_type != bir::TypeKind::Void && phi->result.type != value_type) {
-    result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
+  if (prepared.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      !prepared.block_entry_publication_proof_attributed ||
+      !prepare::prepared_block_entry_publication_available(prepared.publication) ||
+      prepared.successor_label_text.empty() ||
+      prepared.successor_label_id == c4c::kInvalidBlockLabel ||
+      prepared.destination_value_name_text.empty() ||
+      prepared.destination_value_name == c4c::kInvalidValueName ||
+      prepared.destination_value_type == bir::TypeKind::Void) {
     return result;
   }
   result.available = true;
-  result.status = BirBlockEntryPublicationStatus::Available;
-  result.instruction = &inst;
-  result.phi = phi;
-  result.instruction_index = publication_record->destination_instruction_index;
-  result.destination_value = &phi->result;
-  result.destination_value_identity = same_block_value_identity(phi->result);
-  result.destination_value_name = phi->result.name;
-  result.destination_value_type = phi->result.type;
   return result;
 }
 
