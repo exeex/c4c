@@ -229,6 +229,10 @@ struct PreparedMirDirectEdgePublicationSourceView {
       selected_freshness_authority;
 };
 
+[[nodiscard]] PreparedMirDirectEdgePublicationSourceStatus
+validate_prepared_mir_direct_edge_producer_authority(
+    const PreparedMirDirectEdgePublicationSourceView& source);
+
 struct PreparedMirDirectEdgePublicationSourceQuery {
   PreparedMirDirectEdgePublicationSourceQueryStatus status =
       PreparedMirDirectEdgePublicationSourceQueryStatus::MissingFunctionView;

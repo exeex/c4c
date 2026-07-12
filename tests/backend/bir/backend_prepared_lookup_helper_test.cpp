@@ -5157,6 +5157,51 @@ int verify_current_block_join_parallel_copy_source_query() {
   const auto& prepared_named = prepared_bir_query.sources[0];
   const auto& prepared_immediate = prepared_bir_query.sources[1];
   const auto& prepared_stack = prepared_bir_query.sources[2];
+  if (mir::prepared::validate_prepared_mir_direct_edge_producer_authority(
+          prepared_named) != mir::prepared::
+              PreparedMirDirectEdgePublicationSourceStatus::Available ||
+      mir::prepared::validate_prepared_mir_direct_edge_producer_authority(
+          prepared_immediate) != mir::prepared::
+              PreparedMirDirectEdgePublicationSourceStatus::Available ||
+      mir::prepared::validate_prepared_mir_direct_edge_producer_authority(
+          prepared_stack) != mir::prepared::
+              PreparedMirDirectEdgePublicationSourceStatus::Available) {
+    return fail("prepared MIR producer-authority validator should retain all supported join rows");
+  }
+  auto require_prepared_producer_rejection = [&](auto mutated,
+                                                  std::string_view message) {
+    if (mir::prepared::validate_prepared_mir_direct_edge_producer_authority(
+            mutated) != mir::prepared::
+                PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource) {
+      return fail(message);
+    }
+    return 0;
+  };
+  auto prepared_missing_producer = prepared_named;
+  prepared_missing_producer.source_binary = nullptr;
+  auto prepared_wrong_producer = prepared_named;
+  prepared_wrong_producer.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Cast;
+  auto prepared_extra_producer = prepared_named;
+  prepared_extra_producer.source_cast =
+      reinterpret_cast<const bir::CastInst*>(prepared_named.source_binary);
+  auto prepared_mismatched_producer_block = prepared_named;
+  prepared_mismatched_producer_block.source_producer_block_label =
+      successor_label;
+  if (require_prepared_producer_rejection(
+          prepared_missing_producer,
+          "prepared MIR boundary should reject a missing matching producer pointer") ||
+      require_prepared_producer_rejection(
+          prepared_wrong_producer,
+          "prepared MIR boundary should reject a wrong-kind producer pointer") ||
+      require_prepared_producer_rejection(
+          prepared_extra_producer,
+          "prepared MIR boundary should reject a contradictory extra producer pointer") ||
+      require_prepared_producer_rejection(
+          prepared_mismatched_producer_block,
+          "prepared MIR boundary should reject producer/predecessor mismatch")) {
+    return 1;
+  }
   auto has_exact_prepared_authority = [](const auto& source) {
     return source.bundle != nullptr && source.move != nullptr &&
            source.publication != nullptr;

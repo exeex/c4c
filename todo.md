@@ -15,6 +15,10 @@ Current Step Title: Re-review route quality and focused acceptance
 - Focused negative coverage now rejects missing, wrong, and contradictory
   producer pointers, producer-block mismatch, exact duplicates, and a
   conflicting source claiming the same semantic destination slot.
+- The prepared-MIR query and focused tests now share the same pure
+  producer-authority validator; controlled prepared-view mutations directly
+  prove missing, wrong-kind, extra, and predecessor-mismatched authorities are
+  non-Available before BIR adaptation.
 - The focused positive fixture now models PHIs in the successor and their
   named producer instructions in the actual predecessor; named, immediate,
   and stack rows remain Available and preserve exact authority across adapters.

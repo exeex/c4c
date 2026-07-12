@@ -314,6 +314,54 @@ const prepare::PreparedRegallocFunction* find_regalloc_function(
 
 }  // namespace
 
+PreparedMirDirectEdgePublicationSourceStatus
+validate_prepared_mir_direct_edge_producer_authority(
+    const PreparedMirDirectEdgePublicationSourceView& source) {
+  if (source.status != PreparedMirDirectEdgePublicationSourceStatus::Available) {
+    return source.status;
+  }
+  const auto pointer_count =
+      static_cast<unsigned>(source.source_load_local != nullptr) +
+      static_cast<unsigned>(source.source_load_global != nullptr) +
+      static_cast<unsigned>(source.source_cast != nullptr) +
+      static_cast<unsigned>(source.source_binary != nullptr) +
+      static_cast<unsigned>(source.source_select != nullptr);
+  if (source.immediate_source) {
+    return source.source_producer_kind ==
+                   prepare::PreparedEdgePublicationSourceProducerKind::Immediate &&
+               !source.source_producer_block_label.has_value() &&
+               !source.source_producer_instruction_index.has_value() &&
+               pointer_count == 0
+        ? source.status
+        : PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+  }
+  const bool matching_pointer =
+      pointer_count == 1 &&
+      ((source.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+        source.source_load_local != nullptr) ||
+       (source.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal &&
+        source.source_load_global != nullptr) ||
+       (source.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
+        source.source_cast != nullptr) ||
+       (source.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+        source.source_binary != nullptr) ||
+       (source.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
+        source.source_select != nullptr));
+  return source.source_producer_kind !=
+                 prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
+             source.source_producer_block_label.has_value() &&
+             source.source_producer_instruction_index.has_value() &&
+             *source.source_producer_block_label == source.predecessor_label &&
+             matching_pointer
+      ? source.status
+      : PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+}
+
 std::optional<PreparedMirInstructionCursor> PreparedMirFunctionView::instruction(
     std::size_t block_index,
     std::size_t instruction_index) const {
@@ -435,51 +483,8 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
       source_view.status =
           PreparedMirDirectEdgePublicationSourceStatus::MissingPublication;
     }
-    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
-        fact.immediate_source &&
-        fact.publication->source_producer_kind !=
-            prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
-      source_view.status = PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
-    }
-    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
-        !fact.immediate_source &&
-        (fact.publication->source_producer_kind ==
-             prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
-         !fact.publication->source_producer_block_label.has_value() ||
-         !fact.publication->source_producer_instruction_index.has_value() ||
-         fact.publication->source_producer_block_label != fact.predecessor_label)) {
-      source_view.status = PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
-    }
-    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available) {
-      const auto producer_pointer_count =
-          static_cast<unsigned>(fact.publication->source_load_local != nullptr) +
-          static_cast<unsigned>(fact.publication->source_load_global != nullptr) +
-          static_cast<unsigned>(fact.publication->source_cast != nullptr) +
-          static_cast<unsigned>(fact.publication->source_binary != nullptr) +
-          static_cast<unsigned>(fact.publication->source_select != nullptr);
-      const bool matching_producer = fact.immediate_source
-          ? producer_pointer_count == 0
-          : producer_pointer_count == 1 &&
-                ((fact.publication->source_producer_kind ==
-                      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
-                  fact.publication->source_load_local != nullptr) ||
-                 (fact.publication->source_producer_kind ==
-                      prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal &&
-                  fact.publication->source_load_global != nullptr) ||
-                 (fact.publication->source_producer_kind ==
-                      prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
-                  fact.publication->source_cast != nullptr) ||
-                 (fact.publication->source_producer_kind ==
-                      prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
-                  fact.publication->source_binary != nullptr) ||
-                 (fact.publication->source_producer_kind ==
-                      prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
-                  fact.publication->source_select != nullptr));
-      if (!matching_producer) {
-        source_view.status =
-            PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
-      }
-    }
+    source_view.status =
+        validate_prepared_mir_direct_edge_producer_authority(source_view);
     if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
         (fact.destination_home == nullptr ||
          fact.destination_home->kind != prepare::PreparedValueHomeKind::Register ||
