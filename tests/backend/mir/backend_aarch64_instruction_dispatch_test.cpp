@@ -34092,20 +34092,13 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
           &bir_block,
           sum_value,
           1);
-  const auto route1_sum =
-      aarch64_codegen::route1_publication_source_producer_for_value(
-          block_context,
-          sum_value,
-          1);
   if (!prepared_sum.has_value() ||
       prepared_sum->instruction_index != 0 ||
-      !route1_sum ||
-      route1_sum.instruction != prepared_sum->instruction ||
-      route1_sum.instruction_index != prepared_sum->instruction_index ||
-      route1_sum.producer_kind != bir::Route1ProducerKind::Binary ||
-      route1_sum.integer_constant_status !=
-          aarch64_codegen::Route1PublicationIntegerConstantStatus::NonConstant) {
-    return fail("expected Route 1 publication producer view to match prepared nonconstant same-block producer oracle");
+      !aarch64_codegen::value_publication_may_read_register_index(
+          block_context, sum_value, 1, 2) ||
+      !aarch64_codegen::value_publication_may_read_register_index(
+          block_context, sum_value, 1, 3)) {
+    return fail("expected prepared publication producer authority to expose binary operand register dependencies");
   }
   const auto prepared_lhs =
       prepare::find_prepared_same_block_scalar_producer(
@@ -34115,16 +34108,7 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
           &bir_block,
           lhs_value,
           1);
-  const auto route1_lhs =
-      aarch64_codegen::route1_publication_source_producer_for_value(
-          block_context,
-          lhs_value,
-          1);
   if (prepared_lhs.has_value() ||
-      route1_lhs.status !=
-          aarch64_codegen::Route1PublicationSourceProducerStatus::NoProducer ||
-      route1_lhs.integer_constant_status !=
-          aarch64_codegen::Route1PublicationIntegerConstantStatus::NoProducer ||
       !aarch64_codegen::value_publication_may_read_register_index(
           block_context,
           lhs_value,
@@ -34137,14 +34121,7 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
           5)) {
     return fail("expected no-producer publication dependency query to fall back to prepared value home only");
   }
-  const auto route1_missing =
-      aarch64_codegen::route1_publication_source_producer_for_value(
-          block_context,
-          missing_value,
-          1);
-  if (route1_missing.status !=
-          aarch64_codegen::Route1PublicationSourceProducerStatus::NoProducer ||
-      prepare::find_prepared_same_block_scalar_producer(
+  if (prepare::find_prepared_same_block_scalar_producer(
           prepared.names,
           &prepared_lookups.edge_publication_source_producers,
           entry_label,
@@ -34157,7 +34134,7 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
           missing_value,
           1,
           2)) {
-    return fail("expected missing publication producer to fail closed in Route 1, prepared oracle, and consumer fallback");
+    return fail("expected missing publication producer to fail closed in prepared authority and consumer fallback");
   }
   const auto prepared_sum_before_producer =
       prepare::find_prepared_same_block_scalar_producer(
@@ -34167,14 +34144,7 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
           &bir_block,
           sum_value,
           0);
-  const auto route1_sum_before_producer =
-      aarch64_codegen::route1_publication_source_producer_for_value(
-          block_context,
-          sum_value,
-          0);
   if (prepared_sum_before_producer.has_value() ||
-      route1_sum_before_producer.status !=
-          aarch64_codegen::Route1PublicationSourceProducerStatus::NoProducer ||
       aarch64_codegen::value_publication_may_read_register_index(
           block_context,
           sum_value,
@@ -34198,26 +34168,26 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
       aarch64_codegen::make_block_lowering_context(route_only_function_context,
                                                    function_cf.blocks.front(),
                                                    0);
-  if (!aarch64_codegen::value_publication_may_read_register_index(
+  if (aarch64_codegen::value_publication_may_read_register_index(
           route_only_block_context,
           call->args.front(),
           1,
           2)) {
-    return fail("expected Route 1 source-producer fact to expose recursive register dependency without prepared producer lookup");
+    return fail("expected missing prepared producer authority to fail closed for lhs dependency");
   }
-  if (!aarch64_codegen::value_publication_may_read_register_index(
+  if (aarch64_codegen::value_publication_may_read_register_index(
           route_only_block_context,
           call->args.front(),
           1,
           3)) {
-    return fail("expected Route 1 source-producer dependency check to expose rhs register dependency");
+    return fail("expected missing prepared producer authority to fail closed for rhs dependency");
   }
   if (aarch64_codegen::value_publication_may_read_register_index(
           route_only_block_context,
           call->args.front(),
           1,
           5)) {
-    return fail("expected Route 1 source-producer dependency check to preserve unrelated-register negative");
+    return fail("expected missing prepared producer authority to preserve unrelated-register negative");
   }
 
   aarch64_codegen::BlockScalarLoweringState scalar_state;

@@ -9,7 +9,6 @@
 #include "../../../prealloc/publication_plans.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -150,6 +149,9 @@ prepared_same_block_publication_source_producer(
     const bir::Value& value,
     std::size_t before_instruction_index) {
   if (context.function.prepared == nullptr ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
       context.control_flow_block == nullptr ||
       context.bir_block == nullptr ||
       value.kind != bir::Value::Kind::Named ||
@@ -160,26 +162,9 @@ prepared_same_block_publication_source_producer(
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_same_block_scalar_producer(
-        context.function.prepared->names,
-        &context.function.prepared_lookups->edge_publication_source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        *value_name,
-        value.type,
-        before_instruction_index);
-  }
-  if (context.function.control_flow == nullptr) {
-    return std::nullopt;
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
   return prepare::find_prepared_same_block_scalar_producer(
       context.function.prepared->names,
-      &source_producers,
+      &context.function.prepared_lookups->edge_publication_source_producers,
       context.control_flow_block->block_label,
       context.bir_block,
       *value_name,
@@ -188,54 +173,6 @@ prepared_same_block_publication_source_producer(
 }
 
 }  // namespace
-
-[[nodiscard]] Route1PublicationSourceProducerView
-route1_publication_source_producer_for_value(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return {};
-  }
-
-  const auto route1_index = bir::route1_build_producer_index(*context.bir_block);
-  const auto route1_query = bir::Route1SameBlockProducerQuery{
-      .index = &route1_index,
-      .before_instruction_index =
-          std::min(before_instruction_index, context.bir_block->insts.size()),
-  };
-  auto view = Route1PublicationSourceProducerView{
-      .status = Route1PublicationSourceProducerStatus::NoProducer,
-      .integer_constant_status =
-          Route1PublicationIntegerConstantStatus::NoProducer,
-  };
-  const auto producer =
-      bir::route1_find_same_block_scalar_producer(route1_query, value);
-  if (!producer.has_value() ||
-      producer->record == nullptr ||
-      producer->instruction == nullptr ||
-      producer->produced_value == nullptr) {
-    return view;
-  }
-
-  view.status = Route1PublicationSourceProducerStatus::Available;
-  view.instruction = producer->instruction;
-  view.produced_value = producer->produced_value;
-  view.instruction_index = producer->instruction_index;
-  view.producer_kind = producer->record->kind;
-  view.materialization = producer->materialization;
-  if (producer->record->integer_constant) {
-    view.integer_constant_status =
-        Route1PublicationIntegerConstantStatus::Constant;
-    view.integer_constant = producer->record->integer_constant;
-  } else {
-    view.integer_constant_status =
-        Route1PublicationIntegerConstantStatus::NonConstant;
-  }
-  return view;
-}
 
 [[nodiscard]] SameBlockSelectProducer find_prepared_same_block_select_producer(
     const module::BlockLoweringContext& context,
@@ -467,22 +404,14 @@ build_current_block_join_prepared_query_routing(
   if (home != nullptr && value_has_current_block_entry_publication(context, *home)) {
     return prepared_value_home_reads_register_index(*home, register_index);
   }
-  const auto route1_producer =
-      route1_publication_source_producer_for_value(context,
-                                                   value,
-                                                   before_instruction_index);
-  const bir::Inst* producer = route1_producer.instruction;
-  auto producer_index = route1_producer.instruction_index;
-  if (!route1_producer) {
-    const auto producer_record = prepared_same_block_publication_source_producer(
-        context, value, before_instruction_index);
-    if (!producer_record.has_value()) {
-      return home != nullptr &&
-             prepared_value_home_reads_register_index(*home, register_index);
-    }
-    producer = producer_record->instruction;
-    producer_index = producer_record->instruction_index;
+  const auto producer_record = prepared_same_block_publication_source_producer(
+      context, value, before_instruction_index);
+  if (!producer_record.has_value()) {
+    return home != nullptr &&
+           prepared_value_home_reads_register_index(*home, register_index);
   }
+  const bir::Inst* producer = producer_record->instruction;
+  const auto producer_index = producer_record->instruction_index;
   if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
     auto operand = cast->operand;
     operand.type = cast->operand.type;

@@ -8,22 +8,25 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Just Finished
 
-- Plan Step 1 migrated the AArch64 indirect-callee stored-value family in
-  `calls.cpp` to direct prepared authority. The prepared lookup now validates
-  current-block identity, store/load instruction bounds and ordering, prepared
-  access indices, instruction kinds, and exact loaded/stored values itself;
-  the Route3 agreement helper and `Route3Identity` discriminator were retired,
-  and missing or inconsistent authority fails closed.
+- Plan Step 1 migrated the AArch64 dispatch publication-source producer family
+  in `dispatch_producers.cpp` to the common named/prepared same-block producer
+  handoff. The consumer no longer builds or queries a Route1 producer index;
+  the Route1-specific public view was retired, coherent owned prepared lookups
+  drive recursive dependency checks directly, and missing or inconsistent
+  lookup authority fails closed.
 
 ## Suggested Next
 
 - Continue Plan Step 1 with the next supervisor-selected AArch64 dispatch
-  authority family, keeping the separate call-boundary Route4 family out of
+  authority family, keeping comparison, call-boundary, and ALU families out of
   this packet.
 
 ## Watchouts
 
-- The separate call-boundary Route4 family was not changed by this packet.
+- The separate comparison, call-boundary, and ALU route families were not
+  changed by this packet.
+- The focused dispatch test now verifies that missing prepared producer records
+  do not fall back to Route1 facts.
 - The focused baseline retains the known scalar-FP literal-add failure (test
   354, missing `bl printf`) and has no additional failures; no expectations
   changed.
