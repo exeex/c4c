@@ -69,6 +69,32 @@ Route5CfgEdgePublicationRecord route5_cfg_edge_publication_record(
     return record;
   }
 
+  std::size_t exact_destination_count = 0;
+  bool saw_destination_name = false;
+  for (const auto& inst : successor_block->insts) {
+    const auto* phi = std::get_if<PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    if (phi->result.kind != Value::Kind::Named ||
+        phi->result.name != destination_value.name) {
+      continue;
+    }
+    saw_destination_name = true;
+    if (phi->result.type == destination_value.type) {
+      ++exact_destination_count;
+    }
+  }
+  if (exact_destination_count > 1) {
+    record.status = Route5PublicationStatus::AmbiguousPublication;
+    return record;
+  }
+  if (exact_destination_count == 0) {
+    record.status = saw_destination_name ? Route5PublicationStatus::NoMatch
+                                         : Route5PublicationStatus::MissingPublication;
+    return record;
+  }
+
   for (std::size_t instruction_index = 0;
        instruction_index < successor_block->insts.size();
        ++instruction_index) {
@@ -82,29 +108,40 @@ Route5CfgEdgePublicationRecord route5_cfg_edge_publication_record(
       continue;
     }
     if (phi->result.type != destination_value.type) {
-      record.status = Route5PublicationStatus::NoMatch;
-      return record;
+      continue;
     }
     record.destination_instruction = &inst;
     record.destination_phi = phi;
     record.destination_instruction_index = instruction_index;
+    record.destination_value_ptr = &phi->result;
     record.destination_value =
         route1_source_value_identity(phi->result, destination_value_name_id);
     record.destination_value_name = phi->result.name;
     record.destination_value_type = phi->result.type;
 
+    const PhiIncoming* matched_incoming = nullptr;
     for (const auto& incoming : phi->incomings) {
-      const bool id_matches =
+      const bool both_ids_available =
           incoming.label_id != kInvalidBlockLabel &&
-          predecessor_block->label_id != kInvalidBlockLabel &&
-          incoming.label_id == predecessor_block->label_id;
-      const bool label_matches =
-          !incoming.label.empty() && incoming.label == predecessor_block->label;
-      if (!id_matches && !label_matches) {
+          predecessor_block->label_id != kInvalidBlockLabel;
+      const bool matches = both_ids_available
+          ? incoming.label_id == predecessor_block->label_id
+          : !incoming.label.empty() && incoming.label == predecessor_block->label;
+      if (!matches) {
         continue;
       }
+      if (matched_incoming != nullptr) {
+        record.available = false;
+        record.status = Route5PublicationStatus::AmbiguousPublication;
+        return record;
+      }
+      matched_incoming = &incoming;
+    }
+    if (matched_incoming != nullptr) {
+      const auto& incoming = *matched_incoming;
       record.source_value =
           route1_source_value_identity(incoming.value, source_value_name_id);
+      record.source_value_ptr = &incoming.value;
       record.source_value_kind = incoming.value.kind;
       record.source_value_type = incoming.value.type;
       if (incoming.value.kind == Value::Kind::Named) {
@@ -130,13 +167,18 @@ Route5CfgEdgePublicationRecord route5_cfg_edge_publication_record(
         record.source_producer_block_label_id =
             producer->record->producer_instruction.block_label_id;
         record.source_producer_instruction_index = producer->instruction_index;
-        if (record.source_producer_kind == Route5PublicationSourceKind::LoadLocal) {
+        if (record.source_producer_kind == Route5PublicationSourceKind::LoadLocal ||
+            record.source_producer_kind == Route5PublicationSourceKind::LoadGlobal) {
           const auto route3_index =
               route3_build_memory_access_index(*predecessor_block);
+          const auto memory_kind =
+              record.source_producer_kind == Route5PublicationSourceKind::LoadLocal
+                  ? Route3MemoryAccessNodeKind::LoadLocal
+                  : Route3MemoryAccessNodeKind::LoadGlobal;
           const auto* memory_access = route3_find_memory_access_record(
               route3_index,
               producer->instruction_index,
-              Route3MemoryAccessNodeKind::LoadLocal);
+              memory_kind);
           if (memory_access == nullptr) {
             record.status = Route5PublicationStatus::MissingSourceMemoryAccess;
             return record;

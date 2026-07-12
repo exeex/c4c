@@ -146,6 +146,10 @@ enum class BirCfgEdgePublicationSourceStatus {
   MissingPublication,
   MissingSourceValue,
   MissingSourceProducer,
+  MissingSourceMemoryAccess,
+  IncompleteSourceMemoryAccess,
+  MismatchedRequest,
+  AmbiguousPublication,
 };
 
 struct BirBlockEntryPublicationIdentity {
@@ -197,8 +201,6 @@ struct BirCfgEdgePublicationSourceIdentity {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
-// Legacy request shape retained for source compatibility with builders that
-// prepare edge-copy facts.  The public identity query does not consume it.
 struct BirCfgEdgePublicationSourceRequest {
   const bir::Block* predecessor_block = nullptr;
   std::string_view predecessor_label;
@@ -478,8 +480,7 @@ find_bir_block_entry_publication_identity(
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedEdgeCopySourceFacts& prepared);
+    BirCfgEdgePublicationSourceRequest request);
 
 [[nodiscard]] BirCurrentBlockJoinSourceIdentity
 find_bir_current_block_join_source_identity(

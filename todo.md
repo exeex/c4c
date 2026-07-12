@@ -3,86 +3,58 @@
 Status: Active
 Source Idea Path: ideas/open/719_bir_cfg_edge_publication_source_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize request loss and independent BIR authority
+Current Step ID: 2
+Current Step Title: Implement independent typed CFG identity resolution
 
 ## Just Finished
 
-- Completed Plan Step 1 localization without implementation changes.
-- The first discarded `BirCfgEdgePublicationSourceRequest` fact is at
-  `prepared_and_bir_cfg_edge_publication_source_identity_match`: the helper
-  accepts `request` by value, never reads it, prepares facts from its separate
-  label/value-id arguments, and calls the legacy
-  `find_bir_cfg_edge_publication_source_identity(names, prepared)` overload.
-  That overload has no request or BIR blocks and derives every returned field
-  from `PreparedEdgeCopySourceFacts`, so prepared facts currently act as both
-  sides of the claimed comparison. The owning common repair seam is the public
-  query boundary in `src/backend/mir/query.hpp/.cpp`; the test helper should
-  pass the request to that boundary rather than select BIR identity itself.
-- Independent BIR CFG authority map:
-  - predecessor and successor: `request.predecessor_block` and
-    `request.successor_block`, with each `Block::label_id` as semantic authority
-    and label text only as compatibility authority; request id/text must agree
-    when supplied
-  - destination: the leading `PhiInst` in the successor whose `result` matches
-    request destination name and type; its owning `Inst*`, `PhiInst*`, index,
-    `Value*`, value identity, name, and type are authoritative; request pointer,
-    id/name/text/type are constraints, not facts copied into the result
-  - source: the matching `PhiIncoming` selected by predecessor label id (text
-    fallback only when ids are unavailable); `PhiIncoming::value` owns source
-    pointer, kind, name, type, and immediate identity
-  - producer instruction: Route 1's predecessor-block producer index and
-    `route1_find_same_block_scalar_producer` own the exact `Inst*`, produced
-    `Value*`, instruction index, block label id, and generalized kind for
-    `LoadLocalInst`, `LoadGlobalInst`, `CastInst`, `BinaryInst`, and
-    `SelectInst`; named sources without an exact producer fail closed, while
-    immediate sources require no instruction
-  - producer memory: Route 3's predecessor-block memory-access index at that
-    exact producer instruction owns instruction pointer/index, node/base kind,
-    local slot or global symbol id/name, result value, address space,
-    volatility, offset, size, alignment, and provenance. Load-local and
-    load-global are the memory-producing shapes; cast/binary/select must not
-    synthesize memory identity.
-- Existing Route 5 CFG authority (`route5_cfg_edge_publication_record`, or the
-  indexed `route5_find_cfg_edge_publication`) already performs the edge/phi,
-  incoming-source, and Route 1 producer resolution. Its typed negative owner is
-  `Route5PublicationStatus`: missing predecessor/successor/destination,
-  missing publication, explicit `NoSource`, missing source producer, missing
-  or incomplete memory access, and destination `NoMatch`. The index owns
-  stale/mismatched edge rejection and must detect duplicate exact matches
-  instead of choosing by row order; these states must remain unavailable when
-  translated to MIR status. A request with absent or internally inconsistent
-  block/destination keys must fail before lookup. An unavailable named source
-  retains destination/source evidence but remains `MissingSourceProducer`.
+- Completed Plan Step 2 independent typed CFG identity resolution.
+- Replaced the prepared-fact-backed public overload with a
+  `BirCfgEdgePublicationSourceRequest` consumer. It validates block ids/text and
+  destination pointer/name/type constraints, resolves the exact leading phi and
+  predecessor incoming through Route 5, and publishes BIR-owned destination,
+  incoming, producer-instruction, and memory-access pointers and identities.
+- Extended typed MIR failure status for mismatched requests, ambiguous
+  publications, and missing/incomplete source memory; unavailable Route 5
+  records remain unavailable rather than being collapsed to success.
+- Generalized Route 5 memory-source attachment to both load-local and
+  load-global through the exact Route 3 producer instruction, and reject
+  duplicate matching destination phis or predecessor incomings without using
+  row order.
+- Updated the focused helper so prepared facts and independently established
+  BIR identities are compared instead of adapting prepared facts twice.
+- Corrected the Step 2 review blockers: Route 5 now performs a full leading-phi
+  uniqueness pass before selecting a destination, valid incoming label IDs
+  exclusively govern identity when both sides provide them, and the MIR query
+  distinguishes duplicate-publication ambiguity from destination key/type
+  mismatch.
+- Added direct public-query negatives proving duplicate exact destination phi
+  rejection, conflicting incoming-ID rejection despite matching text, and
+  mismatch-versus-ambiguity status separation.
+- Added the explicit Route 5 `AmbiguousPublication` status and use it for both
+  duplicate exact destination phis and duplicate matching predecessor
+  incomings. The MIR public query preserves that status, and a direct negative
+  now proves duplicate incoming ambiguity separately from key/type mismatch.
 
 ## Suggested Next
 
-- Implement Step 2 at the public MIR query boundary: add a request-consuming
-  overload that validates request keys, resolves one exact Route 5 BIR CFG
-  record, translates it into `BirCfgEdgePublicationSourceIdentity`, and only
-  then lets the test compare that independent result with prepared facts.
+- Investigate the first remaining focused failure:
+  `store-source producer metadata should publish for complete prepared agreement`.
+  It occurs after all CFG edge-publication source identity assertions now pass
+  and is outside the Step 2 query/Route 5 edge slice.
 
 ## Watchouts
 
-- Bounded semantic repair rule: resolve by exact block identity plus phi
-  destination identity, exact predecessor incoming, exact Route 1 producer,
-  and (for load-local/load-global only) exact Route 3 memory record. Require a
-  unique match and preserve the most specific typed negative state. Never use
-  prepared facts, fixture row order, names alone when valid ids exist, or a
-  load-local testcase branch to choose the BIR result.
-- Route 5 currently attaches Route 3 memory identity only for load-local;
-  load-global is classified as a producer but returned as non-memory. Step 2
-  must either generalize the common Route 5 memory attachment to both load
-  kinds or report that API gap rather than filling global-memory fields from
-  prepared facts.
-- `BirCfgEdgePublicationSourceStatus` is less expressive than Route 5 for
-  `NoSource`, `NoMatch`, missing/incomplete memory, stale/mismatch, and
-  duplicate/ambiguous records. Translation must not collapse any such state
-  to `Available`; extend the typed MIR status if preserving distinctions is
-  required by the focused negative contract.
+- The focused test remains red only at the later store-source prepared-agreement
+  assertion. Do not widen this packet into prepared store-source publication.
+- Route 5 source/destination pointer fields refer to the authoritative values
+  owned inside the phi instruction, not the request's compatibility value.
 
 ## Proof
 
-- Per the supervisor packet, no build or test was run for this read-only
-  localization; the existing focused failure baseline and canonical logs were
-  preserved.
+- Ran the exact delegated command:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' 2>&1 | tee test_after.log`.
+- Build passed. The focused test advanced past the Step 2 edge identity checks
+  (including duplicate destination, duplicate incoming, conflicting-ID, and
+  typed mismatch negatives) and failed at `store-source producer metadata
+  should publish for complete prepared agreement`. Proof log: `test_after.log`.

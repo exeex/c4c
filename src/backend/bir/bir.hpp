@@ -1984,6 +1984,7 @@ enum class Route5PublicationStatus : unsigned char {
   MissingSourceMemoryAccess,
   IncompleteSourceMemoryAccess,
   NoMatch,
+  AmbiguousPublication,
 };
 
 [[nodiscard]] constexpr std::string_view route5_publication_status_name(
@@ -2015,6 +2016,8 @@ enum class Route5PublicationStatus : unsigned char {
       return "incomplete_source_memory_access";
     case Route5PublicationStatus::NoMatch:
       return "no_match";
+    case Route5PublicationStatus::AmbiguousPublication:
+      return "ambiguous_publication";
   }
   return "unavailable";
 }
@@ -2054,11 +2057,13 @@ struct Route5CfgEdgePublicationRecord {
   const Inst* destination_instruction = nullptr;
   const PhiInst* destination_phi = nullptr;
   std::size_t destination_instruction_index = 0;
+  const Value* destination_value_ptr = nullptr;
   Route1SourceValueIdentity destination_value;
   std::string_view destination_value_name;
   ValueNameId destination_value_name_id = kInvalidValueName;
   TypeKind destination_value_type = TypeKind::Void;
   Route1SourceValueIdentity source_value;
+  const Value* source_value_ptr = nullptr;
   std::string_view source_value_name;
   ValueNameId source_value_name_id = kInvalidValueName;
   Value::Kind source_value_kind = Value::Kind::Immediate;

@@ -788,116 +788,150 @@ find_bir_block_entry_publication_identity(
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedEdgeCopySourceFacts& prepared) {
-  BirCfgEdgePublicationSourceIdentity result{
-      .predecessor_label_id = prepared.predecessor_label,
-      .successor_label_id = prepared.successor_label,
-      .destination_value_id = prepared.destination_value_id,
-      .destination_value_name_id = prepared.destination_value_name,
-      .destination_value_type = prepared.destination_value.type,
-      .source_value_id = prepared.source_value_id,
-      .source_value_name_id = prepared.source_value_name,
-      .source_value_kind = prepared.source_value_kind,
-      .source_value_type = prepared.source_value.type,
-  };
+    BirCfgEdgePublicationSourceRequest request) {
+  BirCfgEdgePublicationSourceIdentity result;
   auto fail = [&](BirCfgEdgePublicationSourceStatus status) {
     result.status = status;
     return result;
   };
-  if (prepared.status != prepare::PreparedEdgeCopySourceFactsStatus::Available) {
-    switch (prepared.status) {
-      case prepare::PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel:
-        return fail(BirCfgEdgePublicationSourceStatus::MissingPredecessorLabel);
-      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel:
-        return fail(BirCfgEdgePublicationSourceStatus::MissingSuccessorLabel);
-      case prepare::PreparedEdgeCopySourceFactsStatus::MissingDestinationValue:
-        return fail(BirCfgEdgePublicationSourceStatus::MissingDestinationValue);
-      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceValue:
-        return fail(BirCfgEdgePublicationSourceStatus::MissingSourceValue);
-      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer:
-      case prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess:
-      case prepare::PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
-        return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
-      default:
-        return fail(BirCfgEdgePublicationSourceStatus::MissingPublication);
-    }
+  if (request.predecessor_block == nullptr) {
+    return fail(BirCfgEdgePublicationSourceStatus::MissingPredecessorLabel);
   }
-  if (prepared.publication == nullptr || prepared.move == nullptr ||
-      !prepared.source_producer_block_label.has_value() ||
-      !prepared.source_producer_instruction_index.has_value()) {
-    return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
+  if (!predecessor_block_label_matches(request)) {
+    return fail(BirCfgEdgePublicationSourceStatus::MismatchedRequest);
   }
-  result.destination_value_name =
-      prepare::prepared_value_name(names, prepared.destination_value_name);
-  result.destination_value_identity = SameBlockValueIdentity{
-      .name = result.destination_value_name,
-      .type = prepared.destination_value.type,
-  };
-  result.source_value_name =
-      prepare::prepared_value_name(names, prepared.source_value_name);
-  result.source_value_identity = SameBlockValueIdentity{
-      .name = result.source_value_name,
-      .type = prepared.source_value.type,
-      .immediate_constant =
-          prepared.source_value_kind == bir::Value::Kind::Immediate
-              ? std::optional<std::int64_t>{prepared.source_value.immediate}
-              : std::nullopt,
-  };
-  result.source_producer_block_label_id = *prepared.source_producer_block_label;
-  result.source_producer_instruction_index =
-      prepared.source_producer_instruction_index;
-  switch (prepared.source_producer_kind) {
-    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+  if (request.successor_block == nullptr) {
+    return fail(BirCfgEdgePublicationSourceStatus::MissingSuccessorLabel);
+  }
+  if (!successor_block_label_matches(request)) {
+    return fail(BirCfgEdgePublicationSourceStatus::MismatchedRequest);
+  }
+  const auto destination_name = destination_value_name(request);
+  const auto destination_type = destination_value_type(request);
+  if (request.destination_value == nullptr || destination_name.empty() ||
+      destination_type == bir::TypeKind::Void) {
+    return fail(BirCfgEdgePublicationSourceStatus::MissingDestinationValue);
+  }
+  if (request.destination_value->kind != bir::Value::Kind::Named ||
+      request.destination_value->name != destination_name ||
+      request.destination_value->type != destination_type) {
+    return fail(BirCfgEdgePublicationSourceStatus::MismatchedRequest);
+  }
+
+  const auto edge = bir::route5_cfg_edge_publication_record(
+      request.predecessor_block, request.successor_block,
+      *request.destination_value, request.destination_value_name_id);
+  result.predecessor_label = edge.predecessor_label;
+  result.predecessor_label_id = edge.predecessor_label_id;
+  result.successor_label = edge.successor_label;
+  result.successor_label_id = edge.successor_label_id;
+  result.destination_instruction = edge.destination_instruction;
+  result.destination_phi = edge.destination_phi;
+  result.destination_instruction_index = edge.destination_instruction_index;
+  result.destination_value = edge.destination_value_ptr;
+  result.destination_value_id = request.destination_value_id;
+  result.destination_value_name = edge.destination_value_name;
+  result.destination_value_name_id = request.destination_value_name_id;
+  result.destination_value_type = edge.destination_value_type;
+  result.destination_value_identity = edge.destination_value_ptr != nullptr
+      ? same_block_value_identity(*edge.destination_value_ptr)
+      : SameBlockValueIdentity{};
+  result.source_value = edge.source_value_ptr;
+  result.source_value_name = edge.source_value_name;
+  result.source_value_name_id = edge.source_value_name_id;
+  result.source_value_kind = edge.source_value_kind;
+  result.source_value_type = edge.source_value_type;
+  result.source_value_identity = edge.source_value_ptr != nullptr
+      ? same_block_value_identity(*edge.source_value_ptr)
+      : SameBlockValueIdentity{};
+  result.source_producer_block_label = request.predecessor_block->label;
+  result.source_producer_block_label_id = edge.source_producer_block_label_id;
+  result.source_producer_instruction_index = edge.source_producer_instruction_index;
+
+  switch (edge.status) {
+    case bir::Route5PublicationStatus::MissingPredecessor:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingPredecessorLabel);
+    case bir::Route5PublicationStatus::MissingSuccessor:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSuccessorLabel);
+    case bir::Route5PublicationStatus::MissingDestination:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingDestinationValue);
+    case bir::Route5PublicationStatus::MissingSourceValue:
+    case bir::Route5PublicationStatus::NoSource:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceValue);
+    case bir::Route5PublicationStatus::MissingSourceProducer:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
+    case bir::Route5PublicationStatus::MissingSourceMemoryAccess:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceMemoryAccess);
+    case bir::Route5PublicationStatus::IncompleteSourceMemoryAccess:
+      return fail(BirCfgEdgePublicationSourceStatus::IncompleteSourceMemoryAccess);
+    case bir::Route5PublicationStatus::NoMatch:
+      return fail(BirCfgEdgePublicationSourceStatus::MismatchedRequest);
+    case bir::Route5PublicationStatus::AmbiguousPublication:
+      return fail(BirCfgEdgePublicationSourceStatus::AmbiguousPublication);
+    case bir::Route5PublicationStatus::Unavailable:
+      return fail(BirCfgEdgePublicationSourceStatus::AmbiguousPublication);
+    case bir::Route5PublicationStatus::MissingPublication:
+      return fail(BirCfgEdgePublicationSourceStatus::MissingPublication);
+    case bir::Route5PublicationStatus::Available:
+    case bir::Route5PublicationStatus::MemorySource:
+      break;
+  }
+  switch (edge.source_producer_kind) {
+    case bir::Route5PublicationSourceKind::Binary:
       result.source_producer_kind = SameBlockProducerKind::Binary;
       break;
-    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+    case bir::Route5PublicationSourceKind::Cast:
       result.source_producer_kind = SameBlockProducerKind::Cast;
       break;
-    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+    case bir::Route5PublicationSourceKind::SelectMaterialization:
       result.source_producer_kind = SameBlockProducerKind::Select;
       break;
-    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+    case bir::Route5PublicationSourceKind::LoadLocal:
       result.source_producer_kind = SameBlockProducerKind::LoadLocal;
       break;
-    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+    case bir::Route5PublicationSourceKind::LoadGlobal:
       result.source_producer_kind = SameBlockProducerKind::LoadGlobal;
       break;
-    default:
+    case bir::Route5PublicationSourceKind::Immediate:
+      result.source_producer_kind = SameBlockProducerKind::Unknown;
+      break;
+    case bir::Route5PublicationSourceKind::Unknown:
       return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
   }
+  result.source_producer.inst = edge.source_producer_instruction;
   result.source_producer.kind = result.source_producer_kind;
   result.source_producer.instruction_index =
-      *prepared.source_producer_instruction_index;
+      edge.source_producer_instruction_index.value_or(0);
+  result.source_producer.block_label = request.predecessor_block->label;
+  result.source_producer.before_instruction_index =
+      request.predecessor_block->insts.size();
   result.source_producer.produced_value = result.source_value_identity;
-  result.source_producer.materialization_available = true;
-  if (prepared.source_memory_access_status ==
-      prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available) {
-    if (prepared.source_memory_access == nullptr) {
-      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
-    }
+  result.source_producer.materialization_available =
+      edge.source_producer_kind != bir::Route5PublicationSourceKind::Immediate;
+  if (edge.source_memory_identity_available) {
+    const auto& memory = edge.source_memory_access;
     result.source_memory_access.status = bir::BirViewStatus::Available;
-    result.source_memory_access.instruction_index =
-        prepared.source_memory_access->inst_index;
+    result.source_memory_access.inst = memory.instruction;
+    result.source_memory_access.instruction_index = memory.instruction_index;
+    result.source_memory_access.block_label = memory.block_label;
     result.source_memory_access.result_value_name = result.source_value_name;
-    result.source_memory_access.address_space = prepared.source_memory_address_space;
-    result.source_memory_access.is_volatile = prepared.source_memory_is_volatile;
-    result.source_memory_access.byte_offset = prepared.source_memory_byte_offset;
-    result.source_memory_access.size_bytes = prepared.source_memory_size_bytes;
-    result.source_memory_access.align_bytes = prepared.source_memory_align_bytes;
-    if (result.source_producer_kind == SameBlockProducerKind::LoadLocal &&
-        prepared.source_memory_frame_slot_id.has_value()) {
+    result.source_memory_access.address_space = memory.address_space;
+    result.source_memory_access.is_volatile = memory.is_volatile;
+    result.source_memory_access.byte_offset = memory.byte_offset;
+    result.source_memory_access.size_bytes = memory.size_bytes;
+    result.source_memory_access.align_bytes = memory.align_bytes;
+    if (memory.node_kind == bir::Route3MemoryAccessNodeKind::LoadLocal) {
       result.source_memory_access.node_kind = BirMemoryAccessNodeKind::LoadLocal;
       result.source_memory_access.base_kind = BirMemoryAccessBaseKind::LocalSlot;
-      result.source_memory_access.local_slot_id =
-          static_cast<c4c::SlotNameId>(*prepared.source_memory_frame_slot_id);
-    } else if (result.source_producer_kind == SameBlockProducerKind::LoadGlobal &&
-               prepared.source_memory_symbol_name.has_value()) {
+      result.source_memory_access.local_slot_name = memory.local_slot_name;
+      result.source_memory_access.local_slot_id = memory.local_slot_id;
+    } else if (memory.node_kind == bir::Route3MemoryAccessNodeKind::LoadGlobal) {
       result.source_memory_access.node_kind = BirMemoryAccessNodeKind::LoadGlobal;
       result.source_memory_access.base_kind = BirMemoryAccessBaseKind::GlobalSymbol;
-      result.source_memory_access.global_name_id = *prepared.source_memory_symbol_name;
+      result.source_memory_access.global_name = memory.global_name;
+      result.source_memory_access.global_name_id = memory.global_name_id;
     } else {
-      return fail(BirCfgEdgePublicationSourceStatus::MissingSourceProducer);
+      return fail(BirCfgEdgePublicationSourceStatus::IncompleteSourceMemoryAccess);
     }
   }
   result.available = true;
