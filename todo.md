@@ -1,26 +1,23 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/723_pre_regalloc_value_constraint_carrier_research.md
+Source Idea Path: ideas/open/724_prepared_inline_asm_explicit_register_allocation_constraints.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Integrate and review the research result
+Current Step ID: 1
+Current Step Title: Localize and preserve one semantic explicit-register operand
 
 ## Just Finished
 
-- Plan Step 4 created `docs/pre_regalloc_value_constraints/index.md`, linked and summarized all three required answers, and recorded the coherent prepared-ingress / normalized-constraint / common-enforcement conclusion plus the narrow inline-assembly follow-up and stop condition.
-- Cross-document, acceptance-criteria, and reject-signal review found no contradiction or triggered reject signal; the directory has exactly the required four Markdown files.
+- Closed completed documentation-only idea 723 after its matching regression guard passed, created the separate research-supported idea 724, and activated its narrow RV64 implementation runbook.
 
 ## Suggested Next
 
-- Ask the plan owner to decide research-idea closure and whether to create the separately scoped prepared inline-assembly explicit-register constraint implementation idea.
+- Execute Plan Step 1 by tracing one supported RV64 explicit-register operand through frontend/lowering metadata and stopping if preservation requires broad inline-assembly redesign.
 
 ## Watchouts
 
-- The research conclusion does not itself authorize implementation. Any follow-up must remain a separate idea and stop if preserving explicit-register semantics requires broad inline-assembly redesign.
+- Do not substitute an arbitrary value-name register map or allocator-pressure fixture if the semantic spelling is not structurally available.
 
 ## Proof
 
-- No build was required for this documentation-only packet.
-- Confirmed the directory contains exactly `index.md` and the three required numbered Markdown files; every relative index link resolves.
-- Reviewed all three answers against idea 723 acceptance criteria and reject signals, confirmed decision/stop-condition consistency, and ran `git diff --check` successfully.
+- Close-time regression guard compared matching six-test logs: 3 passed / 3 accepted failures before and after, with no new failures; result PASS using equal-pass allowance for documentation-only closure.

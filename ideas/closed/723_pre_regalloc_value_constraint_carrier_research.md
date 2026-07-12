@@ -1,6 +1,6 @@
 # Pre-Regalloc Value Constraint Carrier Research
 
-Status: Open
+Status: Completed
 Type: Research and architecture documentation
 Parent: `ideas/open/722_direct_edge_publication_available_move_contract.md`
 Related:
@@ -9,6 +9,16 @@ Related:
 - `ideas/open/722_direct_edge_publication_available_move_contract.md`
 - `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
 Owning Layer: semantic BIR, liveness, and common pre-regalloc constraint production
+
+## Completion Note (2026-07-12)
+
+Completed and accepted. The four required documents under
+`docs/pre_regalloc_value_constraints/` establish the existing flow, choose
+prepared semantic ingress plus normalized regalloc enforcement, and define a
+deterministic explicit-register inline-assembly proof with a narrow follow-up
+and stop condition. The matching six-test regression guard passed with no new
+failures. Follow-up implementation is tracked separately in
+`ideas/open/724_prepared_inline_asm_explicit_register_allocation_constraints.md`.
 
 ## Goal
 
