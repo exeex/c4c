@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2.5
-Current Step Title: Migrate memory consumers
+Current Step ID: 2.6
+Current Step Title: Migrate remaining call consumers
 
 ## Just Finished
 
