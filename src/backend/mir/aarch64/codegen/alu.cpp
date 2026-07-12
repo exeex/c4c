@@ -1351,132 +1351,153 @@ find_prepared_load_local_source_producer(
   return reg;
 }
 
-[[nodiscard]] std::optional<bir::Route8ReturnChainRecord>
-find_route8_return_chain_record(
+struct PreparedReturnChainFacts {
+  const prepare::PreparedValueHome* terminal_home = nullptr;
+  const prepare::PreparedValueHome* next_operand_home = nullptr;
+};
+
+[[nodiscard]] std::optional<PreparedReturnChainFacts>
+find_prepared_return_chain_facts(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    const bir::Value& chain_value,
-    c4c::ValueNameId chain_value_name) {
-  if (context.function.bir_function == nullptr || context.bir_block == nullptr) {
+    const prepare::PreparedValueHome& result_home,
+    bir::TypeKind result_type) {
+  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.function.value_locations == nullptr) {
     return std::nullopt;
   }
 
-  const auto index =
-      bir::route8_build_return_chain_index(*context.function.bir_function);
-  const auto key =
-      bir::route8_return_chain_value_key(context.function.bir_function,
-                                         *context.bir_block,
-                                         instruction_index,
-                                         chain_value,
-                                         chain_value_name);
-  const auto record = bir::route8_find_return_chain_record(index, key);
-  if (!record.available ||
-      record.status != bir::Route8ReturnChainStatus::Available) {
-    if (record.status == bir::Route8ReturnChainStatus::NoMatch &&
-        chain_value_name != c4c::kInvalidValueName) {
-      const auto bir_identity_key =
-          bir::route8_return_chain_value_key(context.function.bir_function,
-                                             *context.bir_block,
-                                             instruction_index,
-                                             chain_value,
-                                             c4c::kInvalidValueName);
-      const auto bir_identity_record =
-          bir::route8_find_return_chain_record(index, bir_identity_key);
-      if (bir_identity_record.available &&
-          bir_identity_record.status == bir::Route8ReturnChainStatus::Available) {
-        return bir_identity_record;
+  const auto generated_lookups =
+      context.function.prepared_lookups == nullptr &&
+              context.function.control_flow != nullptr
+          ? std::optional<prepare::PreparedFunctionLookups>{
+                prepare::make_prepared_function_lookups(
+                    *context.function.prepared, *context.function.control_flow)}
+          : std::nullopt;
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : generated_lookups.has_value()
+                ? &generated_lookups->edge_publication_source_producers
+                : nullptr;
+  if (source_producers == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedValueHome* current = &result_home;
+  const prepare::PreparedValueHome* next_operand_home = nullptr;
+  auto current_instruction_index = instruction_index;
+  for (std::size_t depth = 0; depth <= context.bir_block->insts.size(); ++depth) {
+    if (find_return_abi_register(context,
+                                 current->value_id,
+                                 current->value_name,
+                                 result_type)
+            .has_value()) {
+      return PreparedReturnChainFacts{
+          .terminal_home = current,
+          .next_operand_home = next_operand_home,
+      };
+    }
+
+    const auto* handoff = prepare::find_indexed_prepared_move_bundle(
+        context.function.move_bundle_lookups,
+        context.function.value_locations,
+        prepare::PreparedMovePhase::BeforeInstruction,
+        context.block_index,
+        current_instruction_index + 1);
+    if (handoff == nullptr) {
+      return std::nullopt;
+    }
+    const prepare::PreparedMoveResolution* chain_move = nullptr;
+    for (const auto& move : handoff->moves) {
+      if (move.from_value_id != current->value_id ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value) {
+        continue;
+      }
+      if (chain_move != nullptr) {
+        return std::nullopt;
+      }
+      chain_move = &move;
+    }
+    if (chain_move == nullptr || chain_move->to_value_id == 0) {
+      return std::nullopt;
+    }
+    const auto* next_home = prepare::find_indexed_prepared_value_home(
+        context.function.value_home_lookups,
+        context.function.value_locations,
+        chain_move->to_value_id);
+    if (next_home == nullptr || next_home->value_name == c4c::kInvalidValueName) {
+      return std::nullopt;
+    }
+    const auto producer = prepare::find_prepared_same_block_scalar_producer(
+        context.function.prepared->names,
+        source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        next_home->value_name,
+        result_type,
+        current_instruction_index + 2);
+    const auto* binary = producer.has_value()
+                             ? std::get_if<bir::BinaryInst>(producer->instruction)
+                             : nullptr;
+    if (binary == nullptr || producer->instruction_index != current_instruction_index + 1 ||
+        producer->producer.kind !=
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
+      return std::nullopt;
+    }
+    const auto result_name = prepare::resolve_prepared_value_name_id(
+        context.function.prepared->names, binary->result.name);
+    if (result_name != next_home->value_name) {
+      return std::nullopt;
+    }
+    const auto lhs_name = prepare::resolve_prepared_value_name_id(
+        context.function.prepared->names, binary->lhs.name);
+    const auto rhs_name = prepare::resolve_prepared_value_name_id(
+        context.function.prepared->names, binary->rhs.name);
+    const bir::Value* other = nullptr;
+    if (lhs_name == current->value_name && rhs_name != current->value_name) {
+      other = &binary->rhs;
+    } else if (rhs_name == current->value_name && lhs_name != current->value_name) {
+      other = &binary->lhs;
+    } else {
+      return std::nullopt;
+    }
+    if (depth == 0 && other->kind == bir::Value::Kind::Named) {
+      next_operand_home = find_named_value_home(*other, context.function);
+      if (next_operand_home == nullptr) {
+        return std::nullopt;
       }
     }
-    return std::nullopt;
+    current = next_home;
+    current_instruction_index = producer->instruction_index;
   }
-  return record;
-}
-
-[[maybe_unused, nodiscard]] bir::Route1SourceValueIdentity
-find_route8_return_chain_terminal_value(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    const bir::Value& chain_value,
-    c4c::ValueNameId chain_value_name) {
-  const auto record = find_route8_return_chain_record(
-      context, instruction_index, chain_value, chain_value_name);
-  if (!record.has_value() || !record->terminal_return_value) {
-    return {};
-  }
-  return record->terminal_return_value;
-}
-
-[[maybe_unused, nodiscard]] bir::Route1SourceValueIdentity
-find_route8_return_chain_next_operand_value(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    const bir::Value& chain_value,
-    c4c::ValueNameId chain_value_name) {
-  const auto record = find_route8_return_chain_record(
-      context, instruction_index, chain_value, chain_value_name);
-  if (!record.has_value() || !record->next_operand_value) {
-    return {};
-  }
-  return record->next_operand_value;
-}
-
-[[nodiscard]] const prepare::PreparedValueHome* find_route8_identity_value_home(
-    const module::BlockLoweringContext& context,
-    const bir::Route1SourceValueIdentity& identity) {
-  if (!identity || context.function.value_locations == nullptr) {
-    return nullptr;
-  }
-
-  auto value_name = identity.name_id;
-  // Route 8 is the semantic return-chain source. Prepared access here is
-  // bounded to translating that BIR identity into the existing target value
-  // home; it must not consult prepared return-chain fallback facts.
-  if (value_name == c4c::kInvalidValueName &&
-      identity.value != nullptr &&
-      identity.value->kind == bir::Value::Kind::Named &&
-      context.function.prepared != nullptr) {
-    value_name = prepare::resolve_prepared_value_name_id(
-                     context.function.prepared->names, identity.value->name)
-                     .value_or(c4c::kInvalidValueName);
-  }
-  if (value_name == c4c::kInvalidValueName &&
-      !identity.name.empty() &&
-      context.function.prepared != nullptr) {
-    value_name = context.function.prepared->names.value_names.find(identity.name);
-  }
-  if (value_name == c4c::kInvalidValueName) {
-    return nullptr;
-  }
-
-  return prepare::find_indexed_prepared_value_home(
-      context.function.value_home_lookups,
-      nullptr,
-      context.function.value_locations,
-      value_name);
+  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<RegisterOperand> find_return_chain_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const prepare::PreparedValueHome& result_home,
-    const bir::Value& chain_value,
-    bir::TypeKind result_type) {
+    bir::TypeKind result_type,
+    const prepare::PreparedValueHome** next_operand_home) {
   if (context.bir_block == nullptr || context.function.value_locations == nullptr) {
     return std::nullopt;
   }
 
-  const auto terminal_identity = find_route8_return_chain_terminal_value(
-      context, instruction_index, chain_value, result_home.value_name);
-  const auto* terminal_home =
-      find_route8_identity_value_home(context, terminal_identity);
-  if (terminal_home == nullptr) {
+  const auto facts = find_prepared_return_chain_facts(
+      context, instruction_index, result_home, result_type);
+  if (!facts.has_value() || facts->terminal_home == nullptr) {
     return std::nullopt;
+  }
+  if (next_operand_home != nullptr) {
+    *next_operand_home = facts->next_operand_home;
   }
   auto terminal_register =
       find_return_abi_register(context,
-                               terminal_home->value_id,
-                               terminal_home->value_name,
-                               terminal_identity.type);
+                               facts->terminal_home->value_id,
+                               facts->terminal_home->value_name,
+                               result_type);
   if (!terminal_register.has_value()) {
     return std::nullopt;
   }
@@ -4333,28 +4354,24 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
         });
       }
       if (!scalar_record.has_value()) {
+        const prepare::PreparedValueHome* return_chain_next_operand_home = nullptr;
         if (!result_register.has_value() && result_home != nullptr) {
           result_register = find_return_chain_register(
               context,
               instruction_index,
               *result_home,
-              binary->result,
-              binary->result.type);
+              binary->result.type,
+              &return_chain_next_operand_home);
         }
         if (result_register.has_value() && result_home != nullptr &&
             result_home->kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
             authoritative_immediate.has_value() &&
             context.function.value_locations != nullptr) {
-          const auto next_operand_identity =
-              find_route8_return_chain_next_operand_value(context,
-                                                          instruction_index,
-                                                          binary->result,
-                                                          result_home->value_name);
-          const auto* other_home =
-              find_route8_identity_value_home(context, next_operand_identity);
           const auto other_reg =
-              other_home != nullptr && other_home->register_name.has_value()
-                  ? abi::parse_aarch64_register_name(*other_home->register_name)
+              return_chain_next_operand_home != nullptr &&
+                      return_chain_next_operand_home->register_name.has_value()
+                  ? abi::parse_aarch64_register_name(
+                        *return_chain_next_operand_home->register_name)
                   : std::nullopt;
           if (other_reg.has_value() &&
               other_reg->bank == result_register->reg.bank &&
