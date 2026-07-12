@@ -3,35 +3,25 @@
 Status: Active
 Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate sibling AArch64 materializers
+Current Step ID: 2.1
+Current Step Title: Disposition the ALU return-chain authority gap
 
 ## Just Finished
 
-- Plan Step 2 migrated the AArch64 scalar call-argument producer materializer
-  in `calls.cpp` off its target-local prepared producer lookup reconstruction.
-  It now consumes only traversal-attached common prepared producer lookups after
-  validating owner/pointer identity; focused missing-authority and detached-
-  pointer coverage verifies that absent or inconsistent authority fails closed.
+- None since the Step 2 route reset.
 
 ## Suggested Next
 
-- Continue Plan Step 2 with the next remaining AArch64 target-local prepared
-  producer lookup consumer selected by the supervisor, keeping the packet to
-  one materializer and its focused proof.
+- Execute Plan Step 2.1 only: determine whether an existing common typed query
+  owns the ALU return-chain relation before changing another consumer family.
 
 ## Watchouts
 
-- The scalar call-argument entry point returns no producer instructions and no
-  diagnostic when traversal lookup authority is missing or detached, matching
-  its existing fail-closed result contract.
-- Other target-local lookup rebuilding remains in AArch64 dispatch, memory, and
-  call materializers outside this packet.
+- Do not preserve `find_prepared_return_chain_facts` by renaming its move,
+  successor-home, scalar-producer, or operand reconstruction.
+- If no traversal-attached common query expresses the return-chain relation,
+  stop and report the query-contract gap; producer redesign is outside idea 709.
 
 ## Proof
 
-- Ran `set -o pipefail; { cmake --build --preset default && ctest --test-dir
-  build -j --output-on-failure -R
-  '^(backend_aarch64_(call_boundary_owner|prepared_handoff_gate|prepared_register_conversion))$';
-  } 2>&1 | tee test_after.log`. Build succeeded and all 3 delegated tests
-  passed. The delegated proof is sufficient. Proof log: `test_after.log`.
+- Not run; lifecycle-only route reset.

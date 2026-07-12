@@ -84,25 +84,162 @@ Completion check:
   target-local behavior, and passes the supervisor-selected build plus focused
   AArch64 proof.
 
-### Step 2: Migrate sibling AArch64 materializers
+### Step 2.1: Disposition the ALU return-chain authority gap
 
-Goal: remove semantic route ownership across the remaining AArch64 consumer
-families.
+Goal: remove the target-local return-chain authority reconstruction before any
+further sibling migration.
+
+Primary target: `src/backend/mir/aarch64/codegen/alu.cpp`
 
 Actions:
 
-- Migrate calls, globals, ALU, comparison, select, publication, and value
-  materialization in reviewable packets.
-- Delete target-local route-index construction and semantic fallbacks as their
-  final consumers disappear.
-- Preserve target instruction and ABI policy.
-- Prove call-boundary, branch-control, current-block/join, scalar-ALU, and
-  memory-operand behavior across the affected packets.
+- Inspect the common named/prepared query interfaces for an existing typed
+  return-chain relation that identifies the value reaching the ABI return
+  register.
+- If that authority exists, consume only its traversal-attached view, remove
+  `find_prepared_return_chain_facts` semantic reconstruction and its fallback
+  `make_prepared_function_lookups`, and fail closed when the attached authority
+  is absent or inconsistent.
+- Do not walk move bundles, successor homes, scalar producers, or binary
+  operands in AArch64 to rediscover the relation.
+- If no existing common query expresses the relation, stop Step 2.1 and report
+  the query-contract gap to the supervisor. Do not redesign the producer or
+  reconstruct the relation under idea 709; lifecycle review must decide
+  whether to create and switch to a separate common-producer initiative.
+- Prove the corrected ALU/return behavior with the supervisor-selected build
+  and focused scalar-ALU plus return-path tests.
 
 Completion check:
 
-- Every scoped materializer consumes common named/prepared views, missing
-  authority fails closed, and nearby same-feature coverage remains green.
+- The return chain is either consumed from traversal-attached common authority
+  with missing authority failing closed, or execution is explicitly blocked
+  on a documented common-query gap before another consumer packet begins.
+
+### Step 2.2: Migrate direct dispatch-producer consumers
+
+Goal: remove direct same-block producer reconstruction from the remaining
+dispatch-producer family.
+
+Primary target: `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+
+Actions:
+
+- Replace direct producer discovery with the applicable traversal-attached
+  common named/prepared query.
+- Gate any relation not represented by an existing common query; do not derive
+  it from target-local instruction or operand walks.
+- Preserve target-local instruction selection and fail closed on unavailable
+  or inconsistent authority.
+- Prove instruction-dispatch behavior and nearby same-feature cases.
+
+Completion check:
+
+- The dispatch-producer family contains no executable producer reconstruction
+  or lookup fallback, and focused dispatch proof is green.
+
+### Step 2.3: Migrate select and comparison consumers
+
+Goal: remove local value-home lookup rebuilding from select/comparison
+materialization as one bounded control/value family.
+
+Primary target: `src/backend/mir/aarch64/codegen/select_materialization.cpp`
+
+Actions:
+
+- Replace local value-home lookup construction with existing attached common
+  authority.
+- Gate missing common-query authority instead of rebuilding homes or semantic
+  relations locally.
+- Preserve comparison/select instruction policy and fail closed when required
+  authority is unavailable.
+- Prove branch-control and current-block/join behavior across nearby select and
+  comparison cases.
+
+Completion check:
+
+- Select/comparison materialization consumes attached common authority only,
+  and its focused control-flow proof is green without expectation weakening.
+
+### Step 2.4: Migrate floating-point and general value consumers
+
+Goal: remove named-producer discovery from the remaining value-materialization
+family.
+
+Primary target: `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp`
+
+Actions:
+
+- Replace named-producer discovery with the existing attached common query.
+- Apply the same authority gate to directly implicated general value or
+  publication consumers, one coherent file family per executor packet.
+- Do not infer missing producer relations from target-local operands or
+  instruction shape.
+- Prove scalar/value and publication behavior for each affected family.
+
+Completion check:
+
+- The migrated value family has no executable named-producer discovery or
+  reconstructed lookup, and nearby same-feature proof remains green.
+
+### Step 2.5: Migrate memory consumers
+
+Goal: retire the remaining target-local lookup rebuilding in the memory family.
+
+Primary target: `src/backend/mir/aarch64/codegen/memory.cpp`
+
+Actions:
+
+- Consume traversal-attached common lookups and remove local lookup builders as
+  their final consumers disappear.
+- Gate any missing common relation and return to lifecycle review rather than
+  extending idea 709 into producer/query redesign.
+- Preserve memory instruction policy and prove nearby memory-operand behavior.
+
+Completion check:
+
+- Memory materialization uses attached common authority, missing authority
+  fails closed, and focused memory-operand proof is green.
+
+### Step 2.6: Migrate remaining call consumers
+
+Goal: retire lookup rebuilding from the remaining call and ABI materializers.
+
+Primary target: remaining call materializers identified by the retirement
+search.
+
+Actions:
+
+- Consume traversal-attached common lookups and remove local lookup builders as
+  their final call consumers disappear.
+- Gate any missing common relation instead of deriving it from ABI operands or
+  instruction shape.
+- Preserve AArch64 ABI realization and prove call-boundary behavior.
+
+Completion check:
+
+- Remaining call materializers use attached common authority, missing authority
+  fails closed, and focused call-boundary proof is green.
+
+### Step 2.7: Migrate global and publication consumers
+
+Goal: retire lookup rebuilding from the remaining global/publication family.
+
+Primary targets: remaining global and publication materializers identified by
+the retirement search.
+
+Actions:
+
+- Migrate the directly related global/publication consumers as one coherent
+  data-publication family.
+- Consume traversal-attached common lookups and gate any missing common
+  relation rather than rebuilding it locally.
+- Preserve target-local relocation and publication policy and prove nearby
+  global/publication behavior.
+
+Completion check:
+
+- Global/publication consumers use attached common authority, missing authority
+  fails closed, and their focused proof is green.
 
 ### Step 3: Prove retirement and disposition
 
