@@ -219,6 +219,13 @@ enum class BirCurrentBlockJoinSourceStatus {
   MissingSuccessorLabel,
   MissingPublication,
   MissingSourceProducer,
+  MissingSelectedFreshness,
+  AmbiguousSourceFreshness,
+  InvalidSourceFreshness,
+  UnsupportedSourceHome,
+  UnsupportedDestinationHome,
+  UnsupportedMove,
+  UnsupportedSource,
 };
 
 struct BirCurrentBlockJoinSourceFact {

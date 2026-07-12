@@ -377,13 +377,43 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
     PreparedMirDirectEdgePublicationSourceView source_view{
         .status = direct_edge_source_status_from_prealloc(fact.status),
     };
-    if (fact.destination_home == nullptr ||
-        fact.destination_home->kind != prepare::PreparedValueHomeKind::Register ||
-        !fact.destination_home->register_name.has_value()) {
+    source_view.predecessor_label = fact.predecessor_label;
+    source_view.successor_label = fact.successor_label;
+    source_view.destination_value_id = fact.destination_value_id;
+    source_view.destination_value_name = fact.destination_value_name;
+    source_view.source_value_id = fact.source_value_id;
+    source_view.source_value_name = fact.source_value_name;
+    source_view.source_home_kind = fact.source_home_kind;
+    source_view.destination_home_kind = fact.destination_home_kind;
+    source_view.destination_storage_kind = fact.destination_storage_kind;
+    source_view.destination_register_name = fact.destination_register_name;
+    source_view.immediate_source = fact.immediate_source;
+    source_view.source_freshness_status = fact.source_freshness_status;
+    source_view.source_freshness_candidate_count =
+        fact.source_freshness_authorities.size();
+    if (fact.source_home != nullptr) {
+      source_view.source_register_name = fact.source_home->register_name;
+      source_view.source_stack_offset_bytes = fact.source_home->offset_bytes;
+      source_view.source_immediate_i32 = fact.source_home->immediate_i32;
+    } else if (fact.move != nullptr && fact.move->source_immediate_i32.has_value()) {
+      source_view.source_immediate_i32 =
+          static_cast<std::int32_t>(*fact.move->source_immediate_i32);
+    }
+    if (fact.source_freshness_authority.has_value()) {
+      source_view.freshness_use_kind = fact.source_freshness_authority->use_kind;
+      source_view.freshness_source_kind = fact.source_freshness_authority->source_kind;
+      source_view.freshness_proof_kind = fact.source_freshness_authority->proof_kind;
+      source_view.freshness_rank = fact.source_freshness_authority->rank;
+    }
+    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        (fact.destination_home == nullptr ||
+         fact.destination_home->kind != prepare::PreparedValueHomeKind::Register ||
+         !fact.destination_home->register_name.has_value())) {
       source_view.status =
           PreparedMirDirectEdgePublicationSourceStatus::UnsupportedDestinationHome;
     }
     if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        !fact.immediate_source &&
         (!fact.source_freshness_authority.has_value() ||
          fact.source_freshness_authority->use_kind !=
              prepare::PreparedValueFreshnessUseKind::DirectEdgePublicationSource ||
@@ -402,29 +432,6 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
       continue;
     }
 
-    source_view.predecessor_label = fact.predecessor_label;
-    source_view.successor_label = fact.successor_label;
-    source_view.destination_value_id = fact.destination_value_id;
-    source_view.destination_value_name = fact.destination_value_name;
-    source_view.source_value_id = fact.source_value_id;
-    source_view.source_value_name = fact.source_value_name;
-    source_view.source_home_kind = fact.source_home_kind;
-    source_view.destination_home_kind = fact.destination_home_kind;
-    source_view.destination_storage_kind = fact.destination_storage_kind;
-    source_view.destination_register_name = fact.destination_register_name;
-    source_view.immediate_source = fact.immediate_source;
-    source_view.source_freshness_status = fact.source_freshness_status;
-    source_view.source_freshness_candidate_count =
-        fact.source_freshness_authorities.size();
-    source_view.freshness_use_kind = fact.source_freshness_authority->use_kind;
-    source_view.freshness_source_kind = fact.source_freshness_authority->source_kind;
-    source_view.freshness_proof_kind = fact.source_freshness_authority->proof_kind;
-    source_view.freshness_rank = fact.source_freshness_authority->rank;
-    if (fact.source_home != nullptr) {
-      source_view.source_register_name = fact.source_home->register_name;
-      source_view.source_stack_offset_bytes = fact.source_home->offset_bytes;
-      source_view.source_immediate_i32 = fact.source_home->immediate_i32;
-    }
     view_query.sources.push_back(std::move(source_view));
   }
   return view_query;

@@ -914,12 +914,33 @@ find_bir_current_block_join_source_identity(
       prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available) {
     return result;
   }
+  const auto source_status = [](
+                                 prepared::PreparedMirDirectEdgePublicationSourceStatus status) {
+    switch (status) {
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::Available:
+        return BirCurrentBlockJoinSourceStatus::Available;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::MissingPublication:
+        return BirCurrentBlockJoinSourceStatus::MissingPublication;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::MissingSelectedFreshness:
+        return BirCurrentBlockJoinSourceStatus::MissingSelectedFreshness;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::AmbiguousSourceFreshness:
+        return BirCurrentBlockJoinSourceStatus::AmbiguousSourceFreshness;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::InvalidSourceFreshness:
+        return BirCurrentBlockJoinSourceStatus::InvalidSourceFreshness;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSourceHome:
+        return BirCurrentBlockJoinSourceStatus::UnsupportedSourceHome;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::UnsupportedDestinationHome:
+        return BirCurrentBlockJoinSourceStatus::UnsupportedDestinationHome;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::UnsupportedMove:
+        return BirCurrentBlockJoinSourceStatus::UnsupportedMove;
+      case prepared::PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource:
+        return BirCurrentBlockJoinSourceStatus::UnsupportedSource;
+    }
+    return BirCurrentBlockJoinSourceStatus::UnsupportedSource;
+  };
   for (const auto& record : prepared_query.sources) {
     BirCurrentBlockJoinSourceFact fact{
-        .status = record.status ==
-                          prepared::PreparedMirDirectEdgePublicationSourceStatus::Available
-                      ? BirCurrentBlockJoinSourceStatus::Available
-                      : BirCurrentBlockJoinSourceStatus::MissingPublication,
+        .status = source_status(record.status),
         .predecessor_label = prepare::prepared_block_label(names, record.predecessor_label),
         .predecessor_label_id = record.predecessor_label,
         .successor_label = prepare::prepared_block_label(names, record.successor_label),
@@ -931,6 +952,9 @@ find_bir_current_block_join_source_identity(
     };
     fact.destination_value_identity.name = fact.destination_value_name;
     fact.source_value_identity.name = fact.source_value_name;
+    if (record.immediate_source && record.source_immediate_i32.has_value()) {
+      fact.source_value_identity.immediate_constant = *record.source_immediate_i32;
+    }
     if (result.successor_label_id == c4c::kInvalidBlockLabel) {
       result.successor_label_id = record.successor_label;
       result.successor_label = fact.successor_label;
