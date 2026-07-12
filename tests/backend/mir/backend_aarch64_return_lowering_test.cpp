@@ -1663,8 +1663,10 @@ int public_one_link_reports_terminal_return_binding_independently() {
           prepare::PreparedMoveDestinationKind::FunctionReturnAbi) {
     return fail("one-link public terminal-binding seam: missing attributed FunctionReturnAbi move");
   }
-  if (!terminal->abi_bindings.empty()) {
-    return fail("one-link public terminal-binding seam unexpectedly publishes an ABI binding; update the probe contract");
+  if (terminal->abi_bindings.size() != 1 ||
+      terminal->abi_bindings.front().destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi) {
+    return fail("one-link public terminal-binding seam: missing matching ABI binding");
   }
 
   const auto lookups = prepare::make_prepared_function_lookups(
@@ -1678,7 +1680,7 @@ int public_one_link_reports_terminal_return_binding_independently() {
   if (first == traversal.end() ||
       first->return_chain.status !=
           prepare::PreparedObjectReturnChainStatus::StructurallyIncomplete) {
-    return fail(std::string("one-link attached return-chain classification expected structurally_incomplete from missing terminal ABI binding, got ") +
+    return fail(std::string("terminal-only attached classification expected structurally_incomplete with no successor relation, got ") +
                 (first == traversal.end()
                      ? "missing_instruction_event"
                      : std::string(prepare::prepared_object_return_chain_status_name(
@@ -1712,6 +1714,14 @@ int public_multi_link_reports_successor_authority_before_terminal_binding() {
       successor->moves.front().to_value_id == 0) {
     return fail("multi-link successor seam: missing exact attributed block=0 instruction=1 adjacent value move");
   }
+  const auto terminal = std::find_if(
+      locations.move_bundles.begin(), locations.move_bundles.end(),
+      [](const auto& bundle) { return bundle.phase == prepare::PreparedMovePhase::BeforeReturn; });
+  if (terminal == locations.move_bundles.end() || terminal->abi_bindings.size() != 1 ||
+      terminal->abi_bindings.front().destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi) {
+    return fail("multi-link terminal seam: missing matching FunctionReturnAbi binding");
+  }
 
   const auto lookups = prepare::make_prepared_function_lookups(
       *prepared, prepared->control_flow.functions.front());
@@ -1724,8 +1734,8 @@ int public_multi_link_reports_successor_authority_before_terminal_binding() {
   });
   if (first == traversal.end() ||
       first->return_chain.status !=
-          prepare::PreparedObjectReturnChainStatus::StructurallyIncomplete) {
-    return fail(std::string("multi-link attached return-chain classification expected structurally_incomplete after valid successor adjacency and missing terminal ABI binding, got ") +
+          prepare::PreparedObjectReturnChainStatus::Available) {
+    return fail(std::string("multi-link attached return-chain classification expected available after valid successor adjacency, got ") +
                 (first == traversal.end()
                      ? "missing_instruction_event"
                      : std::string(prepare::prepared_object_return_chain_status_name(

@@ -313,6 +313,83 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
   existing->abi_bindings.push_back(std::move(binding));
 }
 
+[[nodiscard]] bool prepared_value_home_is_complete_for_return_binding(
+    const PreparedValueHome& home) {
+  switch (home.kind) {
+    case PreparedValueHomeKind::Register:
+      return home.register_name.has_value();
+    case PreparedValueHomeKind::StackSlot:
+      return home.offset_bytes.has_value();
+    case PreparedValueHomeKind::RematerializableImmediate:
+      return home.immediate_i32.has_value() || home.immediate_f128.has_value();
+    case PreparedValueHomeKind::PointerBasePlusOffset:
+      return (home.pointer_base_value_name.has_value() ||
+              home.pointer_base_symbol_name.has_value()) &&
+             home.pointer_byte_delta.has_value();
+    case PreparedValueHomeKind::None:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool return_move_destination_identity_matches(
+    const PreparedMoveResolution& lhs,
+    const PreparedMoveResolution& rhs) {
+  return lhs.destination_kind == rhs.destination_kind &&
+         lhs.destination_storage_kind == rhs.destination_storage_kind &&
+         lhs.destination_abi_index == rhs.destination_abi_index &&
+         lhs.destination_register_name == rhs.destination_register_name &&
+         lhs.destination_contiguous_width == rhs.destination_contiguous_width &&
+         lhs.destination_occupied_register_names == rhs.destination_occupied_register_names &&
+         lhs.destination_stack_offset_bytes == rhs.destination_stack_offset_bytes &&
+         lhs.destination_register_placement == rhs.destination_register_placement &&
+         lhs.destination_target_register_identity == rhs.destination_target_register_identity;
+}
+
+void append_prepared_return_abi_bindings(
+    PreparedValueLocationFunction& function_locations) {
+  for (auto& bundle : function_locations.move_bundles) {
+    if (bundle.phase != PreparedMovePhase::BeforeReturn ||
+        bundle.proof_attribution_id == 0 ||
+        bundle.function_name != function_locations.function_name) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.destination_kind != PreparedMoveDestinationKind::FunctionReturnAbi ||
+          move.from_value_id == 0 || move.from_value_id != move.to_value_id) {
+        continue;
+      }
+      const auto matching_homes = std::count_if(
+          function_locations.value_homes.begin(), function_locations.value_homes.end(),
+          [&](const PreparedValueHome& home) {
+            return home.value_id == move.from_value_id &&
+                   home.function_name == function_locations.function_name &&
+                   prepared_value_home_is_complete_for_return_binding(home);
+          });
+      const auto matching_moves = std::count_if(
+          bundle.moves.begin(), bundle.moves.end(), [&](const PreparedMoveResolution& candidate) {
+            return candidate.from_value_id == move.from_value_id &&
+                   candidate.to_value_id == move.to_value_id &&
+                   return_move_destination_identity_matches(candidate, move);
+          });
+      if (matching_homes != 1 || matching_moves != 1) {
+        continue;
+      }
+      bundle.abi_bindings.push_back(PreparedAbiBinding{
+          .destination_kind = move.destination_kind,
+          .destination_storage_kind = move.destination_storage_kind,
+          .destination_abi_index = move.destination_abi_index,
+          .destination_register_name = move.destination_register_name,
+          .destination_contiguous_width = move.destination_contiguous_width,
+          .destination_occupied_register_names = move.destination_occupied_register_names,
+          .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+          .destination_register_placement = move.destination_register_placement,
+          .destination_target_register_identity = move.destination_target_register_identity,
+      });
+    }
+  }
+}
+
 void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                        const c4c::TargetProfile& target_profile,
                                        const c4c::backend::bir::Function& function,
@@ -609,6 +686,7 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   for (const auto& move : regalloc_function.move_resolution) {
     append_prepared_move_bundle(function_locations, move);
   }
+  append_prepared_return_abi_bindings(function_locations);
   if (function != nullptr) {
     append_prepared_call_abi_bindings(
         names, target_profile, *function, regalloc_function, function_locations);
