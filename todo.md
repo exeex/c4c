@@ -12,7 +12,10 @@ Current Step Title: Migrate sibling AArch64 materializers
   in `comparison.cpp` from executable Route 7 index validation, BIR identity
   reconstruction, and cross-authority selection to the existing common prepared
   materialized-condition producer. Missing prepared producer authority now fails
-  closed instead of retaining the BIR fallback.
+  closed instead of retaining the BIR fallback. The focused branch-control
+  disagreement fixture now positively verifies that stale prepared authority
+  cannot select the mutated BIR predicate and uses only emitted-condition
+  lowering.
 
 ## Suggested Next
 
@@ -28,14 +31,16 @@ Current Step Title: Migrate sibling AArch64 materializers
 - AArch64 ALU route-index consumers remain outside this completed packet and
   still belong to Step 2.
 - The delegated subset retains the known baseline failure in test 354 (`bl
-  printf` missing); all other 34 tests pass, including the call-boundary
+  printf` missing); all other 35 tests pass, including the branch-control,
+  call-boundary
   scalability and prepared-memory records coverage.
 
 ## Proof
 
 - Ran `set -o pipefail; { cmake --build --preset default && ctest --test-dir
   build -j --output-on-failure -R
-  '^(backend_aarch64_prepared_memory_operand_records|backend_(codegen_route|cli)_aarch64_)';
-  } 2>&1 | tee test_after.log`. Build succeeded; 34/35 tests passed, with only
-  the known baseline test 354 failure (`bl printf` missing). The delegated proof
-  is sufficient relative to that baseline. Proof log: `test_after.log`.
+  '^(backend_aarch64_branch_control_lowering|backend_aarch64_prepared_memory_operand_records|backend_(codegen_route|cli)_aarch64_)';
+  } 2>&1 | tee test_after.log`. Build succeeded; 35/36 tests passed, with only
+  the known baseline test 354 failure (`bl printf` missing); the added focused
+  branch-control contract passed, for 35/36 total. The delegated proof is
+  sufficient relative to that baseline. Proof log: `test_after.log`.

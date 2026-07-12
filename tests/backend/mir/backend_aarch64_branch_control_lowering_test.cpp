@@ -2059,7 +2059,7 @@ int materialized_compare_branch_invalid_route7_reference_rejected() {
   return 0;
 }
 
-int materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback() {
+int materialized_compare_branch_stale_prepared_lookup_fails_closed() {
   auto prepared = prepared_with_materialized_compare_condition_clobber();
   const auto prepared_lookup_snapshot = prepared;
   const auto& stale_function_cf =
@@ -2112,25 +2112,29 @@ int materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback() {
   if (!result.visited_terminator ||
       machine_block.instructions.empty() ||
       !diagnostics.empty()) {
-    return fail("expected stale prepared producer mismatch to preserve BIR fallback");
+    return fail("expected stale prepared producer mismatch to retain emitted-condition lowering");
   }
   const auto printed =
       aarch64_codegen::print_machine_instruction_line_payloads(
           machine_block.instructions.back().target);
   bool saw_cmp = false;
-  bool saw_conditional_branch = false;
+  bool saw_bir_predicate_branch = false;
+  bool saw_emitted_condition_branch = false;
   bool saw_cbnz = false;
   for (const auto& line : printed.instruction_lines) {
     saw_cmp = saw_cmp || line.find("cmp ") == 0;
-    saw_conditional_branch = saw_conditional_branch || line.find("b.lt ") == 0;
+    saw_bir_predicate_branch =
+        saw_bir_predicate_branch || line.find("b.lt ") == 0;
+    saw_emitted_condition_branch =
+        saw_emitted_condition_branch || line.find("b.ne ") == 0;
     saw_cbnz = saw_cbnz || line.find("cbnz ") == 0;
   }
   if (!printed.ok ||
-      !saw_cmp ||
-      !saw_conditional_branch ||
-      saw_cbnz) {
+      saw_bir_predicate_branch ||
+      (!saw_emitted_condition_branch && !saw_cbnz) ||
+      (!saw_cmp && !saw_cbnz)) {
     return fail(
-        "expected route/prepared mismatch to preserve selected BIR compare fallback");
+        "expected route/prepared mismatch to fail closed without selected BIR compare lowering");
   }
   return 0;
 }
@@ -2744,7 +2748,7 @@ int main() {
     return status;
   }
   if (const int status =
-          materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback();
+          materialized_compare_branch_stale_prepared_lookup_fails_closed();
       status != 0) {
     return status;
   }
