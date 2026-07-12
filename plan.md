@@ -102,28 +102,96 @@ Completion check:
   bounded to a real semantic path with nearby negative coverage, and no field
   depends on route vocabulary or MIR reconstruction.
 
-### Step 2: Produce one complete positive authority row
+### Step 2.1: Establish one real stack-backed publication/move producer
 
-Goal: compose the selected prepared facts into one uniquely identity-bound
+Goal: establish or select a prepared-owned relationship that has an actual
+edge publication, a bound move resolution, complete homes, and a stack-backed
+destination before authority-row composition begins.
+
+Primary target:
+
+- The smallest semantic out-of-SSA parallel-copy/select producer family that
+  can carry a real predecessor/successor edge, `PreparedEdgePublication`, and
+  bound `PreparedMoveResolution` into a stack-backed destination.
+
+Actions:
+
+- Start from a real publication/move producer, not the rejected collected
+  `Lhs` branch-stack-load fixture, which has no publication or move binding.
+- Establish one relationship whose destination/source values, destination and
+  source homes, selected move, execution cursor, exact predecessor/successor
+  edge, and publication identity all come from their prepared owners.
+- Require the destination to be genuinely stack-backed by its prepared home
+  and frame evidence; do not turn a register-backed select fixture into proof
+  through constants, equality, or load-policy classification.
+- Bind nearby branch stack-load and aggregate stack-source evidence to the
+  same stable value/home/slot/object/layout identities. Preserve explicit
+  applicability when one evidence family does not apply to a given record;
+  never manufacture either family inside the authority composer.
+- Add focused upstream contracts that distinguish the positive producer from
+  a nearby relationship lacking a stack destination, publication, move, or
+  matching branch/aggregate evidence.
+
+Completion check:
+
+- A focused green contract proves one real stack-backed publication/move
+  relationship with exact edge identity and independently owned applicable
+  branch/aggregate evidence. No `PreparedStackDestinationAuthorityView` row is
+  composed yet.
+
+### Step 2.2: Define the complete composer input and reachable negative states
+
+Goal: expose a bounded prepared-side composition seam whose independently
+owned inputs can represent both the complete producer and every advertised
+fail-closed family.
+
+Actions:
+
+- Define the composer input/query around the Step 2.1 publication, bound move,
+  homes, freshness, cursor/edge, and stable publication identity.
+- Carry and cross-check applicable frame slot, stack object, layout geometry,
+  aggregate stack-source, and branch stack-load identities; arithmetic
+  plausibility alone is not identity proof.
+- Represent missing, invalid, ambiguous, incomplete, mismatched, and
+  route-only evidence as independently constructible semantic inputs so each
+  status is reachable. Remove nominal statuses that cannot occur at this
+  layer instead of testing only their spelling.
+- Preserve upstream failure reasons rather than collapsing every non-available
+  producer into one generic branch-authority status.
+- Add focused composer-input contracts for representative negative states and
+  a nearby same-feature non-match that rejects fixture-shaped selection.
+
+Completion check:
+
+- Every retained status is reachable through a real composer input, stable
+  identities are explicit across owners, and the focused input/negative
+  contract is green without relying on a passing prefix of a red test.
+
+### Step 2.3: Compose and prove one complete positive authority row
+
+Goal: compose the established prepared facts into one uniquely identity-bound
 `Available` authority row.
 
 Actions:
 
-- Populate destination/source identity and complete homes from prepared-owned
-  facts.
-- Bind exactly one selected move and freshness result to the same cursor/edge
-  and publication identity.
-- For an aggregate path, require complete slot, object, and layout evidence;
-  for a branch path, require complete stack-load and publication evidence.
-- Return explicit negative status for missing, invalid, ambiguous, incomplete,
-  mismatched, or route-only evidence.
-- Add focused producer proof for the positive row and representative negative
-  states, including a nearby same-feature case that rejects overfit.
+- Populate destination/source identities and complete homes only from the
+  Step 2.1 producer relationship; equality is allowed only when those owners
+  explicitly prove it.
+- Bind exactly one real selected move and freshness result to the same cursor,
+  exact edge, and stable publication identity.
+- Require and copy all applicable slot/object/layout, aggregate stack-source,
+  and branch stack-load evidence from the Step 2.2 input seam.
+- Return the explicit Step 2.2 negative status for non-authoritative evidence;
+  do not derive availability from route agreement, source order, use-kind,
+  both possible branch labels, or MIR reconstruction.
+- Add focused positive-row proof alongside the reachable negative contracts,
+  using a genuinely green executable or isolated subset.
 
 Completion check:
 
 - A real producer returns one complete, uniquely bound `Available` row; all
-  non-authoritative inputs fail closed, and focused producer proof is green.
+  retained non-authoritative states fail closed, and the focused producer
+  contract is green. Only then may execution advance to Step 3.
 
 ### Step 3: Consume the row through the prepared MIR feature view
 
