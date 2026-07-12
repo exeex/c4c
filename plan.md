@@ -42,7 +42,12 @@ it by source order, nearest PHI, display name alone, or target-emission facts.
 
 ## Current Scope
 
-- Fresh focused proof spanning `backend_prepared_lookup_helper` and
+- Publish genuine proof-claim attribution identity from preparation and copy
+  that authority unchanged into the prepared-to-Route4 adapter.
+- Direct adapter proof across exact positive identity and nearby fail-closed
+  shapes before relying on the production-facing frame/stack contract.
+- Fresh focused proof spanning `backend_prepared_lookup_helper` and the
+  block-entry identity portion of
   `backend_prepare_frame_stack_call_contract`.
 - Audit of the production route against idea 718's reviewer reject signals.
 - A supervisor-selected broader backend before/after comparison with matching
@@ -55,13 +60,17 @@ it by source order, nearest PHI, display name alone, or target-emission facts.
 - Do not change join-source or edge-publication identity.
 - Do not change target materialization, storage hooks, register spelling, move
   order, or emitted publication policy.
-- Do not absorb unrelated later frame/stack executable failures into this
-  route without first proving they are required by idea 718.
+- Do not absorb the later x86 missing-prepared-core emission abort; it is owned
+  separately by
+  `ideas/open/721_x86_defined_function_prepared_core_completion.md`.
 
 ## Execution Rules
 
 - Preserve exact successor, destination, type, instruction coordinate, and
   proof attribution across production validation.
+- Treat attribution identity as independent authority supplied by preparation;
+  never derive it from instruction order, pointer order, display name, or a
+  constant/nonzero stand-in.
 - Preserve typed fail-closed results for missing, stale, inconsistent,
   ambiguous, or unattributed evidence.
 - Do not weaken expectations or recover identity from display name, source
@@ -70,28 +79,44 @@ it by source order, nearest PHI, display name alone, or target-emission facts.
 
 ## Ordered Steps
 
-### Step 6: Run focused production and contract proof
+### Step 6: Repair genuine prepared attribution and prove the adapter
 
-Goal: prove the corrected semantic boundary through both the lookup coverage
-and the named production-facing contract.
+Goal: replace synthetic attribution authority with the exact proof-claim
+identity published by preparation, then prove the corrected semantic boundary
+directly and through the production-facing contract.
 
 Actions:
 
+- Extend the prepared publication record and its producer to carry the actual
+  attributed proof-claim identity established by the accepted idea 720
+  contract.
+- Make the MIR adapter copy that attribution identity unchanged while retaining
+  its exact successor, destination pointer/name/type, PHI, instruction, and
+  proof-coordinate checks.
+- Remove the rejected `publication_bundle_instruction_index + 1` attribution
+  synthesis; do not replace it with another coordinate, pointer, display-name,
+  or constant-derived token.
 - Run the supervisor-delegated build.
-- Run one matching focused command that includes
-  `backend_prepared_lookup_helper` and
-  `backend_prepare_frame_stack_call_contract`.
+- Add and run a green direct adapter matrix covering exact positive identity,
+  missing attribution, wrong successor, wrong destination pointer, wrong
+  type/name metadata, stale or out-of-range coordinate, and proof/bundle
+  coordinate disagreement.
+- Run matching focused proof for `backend_prepared_lookup_helper` and an
+  independently green production-facing block-entry identity contract.
 - Confirm the frame/stack contract obtains complete publication identity from
   producer/query-derived attributed facts without manual readiness or proof
   completion.
-- If the aggregate executable fails later, localize the first bad fact and do
-  not silently broaden idea 718 into an unrelated subsystem.
+- If the aggregate frame/stack executable still reaches the later x86
+  prepared-core abort, record matching before/after evidence that the abort is
+  unchanged and leave its repair to idea 721.
 
 Completion check:
 
-- Both focused tests are green after the production and ambiguity repairs,
-  with no expectation downgrade, manual proof completion, or fixture-shaped
-  recovery.
+- Genuine preparation-supplied attribution flows unchanged through the adapter;
+  the direct fail-closed matrix and production-facing identity proof are green;
+  and matching before/after evidence isolates any unchanged later idea 721
+  abort without expectation downgrade, manual proof completion, or
+  fixture-shaped recovery.
 
 ### Step 7: Run broader acceptance proof and close
 
