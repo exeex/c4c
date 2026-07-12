@@ -27832,15 +27832,11 @@ int block_entry_publication_register_uses_indexed_value_identity() {
 
   auto route_unavailable_context = join_context;
   route_unavailable_context.bir_block = nullptr;
-  const auto fallback_published =
+  const auto missing_proof_published =
       aarch64_codegen::current_block_entry_publication_register(
           route_unavailable_context, value, aarch64_abi::RegisterView::W);
-  if (!fallback_published.has_value() ||
-      fallback_published->value_id != prepare::PreparedValueId{720} ||
-      fallback_published->value_name != value_name ||
-      fallback_published->reg.index != 6 ||
-      fallback_published->expected_view != aarch64_abi::RegisterView::W) {
-    return fail("expected AArch64 materialization to preserve prepared fallback without common identity");
+  if (missing_proof_published.has_value()) {
+    return fail("expected block-entry publication register to fail closed without common proof authority");
   }
 
   auto wrong_type_route_block = join_route_block;
@@ -27848,13 +27844,11 @@ int block_entry_publication_register_uses_indexed_value_identity() {
       bir::TypeKind::I64;
   auto wrong_type_context = join_context;
   wrong_type_context.bir_block = &wrong_type_route_block;
-  const auto wrong_type_fallback =
+  const auto wrong_type_publication =
       aarch64_codegen::current_block_entry_publication_register(
           wrong_type_context, value, aarch64_abi::RegisterView::W);
-  if (!wrong_type_fallback.has_value() ||
-      wrong_type_fallback->value_id != prepare::PreparedValueId{720} ||
-      wrong_type_fallback->value_name != value_name) {
-    return fail("expected AArch64 materialization to preserve prepared fallback for mismatched proof type");
+  if (wrong_type_publication.has_value()) {
+    return fail("expected block-entry publication register to fail closed for mismatched proof type");
   }
 
   auto wrong_name_route_block = join_route_block;
@@ -27862,13 +27856,11 @@ int block_entry_publication_register_uses_indexed_value_identity() {
       "%block.entry.mismatched.value";
   auto wrong_name_context = join_context;
   wrong_name_context.bir_block = &wrong_name_route_block;
-  const auto wrong_name_fallback =
+  const auto wrong_name_publication =
       aarch64_codegen::current_block_entry_publication_register(
           wrong_name_context, value, aarch64_abi::RegisterView::W);
-  if (!wrong_name_fallback.has_value() ||
-      wrong_name_fallback->value_id != prepare::PreparedValueId{720} ||
-      wrong_name_fallback->value_name != value_name) {
-    return fail("expected AArch64 materialization to preserve prepared fallback for mismatched proof name");
+  if (wrong_name_publication.has_value()) {
+    return fail("expected block-entry publication register to fail closed for mismatched proof name");
   }
 
   auto missing_value_id_lookups = prepared_lookups;

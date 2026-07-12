@@ -8,12 +8,11 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Just Finished
 
-- Plan Step 1 migrated the AArch64 dispatch publication-source producer family
-  in `dispatch_producers.cpp` to the common named/prepared same-block producer
-  handoff. The consumer no longer builds or queries a Route1 producer index;
-  the Route1-specific public view was retired, coherent owned prepared lookups
-  drive recursive dependency checks directly, and missing or inconsistent
-  lookup authority fails closed.
+- Plan Step 1 migrated the AArch64 current-block entry publication consumer in
+  `dispatch_publication.cpp` to the common named/prepared publication identity.
+  The consumer no longer creates or classifies Route4-labelled executable
+  claims, checks the common identity against the prepared destination home,
+  and fails closed when proof authority is missing or inconsistent.
 
 ## Suggested Next
 
@@ -25,11 +24,11 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 - The separate comparison, call-boundary, and ALU route families were not
   changed by this packet.
-- The focused dispatch test now verifies that missing prepared producer records
-  do not fall back to Route1 facts.
+- The focused dispatch test now verifies that missing proof authority and
+  mismatched proof name/type do not fall back to prepared publication payloads.
 - The focused baseline retains the known scalar-FP literal-add failure (test
-  354, missing `bl printf`) and has no additional failures; no expectations
-  changed.
+  354, missing `bl printf`) and has no additional failures; no route
+  expectations were weakened.
 
 ## Proof
 

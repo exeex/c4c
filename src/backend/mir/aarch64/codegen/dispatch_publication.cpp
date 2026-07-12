@@ -211,24 +211,6 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
   }
   return false;
 }
-[[nodiscard]] mir::BirBlockEntryPublicationIdentity
-route4_current_block_entry_publication_identity(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    const prepare::PreparedCurrentBlockEntryPublication& prepared_publication) {
-  if (context.bir_block == nullptr ||
-      context.function.prepared == nullptr ||
-      prepared_publication.destination_home == nullptr) {
-    return {};
-  }
-  const auto claims =
-      prepare::make_prepared_block_entry_publication_claim_collection(
-          prepared_publication);
-  const auto classification =
-      bir::route4_classify_block_entry_publication_claims(claims);
-  return mir::find_bir_block_entry_publication_identity(
-      prepared_publication, classification);
-}
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -257,19 +239,16 @@ route4_current_block_entry_publication_identity(
       !publication.publication.destination_register_name.has_value()) {
     return std::nullopt;
   }
-  const auto route4_identity =
-      route4_current_block_entry_publication_identity(context, value, publication);
-  if (!route4_identity || route4_identity.destination_value_name != value.name ||
-      route4_identity.destination_value_type != value.type) {
+  const auto prepared_identity =
+      mir::find_bir_block_entry_publication_identity(publication);
+  if (!prepared_identity ||
+      prepared_identity.destination_value_id !=
+          publication.destination_home->value_id ||
+      prepared_identity.destination_value_name_id !=
+          publication.destination_home->value_name ||
+      prepared_identity.destination_value_name != value.name ||
+      prepared_identity.destination_value_type != value.type) {
     return std::nullopt;
-  }
-  auto destination_value_id = publication.destination_home->value_id;
-  auto destination_value_name = publication.destination_home->value_name;
-  if (route4_identity) {
-    destination_value_id = route4_identity.destination_value_id;
-    if (route4_identity.destination_value_name_id != c4c::kInvalidValueName) {
-      destination_value_name = route4_identity.destination_value_name_id;
-    }
   }
   const auto parsed = abi::parse_aarch64_register_name(
       *publication.publication.destination_register_name);
@@ -282,8 +261,8 @@ route4_current_block_entry_publication_identity(
   return RegisterOperand{
       .reg = reg,
       .role = RegisterOperandRole::StoragePlan,
-      .value_id = destination_value_id,
-      .value_name = destination_value_name,
+      .value_id = prepared_identity.destination_value_id,
+      .value_name = prepared_identity.destination_value_name_id,
       .expected_view = expected_view,
   };
 }
