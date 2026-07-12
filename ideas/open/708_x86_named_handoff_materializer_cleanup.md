@@ -25,6 +25,18 @@ route-quality review, and matching full-suite regression comparison accepted.
 Resume at Step 2; do not repeat the reverted x86 slice or reintroduce target
 fallback for authority now supplied by cursor-exact prepared call plans.
 
+Step 2 subsequently completed, but Step 3 is parked before acceptance. A
+consumer-only slice removed x86 Route 5 construction, agreement, and
+compatibility fallback from edge-publication emission, then the existing
+register-source shared-publication fixture remained red because
+`current_block_direct_edge_publication_sources` produced no `Available` move
+intent. The fixture's existing home-only mutation does not establish the
+producer-owned publication, move, and freshness authority required by the
+typed query. Idea 722 owns repair and proof of that general producer contract.
+The uncommitted x86 slice is blocked evidence, not completed progress; resume
+Step 3 only after idea 722 closes, and reapply/revalidate the slice rather than
+claiming its current red proof as acceptance.
+
 ## First Owner And Scope
 
 First owning layer: x86 MIR materialization.  Remove direct route vocabulary
