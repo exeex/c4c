@@ -1908,6 +1908,54 @@ struct Route4BlockEntryPublicationRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+// Exact semantic identity for one block-entry publication destination.  The
+// name and type fields are diagnostic metadata, not identity authority.
+struct Route4BlockEntryDestinationIdentity {
+  const Block* successor_owner = nullptr;
+  BlockLabelId successor_label_id = kInvalidBlockLabel;
+  const Value* destination_value = nullptr;
+  ValueNameId destination_value_name_id = kInvalidValueName;
+  std::string_view destination_value_name;
+  TypeKind destination_value_type = TypeKind::Void;
+
+  [[nodiscard]] explicit operator bool() const {
+    return successor_owner != nullptr && destination_value != nullptr;
+  }
+};
+
+// One independently attributed proof claim.  attribution_id identifies the
+// claim itself; it must not be used as destination identity or deduplicated
+// merely because another claim has the same payload.
+struct Route4BlockEntryPublicationClaim {
+  std::uint64_t attribution_id = 0;
+  bool attributed = false;
+  Route4BlockEntryDestinationIdentity claimed_destination;
+  const Block* instruction_owner = nullptr;
+  BlockLabelId instruction_owner_label_id = kInvalidBlockLabel;
+  const Inst* instruction = nullptr;
+  std::size_t instruction_index = 0;
+};
+
+// Preserves claim order and multiplicity until Route4 performs authoritative
+// classification.  In particular, agreeing claims remain independently
+// observable and can therefore classify as ambiguous.
+struct Route4BlockEntryPublicationClaimCollection {
+  Route4BlockEntryDestinationIdentity destination;
+  std::vector<Route4BlockEntryPublicationClaim> claims;
+};
+
+struct Route4BlockEntryPublicationClassification {
+  Route4BlockEntryPublicationClassificationStatus status =
+      Route4BlockEntryPublicationClassificationStatus::Unavailable;
+  Route4BlockEntryDestinationIdentity destination;
+  std::vector<Route4BlockEntryPublicationClaim> claims;
+  std::optional<std::size_t> selected_claim_index;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == Route4BlockEntryPublicationClassificationStatus::Available;
+  }
+};
+
 struct Route4PublicationValueRecord {
   bool available = false;
   Route4PublicationScope scope = Route4PublicationScope::None;

@@ -13,6 +13,10 @@ struct Value;
 struct Route1SourceValueIdentity;
 struct Route4CurrentBlockPublicationRecord;
 struct Route4BlockEntryPublicationRecord;
+struct Route4BlockEntryDestinationIdentity;
+struct Route4BlockEntryPublicationClaim;
+struct Route4BlockEntryPublicationClaimCollection;
+struct Route4BlockEntryPublicationClassification;
 struct Route4PublicationAvailabilityIndex;
 struct Route7ComparisonInstructionRecord;
 struct Route7ComparisonOperandRecord;
@@ -27,6 +31,16 @@ enum class Route4PublicationAvailabilityStatus : unsigned char {
   MissingPublication,
   AlternateSource,
   NoMatch,
+};
+
+enum class Route4BlockEntryPublicationClassificationStatus : unsigned char {
+  Unavailable,
+  Available,
+  Missing,
+  Unattributed,
+  Stale,
+  Inconsistent,
+  Ambiguous,
 };
 
 enum class Route7ComparisonStatus : unsigned char {
