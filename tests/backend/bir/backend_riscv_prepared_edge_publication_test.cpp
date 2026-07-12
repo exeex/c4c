@@ -1949,13 +1949,11 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return fail("RISC-V Route 5 oracle should expose agreeing scalar edge identity before authority changes");
   }
   auto intent = riscv::consume_edge_publication_move_intent(
-      &lookups, ids.predecessor, ids.successor, 2, &route5_edge);
+      &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "mv a1, a0" &&
-                  intent.route5_edge_status ==
-                      bir::Route5PublicationStatus::Available &&
-                  intent.route5_edge_source_agrees,
-              "RISC-V scalar edge output should stay prepared-backed with agreeing Route 5 facts")) {
+                  intent.publication == publication &&
+                  intent.instruction_text == "mv a1, a0",
+              "RISC-V scalar edge output should consume the unique prepared publication")) {
     return 1;
   }
 
@@ -1994,13 +1992,11 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return fail("RISC-V Route 5 oracle should expose duplicate, mismatch, and absence diagnostic rows");
   }
   intent = riscv::consume_edge_publication_move_intent(
-      &lookups, ids.predecessor, ids.successor, 2, &mismatched_route5_edge);
+      &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "mv a1, a0" &&
-                  intent.route5_edge_status ==
-                      bir::Route5PublicationStatus::NoMatch &&
-                  !intent.route5_edge_source_agrees,
-              "RISC-V scalar edge output should preserve prepared fallback on non-agreeing Route 5 facts")) {
+                  intent.publication == publication &&
+                  intent.instruction_text == "mv a1, a0",
+              "RISC-V scalar edge output should remain owned by the unique prepared publication")) {
     return 1;
   }
 
@@ -2056,14 +2052,14 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return fail("RISC-V Route 5/Route 3 oracle should expose agreeing dynamic memory-source identity");
   }
   intent = riscv::consume_edge_publication_move_intent(
-      &lookups, dynamic_ids.predecessor, dynamic_ids.successor, 2, &route5_memory_edge);
+      &lookups, dynamic_ids.predecessor, dynamic_ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "lw a1, 12(s2)" &&
-                  intent.route5_edge_status ==
-                      bir::Route5PublicationStatus::MemorySource &&
-                  intent.route5_edge_source_agrees &&
-                  intent.route3_source_memory_agrees,
-              "RISC-V dynamic memory-source output should stay prepared-backed with agreeing Route 3 facts")) {
+                  intent.publication == publication &&
+                  intent.publication->source_memory_access ==
+                      prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+                          &lookups.memory_accesses, 1) &&
+                  intent.instruction_text == "lw a1, 12(s2)",
+              "RISC-V dynamic memory-source output should consume unique prepared memory authority")) {
     return 1;
   }
 
@@ -2137,26 +2133,20 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
         &lookups,
         prepared_only_ids.predecessor,
         prepared_only_ids.successor,
-        2,
-        &no_source_route5_edge);
-    if (!expect(intent.status ==
-                        riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
+        2);
+    if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
                     intent.publication == publication &&
-                    intent.instruction_text.empty() &&
-                    !intent.source_memory_byte_offset.has_value() &&
-                    intent.route5_edge_status ==
-                        bir::Route5PublicationStatus::NoSource &&
-                    !intent.route5_edge_source_agrees &&
-                    !intent.route3_source_memory_agrees,
-                "RISC-V dynamic LoadLocal consumer should fail closed when the public edge publication is prepared-only under Route 5 NoSource authority")) {
+                    intent.publication->source_memory_access == source_memory_access &&
+                    intent.source_memory_byte_offset == 12 &&
+                    intent.instruction_text == "lw a1, 12(s2)",
+                "RISC-V dynamic LoadLocal consumer should use unique prepared memory authority without Route 5")) {
       return 1;
     }
     intent = riscv::consume_edge_publication_move_intent(
         &lookups,
         prepared_only_ids.predecessor,
         prepared_only_ids.successor,
-        2,
-        &route5_memory_edge);
+        2);
     if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
                     intent.instruction_text == "lw a1, 12(s2)",
                 "RISC-V dynamic LoadLocal positive path should remain available with agreeing Route 5 memory-source authority")) {
@@ -2234,16 +2224,12 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       return 1;
     }
     intent = riscv::consume_edge_publication_move_intent(
-        &lookups, stale_ids.predecessor, stale_ids.successor, 2, &route5_memory_edge);
+        &lookups, stale_ids.predecessor, stale_ids.successor, 2);
     if (!expect(intent.status ==
                         riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
                     intent.instruction_text.empty() &&
-                    !intent.source_memory_byte_offset.has_value() &&
-                    intent.route5_edge_status ==
-                        bir::Route5PublicationStatus::MemorySource &&
-                    intent.route5_edge_source_agrees &&
-                    intent.route3_source_memory_agrees,
-                "RISC-V same-consumer memory-source path should reject stale public rows even when current Route 3 / Route 5 authority agrees")) {
+                    !intent.source_memory_byte_offset.has_value(),
+                "RISC-V same-consumer memory-source path should reject ambiguous prepared public rows")) {
       return 1;
     }
   }
@@ -2316,16 +2302,12 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       return 1;
     }
     intent = riscv::consume_edge_publication_move_intent(
-        &lookups, drift_ids.predecessor, drift_ids.successor, 2, &route5_memory_edge);
+        &lookups, drift_ids.predecessor, drift_ids.successor, 2);
     if (!expect(intent.status ==
                         riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
                     intent.instruction_text.empty() &&
-                    !intent.source_memory_byte_offset.has_value() &&
-                    intent.route5_edge_status ==
-                        bir::Route5PublicationStatus::MemorySource &&
-                    intent.route5_edge_source_agrees &&
-                    intent.route3_source_memory_agrees,
-                "RISC-V same-consumer memory-source path should reject same-block public byte-offset drift rows while selected Route 3 / Route 5 authority agrees")) {
+                    !intent.source_memory_byte_offset.has_value(),
+                "RISC-V same-consumer memory-source path should reject ambiguous prepared byte-offset rows")) {
       return 1;
     }
   }
@@ -2402,16 +2384,12 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       return 1;
     }
     intent = riscv::consume_edge_publication_move_intent(
-        &lookups, cross_ids.predecessor, cross_ids.successor, 2, &route5_memory_edge);
+        &lookups, cross_ids.predecessor, cross_ids.successor, 2);
     if (!expect(intent.status ==
                         riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
                     intent.instruction_text.empty() &&
-                    !intent.source_memory_byte_offset.has_value() &&
-                    intent.route5_edge_status ==
-                        bir::Route5PublicationStatus::MemorySource &&
-                    intent.route5_edge_source_agrees &&
-                    intent.route3_source_memory_agrees,
-                "RISC-V same-consumer memory-source path should reject cross-publication public rows without byte-offset drift")) {
+                    !intent.source_memory_byte_offset.has_value(),
+                "RISC-V same-consumer memory-source path should reject ambiguous cross-publication prepared rows")) {
       return 1;
     }
   }
@@ -2423,16 +2401,14 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       &lookups,
       dynamic_ids.predecessor,
       dynamic_ids.successor,
-      2,
-      &mismatched_route3_memory_edge);
-  if (!expect(intent.status ==
-                      riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
-                  intent.instruction_text.empty() &&
-                  intent.route5_edge_status ==
-                      bir::Route5PublicationStatus::MemorySource &&
-                  !intent.route5_edge_source_agrees &&
-                  !intent.route3_source_memory_agrees,
-              "RISC-V dynamic memory-source output should fail closed on non-agreeing Route 3 facts")) {
+      2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.publication != nullptr &&
+                  intent.publication->source_memory_access ==
+                      prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+                          &lookups.memory_accesses, 1) &&
+                  intent.instruction_text == "lw a1, 12(s2)",
+              "RISC-V dynamic memory-source output should ignore non-authoritative Route 3 diagnostics")) {
     return 1;
   }
 
@@ -2443,16 +2419,14 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       &lookups,
       dynamic_ids.predecessor,
       dynamic_ids.successor,
-      2,
-      &incomplete_route3_memory_edge);
-  if (!expect(intent.status ==
-                      riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
-                  intent.instruction_text.empty() &&
-                  intent.route5_edge_status ==
-                      bir::Route5PublicationStatus::MemorySource &&
-                  !intent.route5_edge_source_agrees &&
-                  !intent.route3_source_memory_agrees,
-              "RISC-V dynamic memory-source output should fail closed on incomplete Route 3 facts")) {
+      2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.publication != nullptr &&
+                  intent.publication->source_memory_access ==
+                      prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+                          &lookups.memory_accesses, 1) &&
+                  intent.instruction_text == "lw a1, 12(s2)",
+              "RISC-V dynamic memory-source output should ignore incomplete non-authoritative Route 3 diagnostics")) {
     return 1;
   }
 

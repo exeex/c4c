@@ -12283,17 +12283,6 @@ void append_select_publication_intent_evidence(
   append_optional_value(out,
                         "intent_destination_stack_offset",
                         intent.destination_stack_offset_bytes);
-  if (intent.route5_edge_status.has_value()) {
-    out << " intent_route5_edge_status="
-        << static_cast<int>(*intent.route5_edge_status);
-  } else {
-    out << " intent_route5_edge_status=<none>";
-  }
-  out << " intent_route5_edge_source_agrees="
-      << (intent.route5_edge_source_agrees ? "yes" : "no");
-  out << " intent_route3_source_memory_agrees="
-      << (intent.route3_source_memory_agrees ? "yes" : "no");
-
   const auto* publication = intent.publication;
   if (publication == nullptr) {
     out << " publication_present=no";
