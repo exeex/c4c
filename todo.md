@@ -8,11 +8,11 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Just Finished
 
-- Plan Step 1 migrated the AArch64 current-block entry publication consumer in
-  `dispatch_publication.cpp` to the common named/prepared publication identity.
-  The consumer no longer creates or classifies Route4-labelled executable
-  claims, checks the common identity against the prepared destination home,
-  and fails closed when proof authority is missing or inconsistent.
+- Plan Step 1 migrated AArch64 dispatch-value scalar select-chain
+  materialization to the common named/prepared select-chain lookup. The
+  consumer no longer creates Route2-labelled executable identity, requires an
+  attached consistent prepared lookup and select root, and fails closed for
+  missing or mismatched producer authority.
 
 ## Suggested Next
 
@@ -24,8 +24,8 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 - The separate comparison, call-boundary, and ALU route families were not
   changed by this packet.
-- The focused dispatch test now verifies that missing proof authority and
-  mismatched proof name/type do not fall back to prepared publication payloads.
+- The focused dispatch test now verifies that missing named producer authority
+  and a producer-kind mismatch do not reopen generic select rediscovery.
 - The focused baseline retains the known scalar-FP literal-add failure (test
   354, missing `bl printf`) and has no additional failures; no route
   expectations were weakened.

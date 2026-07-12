@@ -20604,6 +20604,46 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
     return fail("expected prepared select root emission to avoid generic fallback rediscovery: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
   }
+
+  const auto authoritative_producer =
+      function_context.prepared_lookups->edge_publication_source_producers
+          .producers_by_value_name.at(select_name);
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name.erase(select_name);
+  auto missing_function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(missing_function_context, prepared_lookups);
+  const auto missing_pred_context =
+      aarch64_codegen::make_block_lowering_context(missing_function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  aarch64_codegen::BlockScalarLoweringState missing_scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics missing_diagnostics;
+  if (!aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+           missing_pred_context, missing_scalar_state, missing_diagnostics)
+           .empty()) {
+    return fail("expected prepared select root emission to reject missing named producer authority");
+  }
+
+  auto mismatched_producer = authoritative_producer;
+  mismatched_producer.kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[select_name] = mismatched_producer;
+  auto mismatched_function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(mismatched_function_context, prepared_lookups);
+  const auto mismatched_pred_context =
+      aarch64_codegen::make_block_lowering_context(mismatched_function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  aarch64_codegen::BlockScalarLoweringState mismatched_scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics mismatched_diagnostics;
+  if (!aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+           mismatched_pred_context, mismatched_scalar_state, mismatched_diagnostics)
+           .empty()) {
+    return fail("expected prepared select root emission to reject mismatched named producer authority");
+  }
   return 0;
 }
 
