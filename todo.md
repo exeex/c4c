@@ -3,75 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/727_common_prepared_return_chain_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit the stale production inputs
+Current Step ID: 2
+Current Step Title: Publish complete attributed and fresh authority
 
 ## Just Finished
 
-- Plan Step 1 audited the common classifier, regalloc producer, the synthetic
-  one-link/two-link contract builder, and the representative AArch64
-  return-lowering builder. The first shared bad fact is the first successor
-  `PreparedMoveBundle::proof_attribution_id`: the contract builder's
-  `chain_bundle` publishes a nonzero ID, while
-  `prepared_with_return_selected_scalar_chain` aggregate-initializes both its
-  one-link prefix and second link with zero. The classifier therefore returns
-  `Stale` at the first `BeforeInstruction` bundle, before freshness selection;
-  the same result applies to the one-link prefix and full multi-link walk.
-- The exact production owner is the common prepared value-location builder:
-  `build_prepared_value_location_function` -> `append_prepared_move_bundle` in
-  `src/backend/prealloc/regalloc.cpp`. That path already derives a nonzero ID
-  when it creates a bundle and preserves `function_name`, `phase`,
-  `block_index`, `instruction_index`, and the exact `moves` element. Manual
-  prepared-module builders bypass that owner. The bounded repair should make
-  this producer authority reusable/mandatory for all prepared move-bundle
-  construction, rather than teaching classification or AArch64 to synthesize
-  it.
-- Complete authority also requires each chain move to retain nonzero
-  `from_value_id`/`to_value_id`, `op_kind == Move`, destination `Value`, and its
-  owning bundle identity; the terminal `BeforeReturn` bundle must carry its own
-  nonzero attribution plus the matching `FunctionReturnAbi` register move and
-  `PreparedAbiBinding`. Source freshness need not encode target policy: derive
-  it in common code from the attributed bundle's exact move and the complete
-  source `PreparedValueHome` (`DirectHome`, `MoveBundleSource`,
-  `DominanceOrOrdering`) with matching value name/id and block/instruction
-  reference, as `publish_prepared_move_bundle_source_home_freshness_authorities`
-  already does.
+- Plan Step 2 added `publish_prepared_move_bundle` as the common producer seam.
+  It owns the prepared function identity, assigns deterministic nonzero IDs
+  distinct within the function, normalizes the exact published moves, and is
+  now used by normal regalloc bundle creation.
+- The common one-link/two-link contract builders and representative AArch64
+  add/sub return-chain builder now use that seam instead of fixture-only proof
+  field injection. The terminal builder also publishes the complete matching
+  `FunctionReturnAbi` binding, allowing common traversal to derive DirectHome
+  freshness from each attributed bundle's exact source move and home.
 
 ## Suggested Next
 
-- Execute bounded Plan Step 2 in the common prepared producer seam: expose or
-  centralize attributed move-bundle creation so both regalloc production and
-  representative prepared-module builders publish the required bundle/move
-  and terminal-binding fields, then prove one-link and multi-link traversal
-  classify `Available`. Candidate owned files:
-  `src/backend/prealloc/regalloc.cpp`,
-  `src/backend/prealloc/value_locations.hpp`, and only the focused common and
-  AArch64 return-chain tests needed to exercise the shared builder.
+- Execute Plan Step 3 production-to-consumer readiness review and broader
+  checkpoint using the now-attributed representative inputs; keep the AArch64
+  consumer implementation unchanged unless separately authorized.
 
 ## Watchouts
 
-- Preserve fail-closed distinctions: zero/mismatched attribution or mismatched
-  function/position and a missing/mismatched direct-home freshness reference
-  remain `Stale`; missing bundles/moves remain `Absent`; duplicate matching
-  moves/bindings remain `Ambiguous`; invalid move IDs/op kinds remain
-  `Unsupported`; missing terminal attribution/binding remains
-  `StructurallyIncomplete`; inconsistent homes, non-adjacent producers, wrong
-  chain operands, missing first-operand homes, and cycles retain their current
-  precise negative statuses.
-- Do not derive attribution from AArch64 register names, opcode sequences, test
-  names, or fixed chain length. A deterministic producer-owned identity must
-  be nonzero and distinct per published bundle; freshness must reference that
-  bundle's exact move and common value home. Keep AArch64 implementation
-  unchanged and avoid fixture-only injection.
-- `backend_aarch64_instruction_dispatch` is the recorded baseline failure;
-  `backend_aarch64_return_lowering` and the external add/sub-chain smoke failure
-  remain blocker evidence in `test_after.log`.
+- `backend_aarch64_instruction_dispatch` remains the recorded baseline failure
+  with the same selected-global-load diagnostic. All nine return-chain and
+  scalar tests in the delegated subset pass, including the formerly failing
+  return-lowering and external add/sub-chain smoke surfaces.
+- Zero attribution and the existing absent, ambiguous, inconsistent,
+  unsupported, non-adjacent, wrong-operand, missing-home, incomplete-terminal,
+  and cycle cases remain fail closed in the unchanged common classifier.
 
 ## Proof
 
-- Read-only audit: no build or test command was run, as delegated. Existing
-  `test_after.log` records the representative multi-link failures in
-  `backend_aarch64_return_lowering` and
-  `backend_cli_aarch64_asm_external_return_add_sub_chain_smoke`; the matching
-  prior evidence remains in `test_before.log`. Fresh implementation proof and
-  a new `test_after.log` belong to Step 2.
+- Ran the exact delegated command:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_aarch64_return_(zero|add|add_sub_chain)_writes_elf_obj|backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|instruction_dispatch|return_lowering)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke)$' | tee test_after.log`.
+  Build succeeded; 9/10 tests passed. The sole failure is the recorded baseline
+  `backend_aarch64_instruction_dispatch`; `test_after.log` is canonical proof.

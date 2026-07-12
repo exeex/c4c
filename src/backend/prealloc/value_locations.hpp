@@ -460,6 +460,9 @@ struct PreparedValueLocationFunction {
   std::vector<PreparedMoveBundle> move_bundles;
 };
 
+void publish_prepared_move_bundle(PreparedValueLocationFunction& function_locations,
+                                  PreparedMoveBundle bundle);
+
 struct PreparedValueHomeLookups {
   std::unordered_map<PreparedValueId, const PreparedValueHome*> homes_by_id;
   std::unordered_map<ValueNameId, PreparedValueId> value_ids;

@@ -255,10 +255,7 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
     existing->moves.push_back(move);
     return;
   }
-  function_locations.move_bundles.push_back(PreparedMoveBundle{
-      .proof_attribution_id =
-          static_cast<std::uint64_t>(function_locations.move_bundles.size()) + 1U,
-      .function_name = function_locations.function_name,
+  publish_prepared_move_bundle(function_locations, PreparedMoveBundle{
       .phase = phase,
       .authority_kind = move.authority_kind,
       .block_index = move.block_index,
@@ -282,10 +279,7 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
                bundle.instruction_index == instruction_index;
       });
   if (existing == function_locations.move_bundles.end()) {
-    function_locations.move_bundles.push_back(PreparedMoveBundle{
-        .proof_attribution_id =
-            static_cast<std::uint64_t>(function_locations.move_bundles.size()) + 1U,
-        .function_name = function_locations.function_name,
+    publish_prepared_move_bundle(function_locations, PreparedMoveBundle{
         .phase = phase,
         .block_index = block_index,
         .instruction_index = instruction_index,
@@ -638,6 +632,24 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
 }
 
 }  // namespace
+
+void publish_prepared_move_bundle(PreparedValueLocationFunction& function_locations,
+                                  PreparedMoveBundle bundle) {
+  std::uint64_t attribution_id = 1;
+  while (std::any_of(function_locations.move_bundles.begin(),
+                     function_locations.move_bundles.end(),
+                     [attribution_id](const PreparedMoveBundle& existing) {
+                       return existing.proof_attribution_id == attribution_id;
+                     })) {
+    ++attribution_id;
+  }
+  bundle.proof_attribution_id = attribution_id;
+  bundle.function_name = function_locations.function_name;
+  for (auto& move : bundle.moves) {
+    move = normalize_prepared_move_publication(function_locations, std::move(move));
+  }
+  function_locations.move_bundles.push_back(std::move(bundle));
+}
 
 void BirPreAlloc::run_regalloc() {
   prepared_.completed_phases.push_back("regalloc");

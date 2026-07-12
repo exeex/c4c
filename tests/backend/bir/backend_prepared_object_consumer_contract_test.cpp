@@ -1909,27 +1909,29 @@ prepare::PreparedMoveResolution chain_value_move(prepare::PreparedValueId from,
   };
 }
 
-prepare::PreparedMoveBundle chain_bundle(std::size_t instruction_index,
-                                         prepare::PreparedValueId from,
-                                         prepare::PreparedValueId to) {
-  return prepare::PreparedMoveBundle{
-      .proof_attribution_id = 1000 + instruction_index,
+void publish_chain_bundle(ReturnChainFixture& chain,
+                          std::size_t instruction_index,
+                          prepare::PreparedValueId from,
+                          prepare::PreparedValueId to) {
+  prepare::publish_prepared_move_bundle(chain.fixture.locations,
+                                        prepare::PreparedMoveBundle{
       .function_name = 1,
       .phase = prepare::PreparedMovePhase::BeforeInstruction,
       .block_index = 1,
       .instruction_index = instruction_index,
       .moves = {chain_value_move(from, to)},
-  };
+  });
 }
 
-prepare::PreparedMoveBundle return_bundle(std::size_t instruction_index,
-                                          prepare::PreparedValueId from) {
+void publish_return_bundle(ReturnChainFixture& chain,
+                           std::size_t instruction_index,
+                           prepare::PreparedValueId from) {
   const prepare::PreparedRegisterPlacement placement{
       .bank = prepare::PreparedRegisterBank::Gpr,
       .slot_index = 0,
   };
-  return prepare::PreparedMoveBundle{
-      .proof_attribution_id = 2000,
+  prepare::publish_prepared_move_bundle(chain.fixture.locations,
+                                        prepare::PreparedMoveBundle{
       .function_name = 1,
       .phase = prepare::PreparedMovePhase::BeforeReturn,
       .block_index = 1,
@@ -1950,7 +1952,7 @@ prepare::PreparedMoveBundle return_bundle(std::size_t instruction_index,
               prepare::PreparedMoveStorageKind::Register,
           .destination_register_placement = placement,
       }},
-  };
+  });
 }
 
 void rebuild_return_chain_authority(ReturnChainFixture& chain) {
@@ -1994,10 +1996,9 @@ ReturnChainFixture make_return_chain_fixture(bool two_links = true,
   add_register_home(chain, "%v1", 11, "r1");
   add_register_home(chain, "%other", 20, "r2");
   if (two_links) add_register_home(chain, "%v2", 12, "r3");
-  chain.fixture.locations.move_bundles.push_back(chain_bundle(1, 10, 11));
-  if (two_links) chain.fixture.locations.move_bundles.push_back(chain_bundle(2, 11, 12));
-  chain.fixture.locations.move_bundles.push_back(
-      return_bundle(block.insts.size(), two_links ? 12 : 11));
+  publish_chain_bundle(chain, 1, 10, 11);
+  if (two_links) publish_chain_bundle(chain, 2, 11, 12);
+  publish_return_bundle(chain, block.insts.size(), two_links ? 12 : 11);
   rebuild_return_chain_authority(chain);
   return chain;
 }
@@ -2044,7 +2045,12 @@ int verify_return_chain_available_shapes() {
   const auto two = classify_return_chain(two_link);
   const auto one_link_rhs = make_return_chain_fixture(false, true);
   const auto one = classify_return_chain(one_link_rhs);
-  if (!expect(two.status == prepare::PreparedObjectReturnChainStatus::Available &&
+  if (!expect(two_link.fixture.locations.move_bundles.size() == 3 &&
+                  two_link.fixture.locations.move_bundles[0].proof_attribution_id == 1 &&
+                  two_link.fixture.locations.move_bundles[1].proof_attribution_id == 2 &&
+                  two_link.fixture.locations.move_bundles[2].proof_attribution_id == 3,
+              "common producer should assign deterministic distinct bundle attribution") ||
+      !expect(two.status == prepare::PreparedObjectReturnChainStatus::Available &&
                   two.relation.has_value() && two.relation->links.size() == 2 &&
                   two.relation->links[0].chain_operand_role ==
                       prepare::PreparedObjectReturnChainOperandRole::Lhs &&

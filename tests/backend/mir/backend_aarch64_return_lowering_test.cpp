@@ -872,7 +872,7 @@ prepare::PreparedBirModule prepared_with_return_selected_scalar_chain() {
   function.blocks.push_back(std::move(entry));
   prepared.module.functions.push_back(std::move(function));
 
-  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+  prepare::PreparedValueLocationFunction function_locations{
       .function_name = function_name,
       .value_homes =
           {
@@ -891,38 +891,45 @@ prepare::PreparedBirModule prepared_with_return_selected_scalar_chain() {
                   .immediate_i32 = 4,
               },
           },
-      .move_bundles =
-          {
-              prepare::PreparedMoveBundle{
-                  .function_name = function_name,
-                  .phase = prepare::PreparedMovePhase::BeforeInstruction,
-                  .block_index = 0,
-                  .instruction_index = 1,
-                  .moves = {prepare::PreparedMoveResolution{
-                      .from_value_id = prepare::PreparedValueId{5},
-                      .to_value_id = prepare::PreparedValueId{6},
-                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
-                      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
-                      .destination_contiguous_width = 1,
-                  }},
-              },
-              prepare::PreparedMoveBundle{
-                  .function_name = function_name,
-                  .phase = prepare::PreparedMovePhase::BeforeReturn,
-                  .block_index = 0,
-                  .instruction_index = 2,
-                  .moves = {prepare::PreparedMoveResolution{
-                      .from_value_id = prepare::PreparedValueId{6},
-                      .to_value_id = prepare::PreparedValueId{6},
-                      .destination_kind =
-                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
-                      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
-                      .destination_contiguous_width = 1,
-                      .destination_register_placement = call_result_gpr(0),
-                  }},
-              },
-          },
-  });
+      .move_bundles = {},
+  };
+  prepare::publish_prepared_move_bundle(
+      function_locations,
+      prepare::PreparedMoveBundle{
+          .phase = prepare::PreparedMovePhase::BeforeInstruction,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = prepare::PreparedValueId{5},
+              .to_value_id = prepare::PreparedValueId{6},
+              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_contiguous_width = 1,
+          }},
+      });
+  prepare::publish_prepared_move_bundle(
+      function_locations,
+      prepare::PreparedMoveBundle{
+          .phase = prepare::PreparedMovePhase::BeforeReturn,
+          .block_index = 0,
+          .instruction_index = 2,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = prepare::PreparedValueId{6},
+              .to_value_id = prepare::PreparedValueId{6},
+              .destination_kind =
+                  prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_contiguous_width = 1,
+              .destination_register_placement = call_result_gpr(0),
+          }},
+          .abi_bindings = {prepare::PreparedAbiBinding{
+              .destination_kind =
+                  prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_placement = call_result_gpr(0),
+          }},
+      });
+  prepared.value_locations.functions.push_back(std::move(function_locations));
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
       .function_name = function_name,
       .values =
