@@ -1,5 +1,6 @@
 #include "src/backend/mir/x86/prepared/prepared.hpp"
 #include "src/backend/mir/x86/x86.hpp"
+#include "src/backend/mir/prepared_view.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -13,6 +14,15 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace x86 = c4c::backend::x86;
 namespace x86_prepared = c4c::backend::x86::prepared;
+namespace mir_prepared = c4c::backend::mir::prepared;
+
+struct PreparedFunctionFixtureView {
+  explicit PreparedFunctionFixtureView(const prepare::PreparedBirModule& module)
+      : core(module), function(core.function_view("x86.decode")) {}
+
+  mir_prepared::PreparedMirCoreView core;
+  std::optional<mir_prepared::PreparedMirFunctionView> function;
+};
 
 int fail(std::string_view message) {
   std::cerr << message << "\n";
@@ -92,6 +102,33 @@ prepare::PreparedBirModule make_fixture() {
               .is_varargs = true,
           },
       },
+      .blocks = {
+          bir::Block{
+              .label = "entry",
+              .terminator = bir::BranchTerminator{.target_label = "join"},
+              .label_id = predecessor_label,
+          },
+          bir::Block{
+              .label = "join",
+              .insts = {bir::PhiInst{
+                  .result = bir::Value::named(bir::TypeKind::I32,
+                                              "block_entry_value"),
+                  .incomings = {bir::PhiIncoming{
+                      .label = "entry",
+                      .value = bir::Value::named(bir::TypeKind::I32,
+                                                 "storage_immediate"),
+                      .label_id = predecessor_label,
+                  }},
+              }},
+              .terminator = bir::ReturnTerminator{},
+              .label_id = successor_label,
+          },
+          bir::Block{
+              .label = "other",
+              .terminator = bir::ReturnTerminator{},
+              .label_id = other_successor_label,
+          },
+      },
   });
 
   prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
@@ -108,6 +145,8 @@ prepare::PreparedBirModule make_fixture() {
           },
       }},
   });
+  prepared.addressing.functions.push_back(
+      prepare::PreparedAddressingFunction{.function_name = function_name});
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
       .function_name = function_name,
       .values = {
@@ -233,6 +272,7 @@ prepare::PreparedBirModule make_fixture() {
                       .destination_kind = prepare::PreparedMoveDestinationKind::Value,
                       .destination_storage_kind =
                           prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"ebx"},
                       .source_parallel_copy_step_index = std::size_t{0},
                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                       .authority_kind =
@@ -295,6 +335,15 @@ prepare::PreparedBirModule make_fixture() {
   });
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
+      .blocks = {
+          prepare::PreparedControlFlowBlock{
+              .block_label = predecessor_label,
+              .terminator_kind = bir::TerminatorKind::Branch,
+              .branch_target_label = successor_label,
+          },
+          prepare::PreparedControlFlowBlock{.block_label = successor_label},
+          prepare::PreparedControlFlowBlock{.block_label = other_successor_label},
+      },
       .join_transfers = {prepare::PreparedJoinTransfer{
           .function_name = function_name,
           .join_block_label = successor_label,
@@ -575,6 +624,7 @@ int check_query_reuses_shared_block_entry_publications() {
 int check_x86_consumed_plans_read_shared_edge_publications() {
   const auto prepared = make_fixture();
   const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const PreparedFunctionFixtureView view(prepared);
   const auto* lookups = consumed.shared_function_lookups();
   if (!expect(lookups != nullptr,
               "x86 consumed plans did not expose shared prepared lookups")) {
@@ -598,10 +648,20 @@ int check_x86_consumed_plans_read_shared_edge_publications() {
   }
 
   const auto intent = x86_prepared::consume_edge_publication_move_intent(
-      consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+      *view.function, consumed, 1, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
+  const auto source_query =
+      view.function->current_block_direct_edge_publication_sources(1);
   if (!expect(intent.status ==
                   x86_prepared::EdgePublicationMoveIntentStatus::Available,
-              "x86 edge-publication helper should accept shared semantic facts") ||
+              "x86 edge-publication helper should accept shared semantic facts; status=" +
+                  std::to_string(static_cast<int>(intent.status)) + ", query=" +
+                  std::to_string(static_cast<int>(source_query.status)) + ", sources=" +
+                  std::to_string(source_query.sources.size()) +
+                  (source_query.sources.empty()
+                       ? std::string{}
+                       : ", source_status=" + std::to_string(static_cast<int>(
+                             source_query.sources.front().status)))) ||
       !expect(intent.publication == publication,
               "x86 edge-publication helper should preserve shared publication authority") ||
       !expect(intent.source_value_id == 2 && intent.destination_value_id == 5,
@@ -660,6 +720,7 @@ int check_x86_edge_publication_move_intent_accepts_register_source_home() {
   source_home.register_name = std::string{"eax"};
 
   const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const PreparedFunctionFixtureView view(prepared);
   const auto predecessor_label = prepared.names.block_labels.find("entry");
   const auto successor_label = prepared.names.block_labels.find("join");
   const auto* lookups = consumed.shared_function_lookups();
@@ -672,7 +733,8 @@ int check_x86_edge_publication_move_intent_accepts_register_source_home() {
       &lookups->edge_publications, predecessor_label, successor_label,
       prepare::PreparedValueId{5});
   const auto intent = x86_prepared::consume_edge_publication_move_intent(
-      consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+      *view.function, consumed, 1, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
   if (!expect(intent.status ==
                   x86_prepared::EdgePublicationMoveIntentStatus::Available,
               "x86 edge-publication helper should accept register-source homes") ||
@@ -690,13 +752,15 @@ int check_x86_edge_publication_move_intent_accepts_register_source_home() {
 
   std::string missing_output = "unchanged";
   const auto missing = x86_prepared::append_edge_publication_move_instruction(
-      missing_output, x86::ConsumedPlans{}, predecessor_label, successor_label,
+      missing_output, *view.function, x86::ConsumedPlans{}, 1,
+      predecessor_label, successor_label,
       prepare::PreparedValueId{5});
   if (!expect(missing.status ==
-                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
-              "x86 register-source lowering should require shared edge-publication authority") ||
-      !expect(missing_output == "unchanged",
-              "x86 register-source lowering should not emit without shared authority")) {
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available &&
+                  missing.publication == nullptr,
+              "x86 register-source lowering should use prepared MIR authority without legacy consumed lookups") ||
+      !expect(missing_output == "unchanged    mov ebx, eax\n",
+              "x86 register-source lowering should emit from prepared MIR authority")) {
     return 1;
   }
 
@@ -713,6 +777,7 @@ int check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_sour
   source_home.immediate_i32 = 42;
 
   const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const PreparedFunctionFixtureView view(prepared);
   const auto predecessor_label = prepared.names.block_labels.find("entry");
   const auto successor_label = prepared.names.block_labels.find("join");
   const auto* lookups = consumed.shared_function_lookups();
@@ -725,7 +790,8 @@ int check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_sour
       &lookups->edge_publications, predecessor_label, successor_label,
       prepare::PreparedValueId{5});
   const auto intent = x86_prepared::consume_edge_publication_move_intent(
-      consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+      *view.function, consumed, 1, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
   if (!expect(intent.status ==
                   x86_prepared::EdgePublicationMoveIntentStatus::Available,
               "x86 edge-publication helper should accept immediate-source homes") ||
@@ -745,7 +811,8 @@ int check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_sour
 
   std::string output;
   const auto appended = x86_prepared::append_edge_publication_move_instruction(
-      output, consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+      output, *view.function, consumed, 1, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
   if (!expect(appended.status ==
                   x86_prepared::EdgePublicationMoveIntentStatus::Available,
               "x86 immediate-source lowering should consume the shared publication") ||
@@ -756,13 +823,15 @@ int check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_sour
 
   std::string missing_output = "unchanged";
   const auto missing = x86_prepared::append_edge_publication_move_instruction(
-      missing_output, x86::ConsumedPlans{}, predecessor_label, successor_label,
+      missing_output, *view.function, x86::ConsumedPlans{}, 1,
+      predecessor_label, successor_label,
       prepare::PreparedValueId{5});
   if (!expect(missing.status ==
-                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
-              "x86 immediate-source lowering should require shared edge-publication authority") ||
-      !expect(missing_output == "unchanged",
-              "x86 immediate-source lowering should not emit without shared authority")) {
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available &&
+                  missing.publication == nullptr,
+              "x86 immediate-source lowering should use prepared MIR authority without legacy consumed lookups") ||
+      !expect(missing_output == "unchanged    mov ebx, 42\n",
+              "x86 immediate-source lowering should emit from prepared MIR authority")) {
     return 1;
   }
 
@@ -771,14 +840,16 @@ int check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_sour
 
 int check_x86_edge_publication_move_intent_missing_authority() {
   const auto prepared = make_fixture();
+  const PreparedFunctionFixtureView view(prepared);
   const auto predecessor_label = prepared.names.block_labels.find("entry");
   const auto successor_label = prepared.names.block_labels.find("join");
 
   const auto no_lookups = x86_prepared::consume_edge_publication_move_intent(
-      x86::ConsumedPlans{}, predecessor_label, successor_label, prepare::PreparedValueId{5});
+      *view.function, x86::ConsumedPlans{}, 1, predecessor_label,
+      successor_label, prepare::PreparedValueId{5});
   if (!expect(no_lookups.status ==
-                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
-              "x86 edge-publication helper should require shared lookup authority") ||
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available,
+              "x86 edge-publication helper should use prepared MIR authority") ||
       !expect(no_lookups.publication == nullptr,
               "x86 missing-lookup intent should not invent a publication")) {
     return 1;
@@ -786,7 +857,8 @@ int check_x86_edge_publication_move_intent_missing_authority() {
 
   const auto consumed = x86::consume_plans(prepared, "x86.decode");
   const auto missing_publication = x86_prepared::consume_edge_publication_move_intent(
-      consumed, predecessor_label, successor_label, prepare::PreparedValueId{99});
+      *view.function, consumed, 1, predecessor_label, successor_label,
+      prepare::PreparedValueId{99});
   if (!expect(missing_publication.status ==
                   x86_prepared::EdgePublicationMoveIntentStatus::MissingPublication,
               "x86 edge-publication helper should report absent shared publication") ||
@@ -809,9 +881,11 @@ int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
   source_unsupported.value_locations.functions.front().value_homes.front().pointer_byte_delta = 4;
   const auto predecessor_label = source_unsupported.names.block_labels.find("entry");
   const auto successor_label = source_unsupported.names.block_labels.find("join");
+  const PreparedFunctionFixtureView source_view(source_unsupported);
 
   const auto unsupported_source = x86_prepared::consume_edge_publication_move_intent(
-      x86::consume_plans(source_unsupported, "x86.decode"), predecessor_label,
+      *source_view.function, x86::consume_plans(source_unsupported, "x86.decode"), 1,
+      predecessor_label,
       successor_label, prepare::PreparedValueId{5});
   if (!expect(unsupported_source.status ==
                   x86_prepared::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
@@ -828,9 +902,11 @@ int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
   malformed_source.slot_id = std::nullopt;
   malformed_source.offset_bytes = std::nullopt;
   malformed_source.immediate_i32 = std::nullopt;
+  const PreparedFunctionFixtureView malformed_view(malformed_immediate);
   const auto unsupported_immediate =
       x86_prepared::consume_edge_publication_move_intent(
-          x86::consume_plans(malformed_immediate, "x86.decode"),
+          *malformed_view.function,
+          x86::consume_plans(malformed_immediate, "x86.decode"), 1,
           malformed_immediate.names.block_labels.find("entry"),
           malformed_immediate.names.block_labels.find("join"),
           prepare::PreparedValueId{5});
@@ -847,17 +923,22 @@ int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
       prepare::PreparedValueHomeKind::StackSlot;
   destination_unsupported.value_locations.functions.front().value_homes[3].register_name =
       std::nullopt;
+  destination_unsupported.value_locations.functions.front().move_bundles[1]
+      .moves.front()
+      .destination_register_name = std::nullopt;
+  const PreparedFunctionFixtureView destination_view(destination_unsupported);
   const auto unsupported_destination =
       x86_prepared::consume_edge_publication_move_intent(
-          x86::consume_plans(destination_unsupported, "x86.decode"),
+          *destination_view.function,
+          x86::consume_plans(destination_unsupported, "x86.decode"), 1,
           destination_unsupported.names.block_labels.find("entry"),
           destination_unsupported.names.block_labels.find("join"),
           prepare::PreparedValueId{5});
   if (!expect(unsupported_destination.status ==
-                  x86_prepared::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
-              "x86 edge-publication helper should reject unsupported destination homes") ||
-      !expect(unsupported_destination.publication != nullptr,
-              "x86 unsupported-destination intent should preserve shared publication")) {
+                  x86_prepared::EdgePublicationMoveIntentStatus::MissingPublication,
+              "x86 edge-publication helper should fail closed when prepared MIR rejects the destination home") ||
+      !expect(unsupported_destination.publication == nullptr,
+              "x86 rejected-destination intent should not expose a consumable publication")) {
     return 1;
   }
 
@@ -868,10 +949,13 @@ int check_x86_edge_publication_lowering_appends_shared_move_instruction() {
   const auto prepared = make_fixture();
   const auto predecessor_label = prepared.names.block_labels.find("entry");
   const auto successor_label = prepared.names.block_labels.find("join");
+  const PreparedFunctionFixtureView view(prepared);
   std::string output;
   const auto intent = x86_prepared::append_edge_publication_move_instruction(
       output,
+      *view.function,
       x86::consume_plans(prepared, "x86.decode"),
+      1,
       predecessor_label,
       successor_label,
       prepare::PreparedValueId{5});
@@ -888,15 +972,18 @@ int check_x86_edge_publication_lowering_appends_shared_move_instruction() {
   std::string missing_output = "unchanged";
   const auto missing = x86_prepared::append_edge_publication_move_instruction(
       missing_output,
+      *view.function,
       x86::ConsumedPlans{},
+      1,
       predecessor_label,
       successor_label,
       prepare::PreparedValueId{5});
   if (!expect(missing.status ==
-                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
-              "x86 edge-publication lowering should keep missing shared authority explicit") ||
-      !expect(missing_output == "unchanged",
-              "x86 edge-publication lowering should not emit without shared authority")) {
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available &&
+                  missing.publication == nullptr,
+              "x86 edge-publication lowering should use prepared MIR authority without legacy consumed lookups") ||
+      !expect(missing_output == "unchanged    mov ebx, DWORD PTR [rsp + 56]\n",
+              "x86 edge-publication lowering should emit from prepared MIR authority")) {
     return 1;
   }
 

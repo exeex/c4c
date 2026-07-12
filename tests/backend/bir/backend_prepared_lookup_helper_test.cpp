@@ -8623,6 +8623,11 @@ int verify_prepared_same_block_scalar_source_facts() {
       .block_label = "entry",
       .before_instruction_index = block.insts.size(),
   };
+  const auto route1_index = bir::route1_build_producer_index(block);
+  const auto route1_query = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = block.insts.size(),
+  };
   const auto bir_producer_view = bir::make_bir_producer_view(block);
   if (!bir_producer_view) {
     return fail("BIR producer view should be available for the block");
@@ -10889,7 +10894,7 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
   }
 
   auto cast_missing_block_label = cast_inputs;
-  cast_missing_block_label.source_producer_block_label.clear();
+  cast_missing_block_label.source_producer_block_label = {};
   if (const int result = expect_fail_closed(
           cast_missing_block_label,
           "cast missing named BIR producer block label");
