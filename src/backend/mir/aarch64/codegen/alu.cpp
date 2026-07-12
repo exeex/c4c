@@ -1677,24 +1677,15 @@ find_prepared_control_same_block_scalar_producer(
     const bir::Value& value,
     std::size_t before_instruction_index) {
   if (context.function.prepared == nullptr ||
-      (context.function.prepared_lookups == nullptr &&
-       context.function.control_flow == nullptr) ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
       context.control_flow_block == nullptr) {
     return std::nullopt;
   }
-  const auto generated_lookups =
-      context.function.prepared_lookups == nullptr
-          ? std::optional<prepare::PreparedFunctionLookups>{
-                prepare::make_prepared_function_lookups(
-                    *context.function.prepared, *context.function.control_flow)}
-          : std::nullopt;
-  const auto* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : &generated_lookups->edge_publication_source_producers;
   return prepare::find_prepared_same_block_scalar_producer(
       context.function.prepared->names,
-      source_producers,
+      &context.function.prepared_lookups->edge_publication_source_producers,
       context.control_flow_block->block_label,
       context.bir_block,
       value,

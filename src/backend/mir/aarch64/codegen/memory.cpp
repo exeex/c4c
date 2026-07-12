@@ -3992,6 +3992,11 @@ plan_store_local_source_publication(
     const module::BlockLoweringContext& context,
     const bir::StoreLocalInst& store,
     std::size_t instruction_index) {
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
+    return {};
+  }
   if (const auto* precomputed =
           find_precomputed_store_local_source_publication(context,
                                                           instruction_index);
@@ -4021,21 +4026,8 @@ plan_store_local_source_publication(
                 addressing,
                 source_producer)
           : false;
-  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
-      fallback_source_producers;
   const auto* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : nullptr;
-  if (source_producers == nullptr &&
-      context.function.prepared != nullptr &&
-      context.function.control_flow != nullptr) {
-    fallback_source_producers =
-        prepare::make_prepared_edge_publication_source_producer_lookups(
-            *context.function.prepared,
-            *context.function.control_flow);
-    source_producers = &*fallback_source_producers;
-  }
+      &context.function.prepared_lookups->edge_publication_source_producers;
   const auto source_producer_evidence =
       source_producer != nullptr &&
               context.function.prepared_lookups != nullptr &&
