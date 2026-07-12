@@ -3,43 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/716_prepared_call_plan_cursor_complete_production.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Revalidate cursor-complete producer and lookup authority
+Current Step ID: 3
+Current Step Title: Run broader acceptance and hand back to idea 708
 
 ## Just Finished
 
-- Plan Step 1 revalidated the cursor-complete prepared-call producer and exact
-  position lookup without code or expectation changes. The direct-extern
-  boundary reached and passed its adjacent cursor-0 fixed-arity/cursor-1
-  variadic positive assertions, unique compatible refinement assertion, and
-  duplicate, out-of-range, and operand-contradicting negative assertions.
-- The fixed proof then exposed only later independent failures: the frame/stack
-  contract aborts in
-  `check_x86_module_emitter_reads_grouped_spill_reload_authority` because the
-  x86 emitter cannot obtain prepared MIR core facts for a defined function;
-  the handoff boundary reaches the joined-branch suite and fails x86 target
-  materialization of register-source shared edge-publication moves. Neither
-  failure is owned by idea 716's common call-plan producer or exact lookup.
+- Plan Step 2 completed the independent route-quality audit recorded in
+  `review/idea716_step2_route_quality_review.md`. The review found no blocking
+  alignment, testcase-overfit, route-quality, or focused-proof issue: common
+  production remains semantic-operand-first with optional unique refinement,
+  exact lookup fails closed on ambiguous or stale authority, and the focused
+  assertions exercise general cursor and operand identity without expectation
+  weakening or fixture-shaped production branches.
+- The reviewer accepted the already recorded exact Step 1 focused proof as
+  sufficient narrow evidence for the owned producer/lookup route. Broader
+  regression acceptance remains outstanding for Plan Step 3.
 
 ## Suggested Next
 
-- Execute Plan Step 2's independent idea-716 route-quality review, while
-  keeping the two classified downstream x86 consumer failures outside this
-  producer/lookup slice.
+- Execute Plan Step 3's supervisor-selected matching broader backend
+  before/after regression guard, then request lifecycle closure only if it
+  reports no new failures or lost covered passes.
 
 ## Watchouts
 
-- The focused CTest command is not globally green: test 320 aborts in x86
-  prepared MIR core-view/emitter integration, and test 369 fails in joined-edge
-  x86 target materialization after the direct-extern idea-716 assertions pass.
-- Do not absorb either downstream owner into common call-plan production, and
-  continue to reject callee-name, source-order, nearest-cursor, route, and
-  target-local fallback authority.
+- The accepted review is narrow route-quality evidence, not the broader Step 3
+  acceptance comparison.
+- The focused CTest command still reaches two later independently owned x86
+  failures after the idea-716 assertions pass: prepared-MIR core-view/emitter
+  integration and joined-edge target materialization. Do not absorb either
+  downstream owner into common call-plan production or add fallback authority.
 
 ## Proof
 
-- Ran exactly
+- No new proof command was delegated for Plan Step 2. Independent review:
+  `review/idea716_step2_route_quality_review.md`; result: no blocking
+  alignment, overfit, route-quality, or proof finding.
+- The accepted Step 1 proof was run exactly as already recorded:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$' > test_after.log 2>&1`.
   The build passed (`ninja: no work to do`); CTest ran 2 tests and reported 0
-  passed, with the two independently owned later failures classified above.
-  Canonical proof log: `test_after.log`.
+  passed, with the idea-716 assertions passing before the two independently
+  owned later failures classified above. The accepted executor proof was
+  rolled forward by the supervisor to canonical `test_before.log`;
+  `test_after.log` is not currently present.
