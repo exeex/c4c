@@ -18,6 +18,10 @@ Current Step Title: Repair genuine prepared attribution and prove the adapter
 - Independent review
   `review/idea718_step6_producer_bridge_acceptance_review.md` accepted the
   Step 6 producer bridge as aligned, semantic, and non-overfit.
+- Post-commit correction restored established fail-closed status precedence:
+  missing names and missing proof are reported before missing producer
+  attribution, while concrete proof still requires a nonzero producer bundle
+  ID. The block-entry publication fixtures now carry that producer authority.
 
 ## Suggested Next
 
@@ -36,9 +40,11 @@ Current Step Title: Repair genuine prepared attribution and prove the adapter
 
 - Ran `( cmake --build --preset default -j2 && ctest --test-dir build -j2
   --output-on-failure -R
-  '^(backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract)$'
+  '^(backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract|backend_prealloc_block_entry_publications)$'
   ) > test_after.log 2>&1`.
-- Build and `backend_prepared_lookup_helper` passed.
+- Build, `backend_prepared_lookup_helper`, and
+  `backend_prealloc_block_entry_publications` passed with unchanged status
+  expectations.
 - Matching before/after evidence isolates the unchanged, permitted idea 721
   exception in `backend_prepare_frame_stack_call_contract` after the owned
   adapter coverage:

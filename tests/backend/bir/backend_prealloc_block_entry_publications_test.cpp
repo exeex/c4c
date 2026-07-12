@@ -108,6 +108,7 @@ Fixture make_fixture() {
   }
   fixture.locations.move_bundles = {
       prepare::PreparedMoveBundle{
+          .proof_attribution_id = 1,
           .function_name = fixture.function_name,
           .phase = prepare::PreparedMovePhase::BlockEntry,
           .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -844,6 +845,7 @@ int check_edge_publication_lookup_reuses_block_entry_publication_data() {
       },
       .move_bundles = {
           prepare::PreparedMoveBundle{
+              .proof_attribution_id = 1,
               .function_name = function_name,
               .phase = prepare::PreparedMovePhase::BlockEntry,
               .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,

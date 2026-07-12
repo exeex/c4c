@@ -2316,8 +2316,7 @@ void attribute_block_entry_publication_proof_if_agreeing(
       query.successor_label == kInvalidBlockLabel ||
       result.destination_value_id == PreparedValueId{0} ||
       result.destination_value_name == kInvalidValueName ||
-      result.publication.bundle == nullptr ||
-      result.publication.bundle->proof_attribution_id == 0) {
+      result.publication.bundle == nullptr) {
     result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
     return;
   }
@@ -2327,6 +2326,10 @@ void attribute_block_entry_publication_proof_if_agreeing(
   }
   if (proof_successor_block == nullptr || proof_destination_value == nullptr) {
     result.status = PreparedCurrentBlockEntryPublicationStatus::MissingProof;
+    return;
+  }
+  if (result.publication.bundle->proof_attribution_id == 0) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
     return;
   }
 
