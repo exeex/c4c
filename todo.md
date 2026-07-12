@@ -1,32 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/715_pass_ready_bir_schema_and_legacy_quarantine_research.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Produce The Target Schema And API Blueprint
+Current Step ID: 6
+Current Step Title: Order Migration And Follow-Ups
 
 # Current Packet
 
 ## Just Finished
 
-- Completed plan.md Step 5: specified the target source tree, stable storage and
-  APIs, verification/analysis boundaries, typed raw-to-canonical transition,
-  and prepared BIR/MIR ownership for all target policy.
+- Completed plan.md Step 6: ordered no-big-bang migration packets from
+  no-semantic-change isolation through stable IDs, mutation, verification,
+  analyses, canonical families, preparation, MIR, and target cutovers.
 
 ## Suggested Next
 
-- Execute plan.md Step 6 and order reversible migration packets, proof and
-  rollback boundaries, compatibility deletion gates, and follow-up proposals.
+- Execute plan.md Step 7 and integrate the seven-file package in `index.md`,
+  auditing exact file count, links, terminology, decisions, and source coverage.
 
 ## Watchouts
 
-- Preserve dependency direction: core cannot include compatibility,
-  preparation, MIR, LIR, prealloc, or target headers.
-- `CanonicalBir` is a verified move-only state wrapper over core storage, not a
-  duplicated module; all target realization belongs to typed later outputs.
+- Each implementation packet must preserve its stated adapter, proof, rollback,
+  and capsule checkpoint; do not combine target cutovers into a big bang.
+- The ordered follow-up proposals are research output only; this run does not
+  create lifecycle idea files.
 
 ## Proof
 
 - Supervisor-selected documentation proof passed:
-  `git diff --check && test -f docs/backend/pass_ready_bir/05_target_schema_and_api_blueprint.md && rg -n "lower_lir_to_raw_bir|CanonicalBir|FunctionId|BlockId|InstId|ValueId|verif|analysis|compat|prepar|MIR|ABI|frame|allocation|instruction selection" docs/backend/pass_ready_bir/05_target_schema_and_api_blueprint.md`.
+  `git diff --check && test -f docs/backend/pass_ready_bir/06_staged_migration_and_followups.md && rg -n "no-semantic-change|proof|rollback|compat|checkpoint|stable ID|mutation|verifier|analysis|legalization|SSA|memory|aggregate|intrinsic|out-of-SSA|allocation|ABI|frame|follow-up" docs/backend/pass_ready_bir/06_staged_migration_and_followups.md`.
 - This documentation-only packet does not produce `test_after.log`; no build or
   test subset was delegated.
