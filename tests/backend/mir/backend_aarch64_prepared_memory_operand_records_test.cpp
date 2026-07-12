@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <unordered_set>
@@ -2753,8 +2754,8 @@ int store_global_stack_publication_proves_selected_owner() {
   auto& bir_function = prepared.module.functions.front();
   auto& locations = prepared.value_locations.functions.front();
   auto& storage = prepared.storage_plans.functions.front();
-  const auto lookups =
-      prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto lookups = std::make_shared<const prepare::PreparedFunctionLookups>(
+      prepare::make_prepared_function_lookups(prepared, control_flow));
   aarch64_module::FunctionLoweringContext function_context{
       .prepared = &prepared,
       .target_profile = &prepared.target_profile,
@@ -2762,8 +2763,9 @@ int store_global_stack_publication_proves_selected_owner() {
       .bir_function = &bir_function,
       .value_locations = &locations,
       .storage_plan = &storage,
-      .prepared_lookups = &lookups,
-      .value_home_lookups = &lookups.value_homes,
+      .prepared_lookups_owner = lookups,
+      .prepared_lookups = lookups.get(),
+      .value_home_lookups = &lookups->value_homes,
   };
   const auto block_context = aarch64_codegen::make_block_lowering_context(
       function_context, control_flow.blocks.front(), 0);
@@ -2811,7 +2813,7 @@ int store_global_stack_publication_proves_selected_owner() {
       .bir_function = &bir_function,
       .value_locations = &locations,
       .storage_plan = &storage,
-      .value_home_lookups = &lookups.value_homes,
+      .value_home_lookups = &lookups->value_homes,
   };
   const auto no_authority_block_context =
       aarch64_codegen::make_block_lowering_context(
@@ -2840,7 +2842,9 @@ int store_global_stack_publication_proves_selected_owner() {
   auto& register_locations = register_homed.value_locations.functions.front();
   auto& register_storage = register_homed.storage_plans.functions.front();
   const auto register_lookups =
-      prepare::make_prepared_function_lookups(register_homed, register_control_flow);
+      std::make_shared<const prepare::PreparedFunctionLookups>(
+          prepare::make_prepared_function_lookups(register_homed,
+                                                  register_control_flow));
   aarch64_module::FunctionLoweringContext register_function_context{
       .prepared = &register_homed,
       .target_profile = &register_homed.target_profile,
@@ -2848,8 +2852,9 @@ int store_global_stack_publication_proves_selected_owner() {
       .bir_function = &register_bir_function,
       .value_locations = &register_locations,
       .storage_plan = &register_storage,
-      .prepared_lookups = &register_lookups,
-      .value_home_lookups = &register_lookups.value_homes,
+      .prepared_lookups_owner = register_lookups,
+      .prepared_lookups = register_lookups.get(),
+      .value_home_lookups = &register_lookups->value_homes,
   };
   const auto register_block_context = aarch64_codegen::make_block_lowering_context(
       register_function_context, register_control_flow.blocks.front(), 0);
