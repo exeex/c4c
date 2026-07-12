@@ -1079,6 +1079,18 @@ find_bir_current_block_join_source_identity(
     return BirCurrentBlockJoinSourceStatus::UnsupportedSource;
   };
   for (const auto& record : prepared_query.sources) {
+    const auto duplicate = std::find_if(
+        result.facts.begin(), result.facts.end(), [&](const auto& fact) {
+          return fact.predecessor_label_id == record.predecessor_label &&
+                 fact.successor_label_id == record.successor_label &&
+                 fact.destination_prepared_value_id == record.destination_value_id &&
+                 fact.prepared_destination_value == record.destination_value &&
+                 fact.source_prepared_value_id == record.source_value_id &&
+                 fact.prepared_source_value == record.source_value;
+        });
+    if (duplicate != result.facts.end()) {
+      return BirCurrentBlockJoinSourceIdentity{};
+    }
     BirCurrentBlockJoinSourceFact fact{
         .status = source_status(record.status),
         .predecessor_label = prepare::prepared_block_label(names, record.predecessor_label),

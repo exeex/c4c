@@ -5184,11 +5184,17 @@ int verify_current_block_join_parallel_copy_source_query() {
           fact.selected_freshness_authority->reference.move ==
               prepared.selected_freshness_authority->reference.move));
     return fact.status == mir::BirCurrentBlockJoinSourceStatus::Available &&
+           fact.predecessor_label_id == prepared.predecessor_label &&
+           fact.successor_label_id == prepared.successor_label &&
            fact.prepared_destination_value == prepared.destination_value &&
            fact.destination_prepared_value_id == prepared.destination_value_id &&
+           fact.destination_value_name == prepared.destination_value.name &&
            fact.destination_value_type == prepared.destination_value.type &&
            fact.prepared_source_value == prepared.source_value &&
            fact.source_prepared_value_id == prepared.source_value_id &&
+           (prepared.immediate_source ||
+            fact.source_value_name == prepared.source_value.name) &&
+           fact.source_value_kind == prepared.source_value.kind &&
            fact.source_value_type == prepared.source_value.type &&
            fact.source_producer_instruction_index ==
                prepared.source_producer_instruction_index &&
@@ -5228,6 +5234,48 @@ int verify_current_block_join_parallel_copy_source_query() {
       bir_query.facts[3].status ==
           mir::BirCurrentBlockJoinSourceStatus::Available) {
     return fail("BIR join facts should preserve exact prepared authority and fail incomplete rows closed");
+  }
+  auto require_bir_negative = [&](auto mutated,
+                                  mir::BirCurrentBlockJoinSourceStatus expected,
+                                  std::string_view message) {
+    const auto adapted =
+        mir::find_bir_current_block_join_source_identity(names, mutated);
+    if (adapted || adapted.available || adapted.status ==
+            mir::BirCurrentBlockJoinSourceStatus::Available ||
+        (expected != mir::BirCurrentBlockJoinSourceStatus::MissingPublication &&
+         (adapted.facts.empty() || adapted.facts.front().status != expected))) {
+      return fail(message);
+    }
+    return 0;
+  };
+  auto missing_prepared_evidence = prepared_bir_query;
+  missing_prepared_evidence.sources.front().status = mir::prepared::
+      PreparedMirDirectEdgePublicationSourceStatus::MissingPublication;
+  auto stale_prepared_evidence = prepared_bir_query;
+  stale_prepared_evidence.sources.front().selected_freshness_authority->reference
+      .edge_publication = nullptr;
+  auto mismatched_prepared_evidence = prepared_bir_query;
+  mismatched_prepared_evidence.sources.front().source_value.name =
+      "%current.other_source";
+  auto duplicate_prepared_evidence = prepared_bir_query;
+  duplicate_prepared_evidence.sources = {prepared_named, prepared_named};
+  if (require_bir_negative(
+          missing_prepared_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject explicitly missing prepared evidence") ||
+      require_bir_negative(
+          stale_prepared_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject stale freshness authority") ||
+      require_bir_negative(
+          mismatched_prepared_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject mismatched typed source identity") ||
+      require_bir_negative(
+          duplicate_prepared_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject duplicate prepared evidence")) {
+    return 1;
   }
   auto find_route5_join = [&](std::string_view destination_name) {
     return std::find_if(route5_join_records.begin(),
