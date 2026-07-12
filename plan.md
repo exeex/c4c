@@ -82,7 +82,7 @@ Completion check:
   localized, cursor accounting is not the defect, and the proposed repair is
   a semantic operand/refinement rule covering more than the named fixture.
 
-### Step 2: Produce one cursor-exact plan per supported call
+### Step 2: Produce one cursor-exact plan per supported call (complete)
 
 Goal: repair common argument production without weakening consumer identity
 checks or relationship ambiguity rejection.
@@ -110,6 +110,14 @@ Completion check:
   `actual_function` at cursor 0 and argument-bearing `printf` at cursor 1;
   nearby argument-bearing direct-BIR shapes without relationships also publish
   exact plans, while contradictory or ambiguous evidence remains unavailable.
+- Complete at commits `80a5388a8` and `0b44f508e`: semantic operands now
+  provide base argument identity, a unique compatible relationship refines it,
+  and malformed or ambiguous relationships remain fail closed.
+- The exact Step 2 proof executables continue past their call-production
+  assertions and then fail in pre-existing block-entry publication and
+  call-free joined-control paths. Baseline isolation at `77bd1612b` reproduced
+  the joined-control failure and confirmed the block-entry path is unchanged;
+  those failures do not expand this runbook or prevent advancement to Step 3.
 
 ### Step 3: Prove positive completeness and negative rejection
 
@@ -125,6 +133,10 @@ Actions:
   unavailable or rejected by exact lookup/consumption.
 - Run the affected x86 direct-extern boundary test without changing its
   supported expectation.
+- Keep the known block-entry publication and call-free joined-control failures
+  as out-of-scope baseline blockers; do not repair, absorb, or weaken them in
+  this producer initiative. Distinguish the direct-extern call assertions from
+  later failures when recording focused proof.
 
 Completion check:
 
