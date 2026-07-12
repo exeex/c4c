@@ -3,32 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2.6
-Current Step Title: Migrate remaining call consumers
+Current Step ID: 2.7
+Current Step Title: Migrate global and publication consumers
 
 ## Just Finished
 
-- Plan Step 2.6 removed the remaining target-local edge-publication source
-  producer lookup rebuild from `calls.cpp`. Indirect-callee and call-boundary
-  source materialization now require traversal-attached common lookup ownership
-  and fail closed when that authority is absent, while preserving call ABI
-  behavior.
+- Plan Step 2.7 removed the remaining target-local address-materialization
+  index fallback from the AArch64 global/publication family. Global address,
+  value-home publication, and edge-publication consumers now borrow only
+  traversal-attached common lookups with owner/pointer identity validation and
+  fail closed when that authority is absent.
 
 ## Suggested Next
 
-- Execute Plan Step 2.7 as a bounded packet to remove remaining target-local
-  lookup rebuilding from global and publication consumers.
+- Execute Plan Step 3 to run the scoped retirement search, classify any
+  surviving route vocabulary, and perform the supervisor-selected broader
+  AArch64 validation and review checkpoint.
 
 ## Watchouts
 
-- Step 2.6 required no test changes or common contract changes. Preserve the
-  owner/pointer identity check for executable consumers; a non-null borrowed raw
-  lookup pointer is not sufficient authority.
+- Step 2.7 required no test changes or common contract changes. The singular
+  relocation materializer still consumes prepared addressing records directly;
+  the removed behavior was the block-index fallback that rescanned those
+  records when the common indexed relation was missing.
 
 ## Proof
 
 - Passed the exact supervisor-selected proof: `cmake --build --preset default`
   followed by `ctest --test-dir build -j --output-on-failure -R
-  '^(backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_(byval_global_payload(_address)?|hfa_global_payload|f128_hfa_global_payload)_call_boundary)$'`
-  (5/5). Canonical combined proof output is in `test_after.log`; the subset was
-  sufficient for this bounded Step 2.6 call-consumer migration.
+  '^(backend_codegen_route_aarch64_(got_load_global_prepared_memory|store_global_stack_publication|sret_global_scalar_source_publication|large_stack_global_byte_publication))$'`
+  (4/4). Canonical combined proof output is in `test_after.log`; the subset was
+  sufficient for this bounded Step 2.7 global/publication-consumer migration.

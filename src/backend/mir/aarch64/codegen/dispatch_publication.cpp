@@ -180,12 +180,15 @@ namespace prepare = c4c::backend::prepare;
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
   if (context.function.prepared == nullptr ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
       context.function.value_locations == nullptr) {
     return nullptr;
   }
   return prepare::find_prepared_value_home_for_bir_value(
       context.function.prepared->names,
-      context.function.value_home_lookups,
+      &context.function.prepared_lookups->value_homes,
       context.function.regalloc,
       context.function.value_locations,
       value);
@@ -215,7 +218,10 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     abi::RegisterView expected_view) {
-  if (context.function.value_locations == nullptr ||
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
+      context.function.value_locations == nullptr ||
       context.control_flow_block == nullptr ||
       value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
@@ -227,7 +233,7 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
                        : nullptr,
           .regalloc = context.function.regalloc,
           .value_locations = context.function.value_locations,
-          .value_home_lookups = context.function.value_home_lookups,
+          .value_home_lookups = &context.function.prepared_lookups->value_homes,
           .successor_label = context.control_flow_block->block_label,
           .block_entry_publication_proof_successor_block = context.bir_block,
           .block_entry_publication_proof_destination_value = &value,

@@ -1055,7 +1055,9 @@ std::optional<module::MachineInstruction> lower_address_materialization(
     c4c::ValueNameId value_name,
     std::optional<std::size_t> before_or_at_instruction_index) {
   if (context.function.prepared == nullptr ||
-      context.function.address_materialization_lookups == nullptr ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
       context.control_flow_block == nullptr ||
       value_name == c4c::kInvalidValueName) {
     return std::nullopt;
@@ -1063,7 +1065,7 @@ std::optional<module::MachineInstruction> lower_address_materialization(
   const auto resolved =
       prepare::find_indexed_prepared_frame_address_offset_for_value(
           context.function.prepared->stack_layout,
-          context.function.address_materialization_lookups,
+          &context.function.prepared_lookups->address_materializations,
           context.control_flow_block->block_label,
           value_name,
           before_or_at_instruction_index);
@@ -1214,19 +1216,15 @@ BlockAddressMaterializationIndex make_block_address_materialization_index(
     const module::BlockLoweringContext& context) {
   BlockAddressMaterializationIndex index;
   if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
       context.control_flow_block == nullptr) {
-    return index;
-  }
-  const auto* addressing =
-      prepare::find_prepared_addressing(*context.function.prepared,
-                                        context.function.control_flow->function_name);
-  if (addressing == nullptr) {
     return index;
   }
   if (const auto* materializations =
           prepare::find_indexed_prepared_address_materializations(
-              context.function.address_materialization_lookups,
+              &context.function.prepared_lookups->address_materializations,
               context.control_flow_block->block_label)) {
     index.materializations = *materializations;
     for (const auto* materialization : index.materializations) {
@@ -1245,22 +1243,6 @@ BlockAddressMaterializationIndex make_block_address_materialization_index(
               });
     return index;
   }
-  index.materializations = prepare::collect_prepared_address_materializations_for_block(
-      *addressing, context.control_flow_block->block_label);
-  for (const auto* materialization : index.materializations) {
-    if (materialization != nullptr) {
-      index.materializations_by_instruction[materialization->inst_index].push_back(
-          materialization);
-    }
-  }
-  std::sort(index.materializations.begin(),
-            index.materializations.end(),
-            [](const auto* lhs, const auto* rhs) {
-              if (lhs == nullptr || rhs == nullptr) {
-                return rhs != nullptr;
-              }
-              return lhs->inst_index < rhs->inst_index;
-            });
   return index;
 }
 

@@ -208,7 +208,10 @@ prepared_edge_named_source_producer_context(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
   const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value() || context.function.prepared_lookups == nullptr) {
+  if (!value_name.has_value() ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
     return std::nullopt;
   }
   const auto* producer =
@@ -1160,7 +1163,9 @@ lower_predecessor_join_source_publication(
       std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
   if (move != nullptr && move->destination_register.has_value() &&
       move->destination_register->reg.bank == abi::RegisterBank::GeneralPurpose &&
-      context.function.prepared_lookups != nullptr &&
+      context.function.prepared_lookups_owner != nullptr &&
+      context.function.prepared_lookups ==
+          context.function.prepared_lookups_owner.get() &&
       context.control_flow_block != nullptr) {
     for (const auto& publication :
          context.function.prepared_lookups->edge_publications.publications) {
@@ -1199,7 +1204,9 @@ lower_predecessor_join_source_publication(
       !move->source_parallel_copy_successor_label.has_value()) {
     return true;
   }
-  if (context.function.prepared_lookups == nullptr) {
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
     return true;
   }
   const auto source_facts =
@@ -1271,7 +1278,9 @@ lower_predecessor_select_parallel_copy_sources(
         move.from_value_id == move.to_value_id) {
       continue;
     }
-    if (context.function.prepared_lookups == nullptr) {
+    if (context.function.prepared_lookups_owner == nullptr ||
+        context.function.prepared_lookups !=
+            context.function.prepared_lookups_owner.get()) {
       continue;
     }
     const auto source_facts =
