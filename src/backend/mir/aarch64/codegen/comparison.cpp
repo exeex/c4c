@@ -463,6 +463,37 @@ find_prepared_fused_compare_operand_producer_facts(
   return prepared;
 }
 
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
+find_prepared_fused_compare_operand_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr || context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    return prepare::find_prepared_fused_compare_operand_producer(
+        context.function.prepared->names,
+        &context.function.prepared_lookups->edge_publication_source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        value,
+        before_instruction_index);
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared, *context.function.control_flow);
+  return prepare::find_prepared_fused_compare_operand_producer(
+      context.function.prepared->names,
+      &source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
+}
+
 [[nodiscard]] std::optional<prepare::PreparedMaterializedConditionProducer>
 find_prepared_materialized_condition_producer_identity(
     const module::BlockLoweringContext& context,
@@ -1744,13 +1775,6 @@ namespace {
   };
 }
 
-[[nodiscard]] bool fused_compare_operand_has_select_producer(
-    const std::optional<bir::ComparisonOperandProducer>& producer) {
-  return producer.has_value() &&
-         producer->producer_kind == bir::ComparisonProducerKind::Select &&
-         producer->producer_instruction != nullptr;
-}
-
 [[nodiscard]] bool prepared_fused_compare_operand_has_select_producer(
     const std::optional<prepare::PreparedFusedCompareOperandProducer>& producer) {
   return producer.has_value() &&
@@ -1761,22 +1785,46 @@ namespace {
 
 [[nodiscard]] std::optional<std::uint8_t>
 preferred_fused_compare_operand_publication_target(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
+    const prepare::PreparedFusedCompareOperandProducer& producer) {
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   if (scratches.size() <= 1U) {
     return std::nullopt;
   }
-  if (context.bir_block == nullptr) {
-    return std::nullopt;
-  }
-  const auto producer = bir::find_comparison_operand_producer(
-      *context.bir_block, value, before_instruction_index);
-  if (!fused_compare_operand_has_select_producer(producer)) {
+  if (!prepared_fused_compare_operand_has_select_producer(producer)) {
     return std::nullopt;
   }
   return scratches[1].index;
+}
+
+[[nodiscard]] bool prepared_fused_compare_operand_producer_is_consistent(
+    const prepare::PreparedFusedCompareOperandProducer& producer,
+    ValueNameId value_name) {
+  if (producer.value_name != value_name || producer.instruction == nullptr) {
+    return false;
+  }
+  switch (producer.kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local != nullptr &&
+             std::get_if<bir::LoadLocalInst>(producer.instruction) ==
+                 producer.load_local;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global != nullptr &&
+             std::get_if<bir::LoadGlobalInst>(producer.instruction) ==
+                 producer.load_global;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast != nullptr &&
+             std::get_if<bir::CastInst>(producer.instruction) == producer.cast;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary != nullptr &&
+             std::get_if<bir::BinaryInst>(producer.instruction) == producer.binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select != nullptr &&
+             std::get_if<bir::SelectInst>(producer.instruction) == producer.select;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return false;
+  }
+  return false;
 }
 
 }  // namespace
@@ -1877,6 +1925,7 @@ std::optional<module::MachineInstruction>
 lower_missing_fused_compare_operand_publication(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
+    const prepare::PreparedFusedCompareOperandProducer& producer,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics,
     const DispatchBranchFusionHooks& hooks,
@@ -1886,6 +1935,10 @@ lower_missing_fused_compare_operand_publication(
   }
   const auto value_name = prepared_named_value_id(context, value);
   if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  if (!prepared_fused_compare_operand_producer_is_consistent(producer,
+                                                              *value_name)) {
     return std::nullopt;
   }
   const auto* home = hooks.prepared_value_home_for_value(context, value);
@@ -1961,38 +2014,15 @@ lower_missing_fused_compare_operand_publication(
     return std::nullopt;
   }
   std::vector<std::string> lines;
-  const auto producer =
-      bir::find_comparison_operand_producer(*context.bir_block,
-                                            value,
-                                            context.bir_block->insts.size());
-  if (producer.has_value() && producer->producer_instruction != nullptr) {
-    if (!hooks.emit_value_publication_to_register(context,
-                                                  value,
-                                                  context.bir_block->insts.size(),
-                                                  target_index,
-                                                  scratch_index,
-                                                  lines,
-                                                  true) ||
-        lines.empty()) {
-      return std::nullopt;
-    }
-  } else {
-    const auto plan = prepare::plan_prepared_scalar_publication(
-        prepare::PreparedScalarPublicationInputs{
-            .source_value = &value,
-            .destination_home = home,
-        });
-    if (!prepare::prepared_scalar_publication_available(plan) ||
-        (plan.hook_kind != prepare::PreparedScalarPublicationHookKind::RegisterHome &&
-         plan.hook_kind != prepare::PreparedScalarPublicationHookKind::StackSlotHome) ||
-        !hooks.emit_prepared_value_home_publication_to_register(context,
-                                                                value,
-                                                                *home,
-                                                                target_index,
-                                                                lines) ||
-        lines.empty()) {
-      return std::nullopt;
-    }
+  if (!hooks.emit_value_publication_to_register(context,
+                                                value,
+                                                context.bir_block->insts.size(),
+                                                target_index,
+                                                scratch_index,
+                                                lines,
+                                                true) ||
+      lines.empty()) {
+    return std::nullopt;
   }
   auto reg = abi::x_register(target_index);
   if (resolved.has_value() && resolved->register_reference.has_value()) {
@@ -2030,16 +2060,46 @@ lower_missing_fused_compare_operand_publications(
       *context.function.control_flow, context.control_flow_block->block_label);
   if (branch_condition == nullptr ||
       branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch) {
+      !branch_condition->can_fuse_with_branch ||
+      !branch_condition->lhs.has_value() ||
+      !branch_condition->rhs.has_value()) {
     return lowered;
   }
-  if (branch_condition->lhs.has_value()) {
+  const auto producer_facts =
+      find_prepared_fused_compare_operand_producer_facts(context, *branch_condition);
+  if (!producer_facts.has_value()) {
+    return lowered;
+  }
+  const auto prepared_producer_for = [&](const bir::Value& value,
+                                         const auto& producer)
+      -> const prepare::PreparedFusedCompareOperandProducer* {
+    if (value.kind != bir::Value::Kind::Named) {
+      return nullptr;
+    }
+    const auto value_name = prepared_named_value_id(context, value);
+    return value_name.has_value() && producer.has_value() &&
+                   prepared_fused_compare_operand_producer_is_consistent(
+                       *producer, *value_name)
+               ? &*producer
+               : nullptr;
+  };
+  const auto* lhs_producer =
+      prepared_producer_for(*branch_condition->lhs, producer_facts->lhs);
+  const auto* rhs_producer =
+      prepared_producer_for(*branch_condition->rhs, producer_facts->rhs);
+  if ((branch_condition->lhs->kind == bir::Value::Kind::Named &&
+       lhs_producer == nullptr) ||
+      (branch_condition->rhs->kind == bir::Value::Kind::Named &&
+       rhs_producer == nullptr)) {
+    return lowered;
+  }
+  if (branch_condition->lhs->kind == bir::Value::Kind::Named) {
     const auto preferred_target_index =
-        preferred_fused_compare_operand_publication_target(
-            context, *branch_condition->lhs, context.bir_block->insts.size());
+        preferred_fused_compare_operand_publication_target(*lhs_producer);
     if (auto lhs = lower_missing_fused_compare_operand_publication(
             context,
             *branch_condition->lhs,
+            *lhs_producer,
             scalar_state,
             diagnostics,
             hooks,
@@ -2047,13 +2107,13 @@ lower_missing_fused_compare_operand_publications(
       lowered.push_back(std::move(*lhs));
     }
   }
-  if (branch_condition->rhs.has_value()) {
+  if (branch_condition->rhs->kind == bir::Value::Kind::Named) {
     const auto preferred_target_index =
-        preferred_fused_compare_operand_publication_target(
-            context, *branch_condition->rhs, context.bir_block->insts.size());
+        preferred_fused_compare_operand_publication_target(*rhs_producer);
     if (auto rhs = lower_missing_fused_compare_operand_publication(
             context,
             *branch_condition->rhs,
+            *rhs_producer,
             scalar_state,
             diagnostics,
             hooks,
@@ -2085,24 +2145,24 @@ lower_fused_compare_branch_from_emitted_cast(
   const auto before_instruction_index =
       context.bir_block->insts.size();
   auto producer_cast =
-      [](const std::optional<bir::ComparisonOperandProducer>& producer)
+      [](const std::optional<prepare::PreparedFusedCompareOperandProducer>& producer)
           -> const bir::CastInst* {
     if (!producer.has_value() ||
-        producer->producer_kind != bir::ComparisonProducerKind::Cast ||
-        producer->producer_instruction == nullptr) {
+        producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Cast ||
+        producer->cast == nullptr) {
       return nullptr;
     }
-    return std::get_if<bir::CastInst>(producer->producer_instruction);
+    return producer->cast;
   };
   const bir::Value* cast_value = &branch_facts->lhs;
   const bir::Value* other_value = &branch_facts->rhs;
-  auto cast_producer = bir::find_comparison_operand_producer(
-      *context.bir_block, *cast_value, before_instruction_index);
+  auto cast_producer = find_prepared_fused_compare_operand_producer(
+      context, *cast_value, before_instruction_index);
   if (producer_cast(cast_producer) == nullptr) {
     cast_value = &branch_facts->rhs;
     other_value = &branch_facts->lhs;
-    cast_producer = bir::find_comparison_operand_producer(
-        *context.bir_block, *cast_value, before_instruction_index);
+    cast_producer = find_prepared_fused_compare_operand_producer(
+        context, *cast_value, before_instruction_index);
   }
   const bir::CastInst* cast = producer_cast(cast_producer);
   if (cast == nullptr ||
@@ -2122,8 +2182,8 @@ lower_fused_compare_branch_from_emitted_cast(
       emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
   auto rhs_name = compare_operand_name(context, *other_value, scalar_state, *result_view);
   if (!rhs_name.has_value()) {
-    const auto rhs_producer = bir::find_comparison_operand_producer(
-        *context.bir_block, *other_value, before_instruction_index);
+    const auto rhs_producer = find_prepared_fused_compare_operand_producer(
+        context, *other_value, before_instruction_index);
     if (rhs_producer.has_value() &&
         rhs_producer->integer_constant.has_value() &&
         is_cmp_immediate_encodable(*rhs_producer->integer_constant)) {
@@ -2132,19 +2192,18 @@ lower_fused_compare_branch_from_emitted_cast(
   }
   std::vector<std::string> lines;
   if (!source_name.has_value()) {
-    const auto load_producer = bir::find_comparison_operand_producer(
-        *context.bir_block, cast->operand, cast_producer->producer_instruction_index);
+    const auto load_producer = find_prepared_fused_compare_operand_producer(
+        context, cast->operand, cast_producer->instruction_index);
     const auto* load_local =
-        load_producer.has_value() && load_producer->producer_instruction != nullptr
-            ? std::get_if<bir::LoadLocalInst>(load_producer->producer_instruction)
-            : nullptr;
+        load_producer.has_value() ? load_producer->load_local : nullptr;
     const auto load_address =
         load_local != nullptr
             ? branch_fusion_prepared_frame_slot_load_address(
-                  context, load_producer->producer_instruction_index)
+                  context, load_producer->instruction_index)
             : std::optional<std::string>{};
     if (!load_producer.has_value() ||
-        load_producer->producer_kind != bir::ComparisonProducerKind::LoadLocal ||
+        load_producer->kind !=
+            prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
         load_local == nullptr ||
         load_local->result.type != bir::TypeKind::I8 ||
         !load_address.has_value()) {
@@ -2406,12 +2465,10 @@ lower_constant_rhs_fused_compare_branch(
   }
   auto rhs = branch_facts->rhs;
   rhs.type = branch_facts->compare_type;
-  const auto rhs_producer = bir::find_comparison_operand_producer(
-      *context.bir_block, rhs, context.bir_block->insts.size());
+  const auto rhs_producer = find_prepared_fused_compare_operand_producer(
+      context, rhs, context.bir_block->insts.size());
   const auto* rhs_binary =
-      rhs_producer.has_value() && rhs_producer->producer_instruction != nullptr
-          ? std::get_if<bir::BinaryInst>(rhs_producer->producer_instruction)
-          : nullptr;
+      rhs_producer.has_value() ? rhs_producer->binary : nullptr;
   const auto* rhs_home =
       prepare::find_prepared_value_home_for_bir_value(
           context.function.prepared->names,
@@ -2420,7 +2477,8 @@ lower_constant_rhs_fused_compare_branch(
           context.function.value_locations,
           rhs);
   if (!rhs_producer.has_value() ||
-      rhs_producer->producer_kind != bir::ComparisonProducerKind::Binary ||
+      rhs_producer->kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
       rhs_binary == nullptr ||
       rhs_home == nullptr ||
       rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
@@ -2605,12 +2663,14 @@ lower_stack_home_fused_compare_branch(
   auto lhs = branch_facts->lhs;
   lhs.type = branch_facts->compare_type;
   if (lhs.kind == bir::Value::Kind::Named && context.bir_block != nullptr) {
-    const auto producer = bir::find_comparison_operand_producer(
-        *context.bir_block, lhs, context.bir_block->insts.size());
+    const auto producer = find_prepared_fused_compare_operand_producer(
+        context, lhs, context.bir_block->insts.size());
     const auto has_allowed_load_producer =
         producer.has_value() &&
-        (producer->producer_kind == bir::ComparisonProducerKind::LoadLocal ||
-         producer->producer_kind == bir::ComparisonProducerKind::LoadGlobal);
+        (producer->kind ==
+             prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+         producer->kind ==
+             prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal);
     if (producer.has_value() && !has_allowed_load_producer) {
       return std::nullopt;
     }

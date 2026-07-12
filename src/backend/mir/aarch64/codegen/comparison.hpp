@@ -2,6 +2,7 @@
 
 #include "alu.hpp"
 #include "../module/module.hpp"
+#include "../../../prealloc/comparison.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -163,6 +164,7 @@ lower_missing_conditional_branch_condition_publication(
 lower_missing_fused_compare_operand_publication(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
+    const prepare::PreparedFusedCompareOperandProducer& producer,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics,
     const DispatchBranchFusionHooks& hooks,
