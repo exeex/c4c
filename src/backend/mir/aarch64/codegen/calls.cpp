@@ -64,13 +64,6 @@ namespace {
                                                  value.name);
 }
 
-struct Route4CallBoundarySourceIdentity {
-  const bir::Value* produced_value = nullptr;
-  const bir::Inst* producer = nullptr;
-  std::size_t instruction_index = 0;
-  mir::SameBlockProducerKind producer_kind = mir::SameBlockProducerKind::Unknown;
-};
-
 }  // namespace
 
 [[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
@@ -6697,7 +6690,6 @@ lower_scalar_call_argument_producers(
             materialize_direct_global_select_chain_call_argument(context,
                                                                  argument,
                                                                  instruction_index,
-                                                                 nullptr,
                                                                  argument_plan,
                                                                  scalar_state)) {
       lowered.push_back(std::move(*select_chain));
@@ -6804,10 +6796,10 @@ lower_scalar_call_argument_producers(
 
 namespace {
 
-[[nodiscard]] std::optional<Route4CallBoundarySourceIdentity>
-route4_call_boundary_source_identity(const module::BlockLoweringContext& context,
-                                     c4c::ValueNameId value_name,
-                                     std::size_t before_instruction_index) {
+[[nodiscard]] std::optional<bir::Value> same_block_call_boundary_source_value(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name,
+    std::size_t before_instruction_index) {
   if (value_name == c4c::kInvalidValueName ||
       context.function.prepared == nullptr ||
       context.bir_block == nullptr) {
@@ -6839,40 +6831,7 @@ route4_call_boundary_source_identity(const module::BlockLoweringContext& context
     return std::nullopt;
   }
 
-  bir::Function route4_function;
-  route4_function.blocks.push_back(*context.bir_block);
-  const auto& route4_block = route4_function.blocks.front();
-  const auto route4_index =
-      bir::route4_build_publication_availability_index(route4_function);
-  const auto route4_value =
-      bir::Value::named(producer.produced_value.type, std::string{spelling});
-  const auto reference = bir::route4_validate_current_block_publication_reference(
-      route4_index, route4_block, route4_value, before_instruction_index);
-  const auto* record = reference.current_block_record;
-  if (!reference ||
-      record == nullptr ||
-      record->source_producer_instruction == nullptr ||
-      record->source_producer_instruction_index != producer.instruction_index ||
-      record->source_producer_instruction_index >= route4_block.insts.size() ||
-      record->source_producer_instruction !=
-          &route4_block.insts[record->source_producer_instruction_index] ||
-      record->value_name != spelling ||
-      (record->value_name_id != c4c::kInvalidValueName &&
-       record->value_name_id != value_name) ||
-      record->value_type != producer.produced_value.type ||
-      record->produced_value.name != spelling ||
-      (record->produced_value.name_id != c4c::kInvalidValueName &&
-       record->produced_value.name_id != value_name) ||
-      record->produced_value.type != producer.produced_value.type ||
-      reference.reference.before_instruction_index != before_instruction_index) {
-    return std::nullopt;
-  }
-  return Route4CallBoundarySourceIdentity{
-      .produced_value = producer.produced_value.value,
-      .producer = producer.inst,
-      .instruction_index = producer.instruction_index,
-      .producer_kind = producer.kind,
-  };
+  return *producer.produced_value.value;
 }
 
 }  // namespace
@@ -6891,12 +6850,9 @@ route4_call_boundary_source_identity(const module::BlockLoweringContext& context
   if (spelling.empty()) {
     return std::nullopt;
   }
-  if (const auto route4_identity =
-          route4_call_boundary_source_identity(context,
-                                               value_name,
-                                               before_instruction_index);
-      route4_identity.has_value() && route4_identity->produced_value != nullptr) {
-    return *route4_identity->produced_value;
+  if (auto source = same_block_call_boundary_source_value(
+          context, value_name, before_instruction_index)) {
+    return source;
   }
   if (context.function.prepared_lookups == nullptr ||
       context.control_flow_block == nullptr) {
@@ -6923,36 +6879,7 @@ route4_call_boundary_source_identity(const module::BlockLoweringContext& context
           prepared_call_boundary_source_value(context, value_name, before_instruction_index)) {
     return source;
   }
-  if (value_name == c4c::kInvalidValueName ||
-      context.function.prepared == nullptr ||
-      context.bir_block == nullptr) {
-    return std::nullopt;
-  }
-  const auto spelling =
-      context.function.prepared->names.value_names.spelling(value_name);
-  if (spelling.empty()) {
-    return std::nullopt;
-  }
-  const auto* producer =
-      mir::find_same_block_named_producer(context.bir_block, spelling, before_instruction_index);
-  if (producer == nullptr) {
-    return std::nullopt;
-  }
-  return std::visit(
-      [](const auto& typed_inst) -> std::optional<bir::Value> {
-        using T = std::decay_t<decltype(typed_inst)>;
-        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
-                      std::is_same_v<T, bir::CastInst> ||
-                      std::is_same_v<T, bir::SelectInst> ||
-                      std::is_same_v<T, bir::LoadLocalInst> ||
-                      std::is_same_v<T, bir::LoadGlobalInst>) {
-          return typed_inst.result;
-        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
-          return typed_inst.result;
-        }
-        return std::nullopt;
-      },
-      *producer);
+  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>

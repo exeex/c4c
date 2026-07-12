@@ -8,41 +8,35 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
-- Plan Step 1 repaired the prepared-memory acceptance regression after the
-  AArch64 dispatch-value scalar select-chain authority migration. The
-  store-global stack-publication fixture now attaches the same owned prepared
-  lookup contract used by production traversal, so selected stack-home
-  materialization succeeds through common named/prepared authority while the
-  missing-authority case remains closed.
+- Plan Step 2 migrated the AArch64 call-boundary same-block publication source
+  lookup in `calls.cpp` from a locally rebuilt Route 4 publication-availability
+  index to the common named-producer record, retaining the prepared
+  current-block publication query as the cross-block fallback. It also removed
+  the unused `Route6CallUseSourceIndex` parameter from the adjacent direct-global
+  select call-argument materialization API and its sole call site.
 
 ## Suggested Next
 
-- Begin Plan Step 2 with one narrow call-boundary packet: migrate the Route 4
-  publication-availability index in `calls.cpp` to existing common
-  named/prepared authority, then remove the unused
-  `Route6CallUseSourceIndex*` select-materialization API parameter while that
-  dead call-use surface is adjacent. Keep comparison and ALU authority out of
-  this packet.
+- Continue Plan Step 2 with one narrow comparison or ALU authority-family
+  packet selected by the supervisor; keep the packet limited to one semantic
+  route-index consumer family and its focused proof.
 
 ## Watchouts
 
-- Step 1 is complete at its dispatch-centered boundary; the remaining
-  call-boundary, comparison, and ALU route families belong to Step 2.
-- The first Step 2 packet is limited to call-boundary Route 4 publication
-  availability plus dead Route 6 select API cleanup; do not absorb comparison
-  or ALU route-index construction.
-- The common scalar select-chain producer/query contract was not defective;
-  the regression was a test fixture that supplied a borrowed lookup without
-  the matching owner required by dispatch authority validation.
-- Missing prepared producer authority and mismatched producer kind continue to
-  fail closed; no Route2 or raw select-chain identity authority was restored.
+- The call-boundary source path now accepts only the common same-block named
+  producer record or prepared current-block publication consumption; the raw
+  instruction visitor fallback was removed so missing authority fails closed.
+- Comparison and ALU route-index construction remains outside this completed
+  packet and still belongs to Step 2.
+- The delegated subset retains the known baseline failure in test 354 (`bl
+  printf` missing); all other 34 tests pass, including the call-boundary
+  scalability and prepared-memory records coverage.
 
 ## Proof
 
 - Ran `set -o pipefail; { cmake --build --preset default && ctest --test-dir
   build -j --output-on-failure -R
   '^(backend_aarch64_prepared_memory_operand_records|backend_(codegen_route|cli)_aarch64_)';
-  } 2>&1 | tee test_after.log`. Build succeeded; 34/35 tests passed, including
-  repaired test 278, with only the known test 354 failure (`bl printf`
-  missing). The delegated proof is sufficient relative to that baseline.
-  Proof log: `test_after.log`.
+  } 2>&1 | tee test_after.log`. Build succeeded; 34/35 tests passed, with only
+  the known test 354 failure (`bl printf` missing). The delegated proof is
+  sufficient relative to that baseline. Proof log: `test_after.log`.
