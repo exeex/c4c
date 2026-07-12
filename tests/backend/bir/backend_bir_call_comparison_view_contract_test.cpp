@@ -21,7 +21,7 @@ bir::CallInst call(const char* callee, const char* result_name) {
   value.args.push_back(bir::Value::named(bir::TypeKind::I32, "%arg"));
   value.arg_sources.push_back(bir::CallArgumentSourceRelationship{
       .arg_index = 0,
-      .source_value_name = std::string("%source"),
+      .source_value_name = std::string("%arg"),
   });
   return value;
 }
@@ -52,7 +52,7 @@ int call_statuses_and_facts() {
   const auto incomplete = bir::find_call(view, 1U);
   const auto ambiguous = bir::find_call_argument(view, 2U, 0U);
   if (!available || available.callee != "callee" ||
-      available.argument == nullptr || available.dependency_name != "%source" ||
+      available.argument == nullptr || available.dependency_name != "%arg" ||
       available.result == nullptr || available.argument_number != 0U ||
       unavailable.status != bir::BirViewStatus::Unavailable || unavailable ||
       incomplete.status != bir::BirViewStatus::Incomplete || incomplete ||

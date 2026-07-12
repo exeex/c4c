@@ -4083,7 +4083,10 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                           std::string{argument_boundary.dependency_name}));
           arg_plan.source_encoding = source.encoding;
           arg_plan.source_value_id =
-              boundary_source_identity.value_id.has_value()
+              source_routing.source_value_id.has_value()
+                  ? std::optional<PreparedValueId>{
+                        PreparedValueId{*source_routing.source_value_id}}
+              : boundary_source_identity.value_id.has_value()
                   ? boundary_source_identity.value_id
                   : (aggregate_source_identity.value_id.has_value()
                   ? aggregate_source_identity.value_id

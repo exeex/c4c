@@ -25,6 +25,12 @@ Current Step Title: Produce one cursor-exact plan per supported call
   `backend_prepare_frame_stack_call_contract` now advances beyond the
   LinkNameId and call-argument source-shape contracts to its unrelated
   block-entry publication identity assertion.
+- Acceptance follow-up after `80a5388a8` repaired the remaining call-owned
+  regressions. The narrow call-view fixture now supplies a compatible explicit
+  relationship, and a unique relationship's `source_value_id` refines the
+  prepared call argument identity. This restores Route 6's agreed prepared
+  source while leaving absent metadata semantic-first and malformed evidence
+  fail closed.
 
 ## Suggested Next
 
@@ -42,6 +48,9 @@ Current Step Title: Produce one cursor-exact plan per supported call
   MIR join/block-entry identity family. Inspection found no causal path from
   call-plan production, so its test was not edited and ownership was not
   expanded.
+- The acceptance subset has no earlier or new call-owned failure: call view
+  and route debug are green, and x86 handoff reaches only the known later
+  joined-branch edge-publication failure.
 
 ## Proof
 
@@ -51,3 +60,9 @@ Current Step Title: Produce one cursor-exact plan per supported call
   build succeeded. The call contract advanced to the unrelated prepared
   block-entry publication identity assertion, and x86 retained the same
   unrelated joined-branch assertion. Complete output is in `test_after.log`.
+- Acceptance follow-up ran `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R
+  '^(backend_bir_call_comparison_view_contract|backend_x86_route_debug|backend_x86_handoff_boundary)$'`.
+  Call comparison and route debug passed; x86 handoff failed only at the known
+  later joined-branch assertion. Complete combined output is in
+  `test_after.log`.
