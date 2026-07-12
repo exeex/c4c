@@ -306,6 +306,26 @@ set_tests_properties(backend_prepare_stack_layout PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prepare_stack_publication_contract_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_stack_layout_test.cpp"
+)
+target_include_directories(backend_prepare_stack_publication_contract_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_compile_definitions(backend_prepare_stack_publication_contract_test PRIVATE
+    C4C_STEP21_STACK_PUBLICATION_ONLY=1
+)
+target_link_libraries(backend_prepare_stack_publication_contract_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepare_stack_publication_contract_test PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME backend_prepare_stack_publication_contract
+  COMMAND $<TARGET_FILE:backend_prepare_stack_publication_contract_test>)
+set_tests_properties(backend_prepare_stack_publication_contract PROPERTIES
+  LABELS "backend;bir;internal;cpp")
+
 add_executable(backend_prepare_frame_stack_call_contract_test
     "${BACKEND_TEST_ROOT}/bir/backend_prepare_frame_stack_call_contract_test.cpp"
 )

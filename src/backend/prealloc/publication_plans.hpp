@@ -1965,6 +1965,64 @@ prepare_aggregate_stack_source_authority(
 prepare_same_width_i32_stack_source_publication(
     const PreparedEdgePublication* publication);
 
+enum class PreparedStackDestinationPublicationStatus {
+  Available,
+  MissingPublication,
+  UnsupportedPublication,
+  MissingSourceHome,
+  MissingDestinationHome,
+  MissingMove,
+  MoveMismatch,
+  MissingFrameSlot,
+  FrameSlotMismatch,
+  MissingStackObject,
+  StackObjectMismatch,
+};
+
+enum class PreparedStackDestinationEvidenceApplicability {
+  Applicable,
+  NotApplicable,
+  Unknown,
+};
+
+enum class PreparedStackDestinationEvidenceReason {
+  None,
+  EdgePublicationNotBranchStackLoad,
+  SourceHomeNotStackSlot,
+  SourceStackWidthIsScalar,
+  SourceStackWidthIsAggregate,
+  InsufficientSourceStackLayoutEvidence,
+};
+
+struct PreparedStackDestinationPublication {
+  PreparedStackDestinationPublicationStatus status =
+      PreparedStackDestinationPublicationStatus::MissingPublication;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedValueHome* destination_home = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  const PreparedFrameSlot* destination_frame_slot = nullptr;
+  const PreparedStackObject* destination_stack_object = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  std::optional<PreparedValueId> source_value_id;
+  PreparedValueId destination_value_id = 0;
+  PreparedStackDestinationEvidenceApplicability branch_stack_load_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  PreparedStackDestinationEvidenceReason branch_stack_load_reason =
+      PreparedStackDestinationEvidenceReason::None;
+  PreparedStackDestinationEvidenceApplicability aggregate_source_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  PreparedStackDestinationEvidenceReason aggregate_source_reason =
+      PreparedStackDestinationEvidenceReason::None;
+};
+
+[[nodiscard]] PreparedStackDestinationPublication
+prepare_stack_destination_publication_relationship(
+    const PreparedEdgePublication* publication,
+    const PreparedFrameSlot* destination_frame_slot,
+    const PreparedStackObject* destination_stack_object);
+
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(
     const PreparedEdgePublicationLookups* lookups,

@@ -10918,8 +10918,11 @@ int check_select_edge_source_producer_placement_contract() {
       .value_id = 11,
       .function_name = function_name,
       .value_name = prepared_selected_name,
-      .kind = prepare::PreparedValueHomeKind::Register,
-      .register_name = std::string{"t0"},
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{3},
+      .offset_bytes = std::size_t{24},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
   });
   locations.move_bundles.push_back(prepare::PreparedMoveBundle{
       .function_name = function_name,
@@ -10938,8 +10941,8 @@ int check_select_edge_source_producer_placement_contract() {
                   .destination_kind =
                       prepare::PreparedMoveDestinationKind::Value,
                   .destination_storage_kind =
-                      prepare::PreparedMoveStorageKind::Register,
-                  .destination_register_name = std::string{"t0"},
+                      prepare::PreparedMoveStorageKind::StackSlot,
+                  .destination_stack_offset_bytes = std::size_t{24},
                   .block_index = 0,
                   .instruction_index = 0,
                   .source_parallel_copy_step_index = std::size_t{0},
@@ -10985,6 +10988,221 @@ int check_select_edge_source_producer_placement_contract() {
           },
   });
   prepared.value_locations.functions.push_back(std::move(locations));
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 3,
+      .function_name = function_name,
+      .value_name = prepared_selected_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{3},
+      .object_id = 3,
+      .function_name = function_name,
+      .offset_bytes = 24,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  const auto home_lookups = prepare::make_prepared_value_home_lookups(
+      &prepared.value_locations.functions.front());
+  const auto edge_publications = prepare::make_prepared_edge_publication_lookups(
+      prepared,
+      prepared.control_flow.functions.front(),
+      &prepared.value_locations.functions.front(),
+      &home_lookups);
+  const auto* produced_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &edge_publications,
+          prepared_pred_label,
+          prepared_join_label,
+          11);
+  const auto produced_relationship =
+      prepare::prepare_stack_destination_publication_relationship(
+          produced_publication,
+          &prepared.stack_layout.frame_slots.front(),
+          &prepared.stack_layout.objects.front());
+  if (produced_relationship.status !=
+          prepare::PreparedStackDestinationPublicationStatus::Available ||
+      produced_relationship.publication != produced_publication ||
+      produced_relationship.predecessor_label != prepared_pred_label ||
+      produced_relationship.successor_label != prepared_join_label ||
+      produced_relationship.source_value_id != 10 ||
+      produced_relationship.destination_value_id != 11 ||
+      produced_relationship.source_home !=
+          &prepared.value_locations.functions.front().value_homes[2] ||
+      produced_relationship.destination_home !=
+          &prepared.value_locations.functions.front().value_homes[3] ||
+      produced_relationship.move !=
+          &prepared.value_locations.functions.front().move_bundles.front()
+               .moves.front() ||
+      produced_relationship.destination_frame_slot !=
+          &prepared.stack_layout.frame_slots.front() ||
+      produced_relationship.destination_stack_object !=
+          &prepared.stack_layout.objects.front() ||
+      produced_relationship.branch_stack_load_applicability !=
+          prepare::PreparedStackDestinationEvidenceApplicability::
+              NotApplicable ||
+      produced_relationship.branch_stack_load_reason !=
+          prepare::PreparedStackDestinationEvidenceReason::
+              EdgePublicationNotBranchStackLoad ||
+      produced_relationship.aggregate_source_applicability !=
+          prepare::PreparedStackDestinationEvidenceApplicability::
+              NotApplicable ||
+      produced_relationship.aggregate_source_reason !=
+          prepare::PreparedStackDestinationEvidenceReason::
+              SourceHomeNotStackSlot) {
+    return fail("expected real stack-destination edge publication and bound move relationship");
+  }
+  auto f64_scalar_destination = prepared;
+  auto& f64_edge = f64_scalar_destination.control_flow.functions.front()
+                       .join_transfers.front().edge_transfers.front();
+  f64_edge.incoming_value = bir::Value::named(bir::TypeKind::F64, "%cmp");
+  f64_edge.destination_value =
+      bir::Value::named(bir::TypeKind::F64, "%selected");
+  auto& f64_home =
+      f64_scalar_destination.value_locations.functions.front().value_homes[3];
+  f64_home.size_bytes = std::size_t{8};
+  f64_home.align_bytes = std::size_t{8};
+  f64_scalar_destination.stack_layout.frame_slots.front().size_bytes = 8;
+  f64_scalar_destination.stack_layout.frame_slots.front().align_bytes = 8;
+  f64_scalar_destination.stack_layout.objects.front().type = bir::TypeKind::F64;
+  f64_scalar_destination.stack_layout.objects.front().size_bytes = 8;
+  f64_scalar_destination.stack_layout.objects.front().align_bytes = 8;
+  const auto f64_home_lookups = prepare::make_prepared_value_home_lookups(
+      &f64_scalar_destination.value_locations.functions.front());
+  const auto f64_edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          f64_scalar_destination,
+          f64_scalar_destination.control_flow.functions.front(),
+          &f64_scalar_destination.value_locations.functions.front(),
+          &f64_home_lookups);
+  const auto* f64_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &f64_edge_publications,
+          prepared_pred_label,
+          prepared_join_label,
+          11);
+  const auto f64_relationship =
+      prepare::prepare_stack_destination_publication_relationship(
+          f64_publication,
+          &f64_scalar_destination.stack_layout.frame_slots.front(),
+          &f64_scalar_destination.stack_layout.objects.front());
+  if (f64_relationship.status !=
+          prepare::PreparedStackDestinationPublicationStatus::Available ||
+      f64_relationship.aggregate_source_applicability !=
+          prepare::PreparedStackDestinationEvidenceApplicability::
+              NotApplicable ||
+      f64_relationship.aggregate_source_reason !=
+          prepare::PreparedStackDestinationEvidenceReason::
+              SourceHomeNotStackSlot) {
+    return fail("expected non-I32 scalar edge publication to keep aggregate evidence inapplicable");
+  }
+  auto padded_scalar_destination = prepared;
+  auto& padded_home =
+      padded_scalar_destination.value_locations.functions.front().value_homes[3];
+  padded_home.size_bytes = std::size_t{8};
+  padded_home.align_bytes = std::size_t{8};
+  padded_scalar_destination.stack_layout.frame_slots.front().size_bytes = 8;
+  padded_scalar_destination.stack_layout.frame_slots.front().align_bytes = 8;
+  padded_scalar_destination.stack_layout.objects.front().size_bytes = 8;
+  padded_scalar_destination.stack_layout.objects.front().align_bytes = 8;
+  const auto padded_home_lookups = prepare::make_prepared_value_home_lookups(
+      &padded_scalar_destination.value_locations.functions.front());
+  const auto padded_edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          padded_scalar_destination,
+          padded_scalar_destination.control_flow.functions.front(),
+          &padded_scalar_destination.value_locations.functions.front(),
+          &padded_home_lookups);
+  const auto* padded_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &padded_edge_publications,
+          prepared_pred_label,
+          prepared_join_label,
+          11);
+  const auto padded_relationship =
+      prepare::prepare_stack_destination_publication_relationship(
+          padded_publication,
+          &padded_scalar_destination.stack_layout.frame_slots.front(),
+          &padded_scalar_destination.stack_layout.objects.front());
+  if (padded_relationship.status !=
+          prepare::PreparedStackDestinationPublicationStatus::Available ||
+      padded_relationship.aggregate_source_applicability !=
+          prepare::PreparedStackDestinationEvidenceApplicability::
+              NotApplicable ||
+      padded_relationship.aggregate_source_reason !=
+          prepare::PreparedStackDestinationEvidenceReason::
+              SourceHomeNotStackSlot) {
+    return fail("expected padded scalar destination not to manufacture aggregate stack-source evidence");
+  }
+  auto register_destination = prepared;
+  auto& register_home =
+      register_destination.value_locations.functions.front().value_homes[3];
+  register_home.kind = prepare::PreparedValueHomeKind::Register;
+  register_home.slot_id.reset();
+  register_home.offset_bytes.reset();
+  register_home.size_bytes.reset();
+  register_home.align_bytes.reset();
+  register_home.register_name = std::string{"t0"};
+  auto& register_move = register_destination.value_locations.functions.front()
+                            .move_bundles.front().moves.front();
+  register_move.destination_storage_kind =
+      prepare::PreparedMoveStorageKind::Register;
+  register_move.destination_stack_offset_bytes.reset();
+  register_move.destination_register_name = std::string{"t0"};
+  const auto register_home_lookups = prepare::make_prepared_value_home_lookups(
+      &register_destination.value_locations.functions.front());
+  const auto register_edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          register_destination,
+          register_destination.control_flow.functions.front(),
+          &register_destination.value_locations.functions.front(),
+          &register_home_lookups);
+  const auto* register_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &register_edge_publications,
+          prepared_pred_label,
+          prepared_join_label,
+          11);
+  if (register_publication == nullptr ||
+      register_publication->destination_home != &register_home ||
+      register_publication->move != &register_move ||
+      prepare::prepare_stack_destination_publication_relationship(
+          register_publication,
+          &register_destination.stack_layout.frame_slots.front(),
+          &register_destination.stack_layout.objects.front()).status !=
+          prepare::PreparedStackDestinationPublicationStatus::
+              MissingDestinationHome) {
+    return fail("expected real register-destination sibling publication to reject as non-stack");
+  }
+  if (prepare::prepare_stack_destination_publication_relationship(
+          nullptr,
+          &prepared.stack_layout.frame_slots.front(),
+          &prepared.stack_layout.objects.front()).status !=
+      prepare::PreparedStackDestinationPublicationStatus::MissingPublication) {
+    return fail("expected missing real edge publication to reject");
+  }
+  auto missing_move_publication = *produced_publication;
+  missing_move_publication.move = nullptr;
+  if (prepare::prepare_stack_destination_publication_relationship(
+          &missing_move_publication,
+          &prepared.stack_layout.frame_slots.front(),
+          &prepared.stack_layout.objects.front()).status !=
+      prepare::PreparedStackDestinationPublicationStatus::MissingMove) {
+    return fail("expected missing bound move to reject");
+  }
+  auto mismatched_object = prepared.stack_layout.objects.front();
+  mismatched_object.object_id = 99;
+  if (prepare::prepare_stack_destination_publication_relationship(
+          produced_publication,
+          &prepared.stack_layout.frame_slots.front(),
+          &mismatched_object).status !=
+      prepare::PreparedStackDestinationPublicationStatus::StackObjectMismatch) {
+    return fail("expected nonmatching stack object evidence to reject");
+  }
 
   const auto collected =
       prepare::collect_prepared_select_edge_source_producer_placements(prepared);
@@ -13477,6 +13695,9 @@ int check_scalar_local_frame_slot_access_lookup_repair() {
 }  // namespace
 
 int main() {
+#ifdef C4C_STEP21_STACK_PUBLICATION_ONLY
+  return check_select_edge_source_producer_placement_contract();
+#else
   const auto [analysis_names, analysis_objects] = collect_stack_layout_analysis_objects_with_names();
   if (const int rc =
           check_stack_layout_analysis_object_collection_activation(analysis_names, analysis_objects);
@@ -13980,4 +14201,5 @@ int main() {
   }
 
   return 0;
+#endif
 }

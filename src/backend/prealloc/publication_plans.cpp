@@ -1652,6 +1652,121 @@ prepare_same_width_i32_stack_source_publication(
   return prepared;
 }
 
+PreparedStackDestinationPublication
+prepare_stack_destination_publication_relationship(
+    const PreparedEdgePublication* publication,
+    const PreparedFrameSlot* destination_frame_slot,
+    const PreparedStackObject* destination_stack_object) {
+  PreparedStackDestinationPublication prepared{
+      .publication = publication,
+      .destination_frame_slot = destination_frame_slot,
+      .destination_stack_object = destination_stack_object,
+  };
+  if (publication == nullptr) return prepared;
+  prepared.predecessor_label = publication->predecessor_label;
+  prepared.successor_label = publication->successor_label;
+  prepared.source_value_id = publication->source_value_id;
+  prepared.destination_value_id = publication->destination_value_id;
+  prepared.source_home = publication->source_home;
+  prepared.destination_home = publication->destination_home;
+  prepared.move = publication->move;
+  if (publication->status != PreparedEdgePublicationLookupStatus::Available) {
+    prepared.status = PreparedStackDestinationPublicationStatus::UnsupportedPublication;
+    return prepared;
+  }
+  if (prepared.source_home == nullptr) {
+    prepared.status = PreparedStackDestinationPublicationStatus::MissingSourceHome;
+    return prepared;
+  }
+  if (prepared.destination_home == nullptr ||
+      prepared.destination_home->kind != PreparedValueHomeKind::StackSlot) {
+    prepared.status = PreparedStackDestinationPublicationStatus::MissingDestinationHome;
+    return prepared;
+  }
+  if (prepared.move == nullptr) {
+    prepared.status = PreparedStackDestinationPublicationStatus::MissingMove;
+    return prepared;
+  }
+  if (!prepared.source_value_id.has_value() ||
+      prepared.move->authority_kind != PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      prepared.move->destination_kind != PreparedMoveDestinationKind::Value ||
+      prepared.move->destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+      prepared.move->op_kind != PreparedMoveResolutionOpKind::Move ||
+      prepared.move->from_value_id != *prepared.source_value_id ||
+      prepared.move->to_value_id != prepared.destination_value_id ||
+      prepared.move->source_parallel_copy_predecessor_label !=
+          std::optional<BlockLabelId>{prepared.predecessor_label} ||
+      prepared.move->source_parallel_copy_successor_label !=
+          std::optional<BlockLabelId>{prepared.successor_label} ||
+      prepared.move->destination_stack_offset_bytes !=
+          prepared.destination_home->offset_bytes) {
+    prepared.status = PreparedStackDestinationPublicationStatus::MoveMismatch;
+    return prepared;
+  }
+  // This producer is an edge-bound out-of-SSA copy, not a terminator operand
+  // load. Its scalar I32 values likewise make aggregate-copy evidence
+  // semantically inapplicable rather than absent.
+  prepared.branch_stack_load_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  prepared.branch_stack_load_reason =
+      PreparedStackDestinationEvidenceReason::EdgePublicationNotBranchStackLoad;
+  if (destination_frame_slot == nullptr) {
+    prepared.status = PreparedStackDestinationPublicationStatus::MissingFrameSlot;
+    return prepared;
+  }
+  if (!prepared.destination_home->slot_id.has_value() ||
+      *prepared.destination_home->slot_id != destination_frame_slot->slot_id ||
+      prepared.destination_home->function_name != destination_frame_slot->function_name ||
+      prepared.destination_home->offset_bytes !=
+          std::optional<std::size_t>{destination_frame_slot->offset_bytes} ||
+      prepared.destination_home->size_bytes !=
+          std::optional<std::size_t>{destination_frame_slot->size_bytes} ||
+      prepared.destination_home->align_bytes !=
+          std::optional<std::size_t>{destination_frame_slot->align_bytes}) {
+    prepared.status = PreparedStackDestinationPublicationStatus::FrameSlotMismatch;
+    return prepared;
+  }
+  if (destination_stack_object == nullptr) {
+    prepared.status = PreparedStackDestinationPublicationStatus::MissingStackObject;
+    return prepared;
+  }
+  if (destination_frame_slot->object_id != destination_stack_object->object_id ||
+      destination_frame_slot->function_name != destination_stack_object->function_name ||
+      prepared.destination_home->value_name != destination_stack_object->value_name ||
+      destination_frame_slot->size_bytes != destination_stack_object->size_bytes ||
+      destination_frame_slot->align_bytes != destination_stack_object->align_bytes ||
+      publication->destination_value.type != destination_stack_object->type) {
+    prepared.status = PreparedStackDestinationPublicationStatus::StackObjectMismatch;
+    return prepared;
+  }
+  if (publication->source_home_kind != PreparedValueHomeKind::StackSlot) {
+    prepared.aggregate_source_applicability =
+        PreparedStackDestinationEvidenceApplicability::NotApplicable;
+    prepared.aggregate_source_reason =
+        PreparedStackDestinationEvidenceReason::SourceHomeNotStackSlot;
+  } else if (!publication->source_home->size_bytes.has_value()) {
+    prepared.aggregate_source_applicability =
+        PreparedStackDestinationEvidenceApplicability::Unknown;
+    prepared.aggregate_source_reason = PreparedStackDestinationEvidenceReason::
+        InsufficientSourceStackLayoutEvidence;
+  } else if (stack_source_size_is_aggregate_width(
+                 *publication->source_home->size_bytes,
+                 publication->source_value.type,
+                 publication->destination_value.type)) {
+    prepared.aggregate_source_applicability =
+        PreparedStackDestinationEvidenceApplicability::Applicable;
+    prepared.aggregate_source_reason =
+        PreparedStackDestinationEvidenceReason::SourceStackWidthIsAggregate;
+  } else {
+    prepared.aggregate_source_applicability =
+        PreparedStackDestinationEvidenceApplicability::NotApplicable;
+    prepared.aggregate_source_reason =
+        PreparedStackDestinationEvidenceReason::SourceStackWidthIsScalar;
+  }
+  prepared.status = PreparedStackDestinationPublicationStatus::Available;
+  return prepared;
+}
+
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(
     const PreparedEdgePublicationLookups* lookups,

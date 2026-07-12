@@ -8,51 +8,54 @@ Current Step Title: Establish one real stack-backed publication/move producer
 
 ## Just Finished
 
-- Audited the rejected Plan Step 2 slice against
-  `review/idea707_step2_positive_producer_review.md` with AST-backed caller and
-  type-reference queries. The selected collected `Lhs` branch-stack-load
-  fixture has no real `PreparedEdgePublication` and no bound
-  `PreparedMoveResolution`: its collector only consumes branch authority, and
-  the fixture creates neither parallel-copy edge publication state nor a real
-  destination move relationship.
-- Removed the synthetic destination/source equality, home-kind constants,
-  load-policy-as-move substitution, nominal status surface, mirrored tests,
-  and test-order workaround. All implementation/test files are restored to the
-  Step 1 state; no false authority row remains to advance into MIR.
+- Completed repaired Plan Step 2.1 without defining or composing a destination
+  authority row. The real out-of-SSA/select producer now emits a unique
+  `PreparedEdgePublication` for `%cmp` -> `%selected` on exact `pred` -> `join`
+  identity and binds its actual `PreparedMoveResolution`.
+- Added a prepared relationship validator that retains distinct owner-provided
+  source/destination identities and homes, exact edge, publication pointer, and
+  move pointer, then independently matches the stack destination home against its
+  `PreparedFrameSlot` and `PreparedStackObject` IDs and geometry.
+- The real-production fixture keeps `%cmp` in its producer-owned register home
+  and gives distinct `%selected` a genuine I32 stack destination/frame object;
+  its bound move uses `StackSlot` storage and the same destination offset. Missing
+  publication, missing move, and mismatched stack-object evidence reject.
+- Producer-side applicability now records branch-stack-load evidence as
+  `NotApplicable` because this is an edge-bound out-of-SSA copy rather than a
+  terminator operand load, and aggregate-source evidence as `NotApplicable`
+  because the producer-owned source home is a register rather than a stack
+  source. Stack sources use the same source-home width semantics as
+  `PreparedAggregateStackSourceAuthority`; incomplete source layout becomes
+  `Unknown`. The focused contract asserts the I32 case, a real-lookup F64
+  sibling, and a padded I32 destination all remain `NotApplicable`, proving
+  destination geometry cannot manufacture aggregate-source applicability.
+- A cloned sibling is passed through the same real edge-publication lookup with
+  its original register destination home/move. The relationship validator
+  rejects it specifically as `MissingDestinationHome`, proving the positive is
+  selected by stack storage semantics rather than fixture name.
+  Branch/aggregate evidence is inapplicable to this scalar edge-copy producer.
 
 ## Suggested Next
 
-- Execute Plan Step 2.1. Start from the out-of-SSA parallel-copy/select producer
-  family around `check_select_edge_source_producer_placement_contract`, which
-  already has a real predecessor/successor edge and bound
-  `PreparedMoveResolution`, then establish or select a semantic variant with a
-  genuinely stack-backed destination and independently owned applicable
-  branch/aggregate evidence.
-- Prove the upstream relationship green before defining composer inputs in
-  Step 2.2. Do not compose or expose a
-  `PreparedStackDestinationAuthorityView` row during Step 2.1.
+- Execute Plan Step 2.2 against this real relationship. Do not revive the
+  rejected branch-load-policy substitution or advance into row composition.
 
 ## Watchouts
 
-- The original Step 2 route was blocked on the selected fixture's missing real
-  publication/move relationship. The repaired runbook splits producer
-  establishment (2.1), reachable composer inputs (2.2), and row composition
-  (2.3); do not skip ahead or manufacture authority from branch-load
-  policy/freshness classifications.
-- Preserve the reviewer acceptance conditions in
-  `review/idea707_step2_positive_producer_review.md`: exact publication/edge
-  identity, real bound move, prepared-owned homes, independently reachable
-  negative states, and a genuinely green focused proof.
-- The existing backend test still has the pre-existing global-publication
-  failure. No genuinely green focused Step 2 contract exists because the
-  required real producer path could not be established.
+- This packet establishes only the producer relationship; it intentionally
+  does not define `PreparedStackDestinationAuthorityView` or touch MIR.
+- The monolithic test retains the pre-existing global-publication failure. Use
+  the isolated registered Step 2.1 contract for green acceptance.
 
 ## Proof
 
-- After removing the rejected slice, ran exactly
-  `(cmake --build build --target backend_prepare_stack_layout_test -j && ctest
-  --test-dir build -R '^backend_prepare_stack_layout$' --output-on-failure)
-  2>&1 | tee test_after.log`.
-- Fresh compile/link succeeded. CTest reproduces the unchanged `test_before.log`
-  failure: `expected coherent global store source publication authority`.
-- No green acceptance proof was claimed. Proof log: `test_after.log`.
+- Green focused acceptance: `(cmake --build build --target
+  backend_prepare_stack_publication_contract_test -j && ctest --test-dir build
+  -R '^backend_prepare_stack_publication_contract$' --output-on-failure) 2>&1 |
+  tee test_after.log` passed 1/1.
+- Matching comparison: `(cmake --build build --target
+  backend_prepare_stack_layout_test -j && ctest --test-dir build -R
+  '^backend_prepare_stack_layout$' --output-on-failure) 2>&1 | tee -a
+  test_after.log` compiled and reproduced the unchanged `test_before.log`
+  failure `expected coherent global store source publication authority`.
+- Combined proof log: `test_after.log`.
