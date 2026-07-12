@@ -154,6 +154,61 @@ Route4BlockEntryPublicationRecord route4_block_entry_publication_record(
   return record;
 }
 
+Route4BlockEntryPublicationClassification
+route4_classify_block_entry_publication_claims(
+    const Route4BlockEntryPublicationClaimCollection& collection) {
+  Route4BlockEntryPublicationClassification result{
+      .destination = collection.destination,
+      .claims = collection.claims,
+  };
+  if (!collection.destination) return result;
+  if (collection.claims.empty()) {
+    result.status = Route4BlockEntryPublicationClassificationStatus::Missing;
+    return result;
+  }
+
+  std::vector<std::uint64_t> attribution_ids;
+  attribution_ids.reserve(collection.claims.size());
+  for (const auto& claim : collection.claims) {
+    if (!claim.attributed || claim.attribution_id == 0) {
+      result.status =
+          Route4BlockEntryPublicationClassificationStatus::Unattributed;
+      return result;
+    }
+    if (claim.claimed_destination.successor_owner !=
+            collection.destination.successor_owner ||
+        claim.claimed_destination.destination_value !=
+            collection.destination.destination_value) {
+      result.status =
+          Route4BlockEntryPublicationClassificationStatus::Inconsistent;
+      return result;
+    }
+    if (claim.instruction_owner != collection.destination.successor_owner ||
+        claim.instruction == nullptr ||
+        claim.instruction_index >= claim.instruction_owner->insts.size() ||
+        claim.instruction !=
+            &claim.instruction_owner->insts[claim.instruction_index]) {
+      result.status = Route4BlockEntryPublicationClassificationStatus::Stale;
+      return result;
+    }
+    if (std::find(attribution_ids.begin(), attribution_ids.end(),
+                  claim.attribution_id) != attribution_ids.end()) {
+      result.status =
+          Route4BlockEntryPublicationClassificationStatus::Inconsistent;
+      return result;
+    }
+    attribution_ids.push_back(claim.attribution_id);
+  }
+
+  if (collection.claims.size() != 1U) {
+    result.status = Route4BlockEntryPublicationClassificationStatus::Ambiguous;
+    return result;
+  }
+  result.status = Route4BlockEntryPublicationClassificationStatus::Available;
+  result.selected_claim_index = 0;
+  return result;
+}
+
 Route4PublicationValueRecord route4_current_block_publication_value_record(
     Route1SameBlockProducerQuery query,
     const Value& value,

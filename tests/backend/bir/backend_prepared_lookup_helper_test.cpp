@@ -15374,6 +15374,44 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
       missing_attribution.claims.front().attribution_id != 0) {
     return fail("Route4 claim collection should preserve missing attribution");
   }
+
+  const bir::Route4BlockEntryPublicationClaimCollection no_claims{
+      .destination = destination,
+  };
+  const auto missing =
+      bir::route4_classify_block_entry_publication_claims(no_claims);
+  const auto available =
+      bir::route4_classify_block_entry_publication_claims({
+          .destination = destination,
+          .claims = {agreeing_claim},
+      });
+  const auto inconsistent =
+      bir::route4_classify_block_entry_publication_claims(exact_identity);
+  const auto ambiguous =
+      bir::route4_classify_block_entry_publication_claims(duplicates);
+  const auto stale =
+      bir::route4_classify_block_entry_publication_claims(stale_coordinates);
+  const auto unattributed =
+      bir::route4_classify_block_entry_publication_claims(missing_attribution);
+  if (missing ||
+      missing.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Missing ||
+      !available ||
+      available.selected_claim_index != std::optional<std::size_t>{0} ||
+      inconsistent ||
+      inconsistent.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Inconsistent ||
+      ambiguous ||
+      ambiguous.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Ambiguous ||
+      stale ||
+      stale.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Stale ||
+      unattributed ||
+      unattributed.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Unattributed) {
+    return fail("Route4 should authoritatively classify explicit block-entry publication claims");
+  }
   return 0;
 }
 

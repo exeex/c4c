@@ -1996,6 +1996,10 @@ route4_block_entry_publication_record(
     const Value& destination_value,
     ValueNameId destination_value_name_id = kInvalidValueName);
 
+[[nodiscard]] Route4BlockEntryPublicationClassification
+route4_classify_block_entry_publication_claims(
+    const Route4BlockEntryPublicationClaimCollection& collection);
+
 [[nodiscard]] Route4PublicationValueRecord
 route4_current_block_publication_value_record(
     Route1SameBlockProducerQuery query,
