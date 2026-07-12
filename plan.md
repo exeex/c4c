@@ -1,273 +1,130 @@
-# Prepared-MIR Join-Source Identity Completion Runbook
+# Cursor-Complete Prepared Call Plan Production Acceptance Runbook
 
 Status: Active
-Source Idea: ideas/open/717_prepared_mir_join_source_identity_completion.md
-Resumed after completing: ideas/closed/719_bir_cfg_edge_publication_source_identity_completion.md
+Source Idea: ideas/open/716_prepared_call_plan_cursor_complete_production.md
+Resumed after completing: ideas/closed/717_prepared_mir_join_source_identity_completion.md
+Also restored prerequisite: ideas/closed/718_block_entry_publication_identity_completion.md
 
 ## Purpose
 
-Finish acceptance of the repaired common prepared-MIR join-source identity now
-that the independently resolved BIR CFG edge-publication prerequisite is
-closed.
+Resume acceptance of cursor-complete common prepared-call production now that
+its two parked common identity prerequisites are closed.
 
 ## Goal
 
-Revalidate complete typed join-source authority across supported and negative
-move shapes, prove the route remains general and fail closed, and complete the
-broader backend acceptance required before idea 716 can resume.
+Prove that every supported semantic callsite publishes exactly one
+cursor-exact `PreparedCallPlan`, that malformed or contradictory relationship
+evidence remains fail closed, and that the repaired common authority is ready
+for the parked idea-708 consumer work.
 
 ## Core Rule
 
-Join-source identity comes from exact prepared publication, move, producer,
-and freshness facts. Do not infer authority from row order, display names,
-route vocabulary, prepared-call facts, or target behavior.
+`CallInst` operands provide base argument identity and only one compatible
+source relationship may refine it. Never reconstruct missing call authority by
+plan-vector position, nearest cursor, callee name, route, or target behavior.
 
 ## Read First
 
-- `ideas/open/717_prepared_mir_join_source_identity_completion.md`
-- `ideas/closed/719_bir_cfg_edge_publication_source_identity_completion.md`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-- `src/backend/mir/prepared/`
+- `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
+- `ideas/closed/717_prepared_mir_join_source_identity_completion.md`
+- `ideas/closed/718_block_entry_publication_identity_completion.md`
+- `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
+- `src/backend/prealloc/calls.hpp`
+- `src/backend/prealloc/call_plans.hpp`
 - `src/backend/prealloc/prepared_lookups.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
 
 ## Current Scope
 
-- Re-run the focused prepared-MIR direct-edge join-source contract after idea
-  719 restored the independent downstream CFG oracle.
-- Confirm named, immediate, stack, and unsupported moves preserve their exact
-  typed publication, producer, freshness, and move authority.
-- Keep the aggregate BIR semantic join view unavailable when required
-  publication authority is missing, stale, duplicate, mismatched, or
-  unsupported.
-- Obtain independent route-quality review and a matching broader backend
-  before/after comparison before closure.
+- Revalidate the completed semantic-operand/refinement producer repair.
+- Prove exact block, instruction cursor, callee, argument, result, ABI, move,
+  and preservation identity across adjacent supported call shapes.
+- Prove exact lookup rejects missing, duplicate, stale, mismatched, and
+  contradictory evidence.
+- Obtain focused review and a broader backend comparison before closure.
 
 ## Non-Goals
 
-- Do not change prepared-call plan production or call lookup.
-- Do not reopen block-entry or BIR CFG edge-publication identity.
-- Do not change target materialization, x86 joined-branch emission, move
-  scheduling, register allocation, or diagnostic vocabulary.
+- Do not change x86, AArch64, or RV64 materializers.
+- Do not absorb idea-708 joined-branch or handoff materialization work.
+- Do not change ABI classification or supported call semantics.
+- Do not restore route-derived call authority or weaken supported
+  expectations.
 
 ## Working Model
 
-- Steps 1 through 3 of the original runbook completed the idea-owned typed
-  prepared-MIR join-source repair and focused positive/negative coverage.
-- Idea 719 was split out because the next focused failure belonged to an
-  independent legacy BIR CFG oracle; that prerequisite is now closed.
-- This resumed runbook owns revalidation and closure evidence, not a replay of
-  the completed repair unless a focused failure identifies a genuine idea-717
-  defect.
+- Source-idea Steps 1 and 2 are complete: the first bad fact was optional
+  relationship absence erasing a valid semantic operand, and common production
+  now treats the relationship as an optional unique refinement.
+- The source-idea Step 3 producer and exact-lookup assertions were completed at
+  commit `021c869e9` before acceptance parked behind ideas 717 and 718.
+- Ideas 717 and 718 are now closed. Resume by revalidating the owned call-plan
+  assertions and classifying any later failure before editing.
 
 ## Execution Rules
 
-- Establish the first failing assertion and classify ownership before editing.
-- Preserve supported facts even when another move is unsupported, while
-  keeping aggregate BIR semantic identity fail closed when required.
-- Reject fixture-row, vector-order, display-name, route, prepared-call, and
-  target-output shortcuts.
-- Do not weaken supported expectations or absorb downstream idea-716 work.
-- Use supervisor-delegated build and proof commands and record execution state
-  in `todo.md`.
+- Establish the first failing assertion and its owner before changing code.
+- Repair only general semantic operand/refinement or exact lookup rules owned
+  by idea 716; reject fixture-, callee-, cursor-, and target-shaped shortcuts.
+- Do not weaken an expectation to route around remaining idea-708 work.
+- Use supervisor-delegated build and proof commands and record packet state in
+  `todo.md`.
 
 ## Ordered Steps
 
-### Step 1: Revalidate the focused join-source boundary
+### Step 1: Revalidate cursor-complete producer and lookup authority
 
-Goal: prove the completed idea-717 repair now runs through its owned assertions
-with the idea-719 prerequisite restored.
+Goal: prove the completed idea-716 assertions with both common prerequisites
+restored.
 
 Actions:
 
-- Inspect the focused prepared-MIR/BIR join-source agreement assertions and
-  their supported and fail-closed matrix.
-- Run the supervisor-delegated build and focused prepared lookup/join-source
-  proof.
-- Record the first failing assertion or exception and classify ownership
-  before changing code.
-- If an idea-717-owned defect remains, repair the general typed join-source
-  rule and extend nearby proof without testcase-shaped matching.
+- Run the supervisor-delegated focused prepared-call producer and lookup proof.
+- Confirm cursor-0 fixed-arity and cursor-1 argument-bearing variadic calls
+  retain distinct exact plans, and cover nearby argument-bearing shapes with
+  no relationship or one compatible refinement.
+- Confirm missing, duplicate, stale-cursor, owner/callee mismatch, out-of-range,
+  ambiguous, and operand-contradicting evidence remains unavailable.
+- Classify any assertion or later executable failure before editing; do not
+  absorb idea-708 target/joined-control work.
 
 Completion check:
 
-- Focused named, immediate, stack, unsupported, missing, stale, duplicate, and
-  mismatch assertions pass, or an exact owned semantic defect and bounded
-  repair packet are documented in `todo.md`.
+- All idea-716-owned producer and exact-lookup assertions are green without
+  expectation changes, and any remaining failure is either repaired by a
+  general owned rule or documented with its independent owner.
 
-### Step 2.1: Preserve exact authority in the prepared-MIR direct-edge view
+### Step 2: Audit focused acceptance and route quality
 
-Goal: ensure an `Available` prepared-MIR source view retains exact typed
-authority instead of reducing it to labels, display identities, storage
-summaries, and freshness ranks.
-
-Primary targets:
-
-- `src/backend/mir/prepared_view.hpp`
-- `src/backend/mir/prepared_view.cpp`
+Goal: independently verify the common producer repair satisfies the source
+idea without retaining fallback authority.
 
 Actions:
 
-- Trace the exact prealloc bundle, move, publication, destination/source,
-  producer, and selected-freshness-reference facts into the public
-  `PreparedMirDirectEdgePublicationSourceView` contract.
-- Extend the view with typed identity or an equally exact independently
-  resolvable authority path for named, immediate, and stack sources.
-- Retain `Available` only when required destination/source, producer,
-  publication, move, and selected-freshness authority is complete and
-  mutually consistent.
-- Classify unsupported, missing, stale, duplicate, or mismatched evidence
-  explicitly; do not infer identity from vector position, display names, or
-  labels.
-- Add prepared-MIR boundary assertions that compare the exact authority to
-  the originating publication and move across supported and negative cases.
+- Review idea-716 implementation from its activation checkpoint through
+  `HEAD` against the source idea and this resumed runbook.
+- Reject callee-name, source-order, nearest-plan, route, target, or named-fixture
+  authority and any weakening of ambiguity rejection.
+- Run the supervisor-selected affected focused boundary proof required for
+  acceptance, keeping independent idea-708 failures out of this scope.
 
 Completion check:
 
-- Every supported prepared-MIR row exposes exact typed destination/source,
-  producer, publication, move, and selected-freshness-reference authority,
-  every incomplete row is non-available with its owned classification, and
-  the supervisor-delegated build plus narrow prepared-MIR proof is green
-  without expectation weakening.
+- Independent review reports no blocking alignment, overfit, or proof finding,
+  and the idea-716-owned focused contract is green without expectation changes.
 
-### Step 2.2: Preserve exact authority through the BIR semantic adapter
+### Step 3: Run broader acceptance and hand back to idea 708
 
-Goal: prevent the BIR join-source fact from claiming `Available` after exact
-prepared-MIR authority has been discarded.
-
-Primary targets:
-
-- `src/backend/mir/query.hpp`
-- `src/backend/mir/query.cpp`
+Goal: close idea 716 with regression evidence and resume its blocked consumer.
 
 Actions:
 
-- Carry or independently resolve the exact prepared-MIR destination/source
-  types and identities, producer kind/index, publication, move, and selected
-  freshness reference into `BirCurrentBlockJoinSourceFact`.
-- Populate existing typed pointer, instruction, and producer fields where
-  they are the authoritative representation; add typed fields only where the
-  exact contract cannot otherwise be represented.
-- Require agreement between the adapted fact and its exact publication,
-  move, producer, and freshness evidence before returning `Available`.
-- Keep individual rows and the aggregate semantic join identity fail closed
-  for unsupported, missing, stale, duplicate, mismatched, or otherwise
-  incomplete authority.
-
-Completion check:
-
-- Named, immediate, and stack BIR facts preserve the exact typed authority
-  established by Step 2.1, no incomplete fact is `Available`, and the
-  supervisor-delegated build plus narrow adapter proof is green.
-
-### Step 2.3: Prove authority preservation across both adapters
-
-Goal: replace status/count-only acceptance with exact semantic proof at each
-public boundary.
-
-Primary target:
-
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-
-Actions:
-
-- Assert exact destination/source identity and type, producer kind/index,
-  publication identity, move identity, and selected freshness reference after
-  the prepared-MIR view and again after BIR adaptation.
-- Cover named, immediate, and stack sources plus unsupported, missing, stale,
-  duplicate, and mismatched evidence beyond the original four-row fixture.
-- Preserve the aggregate fail-closed assertion when any required row lacks
-  complete authority.
-- Run the supervisor-delegated focused build/test command and preserve its
-  output in the canonical executor proof log.
-
-Completion check:
-
-- Focused proof demonstrates exact authority preservation across both
-  adapters for supported rows and explicit fail-closed behavior for every
-  negative class, without row-shaped shortcuts or expectation downgrades.
-
-### Step 2.3.1: Close producer and semantic-slot fail-closed gaps
-
-Goal: repair the remaining cases where incomplete or conflicting producer
-authority can retain `Available`, then prove duplicate identity by the semantic
-join slot rather than the complete row.
-
-Primary targets:
-
-- `src/backend/mir/prepared_view.cpp`
-- `src/backend/mir/query.cpp`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-
-Actions:
-
-- At the prepared-MIR boundary, require exactly one typed producer pointer
-  matching the claimed non-immediate producer kind; reject a missing matching
-  pointer and any contradictory extra producer pointer before retaining
-  `Available`.
-- Require carried producer-block authority to agree with the direct-edge
-  predecessor before prepared-MIR or BIR availability is claimed; do not
-  synthesize agreement by replacing the carried block with the predecessor.
-- Define duplicate/conflict identity by semantic edge plus destination slot:
-  predecessor, successor, and exact destination identity/type. Treat differing
-  source, producer, publication, move, or freshness authority for that same
-  slot as conflicting evidence to reject, not as a distinct row.
-- Add prepared-MIR negative proof for missing, wrong-kind, and contradictory
-  producer pointers and producer/predecessor disagreement.
-- Add BIR negative proof for producer/predecessor disagreement, exact duplicate
-  rows, and same-edge/same-destination rows with conflicting source or producer
-  authority.
-- Keep non-owning publication, move, bundle, and producer pointers opaque in
-  any proof after the prepared-core owner lifetime; compare identity only and
-  do not dereference them.
-- Run the supervisor-delegated build and focused prepared lookup/join-source
-  proof without weakening supported expectations.
-
-Completion check:
-
-- A prepared-MIR row is `Available` only with exactly one kind-matching typed
-  producer pointer and producer/predecessor agreement; the BIR adapter enforces
-  the same agreement; semantic edge-plus-destination duplicates and conflicts
-  fail closed; and focused prepared/BIR positive and negative proof is green.
-
-### Step 2.4: Re-review route quality and focused acceptance
-
-Goal: independently verify that Steps 2.1 through 2.3.1 close the blocking
-findings in `review/idea717_step2_route_quality_review.md` and
-`review/idea717_step24_authority_correction_review.md`.
-
-Actions:
-
-- Review the idea-717 implementation from its activation history point through
-  `HEAD` against the source idea, this runbook, and both blocking reports.
-- Reject row-order, display-name, route, expectation, prepared-call, or target
-  shortcuts and any per-row or aggregate availability claim lacking exact
-  typed authority.
-- Confirm prepared-MIR availability requires exactly one kind-matching producer
-  pointer, producer block agrees with predecessor through both boundaries, and
-  duplicate/conflict rejection uses semantic edge plus destination identity.
-- Confirm the focused assertions prove these negative contracts and exact
-  authority rather than only status and count.
-
-Completion check:
-
-- Independent review reports no blocking source-alignment, overfit,
-  authority-preservation, or proof finding, and focused acceptance is green
-  without expectation changes.
-
-### Step 3: Run broader acceptance proof and close
-
-Goal: satisfy the source idea's broader regression requirement and unblock
-idea 716.
-
-Actions:
-
-- Run the supervisor-selected matching broader backend before/after comparison
-  using canonical regression logs.
+- Run the supervisor-selected matching broader backend before/after guard.
 - Confirm no new failures and no loss of covered passes.
-- Do not begin broader comparison until Step 2.4 accepts the correction.
-- Request lifecycle closure only after reviewer and regression acceptance.
+- Request lifecycle closure only after focused review and regression acceptance.
 
 Completion check:
 
 - Broader acceptance is green, reviewer reject signals are absent, and idea
-  717 can close before resuming idea 716.
+  716 can close before resuming idea 708.

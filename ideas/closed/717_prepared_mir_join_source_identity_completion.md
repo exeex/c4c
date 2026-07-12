@@ -1,6 +1,6 @@
 # Prepared-MIR Join-Source Identity Completion
 
-Status: Open
+Status: Complete
 Type: common prepared-MIR identity repair
 Parent: `ideas/closed/703_bir_mir_contract_abstraction_umbrella.md`
 Unblocks: `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
@@ -65,17 +65,18 @@ is outside prepared-call plan production.
 - Changes to prepared-call production, block-entry publication, target
   materializers, or move scheduling.
 
-## Parked Execution Note
+## Completion Note
 
-Steps 1 through 3 completed the idea-owned typed prepared-MIR join-source
-repair and its focused positive/negative assertions. The focused executable now
-advances beyond those assertions and first fails at the independent legacy BIR
-CFG edge-publication source identity boundary. That boundary is owned by
-`ideas/open/719_bir_cfg_edge_publication_source_identity_completion.md`.
+Completed after the independent BIR CFG prerequisite in idea 719 was restored.
+The common prepared-MIR view and BIR semantic adapter now preserve exact typed
+edge, destination/source, producer, publication, move, bundle, storage, and
+freshness authority for supported named, immediate, and stack sources. Missing,
+stale, unsupported, mismatched, incomplete-producer, and semantic-slot conflict
+evidence fails closed at the appropriate boundary.
 
-Keep this idea open and parked while idea 719 restores an independent BIR CFG
-oracle. The supervisor-selected broader backend comparison required by this
-idea's acceptance criteria has not been run for closure, so do not claim source
-idea completion or archive this file yet. After idea 719 is accepted, route back
-through the remaining focused and broader acceptance checks without absorbing
-the legacy CFG adapter into this idea.
+Focused positive and negative proof was accepted by
+`review/idea717_step24_final_acceptance_review.md` without expectation
+weakening or testcase-shaped authority. The matching broader backend guard
+completed with 348 of 400 tests passing and the same 52 known failures before
+and after. This closes the common join-source prerequisite and unblocks resumed
+acceptance of idea 716.
