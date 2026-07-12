@@ -20,10 +20,19 @@ existing return-chain inputs classified `Stale`. Idea 727 has now repaired the
 common publication seam and proved that representative production AArch64
 inputs receive traversal-attached, fresh, attributed `Available` relations.
 
-Idea 727 is closed and idea 709 is reactivated at Step 2.1. Consume the common
-classification and delete `find_prepared_return_chain_facts` plus its generated
-lookup fallback; do not rebuild the relation in AArch64 or weaken fail-closed
-classification.
+Idea 727 is closed, but the next Step 2.1 attempt proved a distinct production
+shape gap. The real public multi-link external add/sub chain attaches
+`PreparedObjectReturnChainStatus::StructurallyIncomplete` at its first ALU
+event even though the synthetic one-/two-link contract and representative
+one-link AArch64 builder report `Available`. The focused guard swaps in
+`backend_cli_aarch64_asm_external_return_add_sub_chain_smoke` as a new failure.
+
+Idea 709 remains open but is parked at Step 2.1 behind idea 728. Do not retry
+consumer deletion until that decomposition initiative separates public
+one-link publication, multi-link successor attribution/adjacency, terminal
+`FunctionReturnAbi` binding, and traversal/classification parity and proves the
+narrowest generic producer repair. Do not reopen 727 or rebuild authority in
+AArch64.
 
 ## First Owner And Scope
 
