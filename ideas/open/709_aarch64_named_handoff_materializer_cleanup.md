@@ -5,6 +5,22 @@ Type: AArch64 MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/706_common_mir_named_query_migration.md`
 
+## Parked Route Note (2026-07-12)
+
+Step 2.1 proved that the existing traversal-attached common API does not own
+the complete return-chain relation required by AArch64 ALU materialization.
+The current view exposes one event's move bundle, source freshness, and
+optional stack fan-in authority, but not the terminal return-ABI home, the
+first successor ALU non-chain operand home, or their cross-instruction
+move/scalar-producer relation. Reconstructing those facts in `alu.cpp` violates
+this idea's consumer-only boundary.
+
+Idea 709 remains open and incomplete. It is parked behind
+`ideas/open/727_common_prepared_return_chain_authority.md`. Resume at Step 2.1
+only after that idea publishes traversal-attached typed authority and focused
+common proof; do not preserve or extend the target-local reconstruction while
+waiting.
+
 ## First Owner And Scope
 
 First owning layer: AArch64 MIR materialization.  Migrate dispatch, calls,
