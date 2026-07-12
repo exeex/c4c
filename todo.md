@@ -33,6 +33,10 @@ Current Step Title: Publish complete attributed and fresh authority
 - Zero attribution and the existing absent, ambiguous, inconsistent,
   unsupported, non-adjacent, wrong-operand, missing-home, incomplete-terminal,
   and cycle cases remain fail closed in the unchanged common classifier.
+- The hook-produced `test_baseline.new.log` candidate was rejected because it
+  added `backend_codegen_route_aarch64_prepared_call_boundary_scalability`
+  beyond the accepted 52-failure baseline. The candidate remains for diagnosis,
+  and the baseline reminder was cleared.
 
 ## Proof
 
