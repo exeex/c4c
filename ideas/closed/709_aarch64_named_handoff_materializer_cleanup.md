@@ -1,6 +1,6 @@
 # AArch64 Named Handoff Materializer Cleanup
 
-Status: Open
+Status: Complete
 Type: AArch64 MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/706_common_mir_named_query_migration.md`
@@ -87,3 +87,20 @@ helper may rebuild route indexes or preserve a fallback on route absence.
 - One dispatch path migrates while sibling helpers retain semantic routes.
 - Route/index recreation is renamed rather than removed.
 - Testcase identity, assembly text alone, or expectation weakening is proof.
+
+## Completion Note (2026-07-12)
+
+The AArch64 MIR materializers now consume traversal-owned common named and
+prepared authority without rebuilding semantic route or lookup indexes.
+Address, ALU, memory, current-block, comparison/select/control, publication,
+call, and value-materialization consumers retain target instruction and ABI
+realization while validating attached ownership and failing closed when
+authority is unavailable or detached.
+
+The final scoped retirement audit found prepared lookup construction only in
+traversal ownership. Remaining route-labelled strings and comments are
+non-semantic debug vocabulary tracked by idea 712, not executable authority.
+No testcase-specific shortcut, expectation weakening, or common contract
+change was used. Matching fresh backend regression logs both report 344/400
+passed with the same 56 known failures, and the maintenance/refactor monotonic
+guard passes with zero new failures.
