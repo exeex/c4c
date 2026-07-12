@@ -19,9 +19,9 @@ struct RouteInventory {
 // Step 1 inventory.  Counts are deliberately exact: later migration packets may
 // only ratchet them down (and update this inventory), never add new authority.
 constexpr std::array<RouteInventory, 8> kInventory{{
-    {1, 2, "BIR same-block producer semantics", "named producer view"},
+    {1, 0, "BIR same-block producer semantics", "named producer view"},
     {2, 0, "BIR select-chain semantics", "named select/dependency view"},
-    {3, 18, "BIR memory-access semantics", "named memory-access view"},
+    {3, 0, "BIR memory-access semantics", "named memory-access view"},
     {4, 0, "prepared current-block publication semantics", "prepared publication consumption"},
     {5, 0, "prepared edge-copy source semantics", "prepared edge-copy consumption"},
     {6, 0, "BIR call-boundary semantics", "named call-boundary view"},
@@ -110,10 +110,13 @@ int main() {
   const std::regex route_record_or_index{R"(\bRoute[1-8][A-Za-z0-9_]*(Record|Index)\b)"};
   const std::regex route_analysis_entry{R"(\broute[1-8]_(build|find|evaluate|current)[A-Za-z0-9_]*\b)"};
   const std::regex hidden_route_return{R"(\bfind_bir_[A-Za-z0-9_]*\s*\()"};
-  if (count_matches(common_boundary, route_record_or_index) == 0 ||
+  if (count_matches("Route3MemoryAccessRecord Route1ValueIndex",
+                    route_record_or_index) != 2 ||
+      count_matches("route3_find_memory_access", route_analysis_entry) != 1 ||
+      count_matches(common_boundary, route_record_or_index) != 0 ||
       count_matches(implementation, route_analysis_entry) != 0 ||
       count_matches(implementation, hidden_route_return) == 0) {
-    return fail("guard self-check did not detect remaining records/indexes and hidden wrappers, or found a route analysis entry point");
+    return fail("guard self-check failed, route records/indexes or analysis entry points remain, or hidden wrappers disappeared");
   }
 
   return 0;

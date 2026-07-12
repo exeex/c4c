@@ -97,23 +97,6 @@ namespace {
   return value.name;
 }
 
-[[nodiscard]] BirMemoryAccessNodeKind route3_node_kind_to_mir(
-    bir::Route3MemoryAccessNodeKind kind) {
-  switch (kind) {
-    case bir::Route3MemoryAccessNodeKind::LoadLocal:
-      return BirMemoryAccessNodeKind::LoadLocal;
-    case bir::Route3MemoryAccessNodeKind::LoadGlobal:
-      return BirMemoryAccessNodeKind::LoadGlobal;
-    case bir::Route3MemoryAccessNodeKind::StoreLocal:
-      return BirMemoryAccessNodeKind::StoreLocal;
-    case bir::Route3MemoryAccessNodeKind::StoreGlobal:
-      return BirMemoryAccessNodeKind::StoreGlobal;
-    case bir::Route3MemoryAccessNodeKind::Unknown:
-      return BirMemoryAccessNodeKind::Unknown;
-  }
-  return BirMemoryAccessNodeKind::Unknown;
-}
-
 [[nodiscard]] BirMemoryAccessNodeKind named_memory_kind_to_mir(
     bir::BirMemoryAccessKind kind) {
   switch (kind) {
@@ -183,61 +166,6 @@ namespace {
       .byte_offset = result.byte_offset,
       .size_bytes = result.size_bytes,
       .align_bytes = result.align_bytes,
-  };
-}
-
-[[nodiscard]] BirMemoryAccessBaseKind route3_base_kind_to_mir(
-    bir::Route3MemoryAccessBaseKind kind) {
-  switch (kind) {
-    case bir::Route3MemoryAccessBaseKind::LocalSlot:
-      return BirMemoryAccessBaseKind::LocalSlot;
-    case bir::Route3MemoryAccessBaseKind::GlobalSymbol:
-      return BirMemoryAccessBaseKind::GlobalSymbol;
-    case bir::Route3MemoryAccessBaseKind::PointerValue:
-      return BirMemoryAccessBaseKind::PointerValue;
-    case bir::Route3MemoryAccessBaseKind::StringConstant:
-      return BirMemoryAccessBaseKind::StringConstant;
-    case bir::Route3MemoryAccessBaseKind::None:
-      return BirMemoryAccessBaseKind::None;
-  }
-  return BirMemoryAccessBaseKind::None;
-}
-
-[[nodiscard]] SameBlockValueIdentity route1_value_identity_to_same_block(
-    const bir::Route1SourceValueIdentity& value) {
-  return SameBlockValueIdentity{
-      .value = value.value,
-      .name = value.name,
-      .type = value.type,
-      .immediate_constant = value.integer_constant,
-  };
-}
-
-[[nodiscard]] BirMemoryAccessIdentity route3_memory_access_to_mir(
-    const bir::Route3MemoryAccessRecord& record) {
-  if (!record) {
-    return {};
-  }
-  return BirMemoryAccessIdentity{
-      .status = bir::BirViewStatus::Available,
-      .inst = record.instruction,
-      .block_label = record.block_label,
-      .instruction_index = record.instruction_index,
-      .node_kind = route3_node_kind_to_mir(record.node_kind),
-      .result_value_name = record.result_value.name,
-      .stored_value_name = record.stored_value.name,
-      .address_space = record.address_space,
-      .is_volatile = record.is_volatile,
-      .base_kind = route3_base_kind_to_mir(record.base_kind),
-      .local_slot_name = record.local_slot_name,
-      .local_slot_id = record.local_slot_id,
-      .global_name = record.global_name,
-      .global_name_id = record.global_name_id,
-      .pointer_value_name = record.pointer_value.name,
-      .string_constant_name = record.string_constant_name,
-      .byte_offset = record.byte_offset,
-      .size_bytes = record.size_bytes,
-      .align_bytes = record.align_bytes,
   };
 }
 
