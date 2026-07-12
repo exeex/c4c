@@ -265,6 +265,13 @@ set_tests_properties(backend_aarch64_call_boundary_owner PROPERTIES
 )
 
 c4c_add_aarch64_cpp_test(backend_aarch64_return_lowering)
+target_link_libraries(backend_aarch64_return_lowering_test PRIVATE
+  c4c_frontend
+  c4c_codegen
+)
+target_compile_definitions(backend_aarch64_return_lowering_test PRIVATE
+  C4C_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 set_tests_properties(backend_aarch64_return_lowering PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )

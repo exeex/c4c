@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/aarch64/codegen/asm_emitter.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
@@ -6,10 +7,18 @@
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/prepared_object_traversal.hpp"
+#include "src/backend/prealloc/prealloc.hpp"
+#include "hir_to_lir.hpp"
+#include "arena.hpp"
+#include "lexer.hpp"
+#include "parser.hpp"
+#include "sema.hpp"
+#include "source_profile.hpp"
 #include "src/target_profile.hpp"
 
 #include <algorithm>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -24,6 +33,32 @@ namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
+
+std::optional<prepare::PreparedBirModule> prepare_public_c_case(
+    std::string_view relative_path) {
+  const std::string path = std::string(C4C_SOURCE_DIR) + "/" + std::string(relative_path);
+  std::ifstream input(path);
+  const std::string source((std::istreambuf_iterator<char>(input)),
+                           std::istreambuf_iterator<char>());
+  if (!input && source.empty()) return std::nullopt;
+  c4c::Lexer lexer(source, c4c::lex_profile_from(c4c::SourceProfile::C));
+  const auto tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::C, path);
+  auto sema = c4c::sema::analyze_program(
+      parser.parse(), c4c::sema_profile_from(c4c::SourceProfile::C));
+  if (!sema.validation.ok || !sema.hir_module.has_value()) return std::nullopt;
+  auto lir = c4c::codegen::lir::lower(
+      *sema.hir_module,
+      c4c::codegen::lir::LowerOptions{.preserve_semantic_va_ops = false});
+  auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      lir, c4c::backend::BirLoweringOptions{.preserve_dynamic_alloca = true});
+  if (!lowered.module.has_value()) return std::nullopt;
+  return prepare::prepare_semantic_bir_module_with_options(
+      *lowered.module, c4c::target_profile_from_triple("aarch64-linux-gnu"),
+      prepare::PrepareOptions{});
+}
 
 int fail(std::string_view message) {
   std::cerr << message << "\n";
@@ -1610,6 +1645,95 @@ int module_build_selects_scalar_chain_before_return() {
   return 0;
 }
 
+int public_one_link_reports_terminal_return_binding_independently() {
+  const auto prepared = prepare_public_c_case(
+      "tests/backend/case/prepared_return_chain_one_link_terminal_binding.c");
+  if (!prepared.has_value() || prepared->control_flow.functions.size() != 1 ||
+      prepared->value_locations.functions.size() != 1 ||
+      prepared->module.functions.size() != 1) {
+    return fail("one-link public preparation probe could not build its normal prepared module");
+  }
+  const auto& locations = prepared->value_locations.functions.front();
+  const auto terminal = std::find_if(
+      locations.move_bundles.begin(), locations.move_bundles.end(),
+      [](const auto& bundle) { return bundle.phase == prepare::PreparedMovePhase::BeforeReturn; });
+  if (terminal == locations.move_bundles.end() || terminal->proof_attribution_id == 0 ||
+      terminal->moves.size() != 1 ||
+      terminal->moves.front().destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi) {
+    return fail("one-link public terminal-binding seam: missing attributed FunctionReturnAbi move");
+  }
+  if (!terminal->abi_bindings.empty()) {
+    return fail("one-link public terminal-binding seam unexpectedly publishes an ABI binding; update the probe contract");
+  }
+
+  const auto lookups = prepare::make_prepared_function_lookups(
+      *prepared, prepared->control_flow.functions.front());
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      prepared->control_flow.functions.front(), &locations,
+      &prepared->module.functions.front(), nullptr, &prepared->names, &lookups);
+  const auto first = std::find_if(traversal.begin(), traversal.end(), [](const auto& event) {
+    return event.kind == prepare::PreparedObjectTraversalEventKind::Instruction;
+  });
+  if (first == traversal.end() ||
+      first->return_chain.status !=
+          prepare::PreparedObjectReturnChainStatus::StructurallyIncomplete) {
+    return fail(std::string("one-link attached return-chain classification expected structurally_incomplete from missing terminal ABI binding, got ") +
+                (first == traversal.end()
+                     ? "missing_instruction_event"
+                     : std::string(prepare::prepared_object_return_chain_status_name(
+                           first->return_chain.status))));
+  }
+  return 0;
+}
+
+int public_multi_link_reports_successor_authority_before_terminal_binding() {
+  const auto prepared = prepare_public_c_case(
+      "tests/backend/case/prepared_return_chain_multi_link_successor_authority.c");
+  if (!prepared.has_value() || prepared->control_flow.functions.size() != 1 ||
+      prepared->value_locations.functions.size() != 1 ||
+      prepared->module.functions.size() != 1 ||
+      prepared->module.functions.front().blocks.size() != 1 ||
+      prepared->module.functions.front().blocks.front().insts.size() != 2) {
+    return fail("multi-link public successor probe could not build its normal two-instruction prepared shape");
+  }
+  const auto& locations = prepared->value_locations.functions.front();
+  const auto successor = std::find_if(
+      locations.move_bundles.begin(), locations.move_bundles.end(), [](const auto& bundle) {
+        return bundle.phase == prepare::PreparedMovePhase::BeforeInstruction &&
+               bundle.block_index == 0 && bundle.instruction_index == 1;
+      });
+  if (successor == locations.move_bundles.end() || successor->proof_attribution_id == 0 ||
+      successor->function_name != locations.function_name || successor->moves.size() != 1 ||
+      successor->moves.front().block_index != 0 ||
+      successor->moves.front().instruction_index != 1 ||
+      successor->moves.front().destination_kind !=
+          prepare::PreparedMoveDestinationKind::Value ||
+      successor->moves.front().to_value_id == 0) {
+    return fail("multi-link successor seam: missing exact attributed block=0 instruction=1 adjacent value move");
+  }
+
+  const auto lookups = prepare::make_prepared_function_lookups(
+      *prepared, prepared->control_flow.functions.front());
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      prepared->control_flow.functions.front(), &locations,
+      &prepared->module.functions.front(), nullptr, &prepared->names, &lookups);
+  const auto first = std::find_if(traversal.begin(), traversal.end(), [](const auto& event) {
+    return event.kind == prepare::PreparedObjectTraversalEventKind::Instruction &&
+           event.instruction_index == 0;
+  });
+  if (first == traversal.end() ||
+      first->return_chain.status !=
+          prepare::PreparedObjectReturnChainStatus::StructurallyIncomplete) {
+    return fail(std::string("multi-link attached return-chain classification expected structurally_incomplete after valid successor adjacency and missing terminal ABI binding, got ") +
+                (first == traversal.end()
+                     ? "missing_instruction_event"
+                     : std::string(prepare::prepared_object_return_chain_status_name(
+                           first->return_chain.status))));
+  }
+  return 0;
+}
+
 int unsupported_conditional_branch_terminator_stays_diagnostic_only() {
   auto prepared = prepared_with_conditional_branch_block();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1704,6 +1828,15 @@ int main() {
     return status;
   }
   if (const int status = module_build_selects_scalar_chain_before_return();
+      status != 0) {
+    return status;
+  }
+  if (const int status = public_one_link_reports_terminal_return_binding_independently();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          public_multi_link_reports_successor_authority_before_terminal_binding();
       status != 0) {
     return status;
   }
