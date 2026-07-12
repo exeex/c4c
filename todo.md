@@ -3,23 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/723_pre_regalloc_value_constraint_carrier_research.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace existing constraint flow
+Current Step ID: 2
+Current Step Title: Decide semantic owner and schema
 
 ## Just Finished
 
-- Plan Step 1 documented the complete current `PreparedAllocationConstraint` flow in `docs/pre_regalloc_value_constraints/01_existing_constraint_flow.md`: stable BIR/liveness identity, the sole constraint construction site, target-policy derivation, allocator behavior, and observational test reads.
-- The trace establishes two discontinuities without choosing a Step 2 architecture: no general named-value fixed/preferred request reaches `BirPreAlloc::run_regalloc`, and the allocator does not consume the constraint rows it publishes.
+- Plan Step 2 compared BIR, prepared semantic, liveness, and regalloc ownership in `docs/pre_regalloc_value_constraints/02_semantic_owner_and_schema.md` and selected a bounded split: authenticated ingress and target validation in prepared semantic state, normalization in `PreparedAllocationConstraint`, and enforcement in common regalloc.
+- The decision rejects unrestricted BIR/value-name register controls. It specifies stable identity, typed provenance, structured target identity, class/width legality, conflict handling, failure behavior, and constraint-aware candidate filtering without encoding the joined-branch fixture.
 
 ## Suggested Next
 
-- Execute Plan Step 2 by comparing BIR, prepared semantic, liveness, and regalloc ownership and deciding whether a general carrier is valid.
+- Execute Plan Step 3 by defining a route-independent positive semantic program, adjacent negative matrix, and deterministic follow-up boundary.
 
 ## Watchouts
 
-- `PreparedAllocationConstraint` is currently descriptive: preferred/forbidden pools duplicate policy independently used by assignment, while fixed fields are always absent. Step 2 must account for both ingress and enforcement rather than treating the existing row as an active control surface.
+- A later implementation must constrain every normal and eviction candidate-pool pass from the same normalized row. Publishing requests without enforcement, or exposing arbitrary value-name-to-register preparation options, would preserve the original failure behind a new carrier.
 
 ## Proof
 
 - No build was required for this documentation-only packet.
-- Ran repository `rg` checks for every cited constraint field, producer/consumer symbol, liveness path, register-group override, target pool helper, ABI helper, and test observation; all cited paths and symbols resolved.
+- Ran repository `rg` checks for every cited owner, type, phase, target-identity helper, candidate-selection symbol, and constraint field; all cited paths and symbols resolved. `git diff --check` passed.
