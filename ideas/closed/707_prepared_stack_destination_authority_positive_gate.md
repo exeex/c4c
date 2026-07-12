@@ -1,6 +1,6 @@
 # Prepared Stack Destination Authority Positive Gate
 
-Status: Open
+Status: Closed
 Type: prepared producer capability gate
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 Blocks Resume Of:
@@ -48,3 +48,18 @@ field and fail-closed proof in the Step 2 gate is present.
   positive prepared producer.
 - MIR rediscovers destination fan-in or manufactures missing facts.
 - Only a negative gate test exists, or the positive proof is testcase-shaped.
+
+## Closure
+
+Idea 707 is complete. One real out-of-SSA select-materialized edge-copy
+producer now emits a complete, uniquely bound prepared stack-destination
+authority row, and the bounded MIR feature view consumes only its `Available`
+state. Focused coverage proves the positive path and fail-closed missing,
+invalid, ambiguous, incomplete, mismatched, route-only, and upstream states.
+The close-time backend regression guard matched the accepted baseline exactly
+at 374 passed and 24 failed, with no new failures.
+
+Ideas 647 and 655 remain parked. Idea 707's completed row does not provide the
+positive non-637 ordered-final-state, mutual-exclusion, or explicit-merge
+producer evidence required at their failing consumer points; they must not be
+reactivated until that prepared/prealloc evidence exists.
