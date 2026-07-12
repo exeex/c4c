@@ -2023,6 +2023,68 @@ prepare_stack_destination_publication_relationship(
     const PreparedFrameSlot* destination_frame_slot,
     const PreparedStackObject* destination_stack_object);
 
+enum class PreparedStackDestinationComposerInputStatus {
+  Available,
+  MissingEvidence,
+  InvalidFreshness,
+  AmbiguousFreshness,
+  IncompleteStackEvidence,
+  IdentityMismatch,
+  RouteOnlyEvidence,
+  UpstreamFailure,
+};
+
+struct PreparedStackDestinationComposerInputQuery {
+  const PreparedStackDestinationPublication* relationship = nullptr;
+  const PreparedEdgeCopySourceFacts* source_facts = nullptr;
+  const PreparedEdgePublication* publication_identity = nullptr;
+  const PreparedMoveResolution* move_identity = nullptr;
+  const PreparedValueHome* source_home_identity = nullptr;
+  const PreparedValueHome* destination_home_identity = nullptr;
+  const PreparedFrameSlot* destination_frame_slot_identity = nullptr;
+  const PreparedStackObject* destination_stack_object_identity = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+  std::optional<std::size_t> cursor_block_index;
+  std::optional<std::size_t> cursor_instruction_index;
+  bool route_only = false;
+};
+
+struct PreparedStackDestinationComposerInput {
+  PreparedStackDestinationComposerInputStatus status =
+      PreparedStackDestinationComposerInputStatus::MissingEvidence;
+  PreparedStackDestinationPublicationStatus upstream_relationship_status =
+      PreparedStackDestinationPublicationStatus::MissingPublication;
+  PreparedEdgeCopySourceFactsStatus upstream_source_facts_status =
+      PreparedEdgeCopySourceFactsStatus::MissingPublication;
+  const PreparedStackDestinationPublication* relationship = nullptr;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedValueHome* destination_home = nullptr;
+  const PreparedValueFreshnessAuthority* source_freshness = nullptr;
+  const PreparedFrameSlot* destination_frame_slot = nullptr;
+  const PreparedStackObject* destination_stack_object = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+  std::optional<std::size_t> cursor_block_index;
+  std::optional<std::size_t> cursor_instruction_index;
+  PreparedStackDestinationEvidenceApplicability branch_stack_load_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  PreparedStackDestinationEvidenceReason branch_stack_load_reason =
+      PreparedStackDestinationEvidenceReason::None;
+  PreparedStackDestinationEvidenceApplicability aggregate_source_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  PreparedStackDestinationEvidenceReason aggregate_source_reason =
+      PreparedStackDestinationEvidenceReason::None;
+};
+
+[[nodiscard]] PreparedStackDestinationComposerInput
+query_prepared_stack_destination_composer_input(
+    const PreparedStackDestinationComposerInputQuery& query);
+
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(
     const PreparedEdgePublicationLookups* lookups,

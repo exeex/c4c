@@ -1767,6 +1767,103 @@ prepare_stack_destination_publication_relationship(
   return prepared;
 }
 
+PreparedStackDestinationComposerInput
+query_prepared_stack_destination_composer_input(
+    const PreparedStackDestinationComposerInputQuery& query) {
+  PreparedStackDestinationComposerInput input{
+      .relationship = query.relationship,
+      .publication = query.publication_identity,
+      .move = query.move_identity,
+      .source_home = query.source_home_identity,
+      .destination_home = query.destination_home_identity,
+      .destination_frame_slot = query.destination_frame_slot_identity,
+      .destination_stack_object = query.destination_stack_object_identity,
+      .predecessor_label = query.predecessor_label,
+      .successor_label = query.successor_label,
+      .destination_value_id = query.destination_value_id,
+      .cursor_block_index = query.cursor_block_index,
+      .cursor_instruction_index = query.cursor_instruction_index,
+  };
+  if (query.relationship == nullptr || query.source_facts == nullptr ||
+      query.publication_identity == nullptr || query.move_identity == nullptr ||
+      query.source_home_identity == nullptr ||
+      query.destination_home_identity == nullptr) {
+    return input;
+  }
+  input.upstream_relationship_status = query.relationship->status;
+  input.upstream_source_facts_status = query.source_facts->status;
+  input.branch_stack_load_applicability =
+      query.relationship->branch_stack_load_applicability;
+  input.branch_stack_load_reason = query.relationship->branch_stack_load_reason;
+  input.aggregate_source_applicability =
+      query.relationship->aggregate_source_applicability;
+  input.aggregate_source_reason = query.relationship->aggregate_source_reason;
+  if (query.relationship->status !=
+          PreparedStackDestinationPublicationStatus::Available ||
+      query.source_facts->status != PreparedEdgeCopySourceFactsStatus::Available) {
+    input.status = PreparedStackDestinationComposerInputStatus::UpstreamFailure;
+    return input;
+  }
+  if (query.route_only) {
+    input.status = PreparedStackDestinationComposerInputStatus::RouteOnlyEvidence;
+    return input;
+  }
+  switch (query.source_facts->source_freshness_status) {
+    case PreparedValueFreshnessQueryStatus::AmbiguousCandidate:
+      input.status = PreparedStackDestinationComposerInputStatus::AmbiguousFreshness;
+      return input;
+    case PreparedValueFreshnessQueryStatus::Selected:
+      break;
+    case PreparedValueFreshnessQueryStatus::UnknownUse:
+    case PreparedValueFreshnessQueryStatus::InvalidCandidate:
+      input.status = PreparedStackDestinationComposerInputStatus::InvalidFreshness;
+      return input;
+    case PreparedValueFreshnessQueryStatus::MissingValue:
+    case PreparedValueFreshnessQueryStatus::NoCandidate:
+      return input;
+  }
+  if (!query.source_facts->source_freshness_authority.has_value()) {
+    input.status = PreparedStackDestinationComposerInputStatus::InvalidFreshness;
+    return input;
+  }
+  input.source_freshness = &*query.source_facts->source_freshness_authority;
+  if (query.destination_frame_slot_identity == nullptr ||
+      query.destination_stack_object_identity == nullptr ||
+      query.relationship->branch_stack_load_applicability ==
+          PreparedStackDestinationEvidenceApplicability::Unknown ||
+      query.relationship->aggregate_source_applicability ==
+          PreparedStackDestinationEvidenceApplicability::Unknown) {
+    input.status =
+        PreparedStackDestinationComposerInputStatus::IncompleteStackEvidence;
+    return input;
+  }
+  const auto& freshness = *query.source_facts->source_freshness_authority;
+  if (query.relationship->publication != query.publication_identity ||
+      query.relationship->move != query.move_identity ||
+      query.relationship->source_home != query.source_home_identity ||
+      query.relationship->destination_home != query.destination_home_identity ||
+      query.relationship->destination_frame_slot !=
+          query.destination_frame_slot_identity ||
+      query.relationship->destination_stack_object !=
+          query.destination_stack_object_identity ||
+      query.source_facts->publication != query.publication_identity ||
+      query.source_facts->move != query.move_identity ||
+      freshness.reference.edge_publication != query.publication_identity ||
+      freshness.reference.move != query.move_identity ||
+      query.relationship->predecessor_label != query.predecessor_label ||
+      query.relationship->successor_label != query.successor_label ||
+      query.relationship->destination_value_id != query.destination_value_id ||
+      query.move_identity->block_index != query.cursor_block_index ||
+      query.move_identity->instruction_index != query.cursor_instruction_index ||
+      freshness.reference.block_index != query.cursor_block_index ||
+      freshness.reference.instruction_index != query.cursor_instruction_index) {
+    input.status = PreparedStackDestinationComposerInputStatus::IdentityMismatch;
+    return input;
+  }
+  input.status = PreparedStackDestinationComposerInputStatus::Available;
+  return input;
+}
+
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(
     const PreparedEdgePublicationLookups* lookups,

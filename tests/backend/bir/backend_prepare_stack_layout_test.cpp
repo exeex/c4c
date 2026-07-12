@@ -11056,6 +11056,99 @@ int check_select_edge_source_producer_placement_contract() {
               SourceHomeNotStackSlot) {
     return fail("expected real stack-destination edge publication and bound move relationship");
   }
+  const auto produced_source_facts =
+      prepare::prepare_block_entry_parallel_copy_edge_source_facts(
+          &edge_publications,
+          prepared_pred_label,
+          prepared_join_label,
+          *produced_relationship.move);
+  const prepare::PreparedStackDestinationComposerInputQuery composer_query{
+      .relationship = &produced_relationship,
+      .source_facts = &produced_source_facts,
+      .publication_identity = produced_publication,
+      .move_identity = produced_relationship.move,
+      .source_home_identity = produced_relationship.source_home,
+      .destination_home_identity = produced_relationship.destination_home,
+      .destination_frame_slot_identity = produced_relationship.destination_frame_slot,
+      .destination_stack_object_identity = produced_relationship.destination_stack_object,
+      .predecessor_label = prepared_pred_label,
+      .successor_label = prepared_join_label,
+      .destination_value_id = 11,
+      .cursor_block_index = produced_relationship.move->block_index,
+      .cursor_instruction_index = produced_relationship.move->instruction_index,
+  };
+  const auto composer_input =
+      prepare::query_prepared_stack_destination_composer_input(composer_query);
+  if (composer_input.status !=
+          prepare::PreparedStackDestinationComposerInputStatus::Available ||
+      composer_input.publication != produced_publication ||
+      composer_input.move != produced_relationship.move ||
+      composer_input.source_freshness == nullptr ||
+      composer_input.source_freshness->reference.edge_publication !=
+          produced_publication ||
+      composer_input.source_freshness->reference.move !=
+          produced_relationship.move ||
+      composer_input.destination_frame_slot !=
+          produced_relationship.destination_frame_slot ||
+      composer_input.destination_stack_object !=
+          produced_relationship.destination_stack_object) {
+    return fail("expected complete identity-bound stack destination composer input");
+  }
+  auto missing_query = composer_query;
+  missing_query.source_facts = nullptr;
+  if (prepare::query_prepared_stack_destination_composer_input(missing_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::MissingEvidence) {
+    return fail("expected missing composer evidence to remain independently reachable");
+  }
+  auto invalid_freshness_facts = produced_source_facts;
+  invalid_freshness_facts.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate;
+  auto invalid_query = composer_query;
+  invalid_query.source_facts = &invalid_freshness_facts;
+  if (prepare::query_prepared_stack_destination_composer_input(invalid_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::InvalidFreshness) {
+    return fail("expected invalid composer freshness to remain independently reachable");
+  }
+  auto ambiguous_freshness_facts = produced_source_facts;
+  ambiguous_freshness_facts.source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
+  auto ambiguous_query = composer_query;
+  ambiguous_query.source_facts = &ambiguous_freshness_facts;
+  if (prepare::query_prepared_stack_destination_composer_input(ambiguous_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::AmbiguousFreshness) {
+    return fail("expected ambiguous composer freshness to remain independently reachable");
+  }
+  auto incomplete_query = composer_query;
+  incomplete_query.destination_stack_object_identity = nullptr;
+  if (prepare::query_prepared_stack_destination_composer_input(incomplete_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::IncompleteStackEvidence) {
+    return fail("expected incomplete composer stack evidence to remain independently reachable");
+  }
+  auto mismatched_query = composer_query;
+  mismatched_query.destination_value_id = 12;
+  if (prepare::query_prepared_stack_destination_composer_input(mismatched_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::IdentityMismatch) {
+    return fail("expected mismatched composer identity to remain independently reachable");
+  }
+  auto route_only_query = composer_query;
+  route_only_query.route_only = true;
+  if (prepare::query_prepared_stack_destination_composer_input(route_only_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::RouteOnlyEvidence) {
+    return fail("expected route-only composer evidence to remain independently reachable");
+  }
+  auto upstream_relationship = produced_relationship;
+  upstream_relationship.status =
+      prepare::PreparedStackDestinationPublicationStatus::MoveMismatch;
+  auto upstream_query = composer_query;
+  upstream_query.relationship = &upstream_relationship;
+  const auto upstream_input =
+      prepare::query_prepared_stack_destination_composer_input(upstream_query);
+  if (upstream_input.status !=
+          prepare::PreparedStackDestinationComposerInputStatus::UpstreamFailure ||
+      upstream_input.upstream_relationship_status !=
+          prepare::PreparedStackDestinationPublicationStatus::MoveMismatch) {
+    return fail("expected composer input to preserve upstream relationship failure");
+  }
   auto f64_scalar_destination = prepared;
   auto& f64_edge = f64_scalar_destination.control_flow.functions.front()
                        .join_transfers.front().edge_transfers.front();
@@ -11177,6 +11270,23 @@ int check_select_edge_source_producer_placement_contract() {
           prepare::PreparedStackDestinationPublicationStatus::
               MissingDestinationHome) {
     return fail("expected real register-destination sibling publication to reject as non-stack");
+  }
+  const auto register_relationship =
+      prepare::prepare_stack_destination_publication_relationship(
+          register_publication,
+          &register_destination.stack_layout.frame_slots.front(),
+          &register_destination.stack_layout.objects.front());
+  auto register_composer_query = composer_query;
+  register_composer_query.relationship = &register_relationship;
+  register_composer_query.publication_identity = register_publication;
+  register_composer_query.move_identity = register_publication->move;
+  register_composer_query.source_home_identity = register_publication->source_home;
+  register_composer_query.destination_home_identity =
+      register_publication->destination_home;
+  if (prepare::query_prepared_stack_destination_composer_input(
+          register_composer_query).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::UpstreamFailure) {
+    return fail("expected nearby real register-destination publication not to match stack composer input");
   }
   if (prepare::prepare_stack_destination_publication_relationship(
           nullptr,
