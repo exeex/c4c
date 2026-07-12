@@ -711,10 +711,11 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
   }
 
   auto mismatched_prepared = prepared;
-  mismatched_prepared.addressing.functions.back().accesses.front().inst_index = 1;
+  mismatched_prepared.addressing.functions.back().accesses.erase(
+      mismatched_prepared.addressing.functions.back().accesses.begin());
   auto mismatched_lowered = lower_scalar_consumer(mismatched_prepared);
   if (!mismatched_lowered.has_value()) {
-    return fail("expected scalar consumer with mismatched Route 3 source to fall back");
+    return fail("expected scalar consumer with missing prepared source authority to fall back");
   }
   const auto* mismatched_scalar =
       std::get_if<aarch64_codegen::ScalarInstructionRecord>(
@@ -722,7 +723,7 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
   if (mismatched_scalar == nullptr ||
       !mismatched_scalar->scalar_alu.has_value() ||
       mismatched_scalar->inputs.size() != 2) {
-    return fail("expected mismatched source fallback to keep scalar ALU record");
+    return fail("expected missing-authority fallback to keep scalar ALU record");
   }
   const auto* mismatched_lhs =
       std::get_if<aarch64_codegen::MemoryOperand>(
@@ -732,38 +733,37 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
       mismatched_lhs->byte_offset == 16 ||
       mismatched_lhs->result_value_name != stack_load_name) {
     return fail(
-        "expected Route 3/prepared source mismatch to reject source-home operand");
+        "expected missing prepared source authority to reject source-home operand");
   }
 
-  auto missing_route3_identity = prepared;
-  auto& missing_route3_block =
-      missing_route3_identity.module.functions.back().blocks.front();
-  auto* missing_route3_load =
-      std::get_if<bir::LoadLocalInst>(&missing_route3_block.insts.front());
-  if (missing_route3_load == nullptr || !missing_route3_load->address.has_value()) {
+  auto stale_bir_identity = prepared;
+  auto& stale_bir_block = stale_bir_identity.module.functions.back().blocks.front();
+  auto* stale_bir_load =
+      std::get_if<bir::LoadLocalInst>(&stale_bir_block.insts.front());
+  if (stale_bir_load == nullptr || !stale_bir_load->address.has_value()) {
     return fail("expected first load-local fixture instruction to carry an address");
   }
-  missing_route3_load->address->base_kind = bir::MemoryAddress::BaseKind::None;
-  auto missing_route3_lowered = lower_scalar_consumer(missing_route3_identity);
-  if (!missing_route3_lowered.has_value()) {
-    return fail("expected scalar consumer with missing Route 3 identity to lower");
+  stale_bir_load->address->base_kind = bir::MemoryAddress::BaseKind::None;
+  auto stale_bir_lowered = lower_scalar_consumer(stale_bir_identity);
+  if (!stale_bir_lowered.has_value()) {
+    return fail("expected prepared scalar source authority to ignore stale BIR identity");
   }
-  const auto* missing_route3_scalar =
+  const auto* stale_bir_scalar =
       std::get_if<aarch64_codegen::ScalarInstructionRecord>(
-          &missing_route3_lowered->target.payload);
-  if (missing_route3_scalar == nullptr ||
-      !missing_route3_scalar->scalar_alu.has_value() ||
-      missing_route3_scalar->inputs.size() != 2) {
-    return fail("expected missing Route 3 identity to keep scalar ALU record");
+          &stale_bir_lowered->target.payload);
+  if (stale_bir_scalar == nullptr ||
+      !stale_bir_scalar->scalar_alu.has_value() ||
+      stale_bir_scalar->inputs.size() != 2) {
+    return fail("expected stale BIR identity to keep prepared scalar ALU record");
   }
-  const auto* missing_route3_lhs =
+  const auto* stale_bir_lhs =
       std::get_if<aarch64_codegen::MemoryOperand>(
-          &missing_route3_scalar->inputs[0].payload);
-  if (missing_route3_lhs == nullptr ||
-      missing_route3_lhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
-      missing_route3_lhs->byte_offset != 16 ||
-      missing_route3_lhs->result_value_name != stack_load_name) {
-    return fail("expected missing Route 3 identity to preserve prepared source fallback");
+          &stale_bir_scalar->inputs[0].payload);
+  if (stale_bir_lhs == nullptr ||
+      stale_bir_lhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      stale_bir_lhs->byte_offset != 16 ||
+      stale_bir_lhs->result_value_name != stack_load_name) {
+    return fail("expected prepared source authority to select the source-home operand");
   }
   return 0;
 }

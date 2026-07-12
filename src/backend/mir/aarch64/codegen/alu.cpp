@@ -1127,64 +1127,6 @@ find_prepared_load_local_source_producer(
   return reg.has_value() && abi::is_gp_register(*reg);
 }
 
-enum class Route3LoadLocalSourceMatch {
-  Missing,
-  Mismatch,
-  Match,
-};
-
-[[nodiscard]] Route3LoadLocalSourceMatch route3_load_local_source_matches_prepared(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    const prepare::PreparedScalarLoadLocalSourceProducer& source,
-    const bir::LoadLocalInst& load) {
-  if (context.bir_block == nullptr ||
-      context.function.prepared == nullptr ||
-      source.source_access == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return Route3LoadLocalSourceMatch::Mismatch;
-  }
-  const auto prepared_result_name =
-      prepared_named_value_id(context, load.result);
-  const auto prepared_root_name =
-      prepared_named_value_id(context, value);
-  if (!prepared_result_name.has_value() ||
-      !prepared_root_name.has_value() ||
-      source.source_access->result_value_name != prepared_result_name ||
-      *prepared_result_name != *prepared_root_name) {
-    return Route3LoadLocalSourceMatch::Mismatch;
-  }
-  const auto route3 =
-      mir::find_bir_same_block_load_local_source_identity(
-          mir::BirSameBlockLoadLocalSourceRequest{
-              .block = context.bir_block,
-              .block_label = context.bir_block->label,
-              .root_value = &value,
-              .root_value_name = std::string_view(value.name),
-              .root_value_type = value.type,
-              .before_instruction_index = before_instruction_index,
-          });
-  if (!route3) {
-    return Route3LoadLocalSourceMatch::Missing;
-  }
-  if (route3.load_local != &load ||
-      route3.memory_access.instruction_index != source.source_access->inst_index ||
-      route3.memory_access.node_kind != mir::BirMemoryAccessNodeKind::LoadLocal ||
-      route3.memory_access.base_kind != mir::BirMemoryAccessBaseKind::LocalSlot ||
-      route3.memory_access.result_value_name != std::string_view(value.name) ||
-      route3.result_value.name != value.name ||
-      route3.result_value.type != value.type) {
-    return Route3LoadLocalSourceMatch::Mismatch;
-  }
-  if (source.source_access->address.base_kind !=
-      prepare::PreparedAddressBaseKind::FrameSlot) {
-    return Route3LoadLocalSourceMatch::Mismatch;
-  }
-  return Route3LoadLocalSourceMatch::Match;
-}
-
 [[nodiscard]] std::optional<MemoryOperand> make_unpublished_load_local_source_operand(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1192,24 +1134,14 @@ enum class Route3LoadLocalSourceMatch {
   const auto source =
       find_prepared_load_local_source_producer(context, value, before_instruction_index);
   if (!source.has_value() || source->source_access == nullptr ||
-      context.bir_block == nullptr) {
+      source->producer == nullptr || source->producer->load_local == nullptr) {
     return std::nullopt;
   }
-  const auto* load =
-      source->producer != nullptr ? source->producer->load_local : nullptr;
-  if (load == nullptr &&
-      source->source_access->inst_index < context.bir_block->insts.size()) {
-    load = std::get_if<bir::LoadLocalInst>(
-        &context.bir_block->insts[source->source_access->inst_index]);
-  }
-  if (load == nullptr) {
+  if (source->source_access->address.base_kind !=
+      prepare::PreparedAddressBaseKind::FrameSlot) {
     return std::nullopt;
   }
-  if (route3_load_local_source_matches_prepared(
-          context, value, before_instruction_index, *source, *load) ==
-      Route3LoadLocalSourceMatch::Mismatch) {
-    return std::nullopt;
-  }
+  const auto* load = source->producer->load_local;
   const auto* home = find_named_value_home(load->result, context.function);
   if (home == nullptr || !load_local_home_needs_consumer_publication(*home)) {
     return std::nullopt;

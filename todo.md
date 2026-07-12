@@ -8,28 +8,24 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
-- Plan Step 2 migrated the AArch64 materialized-condition comparison consumer
-  in `comparison.cpp` from executable Route 7 index validation, BIR identity
-  reconstruction, and cross-authority selection to the existing common prepared
-  materialized-condition producer. Missing prepared producer authority now fails
-  closed instead of retaining the BIR fallback. The focused branch-control
-  disagreement fixture now positively verifies that stale prepared authority
-  cannot select the mutated BIR predicate and uses only emitted-condition
-  lowering.
+- Plan Step 2 migrated the AArch64 scalar-ALU unpublished load-local consumer
+  in `alu.cpp` from Route 3 validation and BIR instruction-index reconstruction
+  to the existing prepared same-block load-local producer. Missing prepared
+  producer authority now rejects the special source-home operand, while stale
+  BIR address identity cannot override the prepared producer. The focused
+  prepared scalar-ALU contract positively proves both behaviors.
 
 ## Suggested Next
 
-- Continue Plan Step 2 with one narrow remaining AArch64 ALU authority-family
+- Continue Plan Step 2 with one narrow remaining AArch64 authority-family
   packet selected by the supervisor; keep it limited to one semantic route-index
   consumer family and its focused proof.
 
 ## Watchouts
 
-- The legacy Route 7 fused-comparison conversion/agreement helpers remain for
-  focused contract tests, but executable fused-comparison and
-  materialized-condition comparison lowering no longer consult Route 7.
-- AArch64 ALU route-index consumers remain outside this completed packet and
-  still belong to Step 2.
+- Other AArch64 route-index consumers remain outside this completed packet and
+  still belong to Step 2; this slice intentionally changed only unpublished
+  load-local scalar-ALU operands.
 - The delegated subset retains the known baseline failure in test 354 (`bl
   printf` missing); all other 35 tests pass, including the branch-control,
   call-boundary
@@ -42,5 +38,8 @@ Current Step Title: Migrate sibling AArch64 materializers
   '^(backend_aarch64_branch_control_lowering|backend_aarch64_prepared_memory_operand_records|backend_(codegen_route|cli)_aarch64_)';
   } 2>&1 | tee test_after.log`. Build succeeded; 35/36 tests passed, with only
   the known baseline test 354 failure (`bl printf` missing); the added focused
-  branch-control contract passed, for 35/36 total. The delegated proof is
+  scalar-ALU route tests passed, for 35/36 total. The delegated proof is
   sufficient relative to that baseline. Proof log: `test_after.log`.
+- Additionally ran `ctest --test-dir build --output-on-failure -R
+  '^backend_aarch64_prepared_scalar_alu_records$'`; the focused prepared
+  authority contract passed 1/1.
