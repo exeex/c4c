@@ -8,10 +8,10 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
-- Plan Step 2 migrated AArch64 scalar-select publication in `alu.cpp` off its
-  target-local Route 2/BIR select-chain reconstruction. The consumer now uses
-  only the owned prepared lookup and named scalar-select-chain materialization
-  query; missing, stale, non-select, or incomplete authority fails closed.
+- Plan Step 2 migrated the AArch64 fused-comparison operand materializer in
+  `comparison.cpp` off its target-local Route 7 comparison-index reconstruction
+  and locally rebuilt producer lookup. It now consumes only the attached common
+  prepared producer lookup; missing or inconsistent authority fails closed.
 
 ## Suggested Next
 
@@ -21,15 +21,15 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Watchouts
 
-- The focused scalar-ALU fixture now attaches its prepared lookup through the
-  same owned lifetime contract required by production consumers.
-- Other AArch64 route-index consumers remain outside this packet and still
-  belong to Step 2.
+- The obsolete target-private Route 7 agreement test seam was removed with the
+  reconstruction path; common Route 7 producer/query coverage remains intact.
+- Materialized-condition lookup rebuilding remains outside this fused-operand
+  packet, as do other AArch64 route-index consumers in Step 2.
 
 ## Proof
 
 - Ran `set -o pipefail; { cmake --build --preset default && ctest --test-dir
   build -j --output-on-failure -R
-  '^(backend_aarch64_(prepared_scalar_alu_records|scalar_alu_records)|backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy)$';
-  } 2>&1 | tee test_after.log`. Build succeeded and all 3 delegated tests
+  '^(backend_aarch64_(branch_compare_records|compare_branch_candidate_records|branch_compare_contract|prepared_branch_records|branch_control_lowering))$';
+  } 2>&1 | tee test_after.log`. Build succeeded and all 5 delegated tests
   passed. The delegated proof is sufficient. Proof log: `test_after.log`.

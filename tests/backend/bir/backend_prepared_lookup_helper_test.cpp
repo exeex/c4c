@@ -19,20 +19,6 @@
 #include <variant>
 #include <vector>
 
-namespace c4c::backend::aarch64::codegen {
-std::optional<c4c::backend::prepare::PreparedFusedCompareOperandProducerFacts>
-read_agreeing_route7_fused_compare_operand_producer_facts_for_testing(
-    const c4c::backend::aarch64::module::BlockLoweringContext& context,
-    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
-    const c4c::backend::prepare::PreparedFusedCompareOperandProducerFacts& prepared,
-    std::size_t before_instruction_index);
-std::optional<c4c::backend::prepare::PreparedFusedCompareOperandProducerFacts>
-agreeing_route7_fused_compare_operand_producer_facts_for_testing(
-    const c4c::backend::aarch64::module::BlockLoweringContext& context,
-    const c4c::backend::prepare::PreparedFusedCompareOperandProducerFacts& prepared,
-    const c4c::backend::bir::FusedCompareOperandProducerFacts& route7);
-}  // namespace c4c::backend::aarch64::codegen
-
 namespace {
 
 namespace bir = c4c::backend::bir;
@@ -14371,92 +14357,6 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       stale_owner_route7_consumer.available) {
     return fail(
         "Route 7 fused compare consumer-boundary facts should fail closed for unavailable, missing-producer, duplicate-reference, wrong-key, wrong-relationship, and stale-reference cases without broad BIR fallback");
-  }
-
-  prepare::PreparedBirModule prepared_module;
-  prepared_module.names = names;
-  aarch64_module::BlockLoweringContext private_context;
-  private_context.function.prepared = &prepared_module;
-  private_context.bir_block = &block;
-  const auto private_agreed =
-      aarch64_codegen::
-          read_agreeing_route7_fused_compare_operand_producer_facts_for_testing(
-              private_context,
-              fused_condition,
-              *prepared_fused,
-              block.insts.size());
-  if (!private_agreed.has_value() ||
-      !prepared_fused_compare_operand_producer_facts_equal(*private_agreed,
-                                                           *prepared_fused) ||
-      !private_agreed->lhs.has_value() ||
-      private_agreed->lhs->kind !=
-          prepare::PreparedEdgePublicationSourceProducerKind::
-              SelectMaterialization ||
-      !private_agreed->rhs.has_value() ||
-      private_agreed->rhs->integer_constant != std::optional<std::int64_t>{12}) {
-    return fail(
-        "private Route 7 fused compare agreement boundary should accept matching select and folded-binary comparison provenance");
-  }
-
-  auto expect_private_agreement_fallback =
-      [&](const bir::FusedCompareOperandProducerFacts& route7,
-          std::string_view message) -> bool {
-    const auto agreed =
-        aarch64_codegen::
-            agreeing_route7_fused_compare_operand_producer_facts_for_testing(
-                private_context, *prepared_fused, route7);
-    if (agreed.has_value()) {
-      std::cerr << message << "\n";
-      return false;
-    }
-    return true;
-  };
-
-  bir::Block absent_route_block = block;
-  absent_route_block.insts.clear();
-  private_context.bir_block = &absent_route_block;
-  const auto absent_route_agreed =
-      aarch64_codegen::
-          read_agreeing_route7_fused_compare_operand_producer_facts_for_testing(
-              private_context,
-              fused_condition,
-              *prepared_fused,
-              absent_route_block.insts.size());
-  private_context.bir_block = &block;
-  auto invalid_reference_route7 = route7_consumer_boundary;
-  if (invalid_reference_route7.lhs.has_value()) {
-    invalid_reference_route7.lhs->producer_instruction = nullptr;
-    invalid_reference_route7.lhs->produced_value = nullptr;
-  }
-  auto mismatch_route7 = route7_consumer_boundary;
-  if (mismatch_route7.rhs.has_value()) {
-    mismatch_route7.rhs->integer_constant = std::int64_t{99};
-  }
-  auto non_agreement_route7 = route7_consumer_boundary;
-  non_agreement_route7.lhs.reset();
-  const bir::FusedCompareOperandProducerFacts unfused_route7;
-  if (absent_route_agreed.has_value() ||
-      !prepared_fused->lhs.has_value() ||
-      !prepared_fused->rhs.has_value() ||
-      !expect_private_agreement_fallback(
-          unavailable_route7_consumer,
-          "private Route 7 fused compare agreement boundary should retain prepared fallback when Route 7 is absent") ||
-      !expect_private_agreement_fallback(
-          invalid_reference_route7,
-          "private Route 7 fused compare agreement boundary should retain prepared fallback for invalid producer references") ||
-      !expect_private_agreement_fallback(
-          duplicate_reference_route7_consumer,
-          "private Route 7 fused compare agreement boundary should retain prepared fallback for duplicate/conflicting Route 7 records") ||
-      !expect_private_agreement_fallback(
-          mismatch_route7,
-          "private Route 7 fused compare agreement boundary should retain prepared fallback for mismatched Route 7 operands") ||
-      !expect_private_agreement_fallback(
-          unfused_route7,
-          "private Route 7 fused compare agreement boundary should retain prepared fallback for unfused paths") ||
-      !expect_private_agreement_fallback(
-          non_agreement_route7,
-          "private Route 7 fused compare agreement boundary should retain prepared fallback for partial non-agreement")) {
-    return 1;
   }
 
   const auto condition_value = bir::Value::named(bir::TypeKind::I1, "%cond");
