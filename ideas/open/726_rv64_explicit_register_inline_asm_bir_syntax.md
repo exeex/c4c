@@ -1,9 +1,31 @@
 # RV64 Explicit-Register Inline-Assembly BIR Syntax
 
-Status: Open
+Status: Blocked after partial implementation
 Type: Narrow semantic BIR syntax capability
 Derived from: `ideas/closed/725_rv64_explicit_register_inline_asm_syntax_research.md`
 Prerequisite for: `ideas/open/724_prepared_inline_asm_explicit_register_allocation_constraints.md`
+
+## Lifecycle Disposition
+
+The first runbook was retired after completing the direct LIR-to-BIR syntax
+classification seam. That committed slice recognizes canonical RV64 `{xN}`,
+`={xN}`, and `+{xN}` constraints as structured BIR explicit-register facts
+and retains the focused fail-closed behavior.
+
+The source-backed read/write acceptance route is blocked at the earlier
+HIR-to-LIR boundary: source `+{xN}` is intentionally normalized to an
+`={xN}` output plus a tied numeric input before LIR. Consequently, exact
+source read/write spelling and a BIR read/write explicit-register fact cannot
+both be proved through the current pipeline. Source `{xN}` input and
+`={xN}` output do preserve their exact spellings.
+
+Do not reactivate this idea by claiming direct-LIR `+{xN}` coverage as source
+proof, and do not proceed into prepared allocation from this partial result.
+A future runbook requires an explicit source-contract decision: either change
+the HIR-to-LIR normalization/general interfaces so read/write physical-register
+identity survives semantically, or revise the durable acceptance contract to
+define the normalized output-plus-tie representation as the supported source
+form. Both choices are outside the retired syntax-only runbook.
 
 ## Goal
 
