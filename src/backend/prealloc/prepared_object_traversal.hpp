@@ -14,6 +14,8 @@
 
 namespace c4c::backend::prepare {
 
+struct PreparedFunctionLookups;
+
 enum class PreparedObjectTraversalEventKind {
   Label,
   BlockEntryCopies,
@@ -21,6 +23,79 @@ enum class PreparedObjectTraversalEventKind {
   Instruction,
   PreTerminatorCopies,
   Terminator,
+};
+
+enum class PreparedObjectReturnChainStatus {
+  Available,
+  Absent,
+  Stale,
+  Ambiguous,
+  Inconsistent,
+  Unsupported,
+  NonAdjacent,
+  WrongChainOperand,
+  MissingFirstOperandHome,
+  CycleOrDepthExceeded,
+  StructurallyIncomplete,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_object_return_chain_status_name(
+    PreparedObjectReturnChainStatus status) {
+  switch (status) {
+    case PreparedObjectReturnChainStatus::Available: return "available";
+    case PreparedObjectReturnChainStatus::Absent: return "absent";
+    case PreparedObjectReturnChainStatus::Stale: return "stale";
+    case PreparedObjectReturnChainStatus::Ambiguous: return "ambiguous";
+    case PreparedObjectReturnChainStatus::Inconsistent: return "inconsistent";
+    case PreparedObjectReturnChainStatus::Unsupported: return "unsupported";
+    case PreparedObjectReturnChainStatus::NonAdjacent: return "non_adjacent";
+    case PreparedObjectReturnChainStatus::WrongChainOperand: return "wrong_chain_operand";
+    case PreparedObjectReturnChainStatus::MissingFirstOperandHome:
+      return "missing_first_operand_home";
+    case PreparedObjectReturnChainStatus::CycleOrDepthExceeded:
+      return "cycle_or_depth_exceeded";
+    case PreparedObjectReturnChainStatus::StructurallyIncomplete:
+      return "structurally_incomplete";
+  }
+  return "unknown";
+}
+
+enum class PreparedObjectReturnChainOperandRole { Lhs, Rhs };
+
+struct PreparedObjectReturnChainLink {
+  const PreparedMoveBundle* move_bundle = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedValueHome* destination_home = nullptr;
+  PreparedEdgePublicationSourceProducer producer;
+  const bir::BinaryInst* binary = nullptr;
+  const bir::Value* non_chain_operand = nullptr;
+  std::optional<PreparedValueFreshnessAuthority> source_freshness_authority;
+  PreparedObjectReturnChainOperandRole chain_operand_role =
+      PreparedObjectReturnChainOperandRole::Lhs;
+  std::size_t producer_instruction_index = 0;
+};
+
+struct PreparedObjectReturnChainRelation {
+  std::size_t block_index = 0;
+  std::size_t start_instruction_index = 0;
+  const bir::Inst* start_instruction = nullptr;
+  const PreparedValueHome* start_home = nullptr;
+  bir::TypeKind result_type = bir::TypeKind::Void;
+  std::vector<PreparedObjectReturnChainLink> links;
+  const PreparedValueHome* first_non_chain_operand_home = nullptr;
+  bool first_non_chain_operand_is_named = false;
+  const PreparedValueHome* terminal_home = nullptr;
+  const PreparedMoveBundle* terminal_move_bundle = nullptr;
+  const PreparedMoveResolution* terminal_move = nullptr;
+  const PreparedAbiBinding* terminal_abi_binding = nullptr;
+  PreparedRegisterBank terminal_register_bank = PreparedRegisterBank::None;
+  std::optional<PreparedRegisterPlacement> terminal_register_placement;
+};
+
+struct PreparedObjectReturnChainClassification {
+  PreparedObjectReturnChainStatus status = PreparedObjectReturnChainStatus::Absent;
+  std::optional<PreparedObjectReturnChainRelation> relation;
 };
 
 enum class PreparedObjectSelectConsumerKind {
@@ -426,6 +501,14 @@ struct PreparedObjectTraversalEvent {
   const PreparedMoveBundle* move_bundle = nullptr;
   const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;
   MoveBundleLookupEvidence move_bundle_lookup_evidence;
+  PreparedObjectReturnChainClassification return_chain;
+};
+
+struct PreparedObjectReturnChainQuery {
+  const PreparedObjectTraversalEvent* start_event = nullptr;
+  const PreparedNameTables* names = nullptr;
+  const PreparedValueLocationFunction* value_locations = nullptr;
+  const PreparedFunctionLookups* function_lookups = nullptr;
 };
 
 struct PreparedObjectSelectConsumerQuery {
@@ -568,6 +651,9 @@ struct PreparedObjectConsumerDiagnostic {
 prepared_object_parallel_copy_event_kind(
     const PreparedParallelCopyBundle& parallel_copy_bundle);
 
+[[nodiscard]] PreparedObjectReturnChainClassification
+classify_prepared_object_return_chain(const PreparedObjectReturnChainQuery& query);
+
 [[nodiscard]] PreparedObjectSelectConsumerClassification
 classify_prepared_object_select_consumer(
     const PreparedObjectSelectConsumerQuery& query);
@@ -638,6 +724,8 @@ make_prepared_object_function_traversal(
     const PreparedValueLocationFunction* value_locations,
     const bir::Function* bir_function = nullptr,
     const PreparedSelectEdgeSourceProducerPlacementRecords*
-        select_edge_source_producer_placements = nullptr);
+        select_edge_source_producer_placements = nullptr,
+    const PreparedNameTables* names = nullptr,
+    const PreparedFunctionLookups* function_lookups = nullptr);
 
 }  // namespace c4c::backend::prepare

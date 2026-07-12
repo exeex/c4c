@@ -1,5 +1,7 @@
 #include "prepared_object_traversal.hpp"
 
+#include "prepared_lookups.hpp"
+
 #include <algorithm>
 #include <sstream>
 #include <utility>
@@ -7,6 +9,28 @@
 namespace c4c::backend::prepare {
 
 namespace {
+
+[[nodiscard]] const bir::Value* prepared_return_chain_instruction_result(
+    const bir::Inst& inst) {
+  if (const auto* value = std::get_if<bir::BinaryInst>(&inst)) return &value->result;
+  if (const auto* value = std::get_if<bir::SelectInst>(&inst)) return &value->result;
+  if (const auto* value = std::get_if<bir::CastInst>(&inst)) return &value->result;
+  if (const auto* value = std::get_if<bir::LoadLocalInst>(&inst)) return &value->result;
+  if (const auto* value = std::get_if<bir::LoadGlobalInst>(&inst)) return &value->result;
+  if (const auto* value = std::get_if<bir::CallInst>(&inst))
+    return value->result.has_value() ? &*value->result : nullptr;
+  return nullptr;
+}
+
+[[nodiscard]] PreparedRegisterBank prepared_return_chain_bank(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128: return PreparedRegisterBank::Fpr;
+    case bir::TypeKind::Void: return PreparedRegisterBank::None;
+    default: return PreparedRegisterBank::Gpr;
+  }
+}
 
 [[nodiscard]] std::optional<std::size_t> prepared_block_index_by_label(
     const PreparedControlFlowFunction& control_flow,
@@ -864,6 +888,174 @@ void append_before_return_move_events(std::vector<PreparedObjectTraversalEvent>&
 
 }  // namespace
 
+PreparedObjectReturnChainClassification classify_prepared_object_return_chain(
+    const PreparedObjectReturnChainQuery& query) {
+  auto fail = [](PreparedObjectReturnChainStatus status) {
+    return PreparedObjectReturnChainClassification{.status = status};
+  };
+  if (query.start_event == nullptr || query.names == nullptr ||
+      query.value_locations == nullptr || query.function_lookups == nullptr ||
+      query.start_event->kind != PreparedObjectTraversalEventKind::Instruction ||
+      query.start_event->instruction == nullptr || query.start_event->bir_block == nullptr ||
+      query.start_event->prepared_block == nullptr)
+    return fail(PreparedObjectReturnChainStatus::Absent);
+  const auto& event = *query.start_event;
+  const auto* result = prepared_return_chain_instruction_result(*event.instruction);
+  if (result == nullptr || result->kind != bir::Value::Kind::Named ||
+      result->type == bir::TypeKind::Void)
+    return fail(result == nullptr ? PreparedObjectReturnChainStatus::Absent
+                                  : PreparedObjectReturnChainStatus::Unsupported);
+  const auto result_name = resolve_prepared_value_name_id(*query.names, result->name);
+  if (!result_name.has_value()) return fail(PreparedObjectReturnChainStatus::Absent);
+  const auto id_it = query.function_lookups->value_homes.value_ids.find(*result_name);
+  if (*result_name == kInvalidValueName ||
+      id_it == query.function_lookups->value_homes.value_ids.end())
+    return fail(PreparedObjectReturnChainStatus::Absent);
+  const auto home_it = query.function_lookups->value_homes.homes_by_id.find(id_it->second);
+  if (home_it == query.function_lookups->value_homes.homes_by_id.end() ||
+      home_it->second == nullptr) return fail(PreparedObjectReturnChainStatus::Absent);
+  if (home_it->second->value_name != *result_name ||
+      home_it->second->function_name != query.value_locations->function_name)
+    return fail(PreparedObjectReturnChainStatus::Inconsistent);
+  if (!prepared_object_value_home_kind_is_supported(home_it->second->kind) ||
+      !prepared_object_value_home_is_complete(*home_it->second))
+    return fail(PreparedObjectReturnChainStatus::Unsupported);
+
+  PreparedObjectReturnChainRelation relation{.block_index = event.block_index,
+      .start_instruction_index = event.instruction_index,
+      .start_instruction = event.instruction, .start_home = home_it->second,
+      .result_type = result->type};
+  const PreparedValueHome* current = home_it->second;
+  std::size_t current_index = event.instruction_index;
+  std::vector<PreparedValueId> visited{current->value_id};
+  for (std::size_t depth = 0; depth <= event.bir_block->insts.size(); ++depth) {
+    const PreparedMoveBundle* terminal_bundle = nullptr;
+    const PreparedMoveResolution* terminal_move = nullptr;
+    const PreparedAbiBinding* terminal_binding = nullptr;
+    for (const auto& bundle : query.value_locations->move_bundles) {
+      if (bundle.phase != PreparedMovePhase::BeforeReturn ||
+          bundle.block_index != event.block_index) continue;
+      for (const auto& move : bundle.moves) {
+        if (move.from_value_id != current->value_id ||
+            move.destination_kind != PreparedMoveDestinationKind::FunctionReturnAbi ||
+            move.destination_storage_kind != PreparedMoveStorageKind::Register ||
+            move.op_kind != PreparedMoveResolutionOpKind::Move ||
+            !move.destination_register_placement.has_value() ||
+            move.destination_register_placement->bank != prepared_return_chain_bank(result->type))
+          continue;
+        if (terminal_move != nullptr) return fail(PreparedObjectReturnChainStatus::Ambiguous);
+        terminal_bundle = &bundle; terminal_move = &move;
+        for (const auto& binding : bundle.abi_bindings) {
+          if (binding.destination_kind == move.destination_kind &&
+              binding.destination_storage_kind == move.destination_storage_kind &&
+              binding.destination_abi_index == move.destination_abi_index &&
+              binding.destination_register_placement == move.destination_register_placement) {
+            if (terminal_binding != nullptr) return fail(PreparedObjectReturnChainStatus::Ambiguous);
+            terminal_binding = &binding;
+          }
+        }
+      }
+    }
+    if (terminal_move != nullptr) {
+      if (relation.links.empty())
+        return fail(PreparedObjectReturnChainStatus::StructurallyIncomplete);
+      if (terminal_bundle == nullptr || terminal_binding == nullptr ||
+          terminal_bundle->proof_attribution_id == 0)
+        return fail(PreparedObjectReturnChainStatus::StructurallyIncomplete);
+      relation.terminal_home = current; relation.terminal_move_bundle = terminal_bundle;
+      relation.terminal_move = terminal_move; relation.terminal_abi_binding = terminal_binding;
+      relation.terminal_register_bank = terminal_move->destination_register_placement->bank;
+      relation.terminal_register_placement = terminal_move->destination_register_placement;
+      return {.status = PreparedObjectReturnChainStatus::Available,
+              .relation = std::move(relation)};
+    }
+    if (current_index + 1 >= event.bir_block->insts.size())
+      return fail(PreparedObjectReturnChainStatus::Absent);
+    const auto key = prepared_move_bundle_position_key(
+        PreparedMovePhase::BeforeInstruction, event.block_index, current_index + 1);
+    const auto bundle_it = query.function_lookups->move_bundles.bundles_by_position.find(key);
+    if (bundle_it == query.function_lookups->move_bundles.bundles_by_position.end() ||
+        bundle_it->second == nullptr) return fail(PreparedObjectReturnChainStatus::Absent);
+    const auto* bundle = bundle_it->second;
+    if (bundle->proof_attribution_id == 0 ||
+        bundle->function_name != query.value_locations->function_name ||
+        bundle->block_index != event.block_index || bundle->instruction_index != current_index + 1)
+      return fail(PreparedObjectReturnChainStatus::Stale);
+    const PreparedMoveResolution* chain_move = nullptr;
+    for (const auto& move : bundle->moves) {
+      if (move.from_value_id == current->value_id &&
+          move.destination_kind == PreparedMoveDestinationKind::Value) {
+        if (chain_move != nullptr) return fail(PreparedObjectReturnChainStatus::Ambiguous);
+        chain_move = &move;
+      }
+    }
+    if (chain_move == nullptr) return fail(PreparedObjectReturnChainStatus::Absent);
+    if (chain_move->to_value_id == 0 || chain_move->op_kind != PreparedMoveResolutionOpKind::Move)
+      return fail(PreparedObjectReturnChainStatus::Unsupported);
+    const auto next_it = query.function_lookups->value_homes.homes_by_id.find(chain_move->to_value_id);
+    if (next_it == query.function_lookups->value_homes.homes_by_id.end() || next_it->second == nullptr)
+      return fail(PreparedObjectReturnChainStatus::Absent);
+    const auto* next_home = next_it->second;
+    if (!prepared_object_value_home_is_complete(*next_home))
+      return fail(PreparedObjectReturnChainStatus::StructurallyIncomplete);
+    if (std::find(visited.begin(), visited.end(), next_home->value_id) != visited.end())
+      return fail(PreparedObjectReturnChainStatus::CycleOrDepthExceeded);
+    const auto producer = find_prepared_same_block_scalar_producer(*query.names,
+        &query.function_lookups->edge_publication_source_producers,
+        event.prepared_block->block_label, event.bir_block, next_home->value_name,
+        result->type, current_index + 2);
+    if (!producer.has_value()) return fail(PreparedObjectReturnChainStatus::Absent);
+    if (producer->instruction_index != current_index + 1)
+      return fail(PreparedObjectReturnChainStatus::NonAdjacent);
+    const auto* binary = std::get_if<bir::BinaryInst>(producer->instruction);
+    if (binary == nullptr || producer->producer.kind != PreparedEdgePublicationSourceProducerKind::Binary)
+      return fail(PreparedObjectReturnChainStatus::Unsupported);
+    if (resolve_prepared_value_name_id(*query.names, binary->result.name) != next_home->value_name)
+      return fail(PreparedObjectReturnChainStatus::Inconsistent);
+    const auto lhs_name = resolve_prepared_value_name_id(*query.names, binary->lhs.name);
+    const auto rhs_name = resolve_prepared_value_name_id(*query.names, binary->rhs.name);
+    const bir::Value* other = nullptr;
+    PreparedObjectReturnChainOperandRole role;
+    if (lhs_name == current->value_name && rhs_name != current->value_name) {
+      role = PreparedObjectReturnChainOperandRole::Lhs; other = &binary->rhs;
+    } else if (rhs_name == current->value_name && lhs_name != current->value_name) {
+      role = PreparedObjectReturnChainOperandRole::Rhs; other = &binary->lhs;
+    } else return fail(PreparedObjectReturnChainStatus::WrongChainOperand);
+    const auto authorities = publish_prepared_move_bundle_source_home_freshness_authorities(
+        *bundle, &query.function_lookups->value_homes);
+    const PreparedValueFreshnessAuthority* selected = nullptr;
+    for (const auto& authority : authorities) {
+      if (authority.value_id != current->value_id || authority.reference.move != chain_move) continue;
+      if (selected != nullptr) return fail(PreparedObjectReturnChainStatus::Ambiguous);
+      selected = &authority;
+    }
+    if (selected == nullptr || selected->reference.move_bundle != bundle)
+      return fail(PreparedObjectReturnChainStatus::Stale);
+    if (depth == 0 && other->kind == bir::Value::Kind::Named) {
+      relation.first_non_chain_operand_is_named = true;
+      const auto other_name = resolve_prepared_value_name_id(*query.names, other->name);
+      if (!other_name.has_value())
+        return fail(PreparedObjectReturnChainStatus::MissingFirstOperandHome);
+      const auto other_id = query.function_lookups->value_homes.value_ids.find(*other_name);
+      if (other_id == query.function_lookups->value_homes.value_ids.end())
+        return fail(PreparedObjectReturnChainStatus::MissingFirstOperandHome);
+      const auto other_home = query.function_lookups->value_homes.homes_by_id.find(other_id->second);
+      if (other_home == query.function_lookups->value_homes.homes_by_id.end() ||
+          other_home->second == nullptr || !prepared_object_value_home_is_complete(*other_home->second))
+        return fail(PreparedObjectReturnChainStatus::MissingFirstOperandHome);
+      relation.first_non_chain_operand_home = other_home->second;
+    }
+    relation.links.push_back({.move_bundle = bundle, .move = chain_move,
+        .source_home = current, .destination_home = next_home,
+        .producer = producer->producer, .binary = binary, .non_chain_operand = other,
+        .source_freshness_authority = *selected, .chain_operand_role = role,
+        .producer_instruction_index = producer->instruction_index});
+    visited.push_back(next_home->value_id); current = next_home;
+    current_index = producer->instruction_index;
+  }
+  return fail(PreparedObjectReturnChainStatus::CycleOrDepthExceeded);
+}
+
 std::optional<PreparedObjectTraversalEventKind> prepared_object_parallel_copy_event_kind(
     const PreparedParallelCopyBundle& parallel_copy_bundle) {
   switch (parallel_copy_bundle.execution_site) {
@@ -1650,7 +1842,9 @@ std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversa
     const PreparedValueLocationFunction* value_locations,
     const bir::Function* bir_function,
     const PreparedSelectEdgeSourceProducerPlacementRecords*
-        select_edge_source_producer_placements) {
+        select_edge_source_producer_placements,
+    const PreparedNameTables* names,
+    const PreparedFunctionLookups* function_lookups) {
   std::vector<PreparedObjectTraversalEvent> events;
   for (std::size_t block_index = 0; block_index < control_flow.blocks.size();
        ++block_index) {
@@ -1699,6 +1893,14 @@ std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversa
             .bir_block = bir_block,
             .instruction = &bir_block->insts[instruction_index],
         });
+        auto& instruction_event = events.back();
+        instruction_event.return_chain = classify_prepared_object_return_chain(
+            PreparedObjectReturnChainQuery{
+                .start_event = &instruction_event,
+                .names = names,
+                .value_locations = value_locations,
+                .function_lookups = function_lookups,
+            });
       }
     }
 
