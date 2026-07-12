@@ -6,6 +6,7 @@
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/query.hpp"
+#include "src/backend/mir/prepared_view.hpp"
 #include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/call_plans.hpp"
@@ -11207,6 +11208,69 @@ bir::Module make_rv64_variadic_entry_frame_slot_va_start_module() {
   return module;
 }
 
+int check_defined_function_prepared_core_production_contract() {
+  namespace mir_prepared = c4c::backend::mir::prepared;
+
+  const auto manually_phased = prepare_grouped_spill_reload_contract_module();
+  const mir_prepared::PreparedMirCoreView manual_core(manually_phased);
+  const auto manual_id = manual_core.resolve_function_name("grouped_spill_reload_contract");
+  const auto manual_view = manual_core.function_view("grouped_spill_reload_contract");
+  if (!manual_id.has_value() || !manual_view.has_value() || !*manual_view ||
+      manual_view->function_name() != *manual_id ||
+      manual_view->control_flow().function_name != *manual_id ||
+      manual_view->value_locations().function_name != *manual_id ||
+      manual_view->addressing().function_name != *manual_id ||
+      manual_core.bir_function(*manual_id) != &manual_view->bir_function()) {
+    return fail("defined-function prepared-core contract: repaired manual-phase production did not publish one stable common identity");
+  }
+
+  bir::Module ordinary_module;
+  ordinary_module.target_triple = "x86_64-unknown-linux-gnu";
+  bir::Function ordinary_function;
+  ordinary_function.name = "ordinary_legalized_defined_function";
+  ordinary_function.return_type = bir::TypeKind::Void;
+  bir::Block ordinary_entry;
+  ordinary_entry.label = "entry";
+  ordinary_entry.terminator = bir::ReturnTerminator{};
+  ordinary_function.blocks.push_back(std::move(ordinary_entry));
+  ordinary_module.functions.push_back(std::move(ordinary_function));
+
+  const auto ordinary_prepared = prepare_module(ordinary_module);
+  const mir_prepared::PreparedMirCoreView ordinary_core(ordinary_prepared);
+  const auto ordinary_id =
+      ordinary_core.resolve_function_name("ordinary_legalized_defined_function");
+  const auto ordinary_view =
+      ordinary_core.function_view("ordinary_legalized_defined_function");
+  if (!ordinary_id.has_value() || !ordinary_view.has_value() || !*ordinary_view ||
+      ordinary_view->function_name() != *ordinary_id ||
+      ordinary_view->control_flow().function_name != *ordinary_id ||
+      ordinary_view->value_locations().function_name != *ordinary_id ||
+      ordinary_view->addressing().function_name != *ordinary_id ||
+      ordinary_core.bir_function(*ordinary_id) != &ordinary_view->bir_function()) {
+    return fail("defined-function prepared-core contract: already-legalized production did not publish one stable common identity");
+  }
+
+  auto missing_addressing = ordinary_prepared;
+  missing_addressing.addressing.functions.clear();
+  const mir_prepared::PreparedMirCoreView missing_addressing_core(missing_addressing);
+  if (missing_addressing_core.function_view(*ordinary_id).has_value()) {
+    return fail("defined-function prepared-core contract: legalization claim with missing addressing bank did not fail closed");
+  }
+
+  auto mismatched_value_locations = ordinary_prepared;
+  if (mismatched_value_locations.value_locations.functions.empty()) {
+    return fail("defined-function prepared-core contract: ordinary preparation omitted the value-location bank needed by the fixture");
+  }
+  mismatched_value_locations.value_locations.functions.front().function_name =
+      c4c::kInvalidFunctionName;
+  const mir_prepared::PreparedMirCoreView mismatched_value_locations_core(
+      mismatched_value_locations);
+  if (mismatched_value_locations_core.function_view(*ordinary_id).has_value()) {
+    return fail("defined-function prepared-core contract: legalization claim with mismatched value-location bank did not fail closed");
+  }
+  return 0;
+}
+
 int check_rv64_variadic_entry_frame_slot_va_start_address_contract() {
   const auto prepared = prepare::prepare_semantic_bir_module_with_options(
       make_rv64_variadic_entry_frame_slot_va_start_module(),
@@ -11509,6 +11573,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_rv64_variadic_entry_helper_missing_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_defined_function_prepared_core_production_contract(); rc != 0) {
     return rc;
   }
   if (const int rc =
