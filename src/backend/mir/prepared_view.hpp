@@ -183,6 +183,11 @@ enum class PreparedMirDirectEdgePublicationSourceStatus {
 struct PreparedMirDirectEdgePublicationSourceView {
   PreparedMirDirectEdgePublicationSourceStatus status =
       PreparedMirDirectEdgePublicationSourceStatus::MissingPublication;
+  const prepare::PreparedMoveBundle* bundle = nullptr;
+  const prepare::PreparedMoveResolution* move = nullptr;
+  const prepare::PreparedEdgePublication* publication = nullptr;
+  bir::Value destination_value;
+  bir::Value source_value;
   BlockLabelId predecessor_label = kInvalidBlockLabel;
   BlockLabelId successor_label = kInvalidBlockLabel;
   prepare::PreparedValueId destination_value_id = 0;
@@ -200,6 +205,15 @@ struct PreparedMirDirectEdgePublicationSourceView {
   std::optional<std::int32_t> source_immediate_i32;
   std::optional<std::string> destination_register_name;
   bool immediate_source = false;
+  prepare::PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::LoadGlobalInst* source_load_global = nullptr;
+  const bir::CastInst* source_cast = nullptr;
+  const bir::BinaryInst* source_binary = nullptr;
+  const bir::SelectInst* source_select = nullptr;
   prepare::PreparedValueFreshnessQueryStatus source_freshness_status =
       prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
   std::size_t source_freshness_candidate_count = 0;
@@ -211,6 +225,8 @@ struct PreparedMirDirectEdgePublicationSourceView {
       prepare::PreparedValueFreshnessProofKind::Unknown;
   prepare::PreparedValueFreshnessSourceRank freshness_rank =
       prepare::PreparedValueFreshnessSourceRank::None;
+  std::optional<prepare::PreparedValueFreshnessAuthority>
+      selected_freshness_authority;
 };
 
 struct PreparedMirDirectEdgePublicationSourceQuery {

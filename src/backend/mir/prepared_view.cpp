@@ -377,6 +377,23 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
     PreparedMirDirectEdgePublicationSourceView source_view{
         .status = direct_edge_source_status_from_prealloc(fact.status),
     };
+    source_view.bundle = fact.bundle;
+    source_view.move = fact.move;
+    source_view.publication = fact.publication;
+    if (fact.publication != nullptr) {
+      source_view.destination_value = fact.publication->destination_value;
+      source_view.source_value = fact.publication->source_value;
+      source_view.source_producer_kind = fact.publication->source_producer_kind;
+      source_view.source_producer_block_label =
+          fact.publication->source_producer_block_label;
+      source_view.source_producer_instruction_index =
+          fact.publication->source_producer_instruction_index;
+      source_view.source_load_local = fact.publication->source_load_local;
+      source_view.source_load_global = fact.publication->source_load_global;
+      source_view.source_cast = fact.publication->source_cast;
+      source_view.source_binary = fact.publication->source_binary;
+      source_view.source_select = fact.publication->source_select;
+    }
     source_view.predecessor_label = fact.predecessor_label;
     source_view.successor_label = fact.successor_label;
     source_view.destination_value_id = fact.destination_value_id;
@@ -400,10 +417,36 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
           static_cast<std::int32_t>(*fact.move->source_immediate_i32);
     }
     if (fact.source_freshness_authority.has_value()) {
+      source_view.selected_freshness_authority = fact.source_freshness_authority;
       source_view.freshness_use_kind = fact.source_freshness_authority->use_kind;
       source_view.freshness_source_kind = fact.source_freshness_authority->source_kind;
       source_view.freshness_proof_kind = fact.source_freshness_authority->proof_kind;
       source_view.freshness_rank = fact.source_freshness_authority->rank;
+    }
+    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        (fact.bundle == nullptr || fact.move == nullptr || fact.publication == nullptr ||
+         fact.destination_value_id != fact.publication->destination_value_id ||
+         fact.source_value_id != fact.publication->source_value_id ||
+         source_view.destination_value != fact.publication->destination_value ||
+         source_view.source_value != fact.publication->source_value ||
+         fact.move != fact.publication->move ||
+         fact.publication->move_bundle != fact.bundle)) {
+      source_view.status =
+          PreparedMirDirectEdgePublicationSourceStatus::MissingPublication;
+    }
+    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        fact.immediate_source &&
+        fact.publication->source_producer_kind !=
+            prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
+      source_view.status = PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+    }
+    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
+        !fact.immediate_source &&
+        (fact.publication->source_producer_kind ==
+             prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+         !fact.publication->source_producer_block_label.has_value() ||
+         !fact.publication->source_producer_instruction_index.has_value())) {
+      source_view.status = PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
     }
     if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
         (fact.destination_home == nullptr ||
@@ -422,7 +465,10 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
          fact.source_freshness_authority->proof_kind !=
              prepare::PreparedValueFreshnessProofKind::DirectEdgePublicationMove ||
          fact.source_freshness_authority->rank !=
-             prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication)) {
+             prepare::PreparedValueFreshnessSourceRank::DirectEdgePublication ||
+         fact.source_freshness_authority->value_id != fact.source_value_id ||
+         fact.source_freshness_authority->reference.edge_publication != fact.publication ||
+         fact.source_freshness_authority->reference.move != fact.move)) {
       source_view.status =
           PreparedMirDirectEdgePublicationSourceStatus::InvalidSourceFreshness;
     }

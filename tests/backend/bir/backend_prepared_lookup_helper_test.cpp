@@ -9,6 +9,7 @@
 #include "src/backend/mir/x86/x86.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -4955,6 +4956,7 @@ int verify_current_block_join_parallel_copy_source_query() {
       },
   };
 
+  std::array<bool, 3> prepared_authority_matches_origin{};
   auto prepared_join_query = [&](const bir::Block& query_block,
                                  const prepare::PreparedControlFlowFunction& query_control_flow,
                                  const prepare::PreparedValueLocationFunction& query_locations,
@@ -4983,7 +4985,31 @@ int verify_current_block_join_parallel_copy_source_query() {
     if (!function.has_value()) {
       return mir::prepared::PreparedMirDirectEdgePublicationSourceQuery{};
     }
-    return function->current_block_direct_edge_publication_sources(0);
+    auto result = function->current_block_direct_edge_publication_sources(0);
+    for (std::size_t index = 0;
+         index < prepared_authority_matches_origin.size() &&
+         index < result.sources.size();
+         ++index) {
+      const auto& source = result.sources[index];
+      prepared_authority_matches_origin[index] =
+          source.bundle != nullptr && source.move != nullptr &&
+          source.publication != nullptr &&
+          source.destination_value == source.publication->destination_value &&
+          source.source_value == source.publication->source_value &&
+          source.move == source.publication->move &&
+          source.bundle == source.publication->move_bundle &&
+          source.source_producer_kind == source.publication->source_producer_kind &&
+          source.source_producer_block_label ==
+              source.publication->source_producer_block_label &&
+          source.source_producer_instruction_index ==
+              source.publication->source_producer_instruction_index &&
+          (source.immediate_source ||
+           (source.selected_freshness_authority.has_value() &&
+            source.selected_freshness_authority->reference.edge_publication ==
+                source.publication &&
+            source.selected_freshness_authority->reference.move == source.move));
+    }
+    return result;
   };
 
   const auto value_home_lookups =
@@ -5091,6 +5117,49 @@ int verify_current_block_join_parallel_copy_source_query() {
       bir_query.status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
       bir_query.facts.size() != prepared_bir_query.sources.size()) {
     return fail("prepared MIR join identity should expose complete typed source authority and fail closed on the unsupported move");
+  }
+  const auto& prepared_named = prepared_bir_query.sources[0];
+  const auto& prepared_immediate = prepared_bir_query.sources[1];
+  const auto& prepared_stack = prepared_bir_query.sources[2];
+  auto has_exact_prepared_authority = [](const auto& source) {
+    return source.bundle != nullptr && source.move != nullptr &&
+           source.publication != nullptr;
+  };
+  if (!has_exact_prepared_authority(prepared_named) ||
+      !prepared_authority_matches_origin[0]) {
+    return fail("prepared MIR named row should retain exact base authority");
+  }
+  if (!prepared_named.selected_freshness_authority.has_value() ||
+      prepared_named.selected_freshness_authority->reference.edge_publication !=
+          prepared_named.publication ||
+      prepared_named.selected_freshness_authority->reference.move !=
+          prepared_named.move) {
+    return fail("prepared MIR named row should retain exact freshness authority");
+  }
+  if (prepared_named.source_binary == nullptr) {
+    return fail("prepared MIR named row should retain exact producer authority");
+  }
+  if (!has_exact_prepared_authority(prepared_immediate) ||
+      !prepared_authority_matches_origin[1]) {
+    return fail("prepared MIR immediate row should retain exact base authority");
+  }
+  if (
+      prepared_immediate.source_value.kind != bir::Value::Kind::Immediate ||
+      prepared_immediate.selected_freshness_authority.has_value() ||
+      prepared_immediate.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
+    return fail("prepared MIR immediate row should retain exact immediate authority");
+  }
+  if (!has_exact_prepared_authority(prepared_stack) ||
+      !prepared_authority_matches_origin[2]) {
+    return fail("prepared MIR stack row should retain exact base authority");
+  }
+  if (!prepared_stack.selected_freshness_authority.has_value() ||
+      prepared_stack.selected_freshness_authority->reference.edge_publication !=
+          prepared_stack.publication ||
+      prepared_stack.selected_freshness_authority->reference.move !=
+          prepared_stack.move) {
+    return fail("prepared MIR stack row should retain exact freshness authority");
   }
   auto find_route5_join = [&](std::string_view destination_name) {
     return std::find_if(route5_join_records.begin(),
