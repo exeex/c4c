@@ -3,33 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/718_block_entry_publication_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove independent agreement across the source family
+Current Step ID: 4
+Current Step Title: Wire exact identity into the production block-entry consumer
 
 ## Just Finished
 
-- Completed Plan Step 3: extended the focused block-entry publication identity
-  test to independently prove the exact BIR successor, destination, PHI,
-  instruction, and instruction-index pointers on the available path.
-- Added typed fail-closed coverage for missing proof (`MissingProof`), absent
-  publication (`ProofUnavailable`), duplicate proof (`ProofAmbiguous`), and
-  wrong successor, destination, type, stale coordinate, or unattributed
-  evidence (`ProofMismatch`) without changing production code.
+- Acceptance review rejected closure: the proof-bearing overload is called
+  only by the lookup-helper test, while the production block-entry consumer
+  and named frame/stack contract still use the old/manual-completion route.
+- Plan Steps 2 and 3 produced provisional query-seam and focused-helper
+  evidence only; they did not achieve the source idea's production semantic
+  repair or acceptance criteria.
+- The review also found display-name-only duplicate classification outside the
+  authoritative semantic view, missing frame/stack and broader proof, absent
+  `test_after.log`, and stale current-step metadata.
 
 ## Suggested Next
 
-- Execute Plan Step 4 acceptance proof and resume the parked work as directed
-  by the supervisor.
+- Execute bounded Plan Step 4: connect the exact proof-bearing query to the
+  production block-entry consumer and replace the named frame/stack fixture's
+  manual completion with producer/query-derived attribution.
+- Do not begin ambiguity-authority repair (Step 5), focused acceptance (Step
+  6), broader acceptance, or idea 719 resumption until this production wiring
+  packet is complete and reviewed.
 
 ## Watchouts
 
-- The duplicate-PHI case asserts `ProofAmbiguous`; it does not select a PHI by
-  source order or proximity. No prepared-call, join-source, edge-publication,
-  or target materialization logic was changed.
+- Preserve the useful typed query statuses and pointer assertions, but do not
+  treat test-only calls as production capability.
+- Do not manually set publication completion/proof attribution in the named
+  frame/stack contract, and do not expand into prepared-call, join-source,
+  edge-publication, target-materialization, or emission policy.
+- Step 5 must remove display-name-only ambiguity ownership before focused or
+  broader acceptance can establish closure.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_prepared_lookup_helper$' | tee
-  test_after.log`: passed (1/1); the supervisor-selected focused proof was
-  sufficient for Step 3 and is recorded in `test_after.log`.
+- Historical focused evidence: `backend_prepared_lookup_helper` passed 1/1,
+  but the reviewer found only `test_before.log`; no canonical `test_after.log`
+  exists and this does not prove the production consumer or named frame/stack
+  contract.
+- Required after Steps 4 and 5: fresh supervisor-delegated build and matching
+  focused proof covering both `backend_prepared_lookup_helper` and
+  `backend_prepare_frame_stack_call_contract`, followed by the broader backend
+  before/after comparison in Plan Step 7.

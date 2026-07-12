@@ -71,10 +71,10 @@ Completion check:
 - `todo.md` records the first divergence, owning helper, authority map, and a
   general repair rule without an implementation change.
 
-### Step 2: Restore exact semantic publication identity
+### Step 2: Establish the proof-bearing semantic query seam
 
-Goal: carry exact available publication identity through the smallest common
-prepared-to-BIR semantic boundary.
+Goal: establish a typed query seam that can carry exact available publication
+identity through the smallest common prepared-to-BIR semantic boundary.
 
 Actions:
 
@@ -86,11 +86,12 @@ Actions:
 
 Completion check:
 
-- Available attributed rows expose exact semantic identity and all negative
-  rows fail closed without source-order, nearest-PHI, display-name-only, or
-  target-emission selection.
+- The query seam exposes exact semantic identity and typed unavailable results
+  to its callers. This step is provisional infrastructure, not source-idea
+  completion, until the production consumer uses the seam and ambiguity is
+  owned by complete semantic identity.
 
-### Step 3: Prove publication identity across nearby shapes
+### Step 3: Prove the query seam across nearby shapes
 
 Goal: lock the semantic publication contract beyond the first call-contract
 fixture.
@@ -104,22 +105,92 @@ Actions:
 
 Completion check:
 
-- Focused tests prove exact available identity and typed fail-closed behavior
-  without expectation downgrade or fixture-shaped recovery.
+- Focused helper tests prove exact available identity and typed fail-closed
+  behavior at the query seam. This does not establish acceptance while the
+  production consumer and named frame/stack contract remain on the old path.
 
-### Step 4: Run acceptance proof and resume parked work
+### Step 4: Wire exact identity into the production block-entry consumer
+
+Goal: make the real block-entry publication consumer use proof-bearing BIR
+identity and repair the named frame/stack contract at that same boundary.
+
+Primary targets:
+
+- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+
+Actions:
+
+- Route the production consumer through the exact query using its available
+  BIR block and destination value evidence.
+- Preserve exact successor, destination instruction/PHI/value, type, prepared
+  instruction coordinate, and attribution; fail closed when they disagree.
+- Replace the named frame/stack fixture's manual completion of publication
+  readiness with producer/query-derived attributed facts.
+- Do not change prepared-call policy, join/edge identity, target
+  materialization, or emitted publication policy.
+
+Completion check:
+
+- Repository callers include the production consumer, and the named
+  frame/stack contract obtains its complete publication identity through the
+  repaired production/query route without manually setting the completion
+  record or proof bit.
+
+### Step 5: Move ambiguity authority to complete semantic identity
+
+Goal: remove display-name-only duplicate classification from the adapter and
+make the authoritative BIR semantic view own ambiguity.
+
+Actions:
+
+- Key duplicate agreement by the complete destination semantic identity,
+  including the relevant type, identity, coordinate, and proof attribution.
+- Do not independently rescan PHIs by display name in the prepared-to-BIR
+  adapter.
+- Add a nearby same-spelling/nonmatching-identity collision that remains
+  available and a true semantic duplicate that remains ambiguous.
+
+Completion check:
+
+- Same display spelling alone cannot produce `ProofAmbiguous`; true duplicate
+  semantic evidence does, and neither case selects by source order or
+  proximity.
+
+### Step 6: Run focused production and contract proof
+
+Goal: prove the corrected semantic boundary through both the lookup coverage
+and the named production-facing contract.
+
+Actions:
+
+- Run the supervisor-delegated build.
+- Run a matching focused command that includes
+  `backend_prepared_lookup_helper` and
+  `backend_prepare_frame_stack_call_contract`.
+- Record fresh canonical proof without reusing or mislabeling a missing log.
+
+Completion check:
+
+- Both focused tests are green after the production and ambiguity repairs,
+  with no expectation downgrade, manual proof completion, or fixture-shaped
+  recovery.
+
+### Step 7: Run broader acceptance proof and resume parked work
 
 Goal: establish closure-quality evidence and return to idea 719 acceptance.
 
 Actions:
 
-- Audit the diff for fixture, name, source-order, nearest-PHI, proof-bit, and
-  target-emission shortcuts.
-- Run the supervisor-selected broader backend before/after comparison.
+- Audit the complete diff for fixture, display-name, source-order,
+  nearest-PHI, proof-bit, and target-emission shortcuts.
+- Run the supervisor-selected broader backend before/after comparison with
+  matching canonical `test_before.log` and `test_after.log` scope.
 - Record whether idea 719 can resume its focused and broader acceptance checks
   before routing downstream idea 717 or idea 716.
 
 Completion check:
 
-- Focused and broader proof are green, reviewer reject signals are absent, and
-  lifecycle routing can return to idea 719 acceptance.
+- Focused production/contract proof and broader proof are green, reviewer
+  reject signals are absent, and lifecycle routing can return to idea 719
+  acceptance.
