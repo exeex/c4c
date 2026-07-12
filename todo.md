@@ -3,29 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/729_common_current_block_join_query_exposure.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the direct common query seam
+Current Step ID: 2
+Current Step Title: Remove the AArch64 routing-array reconstruction
 
 ## Just Finished
 
-- Plan Step 1 established target-neutral attached-owner queries for incoming-
-  expression and source roles using stable successor/value identity, while
-  preserving missing, stale, incomplete, unsupported, mismatched, ambiguous,
-  and disagreeing fail-closed results.
+- Plan Step 2 migrated the bounded AArch64 current-block join consumers to the
+  direct attached-owner common queries and deleted the routing struct, builder,
+  boolean scan arrays, and private duplicate consumption query.
 
 ## Suggested Next
 
-- Execute Plan Step 2: migrate the bounded AArch64 consumers to the direct
-  attached common queries and delete the target-built routing array.
+- Execute Plan Step 3: audit the completed boundary, run the supervisor-selected
+  broader regression comparison, and prepare the lifecycle handback to idea 709.
 
 ## Watchouts
 
-- Preserve the common seam's exact owner/attachment identity check. Do not
-  replace stable prepared value identity with Route 5, instruction position,
-  or target-local result-name matching during the AArch64 migration.
+- The AArch64 wrappers now extract only stable successor/value identity; keep
+  executable consumption semantics in the common attached-owner queries during
+  the Step 3 audit. Three focused AArch64 tests required signature-only updates.
 
 ## Proof
 
-- Green: `cmake --build --preset default && ctest --test-dir build -j
+- Green (4/4): `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^(backend_(aarch64_current_block_join_routing|prealloc_current_block_(lookup_attachment_lifetime|incoming_expression_authority|routed_operand_authority)))$'`.
-  Combined output is preserved in `test_after.log`.
+  The supervisor-selected proof was sufficient; combined output is preserved in
+  `test_after.log`.

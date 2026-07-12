@@ -76,32 +76,40 @@ instruction_result_prepared_value_id(
                                                 *result_value_name);
 }
 
-[[nodiscard]] bool query_attached_current_block_join_routing(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    prepare::PreparedCurrentBlockJoinRoutingRole role) {
+struct CurrentBlockJoinRoutedValueIdentity {
+  const prepare::PreparedFunctionLookups* owner = nullptr;
+  const prepare::PreparedFunctionLookups* attached = nullptr;
+  c4c::BlockLabelId successor_label = c4c::kInvalidBlockLabel;
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+};
+
+[[nodiscard]] std::optional<CurrentBlockJoinRoutedValueIdentity>
+current_block_join_routed_value_identity(const module::BlockLoweringContext& context,
+                                         const bir::Inst& inst) {
   const auto& function = context.function;
   if (function.prepared_lookups_owner == nullptr ||
       function.prepared_lookups != function.prepared_lookups_owner.get() ||
       function.prepared == nullptr || context.control_flow_block == nullptr) {
-    return false;
+    return std::nullopt;
   }
   const auto* result = instruction_result_value_ref(inst);
   if (result == nullptr) {
-    return false;
+    return std::nullopt;
   }
   const auto value_name = prepared_named_value_id(context, *result);
   const auto value_id = instruction_result_prepared_value_id(
       context, &function.prepared_lookups->value_homes, inst);
   if (!value_name.has_value() || !value_id.has_value()) {
-    return false;
+    return std::nullopt;
   }
-  return static_cast<bool>(prepare::query_prepared_current_block_join_routing_consumption(
-      *function.prepared_lookups,
-      context.control_flow_block->block_label,
-      *value_id,
-      *value_name,
-      role));
+  return CurrentBlockJoinRoutedValueIdentity{
+      .owner = function.prepared_lookups_owner.get(),
+      .attached = function.prepared_lookups,
+      .successor_label = context.control_flow_block->block_label,
+      .value_id = *value_id,
+      .value_name = *value_name,
+  };
 }
 
 [[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
@@ -258,52 +266,33 @@ prepared_publication_source_producer_for_value(
 [[nodiscard]] bool prepared_query_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
-  return query_attached_current_block_join_routing(
-      context, inst, prepare::PreparedCurrentBlockJoinRoutingRole::Source);
-}
-
-[[nodiscard]] CurrentBlockJoinPreparedQueryRouting
-build_current_block_join_prepared_query_routing(
-    const module::BlockLoweringContext& context) {
-  CurrentBlockJoinPreparedQueryRouting routing{.context = &context};
-  if (context.bir_block == nullptr) {
-    return routing;
-  }
-
-  for (const auto& inst : context.bir_block->insts) {
-    routing.incoming_expressions.push_back(query_attached_current_block_join_routing(
-        context,
-        inst,
-        prepare::PreparedCurrentBlockJoinRoutingRole::IncomingExpression));
-    routing.sources.push_back(query_attached_current_block_join_routing(
-        context, inst, prepare::PreparedCurrentBlockJoinRoutingRole::Source));
-  }
-  return routing;
+  return current_block_join_prepared_query_source(context, inst);
 }
 
 [[nodiscard]] bool current_block_join_prepared_query_incoming_expression(
-    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
     const bir::Inst& inst) {
-  if (routing.context == &context &&
-      instruction_index < routing.incoming_expressions.size()) {
-    return routing.incoming_expressions[instruction_index];
-  }
-  (void)inst;
-  return false;
+  const auto identity = current_block_join_routed_value_identity(context, inst);
+  return identity.has_value() && static_cast<bool>(
+      prepare::query_attached_prepared_current_block_join_incoming_expression(
+          identity->owner,
+          identity->attached,
+          identity->successor_label,
+          identity->value_id,
+          identity->value_name));
 }
 
 [[nodiscard]] bool current_block_join_prepared_query_source(
-    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
     const bir::Inst& inst) {
-  if (routing.context == &context && instruction_index < routing.sources.size()) {
-    return routing.sources[instruction_index];
-  }
-  (void)inst;
-  return false;
+  const auto identity = current_block_join_routed_value_identity(context, inst);
+  return identity.has_value() && static_cast<bool>(
+      prepare::query_attached_prepared_current_block_join_source(
+          identity->owner,
+          identity->attached,
+          identity->successor_label,
+          identity->value_id,
+          identity->value_name));
 }
 
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(

@@ -415,9 +415,6 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared_module,
     return fail("expected common join adapter to match fixture authority expectation");
   }
 
-  const auto routing =
-      aarch64_codegen::build_current_block_join_prepared_query_routing(
-          join_context);
   if (join_context.bir_block == nullptr ||
       join_context.bir_block->insts.size() != expected_incoming.size() ||
       join_context.bir_block->insts.size() != expected_sources.size()) {
@@ -429,7 +426,7 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared_module,
     const auto& inst = join_context.bir_block->insts[instruction_index];
     const bool actual_incoming =
         aarch64_codegen::current_block_join_prepared_query_incoming_expression(
-            routing, join_context, instruction_index, inst);
+            join_context, inst);
     if (actual_incoming != expected_incoming[instruction_index]) {
       std::cerr << "incoming index " << instruction_index
                 << " expected " << expected_incoming[instruction_index]
@@ -439,7 +436,7 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared_module,
     }
     const bool actual_source =
         aarch64_codegen::current_block_join_prepared_query_source(
-            routing, join_context, instruction_index, inst);
+            join_context, inst);
     if (actual_source != expected_sources[instruction_index]) {
       std::cerr << "source index " << instruction_index
                 << " expected " << expected_sources[instruction_index]

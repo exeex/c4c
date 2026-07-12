@@ -185,9 +185,8 @@ bool source_is_authorized(FixtureAxes& fixture) {
   const auto& function = fixture.prepared.control_flow.functions.front();
   const auto block = codegen::make_block_lowering_context(
       fixture.function_context, function.blocks[1], 1);
-  const auto routing = codegen::build_current_block_join_prepared_query_routing(block);
   return codegen::current_block_join_prepared_query_source(
-      routing, block, 1, block.bir_block->insts[1]);
+      block, block.bir_block->insts[1]);
 }
 
 int main() {

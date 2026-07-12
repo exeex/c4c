@@ -508,8 +508,6 @@ InstructionDispatchResult dispatch_prepared_block(
     block.instructions.push_back(std::move(block_entry_move));
   }
   if (context.bir_block != nullptr) {
-    const auto join_prepared_query_routing =
-        build_current_block_join_prepared_query_routing(context);
     std::optional<BlockAddressMaterializationIndex> address_materialization_index;
     auto current_address_materialization_index = [&]() -> const BlockAddressMaterializationIndex& {
       if (!address_materialization_index.has_value()) {
@@ -722,7 +720,7 @@ InstructionDispatchResult dispatch_prepared_block(
                          context, inst, memory_lowering_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (current_block_join_prepared_query_incoming_expression(
-                     join_prepared_query_routing, context, instruction_index, inst) &&
+                     context, inst) &&
                  !instruction_result_has_stack_home(context, inst)) {
         continue;
       } else if (lower_scalar_with_address_materialization(
@@ -831,7 +829,7 @@ InstructionDispatchResult dispatch_prepared_block(
                          context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (current_block_join_prepared_query_source(
-                     join_prepared_query_routing, context, instruction_index, inst) &&
+                     context, inst) &&
                  !instruction_result_has_stack_home(context, inst)) {
         continue;
       } else if (auto lowered = lower_local_slot_address_publication(

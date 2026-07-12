@@ -46,26 +46,12 @@ prepared_publication_source_producer_for_value(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst);
 
-struct CurrentBlockJoinPreparedQueryRouting {
-  const module::BlockLoweringContext* context = nullptr;
-  std::vector<bool> incoming_expressions;
-  std::vector<bool> sources;
-};
-
-[[nodiscard]] CurrentBlockJoinPreparedQueryRouting
-build_current_block_join_prepared_query_routing(
-    const module::BlockLoweringContext& context);
-
 [[nodiscard]] bool current_block_join_prepared_query_incoming_expression(
-    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
     const bir::Inst& inst);
 
 [[nodiscard]] bool current_block_join_prepared_query_source(
-    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
     const bir::Inst& inst);
 
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(

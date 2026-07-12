@@ -28331,27 +28331,24 @@ int current_block_join_query_routing_uses_bir_identity_with_prepared_fallback() 
       return fail("expected common join adapter to match fixture authority expectation");
     }
 
-    const auto routing =
-        aarch64_codegen::build_current_block_join_prepared_query_routing(
-            join_context);
     const auto& source_inst =
         join_context.bir_block->insts[source_instruction_index];
     const auto& operand_inst =
         join_context.bir_block->insts[source_instruction_index + 1];
     if (!aarch64_codegen::current_block_join_prepared_query_incoming_expression(
-            routing, join_context, source_instruction_index, source_inst)) {
+            join_context, source_inst)) {
       return fail("expected current-block join source producer to route as incoming expression");
     }
     if (!aarch64_codegen::current_block_join_prepared_query_source(
-            routing, join_context, source_instruction_index, source_inst)) {
+            join_context, source_inst)) {
       return fail("expected current-block join source producer to route as source identity");
     }
     if (!aarch64_codegen::current_block_join_prepared_query_incoming_expression(
-            routing, join_context, source_instruction_index + 1, operand_inst)) {
+            join_context, operand_inst)) {
       return fail("expected current-block join operand producer to route as incoming expression");
     }
     if (aarch64_codegen::current_block_join_prepared_query_source(
-            routing, join_context, source_instruction_index + 1, operand_inst)) {
+            join_context, operand_inst)) {
       return fail("expected current-block join operand producer not to route as source identity");
     }
     return 0;
