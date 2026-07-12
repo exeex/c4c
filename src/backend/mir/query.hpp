@@ -161,6 +161,10 @@ struct BirBlockEntryPublicationIdentity {
   std::string_view destination_value_name;
   c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
   bir::TypeKind destination_value_type = bir::TypeKind::Void;
+  const bir::Block* successor_block = nullptr;
+  const bir::Inst* destination_instruction = nullptr;
+  const bir::PhiInst* destination_phi = nullptr;
+  const bir::Value* destination_value = nullptr;
   std::string_view successor_label;
   c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
 
@@ -477,6 +481,12 @@ find_bir_current_block_publication_identity(
 [[nodiscard]] BirBlockEntryPublicationIdentity
 find_bir_block_entry_publication_identity(
     const prepare::PreparedCurrentBlockEntryPublication& prepared);
+
+[[nodiscard]] BirBlockEntryPublicationIdentity
+find_bir_block_entry_publication_identity(
+    const prepare::PreparedCurrentBlockEntryPublication& prepared,
+    const bir::Block* proof_successor_block,
+    const bir::Value* proof_destination_value);
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(

@@ -786,6 +786,82 @@ find_bir_block_entry_publication_identity(
   return result;
 }
 
+[[nodiscard]] BirBlockEntryPublicationIdentity
+find_bir_block_entry_publication_identity(
+    const prepare::PreparedCurrentBlockEntryPublication& prepared,
+    const bir::Block* proof_successor_block,
+    const bir::Value* proof_destination_value) {
+  auto result = find_bir_block_entry_publication_identity(prepared);
+  if (prepared.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available) {
+    return result;
+  }
+  if (proof_successor_block == nullptr || proof_destination_value == nullptr) {
+    result.available = false;
+    result.status =
+        prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof;
+    return result;
+  }
+
+  const auto proof = bir::route4_block_entry_publication_record(
+      proof_successor_block, *proof_destination_value,
+      prepared.destination_value_name);
+  std::size_t matching_phi_count = 0;
+  for (const auto& instruction : proof_successor_block->insts) {
+    const auto* phi = std::get_if<bir::PhiInst>(&instruction);
+    if (phi == nullptr) {
+      break;
+    }
+    if (phi->result.kind == bir::Value::Kind::Named &&
+        phi->result.name == proof_destination_value->name) {
+      ++matching_phi_count;
+    }
+  }
+  if (matching_phi_count > 1) {
+    result.available = false;
+    result.status =
+        prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous;
+    return result;
+  }
+  if (!proof || proof.destination_instruction == nullptr || proof.phi == nullptr ||
+      proof.destination_value.value == nullptr) {
+    result.available = false;
+    result.status = proof.status == bir::Route4PublicationAvailabilityStatus::NoMatch
+                        ? prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch
+                        : prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable;
+    return result;
+  }
+  if (!prepared.block_entry_publication_proof_attributed ||
+      proof.successor_label_id != prepared.successor_label_id ||
+      proof.successor_label != prepared.successor_label_text ||
+      proof.destination_value_name_id != prepared.destination_value_name ||
+      proof.destination_value_name != prepared.destination_value_name_text ||
+      proof.destination_value_type != prepared.destination_value_type ||
+      proof.destination_value.value != proof_destination_value ||
+      proof.destination_instruction_index !=
+          prepared.block_entry_publication_proof_instruction_index ||
+      proof.destination_instruction_index !=
+          prepared.publication_bundle_instruction_index) {
+    result.available = false;
+    result.status =
+        prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch;
+    return result;
+  }
+
+  result.available = true;
+  result.instruction_index = proof.destination_instruction_index;
+  result.destination_value_name = proof.destination_value_name;
+  result.destination_value_name_id = proof.destination_value_name_id;
+  result.destination_value_type = proof.destination_value_type;
+  result.successor_block = proof.successor_block;
+  result.destination_instruction = proof.destination_instruction;
+  result.destination_phi = proof.phi;
+  result.destination_value = proof.destination_value.value;
+  result.successor_label = proof.successor_label;
+  result.successor_label_id = proof.successor_label_id;
+  return result;
+}
+
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(
     BirCfgEdgePublicationSourceRequest request) {
