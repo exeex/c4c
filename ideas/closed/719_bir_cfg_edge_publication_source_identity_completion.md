@@ -1,9 +1,18 @@
 # BIR CFG Edge-Publication Source Identity Completion
 
-Status: Open
+Status: Closed
 Type: common BIR CFG identity repair
 Parent: `ideas/closed/703_bir_mir_contract_abstraction_umbrella.md`
 Unblocks: `ideas/open/717_prepared_mir_join_source_identity_completion.md`
+
+## Completion Note
+
+Closed after the independent BIR CFG request route was repaired to resolve
+block, edge, destination, producer, and memory authority without prepared-fact
+echoes. Independent acceptance review found no blocking route-quality or
+testcase-overfit issue after the structured destination-ID contraction, and
+the broader backend regression guard remained monotonic at 348 passed, 52
+failed, and 400 total. Idea 717 remains the next dependency-chain initiative.
 
 ## Parked Execution Note
 
