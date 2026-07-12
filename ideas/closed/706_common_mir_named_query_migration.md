@@ -1,6 +1,6 @@
 # Common MIR Named Query Migration
 
-Status: Open
+Status: Complete
 Type: common MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After:
@@ -33,6 +33,19 @@ not include route headers, return route records, or accept route indexes.
   views and fail closed.
 - Common MIR does not rerun BIR analysis or reconstruct prepared authority.
 - Existing target behavior remains proved without a route fallback.
+
+## Completion
+
+- Closed after the Step 6 audit confirmed zero Routes 1-8 or route-index
+  authority in common `mir/query.*`, ownership-correct named BIR and prepared
+  view consumption, explicit fail-closed handling, and no common or
+  target-caller route fallback.
+- The default build and directly affected common, x86, AArch64, and RV64
+  contracts passed. Matching broader `^backend_` regression logs retained the
+  identical accepted baseline of 373 passed and 24 failed tests, with no new
+  failure.
+- Target materializer cleanup remains owned by ideas 708-710; the positive
+  stack-destination authority gate remains owned by idea 707.
 
 ## Reviewer Reject Signals
 
