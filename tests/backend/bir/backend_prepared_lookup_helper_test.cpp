@@ -5161,6 +5161,74 @@ int verify_current_block_join_parallel_copy_source_query() {
           prepared_stack.move) {
     return fail("prepared MIR stack row should retain exact freshness authority");
   }
+  auto bir_fact_preserves_prepared_authority = [](const auto& fact,
+                                                   const auto& prepared) {
+    const bool same_freshness =
+        fact.selected_freshness_authority.has_value() ==
+            prepared.selected_freshness_authority.has_value() &&
+        (!fact.selected_freshness_authority.has_value() ||
+         (fact.selected_freshness_authority->value_id ==
+              prepared.selected_freshness_authority->value_id &&
+          fact.selected_freshness_authority->value_name ==
+              prepared.selected_freshness_authority->value_name &&
+          fact.selected_freshness_authority->use_kind ==
+              prepared.selected_freshness_authority->use_kind &&
+          fact.selected_freshness_authority->source_kind ==
+              prepared.selected_freshness_authority->source_kind &&
+          fact.selected_freshness_authority->proof_kind ==
+              prepared.selected_freshness_authority->proof_kind &&
+          fact.selected_freshness_authority->rank ==
+              prepared.selected_freshness_authority->rank &&
+          fact.selected_freshness_authority->reference.edge_publication ==
+              prepared.selected_freshness_authority->reference.edge_publication &&
+          fact.selected_freshness_authority->reference.move ==
+              prepared.selected_freshness_authority->reference.move));
+    return fact.status == mir::BirCurrentBlockJoinSourceStatus::Available &&
+           fact.prepared_destination_value == prepared.destination_value &&
+           fact.destination_prepared_value_id == prepared.destination_value_id &&
+           fact.destination_value_type == prepared.destination_value.type &&
+           fact.prepared_source_value == prepared.source_value &&
+           fact.source_prepared_value_id == prepared.source_value_id &&
+           fact.source_value_type == prepared.source_value.type &&
+           fact.source_producer_instruction_index ==
+               prepared.source_producer_instruction_index &&
+           fact.source_producer_block_label == prepared.source_producer_block_label &&
+           fact.source_load_local == prepared.source_load_local &&
+           fact.source_load_global == prepared.source_load_global &&
+           fact.source_cast == prepared.source_cast &&
+           fact.source_binary == prepared.source_binary &&
+           fact.source_select == prepared.source_select &&
+           fact.publication_move_bundle_identity == prepared.bundle &&
+           fact.publication_move_identity == prepared.move &&
+           fact.publication_identity == prepared.publication &&
+           fact.source_home_kind == prepared.source_home_kind &&
+           fact.destination_home_kind == prepared.destination_home_kind &&
+           fact.destination_storage_kind == prepared.destination_storage_kind &&
+           fact.source_freshness_status == prepared.source_freshness_status &&
+           fact.source_freshness_candidate_count ==
+               prepared.source_freshness_candidate_count &&
+           same_freshness;
+  };
+  if (!bir_fact_preserves_prepared_authority(bir_query.facts[0], prepared_named)) {
+    return fail("BIR named join fact should preserve exact prepared authority");
+  }
+  if (bir_query.facts[0].source_producer_kind !=
+          mir::SameBlockProducerKind::Binary ||
+      !bir_fact_preserves_prepared_authority(bir_query.facts[1],
+                                             prepared_immediate)) {
+    return fail("BIR immediate join fact should preserve exact prepared authority");
+  }
+  if (
+      bir_query.facts[1].source_value_kind != bir::Value::Kind::Immediate ||
+      bir_query.facts[1].selected_freshness_authority.has_value() ||
+      !bir_fact_preserves_prepared_authority(bir_query.facts[2], prepared_stack)) {
+    return fail("BIR stack join fact should preserve exact prepared authority");
+  }
+  if (
+      bir_query.facts[3].status ==
+          mir::BirCurrentBlockJoinSourceStatus::Available) {
+    return fail("BIR join facts should preserve exact prepared authority and fail incomplete rows closed");
+  }
   auto find_route5_join = [&](std::string_view destination_name) {
     return std::find_if(route5_join_records.begin(),
                         route5_join_records.end(),

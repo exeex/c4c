@@ -1085,15 +1085,103 @@ find_bir_current_block_join_source_identity(
         .predecessor_label_id = record.predecessor_label,
         .successor_label = prepare::prepared_block_label(names, record.successor_label),
         .successor_label_id = record.successor_label,
+        .prepared_destination_value = record.destination_value,
+        .destination_prepared_value_id = record.destination_value_id,
         .destination_value_name = prepare::prepared_value_name(names, record.destination_value_name),
+        .destination_value_type = record.destination_value.type,
+        .prepared_source_value = record.source_value,
+        .source_prepared_value_id = record.source_value_id,
         .source_value_name = prepare::prepared_value_name(names, record.source_value_name),
         .source_value_kind = record.immediate_source ? bir::Value::Kind::Immediate
                                                      : bir::Value::Kind::Named,
+        .source_value_type = record.source_value.type,
+        .source_producer_instruction_index = record.source_producer_instruction_index,
+        .source_producer_block_label = record.source_producer_block_label,
+        .source_load_local = record.source_load_local,
+        .source_load_global = record.source_load_global,
+        .source_cast = record.source_cast,
+        .source_binary = record.source_binary,
+        .source_select = record.source_select,
+        .publication_move_bundle_identity = record.bundle,
+        .publication_move_identity = record.move,
+        .publication_identity = record.publication,
+        .source_home_kind = record.source_home_kind,
+        .destination_home_kind = record.destination_home_kind,
+        .destination_storage_kind = record.destination_storage_kind,
+        .source_freshness_status = record.source_freshness_status,
+        .source_freshness_candidate_count = record.source_freshness_candidate_count,
+        .selected_freshness_authority = record.selected_freshness_authority,
     };
     fact.destination_value_identity.name = fact.destination_value_name;
     fact.source_value_identity.name = fact.source_value_name;
     if (record.immediate_source && record.source_immediate_i32.has_value()) {
       fact.source_value_identity.immediate_constant = *record.source_immediate_i32;
+    }
+    switch (record.source_producer_kind) {
+      case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+        fact.source_producer_kind = SameBlockProducerKind::Unknown;
+        break;
+      case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+        fact.source_producer_kind = SameBlockProducerKind::LoadLocal;
+        break;
+      case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+        fact.source_producer_kind = SameBlockProducerKind::LoadGlobal;
+        break;
+      case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+        fact.source_producer_kind = SameBlockProducerKind::Cast;
+        break;
+      case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+        fact.source_producer_kind = SameBlockProducerKind::Binary;
+        break;
+      case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+        fact.source_producer_kind = SameBlockProducerKind::Select;
+        break;
+      case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+        fact.source_producer_kind = SameBlockProducerKind::Unknown;
+        break;
+    }
+    fact.source_producer.kind = fact.source_producer_kind;
+    fact.source_producer.instruction_index =
+        fact.source_producer_instruction_index.value_or(0);
+    fact.source_producer.block_label = fact.predecessor_label;
+    fact.source_producer.before_instruction_index =
+        fact.source_producer_instruction_index.value_or(0) + 1;
+    fact.source_producer.produced_value = fact.source_value_identity;
+    fact.source_producer.materialization_available = !record.immediate_source;
+
+    const bool base_authority =
+        record.bundle != nullptr && record.move != nullptr &&
+        record.publication != nullptr && record.destination_value_id != 0 &&
+        record.destination_value.type != bir::TypeKind::Void &&
+        record.source_value.type != bir::TypeKind::Void &&
+        record.destination_value.kind == bir::Value::Kind::Named &&
+        fact.destination_value_name == record.destination_value.name &&
+        (record.immediate_source ||
+         (record.source_value_id.has_value() &&
+          fact.source_value_name == record.source_value.name));
+    const bool producer_authority = record.immediate_source
+        ? record.source_producer_kind ==
+              prepare::PreparedEdgePublicationSourceProducerKind::Immediate &&
+              !record.source_producer_instruction_index.has_value()
+        : record.source_producer_block_label.has_value() &&
+              record.source_producer_instruction_index.has_value() &&
+              ((record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal && record.source_load_local != nullptr) ||
+               (record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal && record.source_load_global != nullptr) ||
+               (record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::Cast && record.source_cast != nullptr) ||
+               (record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::Binary && record.source_binary != nullptr) ||
+               (record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization && record.source_select != nullptr));
+    const bool freshness_authority = record.immediate_source
+        ? record.source_freshness_status == prepare::PreparedValueFreshnessQueryStatus::NoCandidate &&
+              !record.selected_freshness_authority.has_value()
+        : record.source_freshness_status == prepare::PreparedValueFreshnessQueryStatus::Selected &&
+              record.selected_freshness_authority.has_value() &&
+              record.selected_freshness_authority->value_id == *record.source_value_id &&
+              record.selected_freshness_authority->value_name == record.source_value_name &&
+              record.selected_freshness_authority->reference.edge_publication == record.publication &&
+              record.selected_freshness_authority->reference.move == record.move;
+    if (fact.status == BirCurrentBlockJoinSourceStatus::Available &&
+        (!base_authority || !producer_authority || !freshness_authority)) {
+      fact.status = BirCurrentBlockJoinSourceStatus::MissingPublication;
     }
     if (result.successor_label_id == c4c::kInvalidBlockLabel) {
       result.successor_label_id = record.successor_label;

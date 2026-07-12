@@ -241,10 +241,14 @@ struct BirCurrentBlockJoinSourceFact {
   const bir::PhiInst* destination_phi = nullptr;
   std::size_t destination_instruction_index = 0;
   const bir::Value* destination_value = nullptr;
+  bir::Value prepared_destination_value;
+  prepare::PreparedValueId destination_prepared_value_id = 0;
   SameBlockValueIdentity destination_value_identity;
   std::string_view destination_value_name;
   bir::TypeKind destination_value_type = bir::TypeKind::Void;
   const bir::Value* source_value = nullptr;
+  bir::Value prepared_source_value;
+  std::optional<prepare::PreparedValueId> source_prepared_value_id;
   SameBlockValueIdentity source_value_identity;
   std::string_view source_value_name;
   bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
@@ -252,6 +256,26 @@ struct BirCurrentBlockJoinSourceFact {
   SameBlockProducerIdentity source_producer;
   SameBlockProducerKind source_producer_kind = SameBlockProducerKind::Unknown;
   std::optional<std::size_t> source_producer_instruction_index;
+  std::optional<c4c::BlockLabelId> source_producer_block_label;
+  const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::LoadGlobalInst* source_load_global = nullptr;
+  const bir::CastInst* source_cast = nullptr;
+  const bir::BinaryInst* source_binary = nullptr;
+  const bir::SelectInst* source_select = nullptr;
+  const prepare::PreparedMoveBundle* publication_move_bundle_identity = nullptr;
+  const prepare::PreparedMoveResolution* publication_move_identity = nullptr;
+  const prepare::PreparedEdgePublication* publication_identity = nullptr;
+  prepare::PreparedValueHomeKind source_home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedValueHomeKind destination_home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedMoveStorageKind destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
+  prepare::PreparedValueFreshnessQueryStatus source_freshness_status =
+      prepare::PreparedValueFreshnessQueryStatus::NoCandidate;
+  std::size_t source_freshness_candidate_count = 0;
+  std::optional<prepare::PreparedValueFreshnessAuthority>
+      selected_freshness_authority;
 
   [[nodiscard]] explicit operator bool() const {
     return status == BirCurrentBlockJoinSourceStatus::Available;
