@@ -6846,7 +6846,9 @@ namespace {
           context, value_name, before_instruction_index)) {
     return source;
   }
-  if (context.function.prepared_lookups == nullptr ||
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
       context.control_flow_block == nullptr) {
     return std::nullopt;
   }
@@ -8378,21 +8380,13 @@ materialize_indirect_call_callee_to_prepared_register(
     return std::nullopt;
   }
 
-  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
-      fallback_source_producers;
-  const auto* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : nullptr;
-  if (source_producers == nullptr &&
-      context.function.prepared != nullptr &&
-      context.function.control_flow != nullptr) {
-    fallback_source_producers =
-        prepare::make_prepared_edge_publication_source_producer_lookups(
-            *context.function.prepared,
-            *context.function.control_flow);
-    source_producers = &*fallback_source_producers;
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
+    return std::nullopt;
   }
+  const auto* source_producers =
+      &context.function.prepared_lookups->edge_publication_source_producers;
   const auto callee_producer =
       find_prepared_indirect_callee_source_producer(
           context, source_producers, callee.value_name, instruction_index);
