@@ -39,6 +39,23 @@ deletion must require `Available` on actual successor-linked relations and must
 not weaken fail-closed handling for terminal-only inputs. Do not reopen ideas
 727 or 728 or rebuild authority in AArch64.
 
+## Current-Block Query Exposure Gate (2026-07-12)
+
+Step 3's retirement search found that executable current-block join routing is
+still reconstructed in `dispatch.cpp`. The attached common authority exists,
+but `query_attached_current_block_join_routing` is private to
+`dispatch_producers.cpp`; the public incoming-expression helper instead
+requires a target-built `CurrentBlockJoinPreparedQueryRouting` array. Removing
+that reconstruction therefore requires a common producer/query contract change
+outside this consumer-only idea.
+
+Idea 709 is parked pending `ideas/open/729_common_current_block_join_query_exposure.md`.
+The address-materialization lookup reconstruction is locally replaceable, but
+was deliberately not landed alone while its sibling current-block routing
+reconstruction remained. Resume the retirement proof only after idea 729
+provides direct typed attached-authority consumption; do not move the private
+query logic into `dispatch.cpp` or preserve the routing array behind a rename.
+
 ## First Owner And Scope
 
 First owning layer: AArch64 MIR materialization.  Migrate dispatch, calls,

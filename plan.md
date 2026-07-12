@@ -1,270 +1,131 @@
-# AArch64 Named Handoff Materializer Cleanup Runbook
+# Common Current-Block Join Query Exposure Runbook
 
 Status: Active
-Source Idea: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
+Source Idea: ideas/open/729_common_current_block_join_query_exposure.md
+Supersedes: exhausted consumer runbook for idea 709, which remains open and parked
 
 ## Purpose
 
-Remove executable route-record authority from AArch64 MIR materialization while
-preserving target-local instruction and ABI realization.
+Repair the query boundary that currently forces AArch64 to build executable
+current-block join routing arrays before consumer retirement can finish.
 
 ## Goal
 
-Make AArch64 materializers consume the common named and prepared handoff views,
-fail closed when required authority is unavailable, and retire semantic route
-and route-index dependencies from the target codegen owner.
+Provide direct typed access to existing attached current-block join authority,
+remove the target-built routing array, and hand the bounded retirement route
+back to idea 709.
 
 ## Core Rule
 
-Migrate consumers to existing common authority. Do not recreate route analysis,
-route indexes, or target-local semantic fallbacks under new names.
+Expose existing prepared authority through its common owner. Do not change the
+authoritative fact set or reproduce lookup reasoning in target materializers.
 
 ## Read First
 
+- `ideas/open/729_common_current_block_join_query_exposure.md`
 - `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
-- `ideas/closed/727_common_prepared_return_chain_authority.md`
-- `ideas/closed/728_prepared_return_chain_shape_authority_decomposition.md`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- the common named/prepared query interfaces established by ideas 706 and 727
+- `ideas/closed/716_prealloc_current_block_routing_authority_closure.md`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- the common prepared current-block routing query declarations and owner
+  attachment surfaces reached from those files
 
 ## Current Scope
 
-- AArch64 dispatch, calls, globals, ALU, comparison, select, publication, and
-  value materialization.
-- Existing AArch64 instruction-dispatch, call-boundary, branch-control,
-  current-block/join, scalar-ALU, and memory-operand proof surfaces.
-- Removal of semantic route records and target-local route indexes from the
-  AArch64 materialization owner.
+- The attached current-block join consumption query contract.
+- Incoming-expression and source roles currently cached by
+  `CurrentBlockJoinPreparedQueryRouting`.
+- Bounded AArch64 callers required to prove and delete that routing array.
 
 ## Non-Goals
 
-- No common producer or query-contract redesign.
-- No x86 or RV64 consumer migration.
-- No target instruction or ABI policy changes.
-- No expectation weakening, testcase-shaped fallback, or assembly-only proof.
-- Debug vocabulary may remain only when it cannot affect lowering.
-
-## Working Model
-
-- Common named/prepared views own semantic handoff authority.
-- AArch64 owns only legal instruction selection and ABI realization.
-- Missing or inconsistent prepared authority must fail closed.
-- Route-labelled state must not select executable behavior.
+- No change to current-block authority production or Route 5 diagnostic status.
+- No broad lookup, publication, BIR, CFG, or other-target migration.
+- No unrelated idea 709 retirement cleanup.
+- No expectation weakening or testcase-shaped routing rule.
 
 ## Execution Rules
 
-- Resume at Step 2.3. Step 2.1 consumed the successor-linked production
-  authority proven by ideas 727 and 728, and Step 2.2 migrated the direct
-  dispatch-producer family without rebuilding either relation in AArch64.
-- Require `Available` only for an actual successor-linked relation; preserve
-  fail-closed `StructurallyIncomplete` for terminal-only inputs with no links.
-- Replace consumers with existing typed/common queries; do not copy producer
-  reasoning into target helpers.
-- Keep each packet behavior-preserving and prove more than one narrow fixture
-  before retiring a fallback.
-- Stop for lifecycle review if an existing common query cannot express required
-  authority without a producer-contract change.
+- Preserve the complete prepared authority established by idea 716: owner
+  attachment, stable block/value identity, semantic role, and fail-closed
+  disagreement or incompleteness.
+- Keep common queries target-neutral and target callers limited to typed inputs
+  plus instruction realization.
+- Delete the routing array only after focused common and affected AArch64 proof
+  demonstrates equivalent supported behavior and fail-closed negatives.
+- Stop for lifecycle review if direct consumption requires changing the
+  authoritative fact set rather than exposing it.
 
 ## Ordered Steps
 
-### Step 1: Inventory and migrate AArch64 dispatch authority
+### Step 1: Establish the direct common query seam
 
-Status: Completed before the Step 2 route reset.
+Goal: expose the already attached current-block join consumption authority
+without a target-built routing cache.
 
-Goal: establish the bounded first consumer migration without duplicating route
-semantics.
-
-Primary target: `src/backend/mir/aarch64/codegen/dispatch.cpp`
-
-Completion check:
-
-- The migrated dispatch family has no executable route dependency, retains
-  target-local behavior, and passes focused AArch64 proof.
-
-### Step 2.1: Delete the ALU return-chain reconstruction
-
-Status: Completed by `1e5c28889` after ideas 727 and 728 supplied the missing
-common production authority.
-
-Goal: consume common traversal-attached return-chain authority and remove the
-target-local reconstruction and lookup fallback.
-
-Primary target: `src/backend/mir/aarch64/codegen/alu.cpp`
+Primary targets: the common prepared query declaration/implementation owner and
+the smallest affected query contract tests.
 
 Actions:
 
-- Consume only the instruction traversal event's
-  `PreparedObjectReturnChainClassification` and require `Available` with a
-  complete relation.
-- Use its terminal return-ABI home/register placement and first non-chain
-  operand home for target-local register realization.
-- Delete `find_prepared_return_chain_facts`, its move-bundle/scalar-producer
-  walk, and its fallback `make_prepared_function_lookups` construction.
-- Do not walk move bundles, successor homes, scalar producers, or binary
-  operands in AArch64 to rediscover or complete the relation.
-- Fail closed when attached authority is absent or inconsistent.
-- Prove the corrected ALU/return behavior with the supervisor-selected build
-  and focused scalar-ALU plus return-path tests.
+- Trace the existing private query to the authoritative prepared lookup and
+  select the lowest target-neutral declaration surface.
+- Define direct typed incoming-expression and source consumption queries using
+  stable block/value/role inputs already owned by the prepared contract.
+- Preserve explicit fail-closed results for missing attachment, stale or
+  incomplete identity, ambiguity, disagreement, and unsupported roles.
+- Add focused positive and negative proof across more than one instruction
+  shape; do not use Route 5 or instruction position as authority.
 
 Completion check:
 
-- The AArch64 consumer uses only traversal-attached common authority,
-  `find_prepared_return_chain_facts` and its lookup fallback are gone, and
-  focused ALU/return proof is green.
+- Common callers can query the attached relation directly, focused contract
+  proof is green, and no target policy or new fact production entered the
+  common query.
 
-Disposition:
+### Step 2: Remove the AArch64 routing-array reconstruction
 
-- The authority gap identified by the reviewer was real and was handled in
-  the separate common-producer ideas 727 and 728. Their successor-linked
-  relation is now consumed directly; terminal-only/no-successor inputs remain
-  fail-closed `StructurallyIncomplete`. This consumer work is complete and
-  must not be reopened as target-local reconstruction.
+Goal: migrate the bounded AArch64 current-block join callers to the direct
+common query and delete the executable routing cache.
 
-### Step 2.2: Migrate direct dispatch-producer consumers
+Primary targets:
 
-Status: Completed by `b4783df99`; the scalability timeout recorded in
-`todo.md` was also present at the parent commit and remains broader-validation
-debt rather than unfinished consumer migration.
-
-Goal: remove direct same-block producer reconstruction from the remaining
-dispatch-producer family.
-
-Primary target: `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- directly implicated callers in `src/backend/mir/aarch64/codegen/dispatch.cpp`
 
 Actions:
 
-- Replace direct producer discovery with the applicable traversal-attached
-  common named/prepared query.
-- Gate any relation not represented by an existing common query; do not derive
-  it from target-local instruction or operand walks.
-- Preserve target-local instruction selection and fail closed on unavailable
-  or inconsistent authority.
-- Prove instruction-dispatch behavior and nearby same-feature cases.
+- Replace `CurrentBlockJoinPreparedQueryRouting` parameters and callers with
+  direct typed common-query consumption.
+- Delete the builder, boolean arrays, and private duplicate query reasoning
+  after their final executable consumers disappear.
+- Preserve target-local instruction behavior and fail closed when common
+  authority is unavailable or inconsistent.
+- Prove affected AArch64 current-block/join positives and nearby fail-closed
+  negatives without changing expectations.
 
 Completion check:
 
-- The dispatch-producer family contains no executable producer reconstruction
-  or lookup fallback, and focused dispatch proof is green.
+- The routing struct and builder are gone, no AArch64 instruction scan caches
+  executable join answers, and focused common plus AArch64 proof is green.
 
-### Step 2.3: Migrate select and comparison consumers
+### Step 3: Prove the boundary and hand back idea 709
 
-Goal: remove local value-home lookup rebuilding from select/comparison
-materialization as one bounded control/value family.
-
-Primary target: `src/backend/mir/aarch64/codegen/select_materialization.cpp`
+Goal: establish that the query-contract initiative is complete and the parked
+consumer retirement route can resume without further scope expansion.
 
 Actions:
 
-- Replace local value-home lookup construction with existing attached common
-  authority.
-- Gate missing common-query authority instead of rebuilding homes or semantic
-  relations locally.
-- Preserve comparison/select instruction policy and fail closed when required
-  authority is unavailable.
-- Prove branch-control and current-block/join behavior across nearby select and
-  comparison cases.
-
-Completion check:
-
-- Select/comparison materialization consumes attached common authority only,
-  and its focused control-flow proof is green without expectation weakening.
-
-### Step 2.4: Migrate floating-point and general value consumers
-
-Goal: remove named-producer discovery from the remaining value-materialization
-family.
-
-Primary target: `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp`
-
-Actions:
-
-- Replace named-producer discovery with the existing attached common query.
-- Apply the same authority gate to directly implicated general value or
-  publication consumers, one coherent file family per executor packet.
-- Do not infer missing producer relations from target-local operands or
-  instruction shape.
-- Prove scalar/value and publication behavior for each affected family.
-
-Completion check:
-
-- The migrated value family has no executable named-producer discovery or
-  reconstructed lookup, and nearby same-feature proof remains green.
-
-### Step 2.5: Migrate memory consumers
-
-Goal: retire the remaining target-local lookup rebuilding in the memory family.
-
-Primary target: `src/backend/mir/aarch64/codegen/memory.cpp`
-
-Actions:
-
-- Consume traversal-attached common lookups and remove local lookup builders as
-  their final consumers disappear.
-- Gate any missing common relation and return to lifecycle review rather than
-  extending idea 709 into producer/query redesign.
-- Preserve memory instruction policy and prove nearby memory-operand behavior.
-
-Completion check:
-
-- Memory materialization uses attached common authority, missing authority
-  fails closed, and focused memory-operand proof is green.
-
-### Step 2.6: Migrate remaining call consumers
-
-Goal: retire lookup rebuilding from the remaining call and ABI materializers.
-
-Primary target: remaining call materializers identified by the retirement
-search.
-
-Actions:
-
-- Consume traversal-attached common lookups and remove local lookup builders as
-  their final call consumers disappear.
-- Gate any missing common relation instead of deriving it from ABI operands or
-  instruction shape.
-- Preserve AArch64 ABI realization and prove call-boundary behavior.
-
-Completion check:
-
-- Remaining call materializers use attached common authority, missing authority
-  fails closed, and focused call-boundary proof is green.
-
-### Step 2.7: Migrate global and publication consumers
-
-Goal: retire lookup rebuilding from the remaining global/publication family.
-
-Primary targets: remaining global and publication materializers identified by
-the retirement search.
-
-Actions:
-
-- Migrate the directly related global/publication consumers as one coherent
-  data-publication family.
-- Consume traversal-attached common lookups and gate any missing common
-  relation rather than rebuilding it locally.
-- Preserve target-local relocation and publication policy and prove nearby
-  global/publication behavior.
-
-Completion check:
-
-- Global/publication consumers use attached common authority, missing authority
-  fails closed, and their focused proof is green.
-
-### Step 3: Prove retirement and disposition
-
-Goal: demonstrate that semantic AArch64 materialization no longer depends on
-route vocabulary or recreated indexes.
-
-Actions:
-
-- Search the scoped semantic owner for remaining executable route/index use.
-- Classify any surviving route-labelled text as non-semantic debug vocabulary
-  owned by idea 712, or remove it when local and safe.
-- Run the supervisor-selected broader AArch64 validation checkpoint.
+- Search the affected common and AArch64 surfaces for renamed routing arrays,
+  copied prepared lookup reasoning, Route 5 authority, or expectation changes.
+- Run the supervisor-selected broader backend regression comparison.
 - Review the complete slice against the source idea reject signals.
+- Record the durable handback and reactivate idea 709 at its retirement step;
+  do not absorb its locally replaceable address-materialization cleanup here.
 
 Completion check:
 
-- The retirement guard is zero for semantic AArch64 materialization, broad
-  behavior proof is green, and no route/index recreation or expectation
-  weakening remains.
+- Direct common authority is the only executable query path, broader proof has
+  no new failures, and lifecycle state can switch back to idea 709 with its
+  remaining retirement work explicit.
