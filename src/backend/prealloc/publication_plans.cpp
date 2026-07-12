@@ -1864,6 +1864,39 @@ query_prepared_stack_destination_composer_input(
   return input;
 }
 
+PreparedStackDestinationAuthorityView
+compose_prepared_stack_destination_authority_view(
+    const PreparedStackDestinationComposerInput& input) {
+  PreparedStackDestinationAuthorityView view{
+      .status = input.status,
+      .upstream_relationship_status = input.upstream_relationship_status,
+      .upstream_source_facts_status = input.upstream_source_facts_status,
+  };
+  if (input.status != PreparedStackDestinationComposerInputStatus::Available) {
+    return view;
+  }
+  view.relationship = input.relationship;
+  view.publication = input.publication;
+  view.move = input.move;
+  view.source_home = input.source_home;
+  view.destination_home = input.destination_home;
+  view.source_freshness = input.source_freshness;
+  view.destination_frame_slot = input.destination_frame_slot;
+  view.destination_stack_object = input.destination_stack_object;
+  view.predecessor_label = input.predecessor_label;
+  view.successor_label = input.successor_label;
+  view.source_value_id = input.relationship->source_value_id;
+  view.destination_value_id = input.destination_value_id;
+  view.cursor_block_index = input.cursor_block_index;
+  view.cursor_instruction_index = input.cursor_instruction_index;
+  view.branch_stack_load_applicability =
+      input.branch_stack_load_applicability;
+  view.branch_stack_load_reason = input.branch_stack_load_reason;
+  view.aggregate_source_applicability = input.aggregate_source_applicability;
+  view.aggregate_source_reason = input.aggregate_source_reason;
+  return view;
+}
+
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(
     const PreparedEdgePublicationLookups* lookups,

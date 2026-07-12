@@ -2085,6 +2085,41 @@ struct PreparedStackDestinationComposerInput {
 query_prepared_stack_destination_composer_input(
     const PreparedStackDestinationComposerInputQuery& query);
 
+struct PreparedStackDestinationAuthorityView {
+  PreparedStackDestinationComposerInputStatus status =
+      PreparedStackDestinationComposerInputStatus::MissingEvidence;
+  PreparedStackDestinationPublicationStatus upstream_relationship_status =
+      PreparedStackDestinationPublicationStatus::MissingPublication;
+  PreparedEdgeCopySourceFactsStatus upstream_source_facts_status =
+      PreparedEdgeCopySourceFactsStatus::MissingPublication;
+  const PreparedStackDestinationPublication* relationship = nullptr;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedValueHome* destination_home = nullptr;
+  const PreparedValueFreshnessAuthority* source_freshness = nullptr;
+  const PreparedFrameSlot* destination_frame_slot = nullptr;
+  const PreparedStackObject* destination_stack_object = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  std::optional<PreparedValueId> source_value_id;
+  PreparedValueId destination_value_id = 0;
+  std::optional<std::size_t> cursor_block_index;
+  std::optional<std::size_t> cursor_instruction_index;
+  PreparedStackDestinationEvidenceApplicability branch_stack_load_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  PreparedStackDestinationEvidenceReason branch_stack_load_reason =
+      PreparedStackDestinationEvidenceReason::None;
+  PreparedStackDestinationEvidenceApplicability aggregate_source_applicability =
+      PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  PreparedStackDestinationEvidenceReason aggregate_source_reason =
+      PreparedStackDestinationEvidenceReason::None;
+};
+
+[[nodiscard]] PreparedStackDestinationAuthorityView
+compose_prepared_stack_destination_authority_view(
+    const PreparedStackDestinationComposerInput& input);
+
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(
     const PreparedEdgePublicationLookups* lookups,

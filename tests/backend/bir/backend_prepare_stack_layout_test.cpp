@@ -11094,10 +11094,45 @@ int check_select_edge_source_producer_placement_contract() {
           produced_relationship.destination_stack_object) {
     return fail("expected complete identity-bound stack destination composer input");
   }
+  const auto authority =
+      prepare::compose_prepared_stack_destination_authority_view(composer_input);
+  if (authority.status !=
+          prepare::PreparedStackDestinationComposerInputStatus::Available ||
+      authority.relationship != &produced_relationship ||
+      authority.publication != produced_publication ||
+      authority.move != produced_relationship.move ||
+      authority.source_home != produced_relationship.source_home ||
+      authority.destination_home != produced_relationship.destination_home ||
+      authority.source_freshness != composer_input.source_freshness ||
+      authority.destination_frame_slot !=
+          produced_relationship.destination_frame_slot ||
+      authority.destination_stack_object !=
+          produced_relationship.destination_stack_object ||
+      authority.predecessor_label != prepared_pred_label ||
+      authority.successor_label != prepared_join_label ||
+      authority.source_value_id != 10 || authority.destination_value_id != 11 ||
+      authority.cursor_block_index != produced_relationship.move->block_index ||
+      authority.cursor_instruction_index !=
+          produced_relationship.move->instruction_index ||
+      authority.branch_stack_load_applicability !=
+          produced_relationship.branch_stack_load_applicability ||
+      authority.branch_stack_load_reason !=
+          produced_relationship.branch_stack_load_reason ||
+      authority.aggregate_source_applicability !=
+          produced_relationship.aggregate_source_applicability ||
+      authority.aggregate_source_reason !=
+          produced_relationship.aggregate_source_reason) {
+    return fail("expected complete uniquely identity-bound stack destination authority row");
+  }
   auto missing_query = composer_query;
   missing_query.source_facts = nullptr;
-  if (prepare::query_prepared_stack_destination_composer_input(missing_query).status !=
-      prepare::PreparedStackDestinationComposerInputStatus::MissingEvidence) {
+  const auto missing_input =
+      prepare::query_prepared_stack_destination_composer_input(missing_query);
+  const auto missing_authority =
+      prepare::compose_prepared_stack_destination_authority_view(missing_input);
+  if (missing_authority.status !=
+          prepare::PreparedStackDestinationComposerInputStatus::MissingEvidence ||
+      missing_authority.publication != nullptr || missing_authority.move != nullptr) {
     return fail("expected missing composer evidence to remain independently reachable");
   }
   auto invalid_freshness_facts = produced_source_facts;
@@ -11105,7 +11140,9 @@ int check_select_edge_source_producer_placement_contract() {
       prepare::PreparedValueFreshnessQueryStatus::InvalidCandidate;
   auto invalid_query = composer_query;
   invalid_query.source_facts = &invalid_freshness_facts;
-  if (prepare::query_prepared_stack_destination_composer_input(invalid_query).status !=
+  if (prepare::compose_prepared_stack_destination_authority_view(
+          prepare::query_prepared_stack_destination_composer_input(invalid_query))
+          .status !=
       prepare::PreparedStackDestinationComposerInputStatus::InvalidFreshness) {
     return fail("expected invalid composer freshness to remain independently reachable");
   }
@@ -11114,25 +11151,33 @@ int check_select_edge_source_producer_placement_contract() {
       prepare::PreparedValueFreshnessQueryStatus::AmbiguousCandidate;
   auto ambiguous_query = composer_query;
   ambiguous_query.source_facts = &ambiguous_freshness_facts;
-  if (prepare::query_prepared_stack_destination_composer_input(ambiguous_query).status !=
+  if (prepare::compose_prepared_stack_destination_authority_view(
+          prepare::query_prepared_stack_destination_composer_input(ambiguous_query))
+          .status !=
       prepare::PreparedStackDestinationComposerInputStatus::AmbiguousFreshness) {
     return fail("expected ambiguous composer freshness to remain independently reachable");
   }
   auto incomplete_query = composer_query;
   incomplete_query.destination_stack_object_identity = nullptr;
-  if (prepare::query_prepared_stack_destination_composer_input(incomplete_query).status !=
+  if (prepare::compose_prepared_stack_destination_authority_view(
+          prepare::query_prepared_stack_destination_composer_input(incomplete_query))
+          .status !=
       prepare::PreparedStackDestinationComposerInputStatus::IncompleteStackEvidence) {
     return fail("expected incomplete composer stack evidence to remain independently reachable");
   }
   auto mismatched_query = composer_query;
   mismatched_query.destination_value_id = 12;
-  if (prepare::query_prepared_stack_destination_composer_input(mismatched_query).status !=
+  if (prepare::compose_prepared_stack_destination_authority_view(
+          prepare::query_prepared_stack_destination_composer_input(mismatched_query))
+          .status !=
       prepare::PreparedStackDestinationComposerInputStatus::IdentityMismatch) {
     return fail("expected mismatched composer identity to remain independently reachable");
   }
   auto route_only_query = composer_query;
   route_only_query.route_only = true;
-  if (prepare::query_prepared_stack_destination_composer_input(route_only_query).status !=
+  if (prepare::compose_prepared_stack_destination_authority_view(
+          prepare::query_prepared_stack_destination_composer_input(route_only_query))
+          .status !=
       prepare::PreparedStackDestinationComposerInputStatus::RouteOnlyEvidence) {
     return fail("expected route-only composer evidence to remain independently reachable");
   }
@@ -11143,9 +11188,11 @@ int check_select_edge_source_producer_placement_contract() {
   upstream_query.relationship = &upstream_relationship;
   const auto upstream_input =
       prepare::query_prepared_stack_destination_composer_input(upstream_query);
-  if (upstream_input.status !=
+  const auto upstream_authority =
+      prepare::compose_prepared_stack_destination_authority_view(upstream_input);
+  if (upstream_authority.status !=
           prepare::PreparedStackDestinationComposerInputStatus::UpstreamFailure ||
-      upstream_input.upstream_relationship_status !=
+      upstream_authority.upstream_relationship_status !=
           prepare::PreparedStackDestinationPublicationStatus::MoveMismatch) {
     return fail("expected composer input to preserve upstream relationship failure");
   }
