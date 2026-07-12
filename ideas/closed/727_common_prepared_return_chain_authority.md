@@ -1,25 +1,26 @@
 # Common Prepared Return-Chain Authority
 
-Status: Open
+Status: Closed
 Type: common prepared-MIR producer/query contract repair
 Discovered by: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
 Unblocks: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
 
-## Reopened Authority Gap (2026-07-12)
+## Completion Note (2026-07-12)
 
-The earlier close proved the classification API and synthetic common contract,
-but not that existing production return-chain inputs carry the proof
-attribution and freshness needed to make the relation consumable. The first
-idea 709 consumer attempt was rejected and reverted after those inputs
-classified `Stale`, producing two new focused failures beyond the known
-baseline.
+Closed after the reopened production-authority gap was repaired at the common
+prepared move-bundle publication seam. Published bundles now receive distinct,
+nonzero proof attribution and normalized move freshness, so representative
+one-link and multi-link chains classify `Available` through normal traversal
+attachment while missing, stale, ambiguous, inconsistent, unsupported, and
+non-adjacent evidence remains fail closed.
 
-This is the same common production/fixture authority contract, so idea 727 is
-reopened rather than replaced. Closure now requires proof that representative
-production AArch64 return-chain inputs receive authenticated `Available`
-relations through the common producer path. Fixture-only injection,
-classification weakening, or target-side reconstruction does not satisfy the
-contract.
+Focused common proof covers both valid shapes and nearby negative states. A
+read-only AArch64 integration probe observes the production relation with
+`DirectHome` freshness and attributed start/terminal bundles without changing
+the target consumer. The matching backend before/after guard is non-regressive
+at 347/400 passes; the separate full-suite baseline candidate was rejected
+because the prepared call-boundary scalability failure is not accepted baseline
+state. Idea 709 may resume at Step 2.1 without a distinct follow-on initiative.
 
 ## Goal
 
