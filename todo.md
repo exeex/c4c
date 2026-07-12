@@ -8,53 +8,77 @@ Current Step Title: Repair typed join-source identity propagation
 
 ## Just Finished
 
-- Step 2 localized the copied-block failure to the common preparation helper
-  `attach_named_current_block_join_source_evidence` in
-  `src/backend/prealloc/publication_plans.cpp`. The fixture builds
-  `edge_publications` through the names/control-flow overload of
-  `make_prepared_edge_publication_lookups`; that overload has no prepared BIR
-  module, so its `PreparedEdgePublication` legitimately carries no
-  `source_producer_block_label` or `source_producer_instruction_index`.
-- The helper nevertheless treats those optional publication fields as the
-  producer identity authority and returns `Incomplete` before selecting the
-  supplied BIR evidence. For the copied block, the exact structural BIR fact is
-  producer `(successor_label, incoming_name, instruction 3)`, and the supplied
-  evidence agrees with it, so the row is expected to carry `Available` evidence
-  with `value_name == incoming_name`. Instead it carries `Incomplete` evidence
-  with the default/invalid value name. The prepared source/destination identity
-  and homes remain the expected `incoming_id`, `&locations.value_homes[0]`, and
-  `&locations.value_homes[1]`; the first incorrect fact is the missing evidence
-  producer key, not either home.
-- Route-agnostic repair rule: named join evidence must be selected against one
-  exact producer identity established by the queried BIR block (function,
-  producer block, produced value, instruction index), while publication-owned
-  producer metadata may confirm that key when present but must not be required
-  when the same exact BIR producer is already available. Continue to fail closed
-  on absent, duplicate, or disagreeing producer identities; do not restore
-  Route 5 selection or correlate by row position/name alone.
+- Step 2 repaired `attach_named_current_block_join_source_evidence` so it derives
+  one exact named producer instruction from `inputs.block`, validates that
+  producer through the BIR producer view, and selects evidence with the resulting
+  `(function, block, value, instruction)` key. Optional publication producer
+  coordinates now confirm the derived key when both are present; absence alone
+  no longer yields `Incomplete`.
+- The helper keeps typed fail-closed outcomes: invalid or absent BIR identity and
+  partial publication metadata are `Incomplete`, duplicate matching BIR
+  producers are `Ambiguous`, disagreeing publication coordinates are
+  `Mismatched`, and missing/negative/duplicate evidence retains the selector's
+  existing typed status. No cache or caller-pointer shape controls status:
+  nonempty negative evidence always promotes the applicable row to
+  `MissingSourceProducer`; empty evidence does so when no complete agreeing
+  publication producer coordinates independently confirm the exact key.
 
 ## Suggested Next
 
-- Implement the bounded Step 2 common-helper repair in
-  `src/backend/prealloc/publication_plans.cpp`: resolve the unique exact named
-  producer key from `inputs.block`, pass that key into
-  `attach_named_current_block_join_source_evidence`, use publication producer
-  metadata only as an agreement check when it exists, and preserve the current
-  typed `Missing`/`Incomplete`/`Ambiguous`/`Mismatched` fail-closed outcomes.
+- Localize the now-first failing, distinct CFG load-local identity assertion at
+  `backend_prepared_lookup_helper_test.cpp:6414`; the current-block join-source
+  evidence and reconstructed JoinTransfer fixture section now completes.
 
 ## Watchouts
 
-- `block_has_matching_phi_publication` already proves the copied PHI publication
-  agrees, but it records only `PublicationSemanticOrigin::BirPhi`; it does not
-  publish the source producer block/index needed by evidence selection.
-- Keep the repair in common preparation. Do not touch target materializers,
-  restore Route 5 as authority, change move scheduling, or weaken the exact
-  typed row mapping and aggregate fail-closed behavior.
+- The original prepared-MIR/BIR aggregate assertion, copied-block positive
+  evidence assertion, and all four typed negative evidence checks pass without
+  expectation changes. The test now stops later at `complete prepared
+  JoinTransfer publication should support a non-PHI edge`; temporary assertion
+  splitting localized the first failure to missing PreparedJoinTransfer semantic
+  origin, not the corrected instruction-0 evidence. The authorized evidence-only
+  fixture edit cannot repair that separate authority setup.
+- AST tracing identifies the exact first mismatch in
+  `prepared_join_transfer_destination_consistent`: the publication's
+  `destination_value` is named I32 `%current.destination`, but its owning
+  `PreparedJoinTransfer::result` is the default-constructed `bir::Value`
+  `(Immediate, Void, 0, empty name)` because the fixture's JoinTransfer aggregate
+  omits `.result`. Therefore destination consistency is false,
+  `has_unique_complete_prepared_join_transfer_authority` returns before its
+  unique-edge scan, `prepared_join_transfer_authority_complete` stays false, and
+  the origin stays `Unknown` after PHIs are erased.
+- `route5_join_block` masks this incomplete fixture authority because
+  `block_has_matching_phi_publication` establishes `BirPhi` origin first. The
+  copied `prepared_only_block` removes those three PHIs, so it correctly exposes
+  the missing JoinTransfer result. Neither exact producer evidence nor the block
+  mutation changes the stored JoinTransfer/result fields.
+- Ownership classification: fixture construction, not common producer-evidence
+  preparation. Repairing `prepared_join_transfer_destination_consistent` to
+  accept a missing/mismatched result would weaken a shared fail-closed authority
+  contract and is not a valid Step 2 implementation change.
+- After authorization, the named JoinTransfer result was initialized to exact
+  named I32 `%current.destination`; the named prepared-only positive and stale
+  evidence checks then passed. The next first failure is the immediate row:
+  its publication destination is named I32 `%current.immediate_destination`, but
+  it shares the same owning transfer whose result is now
+  `%current.destination`. Destination consistency therefore correctly rejects
+  that row's prepared origin. The fixture currently models three distinct PHI
+  results as three edge transfers under one single-result JoinTransfer.
+- The fixture is now reconstructed as three complete, single-result
+  JoinTransfers for named, immediate, and stack destinations. The incomplete and
+  mismatched named-authority probes mutate only the named transfer result; the
+  duplicate named transfer now correctly yields typed `AmbiguousPublication` at
+  lookup time. Later no-Route5/no-evidence probes retain prepared identities but
+  now expect the common fail-closed `MissingSourceProducer` row status.
 
 ## Proof
 
-- No build or tests run, as delegated for this read-only localization packet.
-  Evidence came from AST-backed definition/callee queries and focused reads of
-  the fixture, edge-publication construction, and common join-source helpers.
-  The existing `test_before.log` remains the supervisor-owned failure record;
-  no test log was modified.
+- Ran the delegated command exactly:
+  `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_prepared_lookup_helper$' 2>&1 | tee
+  test_after.log`.
+- Build succeeded. All current-block join-source evidence, typed negative,
+  prepared-only authority, malformed-authority, and no-Route5 fail-closed probes
+  now pass. The focused test advances to the distinct later failure `BIR CFG edge
+  source identity should match prepared load-local semantic oracle` at line 6421.
+  Proof log: `test_after.log`.

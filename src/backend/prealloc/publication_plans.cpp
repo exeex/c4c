@@ -2373,7 +2373,10 @@ prepared_direct_edge_publication_source_freshness_status(
 }
 
 void attach_named_current_block_join_source_evidence(
+    const PreparedNameTables& names,
     FunctionNameId function_name,
+    BlockLabelId producer_block_label,
+    const bir::Block& block,
     const std::vector<PreparedFactBoundaryEvidence>& evidence,
     PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
   if (fact.publication == nullptr ||
@@ -2383,22 +2386,81 @@ void attach_named_current_block_join_source_evidence(
       fact.source_home_is_stack) {
     return;
   }
-  if (evidence.empty()) {
-    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Missing;
+  if (fact.source_value_name == kInvalidValueName) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Incomplete;
+    fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
     return;
   }
-  if (!fact.publication->source_producer_block_label.has_value() ||
-      !fact.publication->source_producer_instruction_index.has_value() ||
-      fact.source_value_name == kInvalidValueName) {
+
+  std::optional<std::size_t> producer_instruction_index;
+  const auto producer_view = bir::make_bir_producer_view(block);
+  for (std::size_t instruction_index = 0;
+       instruction_index < block.insts.size(); ++instruction_index) {
+    const auto* produced_value =
+        prepared_current_block_join_instruction_result_value_ref(
+            block.insts[instruction_index]);
+    if (produced_value == nullptr ||
+        existing_prepared_value_name_id(names, *produced_value) !=
+            fact.source_value_name) {
+      continue;
+    }
+    const auto producer = bir::find_same_block_producer(
+        producer_view, *produced_value, instruction_index + 1);
+    if (!producer || producer.produced_value == nullptr ||
+        *producer.produced_value != *produced_value ||
+        producer.block_label != block.label ||
+        producer.instruction_index != instruction_index) {
+      fact.join_source_evidence.status =
+          PreparedFactBoundaryStatus::Incomplete;
+      fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+      return;
+    }
+    if (producer_instruction_index.has_value()) {
+      fact.join_source_evidence.status = PreparedFactBoundaryStatus::Ambiguous;
+      fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+      return;
+    }
+    producer_instruction_index = instruction_index;
+  }
+  if (!producer_instruction_index.has_value()) {
     fact.join_source_evidence.status = PreparedFactBoundaryStatus::Incomplete;
+    fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+    return;
+  }
+
+  const bool publication_has_block =
+      fact.publication->source_producer_block_label.has_value();
+  const bool publication_has_instruction =
+      fact.publication->source_producer_instruction_index.has_value();
+  if (publication_has_block != publication_has_instruction) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Incomplete;
+    fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+    return;
+  }
+  if (publication_has_block &&
+      (*fact.publication->source_producer_block_label != producer_block_label ||
+       *fact.publication->source_producer_instruction_index !=
+           *producer_instruction_index)) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Mismatched;
+    fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+    return;
+  }
+  if (evidence.empty()) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Missing;
+    if (!publication_has_block) {
+      fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+    }
     return;
   }
   fact.join_source_evidence = select_prepared_current_block_join_source_evidence(
       evidence,
       function_name,
-      *fact.publication->source_producer_block_label,
+      producer_block_label,
       fact.source_value_name,
-      *fact.publication->source_producer_instruction_index);
+      *producer_instruction_index);
+  if (!fact.join_source_evidence) {
+    fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+  }
 }
 
 [[nodiscard]] bool block_has_matching_phi_publication(
@@ -2695,7 +2757,10 @@ prepare_current_block_join_parallel_copy_source_facts(
             fact.destination_is_source_value && !fact.source_is_source_value &&
             !fact.source_home_is_stack;
         attach_named_current_block_join_source_evidence(
+            *inputs.names,
             inputs.value_locations->function_name,
+            inputs.successor_label,
+            *inputs.block,
             *join_source_evidence,
             fact);
         if (fact.join_source_evidence_applicable &&

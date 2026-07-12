@@ -4766,6 +4766,8 @@ int verify_current_block_join_parallel_copy_source_query() {
           prepare::PreparedJoinTransfer{
               .function_name = function_name,
               .join_block_label = successor_label,
+              .result = bir::Value::named(
+                  bir::TypeKind::I32, "%current.destination"),
               .kind = prepare::PreparedJoinTransferKind::PhiEdge,
               .edge_transfers = {
                   prepare::PreparedEdgeValueTransfer{
@@ -4776,6 +4778,15 @@ int verify_current_block_join_parallel_copy_source_query() {
                       .destination_value = bir::Value::named(
                           bir::TypeKind::I32, "%current.destination"),
                   },
+              },
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = bir::Value::named(
+                  bir::TypeKind::I32, "%current.immediate_destination"),
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
                   prepare::PreparedEdgeValueTransfer{
                       .predecessor_label = predecessor_label,
                       .successor_label = successor_label,
@@ -4783,6 +4794,15 @@ int verify_current_block_join_parallel_copy_source_query() {
                       .destination_value = bir::Value::named(
                           bir::TypeKind::I32, "%current.immediate_destination"),
                   },
+              },
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = bir::Value::named(
+                  bir::TypeKind::I32, "%current.stack_destination"),
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
                   prepare::PreparedEdgeValueTransfer{
                       .predecessor_label = predecessor_label,
                       .successor_label = successor_label,
@@ -5197,6 +5217,10 @@ int verify_current_block_join_parallel_copy_source_query() {
   auto prepared_only_block = route5_join_block;
   prepared_only_block.insts.erase(prepared_only_block.insts.begin(),
                                   prepared_only_block.insts.begin() + 3);
+  const auto prepared_only_named_join_evidence = named_join_evidence;
+  auto exact_prepared_only_named_join_evidence =
+      prepared_only_named_join_evidence;
+  exact_prepared_only_named_join_evidence.instruction_index = 0;
   const auto prepared_only =
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
@@ -5205,7 +5229,7 @@ int verify_current_block_join_parallel_copy_source_query() {
               .value_locations = &locations,
               .edge_publications = &edge_publications,
               .control_flow = &control_flow,
-              .join_source_evidence = {named_join_evidence},
+              .join_source_evidence = {exact_prepared_only_named_join_evidence},
               .block = &prepared_only_block,
               .successor_label = successor_label,
           });
@@ -5219,6 +5243,25 @@ int verify_current_block_join_parallel_copy_source_query() {
       !prepared_only.facts.front().join_source_evidence) {
     return fail("complete prepared JoinTransfer publication should support a non-PHI edge");
   }
+  const auto stale_prepared_only =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .control_flow = &control_flow,
+              .join_source_evidence = {prepared_only_named_join_evidence},
+              .block = &prepared_only_block,
+              .successor_label = successor_label,
+          });
+  if (stale_prepared_only.facts.empty() ||
+      stale_prepared_only.facts.front().status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer ||
+      stale_prepared_only.facts.front().join_source_evidence.status !=
+          prepare::PreparedFactBoundaryStatus::Mismatched) {
+    return fail("stale prepared JoinTransfer producer evidence should fail closed");
+  }
   if (prepared_only.facts.size() < 2 ||
       prepared_only.facts[1].status !=
           prepare::PreparedEdgeCopySourceFactsStatus::Available ||
@@ -5230,7 +5273,7 @@ int verify_current_block_join_parallel_copy_source_query() {
     return fail("complete immediate JoinTransfer should establish prepared publication origin independently of named-source evidence");
   }
   auto incomplete_control_flow = control_flow;
-  incomplete_control_flow.join_transfers.front().edge_transfers.clear();
+  incomplete_control_flow.join_transfers.front().result = bir::Value{};
   const auto incomplete_edge_publications =
       prepare::make_prepared_edge_publication_lookups(
           names,
@@ -5312,7 +5355,7 @@ int verify_current_block_join_parallel_copy_source_query() {
           });
   if (ambiguous_prepared_only.facts.empty() ||
       ambiguous_prepared_only.facts.front().status !=
-          prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer ||
+          prepare::PreparedEdgeCopySourceFactsStatus::AmbiguousPublication ||
       ambiguous_prepared_only.facts.front().publication_semantic_origin !=
           prepare::PreparedCurrentBlockJoinParallelCopySourceFact::
               PublicationSemanticOrigin::Unknown ||
@@ -5331,7 +5374,7 @@ int verify_current_block_join_parallel_copy_source_query() {
                 prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
             facts.facts.size() != query.facts.size() ||
             facts.facts[0].status !=
-                prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+                prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer ||
             facts.facts[0].source_value_id != incoming_id ||
             facts.facts[0].source_home != &locations.value_homes[0] ||
             facts.facts[0].destination_home != &locations.value_homes[1] ||
