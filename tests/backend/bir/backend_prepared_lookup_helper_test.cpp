@@ -11514,7 +11514,7 @@ int verify_bir_block_entry_publication_identity_lookup() {
   const auto prepared_available =
       prepare::find_prepared_current_block_entry_publication(
           query, prepare::PreparedValueId{101});
-  const auto bir_available = mir::find_bir_block_entry_publication_identity(
+  const auto compatibility_identity = mir::find_bir_block_entry_publication_identity(
       prepared_available, &successor, &available_destination);
   const auto route4_available =
       bir::route4_block_entry_publication_record(&successor,
@@ -11526,9 +11526,9 @@ int verify_bir_block_entry_publication_identity_lookup() {
                                                        destination_name);
   if (prepared_available.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
-      !bir_available.available ||
-      bir_available.status !=
-          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      compatibility_identity.available ||
+      compatibility_identity.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch ||
       !route4_available ||
       route4_available.status !=
           bir::Route4PublicationAvailabilityStatus::Available ||
@@ -11544,17 +11544,9 @@ int verify_bir_block_entry_publication_identity_lookup() {
           bir::Route4PublicationValueRole::Consumed ||
       route4_available_value.value.value == nullptr ||
       route4_available_value.value.name != "%entry.dst" ||
-      bir_available.destination_value_id != prepared_available.destination_value_id ||
-      bir_available.destination_value_name_id !=
-          prepared_available.destination_value_name ||
-      bir_available.destination_value_name != "%entry.dst" ||
-      bir_available.successor_block != &successor ||
-      bir_available.destination_instruction != &successor.insts.front() ||
-      bir_available.destination_phi !=
-          std::get_if<bir::PhiInst>(&successor.insts.front()) ||
-      bir_available.destination_value != &available_destination ||
-      bir_available.instruction_index != std::size_t{0}) {
-    return fail("BIR block-entry publication identity should match prepared available destination semantics");
+      compatibility_identity.destination_value_id !=
+          prepared_available.destination_value_id) {
+    return fail("legacy BIR block-entry pointer identity should not manufacture attributed availability");
   }
 
   const auto missing_explicit_proof =
@@ -11649,6 +11641,10 @@ int verify_bir_block_entry_publication_identity_lookup() {
   const auto duplicate_proof =
       mir::find_bir_block_entry_publication_identity(
           prepared_available, duplicate_classification);
+  const auto compatibility_duplicate_proof =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available, &duplicate_proof_successor,
+          &duplicate_proof_destination);
   const auto authoritative_available =
       mir::find_bir_block_entry_publication_identity(
           prepared_available,
@@ -11692,6 +11688,9 @@ int verify_bir_block_entry_publication_identity_lookup() {
           }));
   if (duplicate_proof.available ||
       duplicate_proof.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous ||
+      compatibility_duplicate_proof.available ||
+      compatibility_duplicate_proof.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous ||
       !authoritative_available.available || authoritative_missing.available ||
       authoritative_missing.status !=

@@ -254,9 +254,8 @@ route4_current_block_entry_publication_identity(
   }
   const auto route4_identity =
       route4_current_block_entry_publication_identity(context, value, publication);
-  if (route4_identity &&
-      (route4_identity.destination_value_name != value.name ||
-       route4_identity.destination_value_type != value.type)) {
+  if (!route4_identity || route4_identity.destination_value_name != value.name ||
+      route4_identity.destination_value_type != value.type) {
     return std::nullopt;
   }
   auto destination_value_id = publication.destination_home->value_id;

@@ -860,38 +860,30 @@ find_bir_block_entry_publication_identity(
     const prepare::PreparedCurrentBlockEntryPublication& prepared,
     const bir::Block* proof_successor_block,
     const bir::Value* proof_destination_value) {
+  auto result = find_bir_block_entry_publication_identity(prepared);
   if (proof_successor_block == nullptr || proof_destination_value == nullptr) {
-    auto result = find_bir_block_entry_publication_identity(prepared);
     result.available = false;
     result.status = prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof;
     return result;
   }
-  const auto proof = bir::route4_block_entry_publication_record(
-      proof_successor_block, *proof_destination_value,
-      prepared.destination_value_name);
-  bir::Route4BlockEntryPublicationClaimCollection claims{
-      .destination = bir::Route4BlockEntryDestinationIdentity{
-          .successor_owner = proof_successor_block,
-          .successor_label_id = proof_successor_block->label_id,
-          .destination_value = proof_destination_value,
-          .destination_value_name_id = prepared.destination_value_name,
-          .destination_value_name = proof_destination_value->name,
-          .destination_value_type = proof_destination_value->type,
-      },
-  };
-  if (proof && proof.destination_instruction != nullptr) {
-    claims.claims.push_back(bir::Route4BlockEntryPublicationClaim{
-        .attribution_id = 1,
-        .attributed = true,
-        .claimed_destination = claims.destination,
-        .instruction_owner = proof_successor_block,
-        .instruction_owner_label_id = proof_successor_block->label_id,
-        .instruction = proof.destination_instruction,
-        .instruction_index = proof.destination_instruction_index,
-    });
+
+  std::size_t matching_phi_count = 0;
+  for (const auto& instruction : proof_successor_block->insts) {
+    const auto* phi = std::get_if<bir::PhiInst>(&instruction);
+    if (phi == nullptr) break;
+    if (phi->result.kind == bir::Value::Kind::Named &&
+        phi->result.name == proof_destination_value->name &&
+        phi->result.type == proof_destination_value->type) {
+      ++matching_phi_count;
+    }
   }
-  return find_bir_block_entry_publication_identity(
-      prepared, bir::route4_classify_block_entry_publication_claims(claims));
+  result.available = false;
+  result.status = matching_phi_count == 0
+                      ? prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable
+                  : matching_phi_count > 1
+                      ? prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous
+                      : prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch;
+  return result;
 }
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
