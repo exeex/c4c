@@ -1351,160 +1351,65 @@ find_prepared_load_local_source_producer(
   return reg;
 }
 
-struct PreparedReturnChainFacts {
-  const prepare::PreparedValueHome* terminal_home = nullptr;
-  const prepare::PreparedValueHome* next_operand_home = nullptr;
-};
-
-[[nodiscard]] std::optional<PreparedReturnChainFacts>
-find_prepared_return_chain_facts(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    const prepare::PreparedValueHome& result_home,
-    bir::TypeKind result_type) {
-  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.function.value_locations == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto generated_lookups =
-      context.function.prepared_lookups == nullptr &&
-              context.function.control_flow != nullptr
-          ? std::optional<prepare::PreparedFunctionLookups>{
-                prepare::make_prepared_function_lookups(
-                    *context.function.prepared, *context.function.control_flow)}
-          : std::nullopt;
-  const auto* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : generated_lookups.has_value()
-                ? &generated_lookups->edge_publication_source_producers
-                : nullptr;
-  if (source_producers == nullptr) {
-    return std::nullopt;
-  }
-
-  const prepare::PreparedValueHome* current = &result_home;
-  const prepare::PreparedValueHome* next_operand_home = nullptr;
-  auto current_instruction_index = instruction_index;
-  for (std::size_t depth = 0; depth <= context.bir_block->insts.size(); ++depth) {
-    if (find_return_abi_register(context,
-                                 current->value_id,
-                                 current->value_name,
-                                 result_type)
-            .has_value()) {
-      return PreparedReturnChainFacts{
-          .terminal_home = current,
-          .next_operand_home = next_operand_home,
-      };
-    }
-
-    const auto* handoff = prepare::find_indexed_prepared_move_bundle(
-        context.function.move_bundle_lookups,
-        context.function.value_locations,
-        prepare::PreparedMovePhase::BeforeInstruction,
-        context.block_index,
-        current_instruction_index + 1);
-    if (handoff == nullptr) {
-      return std::nullopt;
-    }
-    const prepare::PreparedMoveResolution* chain_move = nullptr;
-    for (const auto& move : handoff->moves) {
-      if (move.from_value_id != current->value_id ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value) {
-        continue;
-      }
-      if (chain_move != nullptr) {
-        return std::nullopt;
-      }
-      chain_move = &move;
-    }
-    if (chain_move == nullptr || chain_move->to_value_id == 0) {
-      return std::nullopt;
-    }
-    const auto* next_home = prepare::find_indexed_prepared_value_home(
-        context.function.value_home_lookups,
-        context.function.value_locations,
-        chain_move->to_value_id);
-    if (next_home == nullptr || next_home->value_name == c4c::kInvalidValueName) {
-      return std::nullopt;
-    }
-    const auto producer = prepare::find_prepared_same_block_scalar_producer(
-        context.function.prepared->names,
-        source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        next_home->value_name,
-        result_type,
-        current_instruction_index + 2);
-    const auto* binary = producer.has_value()
-                             ? std::get_if<bir::BinaryInst>(producer->instruction)
-                             : nullptr;
-    if (binary == nullptr || producer->instruction_index != current_instruction_index + 1 ||
-        producer->producer.kind !=
-            prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
-      return std::nullopt;
-    }
-    const auto result_name = prepare::resolve_prepared_value_name_id(
-        context.function.prepared->names, binary->result.name);
-    if (result_name != next_home->value_name) {
-      return std::nullopt;
-    }
-    const auto lhs_name = prepare::resolve_prepared_value_name_id(
-        context.function.prepared->names, binary->lhs.name);
-    const auto rhs_name = prepare::resolve_prepared_value_name_id(
-        context.function.prepared->names, binary->rhs.name);
-    const bir::Value* other = nullptr;
-    if (lhs_name == current->value_name && rhs_name != current->value_name) {
-      other = &binary->rhs;
-    } else if (rhs_name == current->value_name && lhs_name != current->value_name) {
-      other = &binary->lhs;
-    } else {
-      return std::nullopt;
-    }
-    if (depth == 0 && other->kind == bir::Value::Kind::Named) {
-      next_operand_home = find_named_value_home(*other, context.function);
-      if (next_operand_home == nullptr) {
-        return std::nullopt;
-      }
-    }
-    current = next_home;
-    current_instruction_index = producer->instruction_index;
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] std::optional<RegisterOperand> find_return_chain_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const prepare::PreparedValueHome& result_home,
     bir::TypeKind result_type,
     const prepare::PreparedValueHome** next_operand_home) {
-  if (context.bir_block == nullptr || context.function.value_locations == nullptr) {
+  if (context.function.prepared == nullptr || context.function.control_flow == nullptr ||
+      context.function.bir_function == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.prepared_lookups == nullptr || context.bir_block == nullptr) {
     return std::nullopt;
   }
 
-  const auto facts = find_prepared_return_chain_facts(
-      context, instruction_index, result_home, result_type);
-  if (!facts.has_value() || facts->terminal_home == nullptr) {
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      *context.function.control_flow,
+      context.function.value_locations,
+      context.function.bir_function,
+      nullptr,
+      &context.function.prepared->names,
+      context.function.prepared_lookups);
+  const prepare::PreparedObjectReturnChainClassification* classification = nullptr;
+  for (const auto& event : traversal) {
+    if (event.kind == prepare::PreparedObjectTraversalEventKind::Instruction &&
+        event.block_index == context.block_index &&
+        event.instruction_index == instruction_index) {
+      classification = &event.return_chain;
+      break;
+    }
+  }
+  if (classification == nullptr ||
+      classification->status != prepare::PreparedObjectReturnChainStatus::Available ||
+      !classification->relation.has_value()) {
+    return std::nullopt;
+  }
+  const auto& relation = *classification->relation;
+  if (relation.start_home != &result_home || relation.result_type != result_type ||
+      relation.terminal_home == nullptr ||
+      !relation.terminal_register_placement.has_value()) {
     return std::nullopt;
   }
   if (next_operand_home != nullptr) {
-    *next_operand_home = facts->next_operand_home;
+    *next_operand_home = relation.first_non_chain_operand_home;
   }
-  auto terminal_register =
-      find_return_abi_register(context,
-                               facts->terminal_home->value_id,
-                               facts->terminal_home->value_name,
-                               result_type);
-  if (!terminal_register.has_value()) {
+  const auto expected_view = scalar_storage_register_view(result_type);
+  if (!expected_view.has_value()) {
     return std::nullopt;
   }
-  return retarget_register_operand(*terminal_register,
-                                   result_home.value_id,
-                                   result_home.value_name,
-                                   result_type);
+  const auto converted = abi::convert_prepared_register(
+      *relation.terminal_register_placement, std::nullopt, expected_view);
+  if (!converted.reg.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .value_id = result_home.value_id,
+      .value_name = result_home.value_name,
+      .expected_view = scalar_register_view(result_type),
+  };
 }
 
 struct ScalarFallbackOperandSelector {

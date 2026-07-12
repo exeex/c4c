@@ -8,20 +8,24 @@ Current Step Title: Delete the ALU return-chain reconstruction
 
 ## Just Finished
 
-- Lifecycle review closed idea 728 after successor-linked public production
-  authority passed focused and matching backend proof; idea 709 is reactivated.
+- Plan Step 2.1 deleted the AArch64-local return-chain reconstruction, including
+  its move-bundle, successor-home, scalar-producer, operand walk, and generated
+  lookup fallback. The ALU consumer now uses only an attached common
+  `Available` return-chain relation and its terminal placement/first operand
+  facts.
 
 ## Suggested Next
 
-- Execute Plan Step 2.1 against `src/backend/mir/aarch64/codegen/alu.cpp`.
+- Execute the next Plan Step 2 packet against the next named AArch64 handoff
+  reconstruction selected by the supervisor.
 
 ## Watchouts
 
-- Consume attached `Available` authority for actual successor-linked chains.
-  Terminal-only/no-successor inputs correctly remain `StructurallyIncomplete`
-  and must stay fail closed.
+- The consumer explicitly rejects every status other than `Available` and any
+  incomplete relation. Terminal-only/no-successor inputs therefore remain
+  fail closed without an AArch64 reconstruction path.
 
 ## Proof
 
-- Lifecycle close accepted from exact 10/10 focused proof and matching 347/400
-  `^backend_` before/after proof with no new failures.
+- `cmake --build --preset default` passed. The delegated exact 10-test CTest
+  subset passed 10/10; output is recorded in `test_after.log`.
