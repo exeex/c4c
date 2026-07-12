@@ -4,34 +4,35 @@ Status: Active
 Source Idea Path: ideas/open/710_rv64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Remove RV64 Route 3/5 diagnostics
+Current Step Title: Migrate RV64 object intent
 
 ## Just Finished
 
-- Completed Plan Step 2's prepared edge-publication emission migration.
-  Removed the Route 5 parameter/adapter attachment, the LoadLocal Route 5
-  agreement guard, the Route 3/5 comparison helpers, and all three
-  route-labelled intent/dump fields. Focused assertions now prove the selected
-  publication and its memory access are the unique prepared indexed records;
-  missing, ambiguous, stale, mismatched, and incomplete prepared states remain
-  fail closed.
+- Completed Plan Step 3's directly implicated RV64 object-intent cleanup.
+  Removed the obsolete Route 3/5 oracle test and its route-derived BIR fixture
+  after the RV64 emitter's final executable dependency had already migrated to
+  ownership-named prepared publication, move, and memory-access facts. The
+  remaining focused tests preserve prepared positive, structured-evidence, and
+  fail-closed coverage without agreement rows or expectation weakening.
 
 ## Suggested Next
 
-- Execute Plan Step 3's remaining RV64 Route 3/5 diagnostic cleanup and focused
-  proof migration outside the now-prepared-only edge-publication intent API.
+- Execute Plan Step 4's semantic retirement search and broader matching RV64
+  regression comparison.
 
 ## Watchouts
 
-- Keep the publication-owned memory-access pointer equality against the unique
-  prepared result-value index as the freshness proof; do not reconstruct Route
-  3/5 identity in the target.
+- The focused object-emission test retains its pre-existing failure family;
+  compare `test_after.log` against the canonical supervisor-owned baseline
+  before accepting the slice. The prepared edge-publication test is green and
+  the scoped Route 3/5 vocabulary search is empty.
 
 ## Proof
 
 - `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^(backend_(riscv_prepared_edge_publication|riscv_object_emission))$'`:
   build passed; `backend_riscv_prepared_edge_publication` passed;
-  `backend_riscv_object_emission` retained exactly the existing baseline
-  failure family from `test_before.log` with no new diagnostic. Combined output
-  is preserved in `test_after.log`.
+  `backend_riscv_object_emission` failed with the existing call, branch
+  stack-load authority, frame-slot-address argument, and abort-runtime
+  baseline family. Combined output is preserved in `test_after.log`; supervisor
+  baseline comparison remains required.
