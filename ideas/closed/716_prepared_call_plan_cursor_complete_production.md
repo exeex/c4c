@@ -1,6 +1,6 @@
 # Cursor-Complete Prepared Call Plan Production
 
-Status: Open
+Status: Complete
 Type: common prepared-call producer repair
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 Blocks: `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
@@ -106,3 +106,12 @@ Keep this idea open and parked until the two common prerequisite initiatives
 restore the focused green-test criterion. Do not mark Step 3 or this source
 idea complete, weaken the tests, or absorb publication/joined-control repairs
 into prepared-call production.
+
+## Completion Note
+
+Closed after ideas 717 and 718 restored the parked common identity
+prerequisites. Focused producer and exact-lookup proof remained green, the
+independent route-quality review found no blocking alignment, overfit, or
+proof issue, and matching full-suite regression logs reported 3377 passed and
+52 failed both before and after with the monotonic guard passing. The blocked
+x86 joined-branch consumer work remains owned by idea 708.

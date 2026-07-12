@@ -4,7 +4,7 @@ Status: Open
 Type: x86 MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/706_common_mir_named_query_migration.md`
-Blocked By: `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
+Unblocked By: `ideas/closed/716_prepared_call_plan_cursor_complete_production.md`
 
 ## Parked Execution Note
 
@@ -19,6 +19,11 @@ call. Idea 716 owns semantic-operand-based, cursor-complete common production
 with unique optional relationship refinement and fail-closed contradictory or
 ambiguous evidence. Resume this idea's direct-call/scalar migration only after
 that contract has positive and negative proof.
+
+Idea 716 is now closed with its focused producer/lookup proof, independent
+route-quality review, and matching full-suite regression comparison accepted.
+Resume at Step 2; do not repeat the reverted x86 slice or reintroduce target
+fallback for authority now supplied by cursor-exact prepared call plans.
 
 ## First Owner And Scope
 
