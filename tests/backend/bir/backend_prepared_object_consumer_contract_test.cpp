@@ -1,4 +1,5 @@
 #include "src/backend/prealloc/prepared_object_traversal.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -1881,9 +1882,287 @@ int verify_frame_slot_consumer_diagnostic_query() {
   return 0;
 }
 
+struct ReturnChainFixture {
+  Fixture fixture = make_fixture();
+  prepare::PreparedFunctionLookups lookups;
+  std::vector<prepare::PreparedObjectTraversalEvent> traversal;
+};
+
+void add_register_home(ReturnChainFixture& chain,
+                       std::string_view name,
+                       prepare::PreparedValueId id,
+                       std::string reg) {
+  auto home = value_home(chain.fixture, name, id,
+                         prepare::PreparedValueHomeKind::Register);
+  home.register_name = std::move(reg);
+  chain.fixture.locations.value_homes.push_back(std::move(home));
+}
+
+prepare::PreparedMoveResolution chain_value_move(prepare::PreparedValueId from,
+                                                 prepare::PreparedValueId to) {
+  return prepare::PreparedMoveResolution{
+      .from_value_id = from,
+      .to_value_id = to,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+  };
+}
+
+prepare::PreparedMoveBundle chain_bundle(std::size_t instruction_index,
+                                         prepare::PreparedValueId from,
+                                         prepare::PreparedValueId to) {
+  return prepare::PreparedMoveBundle{
+      .proof_attribution_id = 1000 + instruction_index,
+      .function_name = 1,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .block_index = 1,
+      .instruction_index = instruction_index,
+      .moves = {chain_value_move(from, to)},
+  };
+}
+
+prepare::PreparedMoveBundle return_bundle(std::size_t instruction_index,
+                                          prepare::PreparedValueId from) {
+  const prepare::PreparedRegisterPlacement placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .slot_index = 0,
+  };
+  return prepare::PreparedMoveBundle{
+      .proof_attribution_id = 2000,
+      .function_name = 1,
+      .phase = prepare::PreparedMovePhase::BeforeReturn,
+      .block_index = 1,
+      .instruction_index = instruction_index,
+      .moves = {prepare::PreparedMoveResolution{
+          .from_value_id = from,
+          .destination_kind =
+              prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+          .destination_storage_kind =
+              prepare::PreparedMoveStorageKind::Register,
+          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+          .destination_register_placement = placement,
+      }},
+      .abi_bindings = {prepare::PreparedAbiBinding{
+          .destination_kind =
+              prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+          .destination_storage_kind =
+              prepare::PreparedMoveStorageKind::Register,
+          .destination_register_placement = placement,
+      }},
+  };
+}
+
+void rebuild_return_chain_authority(ReturnChainFixture& chain) {
+  chain.lookups.value_homes =
+      prepare::make_prepared_value_home_lookups(&chain.fixture.locations);
+  chain.lookups.move_bundles =
+      prepare::make_prepared_move_bundle_lookups(&chain.fixture.locations);
+  chain.lookups.edge_publication_source_producers.producers_by_value_name.clear();
+  const auto& block = chain.fixture.bir_function.blocks[1];
+  for (std::size_t index = 0; index < block.insts.size(); ++index) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&block.insts[index]);
+    if (binary == nullptr) continue;
+    const auto name = chain.fixture.names.value_names.intern(binary->result.name);
+    chain.lookups.edge_publication_source_producers.producers_by_value_name[name] =
+        prepare::PreparedEdgePublicationSourceProducer{
+            .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+            .block_label = chain.fixture.consumer_label,
+            .instruction_index = index,
+            .binary = binary,
+        };
+  }
+  chain.traversal = prepare::make_prepared_object_function_traversal(
+      chain.fixture.control_flow, &chain.fixture.locations,
+      &chain.fixture.bir_function, nullptr, &chain.fixture.names, &chain.lookups);
+}
+
+ReturnChainFixture make_return_chain_fixture(bool two_links = true,
+                                             bool first_chain_on_rhs = false) {
+  ReturnChainFixture chain;
+  chain.fixture.locations.move_bundles.clear();
+  chain.fixture.locations.value_homes.clear();
+  auto& block = chain.fixture.bir_function.blocks[1];
+  block.insts.clear();
+  block.insts.push_back(binary_inst("%v0", "%seed.a", "%seed.b"));
+  block.insts.push_back(first_chain_on_rhs
+                            ? binary_inst("%v1", "%other", "%v0")
+                            : binary_inst("%v1", "%v0", "%other"));
+  if (two_links) block.insts.push_back(binary_inst("%v2", "%tail", "%v1"));
+
+  add_register_home(chain, "%v0", 10, "r0");
+  add_register_home(chain, "%v1", 11, "r1");
+  add_register_home(chain, "%other", 20, "r2");
+  if (two_links) add_register_home(chain, "%v2", 12, "r3");
+  chain.fixture.locations.move_bundles.push_back(chain_bundle(1, 10, 11));
+  if (two_links) chain.fixture.locations.move_bundles.push_back(chain_bundle(2, 11, 12));
+  chain.fixture.locations.move_bundles.push_back(
+      return_bundle(block.insts.size(), two_links ? 12 : 11));
+  rebuild_return_chain_authority(chain);
+  return chain;
+}
+
+const prepare::PreparedObjectTraversalEvent* return_chain_start(
+    const ReturnChainFixture& chain, std::size_t instruction_index = 0) {
+  for (const auto& event : chain.traversal) {
+    if (event.kind == prepare::PreparedObjectTraversalEventKind::Instruction &&
+        event.block_index == 1 && event.instruction_index == instruction_index) return &event;
+  }
+  return nullptr;
+}
+
+prepare::PreparedObjectReturnChainClassification classify_return_chain(
+    const ReturnChainFixture& chain, std::size_t instruction_index = 0) {
+  return prepare::classify_prepared_object_return_chain({
+      .start_event = return_chain_start(chain, instruction_index),
+      .names = &chain.fixture.names,
+      .value_locations = &chain.fixture.locations,
+      .function_lookups = &chain.lookups,
+  });
+}
+
+bool expect_failed_return_chain(
+    const ReturnChainFixture& chain,
+    prepare::PreparedObjectReturnChainStatus status,
+    std::string_view message) {
+  const auto classification = classify_return_chain(chain);
+  if (classification.status != status || classification.relation.has_value()) {
+    std::cerr << message << ": expected "
+              << prepare::prepared_object_return_chain_status_name(status)
+              << ", got "
+              << prepare::prepared_object_return_chain_status_name(
+                     classification.status)
+              << ", relation="
+              << (classification.relation.has_value() ? "yes" : "no") << "\n";
+    return false;
+  }
+  return true;
+}
+
+int verify_return_chain_available_shapes() {
+  const auto two_link = make_return_chain_fixture(true, false);
+  const auto two = classify_return_chain(two_link);
+  const auto one_link_rhs = make_return_chain_fixture(false, true);
+  const auto one = classify_return_chain(one_link_rhs);
+  if (!expect(two.status == prepare::PreparedObjectReturnChainStatus::Available &&
+                  two.relation.has_value() && two.relation->links.size() == 2 &&
+                  two.relation->links[0].chain_operand_role ==
+                      prepare::PreparedObjectReturnChainOperandRole::Lhs &&
+                  two.relation->links[1].chain_operand_role ==
+                      prepare::PreparedObjectReturnChainOperandRole::Rhs &&
+                  two.relation->terminal_home ==
+                      &two_link.fixture.locations.value_homes[3] &&
+                  two.relation->terminal_abi_binding != nullptr,
+              "two-link prepared return chain should preserve ordered common authority") ||
+      !expect(one.status == prepare::PreparedObjectReturnChainStatus::Available &&
+                  one.relation.has_value() && one.relation->links.size() == 1 &&
+                  one.relation->links[0].chain_operand_role ==
+                      prepare::PreparedObjectReturnChainOperandRole::Rhs &&
+                  one.relation->first_non_chain_operand_home ==
+                      &one_link_rhs.fixture.locations.value_homes[2],
+              "one-link rhs prepared return chain should preserve operand authority")) {
+    return 1;
+  }
+  return 0;
+}
+
+int verify_return_chain_fail_closed_matrix() {
+  auto missing = make_return_chain_fixture();
+  missing.fixture.locations.move_bundles.erase(
+      missing.fixture.locations.move_bundles.begin());
+  rebuild_return_chain_authority(missing);
+
+  auto stale = make_return_chain_fixture();
+  stale.fixture.locations.move_bundles[0].proof_attribution_id = 0;
+  rebuild_return_chain_authority(stale);
+
+  auto ambiguous = make_return_chain_fixture();
+  ambiguous.fixture.locations.move_bundles[0].moves.push_back(
+      chain_value_move(10, 11));
+  rebuild_return_chain_authority(ambiguous);
+
+  auto inconsistent = make_return_chain_fixture();
+  inconsistent.fixture.locations.value_homes[0].function_name = 99;
+  rebuild_return_chain_authority(inconsistent);
+
+  auto unsupported = make_return_chain_fixture();
+  unsupported.fixture.locations.move_bundles[0].moves[0].op_kind =
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp;
+  rebuild_return_chain_authority(unsupported);
+
+  auto non_adjacent = make_return_chain_fixture();
+  auto& non_adjacent_insts = non_adjacent.fixture.bir_function.blocks[1].insts;
+  non_adjacent_insts = {
+      binary_inst("%v1", "%v0", "%other"),
+      binary_inst("%v0", "%seed.a", "%seed.b"),
+      binary_inst("%v2", "%tail", "%v1"),
+  };
+  non_adjacent.fixture.locations.move_bundles[0].instruction_index = 2;
+  rebuild_return_chain_authority(non_adjacent);
+
+  auto wrong_operand = make_return_chain_fixture();
+  wrong_operand.fixture.bir_function.blocks[1].insts[1] =
+      binary_inst("%v1", "%other", "%tail");
+  rebuild_return_chain_authority(wrong_operand);
+
+  auto missing_home = make_return_chain_fixture();
+  missing_home.fixture.locations.value_homes.erase(
+      missing_home.fixture.locations.value_homes.begin() + 2);
+  rebuild_return_chain_authority(missing_home);
+
+  auto incomplete = make_return_chain_fixture();
+  incomplete.fixture.locations.move_bundles.back().abi_bindings.clear();
+  rebuild_return_chain_authority(incomplete);
+
+  auto cycle = make_return_chain_fixture();
+  cycle.fixture.locations.move_bundles[0].moves[0].to_value_id = 10;
+  rebuild_return_chain_authority(cycle);
+
+  if (!expect_failed_return_chain(missing,
+          prepare::PreparedObjectReturnChainStatus::Absent,
+          "missing chain authority should fail closed") ||
+      !expect_failed_return_chain(stale,
+          prepare::PreparedObjectReturnChainStatus::Stale,
+          "stale chain attribution should fail closed") ||
+      !expect_failed_return_chain(ambiguous,
+          prepare::PreparedObjectReturnChainStatus::Ambiguous,
+          "ambiguous chain authority should fail closed") ||
+      !expect_failed_return_chain(inconsistent,
+          prepare::PreparedObjectReturnChainStatus::Inconsistent,
+          "inconsistent chain authority should fail closed") ||
+      !expect_failed_return_chain(unsupported,
+          prepare::PreparedObjectReturnChainStatus::Unsupported,
+          "unsupported chain move should fail closed") ||
+      !expect(classify_return_chain(non_adjacent, 1).status ==
+                      prepare::PreparedObjectReturnChainStatus::NonAdjacent &&
+                  !classify_return_chain(non_adjacent, 1).relation.has_value(),
+          "non-adjacent producer should fail closed without a relation") ||
+      !expect_failed_return_chain(wrong_operand,
+          prepare::PreparedObjectReturnChainStatus::WrongChainOperand,
+          "wrong chain operand should fail closed") ||
+      !expect_failed_return_chain(missing_home,
+          prepare::PreparedObjectReturnChainStatus::MissingFirstOperandHome,
+          "missing first non-chain operand home should fail closed") ||
+      !expect_failed_return_chain(incomplete,
+          prepare::PreparedObjectReturnChainStatus::StructurallyIncomplete,
+          "incomplete terminal authority should fail closed") ||
+      !expect_failed_return_chain(cycle,
+          prepare::PreparedObjectReturnChainStatus::CycleOrDepthExceeded,
+          "cyclic chain authority should fail closed")) {
+    return 1;
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
+  if (const auto result = verify_return_chain_available_shapes(); result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_return_chain_fail_closed_matrix(); result != 0) {
+    return EXIT_FAILURE;
+  }
   if (const auto result = verify_event_kind_names(); result != 0) {
     return EXIT_FAILURE;
   }
