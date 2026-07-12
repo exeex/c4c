@@ -330,23 +330,43 @@ namespace {
 }
 
 [[nodiscard]] SameBlockProducerKind
-route4_publication_source_kind_to_same_block_kind(
-    bir::Route4PublicationSourceKind kind) {
+prepared_publication_source_kind_to_same_block_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
   switch (kind) {
-    case bir::Route4PublicationSourceKind::Binary:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
       return SameBlockProducerKind::Binary;
-    case bir::Route4PublicationSourceKind::Cast:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
       return SameBlockProducerKind::Cast;
-    case bir::Route4PublicationSourceKind::SelectMaterialization:
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
       return SameBlockProducerKind::Select;
-    case bir::Route4PublicationSourceKind::LoadLocal:
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
       return SameBlockProducerKind::LoadLocal;
-    case bir::Route4PublicationSourceKind::LoadGlobal:
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
       return SameBlockProducerKind::LoadGlobal;
-    case bir::Route4PublicationSourceKind::Unknown:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
       return SameBlockProducerKind::Unknown;
   }
   return SameBlockProducerKind::Unknown;
+}
+
+[[nodiscard]] bool prepared_publication_source_matches_instruction(
+    const prepare::PreparedEdgePublicationSourceProducer& producer,
+    const bir::Inst& instruction) {
+  switch (producer.kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary == std::get_if<bir::BinaryInst>(&instruction);
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast == std::get_if<bir::CastInst>(&instruction);
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select == std::get_if<bir::SelectInst>(&instruction);
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local == std::get_if<bir::LoadLocalInst>(&instruction);
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global == std::get_if<bir::LoadGlobalInst>(&instruction);
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return false;
+  }
+  return false;
 }
 
 [[nodiscard]] SameBlockProducerKind
@@ -394,39 +414,6 @@ select_chain_producer_result_to_same_block(
       .before_instruction_index = before_instruction_index,
       .produced_value = same_block_value_identity(*result.produced_value),
       .materialization_available = result.scalar_materialization_available,
-  };
-}
-
-[[nodiscard]] SameBlockProducerIdentity route4_current_block_record_to_same_block(
-    const bir::Route4CurrentBlockPublicationRecord& record,
-    const bir::Block& block,
-    std::string_view block_label) {
-  if (!record ||
-      record.source_producer_instruction_index >= block.insts.size()) {
-    return {};
-  }
-  const auto kind = route4_publication_source_kind_to_same_block_kind(
-      record.source_producer_kind);
-  if (kind == SameBlockProducerKind::Unknown) {
-    return {};
-  }
-  const auto& inst = block.insts[record.source_producer_instruction_index];
-  const auto* produced_value = produced_value_for_same_block_identity(inst);
-  if (produced_value == nullptr ||
-      produced_value->kind != bir::Value::Kind::Named ||
-      produced_value->name != record.value_name ||
-      produced_value->type != record.value_type) {
-    return {};
-  }
-  return SameBlockProducerIdentity{
-      .inst = &inst,
-      .instruction_index = record.source_producer_instruction_index,
-      .kind = kind,
-      .block_label = normalized_block_label(block, block_label),
-      .before_instruction_index = record.before_instruction_index,
-      .produced_value = same_block_value_identity(*produced_value),
-      .materialization_available = same_block_producer_kind_has_materialization(
-          kind),
   };
 }
 
@@ -718,27 +705,6 @@ find_select_chain_view_result(BirSelectChainIdentityRequest request) {
                                       : bir::TypeKind::Void;
 }
 
-[[nodiscard]] std::string_view root_value_name(
-    const BirCurrentBlockPublicationIdentityRequest& request) {
-  if (!request.root_value_name.empty()) {
-    return request.root_value_name;
-  }
-  if (request.root_value != nullptr &&
-      request.root_value->kind == bir::Value::Kind::Named) {
-    return request.root_value->name;
-  }
-  return {};
-}
-
-[[nodiscard]] bir::TypeKind root_value_type(
-    const BirCurrentBlockPublicationIdentityRequest& request) {
-  if (request.root_value_type != bir::TypeKind::Void) {
-    return request.root_value_type;
-  }
-  return request.root_value != nullptr ? request.root_value->type
-                                      : bir::TypeKind::Void;
-}
-
 [[nodiscard]] std::string_view destination_value_name(
     const BirCfgEdgePublicationSourceRequest& request) {
   if (!request.destination_value_name.empty()) {
@@ -1020,41 +986,41 @@ evaluate_same_block_integer_constant(
 
 [[nodiscard]] BirCurrentBlockPublicationIdentity
 find_bir_current_block_publication_identity(
-    BirCurrentBlockPublicationIdentityRequest request) {
-  if (!request ||
-      (!request.block_label.empty() && request.block_label != request.block->label)) {
+    const prepare::PreparedCurrentBlockPublicationConsumption& prepared) {
+  const auto kind = prepared_publication_source_kind_to_same_block_kind(
+      prepared.source_producer_kind);
+  if (!prepared.available || prepared.source_producer == nullptr ||
+      prepared.instruction == nullptr || prepared.produced_value == nullptr ||
+      prepared.value_name == kInvalidValueName ||
+      prepared.source_producer->kind != prepared.source_producer_kind ||
+      prepared.source_producer->instruction_index != prepared.instruction_index ||
+      !prepared_publication_source_matches_instruction(
+          *prepared.source_producer, *prepared.instruction) ||
+      produced_value_for_same_block_identity(*prepared.instruction) !=
+          prepared.produced_value ||
+      prepared.produced_value->kind != bir::Value::Kind::Named ||
+      prepared.produced_value->name.empty() || kind == SameBlockProducerKind::Unknown) {
     return {};
   }
-  const auto value_name = root_value_name(request);
-  if (value_name.empty()) {
-    return {};
-  }
-  const auto value_type = root_value_type(request);
-  bir::Function function;
-  function.blocks.push_back(*request.block);
-  const auto& indexed_block = function.blocks.front();
-  const auto index = bir::route4_build_publication_availability_index(function);
-  const auto publication = bir::route4_find_current_block_publication(
-      index,
-      indexed_block,
-      bir::Value::named(value_type, std::string{value_name}),
-      request.before_instruction_index);
-  const auto producer = route4_current_block_record_to_same_block(
-      publication, *request.block, request.block_label);
-  if (!producer || !producer.produced_value ||
-      producer.produced_value.name != value_name) {
-    return {};
-  }
+  const auto produced_value = same_block_value_identity(*prepared.produced_value);
+  const auto producer = SameBlockProducerIdentity{
+      .inst = prepared.instruction,
+      .instruction_index = prepared.instruction_index,
+      .kind = kind,
+      .produced_value = produced_value,
+      .materialization_available =
+          same_block_producer_kind_has_materialization(kind),
+  };
   return BirCurrentBlockPublicationIdentity{
       .available = true,
       .source_producer = producer,
       .instruction = producer.inst,
-      .produced_value = producer.produced_value.value,
-      .produced_value_identity = producer.produced_value,
-      .produced_value_name = producer.produced_value.name,
-      .produced_value_type = producer.produced_value.type,
+      .produced_value = prepared.produced_value,
+      .produced_value_identity = produced_value,
+      .produced_value_name = produced_value.name,
+      .produced_value_type = produced_value.type,
       .instruction_index = producer.instruction_index,
-      .value_name = value_name,
+      .value_name = produced_value.name,
       .source_producer_kind = producer.kind,
   };
 }

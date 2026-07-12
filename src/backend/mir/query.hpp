@@ -4,6 +4,7 @@
 #include "../bir/query.hpp"
 #include "../prealloc/names.hpp"
 #include "../prealloc/publication_plans.hpp"
+#include "../prealloc/select_chain_lookups.hpp"
 #include "prepared_view.hpp"
 
 #include <cstddef>
@@ -121,20 +122,6 @@ struct SameBlockProducerRecord {
 };
 
 using SameBlockProducerIdentity = SameBlockProducerRecord;
-
-struct BirCurrentBlockPublicationIdentityRequest {
-  const bir::Block* block = nullptr;
-  std::string_view block_label;
-  const bir::Value* root_value = nullptr;
-  std::string_view root_value_name;
-  bir::TypeKind root_value_type = bir::TypeKind::Void;
-  std::size_t before_instruction_index = 0;
-
-  [[nodiscard]] explicit operator bool() const {
-    return block != nullptr &&
-           (root_value != nullptr || !root_value_name.empty());
-  }
-};
 
 struct BirCurrentBlockPublicationIdentity {
   bool available = false;
@@ -476,7 +463,7 @@ find_bir_same_block_load_local_stored_value_source_identity(
 
 [[nodiscard]] BirCurrentBlockPublicationIdentity
 find_bir_current_block_publication_identity(
-    BirCurrentBlockPublicationIdentityRequest request);
+    const prepare::PreparedCurrentBlockPublicationConsumption& prepared);
 
 [[nodiscard]] BirBlockEntryPublicationIdentity
 find_bir_block_entry_publication_identity(

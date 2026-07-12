@@ -22,7 +22,7 @@ constexpr std::array<RouteInventory, 8> kInventory{{
     {1, 5, "BIR same-block producer semantics", "named producer view"},
     {2, 0, "BIR select-chain semantics", "named select/dependency view"},
     {3, 19, "BIR memory-access semantics", "named memory-access view"},
-    {4, 14, "BIR publication semantics", "named publication view"},
+    {4, 0, "prepared current-block publication semantics", "prepared publication consumption"},
     {5, 33, "BIR edge/join semantics", "named edge/join publication view"},
     {6, 0, "BIR call-boundary semantics", "named call-boundary view"},
     {7, 0, "BIR comparison semantics", "named comparison view"},
@@ -111,9 +111,9 @@ int main() {
   const std::regex route_analysis_entry{R"(\broute[1-8]_(build|find|evaluate|current)[A-Za-z0-9_]*\b)"};
   const std::regex hidden_route_return{R"(\bfind_bir_[A-Za-z0-9_]*\s*\()"};
   if (count_matches(common_boundary, route_record_or_index) == 0 ||
-      count_matches(implementation, route_analysis_entry) == 0 ||
+      count_matches(implementation, route_analysis_entry) != 0 ||
       count_matches(implementation, hidden_route_return) == 0) {
-    return fail("guard self-check did not detect records/indexes, analysis entry points, and hidden route-return wrappers");
+    return fail("guard self-check did not detect remaining records/indexes and hidden wrappers, or found a route analysis entry point");
   }
 
   return 0;

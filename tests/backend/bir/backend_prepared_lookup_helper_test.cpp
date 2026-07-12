@@ -1200,75 +1200,18 @@ bool prepared_and_bir_current_block_publication_identity_match(
           &block,
           value_name,
           before_instruction_index);
-  const bool route4_same_block =
-      prepare::prepared_block_label(names, block_label) == block.label;
-  const auto route1_index = bir::route1_build_producer_index(block);
-  const auto route1_query = bir::Route1SameBlockProducerQuery{
-      .index = &route1_index,
-      .before_instruction_index = before_instruction_index,
-  };
-  const auto route4_value =
-      bir::Value::named(value_type,
-                       std::string{prepare::prepared_value_name(names,
-                                                                 value_name)});
-  const auto route4 =
-      route4_same_block
-          ? bir::route4_current_block_publication_record(route1_query,
-                                                         route4_value,
-                                                         value_name)
-          : bir::Route4CurrentBlockPublicationRecord{};
-  const auto route4_recorded_value =
-      route4_same_block
-          ? bir::route4_current_block_publication_value_record(route1_query,
-                                                               route4_value,
-                                                               value_name)
-          : bir::Route4PublicationValueRecord{};
   const auto bir = mir::find_bir_current_block_publication_identity(
-      mir::BirCurrentBlockPublicationIdentityRequest{
-          .block = &block,
-          .block_label = prepare::prepared_block_label(names, block_label),
-          .root_value_name = prepare::prepared_value_name(names, value_name),
-          .root_value_type = value_type,
-          .before_instruction_index = before_instruction_index,
-      });
+      prepared);
   if (prepared.available != bir.available) {
     return false;
   }
   if (!prepared.available) {
-    return !route4_same_block ||
-           (!route4 &&
-            route4.status != bir::Route4PublicationAvailabilityStatus::Available &&
-            !route4_recorded_value &&
-            route4_recorded_value.scope ==
-                bir::Route4PublicationScope::CurrentBlock &&
-            route4_recorded_value.status == route4.status);
+    return !bir;
   }
   return prepared.source_producer != nullptr &&
          prepared.instruction != nullptr &&
          prepared.produced_value != nullptr &&
-         route4 &&
-         route4.status == bir::Route4PublicationAvailabilityStatus::Available &&
-         route4.value_name == prepared.produced_value->name &&
-         route4.value_name_id == prepared.value_name &&
-         route4.value_type == prepared.produced_value->type &&
-         route4.before_instruction_index == before_instruction_index &&
-         route4.source_producer_instruction == prepared.instruction &&
-         route4.source_producer_instruction_index ==
-             prepared.instruction_index &&
-         route4.produced_value.value == prepared.produced_value &&
-         route4.produced_value.name == prepared.produced_value->name &&
-         route4.produced_value.name_id == prepared.value_name &&
-         route4.source_producer_kind ==
-             expected_bir_route4_publication_source_kind(
-                 prepared.source_producer_kind) &&
-         route4_recorded_value &&
-         route4_recorded_value.scope ==
-             bir::Route4PublicationScope::CurrentBlock &&
-         route4_recorded_value.value_role ==
-             bir::Route4PublicationValueRole::Produced &&
-         route4_recorded_value.value.value == prepared.produced_value &&
-         route4_recorded_value.current_block.source_producer_instruction ==
-             prepared.instruction &&
+         prepared.produced_value->type == value_type &&
          bir.source_producer &&
          bir.instruction == prepared.instruction &&
          bir.produced_value == prepared.produced_value &&
@@ -9091,14 +9034,11 @@ int verify_prepared_same_block_scalar_source_facts() {
           block.insts.size())) {
     return fail("BIR/prepared current-block publication identity should fail closed for wrong block");
   }
+  auto mismatched_type_publication = current_block_sum;
+  const auto mismatched_type_value = bir::Value::named(bir::TypeKind::I32, "%sum");
+  mismatched_type_publication.produced_value = &mismatched_type_value;
   if (mir::find_bir_current_block_publication_identity(
-          mir::BirCurrentBlockPublicationIdentityRequest{
-              .block = &block,
-              .block_label = block.label,
-              .root_value_name = "%sum",
-              .root_value_type = bir::TypeKind::I32,
-              .before_instruction_index = block.insts.size(),
-          })) {
+          mismatched_type_publication)) {
     return fail("BIR current-block publication identity should fail closed for mismatched value type");
   }
   const auto route1_index_for_current = bir::route1_build_producer_index(block);
@@ -9170,28 +9110,6 @@ int verify_prepared_same_block_scalar_source_facts() {
       facade_current_sum_ref.reference.record_index !=
           indexed_current_sum_ref.reference.record_index) {
     return fail("Route 4 current-block publication index/reference should find available BIR record");
-  }
-  const auto bir_current_sum_from_route4 =
-      mir::find_bir_current_block_publication_identity(
-          mir::BirCurrentBlockPublicationIdentityRequest{
-              .block = &route4_current_block,
-              .block_label = route4_current_block.label,
-              .root_value_name = "%sum",
-              .root_value_type = bir::TypeKind::I64,
-              .before_instruction_index = route4_current_block.insts.size(),
-          });
-  if (!bir_current_sum_from_route4 ||
-      bir_current_sum_from_route4.instruction !=
-          indexed_current_sum.source_producer_instruction ||
-      bir_current_sum_from_route4.instruction_index !=
-          indexed_current_sum.source_producer_instruction_index ||
-      bir_current_sum_from_route4.produced_value_name !=
-          indexed_current_sum.value_name ||
-      bir_current_sum_from_route4.produced_value_type !=
-          indexed_current_sum.value_type ||
-      bir_current_sum_from_route4.source_producer_kind !=
-          mir::SameBlockProducerKind::Binary) {
-    return fail("MIR current-block publication identity should answer from Route 4 indexed BIR record");
   }
   const auto indexed_current_before_sum =
       bir::route4_find_current_block_publication(
@@ -9664,30 +9582,22 @@ int verify_prepared_same_block_scalar_source_facts() {
           .has_value()) {
     return fail("prepared scalar producer query should fail closed on mismatched producer facts");
   }
-  if (prepare::find_prepared_current_block_publication_consumption(
+  const auto mismatched_current_block_publication =
+      prepare::find_prepared_current_block_publication_consumption(
           names,
           &mismatched_source_producers,
           block_label,
           &block,
           sum_name,
-          block.insts.size())
-          .available) {
+          block.insts.size());
+  if (mismatched_current_block_publication.available) {
     return fail("current-block publication consumption query should fail closed on mismatched producer facts");
   }
   const auto bir_sum_after_mismatched_prepared_fact =
       mir::find_bir_current_block_publication_identity(
-          mir::BirCurrentBlockPublicationIdentityRequest{
-              .block = &block,
-              .block_label = block.label,
-              .root_value_name = "%sum",
-              .root_value_type = bir::TypeKind::I64,
-              .before_instruction_index = block.insts.size(),
-          });
-  if (!bir_sum_after_mismatched_prepared_fact.available ||
-      bir_sum_after_mismatched_prepared_fact.instruction != &block.insts[2] ||
-      bir_sum_after_mismatched_prepared_fact.source_producer_kind !=
-          mir::SameBlockProducerKind::Binary) {
-    return fail("BIR current-block publication identity should remain block-derived when prepared facts are mismatched");
+          mismatched_current_block_publication);
+  if (bir_sum_after_mismatched_prepared_fact) {
+    return fail("common current-block publication identity should fail closed when prepared facts are mismatched");
   }
   if (prepare::evaluate_prepared_same_block_integer_constant(
           names,

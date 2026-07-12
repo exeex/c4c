@@ -4,31 +4,28 @@ Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
-Current Step Title: Continue remaining prepared-authority families — Route 5 edge/join packet only
+Current Step Title: Continue remaining prepared-authority families — Route 4 current-block publication packet only
 
 ## Just Finished
 
-- Step 3.3 Route 5 edge/join packet replaced current-block join request/index
-  discovery in the common MIR query with the complete prepared direct-edge
-  source view, removed the common request and dead join reconstruction helpers,
-  and preserved fail-closed unavailable and mixed-successor handling.
-- Adapted both bounded AArch64 fixtures and the prepared MIR core comparator
-  contract to prove prepared authority without Route 5 fallback.
-- Migrated the stale aggregate join-source matrix to construct a complete
-  `PreparedMirCoreView` from its existing semantic components; positive source
-  rows and unsupported/missing authority rows now query typed prepared views.
+- Step 3.3 Route 4 current-block publication packet replaced common MIR's
+  block-copy/index/discovery reconstruction with direct consumption of the
+  complete uniquely-bound prepared publication object.
+- Removed the public reconstruction request and Route 4 conversion helpers;
+  the adapter now rejects unavailable, incomplete, stale, mismatched-kind, and
+  instruction/value-incoherent prepared payloads.
+- Updated focused positive and fail-closed contracts and ratcheted the common
+  query Route 4 inventory from 14 hits to zero.
 
 ## Suggested Next
 
-- Select the next separately bounded Step 3.3 prepared-authority family; keep
-  placement, publication, home, move, freshness, frame, call-plan, and control
-  lookup work outside this completed edge/join packet.
+- Select the next separately bounded Step 3.3 prepared-authority family.
 
 ## Watchouts
 
-- The authorized Route 1, Route 4, and Route 5 inventory ratchets are applied
-  at 5, 14, and 33 hits. The public-header guard now requires zero route-owned
-  payload types and the implementation self-checks remain unchanged.
+- The authorized Route 1, Route 4, and Route 5 inventory ratchets are now 5, 0,
+  and 33 hits. The guard also requires zero route analysis entry points in the
+  common implementation while retaining its remaining-route self-checks.
 - `backend_prepared_lookup_helper_test` still does not compile because of
   unrelated pre-existing missing Route 1 locals in
   `verify_prepared_same_block_scalar_source_facts()` and a `string_view::clear()`
@@ -37,12 +34,11 @@ Current Step Title: Continue remaining prepared-authority families — Route 5 e
 
 ## Proof
 
-- Exact expanded proof is green 4/4: `cmake --build --preset default --target
+- Exact delegated proof built both targets. The guard passes; the frame/call
+  contract retains the known baseline `call_plans no longer publish the direct
+  call` failure. Command: `cmake --build --preset default --target
   backend_common_mir_query_route_authority_guard_test
-  backend_aarch64_current_block_join_routing_test
-  backend_prepared_mir_core_comparator_test
-  backend_aarch64_instruction_dispatch_test && ctest --test-dir build
+  backend_prepare_frame_stack_call_contract_test && ctest --test-dir build
   --output-on-failure -R
-  '^(backend_common_mir_query_route_authority_guard|backend_aarch64_current_block_join_routing|backend_prepared_mir_core_comparator|backend_aarch64_instruction_dispatch)$'
-  > test_after.log 2>&1`; `test_after.log` is canonical and sufficient for this
-  bounded packet.
+  '^(backend_common_mir_query_route_authority_guard|backend_prepare_frame_stack_call_contract)$'
+  > test_after.log 2>&1`; canonical log: `test_after.log`.

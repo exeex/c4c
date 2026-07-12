@@ -5455,13 +5455,7 @@ int check_call_argument_source_producer_materializability_contract() {
   }
   const auto sum_bir_current_block_publication =
       mir::find_bir_current_block_publication_identity(
-          mir::BirCurrentBlockPublicationIdentityRequest{
-              .block = &block,
-              .block_label = block.label,
-              .root_value_name = prepare::prepared_value_name(names, sum_name),
-              .root_value_type = bir::TypeKind::I32,
-              .before_instruction_index = 3,
-          });
+          sum_current_block_publication);
   if (!sum_bir_current_block_publication.available ||
       sum_bir_current_block_publication.source_producer.inst !=
           sum_current_block_publication.instruction ||
@@ -5794,51 +5788,41 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: binary fact should reject stale producer payload");
   }
-  if (prepare::find_prepared_current_block_publication_consumption(
+  const auto future_current_block_publication =
+      prepare::find_prepared_current_block_publication_consumption(
           names,
           &source_producers,
           block_label,
           &block,
           sum_name,
-          1)
-          .available) {
+          1);
+  if (future_current_block_publication.available) {
     return fail(
         "call-argument producer materializability contract: current-block publication should fail closed for future producer");
   }
   if (mir::find_bir_current_block_publication_identity(
-          mir::BirCurrentBlockPublicationIdentityRequest{
-              .block = &block,
-              .block_label = block.label,
-              .root_value_name = "%sum",
-              .root_value_type = bir::TypeKind::I32,
-              .before_instruction_index = 1,
-          })) {
+          future_current_block_publication)) {
     return fail(
         "call-argument producer materializability contract: BIR current-block publication should fail closed for future producer");
   }
   auto mismatched_source_producers = source_producers;
   mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 0;
-  if (prepare::find_prepared_current_block_publication_consumption(
+  const auto mismatched_current_block_publication =
+      prepare::find_prepared_current_block_publication_consumption(
           names,
           &mismatched_source_producers,
           block_label,
           &block,
           sum_name,
-          3)
-          .available) {
+          3);
+  if (mismatched_current_block_publication.available) {
     return fail(
         "call-argument producer materializability contract: current-block publication should fail closed on mismatched producer fact");
   }
-  if (!mir::find_bir_current_block_publication_identity(
-          mir::BirCurrentBlockPublicationIdentityRequest{
-              .block = &block,
-              .block_label = block.label,
-              .root_value_name = "%sum",
-              .root_value_type = bir::TypeKind::I32,
-              .before_instruction_index = 3,
-          })) {
+  if (mir::find_bir_current_block_publication_identity(
+          mismatched_current_block_publication)) {
     return fail(
-        "call-argument producer materializability contract: BIR current-block publication should not depend on mismatched prepared producer facts");
+        "call-argument producer materializability contract: common current-block publication should fail closed on mismatched prepared producer facts");
   }
 
   return 0;
