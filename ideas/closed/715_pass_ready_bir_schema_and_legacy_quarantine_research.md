@@ -1,6 +1,6 @@
 # Pass-Ready BIR Schema And Legacy Quarantine Research
 
-Status: Open
+Status: Closed
 Type: Research and architecture documentation
 After: `ideas/open/714_backend_test_source_reachability_cleanup.md`
 Parent: none
@@ -13,6 +13,19 @@ Related:
 - `src/backend/bir/`
 - `ref/claudes-c-compiler/src/backend/`
 Owning Layer: LIR-to-BIR output schema, BIR core IR, BIR analyses, compatibility quarantine, and BIR-to-MIR stage boundaries
+
+## Completion
+
+Closed after the accepted research package established the current-schema
+inventory, exhaustive field classification, observational
+`LegacyBirCompatibilityCapsule`, pass-ready mutation and verification
+contract, reference-backend comparison, concrete target schema/API blueprint,
+and staged migration with proof, rollback, and compatibility deletion gates.
+
+The completed package lives under `docs/backend/pass_ready_bir/` as `index.md`
+plus the six required numbered answer files. The eight implementation choices
+recorded in `index.md` are explicit follow-up decisions and do not weaken or
+leave incomplete this research idea's authority boundaries.
 
 ## Goal
 
