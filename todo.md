@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete — Ready for Lifecycle Review
 Source Idea Path: ideas/open/716_prepared_call_plan_cursor_complete_production.md
 Source Plan Path: plan.md
 Current Step ID: 3
@@ -8,41 +8,32 @@ Current Step Title: Run broader acceptance and hand back to idea 708
 
 ## Just Finished
 
-- Plan Step 2 completed the independent route-quality audit recorded in
-  `review/idea716_step2_route_quality_review.md`. The review found no blocking
-  alignment, testcase-overfit, route-quality, or focused-proof issue: common
-  production remains semantic-operand-first with optional unique refinement,
-  exact lookup fails closed on ambiguous or stale authority, and the focused
-  assertions exercise general cursor and operand identity without expectation
-  weakening or fixture-shaped production branches.
-- The reviewer accepted the already recorded exact Step 1 focused proof as
-  sufficient narrow evidence for the owned producer/lookup route. Broader
-  regression acceptance remains outstanding for Plan Step 3.
+- Plan Step 3 completed the supervisor-selected full-suite monotonic regression
+  comparison. The matching before and after runs each reported 3377 passed and
+  52 failed: passed delta 0, failed delta 0, zero new failures, zero resolved
+  failures, and zero new tests exceeding 30 seconds.
+- The monotonic regression guard passed with
+  `--allow-non-decreasing-passed`. All active runbook checklist items are now
+  complete and ready for plan-owner closure review before idea 708 resumes.
 
 ## Suggested Next
 
-- Execute Plan Step 3's supervisor-selected matching broader backend
-  before/after regression guard, then request lifecycle closure only if it
-  reports no new failures or lost covered passes.
+- Ask the plan owner to review and close the idea-716 lifecycle state, then
+  resume idea 708 only after that closure is accepted.
 
 ## Watchouts
 
-- The accepted review is narrow route-quality evidence, not the broader Step 3
-  acceptance comparison.
-- The focused CTest command still reaches two later independently owned x86
-  failures after the idea-716 assertions pass: prepared-MIR core-view/emitter
-  integration and joined-edge target materialization. Do not absorb either
-  downstream owner into common call-plan production or add fallback authority.
+- The unchanged 52 full-suite failures are baseline failures, not new
+  regressions from idea 716. Do not absorb downstream idea-708 work into the
+  completed common call-plan producer route during lifecycle closure.
 
 ## Proof
 
-- No new proof command was delegated for Plan Step 2. Independent review:
-  `review/idea716_step2_route_quality_review.md`; result: no blocking
-  alignment, overfit, route-quality, or proof finding.
-- The accepted Step 1 proof was run exactly as already recorded:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$' > test_after.log 2>&1`.
-  The build passed (`ninja: no work to do`); CTest ran 2 tests and reported 0
-  passed, with the idea-716 assertions passing before the two independently
-  owned later failures classified above. The accepted executor proof was
-  rolled forward by the supervisor to canonical `test_before.log`;
-  `test_after.log` is not currently present.
+- Supervisor proof: `cmake --build --preset default`, followed by
+  `ctest --test-dir build -j --output-on-failure` captured in
+  `test_after.log` and compared with the matching full-suite
+  `test_before.log` using `check_monotonic_regression.py
+  --allow-non-decreasing-passed`.
+- Before: 3377 passed, 52 failed. After: 3377 passed, 52 failed. Delta: 0
+  passed and 0 failed; zero new failures, zero resolved failures, and zero new
+  tests over 30 seconds. Guard result: PASS.
