@@ -5,7 +5,7 @@ Type: AArch64 MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/706_common_mir_named_query_migration.md`
 
-## Parked Route Note (2026-07-12)
+## Return-Chain Authority Gate (2026-07-12)
 
 Step 2.1 proved that the existing traversal-attached common API does not own
 the complete return-chain relation required by AArch64 ALU materialization.
@@ -15,11 +15,13 @@ first successor ALU non-chain operand home, or their cross-instruction
 move/scalar-producer relation. Reconstructing those facts in `alu.cpp` violates
 this idea's consumer-only boundary.
 
-Idea 709 remains open and incomplete. It is parked behind
-`ideas/open/727_common_prepared_return_chain_authority.md`. Resume at Step 2.1
-only after that idea publishes traversal-attached typed authority and focused
-common proof; do not preserve or extend the target-local reconstruction while
-waiting.
+Idea 727 is now closed after publishing and proving the traversal-attached
+`PreparedObjectReturnChainClassification`. Its available relation supplies the
+terminal return-ABI home and register placement, the first successor ALU
+non-chain operand home, and the authenticated move/producer/operand/freshness
+chain. Idea 709 is reactivated at Step 2.1 to consume that relation and delete
+`find_prepared_return_chain_facts` plus its generated-lookup fallback; do not
+preserve or extend the target-local reconstruction.
 
 ## First Owner And Scope
 
