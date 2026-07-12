@@ -1,9 +1,23 @@
 # Block-Entry Publication Identity Completion
 
-Status: Open
+Status: Complete
 Type: common semantic publication identity repair
 Parent: `ideas/closed/703_bir_mir_contract_abstraction_umbrella.md`
 Unblocks: `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
+
+## Completion
+
+Closed after exact producer-owned proof attribution was preserved through the
+prepared-to-Route4 adapter and authoritative MIR validation, with focused
+positive and fail-closed contract proof. Independent closure review found no
+fixture-shaped, display-name, source-order, nearest-PHI, proof-bit,
+target-emission, expectation-downgrade, or testcase-overfit shortcut.
+
+The matching broader `^backend_` regression comparison covered 400 tests,
+improved from 347 to 348 passes and from 53 to 52 failures, introduced no new
+failure, and resolved `backend_prepare_frame_stack_call_contract` at the idea
+718 boundary. Its later x86 prepared-core abort remains separately owned by
+`ideas/open/721_x86_defined_function_prepared_core_completion.md`.
 
 ## Goal
 
