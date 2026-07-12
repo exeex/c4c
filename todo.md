@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/727_common_prepared_return_chain_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove production-to-consumer readiness
+Current Step ID: 1
+Current Step Title: Audit the stale production inputs
 
 ## Just Finished
 
