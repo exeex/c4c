@@ -104,45 +104,6 @@ instruction_result_prepared_value_id(
       role));
 }
 
-[[nodiscard]] SameBlockSelectProducer prepared_same_block_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
-      value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return {};
-  }
-  const auto producer = mir::find_same_block_producer_identity(
-      mir::SameBlockProducerIdentityRequest{
-          .block = context.bir_block,
-          .block_label = context.bir_block->label,
-          .value_name = value.name,
-          .value_type = value.type,
-          .before_instruction_index = before_instruction_index,
-      });
-  if (!producer ||
-      producer.kind != mir::SameBlockProducerKind::Select ||
-      producer.instruction_index >= before_instruction_index ||
-      producer.instruction_index >= context.bir_block->insts.size() ||
-      !producer.materialization_available) {
-    return {};
-  }
-  const auto* select =
-      std::get_if<bir::SelectInst>(&context.bir_block->insts[producer.instruction_index]);
-  if (select == nullptr ||
-      producer.inst != &context.bir_block->insts[producer.instruction_index] ||
-      select->result.kind != bir::Value::Kind::Named ||
-      select->result.name != value.name ||
-      select->result.type != value.type) {
-    return {};
-  }
-  return SameBlockSelectProducer{.status = bir::BirViewStatus::Available,
-                                 .select = select,
-                                 .produced_value = &select->result,
-                                 .block_label = context.bir_block->label,
-                                 .instruction_index = producer.instruction_index};
-}
-
 [[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
 prepared_same_block_publication_source_producer(
     const module::BlockLoweringContext& context,
@@ -178,7 +139,28 @@ prepared_same_block_publication_source_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  return prepared_same_block_select_producer(context, value, before_instruction_index);
+  const auto producer = prepared_same_block_publication_source_producer(
+      context, value, before_instruction_index);
+  if (!producer.has_value() ||
+      producer->producer.kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
+      producer->instruction == nullptr) {
+    return {};
+  }
+  const auto* select = std::get_if<bir::SelectInst>(producer->instruction);
+  if (select == nullptr || producer->producer.instruction_index !=
+                               producer->instruction_index ||
+      select->result.kind != bir::Value::Kind::Named ||
+      select->result.name != value.name || select->result.type != value.type) {
+    return {};
+  }
+  return SameBlockSelectProducer{
+      .status = bir::BirViewStatus::Available,
+      .select = select,
+      .produced_value = &select->result,
+      .block_label = context.bir_block->label,
+      .instruction_index = producer->instruction_index,
+  };
 }
 
 [[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
@@ -189,27 +171,14 @@ prepared_publication_source_producer_for_value(
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  if (context.function.prepared_lookups != nullptr) {
-    const auto* producer =
-        prepare::find_indexed_prepared_edge_publication_source_producer(
-            &context.function.prepared_lookups->edge_publication_source_producers,
-            *value_name);
-    return producer != nullptr
-               ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
-                     *producer}
-               : std::nullopt;
-  }
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr) {
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
     return std::nullopt;
   }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
   const auto* producer =
       prepare::find_indexed_prepared_edge_publication_source_producer(
-          &source_producers,
+          &context.function.prepared_lookups->edge_publication_source_producers,
           *value_name);
   return producer != nullptr
              ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{

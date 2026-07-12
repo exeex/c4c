@@ -20254,7 +20254,7 @@ int prepared_root_emission_uses_producer_context_for_operands() {
   return 0;
 }
 
-int select_producer_lookup_uses_bir_identity_without_prepared_source_fact() {
+int select_producer_lookup_uses_attached_prepared_source_fact() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -20314,8 +20314,11 @@ int select_producer_lookup_uses_bir_identity_without_prepared_source_fact() {
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
@@ -36193,7 +36196,7 @@ int main() {
     return status;
   }
   if (const int status =
-          select_producer_lookup_uses_bir_identity_without_prepared_source_fact();
+          select_producer_lookup_uses_attached_prepared_source_fact();
       status != 0) {
     return status;
   }
