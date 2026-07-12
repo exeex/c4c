@@ -27,12 +27,17 @@ event even though the synthetic one-/two-link contract and representative
 one-link AArch64 builder report `Available`. The focused guard swaps in
 `backend_cli_aarch64_asm_external_return_add_sub_chain_smoke` as a new failure.
 
-Idea 709 remains open but is parked at Step 2.1 behind idea 728. Do not retry
-consumer deletion until that decomposition initiative separates public
-one-link publication, multi-link successor attribution/adjacency, terminal
-`FunctionReturnAbi` binding, and traversal/classification parity and proves the
-narrowest generic producer repair. Do not reopen 727 or rebuild authority in
-AArch64.
+Idea 728 is now closed after decomposing those shapes and repairing the generic
+terminal publication seam. The source named terminal-only/no-successor input
+correctly remains `StructurallyIncomplete` because its relation has no links.
+The minimal real successor-linked multi-link input now has valid successor
+attribution and adjacency, a unique fresh matching terminal
+`FunctionReturnAbi` binding, and an attached `Available` classification.
+
+Idea 709 is reactivated at Step 2.1 using that production authority. Consumer
+deletion must require `Available` on actual successor-linked relations and must
+not weaken fail-closed handling for terminal-only inputs. Do not reopen ideas
+727 or 728 or rebuild authority in AArch64.
 
 ## First Owner And Scope
 

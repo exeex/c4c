@@ -1,35 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/728_prepared_return_chain_shape_authority_decomposition.md
+Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Resume the narrowest generic producer repair
+Current Step ID: 2.1
+Current Step Title: Delete the ALU return-chain reconstruction
 
 ## Just Finished
 
-- Plan Step 4 added target-independent terminal `FunctionReturnAbi` binding
-  publication at `build_prepared_value_location_function`. Publication requires
-  a fresh same-function `BeforeReturn` bundle, a self-identical move, exactly one
-  complete matching value home, and a unique complete move destination identity.
-- Both focused public probes now require the matching terminal binding. The
-  terminal-only/no-successor shape correctly remains `StructurallyIncomplete`
-  because it is not a return-chain relation; the actual successor-link shape
-  requires `Available` and retains its independent attribution/adjacency check.
+- Lifecycle review closed idea 728 after successor-linked public production
+  authority passed focused and matching backend proof; idea 709 is reactivated.
 
 ## Suggested Next
 
-- Supervisor review of the completed Step 4 producer slice and its focused
-  proof; choose the next plan packet without widening classifier semantics.
+- Execute Plan Step 2.1 against `src/backend/mir/aarch64/codegen/alu.cpp`.
 
 ## Watchouts
 
-- Keep the terminal-only probe distinct from the actual successor-link return
-  chain: its binding is producer proof, while its empty relation must not be
-  reclassified as `Available`.
+- Consume attached `Available` authority for actual successor-linked chains.
+  Terminal-only/no-successor inputs correctly remain `StructurallyIncomplete`
+  and must stay fail closed.
 
 ## Proof
 
-- Exact delegated `cmake --build --preset default` plus the selected 10-test
-  CTest subset passed 10/10. The proof is recorded in `test_after.log` and is
-  sufficient for this producer slice.
+- Lifecycle close accepted from exact 10/10 focused proof and matching 347/400
+  `^backend_` before/after proof with no new failures.

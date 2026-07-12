@@ -1,9 +1,26 @@
 # Prepared Return-Chain Shape Authority Decomposition
 
-Status: Open
+Status: Closed
 Type: common prepared-MIR production-shape decomposition
 Discovered by: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
 Blocks: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md` Step 2.1
+
+## Completion Note (2026-07-12)
+
+Closed after focused probes separated terminal-only publication from an actual
+successor-linked return chain and bound the remaining gap to generic terminal
+`FunctionReturnAbi` binding publication. The terminal-only/no-successor source
+shape now carries its correct terminal binding but remains fail-closed
+`StructurallyIncomplete` because `relation.links` is empty. The minimal public
+multi-link shape retains valid successor attribution/adjacency, receives one
+unique fresh matching terminal binding, and attaches as `Available`.
+
+The exact focused proof passed 10/10. A fresh matching `^backend_` before/after
+guard remained 347/400 with no new failures. The full-suite baseline candidate
+was rejected only for the unchanged prepared call-boundary scalability failure.
+No testcase-shaped matching, expectation weakening, target synthesis, or broad
+rewrite was accepted. Idea 709 may resume at Step 2.1 using the successor-linked
+production authority while preserving terminal-only fail-closed semantics.
 
 ## Goal
 
