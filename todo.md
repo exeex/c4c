@@ -4,7 +4,7 @@ Status: Active
 Source Idea Path: ideas/open/718_block_entry_publication_identity_completion.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Prove publication identity across nearby shapes
+Current Step Title: Prove independent agreement across the source family
 
 ## Just Finished
 
