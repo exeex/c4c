@@ -1,106 +1,112 @@
-# Direct-Edge Publication Available-Move Contract Runbook
+# Pre-Regalloc Value Constraint Carrier Research Runbook
 
 Status: Active
-Source Idea: ideas/open/722_direct_edge_publication_available_move_contract.md
-Activated after parking: ideas/open/708_x86_named_handoff_materializer_cleanup.md
+Source Idea: ideas/open/723_pre_regalloc_value_constraint_carrier_research.md
+Activated after parking: ideas/open/722_direct_edge_publication_available_move_contract.md
 
 ## Purpose
 
-Repair the common prepared-MIR producer/query gap that blocks route-independent
-x86 edge-publication consumption.
+Resolve the ownership and schema uncertainty that blocks a genuine
+distinct-register direct-edge publication without authorizing implementation.
 
 ## Goal
 
-Publish coherent typed move authority for supported direct-edge register,
-immediate, and memory sources while preserving fail-closed negative states.
+Produce the four required documents under
+`docs/pre_regalloc_value_constraints/` with an evidence-backed semantic owner,
+input boundary, and deterministic follow-up proof design.
 
 ## Core Rule
 
-Availability must come from genuine producer-owned publication, move, source,
-and freshness facts. Tests and targets may observe this contract but must not
-synthesize or reconstruct it.
+This runbook is documentation-only. Trace existing facts before recommending a
+carrier, and do not encode the joined-branch fixture shape as architecture.
 
 ## Read First
 
+- `ideas/open/723_pre_regalloc_value_constraint_carrier_research.md`
 - `ideas/open/722_direct_edge_publication_available_move_contract.md`
-- `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
-- `ideas/closed/589_direct_edge_publication_move_freshness_ownership.md`
-- `ideas/closed/692_prepared_mir_source_dependency_freshness_view_contract.md`
-- `ideas/closed/717_prepared_mir_join_source_identity_completion.md`
+- `src/backend/prealloc/regalloc.hpp`
+- `src/backend/prealloc/regalloc.cpp`
 
 ## Current Scope
 
-- Prepared direct-edge publication production and typed query admission.
-- Register, immediate, and memory source fact continuity.
-- Focused positive and fail-closed producer/query proof.
+- Current fixed/preferred allocation-constraint production and consumption.
+- Semantic ownership and schema alternatives.
+- Deterministic route-independent proof and follow-up boundaries.
 
 ## Non-Goals
 
-- Do not edit x86 emission or resume idea 708's blocked consumer slice.
-- Do not restore Route 5 compatibility authority.
-- Do not weaken supported expectations or inject readiness only in fixtures.
-- Do not absorb Route 3, joined-branch, ABI, or target scheduling work.
+- Do not edit implementation or tests.
+- Do not mutate allocator results or prepared homes.
+- Do not resume idea 722 or x86 consumer work.
+- Do not create an implementation idea until the research conclusion supports it.
 
 ## Execution Rules
 
-- Localize the first missing/rejected fact before changing production.
-- Repair a semantic producer rule, never a testcase-shaped path.
-- Keep every negative admission state precise and fail closed.
-- Prove more than the original register-source fixture shape.
-- Run focused proof per code step and broader matching validation at acceptance.
+- Use AST-backed symbol and call-chain evidence where available.
+- Keep exactly one answer file per numbered question plus `index.md`.
+- Cite concrete repository paths and symbols.
+- Separate established facts, inference, and recommendation.
 
 ## Ordered Steps
 
-### Step 1: Localize the unavailable direct-edge move fact
+### Step 1: Trace existing constraint flow
 
-Goal: identify the earliest producer or typed-admission boundary that prevents
-the supported register-source publication from becoming `Available`.
-
-Actions:
-
-- Trace publication, move, source, producer, storage, and freshness facts into
-  `current_block_direct_edge_publication_sources`.
-- Compare the failing supported shape with an available nearby shape.
-- Record the first missing or contradictory fact and its owning producer.
-
-Completion check:
-
-- The first bad fact, owner, expected invariant, and focused positive/negative
-  proof surfaces are documented without changing x86 emission.
-
-### Step 2: Repair general producer and admission continuity
-
-Goal: make genuine supported direct-edge moves available through the typed
-prepared-MIR view.
+Goal: document all current producers and consumers of fixed/preferred value
+constraints.
 
 Actions:
 
-- Publish or preserve the missing producer-owned fact at its earliest correct
-  boundary.
-- Keep exact edge, destination, source, move, producer, storage, publication,
-  and freshness identity aligned.
-- Preserve precise rejection for incomplete, stale, ambiguous, mismatched, or
-  unsupported evidence.
+- Trace semantic BIR and liveness identity into `PreparedAllocationConstraint`.
+- Trace fixed/preferred names and placements through allocation and validation.
+- Write `docs/pre_regalloc_value_constraints/01_existing_constraint_flow.md`.
 
 Completion check:
 
-- Supported register-source authority is `Available` through a general rule,
-  and focused negative states remain fail closed.
+- The document identifies supported inputs, derived policy, consumers, and the
+  earliest missing general-value input boundary with concrete citations.
 
-### Step 3: Prove adjacent source families and acceptance
+### Step 2: Decide semantic owner and schema
 
-Goal: demonstrate that the repaired contract is semantic rather than shaped to
-one fixture.
+Goal: decide whether a general carrier is valid and where it belongs.
 
 Actions:
 
-- Add or extend positive coverage for register, immediate, and memory sources.
-- Add nearby missing, stale, ambiguous, mismatch, unsupported, and incomplete
-  authority coverage.
-- Run the supervisor-selected focused build/tests and broader matching backend
-  regression comparison.
+- Compare BIR, prepared semantic, liveness, and regalloc ownership.
+- Specify identity, class/width, target-legality, conflict, and failure invariants.
+- Write `docs/pre_regalloc_value_constraints/02_semantic_owner_and_schema.md`.
 
 Completion check:
 
-- Focused and broader proof are green without expectation changes, fixture-only
-  injection, target fallback, or the original no-`Available` failure mode.
+- The document recommends one bounded schema/owner or provides evidence not to
+  add a carrier; ambiguous ownership is not accepted as completion.
+
+### Step 3: Define deterministic proof and follow-up
+
+Goal: ensure any later implementation proves a semantic capability rather than
+allocator luck or testcase shaping.
+
+Actions:
+
+- Define a route-independent positive program and adjacent negative matrix.
+- Define deterministic proof requirements and forbidden shortcuts.
+- Write `docs/pre_regalloc_value_constraints/03_proof_and_followup_boundary.md`.
+
+Completion check:
+
+- The proposed proof does not depend on incidental register order, fixture fact
+  injection, post-prepare mutation, or target fallback.
+
+### Step 4: Integrate and review the research result
+
+Goal: make the research set navigable and ready for lifecycle disposition.
+
+Actions:
+
+- Write `docs/pre_regalloc_value_constraints/index.md` linking all three answers.
+- Check exact file count and cross-document consistency.
+- Review against the source idea’s reject signals.
+
+Completion check:
+
+- Exactly four required Markdown files exist, conclusions are consistent, and
+  the result clearly identifies either a narrow follow-up initiative or a stop decision.

@@ -5,6 +5,22 @@ Type: common prepared-MIR producer-contract repair
 Discovered by: `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
 Unblocks: `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
 
+## Parked Route Note (2026-07-12)
+
+The active runbook repaired producer-owned destination register spelling, but
+could not satisfy the register-source acceptance criterion. Natural phi
+allocation either coalesces a register incoming with its destination (and
+therefore correctly publishes no move) or emits a genuine move from stack or
+immediate storage. The joined-branch case obtains distinct registers only by
+post-prepare home mutation, which is not valid producer authority.
+
+Idea 722 remains open and incomplete. Research idea
+`ideas/open/723_pre_regalloc_value_constraint_carrier_research.md` now owns the
+separate question of whether and where a general semantic fixed/preferred value
+constraint should exist. Resume this idea only after that work provides a
+producer-owned route to a genuine distinct-register publication, or proves a
+different general semantic input already exists.
+
 ## Goal
 
 Make supported direct-edge register, immediate, and memory publication moves
