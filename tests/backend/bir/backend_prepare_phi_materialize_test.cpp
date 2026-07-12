@@ -810,6 +810,8 @@ int check_i64_immediate_phi_move_bundle_publication(
     return fail("expected the i64 immediate phi edge to publish a value-location move bundle");
   }
   const auto& move = move_bundle->moves.front();
+  const auto* destination_home =
+      prepare::find_prepared_value_home(*value_locations, move.to_value_id);
   if (!move.source_immediate_i32.has_value() || *move.source_immediate_i32 != 0 ||
       move.reason != "phi_join_immediate_materialization" ||
       move.source_parallel_copy_step_index != std::optional<std::size_t>{0} ||
@@ -817,6 +819,13 @@ int check_i64_immediate_phi_move_bundle_publication(
       move.source_parallel_copy_predecessor_label != right_bundle->predecessor_label ||
       move.source_parallel_copy_successor_label != right_bundle->successor_label) {
     return fail("expected the i64 immediate phi move bundle to preserve immediate and source-edge authority facts");
+  }
+  if (destination_home == nullptr ||
+      destination_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !destination_home->register_name.has_value() ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move.destination_register_name != destination_home->register_name) {
+    return fail("expected immediate-source phi move to preserve its assigned destination register spelling");
   }
   return 0;
 }

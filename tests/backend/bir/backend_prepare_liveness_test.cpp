@@ -4928,8 +4928,16 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
                                          : prepare::PreparedMoveStorageKind::StackSlot;
   if (move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
       move->destination_storage_kind != expected_phi_destination_kind ||
-      move->destination_abi_index.has_value() || move->destination_register_name.has_value()) {
+      move->destination_abi_index.has_value()) {
     return fail("expected phi-join move resolution to keep the generic value destination surface");
+  }
+  if (phi->assigned_register.has_value()) {
+    if (move->destination_register_name !=
+        std::optional<std::string>{phi->assigned_register->register_name}) {
+      return fail("expected named-source phi move to preserve its assigned destination register spelling");
+    }
+  } else if (move->destination_register_name.has_value()) {
+    return fail("expected stack-destination phi move to omit register spelling");
   }
   const auto* right_step_move =
       prepare::find_prepared_parallel_copy_move_for_step(*right_parallel_copy, 0);

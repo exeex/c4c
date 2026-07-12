@@ -44,6 +44,10 @@ void append_immediate_integer_move_resolution_record(
     return;
   }
   const auto destination_register_placement = assigned_register_placement(destination);
+  const auto destination_register_name =
+      destination.assigned_register.has_value()
+          ? std::optional<std::string>{destination.assigned_register->register_name}
+          : std::nullopt;
 
   const auto duplicate = std::find_if(
       regalloc_function.move_resolution.begin(),
@@ -54,7 +58,7 @@ void append_immediate_integer_move_resolution_record(
                move.destination_kind == PreparedMoveDestinationKind::Value &&
                move.destination_storage_kind == assigned_storage_kind(destination) &&
                !move.destination_abi_index.has_value() &&
-               !move.destination_register_name.has_value() &&
+               move.destination_register_name == destination_register_name &&
                move.destination_register_placement == destination_register_placement &&
                !move.destination_stack_offset_bytes.has_value() &&
                !move.uses_cycle_temp_source && !move.coalesced_by_assigned_storage &&
@@ -79,7 +83,7 @@ void append_immediate_integer_move_resolution_record(
       .destination_kind = PreparedMoveDestinationKind::Value,
       .destination_storage_kind = assigned_storage_kind(destination),
       .destination_abi_index = std::nullopt,
-      .destination_register_name = std::nullopt,
+      .destination_register_name = destination_register_name,
       .destination_stack_offset_bytes = std::nullopt,
       .block_index = block_index,
       .instruction_index = instruction_index,

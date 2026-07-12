@@ -3,25 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/722_direct_edge_publication_available_move_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize the unavailable direct-edge move fact
+Current Step ID: 2
+Current Step Title: Repair general producer and admission continuity
 
 ## Just Finished
 
-- Plan Step 1 localized the first unavailable typed move fact to the out-of-SSA `PreparedMoveResolution`, before x86 emission or Route 5 compatibility. `force_supported_shared_edge_publication_homes` changes `merge`'s `PreparedValueHome` to register `ebx`, but does not regenerate or coherently update the matching block-entry move. The move therefore retains its originally prepared non-register destination storage and absent `destination_register_name`.
-- `prepare_current_block_join_parallel_copy_source_facts` copies destination spelling/storage from that move. `PreparedMirFunctionView::current_block_direct_edge_publication_sources` then reaches the first blocking typed-boundary check: an otherwise available source is classified `UnsupportedDestinationHome` when the destination home is Register but the move supplies no destination register name. Consequently `consume_edge_publication_move_intent` has no `Available` source row and x86 correctly emits no move.
-- The expected invariant is one coherent producer-owned tuple: the publication's destination value/home, the out-of-SSA move's `to_value_id`, `destination_storage_kind == Register`, and `destination_register_name`, plus the typed source home/freshness authority, must all describe the same edge move. A home-only post-prepare mutation is not sufficient authority.
+- Plan Step 2 repaired both general out-of-SSA move producers. Named-source moves in `regalloc/move_records.cpp` and immediate-source phi moves in `regalloc/phi_moves.cpp` now copy the already-owned assigned register spelling into `PreparedMoveResolution::destination_register_name`; duplicate identity checks use the same optional spelling.
+- Stack destinations still publish no register spelling, while register destinations now keep storage kind, placement, and spelling together at the earliest producer boundary. No typed-view inference, target fallback, Route 3/Route 5 logic, or x86 module change was added.
+- Natural semantic producer coverage now proves both paths: `backend_prepare_liveness` checks a named-source phi register destination against its regalloc assignment and separately requires stack destinations to omit register spelling; `backend_prepare_phi_materialize` checks an immediate-source phi register destination against its prepared home. Neither test injects a `PreparedMoveResolution`.
 
 ## Suggested Next
 
-- Plan Step 2 should repair producer preparation so a supported register destination publishes a coherent move/home/publication tuple, then prove the typed query returns `Available`; do not teach the consumer to infer a register from the home or BIR.
+- Accept this producer-only Step 2 slice, then handle the remaining semantic-fixture continuity gap separately: the joined-branch boundary test still performs a post-prepare home-only mutation, so it cannot exercise the repaired producer record without a genuine pre-regalloc semantic allocation input.
 
 ## Watchouts
 
-- Supported comparison shapes already exist: `backend_x86_prepared_decoded_home_storage_test.cpp` proves a stack-source publication with coherent register destination (`ebx`) becomes an `Available` x86 move intent; `backend_prepared_mir_core_comparator_test.cpp` proves a coherent register-source/register-destination row (`r10d` to `r12d`) becomes an `Available` typed view; `backend_prepared_lookup_helper_test.cpp` covers coherent named-register, immediate, and stack source facts together.
-- Focused positive proof should cover the semantic joined-branch fixture without post-prepare home-only drift and assert both typed query `Available` and emitted register move. Nearby immediate and stack rows should remain `Available`. Focused negative proof should independently drift destination storage kind, remove destination register spelling, or mismatch `to_value_id`, and assert fail-closed `UnsupportedDestinationHome`/missing publication without consumer fallback.
-- The blocked idea 708 consumer diff remains parked and is not progress for this producer plan.
+- The selected baseline already contains three failures: typed core comparator source authority, decoded-home-storage source authority, and the joined-branch home-only mutation. This producer patch does not add failures; `backend_prepared_lookup_helper` remains green.
+- The joined-branch fixture's post-prepare mutation is intentionally not synchronized by producer code: repairing it downstream would turn stale prepared state into authority. A distinct semantic input capable of selecting the desired registers before regalloc remains necessary for that surface.
 
 ## Proof
 
-- Diagnostic-only localization used AST-backed definition lookup plus narrow inspection of the typed query, producer fact builder, failing fixture, and existing positive comparison tests. The existing `backend_x86_handoff_boundary` failure remains the reproduction surface; canonical logs were not rewritten.
+- Ran `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_x86_prepared_decoded_home_storage|backend_prepared_mir_core_comparator|backend_prepared_lookup_helper)$' >> test_after.log 2>&1`.
+- Build passed. Results match `test_before.log`: `backend_prepared_lookup_helper` passed; the same three pre-existing authority/fixture failures remain. `test_after.log` is the canonical proof log.
+- Ran `ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_phi_materialize)$'`; both directly modified producer tests passed.
