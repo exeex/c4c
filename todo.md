@@ -21,14 +21,17 @@ Current Step Title: Migrate direct dispatch-producer consumers
 
 ## Watchouts
 
-- The focused select-producer fixture now attaches the common prepared lookup
-  authority it consumes. The pre-existing selected-global-load fused-branch
-  stale-stack-home failure remains unchanged and is outside this packet's
-  owned implementation files.
+- The scalability route has attached prepared function lookups; no missing
+  attachment was observed before timeout. The same case also exceeds 8 seconds
+  from parent commit `1e5c28889`, before the Step 2.2 dispatch-producer change,
+  so its runtime is not isolated to this owned consumer slice. The pre-existing
+  selected-global-load fused-branch stale-stack-home failure also remains.
 
 ## Proof
 
-- `cmake --build --preset default` passed. The delegated exact four-test CTest
-  subset remains at the recorded baseline of 3/4 passing; only the pre-existing
-  `backend_aarch64_instruction_dispatch` selected-global-load fused-branch
-  stale-stack-home expectation fails. Output is recorded in `test_after.log`.
+- The delegated proof stopped at
+  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`, which
+  deterministically exceeded its 5-second case timeout. Because the exact
+  command short-circuits there, its focused four-test `tee test_after.log`
+  stage did not run; the prior 3/4 baseline-comparable focused log remains in
+  `test_after.log`.
