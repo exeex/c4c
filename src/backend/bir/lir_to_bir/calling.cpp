@@ -135,6 +135,45 @@ struct InlineAsmVectorConstraintFacts {
   std::size_t group_width = 1;
 };
 
+struct InlineAsmExplicitGprConstraintFacts {
+  bool is_explicit_register_looking = false;
+  bool supported = false;
+  bool is_output = false;
+  bool is_read_write = false;
+  std::size_t index = 0;
+};
+
+[[nodiscard]] InlineAsmExplicitGprConstraintFacts classify_inline_asm_explicit_gpr_constraint(
+    std::string_view token,
+    const c4c::TargetProfile& target_profile) {
+  InlineAsmExplicitGprConstraintFacts facts;
+  std::string_view body = token;
+  if (!body.empty() && body.front() == '=') {
+    facts.is_output = true;
+    body.remove_prefix(1);
+  } else if (!body.empty() && body.front() == '+') {
+    facts.is_output = true;
+    facts.is_read_write = true;
+    body.remove_prefix(1);
+  }
+  facts.is_explicit_register_looking =
+      body.size() >= 2 && body.front() == '{' && body[1] == 'x';
+  if (!facts.is_explicit_register_looking || body.size() < 4 || body.back() != '}') {
+    return facts;
+  }
+  const auto digits = body.substr(2, body.size() - 3);
+  if (!decimal_digits_only(digits) || (digits.size() > 1 && digits.front() == '0')) {
+    return facts;
+  }
+  const std::size_t index = parse_decimal_index(digits);
+  if (target_profile.arch != c4c::TargetArch::Riscv64 || index > 31) {
+    return facts;
+  }
+  facts.supported = true;
+  facts.index = index;
+  return facts;
+}
+
 [[nodiscard]] InlineAsmVectorConstraintFacts classify_inline_asm_vector_constraint(
     std::string_view token) {
   InlineAsmVectorConstraintFacts facts;
@@ -628,7 +667,8 @@ aapcs64_va_arg_hfa_payload_shape(
 void validate_inline_asm_insn_r_metadata(bir::InlineAsmMetadata& metadata);
 
 [[nodiscard]] bir::InlineAsmMetadata make_inline_asm_metadata(
-    const c4c::codegen::lir::LirInlineAsmOp& inline_asm) {
+    const c4c::codegen::lir::LirInlineAsmOp& inline_asm,
+    const c4c::TargetProfile& target_profile) {
   const auto template_modifier_facts =
       inline_asm_template_modifier_facts(inline_asm.asm_text);
   bir::InlineAsmMetadata metadata{
@@ -669,6 +709,7 @@ void validate_inline_asm_insn_r_metadata(bir::InlineAsmMetadata& metadata);
         .tied_output_index = std::nullopt,
         .register_class = bir::InlineAsmRegisterClass::None,
         .register_group_width = 1,
+        .explicit_register = std::nullopt,
         .name = std::nullopt,
         .memory_address = std::nullopt,
         .address = std::nullopt,
@@ -689,6 +730,29 @@ void validate_inline_asm_insn_r_metadata(bir::InlineAsmMetadata& metadata);
       operand.arg_index = next_arg_index++;
       operand.output_index = next_output_index++;
       operand.register_class = bir::InlineAsmRegisterClass::General;
+    } else if (const auto explicit_gpr =
+                   classify_inline_asm_explicit_gpr_constraint(token, target_profile);
+               explicit_gpr.is_explicit_register_looking) {
+      if (explicit_gpr.supported) {
+        operand.kind = explicit_gpr.is_output
+                           ? bir::InlineAsmOperandKind::RegisterOutput
+                           : bir::InlineAsmOperandKind::RegisterInput;
+        operand.register_class = bir::InlineAsmRegisterClass::General;
+        if (explicit_gpr.is_output) {
+          operand.output_index = next_output_index++;
+        }
+        if (!explicit_gpr.is_output || explicit_gpr.is_read_write) {
+          operand.arg_index = next_arg_index++;
+        }
+        operand.explicit_register = bir::InlineAsmOperandMetadata::ExplicitRegisterIdentity{
+            .bank = bir::InlineAsmOperandMetadata::ExplicitRegisterBank::GeneralPurpose,
+            .index = explicit_gpr.index,
+            .canonical_spelling = "x" + std::to_string(explicit_gpr.index),
+        };
+      } else {
+        metadata.unsupported_facts.push_back(
+            "unsupported_explicit_register_constraint" + std::to_string(index) + ":" + token);
+      }
     } else if (const auto vector_constraint =
                    classify_inline_asm_vector_constraint(token);
                vector_constraint.is_vector_looking) {
@@ -2490,7 +2554,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = "llvm.inline_asm",
         .return_type_name = return_type_text,
         .return_type = bir::TypeKind::Void,
-        .inline_asm = make_inline_asm_metadata(inline_asm),
+        .inline_asm = make_inline_asm_metadata(inline_asm, context_.target_profile),
     };
     const auto inline_asm_output_vrm_type = [&]() -> std::optional<bir::TypeKind> {
       if (!lowered_call.inline_asm.has_value()) {

@@ -971,6 +971,15 @@ struct InlineAsmOperandMetadata {
   std::optional<std::size_t> tied_output_index;
   InlineAsmRegisterClass register_class = InlineAsmRegisterClass::None;
   std::size_t register_group_width = 1;
+  enum class ExplicitRegisterBank {
+    GeneralPurpose,
+  };
+  struct ExplicitRegisterIdentity {
+    ExplicitRegisterBank bank = ExplicitRegisterBank::GeneralPurpose;
+    std::size_t index = 0;
+    std::string canonical_spelling;
+  };
+  std::optional<ExplicitRegisterIdentity> explicit_register;
   std::optional<std::string> name;
   std::optional<MemoryAddress> memory_address;
   std::optional<MemoryAddress> address;

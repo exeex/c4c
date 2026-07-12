@@ -4895,6 +4895,96 @@ LirModule make_rv64_vrm_inline_asm_bir_type_module() {
   return module;
 }
 
+LirModule make_explicit_gpr_inline_asm_metadata_module(std::string constraints,
+                                                       std::string target_triple) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple(target_triple);
+  LirFunction function;
+  function.name = "explicit_gpr_inline_asm_metadata";
+  function.signature_text = "define i32 @explicit_gpr_inline_asm_metadata(i32 %a, i32 %b)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.params.emplace_back("%a", c4c::TypeSpec{.base = c4c::TB_INT});
+  function.params.emplace_back("%b", c4c::TypeSpec{.base = c4c::TB_INT});
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand("%result"),
+      .ret_type = "i32",
+      .asm_text = "explicit registers",
+      .constraints = std::move(constraints),
+      .side_effects = true,
+      .args_str = "i32 %a, i32 %b",
+  });
+  entry.terminator = LirRet{.value_str = std::string("%result"), .type_str = "i32"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int inline_asm_explicit_gpr_constraints_are_structured_and_target_gated() {
+  auto result = try_lower_to_bir_with_options(
+      make_explicit_gpr_inline_asm_metadata_module("={x0},+{x31},{x7}",
+                                                   "riscv64-unknown-linux-gnu"),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("canonical RV64 explicit GPR constraints should lower to BIR");
+  }
+  const auto* call = std::get_if<c4c::backend::bir::CallInst>(
+      &result.module->functions.front().blocks.front().insts.front());
+  if (call == nullptr || !call->inline_asm.has_value() ||
+      call->inline_asm->operands.size() != 3 ||
+      !call->inline_asm->unsupported_facts.empty()) {
+    return fail("canonical RV64 explicit GPR constraints should classify cleanly");
+  }
+  using Operand = c4c::backend::bir::InlineAsmOperandMetadata;
+  const auto& operands = call->inline_asm->operands;
+  const auto identity_matches = [](const Operand& operand,
+                                   std::size_t index,
+                                   std::string_view spelling) {
+    return operand.register_class == c4c::backend::bir::InlineAsmRegisterClass::General &&
+           operand.explicit_register.has_value() &&
+           operand.explicit_register->bank == Operand::ExplicitRegisterBank::GeneralPurpose &&
+           operand.explicit_register->index == index &&
+           operand.explicit_register->canonical_spelling == spelling;
+  };
+  if (operands[0].kind != c4c::backend::bir::InlineAsmOperandKind::RegisterOutput ||
+      operands[0].output_index != 0 || operands[0].arg_index.has_value() ||
+      !identity_matches(operands[0], 0, "x0") ||
+      operands[1].kind != c4c::backend::bir::InlineAsmOperandKind::RegisterOutput ||
+      operands[1].output_index != 1 || operands[1].arg_index != 0 ||
+      !identity_matches(operands[1], 31, "x31") ||
+      operands[2].kind != c4c::backend::bir::InlineAsmOperandKind::RegisterInput ||
+      operands[2].arg_index != 1 || operands[2].output_index.has_value() ||
+      !identity_matches(operands[2], 7, "x7")) {
+    return fail("explicit GPR roles, indices, or structured identities drifted");
+  }
+
+  for (const auto& fixture : std::array<std::pair<std::string, std::string>, 5>{
+           std::pair{"={x1}", "aarch64-unknown-linux-gnu"},
+           std::pair{"={x32}", "riscv64-unknown-linux-gnu"},
+           std::pair{"={x01}", "riscv64-unknown-linux-gnu"},
+           std::pair{"={x}", "riscv64-unknown-linux-gnu"},
+           std::pair{"={x-1}", "riscv64-unknown-linux-gnu"},
+       }) {
+    auto rejected = try_lower_to_bir_with_options(
+        make_explicit_gpr_inline_asm_metadata_module(fixture.first, fixture.second),
+        BirLoweringOptions{});
+    if (!rejected.module.has_value()) {
+      return fail("unsupported explicit GPR fixture should retain fail-closed BIR facts");
+    }
+    const auto* rejected_call = std::get_if<c4c::backend::bir::CallInst>(
+        &rejected.module->functions.front().blocks.front().insts.front());
+    if (rejected_call == nullptr || !rejected_call->inline_asm.has_value() ||
+        rejected_call->inline_asm->operands.front().explicit_register.has_value() ||
+        rejected_call->inline_asm->unsupported_facts.size() != 1 ||
+        rejected_call->inline_asm->unsupported_facts.front().find(
+            "unsupported_explicit_register_constraint0:") != 0) {
+      return fail("wrong-target and malformed explicit GPR constraints must fail closed");
+    }
+  }
+  return 0;
+}
+
 int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
   auto result = try_lower_to_bir_with_options(make_structured_inline_asm_metadata_module(),
                                               BirLoweringOptions{});
@@ -14516,6 +14606,10 @@ int main() {
     return inline_asm_status;
   }
 
+  if (const int status = inline_asm_explicit_gpr_constraints_are_structured_and_target_gated();
+      status != 0) {
+    return status;
+  }
   if (const int status = inline_asm_lir_lowering_preserves_structured_operand_metadata();
       status != 0) {
     return status;
