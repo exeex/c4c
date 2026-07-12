@@ -8,26 +8,26 @@ Current Step Title: Run broader acceptance proof and close
 
 ## Just Finished
 
-- Plan Step 2.4 final acceptance review found no blocking source-alignment,
-  route-quality, authority-preservation, overfit, or focused-proof issue.
-- `review/idea717_step24_final_acceptance_review.md` accepts the corrected
-  prepared/BIR authority boundary and recommends continuing into Step 3.
+- Plan Step 3 ran the exact broader matching backend acceptance proof.
+- The run completed with 348 of 400 tests passing and 52 known failures; the
+  counts and failed-test set match `test_before.log`.
 
 ## Suggested Next
 
-- Execute Plan Step 3: run the broader matching backend acceptance proof and
-  hand the completed lifecycle state to the plan owner for closure judgment.
+- Hand the completed Step 3 evidence to the supervisor and plan owner for
+  closure judgment; the executor makes no lifecycle-completion decision.
 
 ## Watchouts
 
+- CTest exited nonzero because the matching broader baseline contains 52 known
+  failures, not because of a timeout, OOM, or process blocker.
 - Publication, move, bundle, and producer pointers remain opaque identity
-  tokens after prepared-core destruction; broader proof must not introduce
-  dereferences or ownership assumptions.
+  tokens after prepared-core destruction.
 
 ## Proof
 
-- Passed: `CMAKE_BUILD_PARALLEL_LEVEL=1 cmake --build --preset default && ctest
-  --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`.
-- Step 2.4 acceptance is recorded in
-  `review/idea717_step24_final_acceptance_review.md`; broader Step 3 proof is
-  still pending.
+- Completed: `CMAKE_BUILD_PARALLEL_LEVEL=1 cmake --build --preset default &&
+  ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+- Result: 400 tests selected, 348 passed, 52 failed; counts and failed-test set
+  match the canonical before-proof. CTest exit code was 8 from known failures.
+- Full combined build and CTest output is preserved in `test_after.log`.
