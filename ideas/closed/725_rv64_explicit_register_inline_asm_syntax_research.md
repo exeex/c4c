@@ -1,6 +1,6 @@
 # RV64 Explicit-Register Inline-Assembly Syntax Research
 
-Status: Open
+Status: Completed
 Type: Research and architecture documentation
 Parent: `ideas/open/724_prepared_inline_asm_explicit_register_allocation_constraints.md`
 Related:
@@ -9,6 +9,17 @@ Related:
 - `src/codegen/lir/verify.cpp`
 - `docs/pre_regalloc_value_constraints/`
 Owning Layer: frontend/LIR inline-assembly syntax and semantic BIR metadata
+
+## Completion Note (2026-07-12)
+
+Completed and accepted. The three required documents under
+`docs/rv64_explicit_register_inline_asm/` trace the first rejection boundary,
+keep clobbers separate, and select a canonical RV64 `{xN}` BIR-only syntax with
+structured bank/index metadata, precise malformed behavior, and source-backed
+proof. The focused close regression guard retained the one accepted
+`backend_prealloc_inline_asm` failure with no new failures. Syntax implementation
+is tracked separately in
+`ideas/open/726_rv64_explicit_register_inline_asm_bir_syntax.md`.
 
 ## Goal
 
