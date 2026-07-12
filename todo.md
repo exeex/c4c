@@ -3,20 +3,19 @@
 Status: Active
 Source Idea Path: ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md
 Source Plan Path: plan.md
-Current Step ID: 6.1
-Current Step Title: Restore conservative production compatibility
+Current Step ID: 6.2
+Current Step Title: Complete Route4 instruction-coordinate authority
 
 ## Just Finished
 
-- Plan Step 6.1 restored conservative production compatibility: the legacy
-  pointer overload no longer manufactures attributed availability from a
-  display-name/type scan, preserves same-name/same-type duplicate
-  `ProofAmbiguous` behavior, and AArch64 now requires a positive identity.
+- Plan Step 6.2 completed Route4 instruction-coordinate authority: the
+  authoritative classifier now validates `instruction_owner_label_id` against
+  both the exact instruction owner and destination label identity, and an
+  isolated owner-label-only drift row classifies as `Stale`.
 
 ## Suggested Next
 
-- Execute Plan Step 6.2: validate the complete modeled Route4 instruction
-  coordinate, including `instruction_owner_label_id`.
+- Execute Plan Step 6.3: prove independent same-name destination availability.
 
 ## Watchouts
 
@@ -25,8 +24,8 @@ Current Step Title: Restore conservative production compatibility
 - The legacy pointer overload remains deliberately conservative: zero matching
   PHIs is unavailable, one is an unattributed mismatch, and duplicates are
   ambiguous; only the typed classification boundary may report availability.
-- Keep Route4 authoritative for the complete modeled coordinate, including
-  `instruction_owner_label_id`.
+- Preserve the Route4 owner pointer, label identity, instruction pointer, and
+  instruction index as one authoritative coordinate during adjacent work.
 
 ## Proof
 

@@ -15437,6 +15437,14 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
     return fail("Route4 claim collection should preserve stale coordinates for later classification");
   }
 
+  auto stale_owner_label_claim = agreeing_claim;
+  stale_owner_label_claim.attribution_id = 22;
+  stale_owner_label_claim.instruction_owner_label_id = c4c::BlockLabelId{499};
+  const bir::Route4BlockEntryPublicationClaimCollection stale_owner_label{
+      .destination = destination,
+      .claims = {stale_owner_label_claim},
+  };
+
   // Missing internal attribution is not a source-language state; this row
   // proves the model represents it without manufacturing a claim identity.
   auto unattributed_claim = agreeing_claim;
@@ -15467,6 +15475,8 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
       bir::route4_classify_block_entry_publication_claims(duplicates);
   const auto stale =
       bir::route4_classify_block_entry_publication_claims(stale_coordinates);
+  const auto stale_label =
+      bir::route4_classify_block_entry_publication_claims(stale_owner_label);
   const auto unattributed =
       bir::route4_classify_block_entry_publication_claims(missing_attribution);
   if (missing ||
@@ -15482,6 +15492,9 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
           bir::Route4BlockEntryPublicationClassificationStatus::Ambiguous ||
       stale ||
       stale.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Stale ||
+      stale_label ||
+      stale_label.status !=
           bir::Route4BlockEntryPublicationClassificationStatus::Stale ||
       unattributed ||
       unattributed.status !=

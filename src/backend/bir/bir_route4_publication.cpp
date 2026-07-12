@@ -184,6 +184,9 @@ route4_classify_block_entry_publication_claims(
       return result;
     }
     if (claim.instruction_owner != collection.destination.successor_owner ||
+        claim.instruction_owner_label_id != claim.instruction_owner->label_id ||
+        claim.instruction_owner_label_id !=
+            collection.destination.successor_label_id ||
         claim.instruction == nullptr ||
         claim.instruction_index >= claim.instruction_owner->insts.size() ||
         claim.instruction !=
