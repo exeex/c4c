@@ -3,27 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md
 Source Plan Path: plan.md
-Current Step ID: 6.3
-Current Step Title: Prove independent same-name destination availability
+Current Step ID: 6.4
+Current Step Title: Prove production-overload no-downgrade behavior
 
 ## Just Finished
 
-- Plan Step 6.3 proved independent same-name destination availability: two
-  same-spelling/same-type destinations with distinct owner and value identity
-  each classify an exactly attributed claim as `Available`, while a claim
-  attributed to the other destination remains `Inconsistent`.
+- Plan Step 6.4 directly exercised the production pointer overload and proved
+  that one same-name/same-type observation remains `ProofMismatch`, duplicate
+  observations remain `ProofAmbiguous`, and name-only/type-mismatched evidence
+  remains `ProofUnavailable`; none manufactures an attributed available claim.
 
 ## Suggested Next
 
-- Execute Plan Step 6.4: prove production-overload no-downgrade behavior.
+- Execute Plan Step 6.5: run fresh focused acceptance and handback audit.
 
 ## Watchouts
 
 - Do not hand back to idea 718 until Steps 6.1 through 6.5 and the final audit
   are complete.
-- The legacy pointer overload remains deliberately conservative: zero matching
-  PHIs is unavailable, one is an unattributed mismatch, and duplicates are
-  ambiguous; only the typed classification boundary may report availability.
+- The new production-overload row deliberately preserves the compatibility
+  boundary's zero/one/many contract: unavailable, unattributed mismatch, and
+  ambiguous respectively; only the typed classification boundary may report
+  availability.
 - Preserve the Route4 owner pointer, label identity, instruction pointer, and
   instruction index as one authoritative coordinate during adjacent work.
 - Keep mismatched-destination rejection distinct from same-name exact-identity

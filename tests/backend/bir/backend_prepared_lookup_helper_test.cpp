@@ -15533,6 +15533,57 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
   return 0;
 }
 
+int verify_production_block_entry_pointer_overload_fails_closed() {
+  const prepare::PreparedCurrentBlockEntryPublication prepared{
+      .status = prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+      .publication = prepare::PreparedBlockEntryPublication{
+          .status = prepare::PreparedBlockEntryPublicationStatus::Available,
+      },
+      .destination_value_id = prepare::PreparedValueId{501},
+      .destination_value_name = c4c::ValueNameId{502},
+      .successor_label_text = "compatibility.join",
+      .successor_label_id = c4c::BlockLabelId{503},
+      .destination_value_name_text = "%compatibility.dst",
+      .destination_value_type = bir::TypeKind::I32,
+      .block_entry_publication_proof_attributed = true,
+  };
+
+  bir::Block successor;
+  successor.label = prepared.successor_label_text;
+  successor.label_id = prepared.successor_label_id;
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%compatibility.dst"),
+  });
+  const auto& exact_destination =
+      std::get<bir::PhiInst>(successor.insts.front()).result;
+  const auto single_match = mir::find_bir_block_entry_publication_identity(
+      prepared, &successor, &exact_destination);
+
+  successor.insts.push_back(successor.insts.front());
+  const auto& duplicate_destination =
+      std::get<bir::PhiInst>(successor.insts.front()).result;
+  const auto duplicate_match = mir::find_bir_block_entry_publication_identity(
+      prepared, &successor, &duplicate_destination);
+
+  const auto name_only_destination =
+      bir::Value::named(bir::TypeKind::I64, "%compatibility.dst");
+  const auto name_only_match = mir::find_bir_block_entry_publication_identity(
+      prepared, &successor, &name_only_destination);
+
+  if (single_match.available ||
+      single_match.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch ||
+      duplicate_match.available ||
+      duplicate_match.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous ||
+      name_only_match.available ||
+      name_only_match.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable) {
+    return fail("production block-entry pointer overload should preserve unavailable and ambiguous evidence without manufacturing availability");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -15658,6 +15709,11 @@ int main() {
   }
   if (const int result =
           verify_route4_block_entry_publication_claim_model_preserves_proof_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_production_block_entry_pointer_overload_fails_closed();
       result != 0) {
     return result;
   }
