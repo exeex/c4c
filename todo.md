@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/718_block_entry_publication_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Restore exact semantic publication identity
+Current Step ID: 3
+Current Step Title: Prove independent agreement across the source family
 
 ## Just Finished
 
