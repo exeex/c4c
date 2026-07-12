@@ -85,3 +85,24 @@ that x86 should reconstruct.
   preparation pipelines.
 - Route-derived call authority survives behind a new common or prepared helper
   name.
+
+## Parked Execution Note
+
+Steps 1 and 2 are complete, and Step 3's owned positive/negative producer and
+exact-lookup assertions were completed at commit `021c869e9`. The matching
+focused executables continue beyond those assertions and fail in three
+pre-existing, out-of-scope identity families:
+
+- prepared-MIR direct-edge join-source identity, now owned by
+  `ideas/open/717_prepared_mir_join_source_identity_completion.md`;
+- common block-entry publication identity, now owned by
+  `ideas/open/718_block_entry_publication_identity_completion.md`;
+- x86 joined-branch edge publication, already owned by
+  `ideas/open/708_x86_named_handoff_materializer_cleanup.md`.
+
+The regression comparison for the Step 3 slice reported no new failures, but
+the proposed hook baseline was rejected because it introduced 27 failures.
+Keep this idea open and parked until the two common prerequisite initiatives
+restore the focused green-test criterion. Do not mark Step 3 or this source
+idea complete, weaken the tests, or absorb publication/joined-control repairs
+into prepared-call production.
