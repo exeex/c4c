@@ -8854,115 +8854,12 @@ materialize_indirect_call_callee_to_prepared_register(
 
 }
 
-[[nodiscard]] bool route6_call_result_source_key_matches(
-    const bir::Route6CallResultSourceRecord& record,
-    const bir::Block& block,
-    std::size_t call_instruction_index,
-    std::string_view callee) {
-  const bool block_matches =
-      record.block_label_id != c4c::kInvalidBlockLabel &&
-              block.label_id != c4c::kInvalidBlockLabel
-          ? record.block_label_id == block.label_id
-          : !record.block_label.empty() && record.block_label == block.label;
-  return block_matches &&
-         record.call_instruction_index == call_instruction_index &&
-         record.callee == callee;
-}
-
-[[nodiscard]] bool route6_call_result_source_key_is_unique(
-    const bir::Route6CallUseSourceIndex& index,
-    const bir::Block& block,
-    std::size_t call_instruction_index,
-    std::string_view callee) {
-  std::size_t matches = 0;
-  for (const auto& record : index.result_records) {
-    if (route6_call_result_source_key_matches(
-            record, block, call_instruction_index, callee)) {
-      ++matches;
-      if (matches > 1) {
-        return false;
-      }
-    }
-  }
-  return matches == 1;
-}
-
-[[nodiscard]] bool route6_call_result_source_agrees_with_prepared(
-    const module::BlockLoweringContext& context,
-    const bir::Route6CallResultSourceRecord& route6_result,
-    c4c::ValueNameId prepared_value_name) {
-  if (!route6_result.result_identity ||
-      prepared_value_name == c4c::kInvalidValueName) {
-    return false;
-  }
-  if (route6_result.result_identity.name_id != c4c::kInvalidValueName) {
-    return route6_result.result_identity.name_id == prepared_value_name;
-  }
-  if (route6_result.result_value == nullptr) {
-    return false;
-  }
-  const auto route6_value_name =
-      prepared_named_value_id(context, *route6_result.result_value);
-  return route6_value_name.has_value() &&
-         *route6_value_name == prepared_value_name;
-}
-
-[[nodiscard]] CallResultSourceRegisterRoute6Evidence
-call_result_source_register_route6_evidence(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    const prepare::PreparedCallResultPlan& result,
-    const prepare::PreparedValueHome* home,
-    const bir::Route6CallUseSourceIndex* call_use_source_index) {
-  if (call_use_source_index == nullptr || !*call_use_source_index ||
-      context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size() ||
-      home == nullptr ||
-      home->value_name == c4c::kInvalidValueName ||
-      result.destination_value_id != std::optional<prepare::PreparedValueId>{
-                                         home->value_id}) {
-    return CallResultSourceRegisterRoute6Evidence::Fallback;
-  }
-  const auto* call = std::get_if<bir::CallInst>(
-      &context.bir_block->insts[instruction_index]);
-  if (call == nullptr || !call->result.has_value()) {
-    return CallResultSourceRegisterRoute6Evidence::Fallback;
-  }
-  const auto prepared_result_name =
-      prepared_named_value_id(context, *call->result);
-  if (!prepared_result_name.has_value() ||
-      *prepared_result_name != home->value_name ||
-      !route6_call_result_source_key_is_unique(
-          *call_use_source_index,
-          *context.bir_block,
-          instruction_index,
-          call->callee)) {
-    return CallResultSourceRegisterRoute6Evidence::Fallback;
-  }
-  const auto route6_result = bir::route6_find_call_result_source(
-      *call_use_source_index,
-      *context.bir_block,
-      instruction_index,
-      call->callee,
-      *call->result);
-  if (!route6_result ||
-      route6_result.status != bir::Route6CallUseStatus::Available ||
-      route6_result.result_value == nullptr ||
-      !route6_call_result_source_agrees_with_prepared(
-          context, route6_result, home->value_name)) {
-    return CallResultSourceRegisterRoute6Evidence::Fallback;
-  }
-  return CallResultSourceRegisterRoute6Evidence::Agreed;
-}
-
-CallResultSourceRegisterRoute6Evidence record_call_result_source_register(
+void record_call_result_source_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state,
-    bool result_lanes_only,
-    const bir::Route6CallUseSourceIndex* call_use_source_index) {
-  auto route6_evidence = CallResultSourceRegisterRoute6Evidence::NotChecked;
+    bool result_lanes_only) {
   const auto result_late_publication =
       call_plan.result.has_value()
           ? prepare::find_prepared_call_result_late_publication(
@@ -8972,7 +8869,7 @@ CallResultSourceRegisterRoute6Evidence record_call_result_source_register(
       !result_late_publication.source_register_publication_available) {
     if (context.bir_block == nullptr ||
         instruction_index >= context.bir_block->insts.size()) {
-      return route6_evidence;
+      return;
     }
   } else {
     const auto& result = *call_plan.result;
@@ -8980,12 +8877,6 @@ CallResultSourceRegisterRoute6Evidence record_call_result_source_register(
         prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
                                                   context.function.value_locations,
                                                   *result.destination_value_id);
-    route6_evidence =
-        call_result_source_register_route6_evidence(context,
-                                                    instruction_index,
-                                                    result,
-                                                    home,
-                                                    call_use_source_index);
     if (home != nullptr && home->value_name != c4c::kInvalidValueName) {
       const auto parsed = abi::parse_aarch64_register_name(*result.source_register_name);
       if (parsed.has_value()) {
@@ -9053,12 +8944,12 @@ CallResultSourceRegisterRoute6Evidence record_call_result_source_register(
   }
   if (context.bir_block == nullptr ||
       instruction_index >= context.bir_block->insts.size()) {
-    return route6_evidence;
+    return;
   }
   const auto* call = std::get_if<bir::CallInst>(
       &context.bir_block->insts[instruction_index]);
   if (call == nullptr) {
-    return route6_evidence;
+    return;
   }
 
   auto record_lane_binding = [&](const bir::Value& value) {
@@ -9180,7 +9071,6 @@ CallResultSourceRegisterRoute6Evidence record_call_result_source_register(
   for (const auto& lane : call->result_lanes) {
     record_lane_binding(lane);
   }
-  return route6_evidence;
 }
 
 [[nodiscard]] bool call_result_store_value_retarget_available(

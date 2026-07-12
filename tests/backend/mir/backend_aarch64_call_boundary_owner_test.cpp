@@ -631,39 +631,7 @@ int scalar_call_result_publishes_gpr_to_prepared_stack_home() {
   return 0;
 }
 
-enum class Route6ResultSourceRegisterCase : unsigned char {
-  Matching,
-  NullIndex,
-  MissingFact,
-  InvalidBoundary,
-  DuplicateFact,
-  PreparedMismatch,
-  Route6IdentityMismatch,
-};
-
-std::string_view route6_result_source_register_case_name(
-    Route6ResultSourceRegisterCase test_case) {
-  switch (test_case) {
-    case Route6ResultSourceRegisterCase::Matching:
-      return "matching";
-    case Route6ResultSourceRegisterCase::NullIndex:
-      return "null-index";
-    case Route6ResultSourceRegisterCase::MissingFact:
-      return "missing-fact";
-    case Route6ResultSourceRegisterCase::InvalidBoundary:
-      return "invalid-boundary";
-    case Route6ResultSourceRegisterCase::DuplicateFact:
-      return "duplicate-fact";
-    case Route6ResultSourceRegisterCase::PreparedMismatch:
-      return "prepared-mismatch";
-    case Route6ResultSourceRegisterCase::Route6IdentityMismatch:
-      return "route6-identity-mismatch";
-  }
-  return "unknown";
-}
-
-int route6_result_source_register_case_preserves_prepared_publication(
-    Route6ResultSourceRegisterCase test_case) {
+int prepared_result_source_register_preserves_prepared_publication() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -675,13 +643,8 @@ int route6_result_source_register_case_preserves_prepared_publication(
   const auto bir_block_label =
       prepared.module.names.block_labels.intern("route6.result.source.consumer.entry");
   const auto result_value_name = prepared.names.value_names.intern("%call.result");
-  const auto mismatched_prepared_value_name =
-      prepared.names.value_names.intern("%prepared.result");
   constexpr auto result_value_id = prepare::PreparedValueId{4703};
-  const auto home_value_name =
-      test_case == Route6ResultSourceRegisterCase::PreparedMismatch
-          ? mismatched_prepared_value_name
-          : result_value_name;
+  const auto home_value_name = result_value_name;
   const auto result_value = bir::Value::named(bir::TypeKind::I64, "%call.result");
 
   prepared.module.functions.push_back(bir::Function{
@@ -756,58 +719,9 @@ int route6_result_source_register_case_preserves_prepared_publication(
       .block_index = 0,
   };
 
-  auto route6_index = bir::route6_build_call_use_source_index(bir_function);
-  bir::Value conflicting_result =
-      bir::Value::named(bir::TypeKind::I64, "%conflicting.result");
-  switch (test_case) {
-    case Route6ResultSourceRegisterCase::Matching:
-    case Route6ResultSourceRegisterCase::NullIndex:
-    case Route6ResultSourceRegisterCase::PreparedMismatch:
-      break;
-    case Route6ResultSourceRegisterCase::Route6IdentityMismatch:
-      if (!route6_index.result_records.empty()) {
-        route6_index.result_records.front().result_identity.name_id =
-            mismatched_prepared_value_name;
-      }
-      break;
-    case Route6ResultSourceRegisterCase::MissingFact:
-      route6_index.result_records.clear();
-      break;
-    case Route6ResultSourceRegisterCase::InvalidBoundary:
-      if (!route6_index.result_records.empty()) {
-        route6_index.result_records.front().call_instruction_index = 1;
-      }
-      break;
-    case Route6ResultSourceRegisterCase::DuplicateFact:
-      if (!route6_index.result_records.empty()) {
-        auto duplicate = route6_index.result_records.front();
-        duplicate.result_value = &conflicting_result;
-        duplicate.result_identity =
-            bir::route1_source_value_identity(conflicting_result);
-        route6_index.result_records.push_back(duplicate);
-      }
-      break;
-  }
-
   aarch64_codegen::BlockScalarLoweringState scalar_state;
-  const auto* route6_index_ptr =
-      test_case == Route6ResultSourceRegisterCase::NullIndex ? nullptr
-                                                             : &route6_index;
-  const auto evidence =
-      aarch64_codegen::record_call_result_source_register(block_context,
-                                                          0,
-                                                          call_plan,
-                                                          scalar_state,
-                                                          false,
-                                                          route6_index_ptr);
-  const auto expected_evidence =
-      test_case == Route6ResultSourceRegisterCase::Matching
-          ? aarch64_codegen::CallResultSourceRegisterRoute6Evidence::Agreed
-          : aarch64_codegen::CallResultSourceRegisterRoute6Evidence::Fallback;
-  if (evidence != expected_evidence) {
-    return fail("unexpected Route 6 call-result source evidence status for " +
-                std::string(route6_result_source_register_case_name(test_case)));
-  }
+  aarch64_codegen::record_call_result_source_register(
+      block_context, 0, call_plan, scalar_state, false);
   const auto emitted =
       aarch64_codegen::find_emitted_scalar_register(scalar_state, home_value_name);
   if (!emitted.has_value() ||
@@ -817,29 +731,9 @@ int route6_result_source_register_case_preserves_prepared_publication(
       emitted->value_id != result_value_id ||
       emitted->value_name != home_value_name ||
       emitted->occupied_registers != std::vector<std::string_view>{"x0"}) {
-    return fail("prepared call-result source register publication was not preserved for " +
-                std::string(route6_result_source_register_case_name(test_case)));
+    return fail("prepared call-result source register publication was not preserved");
   }
   return 0;
-}
-
-int route6_result_source_register_evidence_preserves_prepared_publication() {
-  int status = 0;
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::Matching);
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::NullIndex);
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::MissingFact);
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::InvalidBoundary);
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::DuplicateFact);
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::PreparedMismatch);
-  status |= route6_result_source_register_case_preserves_prepared_publication(
-      Route6ResultSourceRegisterCase::Route6IdentityMismatch);
-  return status;
 }
 
 int hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bundle() {
@@ -1386,7 +1280,7 @@ int main() {
   status |= missing_call_argument_binding_exposes_prepared_contract_report();
   status |= f128_hfa_call_boundary_requires_structured_q_register_authority();
   status |= scalar_call_result_publishes_gpr_to_prepared_stack_home();
-  status |= route6_result_source_register_evidence_preserves_prepared_publication();
+  status |= prepared_result_source_register_preserves_prepared_publication();
   status |= hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bundle();
   status |= f128_hfa_lane0_call_result_publishes_q_register_to_prepared_stack_home();
   status |= f128_call_result_publishes_q_register_to_prepared_register_home();

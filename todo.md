@@ -8,12 +8,11 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Just Finished
 
-- Plan Step 1 migrated the call-result source-publication dispatch family in
-  `src/backend/mir/aarch64/codegen/dispatch.cpp` away from a locally rebuilt
-  Route6 call-use source index. Dispatch now relies on the existing prepared
-  call-result late-publication and indexed value-home queries; absent or
-  inconsistent prepared authority leaves the publication unavailable rather
-  than reconstructing producer reasoning in dispatch.
+- Plan Step 1 removed the remaining optional Route6 call-use evidence from the
+  AArch64 call-result source-register publication API and implementation.
+  Publication now consumes only the prepared late-publication fact and indexed
+  prepared value home, and the focused owner test asserts that prepared
+  publication directly without constructing or varying Route6 evidence.
 
 ## Suggested Next
 
@@ -22,9 +21,9 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Watchouts
 
-- `record_call_result_source_register` still exposes optional Route6 evidence
-  internally, but dispatch no longer constructs or supplies that authority;
-  keep subsequent migrations from recreating the removed index elsewhere.
+- Route6 call-argument/select-chain dependency handling remains in
+  `calls.cpp` and `select_materialization.cpp`; it is a separate family and was
+  not changed by this call-result source-publication packet.
 - The focused baseline retains the known scalar-FP literal-add failure (test
   354, missing `bl printf`) and has no additional failures.
 
