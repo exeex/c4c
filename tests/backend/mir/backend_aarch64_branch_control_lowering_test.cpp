@@ -33,12 +33,16 @@ int fail(std::string_view message) {
 void attach_prepared_function_lookups(
     aarch64_module::FunctionLoweringContext& function_context,
     const prepare::PreparedFunctionLookups& prepared_lookups) {
-  function_context.prepared_lookups = &prepared_lookups;
-  function_context.call_plan_lookups = &prepared_lookups.call_plans;
+  function_context.prepared_lookups_owner =
+      std::make_shared<prepare::PreparedFunctionLookups>(prepared_lookups);
+  function_context.prepared_lookups = function_context.prepared_lookups_owner.get();
+  function_context.call_plan_lookups = &function_context.prepared_lookups->call_plans;
   function_context.address_materialization_lookups =
-      &prepared_lookups.address_materializations;
-  function_context.move_bundle_lookups = &prepared_lookups.move_bundles;
-  function_context.value_home_lookups = &prepared_lookups.value_homes;
+      &function_context.prepared_lookups->address_materializations;
+  function_context.move_bundle_lookups =
+      &function_context.prepared_lookups->move_bundles;
+  function_context.value_home_lookups =
+      &function_context.prepared_lookups->value_homes;
 }
 
 prepare::PreparedBirModule prepared_with_unconditional_branch() {
@@ -1220,9 +1224,8 @@ int expect_materialized_compare_condition_fallback(
   const auto& block_cf = function_cf.blocks.front();
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
-  const auto prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, function_cf);
-  attach_prepared_function_lookups(function_context, prepared_lookups);
+  attach_prepared_function_lookups(
+      function_context, *function_context.prepared_lookups_owner);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
 
@@ -2139,6 +2142,50 @@ int materialized_compare_branch_stale_prepared_lookup_fails_closed() {
   return 0;
 }
 
+int materialized_compare_branch_detached_prepared_lookup_fails_closed() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(
+      function_context, *function_context.prepared_lookups_owner);
+  const auto detached_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  function_context.prepared_lookups = &detached_lookups;
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  aarch64_module::MachineBlock machine_block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
+  if (!result.visited_terminator || machine_block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail(
+        "expected detached prepared producer lookup to retain emitted-condition lowering");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          machine_block.instructions.back().target);
+  bool saw_selected_compare_branch = false;
+  bool saw_emitted_condition_branch = false;
+  bool saw_cbnz = false;
+  for (const auto& line : printed.instruction_lines) {
+    saw_selected_compare_branch =
+        saw_selected_compare_branch || line.find("b.le ") == 0;
+    saw_emitted_condition_branch =
+        saw_emitted_condition_branch || line.find("b.ne ") == 0;
+    saw_cbnz = saw_cbnz || line.find("cbnz ") == 0;
+  }
+  if (!printed.ok || saw_selected_compare_branch ||
+      (!saw_emitted_condition_branch && !saw_cbnz)) {
+    return fail(
+        "expected detached prepared producer lookup to fail closed without selected compare lowering");
+  }
+  return 0;
+}
+
 int materialized_compare_branch_lhs_provenance_mismatch_uses_emitted_fallback() {
   auto prepared = prepared_with_materialized_compare_condition_clobber();
   move_materialized_condition_home_to_register(prepared);
@@ -2749,6 +2796,11 @@ int main() {
   }
   if (const int status =
           materialized_compare_branch_stale_prepared_lookup_fails_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_detached_prepared_lookup_fails_closed();
       status != 0) {
     return status;
   }

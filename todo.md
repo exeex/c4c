@@ -8,23 +8,25 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
-- Plan Step 2 migrated the AArch64 fused-comparison operand materializer in
-  `comparison.cpp` off its target-local Route 7 comparison-index reconstruction
-  and locally rebuilt producer lookup. It now consumes only the attached common
-  prepared producer lookup; missing or inconsistent authority fails closed.
+- Plan Step 2 migrated the AArch64 materialized-condition comparison branch
+  materializer in `comparison.cpp` off its target-local prepared producer lookup
+  reconstruction. It now consumes only the traversal-attached common prepared
+  producer lookup after validating owner/pointer identity; explicit detached-
+  pointer coverage and existing stale-owner coverage prove that absent or
+  inconsistent authority fails closed.
 
 ## Suggested Next
 
-- Continue Plan Step 2 with the next remaining AArch64 route-index consumer
-  family selected by the supervisor, keeping the packet to one materializer
-  and its focused proof.
+- Continue Plan Step 2 with the next remaining AArch64 target-local prepared
+  producer lookup consumer selected by the supervisor, keeping the packet to
+  one materializer and its focused proof.
 
 ## Watchouts
 
-- The obsolete target-private Route 7 agreement test seam was removed with the
-  reconstruction path; common Route 7 producer/query coverage remains intact.
-- Materialized-condition lookup rebuilding remains outside this fused-operand
-  packet, as do other AArch64 route-index consumers in Step 2.
+- The AArch64 helper validates traversal lookup owner/pointer identity before
+  the materialized-condition common query checks producer consistency.
+- Other target-local lookup rebuilding remains in AArch64 dispatch, memory, and
+  call materializers outside this packet.
 
 ## Proof
 

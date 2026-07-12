@@ -306,22 +306,14 @@ find_prepared_materialized_condition_producer_identity(
       context.bir_block == nullptr) {
     return std::nullopt;
   }
-  if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_materialized_condition_producer(
-        context.function.prepared->names,
-        &context.function.prepared_lookups->edge_publication_source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        condition_value,
-        before_instruction_index);
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
+    return std::nullopt;
   }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
   return prepare::find_prepared_materialized_condition_producer(
       context.function.prepared->names,
-      &source_producers,
+      &context.function.prepared_lookups->edge_publication_source_producers,
       context.control_flow_block->block_label,
       context.bir_block,
       condition_value,
