@@ -11,11 +11,14 @@ Blocked By: `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
 Step 2 is parked before implementation completion. The attempted x86 slice was
 rejected and reverted after the supported direct-extern fixture exposed a
 common producer gap: semantic calls exist at instruction cursors 0 and 1, but
-preparation publishes only the later `printf` call as a `PreparedCallPlan`
-keyed at cursor 0. Exact callee/cursor validation therefore correctly fails
-closed for the first call. Idea 716 owns cursor-complete common production;
-resume this idea's direct-call/scalar migration only after that contract has
-positive and negative proof.
+preparation publishes the zero-argument `actual_function` call exactly at
+cursor 0 and omits the argument-bearing `printf` call at cursor 1. The omitted
+call has valid semantic operands but no optional argument-source relationships;
+common production currently treats that absence as incomplete and drops the
+call. Idea 716 owns semantic-operand-based, cursor-complete common production
+with unique optional relationship refinement and fail-closed contradictory or
+ambiguous evidence. Resume this idea's direct-call/scalar migration only after
+that contract has positive and negative proof.
 
 ## First Owner And Scope
 

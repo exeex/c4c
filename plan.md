@@ -6,14 +6,15 @@ Activated after parking: ideas/open/708_x86_named_handoff_materializer_cleanup.m
 
 ## Purpose
 
-Repair common prepared-call production so target consumers receive complete,
-cursor-exact authority for every supported semantic callsite.
+Repair common prepared-call argument production so target consumers receive
+complete, cursor-exact authority for every supported semantic callsite.
 
 ## Goal
 
 Publish exactly one correctly keyed `PreparedCallPlan` per supported semantic
-call and prove that incomplete or inconsistent plan identity still fails
-closed.
+call by using semantic operands as base argument identity, permitting only
+unique compatible relationship refinement, and keeping inconsistent evidence
+fail closed.
 
 ## Core Rule
 
@@ -47,9 +48,11 @@ case, or route-derived fallback.
 
 ## Execution Rules
 
-- Establish the first incorrect producer fact before changing code.
-- Repair semantic enumeration/cursor accounting generally across supported
-  call shapes; reject fixture-shaped or callee-shaped shortcuts.
+- Use Step 1's proven first incorrect producer fact: cursor assignment is
+  already exact; absent optional argument-source metadata incorrectly erases
+  an otherwise valid argument-bearing call.
+- Repair semantic operand/refinement handling generally across supported call
+  shapes; reject fixture-shaped or callee-shaped shortcuts.
 - Keep exact identity validation intact and add negative proof alongside the
   positive producer repair.
 - Use the supervisor-delegated build and focused tests for each code step, then
@@ -57,10 +60,10 @@ case, or route-derived fallback.
 
 ## Ordered Steps
 
-### Step 1: Trace the missing-call producer path
+### Step 1: Trace the missing-call producer path (complete)
 
-Goal: identify where the first semantic call is filtered, overwritten, or
-assigned the later call's cursor.
+Goal: identify why one of the two semantic calls is omitted and verify whether
+stored cursor identity is correct.
 
 Actions:
 
@@ -69,30 +72,44 @@ Actions:
 - Compare the two semantic calls' block, cursor, callee, arguments, result,
   ABI, move-bundle, and preservation inputs.
 - Identify the earliest incorrect producer fact and nearby supported call
-  shapes that exercise the same rule.
+  shapes that exercise the same rule. Confirmed: cursor 0 is published exactly;
+  cursor 1 is dropped because absent optional argument-source metadata makes
+  `find_call_argument` incomplete.
 
 Completion check:
 
-- The exact common producer defect is localized, and the proposed repair is a
-  semantic rule that covers more than the named fixture.
+- Complete at commit `e5a52dd29`: the exact common producer defect is
+  localized, cursor accounting is not the defect, and the proposed repair is
+  a semantic operand/refinement rule covering more than the named fixture.
 
 ### Step 2: Produce one cursor-exact plan per supported call
 
-Goal: repair common production without weakening consumer identity checks.
+Goal: repair common argument production without weakening consumer identity
+checks or relationship ambiguity rejection.
 
 Actions:
 
-- Correct call enumeration, filtering, or cursor accounting at the owning
-  common layer.
+- Derive each base argument identity from `CallInst::args[arg_index]` at the
+  owning common layer; absence of optional relationship metadata must not drop
+  the call.
+- Apply a unique compatible `CallArgumentSourceRelationship` only as a
+  refinement of source/base ID, selection, aggregate-lane, and producer
+  identity.
+- Reject duplicate/ambiguous, out-of-range, stale, or semantic-operand-
+  contradicting relationships; do not select the first row.
 - Preserve complete callee, argument, result, ABI, move, and preservation
   identity for every emitted plan.
-- Ensure zero-argument fixed-arity, variadic, result-producing, and adjacent
-  supported calls follow the same production rule.
+- Preserve the enclosing semantic instruction cursor as-is; do not repair or
+  renumber already-correct cursor accounting.
+- Ensure fixed-extern, variadic-extern, indirect, result-producing, and
+  adjacent supported calls follow the same production rule.
 
 Completion check:
 
-- The mixed direct-extern function publishes distinct correct plans at cursors
-  0 and 1, and nearby supported shapes retain correct plan identity.
+- The mixed direct-extern function publishes distinct correct plans for
+  `actual_function` at cursor 0 and argument-bearing `printf` at cursor 1;
+  nearby argument-bearing direct-BIR shapes without relationships also publish
+  exact plans, while contradictory or ambiguous evidence remains unavailable.
 
 ### Step 3: Prove positive completeness and negative rejection
 
@@ -102,6 +119,8 @@ Actions:
 
 - Add producer-focused assertions for plan count and exact block/cursor/callee/
   argument identity across adjacent mixed-shape calls.
+- Cover the no-relationship semantic-operand path and unique compatible
+  refinement path across nearby fixed, variadic, and indirect calls.
 - Prove missing, duplicate, stale-cursor, and callee/cursor mismatch states are
   unavailable or rejected by exact lookup/consumption.
 - Run the affected x86 direct-extern boundary test without changing its

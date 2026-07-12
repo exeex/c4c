@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/716_prepared_call_plan_cursor_complete_production.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace the missing-call producer path
+Current Step ID: 2
+Current Step Title: Produce one cursor-exact plan per supported call
 
 ## Just Finished
 
@@ -49,9 +49,10 @@ Current Step Title: Trace the missing-call producer path
   `bir_call_boundary_view`/`populate_call_plans` argument handling so a valid
   semantic operand is available without an optional relationship, while a
   unique relationship refines it and ambiguous or contradictory evidence
-  rejects. Add no callee, fixture, zero-argument, or two-call special case;
-  prove exact plans for both direct-extern cursors plus the nearby wrapper
-  shapes.
+  rejects. Preserve the already-exact enclosing instruction cursor. Add no
+  callee, fixture, zero-argument, or two-call special case; prove exact plans
+  for both direct-extern cursors plus the nearby fixed, variadic, and indirect
+  wrapper shapes.
 
 ## Watchouts
 
