@@ -3,47 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/717_prepared_mir_join_source_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2.4
-Current Step Title: Re-review route quality and focused acceptance
+Current Step ID: 3
+Current Step Title: Run broader acceptance proof and close
 
 ## Just Finished
 
-- Plan Step 2.3.1 now requires exactly one kind-matching typed producer pointer
-  at the prepared-MIR and BIR adapters, requires producer/predecessor agreement
-  at both availability gates, and keys duplicate/conflict detection by the
-  semantic edge plus exact typed destination slot instead of source identity.
-- Focused negative coverage now rejects missing, wrong, and contradictory
-  producer pointers, producer-block mismatch, exact duplicates, and a
-  conflicting source claiming the same semantic destination slot.
-- The prepared-MIR query and focused tests now share the same pure
-  producer-authority validator; controlled prepared-view mutations directly
-  prove missing, wrong-kind, extra, and predecessor-mismatched authorities are
-  non-Available before BIR adaptation.
-- The focused positive fixture now models PHIs in the successor and their
-  named producer instructions in the actual predecessor; named, immediate,
-  and stack rows remain Available and preserve exact authority across adapters.
-- Named incoming-expression evidence now resolves the authoritative producer
-  block through the BIR function and fails closed when that exact block or
-  instruction cannot be resolved; the named-register row needs no fixture
-  bypass.
+- Plan Step 2.4 final acceptance review found no blocking source-alignment,
+  route-quality, authority-preservation, overfit, or focused-proof issue.
+- `review/idea717_step24_final_acceptance_review.md` accepts the corrected
+  prepared/BIR authority boundary and recommends continuing into Step 3.
 
 ## Suggested Next
 
-- Execute Plan Step 2.4 review against the corrected Step 2 boundary and its
-  fresh focused proof.
+- Execute Plan Step 3: run the broader matching backend acceptance proof and
+  hand the completed lifecycle state to the plan owner for closure judgment.
 
 ## Watchouts
 
-- `source_producer_block_label` is authored from the indexed producer's actual
-  BIR block label; focused fixtures must keep producer instructions in the
-  predecessor rather than co-locating them with successor PHIs.
-- Prepared-MIR join queries must pass their BIR function through to prealloc so
-  predecessor-owned evidence is resolved against the complete function.
 - Publication, move, bundle, and producer pointers remain opaque identity
-  tokens after prepared-core destruction; do not dereference them in review.
+  tokens after prepared-core destruction; broader proof must not introduce
+  dereferences or ownership assumptions.
 
 ## Proof
 
 - Passed: `CMAKE_BUILD_PARALLEL_LEVEL=1 cmake --build --preset default && ctest
   --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`.
-- Full combined proof output is preserved in `test_after.log`.
+- Step 2.4 acceptance is recorded in
+  `review/idea717_step24_final_acceptance_review.md`; broader Step 3 proof is
+  still pending.
