@@ -5,6 +5,21 @@ Type: Common prepared semantic and regalloc capability
 Derived from: `ideas/closed/723_pre_regalloc_value_constraint_carrier_research.md`
 Unblocks: `ideas/open/722_direct_edge_publication_available_move_contract.md`
 
+## Parked Route Note (2026-07-12)
+
+Step 1 triggered this idea's stop condition. `make_inline_asm_metadata` accepts
+class-only register constraints, vector classes, ties, immediates,
+memory/address operands, and clobbers, but `{x10}` reaches
+`unsupported_constraint`. The later RV64 physical-name parser validates
+already-assigned homes and is not semantic ingress. Therefore no
+already-supported explicit-register operand family exists to preserve.
+
+Idea 724 remains open and incomplete. It is parked behind
+`ideas/open/725_rv64_explicit_register_inline_asm_syntax_research.md`, which
+must determine whether a legitimate source/LIR syntax exists and whether
+support can remain narrow. Do not resume this idea by treating clobbers as
+value constraints or by adding fixture allocation controls.
+
 ## Goal
 
 Preserve one supported RV64 explicit-register inline-assembly operand family as

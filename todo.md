@@ -1,23 +1,23 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/724_prepared_inline_asm_explicit_register_allocation_constraints.md
+Source Idea Path: ideas/open/725_rv64_explicit_register_inline_asm_syntax_research.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Localize and preserve one semantic explicit-register operand
+Current Step Title: Trace source-to-BIR constraint syntax
 
 ## Just Finished
 
-- Closed completed documentation-only idea 723 after its matching regression guard passed, created the separate research-supported idea 724, and activated its narrow RV64 implementation runbook.
+- Applied idea 724's stop condition, parked its incomplete allocation runbook, and activated separate documentation-only idea 725 for the missing RV64 explicit-register operand syntax premise.
 
 ## Suggested Next
 
-- Execute Plan Step 1 by tracing one supported RV64 explicit-register operand through frontend/lowering metadata and stopping if preservation requires broad inline-assembly redesign.
+- Execute Plan Step 1 by tracing accepted and rejected source/LIR/BIR constraint tokens and writing `01_source_to_bir_syntax_flow.md`.
 
 ## Watchouts
 
-- Do not substitute an arbitrary value-name register map or allocator-pressure fixture if the semantic spelling is not structurally available.
+- Keep clobber syntax separate from named-value operand allocation and do not infer semantic ingress from post-regalloc home validation.
 
 ## Proof
 
-- Close-time regression guard compared matching six-test logs: 3 passed / 3 accepted failures before and after, with no new failures; result PASS using equal-pass allowance for documentation-only closure.
+- Lifecycle-only switch; no code proof required.
