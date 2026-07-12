@@ -3,23 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/725_rv64_explicit_register_inline_asm_syntax_research.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace source-to-BIR constraint syntax
+Current Step ID: 2
+Current Step Title: Decide whether narrow syntax support is valid
 
 ## Just Finished
 
-- Plan Step 1 documented the source-to-BIR syntax flow in `docs/rv64_explicit_register_inline_asm/01_source_to_bir_syntax_flow.md`: source/HIR raw constraint retention, HIR-to-LIR role rendering, LIR storage and shape-only verification, and the closed BIR classifier.
-- The trace classifies every admitted token family, identifies `make_inline_asm_metadata` as the first owner/rejection boundary for `{x10}`/`={x10}`, and proves structured clobbers are separate machine-state declarations rather than named-value constraints.
+- Plan Step 2 compared source/HIR, HIR-to-LIR, LIR/verifier, and semantic BIR ownership in `docs/rv64_explicit_register_inline_asm/02_narrow_support_decision.md` and selected semantic BIR as the sole grammar owner.
+- The bounded route accepts canonical RV64 GPR `{xN}`, `={xN}`, and `+{xN}` tokens, publishes BIR-owned bank/physical-index metadata, keeps target legality for prepared admission, specifies precise malformed/unsupported/clobber behavior, and stops before regalloc.
 
 ## Suggested Next
 
-- Execute Plan Step 2 by comparing source/LIR/BIR ownership options and deciding whether one narrow RV64 explicit-register operand syntax can be added without broad redesign.
+- Execute Plan Step 3 by writing the research index and reviewing exact file count, links, consistency, acceptance criteria, and reject signals.
 
 ## Watchouts
 
-- Raw physical operand text already survives to LIR; the missing capability is semantic BIR classification/identity, not string transport. The LIR verifier currently checks only result/type shape and `.insn r` operand indices.
+- Syntax support must remain a separate BIR-only implementation idea. Idea 724 may resume only after a source-backed positive proves structured BIR identity; do not combine syntax with prepared/regalloc enforcement.
 
 ## Proof
 
 - No build was required for this documentation-only packet.
-- Ran repository citation/path checks for source/HIR lowering, LIR storage/printer/verifier, BIR classification, accepted/unsupported facts, clobber agreement, and focused tests; all cited symbols resolved. `git diff --check` passed.
+- Resolved all cited source/HIR, HIR-to-LIR, LIR/verifier, semantic BIR, target-profile call-site, and test paths/symbols. `git diff --check` passed.
