@@ -13,7 +13,6 @@
 #include "memory.hpp"
 #include "operands.hpp"
 #include "select_materialization.hpp"
-#include "../../query.hpp"
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/control_flow.hpp"
 #include "../../../prealloc/names.hpp"
@@ -48,6 +47,27 @@ namespace {
   }
   return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
                                                  value.name);
+}
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
+prepared_same_block_scalar_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
+      context.control_flow_block == nullptr || context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  return prepare::find_prepared_same_block_scalar_producer(
+      context.function.prepared->names,
+      &context.function.prepared_lookups->edge_publication_source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
 }
 
 [[nodiscard]] bool emit_prepared_fp_global_load_to_register(
@@ -189,14 +209,15 @@ find_prepared_fp_same_block_global_load_access(
   if (value.kind != bir::Value::Kind::Named) {
     return false;
   }
-  const auto* producer =
-      mir::find_same_block_named_producer(
-          context.bir_block, value.name, before_instruction_index);
+  const auto prepared_producer =
+      prepared_same_block_scalar_producer(context, value, before_instruction_index);
+  const auto* producer = prepared_producer.has_value()
+                             ? prepared_producer->instruction
+                             : nullptr;
   if (const auto* binary =
           producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
       binary != nullptr && is_prepared_scalar_float_alu_operation(*binary)) {
-    const auto producer_index =
-        producer_instruction_index(context, producer).value_or(before_instruction_index);
+    const auto producer_index = prepared_producer->instruction_index;
     std::string_view mnemonic;
     switch (binary->opcode) {
       case bir::BinaryOpcode::Add:
@@ -262,8 +283,7 @@ find_prepared_fp_same_block_global_load_access(
     if (!condition.has_value() || !compare_view.has_value()) {
       return false;
     }
-    const auto producer_index =
-        producer_instruction_index(context, producer).value_or(before_instruction_index);
+    const auto producer_index = prepared_producer->instruction_index;
     const auto gp_lhs = abi::gp_register(gp_scratch_index, *compare_view);
     const std::uint8_t gp_rhs_index = gp_scratch_index == 9 ? 10 : 9;
     const auto gp_rhs = abi::gp_register(gp_rhs_index, *compare_view);
@@ -322,10 +342,8 @@ find_prepared_fp_same_block_global_load_access(
   if (const auto* load_local =
           producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
       load_local != nullptr) {
-    const auto producer_index = producer_instruction_index(context, producer);
-    const auto offset = producer_index.has_value()
-                            ? prepared_local_load_offset(context, *producer_index)
-                            : std::nullopt;
+    const auto producer_index = prepared_producer->instruction_index;
+    const auto offset = prepared_local_load_offset(context, producer_index);
     if (offset.has_value()) {
       lines.push_back("ldr " + std::string{abi::register_name(*destination_view)} +
                       ", " + frame_slot_address(context.function, *offset));
@@ -335,15 +353,12 @@ find_prepared_fp_same_block_global_load_access(
   if (const auto* load_global =
           producer != nullptr ? std::get_if<bir::LoadGlobalInst>(producer) : nullptr;
       load_global != nullptr) {
-    const auto producer_index = producer_instruction_index(context, producer);
-    if (!producer_index.has_value()) {
-      return false;
-    }
+    const auto producer_index = prepared_producer->instruction_index;
     const auto prepared_access =
         find_prepared_fp_same_block_global_load_access(context,
                                                        *load_global,
                                                        producer,
-                                                       *producer_index);
+                                                       producer_index);
     return prepared_access.has_value() &&
            prepared_access->load_global != nullptr &&
            prepared_access->access != nullptr &&
@@ -356,8 +371,7 @@ find_prepared_fp_same_block_global_load_access(
   if (const auto* cast =
           producer != nullptr ? std::get_if<bir::CastInst>(producer) : nullptr;
       cast != nullptr) {
-    const auto producer_index =
-        producer_instruction_index(context, producer).value_or(before_instruction_index);
+    const auto producer_index = prepared_producer->instruction_index;
     switch (cast->opcode) {
       case bir::CastOpcode::SIToFP:
       case bir::CastOpcode::UIToFP: {
