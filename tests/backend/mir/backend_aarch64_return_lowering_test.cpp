@@ -4,8 +4,11 @@
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
+#include "src/backend/prealloc/prepared_object_traversal.hpp"
 #include "src/target_profile.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -1530,6 +1533,37 @@ int module_build_retains_return_abi_for_memory_load_result() {
 
 int module_build_selects_scalar_chain_before_return() {
   auto prepared = prepared_with_return_selected_scalar_chain();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& function_locations = prepared.value_locations.functions.front();
+  const auto& bir_function = prepared.module.functions.front();
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      function_cf, &function_locations, &bir_function, nullptr, &prepared.names,
+      &lookups);
+  const auto start_event = std::find_if(
+      traversal.begin(), traversal.end(), [](const auto& event) {
+        return event.kind ==
+                   prepare::PreparedObjectTraversalEventKind::Instruction &&
+               event.block_index == 0 && event.instruction_index == 0;
+      });
+  const auto chain = prepare::classify_prepared_object_return_chain({
+      .start_event = start_event == traversal.end() ? nullptr : &*start_event,
+      .names = &prepared.names,
+      .value_locations = &function_locations,
+      .function_lookups = &lookups,
+  });
+  if (chain.status != prepare::PreparedObjectReturnChainStatus::Available ||
+      !chain.relation.has_value() || chain.relation->links.size() != 1 ||
+      !chain.relation->links.front().source_freshness_authority.has_value() ||
+      chain.relation->links.front().source_freshness_authority->source_kind !=
+          prepare::PreparedValueFreshnessSourceKind::DirectHome ||
+      chain.relation->links.front().move_bundle == nullptr ||
+      chain.relation->links.front().move_bundle->proof_attribution_id == 0 ||
+      chain.relation->terminal_move_bundle == nullptr ||
+      chain.relation->terminal_move_bundle->proof_attribution_id == 0) {
+    return fail("expected produced AArch64 return chain to be available through common authority");
+  }
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value()) {
     return fail("expected return-selected scalar chain module to build");
