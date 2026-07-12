@@ -3,28 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Make Route4 the authoritative classifier
+Current Step ID: 5
+Current Step Title: Bind MIR validation to the authoritative result
 
 ## Just Finished
 
-- Completed Plan Step 4 by adding Route4's authoritative classifier over the
-  explicit block-entry publication claim collection.
-- Classified zero, one, inconsistent, independently attributed duplicate,
-  stale-coordinate, and missing-attribution rows using exact modeled
-  owner/value identity without diagnostic or ordering recovery.
+- Completed Plan Step 5 by adding a MIR validation boundary that consumes
+  Route4's authoritative typed block-entry publication classification.
+- Validated the selected claim's exact attribution, destination ownership, and
+  instruction coordinate against prepared evidence, failing closed for
+  missing, unattributed, stale, inconsistent, and ambiguous classifications.
 
 ## Suggested Next
 
-- Execute Plan Step 5: bind MIR prepared attribution and coordinate validation
-  to Route4's authoritative typed result.
+- Execute Plan Step 6: prove the decomposition seam and hand back to idea 718.
 
 ## Watchouts
 
-- Route4 selects a claim only for the exactly-one valid row; ambiguous and all
-  malformed states intentionally leave `selected_claim_index` unset.
-- Step 5 should consume this result directly and must not recreate destination
-  identity or claim selection from names, types, coordinates, or emission order.
+- The direct MIR boundary trusts Route4 alone to select a claim; it performs no
+  PHI/name/order rescan and treats any absent or invalid selection as failure.
+- The legacy pointer overload remains as a compatibility bridge for existing
+  callers, but focused ambiguity evidence now enters MIR only through Route4's
+  explicit multi-claim classification.
 
 ## Proof
 

@@ -11620,14 +11620,91 @@ int verify_bir_block_entry_publication_identity_lookup() {
                                          duplicate_proof_successor.insts.front());
   const auto& duplicate_proof_destination =
       std::get<bir::PhiInst>(duplicate_proof_successor.insts.front()).result;
+  const bir::Route4BlockEntryDestinationIdentity duplicate_destination{
+      .successor_owner = &duplicate_proof_successor,
+      .successor_label_id = duplicate_proof_successor.label_id,
+      .destination_value = &duplicate_proof_destination,
+      .destination_value_name_id = destination_name,
+      .destination_value_name = duplicate_proof_destination.name,
+      .destination_value_type = duplicate_proof_destination.type,
+  };
+  const bir::Route4BlockEntryPublicationClaim duplicate_claim{
+      .attribution_id = 1,
+      .attributed = true,
+      .claimed_destination = duplicate_destination,
+      .instruction_owner = &duplicate_proof_successor,
+      .instruction_owner_label_id = duplicate_proof_successor.label_id,
+      .instruction = &duplicate_proof_successor.insts.front(),
+      .instruction_index = 0,
+  };
+  auto second_duplicate_claim = duplicate_claim;
+  second_duplicate_claim.attribution_id = 2;
+  second_duplicate_claim.instruction = &duplicate_proof_successor.insts[1];
+  second_duplicate_claim.instruction_index = 1;
+  const auto duplicate_classification =
+      bir::route4_classify_block_entry_publication_claims({
+          .destination = duplicate_destination,
+          .claims = {duplicate_claim, second_duplicate_claim},
+      });
   const auto duplicate_proof =
       mir::find_bir_block_entry_publication_identity(
-          prepared_available, &duplicate_proof_successor,
-          &duplicate_proof_destination);
+          prepared_available, duplicate_classification);
+  const auto authoritative_available =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available,
+          bir::route4_classify_block_entry_publication_claims({
+              .destination = duplicate_destination,
+              .claims = {duplicate_claim},
+          }));
+  const auto authoritative_missing =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available,
+          bir::route4_classify_block_entry_publication_claims({
+              .destination = duplicate_destination,
+          }));
+  auto unattributed_claim = duplicate_claim;
+  unattributed_claim.attributed = false;
+  unattributed_claim.attribution_id = 0;
+  const auto authoritative_unattributed =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available,
+          bir::route4_classify_block_entry_publication_claims({
+              .destination = duplicate_destination,
+              .claims = {unattributed_claim},
+          }));
+  auto stale_claim = duplicate_claim;
+  stale_claim.instruction_index = duplicate_proof_successor.insts.size();
+  const auto authoritative_stale =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available,
+          bir::route4_classify_block_entry_publication_claims({
+              .destination = duplicate_destination,
+              .claims = {stale_claim},
+          }));
+  auto inconsistent_claim = duplicate_claim;
+  inconsistent_claim.claimed_destination.successor_owner = &successor;
+  const auto authoritative_inconsistent =
+      mir::find_bir_block_entry_publication_identity(
+          prepared_available,
+          bir::route4_classify_block_entry_publication_claims({
+              .destination = duplicate_destination,
+              .claims = {inconsistent_claim},
+          }));
   if (duplicate_proof.available ||
       duplicate_proof.status !=
-          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous) {
-    return fail("BIR block-entry publication identity should reject duplicate proof");
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous ||
+      !authoritative_available.available || authoritative_missing.available ||
+      authoritative_missing.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable ||
+      authoritative_unattributed.available || authoritative_stale.available ||
+      authoritative_inconsistent.available ||
+      authoritative_unattributed.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch ||
+      authoritative_stale.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch ||
+      authoritative_inconsistent.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch) {
+    return fail("MIR block-entry validation should consume Route4's authoritative classification and fail closed");
   }
 
   auto unattributed_prepared = prepared_available;

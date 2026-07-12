@@ -789,58 +789,51 @@ find_bir_block_entry_publication_identity(
 [[nodiscard]] BirBlockEntryPublicationIdentity
 find_bir_block_entry_publication_identity(
     const prepare::PreparedCurrentBlockEntryPublication& prepared,
-    const bir::Block* proof_successor_block,
-    const bir::Value* proof_destination_value) {
+    const bir::Route4BlockEntryPublicationClassification& classification) {
   auto result = find_bir_block_entry_publication_identity(prepared);
   if (prepared.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available) {
     return result;
   }
-  if (proof_successor_block == nullptr || proof_destination_value == nullptr) {
-    result.available = false;
-    result.status =
-        prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof;
-    return result;
-  }
-
-  const auto proof = bir::route4_block_entry_publication_record(
-      proof_successor_block, *proof_destination_value,
-      prepared.destination_value_name);
-  std::size_t matching_phi_count = 0;
-  for (const auto& instruction : proof_successor_block->insts) {
-    const auto* phi = std::get_if<bir::PhiInst>(&instruction);
-    if (phi == nullptr) {
-      break;
-    }
-    if (phi->result.kind == bir::Value::Kind::Named &&
-        phi->result.name == proof_destination_value->name) {
-      ++matching_phi_count;
-    }
-  }
-  if (matching_phi_count > 1) {
+  if (classification.status ==
+      bir::Route4BlockEntryPublicationClassificationStatus::Ambiguous) {
     result.available = false;
     result.status =
         prepare::PreparedCurrentBlockEntryPublicationStatus::ProofAmbiguous;
     return result;
   }
-  if (!proof || proof.destination_instruction == nullptr || proof.phi == nullptr ||
-      proof.destination_value.value == nullptr) {
+  if (!classification || !classification.selected_claim_index.has_value() ||
+      *classification.selected_claim_index >= classification.claims.size()) {
     result.available = false;
-    result.status = proof.status == bir::Route4PublicationAvailabilityStatus::NoMatch
-                        ? prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch
-                        : prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable;
+    result.status =
+        classification.status ==
+                bir::Route4BlockEntryPublicationClassificationStatus::Missing ||
+            classification.status ==
+                bir::Route4BlockEntryPublicationClassificationStatus::Unavailable
+        ? prepare::PreparedCurrentBlockEntryPublicationStatus::ProofUnavailable
+        : prepare::PreparedCurrentBlockEntryPublicationStatus::ProofMismatch;
     return result;
   }
+  const auto& destination = classification.destination;
+  const auto& claim =
+      classification.claims[*classification.selected_claim_index];
+  const auto* phi = claim.instruction == nullptr
+                        ? nullptr
+                        : std::get_if<bir::PhiInst>(claim.instruction);
   if (!prepared.block_entry_publication_proof_attributed ||
-      proof.successor_label_id != prepared.successor_label_id ||
-      proof.successor_label != prepared.successor_label_text ||
-      proof.destination_value_name_id != prepared.destination_value_name ||
-      proof.destination_value_name != prepared.destination_value_name_text ||
-      proof.destination_value_type != prepared.destination_value_type ||
-      proof.destination_value.value != proof_destination_value ||
-      proof.destination_instruction_index !=
+      !claim.attributed || claim.attribution_id == 0 ||
+      claim.claimed_destination.successor_owner != destination.successor_owner ||
+      claim.claimed_destination.destination_value != destination.destination_value ||
+      claim.instruction_owner != destination.successor_owner ||
+      claim.instruction_owner_label_id != prepared.successor_label_id ||
+      destination.successor_label_id != prepared.successor_label_id ||
+      destination.destination_value_name_id != prepared.destination_value_name ||
+      destination.destination_value_name != prepared.destination_value_name_text ||
+      destination.destination_value_type != prepared.destination_value_type ||
+      phi == nullptr || &phi->result != destination.destination_value ||
+      claim.instruction_index !=
           prepared.block_entry_publication_proof_instruction_index ||
-      proof.destination_instruction_index !=
+      claim.instruction_index !=
           prepared.publication_bundle_instruction_index) {
     result.available = false;
     result.status =
@@ -849,17 +842,56 @@ find_bir_block_entry_publication_identity(
   }
 
   result.available = true;
-  result.instruction_index = proof.destination_instruction_index;
-  result.destination_value_name = proof.destination_value_name;
-  result.destination_value_name_id = proof.destination_value_name_id;
-  result.destination_value_type = proof.destination_value_type;
-  result.successor_block = proof.successor_block;
-  result.destination_instruction = proof.destination_instruction;
-  result.destination_phi = proof.phi;
-  result.destination_value = proof.destination_value.value;
-  result.successor_label = proof.successor_label;
-  result.successor_label_id = proof.successor_label_id;
+  result.instruction_index = claim.instruction_index;
+  result.destination_value_name = destination.destination_value_name;
+  result.destination_value_name_id = destination.destination_value_name_id;
+  result.destination_value_type = destination.destination_value_type;
+  result.successor_block = destination.successor_owner;
+  result.destination_instruction = claim.instruction;
+  result.destination_phi = phi;
+  result.destination_value = destination.destination_value;
+  result.successor_label = prepared.successor_label_text;
+  result.successor_label_id = destination.successor_label_id;
   return result;
+}
+
+[[nodiscard]] BirBlockEntryPublicationIdentity
+find_bir_block_entry_publication_identity(
+    const prepare::PreparedCurrentBlockEntryPublication& prepared,
+    const bir::Block* proof_successor_block,
+    const bir::Value* proof_destination_value) {
+  if (proof_successor_block == nullptr || proof_destination_value == nullptr) {
+    auto result = find_bir_block_entry_publication_identity(prepared);
+    result.available = false;
+    result.status = prepare::PreparedCurrentBlockEntryPublicationStatus::MissingProof;
+    return result;
+  }
+  const auto proof = bir::route4_block_entry_publication_record(
+      proof_successor_block, *proof_destination_value,
+      prepared.destination_value_name);
+  bir::Route4BlockEntryPublicationClaimCollection claims{
+      .destination = bir::Route4BlockEntryDestinationIdentity{
+          .successor_owner = proof_successor_block,
+          .successor_label_id = proof_successor_block->label_id,
+          .destination_value = proof_destination_value,
+          .destination_value_name_id = prepared.destination_value_name,
+          .destination_value_name = proof_destination_value->name,
+          .destination_value_type = proof_destination_value->type,
+      },
+  };
+  if (proof && proof.destination_instruction != nullptr) {
+    claims.claims.push_back(bir::Route4BlockEntryPublicationClaim{
+        .attribution_id = 1,
+        .attributed = true,
+        .claimed_destination = claims.destination,
+        .instruction_owner = proof_successor_block,
+        .instruction_owner_label_id = proof_successor_block->label_id,
+        .instruction = proof.destination_instruction,
+        .instruction_index = proof.destination_instruction_index,
+    });
+  }
+  return find_bir_block_entry_publication_identity(
+      prepared, bir::route4_classify_block_entry_publication_claims(claims));
 }
 
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity

@@ -485,6 +485,11 @@ find_bir_block_entry_publication_identity(
 [[nodiscard]] BirBlockEntryPublicationIdentity
 find_bir_block_entry_publication_identity(
     const prepare::PreparedCurrentBlockEntryPublication& prepared,
+    const bir::Route4BlockEntryPublicationClassification& classification);
+
+[[nodiscard]] BirBlockEntryPublicationIdentity
+find_bir_block_entry_publication_identity(
+    const prepare::PreparedCurrentBlockEntryPublication& prepared,
     const bir::Block* proof_successor_block,
     const bir::Value* proof_destination_value);
 
