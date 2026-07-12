@@ -295,6 +295,18 @@ int check_route_consumes_prepared_direct_extern_call_contract() {
         .reason = "contract_direct_extern_call_arg_register_to_register",
     });
   }
+  const auto main_function_id =
+      prepare::resolve_prepared_function_name_id(prepared.names, "main");
+  auto* call_plans = main_function_id.has_value()
+                         ? const_cast<prepare::PreparedCallPlansFunction*>(
+                               prepare::find_prepared_call_plans(prepared,
+                                                                 *main_function_id))
+                         : nullptr;
+  if (call_plans == nullptr || call_plans->calls.size() != 2 ||
+      call_plans->calls[1].arguments.size() != 2) {
+    return fail("bounded direct extern call contract drift route: missing cursor-exact prepared call argument plan");
+  }
+  call_plans->calls[1].arguments[1].destination_register_name = "rdx";
 
   auto* first_call_after_call = find_mutable_prepared_move_bundle(
       *function_locations, prepare::PreparedMovePhase::AfterCall, 0, 0);
@@ -514,153 +526,58 @@ int check_route_requires_authoritative_prepared_after_call_bundle() {
   return fail("bounded direct extern call contract drift route: x86 prepared-module consumer reopened a local call-result ABI fallback when the authoritative prepared AfterCall bundle was removed");
 }
 
-int check_consumed_plans_threads_route6_scalar_call_argument_source() {
-  const auto make_route6_module = [] {
-    auto module = make_x86_direct_extern_call_lane_module();
-    auto* call = std::get_if<bir::CallInst>(
-        &module.functions.back().blocks.front().insts[1]);
-    call->arg_sources.push_back(bir::CallArgumentSourceRelationship{
-        .arg_index = 1,
-        .source_encoding = bir::CallArgumentSourceEncodingKind::Register,
-        .source_value_name = std::string{"%t0"}});
-    return module;
-  };
-  const auto attach_prepared_source_id = [](prepare::PreparedBirModule& prepared) {
-    const auto* plans = find_call_plans(prepared, "main");
-    auto* function = find_mutable_bir_function(prepared, "main");
-    if (plans == nullptr || plans->calls.size() != 2 ||
-        plans->calls[1].arguments.size() != 2 || function == nullptr) {
-      return false;
+int check_consumed_plans_require_cursor_exact_scalar_call_argument_authority() {
+  const auto rejects = [](prepare::PreparedBirModule prepared) {
+    try {
+      static_cast<void>(c4c::backend::x86::api::emit_prepared_module(prepared));
+    } catch (const std::invalid_argument& ex) {
+      return std::string(ex.what()).find("prepared direct extern call argument") !=
+             std::string::npos;
     }
-    auto* call = std::get_if<bir::CallInst>(&function->blocks.front().insts[1]);
-    if (call == nullptr || call->arg_sources.size() != 1 ||
-        !plans->calls[1].arguments[1].source_value_id.has_value()) {
-      return false;
-    }
-    call->arg_sources.front().source_value_id =
-        *plans->calls[1].arguments[1].source_value_id;
-    return true;
+    return false;
   };
-  auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(make_route6_module(),
-                                                        x86_target_profile());
-  if (!attach_prepared_source_id(prepared)) {
-    return fail("x86 Route 6 call-use boundary: failed to attach prepared source identity");
+
+  auto missing_source = prepare::prepare_semantic_bir_module_with_options(
+      make_x86_direct_extern_call_lane_module(), x86_target_profile());
+  auto* missing_plans = const_cast<prepare::PreparedCallPlansFunction*>(
+      find_call_plans(missing_source, "main"));
+  if (missing_plans == nullptr || missing_plans->calls.size() != 2 ||
+      missing_plans->calls[1].arguments.size() != 2) {
+    return fail("x86 prepared call-plan authority: malformed adjacent-call fixture");
   }
-  const auto consumed = c4c::backend::x86::consume_plans(prepared, "main");
-  const auto* main_function = find_mutable_bir_function(prepared, "main");
-  if (main_function == nullptr || main_function->blocks.empty()) {
-    return fail("x86 Route 6 call-use boundary: malformed main fixture");
-  }
-  const auto& block = main_function->blocks.front();
-  const auto* call = std::get_if<bir::CallInst>(&block.insts[1]);
-  if (call == nullptr || call->args.size() <= 1) {
-    return fail("x86 Route 6 call-use boundary: malformed printf call fixture");
-  }
-  const auto route6_source =
-      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
-          consumed, block, *call, 0, 1, 1, call->args[1]);
-  const auto* prepared_argument =
-      c4c::backend::x86::find_consumed_call_argument_plan(consumed, 0, 1, 1);
-  if (!route6_source || prepared_argument == nullptr ||
-      route6_source->source_kind != bir::Route6CallUseSourceKind::ArgumentValue ||
-      !route6_source->source_value_name.has_value() ||
-      *route6_source->source_value_name != "%t0" ||
-      !route6_source->source_value_id.has_value() ||
-      !prepared_argument->source_value_id.has_value() ||
-      *route6_source->source_value_id != *prepared_argument->source_value_id) {
-    return fail("x86 Route 6 call-use boundary: scalar call argument source did not thread through ConsumedPlans");
-  }
-  const auto route6_authority =
-      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
-          consumed, block, *call, 0, 1, 1, call->args[1]);
-  if (!route6_authority || route6_authority->source_name != "%t0") {
-    return fail("x86 Route 6 call-use boundary: agreed scalar source did not become named Route 6 authority");
+  missing_plans->calls[1].arguments[1].source_value_id.reset();
+  if (!rejects(std::move(missing_source))) {
+    return fail("x86 prepared call-plan authority: missing scalar source identity did not fail closed");
   }
 
-  auto nameless_prepared =
-      prepare::prepare_semantic_bir_module_with_options(make_route6_module(),
-                                                        x86_target_profile());
-  if (!attach_prepared_source_id(nameless_prepared)) {
-    return fail("x86 Route 6 call-use boundary nameless fallback: failed to attach prepared source identity");
+  auto inconsistent_source = prepare::prepare_semantic_bir_module_with_options(
+      make_x86_direct_extern_call_lane_module(), x86_target_profile());
+  auto* inconsistent_main = find_mutable_bir_function(inconsistent_source, "main");
+  if (inconsistent_main == nullptr || inconsistent_main->blocks.empty()) {
+    return fail("x86 prepared call-plan authority: malformed scalar-source fixture");
   }
-  auto* nameless_main = find_mutable_bir_function(nameless_prepared, "main");
-  if (nameless_main == nullptr || nameless_main->blocks.empty()) {
-    return fail("x86 Route 6 call-use boundary nameless fallback: malformed main fixture");
+  auto* inconsistent_call =
+      std::get_if<bir::CallInst>(&inconsistent_main->blocks.front().insts[1]);
+  if (inconsistent_call == nullptr || inconsistent_call->args.size() != 2) {
+    return fail("x86 prepared call-plan authority: malformed variadic-call fixture");
   }
-  auto& nameless_block = nameless_main->blocks.front();
-  auto* nameless_call = std::get_if<bir::CallInst>(&nameless_block.insts[1]);
-  if (nameless_call == nullptr || nameless_call->args.size() <= 1) {
-    return fail("x86 Route 6 call-use boundary nameless fallback: malformed printf call fixture");
-  }
-  auto nameless_arg_source =
-      std::find_if(nameless_call->arg_sources.begin(),
-                   nameless_call->arg_sources.end(),
-                   [](const bir::CallArgumentSourceRelationship& source) {
-                     return source.arg_index == 1;
-                   });
-  if (nameless_arg_source == nameless_call->arg_sources.end()) {
-    return fail("x86 Route 6 call-use boundary nameless fallback: missing printf scalar source");
-  }
-  nameless_arg_source->source_value_name.reset();
-  const auto nameless_consumed = c4c::backend::x86::consume_plans(nameless_prepared, "main");
-  if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
-          nameless_consumed, nameless_block, *nameless_call, 0, 1, 1, nameless_call->args[1])) {
-    return fail("x86 Route 6 call-use boundary nameless fallback: nameless Route 6 source became named authority");
+  inconsistent_call->args[1].name = "%t1";
+  if (!rejects(std::move(inconsistent_source))) {
+    return fail("x86 prepared call-plan authority: operand/plan source disagreement did not fail closed");
   }
 
-  std::string nameless_asm;
-  try {
-    nameless_asm = c4c::backend::x86::api::emit_prepared_module(nameless_prepared);
-  } catch (const std::exception& ex) {
-    return fail((std::string("x86 Route 6 call-use boundary nameless fallback: prepared fallback rejected with exception: ") +
-                 ex.what())
-                    .c_str());
+  auto inconsistent_destination = prepare::prepare_semantic_bir_module_with_options(
+      make_x86_direct_extern_call_lane_module(), x86_target_profile());
+  auto* destination_plans = const_cast<prepare::PreparedCallPlansFunction*>(
+      find_call_plans(inconsistent_destination, "main"));
+  if (destination_plans == nullptr || destination_plans->calls.size() != 2 ||
+      destination_plans->calls[1].arguments.size() != 2) {
+    return fail("x86 prepared call-plan authority: malformed destination fixture");
   }
-  if (nameless_asm != expected_minimal_direct_extern_call_lane_asm()) {
-    return fail("x86 Route 6 call-use boundary nameless fallback: prepared call-plan fallback changed asm");
+  destination_plans->calls[1].arguments[1].destination_register_name = "rdx";
+  if (!rejects(std::move(inconsistent_destination))) {
+    return fail("x86 prepared call-plan authority: call-plan/bundle destination disagreement did not fail closed");
   }
-
-  auto fallback_prepared =
-      prepare::prepare_semantic_bir_module_with_options(make_route6_module(),
-                                                        x86_target_profile());
-  if (!attach_prepared_source_id(fallback_prepared)) {
-    return fail("x86 Route 6 call-use boundary fallback: failed to attach prepared source identity");
-  }
-  auto* fallback_main = find_mutable_bir_function(fallback_prepared, "main");
-  if (fallback_main == nullptr || fallback_main->blocks.empty()) {
-    return fail("x86 Route 6 call-use boundary fallback: malformed main fixture");
-  }
-  auto& fallback_block = fallback_main->blocks.front();
-  auto* fallback_call = std::get_if<bir::CallInst>(&fallback_block.insts[1]);
-  if (fallback_call == nullptr || fallback_call->args.size() <= 1) {
-    return fail("x86 Route 6 call-use boundary fallback: malformed printf call fixture");
-  }
-  fallback_call->arg_sources.clear();
-  const auto fallback_consumed = c4c::backend::x86::consume_plans(fallback_prepared, "main");
-  const auto fallback_route6_source =
-      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
-          fallback_consumed, fallback_block, *fallback_call, 0, 1, 1, fallback_call->args[1]);
-  if (fallback_route6_source.has_value()) {
-    return fail("x86 Route 6 call-use boundary fallback: missing Route 6 facts should fail closed");
-  }
-  if (c4c::backend::x86::find_consumed_call_argument_plan(fallback_consumed, 0, 1, 1) ==
-      nullptr) {
-    return fail("x86 Route 6 call-use boundary fallback: prepared call argument selector was not preserved");
-  }
-
-  std::string fallback_asm;
-  try {
-    fallback_asm = c4c::backend::x86::api::emit_prepared_module(fallback_prepared);
-  } catch (const std::exception& ex) {
-    return fail((std::string("x86 Route 6 call-use boundary fallback: prepared fallback rejected with exception: ") +
-                 ex.what())
-                    .c_str());
-  }
-  if (fallback_asm != expected_minimal_direct_extern_call_lane_asm()) {
-    return fail("x86 Route 6 call-use boundary fallback: prepared call-plan fallback changed asm");
-  }
-
   return 0;
 }
 
@@ -690,7 +607,8 @@ int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
       status != 0) {
     return status;
   }
-  if (const auto status = check_consumed_plans_threads_route6_scalar_call_argument_source();
+  if (const auto status =
+          check_consumed_plans_require_cursor_exact_scalar_call_argument_authority();
       status != 0) {
     return status;
   }

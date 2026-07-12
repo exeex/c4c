@@ -3261,6 +3261,30 @@ const c4c::backend::prepare::PreparedMoveResolution& require_prepared_call_resul
                                               "' has no authoritative prepared call-bundle handoff");
 }
 
+const c4c::backend::prepare::PreparedValueHome&
+require_prepared_scalar_call_argument_source_home(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Value& argument,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument_plan) {
+  if (!argument_plan.source_value_id.has_value()) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' has no authoritative prepared direct extern call argument source");
+  }
+  const auto* home = c4c::backend::prepare::find_prepared_value_home(
+      function_locations, *argument_plan.source_value_id);
+  if (home == nullptr ||
+      c4c::backend::prepare::prepared_value_name(module.names, home->value_name) !=
+          argument.name) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' has inconsistent prepared direct extern call argument source");
+  }
+  return *home;
+}
+
 bool append_prepared_direct_extern_call_argument(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -3268,10 +3292,21 @@ bool append_prepared_direct_extern_call_argument(
     const c4c::backend::bir::Function& function,
     const Data& data,
     const c4c::backend::bir::Value& argument,
-    const std::string& destination_register,
-    std::optional<std::string_view> route6_source_authority = std::nullopt) {
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument_plan,
+    const std::string& destination_register) {
+  if (argument_plan.destination_register_name !=
+      std::optional<std::string>{destination_register}) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' has inconsistent prepared direct extern call argument destinations");
+  }
   if (argument.kind == c4c::backend::bir::Value::Kind::Named && !argument.name.empty() &&
       argument.name.front() == '@' && argument.type == c4c::backend::bir::TypeKind::Ptr) {
+    if (argument_plan.source_symbol_name != std::optional<std::string>{argument.name}) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has inconsistent prepared direct extern call argument source");
+    }
     std::string_view symbol_name(argument.name.data() + 1, argument.name.size() - 1);
     const auto names_string_constant =
         std::any_of(module.module.string_constants.begin(),
@@ -3289,10 +3324,8 @@ bool append_prepared_direct_extern_call_argument(
 
   if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
       argument.type == c4c::backend::bir::TypeKind::I32) {
-    const auto source_name =
-        route6_source_authority.value_or(std::string_view(argument.name));
-    const auto& home = require_prepared_i32_value_home(
-        module, function_locations, function, source_name, "direct extern call argument");
+    const auto& home = require_prepared_scalar_call_argument_source_home(
+        module, function_locations, function, argument, argument_plan);
     if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
         !home.register_name.has_value()) {
       throw_prepared_value_location_handoff_error(
@@ -3310,6 +3343,11 @@ bool append_prepared_direct_extern_call_argument(
 
   if (argument.kind == c4c::backend::bir::Value::Kind::Immediate &&
       argument.type == c4c::backend::bir::TypeKind::I32) {
+    if (argument_plan.source_literal != std::optional<c4c::backend::bir::Value>{argument}) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has inconsistent prepared direct extern call argument source");
+    }
     function_out.append_line("    mov " +
                              c4c::backend::x86::abi::narrow_i32_register_name(
                                  destination_register) +
@@ -3389,6 +3427,13 @@ bool append_prepared_direct_extern_call_return_function(
           instruction_index);
     }
     for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+      const auto* argument_plan = c4c::backend::x86::find_consumed_call_argument_plan(
+          consumed, 0, instruction_index, arg_index);
+      if (argument_plan == nullptr) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' has no authoritative prepared direct extern call argument plan");
+      }
       const auto destination_register =
           prepared_call_argument_register(*before_call_bundle, arg_index);
       if (!destination_register.has_value()) {
@@ -3396,21 +3441,14 @@ bool append_prepared_direct_extern_call_return_function(
             "defined function '" + function.name +
             "' has no authoritative prepared call-bundle handoff");
       }
-      const auto route6_argument_source_authority =
-          c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
-              consumed, block, *call, 0, instruction_index, arg_index, call->args[arg_index]);
-      const std::optional<std::string_view> route6_source_authority =
-          route6_argument_source_authority.has_value()
-              ? std::optional<std::string_view>{route6_argument_source_authority->source_name}
-              : std::nullopt;
       if (!append_prepared_direct_extern_call_argument(function_out,
                                                       module,
                                                       *function_locations,
                                                       function,
                                                       data,
                                                       call->args[arg_index],
-                                                      *destination_register,
-                                                      route6_source_authority)) {
+                                                      *argument_plan,
+                                                      *destination_register)) {
         return false;
       }
     }
@@ -3697,6 +3735,13 @@ bool append_prepared_symbol_call_local_i32_function(
             0,
             instruction_index);
         for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+          const auto* argument_plan = c4c::backend::x86::find_consumed_call_argument_plan(
+              consumed, 0, instruction_index, arg_index);
+          if (argument_plan == nullptr) {
+            throw_prepared_value_location_handoff_error(
+                "defined function '" + function.name +
+                "' has no authoritative prepared direct extern call argument plan");
+          }
           const auto destination_register =
               prepared_call_argument_register(before_call_bundle, arg_index);
           if (!destination_register.has_value()) {
@@ -3718,15 +3763,10 @@ bool append_prepared_symbol_call_local_i32_function(
           }
           if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
               argument.type == c4c::backend::bir::TypeKind::I32) {
-            const auto route6_argument_source_authority =
-                c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
-                    consumed, block, *call, 0, instruction_index, arg_index, argument);
-            const std::optional<std::string_view> route6_source_authority =
-                route6_argument_source_authority.has_value()
-                    ? std::optional<std::string_view>{route6_argument_source_authority->source_name}
-                    : std::nullopt;
             const auto loaded_value = loaded_i32_values.find(argument.name);
             if (loaded_value != loaded_i32_values.end()) {
+              static_cast<void>(require_prepared_scalar_call_argument_source_home(
+                  module, *function_locations, function, argument, *argument_plan));
               function_out.append_line("    mov " +
                                        c4c::backend::x86::abi::narrow_i32_register_name(
                                            *destination_register) +
@@ -3737,8 +3777,8 @@ bool append_prepared_symbol_call_local_i32_function(
                                                                     function,
                                                                     data,
                                                                     argument,
-                                                                    *destination_register,
-                                                                    route6_source_authority)) {
+                                                                    *argument_plan,
+                                                                    *destination_register)) {
               return false;
             }
           } else {
@@ -3748,6 +3788,7 @@ bool append_prepared_symbol_call_local_i32_function(
                                                             function,
                                                             data,
                                                             argument,
+                                                            *argument_plan,
                                                             *destination_register)) {
               return false;
             }
