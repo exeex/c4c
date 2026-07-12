@@ -1400,6 +1400,77 @@ query_prepared_current_block_join_routing_consumption(
       role);
 }
 
+PreparedCurrentBlockJoinRoutingConsumption
+query_attached_prepared_current_block_join_routing_consumption(
+    const PreparedFunctionLookups* owner,
+    const PreparedFunctionLookups* attached,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role) {
+  PreparedCurrentBlockJoinRoutingConsumption result{
+      .successor_label = successor_label,
+      .routed_value_id = routed_value_id,
+      .routed_value_name = routed_value_name,
+      .role = role,
+  };
+  if (owner == nullptr || attached == nullptr) {
+    return result;
+  }
+  if (attached != owner || successor_label == kInvalidBlockLabel ||
+      routed_value_id == PreparedValueId{0} ||
+      routed_value_name == kInvalidValueName) {
+    result.status = PreparedFactBoundaryStatus::Mismatched;
+    return result;
+  }
+  switch (role) {
+    case PreparedCurrentBlockJoinRoutingRole::IncomingExpression:
+    case PreparedCurrentBlockJoinRoutingRole::Source:
+      break;
+    default:
+      result.status = PreparedFactBoundaryStatus::Unsupported;
+      return result;
+  }
+  return query_prepared_current_block_join_routing_consumption(
+      *owner,
+      successor_label,
+      routed_value_id,
+      routed_value_name,
+      role);
+}
+
+PreparedCurrentBlockJoinRoutingConsumption
+query_attached_prepared_current_block_join_incoming_expression(
+    const PreparedFunctionLookups* owner,
+    const PreparedFunctionLookups* attached,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name) {
+  return query_attached_prepared_current_block_join_routing_consumption(
+      owner,
+      attached,
+      successor_label,
+      routed_value_id,
+      routed_value_name,
+      PreparedCurrentBlockJoinRoutingRole::IncomingExpression);
+}
+
+PreparedCurrentBlockJoinRoutingConsumption
+query_attached_prepared_current_block_join_source(
+    const PreparedFunctionLookups* owner,
+    const PreparedFunctionLookups* attached,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name) {
+  return query_attached_prepared_current_block_join_routing_consumption(
+      owner,
+      attached,
+      successor_label,
+      routed_value_id,
+      routed_value_name,
+      PreparedCurrentBlockJoinRoutingRole::Source);
+}
+
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,

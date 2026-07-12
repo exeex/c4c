@@ -1833,6 +1833,31 @@ query_prepared_current_block_join_routing_consumption(
     ValueNameId routed_value_name,
     PreparedCurrentBlockJoinRoutingRole role);
 
+[[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
+query_attached_prepared_current_block_join_routing_consumption(
+    const PreparedFunctionLookups* owner,
+    const PreparedFunctionLookups* attached,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name,
+    PreparedCurrentBlockJoinRoutingRole role);
+
+[[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
+query_attached_prepared_current_block_join_incoming_expression(
+    const PreparedFunctionLookups* owner,
+    const PreparedFunctionLookups* attached,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name);
+
+[[nodiscard]] PreparedCurrentBlockJoinRoutingConsumption
+query_attached_prepared_current_block_join_source(
+    const PreparedFunctionLookups* owner,
+    const PreparedFunctionLookups* attached,
+    BlockLabelId successor_label,
+    PreparedValueId routed_value_id,
+    ValueNameId routed_value_name);
+
 enum class PreparedTypedStackSourcePublicationStatus {
   Available,
   MissingPublication,
