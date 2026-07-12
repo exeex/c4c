@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3.3
-Current Step Title: Continue remaining prepared-authority families — dead Route 1/Route 3 conversion-helper cleanup packet only
+Current Step ID: 6
+Current Step Title: Audit ownership and run integration proof — final three-target acceptance packet
 
 ## Just Finished
 
@@ -18,8 +18,16 @@ Current Step Title: Continue remaining prepared-authority families — dead Rout
 
 ## Suggested Next
 
-- Review the now-zero Route 1-Route 8 common-query authority inventories and
-  select the next coherent Step 3.3 packet or lifecycle handoff.
+- Execute one bounded Step 6 acceptance packet: audit every remaining common
+  query declaration/definition for named BIR or prepared-view ownership and
+  fail-closed status handling; confirm the affected x86, AArch64, and RV64
+  callers contain no BIR analysis, prepared reconstruction, or route fallback;
+  then build and run the route-authority guard, directly affected three-target
+  handoff contracts, and the supervisor-selected broader backend regression
+  guard with matching canonical before/after scope.
+- Treat Steps 4 and 5 as acceptance claims only after that audit and proof are
+  recorded. If the audit finds an executable ownership or target-caller gap,
+  return the smallest concrete implementation packet instead of closing.
 
 ## Watchouts
 
@@ -27,6 +35,9 @@ Current Step Title: Continue remaining prepared-authority families — dead Rout
   requires zero route record/index payloads and route analysis entry points in
   the common boundary, with synthetic canaries proving both regexes remain
   effective.
+- Zero vocabulary is necessary but not sufficient for closure: it does not
+  alone prove ownership-correct fail-closed behavior, all three target-facing
+  callers, or the broader regression requirement in Step 6.
 - The frame/call contract still retains its known baseline failure:
   `call_plans no longer publish the direct call`.
 
