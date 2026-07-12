@@ -5663,39 +5663,24 @@ int check_call_argument_source_producer_materializability_contract() {
           },
       },
   });
+  auto complete_entry_publication = prepared_entry_publication;
+  complete_entry_publication.successor_label_text = join_block.label;
+  complete_entry_publication.successor_label_id = join_label;
+  complete_entry_publication.destination_value_name_text = "%join.arg";
+  complete_entry_publication.destination_value_type = bir::TypeKind::I32;
+  complete_entry_publication.block_entry_publication_proof_attributed = true;
   const auto bir_entry_publication =
-      mir::find_bir_block_entry_publication_identity(
-          mir::BirBlockEntryPublicationIdentityRequest{
-              .successor_block = &join_block,
-              .successor_label = join_block.label,
-              .successor_label_id = join_label,
-              .destination_value =
-                  &std::get<bir::PhiInst>(join_block.insts.front()).result,
-              .destination_value_id =
-                  prepared_entry_publication.destination_value_id,
-              .destination_value_name =
-                  prepare::prepared_value_name(names, join_value_name),
-              .destination_value_name_id = join_value_name,
-              .destination_value_type = bir::TypeKind::I32,
-          });
+      mir::find_bir_block_entry_publication_identity(complete_entry_publication);
   if (prepared_entry_publication.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       !bir_entry_publication.available ||
       bir_entry_publication.status !=
-          mir::BirBlockEntryPublicationStatus::Available ||
-      bir_entry_publication.instruction != &join_block.insts.front() ||
-      bir_entry_publication.phi !=
-          &std::get<bir::PhiInst>(join_block.insts.front()) ||
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       bir_entry_publication.instruction_index != 0 ||
       bir_entry_publication.destination_value_id !=
           prepared_entry_publication.destination_value_id ||
       bir_entry_publication.destination_value_name_id !=
           prepared_entry_publication.destination_value_name ||
-      bir_entry_publication.destination_value == nullptr ||
-      bir_entry_publication.destination_value_identity.value !=
-          bir_entry_publication.destination_value ||
-      bir_entry_publication.destination_value_identity.name !=
-          bir_entry_publication.destination_value_name ||
       bir_entry_publication.destination_value_name != "%join.arg") {
     return fail(
         "call-argument producer materializability contract: BIR block-entry publication identity should match prepared semantic destination fields");
@@ -5711,25 +5696,12 @@ int check_call_argument_source_producer_materializability_contract() {
           prepare::PreparedValueId{72});
   const auto bir_only_entry_publication =
       mir::find_bir_block_entry_publication_identity(
-          mir::BirBlockEntryPublicationIdentityRequest{
-              .successor_block = &join_block,
-              .successor_label = join_block.label,
-              .successor_label_id = join_label,
-              .destination_value_id =
-                  prepared_bir_only_entry_publication.destination_value_id,
-              .destination_value_name =
-                  prepare::prepared_value_name(names, join_bir_only_name),
-              .destination_value_name_id = join_bir_only_name,
-              .destination_value_type = bir::TypeKind::I32,
-          });
+          prepared_bir_only_entry_publication);
   if (prepared_bir_only_entry_publication.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::MissingPublication ||
-      !bir_only_entry_publication.available ||
-      bir_only_entry_publication.destination_value_name != "%join.bir_only" ||
-      bir_only_entry_publication.destination_value_name_id !=
-          prepared_bir_only_entry_publication.destination_value_name) {
+      bir_only_entry_publication.available) {
     return fail(
-        "call-argument producer materializability contract: BIR PHI-entry identity should not imply prepared entry-publication emission readiness");
+        "call-argument producer materializability contract: common identity should fail closed without prepared entry-publication readiness");
   }
 
   if (prepare::find_prepared_call_argument_source_producer_materialization(
