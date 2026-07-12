@@ -3,19 +3,19 @@
 Status: Active
 Source Idea Path: ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md
 Source Plan Path: plan.md
-Current Step ID: 6.2
-Current Step Title: Complete Route4 instruction-coordinate authority
+Current Step ID: 6.3
+Current Step Title: Prove independent same-name destination availability
 
 ## Just Finished
 
-- Plan Step 6.2 completed Route4 instruction-coordinate authority: the
-  authoritative classifier now validates `instruction_owner_label_id` against
-  both the exact instruction owner and destination label identity, and an
-  isolated owner-label-only drift row classifies as `Stale`.
+- Plan Step 6.3 proved independent same-name destination availability: two
+  same-spelling/same-type destinations with distinct owner and value identity
+  each classify an exactly attributed claim as `Available`, while a claim
+  attributed to the other destination remains `Inconsistent`.
 
 ## Suggested Next
 
-- Execute Plan Step 6.3: prove independent same-name destination availability.
+- Execute Plan Step 6.4: prove production-overload no-downgrade behavior.
 
 ## Watchouts
 
@@ -26,6 +26,8 @@ Current Step Title: Complete Route4 instruction-coordinate authority
   ambiguous; only the typed classification boundary may report availability.
 - Preserve the Route4 owner pointer, label identity, instruction pointer, and
   instruction index as one authoritative coordinate during adjacent work.
+- Keep mismatched-destination rejection distinct from same-name exact-identity
+  availability; diagnostic spelling and type are not destination authority.
 
 ## Proof
 

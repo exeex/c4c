@@ -15365,6 +15365,14 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
       .destination_value_name = destination_value.name,
       .destination_value_type = destination_value.type,
   };
+  const bir::Route4BlockEntryDestinationIdentity same_spelling_destination{
+      .successor_owner = &same_spelling_successor,
+      .successor_label_id = same_spelling_successor.label_id,
+      .destination_value = &same_spelling_value,
+      .destination_value_name_id = destination.destination_value_name_id,
+      .destination_value_name = same_spelling_value.name,
+      .destination_value_type = same_spelling_value.type,
+  };
 
   // Source programs cannot express two distinct BIR owners with deliberately
   // identical diagnostic metadata, so this row constructs the internal state.
@@ -15404,6 +15412,15 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
       .instruction_owner = &successor,
       .instruction_owner_label_id = successor.label_id,
       .instruction = &successor.insts.front(),
+      .instruction_index = 0,
+  };
+  const bir::Route4BlockEntryPublicationClaim same_spelling_agreeing_claim{
+      .attribution_id = 13,
+      .attributed = true,
+      .claimed_destination = same_spelling_destination,
+      .instruction_owner = &same_spelling_successor,
+      .instruction_owner_label_id = same_spelling_successor.label_id,
+      .instruction = &same_spelling_successor.insts.front(),
       .instruction_index = 0,
   };
   auto independently_attributed_claim = agreeing_claim;
@@ -15469,6 +15486,11 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
           .destination = destination,
           .claims = {agreeing_claim},
       });
+  const auto same_spelling_available =
+      bir::route4_classify_block_entry_publication_claims({
+          .destination = same_spelling_destination,
+          .claims = {same_spelling_agreeing_claim},
+      });
   const auto inconsistent =
       bir::route4_classify_block_entry_publication_claims(exact_identity);
   const auto ambiguous =
@@ -15483,7 +15505,14 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
       missing.status !=
           bir::Route4BlockEntryPublicationClassificationStatus::Missing ||
       !available ||
+      available.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Available ||
       available.selected_claim_index != std::optional<std::size_t>{0} ||
+      !same_spelling_available ||
+      same_spelling_available.status !=
+          bir::Route4BlockEntryPublicationClassificationStatus::Available ||
+      same_spelling_available.selected_claim_index !=
+          std::optional<std::size_t>{0} ||
       inconsistent ||
       inconsistent.status !=
           bir::Route4BlockEntryPublicationClassificationStatus::Inconsistent ||
@@ -15499,7 +15528,7 @@ int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
       unattributed ||
       unattributed.status !=
           bir::Route4BlockEntryPublicationClassificationStatus::Unattributed) {
-    return fail("Route4 should authoritatively classify explicit block-entry publication claims");
+    return fail("Route4 should independently classify exact same-spelling destinations while rejecting mismatched claims");
   }
   return 0;
 }
