@@ -3,23 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/723_pre_regalloc_value_constraint_carrier_research.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Decide semantic owner and schema
+Current Step ID: 3
+Current Step Title: Define deterministic proof and follow-up
 
 ## Just Finished
 
-- Plan Step 2 compared BIR, prepared semantic, liveness, and regalloc ownership in `docs/pre_regalloc_value_constraints/02_semantic_owner_and_schema.md` and selected a bounded split: authenticated ingress and target validation in prepared semantic state, normalization in `PreparedAllocationConstraint`, and enforcement in common regalloc.
-- The decision rejects unrestricted BIR/value-name register controls. It specifies stable identity, typed provenance, structured target identity, class/width legality, conflict handling, failure behavior, and constraint-aware candidate filtering without encoding the joined-branch fixture.
+- Plan Step 3 defined a deterministic semantic positive and proof boundary in `docs/pre_regalloc_value_constraints/03_proof_and_followup_boundary.md`: two independently meaningful explicit-register inline-assembly operand constraints force distinct predecessor/phi identities and make the edge move a downstream consequence.
+- The document includes missing, stale, ambiguous, mismatch, unsupported, class/width, home, interference, preference, forbidden-pool, publication, and freshness negatives; deterministic acceptance rules; forbidden shortcuts; and a narrow prepared inline-assembly constraint implementation outline with a stop condition.
 
 ## Suggested Next
 
-- Execute Plan Step 3 by defining a route-independent positive semantic program, adjacent negative matrix, and deterministic follow-up boundary.
+- Execute Plan Step 4 by writing the research index, checking exact file count and cross-document consistency, and reviewing the set against idea 723 reject signals.
 
 ## Watchouts
 
-- A later implementation must constrain every normal and eviction candidate-pool pass from the same normalized row. Publishing requests without enforcement, or exposing arbitrary value-name-to-register preparation options, would preserve the original failure behind a new carrier.
+- Current inline-assembly code validates physical identities after homes exist; the follow-up is valid only if supported explicit-register meaning can be preserved before regalloc. If that requires broad syntax redesign, stop rather than substituting a fixture map.
 
 ## Proof
 
 - No build was required for this documentation-only packet.
-- Ran repository `rg` checks for every cited owner, type, phase, target-identity helper, candidate-selection symbol, and constraint field; all cited paths and symbols resolved. `git diff --check` passed.
+- Ran repository citation checks for inline-assembly metadata, identity parsers, carrier validation, prepared constraints, candidate selection, and the direct-edge typed query; all cited paths and symbols resolved. `git diff --check` passed.
