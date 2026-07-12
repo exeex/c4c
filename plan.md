@@ -1,196 +1,181 @@
-# Block-Entry Publication Identity Completion Runbook
+# Block-Entry Publication Proof-Evidence Multiplicity Runbook
 
 Status: Active
-Source Idea: ideas/open/718_block_entry_publication_identity_completion.md
-Activated after parking: ideas/open/719_bir_cfg_edge_publication_source_identity_completion.md
+Source Idea: ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md
+Activated after parking: ideas/open/718_block_entry_publication_identity_completion.md
 
 ## Purpose
 
-Restore exact agreement between available prepared block-entry publication
-facts and the BIR semantic publication identity view.
+Decompose the proof-evidence contradiction that blocked idea 718 Step 5 into
+explicit identity, claim, collection, and classification contracts.
 
 ## Goal
 
-Preserve exact successor, destination, type, PHI instruction, and proof
-attribution across the prepared-to-BIR semantic publication boundary.
+Give authoritative BIR Route4 enough modeled evidence to distinguish zero,
+one, inconsistent, and duplicate attributed publication claims.
 
 ## Core Rule
 
-Resolve publication identity from attributed semantic evidence. Never recover
-it by source order, nearest PHI, display name alone, or target-emission facts.
+Destination semantic identity and individual proof-claim identity are separate
+facts. Do not infer either from display name, source order, nearest PHI, or
+target-emission behavior.
 
 ## Read First
 
-- `ideas/open/718_block_entry_publication_identity_completion.md`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-- `src/backend/mir/query.h`
+- `ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md`
+- `review/idea718_step5_ambiguity_acceptance_review.md`
+- `src/backend/bir/bir_route4_publication.cpp`
 - `src/backend/mir/query.cpp`
+- `src/backend/mir/query.h`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
 
 ## Current Scope
 
-- Prepared current-block entry publication readiness.
-- `find_bir_block_entry_publication_identity` and its semantic evidence path.
-- Exact successor, destination value ID/name/type, PHI instruction index, and
-  proof attribution.
-- Positive and fail-closed proof across multiple publication shapes.
+- Destination semantic identity versus attributed proof-claim identity.
+- An explicit claim collection and typed cardinality/agreement result.
+- Authoritative Route4 classification.
+- MIR attribution and prepared-coordinate validation against that result.
+- Focused internal backend BIR proof for exact identity and multiplicity.
 
 ## Non-Goals
 
-- Do not change prepared-call plans, argument materializability, or ABI policy.
-- Do not change join-source or edge-publication identity.
-- Do not change target materialization, storage hooks, register spelling, move
-  order, or emitted publication policy.
-- Do not restore route numbers or alter printer/debug vocabulary.
+- Do not complete idea 718's production or broader acceptance work here.
+- Do not change prepared-call, join/edge, ABI, target materialization, storage,
+  or emission policy.
+- Do not use source-program cases for state that only internal C++ query probes
+  can express directly.
+- Do not broaden the redesign to unrelated BIR routes or query families.
+
+## Working Model
+
+- Destination identity answers which semantic publication destination a claim
+  concerns.
+- Claim identity answers which attributed prepared proof and coordinate makes
+  that assertion.
+- A collection preserves independently represented claims before agreement or
+  ambiguity classification.
+- The authoritative result classifies cardinality and disagreement; MIR only
+  validates its prepared attribution/coordinate against that result.
 
 ## Execution Rules
 
-- Establish the earliest prepared-to-BIR identity divergence before repair.
-- Generalize beyond the currently failing call-contract fixture.
-- Preserve typed unavailable results for incomplete or inconsistent evidence.
-- Use only supervisor-delegated build, focused, and broader proof commands.
+- Record the current authority map and truth table before implementation.
+- Preserve typed unavailable and ambiguous outcomes.
+- Add one focused internal probe per contract; do not encode testcase-shaped
+  exceptions.
+- Run only the supervisor-delegated build and proof commands.
+- Treat the switch as route correction, not backend capability progress.
 
 ## Ordered Steps
 
-### Step 1: Localize the prepared-to-BIR publication divergence
+### Step 1: Establish the blocked baseline and modeling truth table
 
-Goal: identify the earliest point where available prepared publication facts
-lose or change semantic successor, destination, instruction, or attribution
-identity.
-
-Actions:
-
-- Trace prepared current-block entry readiness into
-  `find_bir_block_entry_publication_identity`.
-- Map successor, destination ID/name/type, PHI instruction index, and proof
-  attribution to their owning facts.
-- Classify missing, wrong-successor, wrong-destination, wrong-type, stale,
-  duplicate, and unattributed paths before selecting a repair seam.
-
-Completion check:
-
-- `todo.md` records the first divergence, owning helper, authority map, and a
-  general repair rule without an implementation change.
-
-### Step 2: Establish the proof-bearing semantic query seam
-
-Goal: establish a typed query seam that can carry exact available publication
-identity through the smallest common prepared-to-BIR semantic boundary.
+Goal: make the representational contradiction and required result space
+explicit before selecting storage or helper changes.
 
 Actions:
 
-- Repair the smallest common boundary at the first incorrect fact.
-- Preserve exact successor, destination ID/name/type, PHI instruction index,
-  and proof attribution.
-- Reject incomplete or inconsistent evidence without synthesizing identity.
-- Keep prepared-call and target publication behavior outside the repair.
+- Trace the current prepared attribution, instruction coordinate, destination
+  identity, Route4 scan, and MIR validation ownership.
+- Record how current code represents zero, one, inconsistent, and duplicate
+  claims and where information is missing or collapsed.
+- Define a truth table for same-name/same-type distinct identity, true duplicate
+  claims, stale coordinate, and missing attribution.
+- Identify the smallest shared model boundary that can carry every required
+  fact without a MIR rescan.
 
 Completion check:
 
-- The query seam exposes exact semantic identity and typed unavailable results
-  to its callers. This step is provisional infrastructure, not source-idea
-  completion, until the production consumer uses the seam and ambiguity is
-  owned by complete semantic identity.
+- `todo.md` records the authority map, blocked baseline, truth table, and one
+  proposed generic model boundary without an implementation change.
 
-### Step 3: Prove the query seam across nearby shapes
+### Step 2: Define destination, claim, collection, and result contracts
 
-Goal: lock the semantic publication contract beyond the first call-contract
-fixture.
+Goal: introduce a typed model that preserves semantic destination identity and
+independent attributed claims until authoritative classification.
 
 Actions:
 
-- Add focused positive assertions across multiple publication shapes.
-- Add missing, wrong-successor, wrong-destination, wrong-type, stale,
-  duplicate, and unattributed proof.
-- Run the supervisor-delegated build and focused publication subset.
+- Define destination semantic identity separately from claim attribution and
+  prepared instruction coordinate.
+- Represent a collection capable of zero, one, inconsistent, and duplicate
+  claims without early deduplication.
+- Define precise typed results for available, missing, stale, inconsistent,
+  ambiguous, and unattributed evidence.
+- Keep unrelated prepared and BIR query contracts unchanged.
 
 Completion check:
 
-- Focused helper tests prove exact available identity and typed fail-closed
-  behavior at the query seam. This does not establish acceptance while the
-  production consumer and named frame/stack contract remain on the old path.
+- The common seam can represent every truth-table row without display-name or
+  source-order recovery, with fresh build proof.
 
-### Step 4: Wire exact identity into the production block-entry consumer
+### Step 3: Add focused internal proof rows
 
-Goal: make the real block-entry publication consumer use proof-bearing BIR
-identity and repair the named frame/stack contract at that same boundary.
-
-Primary targets:
-
-- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
-- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+Goal: make the model's decisive identity and multiplicity distinctions directly
+observable in backend BIR tests.
 
 Actions:
 
-- Route the production consumer through the exact query using its available
-  BIR block and destination value evidence.
-- Preserve exact successor, destination instruction/PHI/value, type, prepared
-  instruction coordinate, and attribution; fail closed when they disagree.
-- Replace the named frame/stack fixture's manual completion of publication
-  readiness with producer/query-derived attributed facts.
-- Do not change prepared-call policy, join/edge identity, target
-  materialization, or emitted publication policy.
+- Add focused internal rows for same-name/same-type distinct destinations, true
+  duplicate attributed claims, stale coordinate, and missing attribution.
+- Keep each row responsible for one primary contract.
+- Explain in test structure or nearby documentation why source-program cases
+  cannot express the internal claim collection directly.
 
 Completion check:
 
-- Repository callers include the production consumer, and the named
-  frame/stack contract obtains its complete publication identity through the
-  repaired production/query route without manually setting the completion
-  record or proof bit.
+- The focused rows distinguish all required result states and fail against the
+  old name-plus-type classification rather than merely restating it.
 
-### Step 5: Move ambiguity authority to complete semantic identity
+### Step 4: Make Route4 the authoritative classifier
 
-Goal: remove display-name-only duplicate classification from the adapter and
-make the authoritative BIR semantic view own ambiguity.
+Goal: classify the explicit claim collection in BIR without heuristic identity
+recovery.
 
 Actions:
 
-- Key duplicate agreement by the complete destination semantic identity,
-  including the relevant type, identity, coordinate, and proof attribution.
-- Do not independently rescan PHIs by display name in the prepared-to-BIR
-  adapter.
-- Add a nearby same-spelling/nonmatching-identity collision that remains
-  available and a true semantic duplicate that remains ambiguous.
+- Route exact destination and attributed claim evidence into Route4.
+- Classify zero, one, inconsistent, and duplicate claims from the explicit
+  model.
+- Remove name-plus-type duplicate authority and avoid source-order, nearest-PHI,
+  and target-emission selection.
 
 Completion check:
 
-- Same display spelling alone cannot produce `ProofAmbiguous`; true duplicate
-  semantic evidence does, and neither case selects by source order or
-  proximity.
+- Route4 returns the expected typed result for every focused truth-table row,
+  and no earlier collapse makes true duplicates unrepresentable.
 
-### Step 6: Run focused production and contract proof
+### Step 5: Bind MIR validation to the authoritative result
 
-Goal: prove the corrected semantic boundary through both the lookup coverage
-and the named production-facing contract.
+Goal: validate prepared attribution and coordinate agreement without creating
+a second ambiguity authority.
 
 Actions:
 
-- Run the supervisor-delegated build.
-- Run a matching focused command that includes
-  `backend_prepared_lookup_helper` and
-  `backend_prepare_frame_stack_call_contract`.
-- Record fresh canonical proof without reusing or mislabeling a missing log.
+- Consume Route4's authoritative result in the MIR adapter.
+- Validate exact prepared attribution and instruction coordinate against the
+  selected claim when available.
+- Fail closed on stale, missing, inconsistent, or ambiguous evidence.
+- Remove or avoid any competing MIR PHI rescan.
 
 Completion check:
 
-- Both focused tests are green after the production and ambiguity repairs,
-  with no expectation downgrade, manual proof completion, or fixture-shaped
-  recovery.
+- MIR agrees with the authoritative result for every focused row and performs
+  no display-name/source-order recovery.
 
-### Step 7: Run broader acceptance proof and resume parked work
+### Step 6: Prove the decomposition seam and hand back to idea 718
 
-Goal: establish closure-quality evidence and return to idea 719 acceptance.
+Goal: establish focused acceptance for the new model and make the parked
+production route resumable.
 
 Actions:
 
-- Audit the complete diff for fixture, display-name, source-order,
-  nearest-PHI, proof-bit, and target-emission shortcuts.
-- Run the supervisor-selected broader backend before/after comparison with
-  matching canonical `test_before.log` and `test_after.log` scope.
-- Record whether idea 719 can resume its focused and broader acceptance checks
-  before routing downstream idea 717 or idea 716.
+- Run the supervisor-delegated build and focused internal backend BIR subset.
+- Audit the diff against the source idea's reviewer reject signals.
+- Record the exact resulting seam and remaining idea 718 production/broader
+  acceptance work.
 
 Completion check:
 
-- Focused production/contract proof and broader proof are green, reviewer
-  reject signals are absent, and lifecycle routing can return to idea 719
-  acceptance.
+- Focused proof is green with no expectation downgrade or heuristic recovery,
+  reviewer reject signals are absent, and lifecycle can return to idea 718.
