@@ -2376,7 +2376,8 @@ void attach_named_current_block_join_source_evidence(
     const PreparedNameTables& names,
     FunctionNameId function_name,
     BlockLabelId producer_block_label,
-    const bir::Block& block,
+    const bir::Function* function,
+    const bir::Block& successor_block,
     const std::vector<PreparedFactBoundaryEvidence>& evidence,
     PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
   if (fact.publication == nullptr ||
@@ -2392,13 +2393,36 @@ void attach_named_current_block_join_source_evidence(
     return;
   }
 
+  const bir::Block* producer_block = nullptr;
+  if (function != nullptr) {
+    for (const auto& candidate : function->blocks) {
+      if (names.block_labels.find(candidate.label) != producer_block_label) {
+        continue;
+      }
+      if (producer_block != nullptr) {
+        fact.join_source_evidence.status = PreparedFactBoundaryStatus::Ambiguous;
+        fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+        return;
+      }
+      producer_block = &candidate;
+    }
+  } else if (names.block_labels.find(successor_block.label) ==
+             producer_block_label) {
+    producer_block = &successor_block;
+  }
+  if (producer_block == nullptr) {
+    fact.join_source_evidence.status = PreparedFactBoundaryStatus::Incomplete;
+    fact.status = PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+    return;
+  }
+
   std::optional<std::size_t> producer_instruction_index;
-  const auto producer_view = bir::make_bir_producer_view(block);
+  const auto producer_view = bir::make_bir_producer_view(*producer_block);
   for (std::size_t instruction_index = 0;
-       instruction_index < block.insts.size(); ++instruction_index) {
+       instruction_index < producer_block->insts.size(); ++instruction_index) {
     const auto* produced_value =
         prepared_current_block_join_instruction_result_value_ref(
-            block.insts[instruction_index]);
+            producer_block->insts[instruction_index]);
     if (produced_value == nullptr ||
         existing_prepared_value_name_id(names, *produced_value) !=
             fact.source_value_name) {
@@ -2408,7 +2432,7 @@ void attach_named_current_block_join_source_evidence(
         producer_view, *produced_value, instruction_index + 1);
     if (!producer || producer.produced_value == nullptr ||
         *producer.produced_value != *produced_value ||
-        producer.block_label != block.label ||
+        producer.block_label != producer_block->label ||
         producer.instruction_index != instruction_index) {
       fact.join_source_evidence.status =
           PreparedFactBoundaryStatus::Incomplete;
@@ -2759,7 +2783,11 @@ prepare_current_block_join_parallel_copy_source_facts(
         attach_named_current_block_join_source_evidence(
             *inputs.names,
             inputs.value_locations->function_name,
-            inputs.successor_label,
+            inputs.bir_function != nullptr
+                ? fact.publication->source_producer_block_label.value_or(
+                      kInvalidBlockLabel)
+                : inputs.successor_label,
+            inputs.bir_function,
             *inputs.block,
             *join_source_evidence,
             fact);

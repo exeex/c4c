@@ -3,40 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/717_prepared_mir_join_source_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2.3.1
-Current Step Title: Close producer and semantic-slot fail-closed gaps
+Current Step ID: 2.4
+Current Step Title: Review Step 2 boundary coverage
 
 ## Just Finished
 
-- Plan Step 2.4 review found three remaining fail-closed gaps: prepared-MIR
-  availability does not require exactly one pointer matching the claimed
-  producer kind, BIR availability does not require producer-block agreement
-  with the predecessor, and duplicate identity incorrectly includes source
-  rather than using semantic edge plus destination slot.
-- The blocking evidence and required negative proof are recorded in
-  `review/idea717_step24_authority_correction_review.md`.
+- Plan Step 2.3.1 now requires exactly one kind-matching typed producer pointer
+  at the prepared-MIR and BIR adapters, requires producer/predecessor agreement
+  at both availability gates, and keys duplicate/conflict detection by the
+  semantic edge plus exact typed destination slot instead of source identity.
+- Focused negative coverage now rejects missing, wrong, and contradictory
+  producer pointers, producer-block mismatch, exact duplicates, and a
+  conflicting source claiming the same semantic destination slot.
+- The focused positive fixture now models PHIs in the successor and their
+  named producer instructions in the actual predecessor; named, immediate,
+  and stack rows remain Available and preserve exact authority across adapters.
+- Named incoming-expression evidence now resolves the authoritative producer
+  block through the BIR function and fails closed when that exact block or
+  instruction cannot be resolved; the named-register row needs no fixture
+  bypass.
 
 ## Suggested Next
 
-- Execute Plan Step 2.3.1: enforce exactly-one kind-matching producer identity,
-  producer/predecessor agreement, and semantic edge-plus-destination
-  duplicate/conflict rejection across the prepared-MIR and BIR boundaries.
+- Execute Plan Step 2.4 review against the corrected Step 2 boundary and its
+  fresh focused proof.
 
 ## Watchouts
 
-- Do not treat differing source authority as a distinct row when predecessor,
-  successor, and destination identify the same semantic join slot; it is a
-  conflict that must fail closed.
-- Publication, move, bundle, and producer pointers in BIR facts remain opaque
-  identity tokens after the prepared core lifetime; correction proof must not
-  dereference them after owner destruction.
-- Do not repeat Step 2.4 or begin Step 3 until the prepared-MIR and BIR negative
-  matrix covers the blocking cases.
+- `source_producer_block_label` is authored from the indexed producer's actual
+  BIR block label; focused fixtures must keep producer instructions in the
+  predecessor rather than co-locating them with successor PHIs.
+- Prepared-MIR join queries must pass their BIR function through to prealloc so
+  predecessor-owned evidence is resolved against the complete function.
+- Publication, move, bundle, and producer pointers remain opaque identity
+  tokens after prepared-core destruction; do not dereference them in review.
 
 ## Proof
 
-- Prior Step 2.3 focused proof was green but did not cover the exact-one
-  producer-pointer, producer/predecessor mismatch, or conflicting semantic-slot
-  cases identified by the Step 2.4 review.
-- Step 2.3.1 requires a fresh supervisor-delegated build and focused
-  prepared/BIR negative proof before re-review.
+- Passed: `CMAKE_BUILD_PARALLEL_LEVEL=1 cmake --build --preset default && ctest
+  --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`.
+- Full combined proof output is preserved in `test_after.log`.

@@ -364,6 +364,7 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
               .value_home_lookups = &entry_->prepared_lookups.value_homes,
               .edge_publications = &entry_->prepared_lookups.edge_publications,
               .control_flow = entry_->control_flow,
+              .bir_function = entry_->bir_function,
               .block = block.block,
               .successor_label = block.block_label,
           });
@@ -445,8 +446,39 @@ PreparedMirFunctionView::current_block_direct_edge_publication_sources(
         (fact.publication->source_producer_kind ==
              prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
          !fact.publication->source_producer_block_label.has_value() ||
-         !fact.publication->source_producer_instruction_index.has_value())) {
+         !fact.publication->source_producer_instruction_index.has_value() ||
+         fact.publication->source_producer_block_label != fact.predecessor_label)) {
       source_view.status = PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+    }
+    if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available) {
+      const auto producer_pointer_count =
+          static_cast<unsigned>(fact.publication->source_load_local != nullptr) +
+          static_cast<unsigned>(fact.publication->source_load_global != nullptr) +
+          static_cast<unsigned>(fact.publication->source_cast != nullptr) +
+          static_cast<unsigned>(fact.publication->source_binary != nullptr) +
+          static_cast<unsigned>(fact.publication->source_select != nullptr);
+      const bool matching_producer = fact.immediate_source
+          ? producer_pointer_count == 0
+          : producer_pointer_count == 1 &&
+                ((fact.publication->source_producer_kind ==
+                      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+                  fact.publication->source_load_local != nullptr) ||
+                 (fact.publication->source_producer_kind ==
+                      prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal &&
+                  fact.publication->source_load_global != nullptr) ||
+                 (fact.publication->source_producer_kind ==
+                      prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
+                  fact.publication->source_cast != nullptr) ||
+                 (fact.publication->source_producer_kind ==
+                      prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+                  fact.publication->source_binary != nullptr) ||
+                 (fact.publication->source_producer_kind ==
+                      prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
+                  fact.publication->source_select != nullptr));
+      if (!matching_producer) {
+        source_view.status =
+            PreparedMirDirectEdgePublicationSourceStatus::UnsupportedSource;
+      }
     }
     if (source_view.status == PreparedMirDirectEdgePublicationSourceStatus::Available &&
         (fact.destination_home == nullptr ||

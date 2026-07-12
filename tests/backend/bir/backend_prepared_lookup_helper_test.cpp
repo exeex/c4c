@@ -4965,16 +4965,51 @@ int verify_current_block_join_parallel_copy_source_query() {
     module.names = names;
     module.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
     module.module.target_triple = module.target_profile.triple;
+    const bool split_fixture = query_block.insts.size() >= 7;
+    auto producer_block = query_block;
+    auto successor_block = query_block;
+    if (split_fixture) {
+      producer_block.label = "current_join.pred";
+      producer_block.label_id = predecessor_label;
+      producer_block.insts.erase(producer_block.insts.begin(),
+                                 producer_block.insts.begin() + 3);
+      producer_block.insts.pop_back();
+      for (int index = 0; index < 2; ++index) {
+        producer_block.insts.insert(
+            producer_block.insts.begin() + index,
+            bir::BinaryInst{
+                .opcode = bir::BinaryOpcode::Add,
+                .result = bir::Value::named(
+                    bir::TypeKind::I32,
+                    "%current.fixture_padding." + std::to_string(index)),
+                .operand_type = bir::TypeKind::I32,
+                .lhs = bir::Value::immediate_i32(index),
+                .rhs = bir::Value::immediate_i32(1),
+            });
+      }
+      producer_block.insts.insert(producer_block.insts.begin() + 2,
+                                  query_block.insts[6]);
+      successor_block.insts.resize(3);
+    }
     module.module.functions.push_back(bir::Function{
         .name = "current_join_query",
         .return_type = bir::TypeKind::I32,
-        .blocks = {query_block},
+        .blocks = split_fixture
+                      ? std::vector<bir::Block>{std::move(producer_block),
+                                                std::move(successor_block)}
+                      : std::vector<bir::Block>{query_block},
     });
     auto function_control_flow = query_control_flow;
-    function_control_flow.blocks = {prepare::PreparedControlFlowBlock{
-        .block_label = successor_label,
-        .terminator_kind = bir::TerminatorKind::Return,
-    }};
+    function_control_flow.blocks = {
+        prepare::PreparedControlFlowBlock{
+            .block_label = predecessor_label,
+            .terminator_kind = bir::TerminatorKind::Branch,
+        },
+        prepare::PreparedControlFlowBlock{
+            .block_label = successor_label,
+            .terminator_kind = bir::TerminatorKind::Return,
+        },
+    };
     module.control_flow.functions.push_back(std::move(function_control_flow));
     module.value_locations.functions.push_back(query_locations);
     module.regalloc.functions.push_back(query_regalloc);
@@ -4985,7 +5020,8 @@ int verify_current_block_join_parallel_copy_source_query() {
     if (!function.has_value()) {
       return mir::prepared::PreparedMirDirectEdgePublicationSourceQuery{};
     }
-    auto result = function->current_block_direct_edge_publication_sources(0);
+    auto result = function->current_block_direct_edge_publication_sources(
+        split_fixture ? 1 : 0);
     for (std::size_t index = 0;
          index < prepared_authority_matches_origin.size() &&
          index < result.sources.size();
@@ -5259,6 +5295,25 @@ int verify_current_block_join_parallel_copy_source_query() {
       "%current.other_source";
   auto duplicate_prepared_evidence = prepared_bir_query;
   duplicate_prepared_evidence.sources = {prepared_named, prepared_named};
+  auto missing_producer_evidence = prepared_bir_query;
+  missing_producer_evidence.sources.front().source_binary = nullptr;
+  auto wrong_producer_evidence = prepared_bir_query;
+  wrong_producer_evidence.sources.front().source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Cast;
+  auto extra_producer_evidence = prepared_bir_query;
+  extra_producer_evidence.sources.front().source_cast =
+      reinterpret_cast<const bir::CastInst*>(prepared_named.source_binary);
+  auto mismatched_producer_block_evidence = prepared_bir_query;
+  mismatched_producer_block_evidence.sources.front().source_producer_block_label =
+      successor_label;
+  auto conflicting_source_same_slot = prepared_bir_query;
+  auto conflicting_record = prepared_named;
+  conflicting_record.source_value =
+      bir::Value::named(bir::TypeKind::I32, "%current.other_source");
+  conflicting_record.source_value_name =
+      names.value_names.intern("%current.other_source");
+  conflicting_record.source_value_id = prepare::PreparedValueId{999};
+  conflicting_source_same_slot.sources = {prepared_named, conflicting_record};
   if (require_bir_negative(
           missing_prepared_evidence,
           mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
@@ -5274,7 +5329,27 @@ int verify_current_block_join_parallel_copy_source_query() {
       require_bir_negative(
           duplicate_prepared_evidence,
           mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
-          "BIR join aggregate should reject duplicate prepared evidence")) {
+          "BIR join aggregate should reject duplicate prepared evidence") ||
+      require_bir_negative(
+          missing_producer_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject missing typed producer pointer") ||
+      require_bir_negative(
+          wrong_producer_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject wrong typed producer pointer") ||
+      require_bir_negative(
+          extra_producer_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject contradictory producer pointer") ||
+      require_bir_negative(
+          mismatched_producer_block_evidence,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject producer/predecessor mismatch") ||
+      require_bir_negative(
+          conflicting_source_same_slot,
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication,
+          "BIR join aggregate should reject conflicting source for one semantic slot")) {
     return 1;
   }
   auto find_route5_join = [&](std::string_view destination_name) {

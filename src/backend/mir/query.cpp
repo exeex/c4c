@@ -1085,8 +1085,7 @@ find_bir_current_block_join_source_identity(
                  fact.successor_label_id == record.successor_label &&
                  fact.destination_prepared_value_id == record.destination_value_id &&
                  fact.prepared_destination_value == record.destination_value &&
-                 fact.source_prepared_value_id == record.source_value_id &&
-                 fact.prepared_source_value == record.source_value;
+                 fact.destination_value_type == record.destination_value.type;
         });
     if (duplicate != result.facts.end()) {
       return BirCurrentBlockJoinSourceIdentity{};
@@ -1171,12 +1170,22 @@ find_bir_current_block_join_source_identity(
         (record.immediate_source ||
          (record.source_value_id.has_value() &&
           fact.source_value_name == record.source_value.name));
+    const auto producer_pointer_count =
+        static_cast<unsigned>(record.source_load_local != nullptr) +
+        static_cast<unsigned>(record.source_load_global != nullptr) +
+        static_cast<unsigned>(record.source_cast != nullptr) +
+        static_cast<unsigned>(record.source_binary != nullptr) +
+        static_cast<unsigned>(record.source_select != nullptr);
     const bool producer_authority = record.immediate_source
         ? record.source_producer_kind ==
               prepare::PreparedEdgePublicationSourceProducerKind::Immediate &&
-              !record.source_producer_instruction_index.has_value()
+              !record.source_producer_instruction_index.has_value() &&
+              !record.source_producer_block_label.has_value() &&
+              producer_pointer_count == 0
         : record.source_producer_block_label.has_value() &&
+              *record.source_producer_block_label == record.predecessor_label &&
               record.source_producer_instruction_index.has_value() &&
+              producer_pointer_count == 1 &&
               ((record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal && record.source_load_local != nullptr) ||
                (record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal && record.source_load_global != nullptr) ||
                (record.source_producer_kind == prepare::PreparedEdgePublicationSourceProducerKind::Cast && record.source_cast != nullptr) ||
