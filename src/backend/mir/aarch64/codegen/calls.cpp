@@ -8128,106 +8128,6 @@ struct IndirectCalleeSourceProducerIdentity {
       prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
 };
 
-[[nodiscard]] bir::Route4PublicationSourceKind
-route4_source_kind_for_prepared_indirect_callee_producer(
-    prepare::PreparedEdgePublicationSourceProducerKind kind) {
-  switch (kind) {
-    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
-      return bir::Route4PublicationSourceKind::LoadLocal;
-    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
-      return bir::Route4PublicationSourceKind::LoadGlobal;
-    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
-      return bir::Route4PublicationSourceKind::Cast;
-    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
-      return bir::Route4PublicationSourceKind::Binary;
-    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
-      return bir::Route4PublicationSourceKind::SelectMaterialization;
-    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
-    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
-      return bir::Route4PublicationSourceKind::Unknown;
-  }
-  return bir::Route4PublicationSourceKind::Unknown;
-}
-
-[[nodiscard]] std::optional<IndirectCalleeSourceProducerIdentity>
-route4_indirect_callee_source_producer_agrees_with_prepared(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedEdgePublicationSourceProducer& producer,
-    c4c::ValueNameId value_name,
-    std::size_t before_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr ||
-      value_name == c4c::kInvalidValueName ||
-      producer.block_label != context.control_flow_block->block_label ||
-      producer.instruction_index >= before_instruction_index ||
-      producer.instruction_index >= context.bir_block->insts.size()) {
-    return std::nullopt;
-  }
-  const auto prepared_block_label = prepare::prepared_block_label(
-      context.function.prepared->names, context.control_flow_block->block_label);
-  if (!prepared_block_label.empty() &&
-      prepared_block_label != context.bir_block->label) {
-    return std::nullopt;
-  }
-
-  const auto& indexed_inst = context.bir_block->insts[producer.instruction_index];
-  const auto* indexed_result =
-      indexed_indirect_callee_source_producer_result(producer.kind, indexed_inst);
-  const auto* prepared_result =
-      prepared_indirect_callee_source_producer_result(producer);
-  if (indexed_result == nullptr ||
-      prepared_result == nullptr ||
-      indexed_result->kind != bir::Value::Kind::Named ||
-      prepared_result->kind != bir::Value::Kind::Named ||
-      indexed_result->name.empty() ||
-      indexed_result->name != prepared_result->name ||
-      indexed_result->type != prepared_result->type ||
-      context.function.prepared->names.value_names.find(indexed_result->name) !=
-          value_name) {
-    return std::nullopt;
-  }
-
-  bir::Function route4_function;
-  route4_function.blocks.push_back(*context.bir_block);
-  const auto& route4_block = route4_function.blocks.front();
-  const auto route4_index =
-      bir::route4_build_publication_availability_index(route4_function);
-  const auto route4_value =
-      bir::Value::named(indexed_result->type, std::string{indexed_result->name});
-  const auto reference = bir::route4_validate_current_block_publication_reference(
-      route4_index, route4_block, route4_value, before_instruction_index);
-  const auto* record = reference.current_block_record;
-  if (!reference ||
-      record == nullptr ||
-      record->source_producer_instruction == nullptr ||
-      record->source_producer_instruction_index != producer.instruction_index ||
-      record->source_producer_instruction_index >= route4_block.insts.size() ||
-      record->source_producer_instruction !=
-          &route4_block.insts[record->source_producer_instruction_index] ||
-      record->source_producer_kind !=
-          route4_source_kind_for_prepared_indirect_callee_producer(producer.kind) ||
-      record->value_name != indexed_result->name ||
-      (record->value_name_id != c4c::kInvalidValueName &&
-       record->value_name_id != value_name) ||
-      record->value_type != indexed_result->type ||
-      record->produced_value.value == nullptr ||
-      record->produced_value.name != indexed_result->name ||
-      (record->produced_value.name_id != c4c::kInvalidValueName &&
-       record->produced_value.name_id != value_name) ||
-      record->produced_value.type != indexed_result->type ||
-      record->before_instruction_index != before_instruction_index ||
-      reference.reference.before_instruction_index != before_instruction_index) {
-    return std::nullopt;
-  }
-  return IndirectCalleeSourceProducerIdentity{
-      .instruction = &indexed_inst,
-      .produced_value = indexed_result,
-      .instruction_index = producer.instruction_index,
-      .kind = producer.kind,
-  };
-}
-
 [[nodiscard]] std::optional<IndirectCalleeSourceProducerIdentity>
 find_prepared_indirect_callee_source_producer(
     const module::BlockLoweringContext& context,
@@ -8250,25 +8150,35 @@ find_prepared_indirect_callee_source_producer(
       producer->instruction_index >= context.bir_block->insts.size()) {
     return std::nullopt;
   }
-  const auto* result = prepared_indirect_callee_source_producer_result(*producer);
-  if (result == nullptr ||
-      result->kind != bir::Value::Kind::Named ||
-      result->name.empty()) {
+  const auto prepared_block_label = prepare::prepared_block_label(
+      context.function.prepared->names, context.control_flow_block->block_label);
+  if (!prepared_block_label.empty() &&
+      prepared_block_label != context.bir_block->label) {
+    return std::nullopt;
+  }
+
+  const auto& indexed_inst = context.bir_block->insts[producer->instruction_index];
+  const auto* indexed_result =
+      indexed_indirect_callee_source_producer_result(producer->kind, indexed_inst);
+  const auto* prepared_result =
+      prepared_indirect_callee_source_producer_result(*producer);
+  if (indexed_result == nullptr ||
+      prepared_result == nullptr ||
+      indexed_result->kind != bir::Value::Kind::Named ||
+      prepared_result->kind != bir::Value::Kind::Named ||
+      indexed_result->name.empty() ||
+      indexed_result->name != prepared_result->name ||
+      indexed_result->type != prepared_result->type) {
     return std::nullopt;
   }
   const auto resolved =
-      context.function.prepared->names.value_names.find(result->name);
+      context.function.prepared->names.value_names.find(indexed_result->name);
   if (resolved != value_name) {
     return std::nullopt;
   }
-  if (auto route4 = route4_indirect_callee_source_producer_agrees_with_prepared(
-          context, *producer, value_name, before_instruction_index);
-      route4.has_value()) {
-    return route4;
-  }
   return IndirectCalleeSourceProducerIdentity{
-      .instruction = &context.bir_block->insts[producer->instruction_index],
-      .produced_value = result,
+      .instruction = &indexed_inst,
+      .produced_value = indexed_result,
       .instruction_index = producer->instruction_index,
       .kind = producer->kind,
   };

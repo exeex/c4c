@@ -8,23 +8,21 @@ Current Step Title: Inventory and migrate AArch64 dispatch authority
 
 ## Just Finished
 
-- Plan Step 1 migrated the AArch64 same-block global-load materialization
-  family to prepared addressing authority. Direct global lowering, scalar
-  dispatch materialization, and FP materialization no longer reconstruct or
-  consult Route3 global-load identities; missing or inconsistent prepared
-  memory-access authority now fails closed, including removal of the FP
-  no-prepared semantic fallback.
+- Plan Step 1 migrated the AArch64 indirect-callee source-producer family in
+  `calls.cpp` to prepared producer authority. The prepared lookup now validates
+  block identity, instruction bounds and ordering, indexed producer structure,
+  and result name/type consistency directly; both Route4 agreement/index
+  helpers were retired, and missing or inconsistent authority fails closed.
 
 ## Suggested Next
 
-- Migrate the AArch64 indirect-callee source-producer family in `calls.cpp`
-  from Route4 publication records to its existing prepared producer query.
+- Continue Plan Step 1 with the next supervisor-selected AArch64 dispatch
+  authority family.
 
 ## Watchouts
 
-- Route3 global-load authority remains absent from the three migrated
-  materialization paths; other Route3 families in `alu.cpp` and `calls.cpp`
-  are separate packets.
+- The adjacent indirect-callee stored-value Route3 family and separate
+  call-boundary Route4 family were not changed by this packet.
 - The focused baseline retains the known scalar-FP literal-add failure (test
   354, missing `bl printf`) and has no additional failures; no expectations
   changed.
