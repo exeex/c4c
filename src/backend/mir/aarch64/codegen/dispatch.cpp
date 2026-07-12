@@ -365,7 +365,6 @@ void record_before_return_publication(BlockScalarLoweringState& scalar_state,
 
 [[nodiscard]] bool lower_scalar_with_address_materialization(
     const module::BlockLoweringContext& context,
-    const BlockAddressMaterializationIndex& address_materializations,
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
@@ -379,8 +378,7 @@ void record_before_return_publication(BlockScalarLoweringState& scalar_state,
   }
 
   auto materialized_addresses =
-      lower_address_materializations(
-          context, address_materializations, instruction_index, diagnostics);
+      lower_address_materializations(context, instruction_index, diagnostics);
   if (materialized_addresses.empty()) {
     return false;
   }
@@ -508,13 +506,6 @@ InstructionDispatchResult dispatch_prepared_block(
     block.instructions.push_back(std::move(block_entry_move));
   }
   if (context.bir_block != nullptr) {
-    std::optional<BlockAddressMaterializationIndex> address_materialization_index;
-    auto current_address_materialization_index = [&]() -> const BlockAddressMaterializationIndex& {
-      if (!address_materialization_index.has_value()) {
-        address_materialization_index = make_block_address_materialization_index(context);
-      }
-      return *address_materialization_index;
-    };
     std::size_t prepared_memory_instruction_index = 0;
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
@@ -623,7 +614,6 @@ InstructionDispatchResult dispatch_prepared_block(
           auto materialized_addresses =
               lower_address_materializations(
                   context,
-                  current_address_materialization_index(),
                   instruction_index,
                   diagnostics);
           auto before_call_moves =
@@ -725,7 +715,6 @@ InstructionDispatchResult dispatch_prepared_block(
         continue;
       } else if (lower_scalar_with_address_materialization(
                      context,
-                     current_address_materialization_index(),
                      inst,
                      instruction_index,
                      scalar_state,

@@ -1212,51 +1212,8 @@ void record_address_materialization_result(
                                  *address_record->result_register);
 }
 
-BlockAddressMaterializationIndex make_block_address_materialization_index(
-    const module::BlockLoweringContext& context) {
-  BlockAddressMaterializationIndex index;
-  if (context.function.prepared == nullptr ||
-      context.function.prepared_lookups_owner == nullptr ||
-      context.function.prepared_lookups !=
-          context.function.prepared_lookups_owner.get() ||
-      context.control_flow_block == nullptr) {
-    return index;
-  }
-  if (const auto* materializations =
-          prepare::find_indexed_prepared_address_materializations(
-              &context.function.prepared_lookups->address_materializations,
-              context.control_flow_block->block_label)) {
-    index.materializations = *materializations;
-    for (const auto* materialization : index.materializations) {
-      if (materialization != nullptr) {
-        index.materializations_by_instruction[materialization->inst_index].push_back(
-            materialization);
-      }
-    }
-    std::sort(index.materializations.begin(),
-              index.materializations.end(),
-              [](const auto* lhs, const auto* rhs) {
-                if (lhs == nullptr || rhs == nullptr) {
-                  return rhs != nullptr;
-                }
-                return lhs->inst_index < rhs->inst_index;
-              });
-    return index;
-  }
-  return index;
-}
-
 std::vector<module::MachineInstruction> lower_address_materializations(
     const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  const auto index = make_block_address_materialization_index(context);
-  return lower_address_materializations(context, index, instruction_index, diagnostics);
-}
-
-std::vector<module::MachineInstruction> lower_address_materializations(
-    const module::BlockLoweringContext& context,
-    const BlockAddressMaterializationIndex& address_materializations,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
@@ -1264,7 +1221,16 @@ std::vector<module::MachineInstruction> lower_address_materializations(
       context.function.value_locations == nullptr ||
       context.function.storage_plan == nullptr ||
       context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
+      context.control_flow_block == nullptr ||
+      context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups != context.function.prepared_lookups_owner.get()) {
+    return lowered;
+  }
+  const auto* address_materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &context.function.prepared_lookups->address_materializations,
+          context.control_flow_block->block_label);
+  if (address_materializations == nullptr) {
     return lowered;
   }
   const auto* addressing =
@@ -1310,19 +1276,16 @@ std::vector<module::MachineInstruction> lower_address_materializations(
         }
       };
 
-  if (const auto exact_it =
-          address_materializations.materializations_by_instruction.find(instruction_index);
-      exact_it != address_materializations.materializations_by_instruction.end()) {
-    for (const auto* materialization_ptr : exact_it->second) {
-      if (materialization_ptr != nullptr) {
-        lower_materialization(*materialization_ptr, true);
-      }
+  for (const auto* materialization_ptr : *address_materializations) {
+    if (materialization_ptr != nullptr &&
+        materialization_ptr->inst_index == instruction_index) {
+      lower_materialization(*materialization_ptr, true);
     }
   }
   if (call_plan == nullptr) {
     return lowered;
   }
-  for (const auto* materialization_ptr : address_materializations.materializations) {
+  for (const auto* materialization_ptr : *address_materializations) {
     if (materialization_ptr == nullptr) {
       continue;
     }

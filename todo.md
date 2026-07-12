@@ -8,23 +8,23 @@ Current Step Title: Remove the address-materialization reconstruction
 
 ## Just Finished
 
-- Lifecycle closed idea 729 after its direct common current-block query and
-  AArch64 routing-array removal passed focused proof and the matching backend
-  regression guard.
+- Plan Step 3.1 removed the AArch64 block address-materialization index,
+  builder, fallback overload, and dispatch lazy cache; consumers now query the
+  traversal-attached common lookup with owner validation and fail closed when
+  it is unavailable.
 
 ## Suggested Next
 
-- Execute Plan Step 3.1 against only the locally replaceable AArch64
-  address-materialization lookup reconstruction.
+- Execute Plan Step 3.2 against the remaining named-handoff reconstruction
+  identified by the active runbook.
 
 ## Watchouts
 
-- Stop for lifecycle review if no existing attached common query owns the
-  required address relation. Do not reopen current-block authority or copy
-  prepared lookup reasoning into AArch64.
+- Preserve the direct attached-lookup route established in Step 3.1; do not
+  recreate an AArch64 block/instruction address-materialization cache.
 
 ## Proof
 
-- Lifecycle close gate passed: matching `^backend_` before/after runs each
-  reported 344/400 passed with the identical 56 known failures.
-- Step 3.1 implementation proof is pending.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^(backend_codegen_route_aarch64_(byval_global_payload_address_call_boundary|got_load_global_prepared_memory|global_function_pointer_table_selected_indirect_call|local_aggregate_address_pointer_copy_publishes_frame_address))$'`
+  passed 4/4; combined output is in `test_after.log`.
