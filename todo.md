@@ -4,7 +4,7 @@ Status: Active
 Source Idea Path: ideas/open/717_prepared_mir_join_source_identity_completion.md
 Source Plan Path: plan.md
 Current Step ID: 2.4
-Current Step Title: Review Step 2 boundary coverage
+Current Step Title: Re-review route quality and focused acceptance
 
 ## Just Finished
 
