@@ -186,20 +186,67 @@ Completion check:
   adapters for supported rows and explicit fail-closed behavior for every
   negative class, without row-shaped shortcuts or expectation downgrades.
 
+### Step 2.3.1: Close producer and semantic-slot fail-closed gaps
+
+Goal: repair the remaining cases where incomplete or conflicting producer
+authority can retain `Available`, then prove duplicate identity by the semantic
+join slot rather than the complete row.
+
+Primary targets:
+
+- `src/backend/mir/prepared_view.cpp`
+- `src/backend/mir/query.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+
+Actions:
+
+- At the prepared-MIR boundary, require exactly one typed producer pointer
+  matching the claimed non-immediate producer kind; reject a missing matching
+  pointer and any contradictory extra producer pointer before retaining
+  `Available`.
+- Require carried producer-block authority to agree with the direct-edge
+  predecessor before prepared-MIR or BIR availability is claimed; do not
+  synthesize agreement by replacing the carried block with the predecessor.
+- Define duplicate/conflict identity by semantic edge plus destination slot:
+  predecessor, successor, and exact destination identity/type. Treat differing
+  source, producer, publication, move, or freshness authority for that same
+  slot as conflicting evidence to reject, not as a distinct row.
+- Add prepared-MIR negative proof for missing, wrong-kind, and contradictory
+  producer pointers and producer/predecessor disagreement.
+- Add BIR negative proof for producer/predecessor disagreement, exact duplicate
+  rows, and same-edge/same-destination rows with conflicting source or producer
+  authority.
+- Keep non-owning publication, move, bundle, and producer pointers opaque in
+  any proof after the prepared-core owner lifetime; compare identity only and
+  do not dereference them.
+- Run the supervisor-delegated build and focused prepared lookup/join-source
+  proof without weakening supported expectations.
+
+Completion check:
+
+- A prepared-MIR row is `Available` only with exactly one kind-matching typed
+  producer pointer and producer/predecessor agreement; the BIR adapter enforces
+  the same agreement; semantic edge-plus-destination duplicates and conflicts
+  fail closed; and focused prepared/BIR positive and negative proof is green.
+
 ### Step 2.4: Re-review route quality and focused acceptance
 
-Goal: independently verify that Steps 2.1 through 2.3 close the blocking
-finding in `review/idea717_step2_route_quality_review.md`.
+Goal: independently verify that Steps 2.1 through 2.3.1 close the blocking
+findings in `review/idea717_step2_route_quality_review.md` and
+`review/idea717_step24_authority_correction_review.md`.
 
 Actions:
 
 - Review the idea-717 implementation from its activation history point through
-  `HEAD` against the source idea, this runbook, and the blocking report.
+  `HEAD` against the source idea, this runbook, and both blocking reports.
 - Reject row-order, display-name, route, expectation, prepared-call, or target
   shortcuts and any per-row or aggregate availability claim lacking exact
   typed authority.
-- Confirm the focused assertions prove exact authority rather than only
-  status and count.
+- Confirm prepared-MIR availability requires exactly one kind-matching producer
+  pointer, producer block agrees with predecessor through both boundaries, and
+  duplicate/conflict rejection uses semantic edge plus destination identity.
+- Confirm the focused assertions prove these negative contracts and exact
+  authority rather than only status and count.
 
 Completion check:
 
