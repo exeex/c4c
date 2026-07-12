@@ -8,27 +8,26 @@ Current Step Title: Add focused internal proof rows
 
 ## Just Finished
 
-- Completed Plan Step 2 by defining Route4-owned typed contracts for exact
-  destination identity, independently attributed coordinate-bearing claims,
-  an order- and multiplicity-preserving claim collection, and a classification
-  result covering unavailable, available, missing, unattributed, stale,
-  inconsistent, and ambiguous evidence.
-- Kept display name/type as diagnostic metadata and left all existing Route4,
-  prepared, and MIR APIs and consumers unchanged.
+- Completed Plan Step 3 by adding four focused internal backend BIR proof rows
+  that directly construct exact owner/value destination identity,
+  independently attributed duplicate claims, stale instruction coordinates,
+  and missing attribution.
+- Kept each row scoped to one primary preservation contract, documented why
+  source programs cannot express the malformed/internal state, and added no
+  classification or production behavior.
 
 ## Suggested Next
 
-- Execute Plan Step 3: add focused internal proof rows that construct the new
-  collection and distinguish exact destination identity, independently
-  attributed duplicates, stale coordinates, and missing attribution.
+- Execute Plan Step 4: make Route4 the authoritative classifier for the proof
+  facts preserved by the Step 3 rows.
 
 ## Watchouts
 
-- The new contracts intentionally contain no equality or classification helper;
-  Step 4 remains the authority migration and must use owner/value identity, not
-  the diagnostic name/type fields.
-- Preserve claim vector order and multiplicity in Step 3; agreeing claims with
-  distinct `attribution_id` values must remain independently observable.
+- The proof rows intentionally inspect the Step 2 data contracts directly;
+  Step 4 remains responsible for all equality and classification policy.
+- Exact identity must use owner/value pointers rather than diagnostic name/type,
+  and agreeing claims with distinct attribution IDs must remain independently
+  observable.
 
 ## Proof
 

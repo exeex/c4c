@@ -15262,6 +15262,121 @@ int verify_bir_return_chain_schema_and_index_lookup() {
   return 0;
 }
 
+int verify_route4_block_entry_publication_claim_model_preserves_proof_facts() {
+  bir::Block successor;
+  successor.label = "claim.join";
+  successor.label_id = c4c::BlockLabelId{401};
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%claim.dst"),
+  });
+
+  bir::Block same_spelling_successor;
+  same_spelling_successor.label = successor.label;
+  same_spelling_successor.label_id = successor.label_id;
+  same_spelling_successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%claim.dst"),
+  });
+
+  const auto& destination_value =
+      std::get<bir::PhiInst>(successor.insts.front()).result;
+  const auto& same_spelling_value =
+      std::get<bir::PhiInst>(same_spelling_successor.insts.front()).result;
+  const bir::Route4BlockEntryDestinationIdentity destination{
+      .successor_owner = &successor,
+      .successor_label_id = successor.label_id,
+      .destination_value = &destination_value,
+      .destination_value_name_id = c4c::ValueNameId{402},
+      .destination_value_name = destination_value.name,
+      .destination_value_type = destination_value.type,
+  };
+
+  // Source programs cannot express two distinct BIR owners with deliberately
+  // identical diagnostic metadata, so this row constructs the internal state.
+  const bir::Route4BlockEntryPublicationClaimCollection exact_identity{
+      .destination = destination,
+      .claims = {bir::Route4BlockEntryPublicationClaim{
+          .attribution_id = 1,
+          .attributed = true,
+          .claimed_destination = bir::Route4BlockEntryDestinationIdentity{
+              .successor_owner = &same_spelling_successor,
+              .successor_label_id = successor.label_id,
+              .destination_value = &same_spelling_value,
+              .destination_value_name_id = destination.destination_value_name_id,
+              .destination_value_name = destination.destination_value_name,
+              .destination_value_type = destination.destination_value_type,
+          },
+          .instruction_owner = &successor,
+          .instruction_owner_label_id = successor.label_id,
+          .instruction = &successor.insts.front(),
+      }},
+  };
+  if (exact_identity.claims.front().claimed_destination.successor_owner ==
+          exact_identity.destination.successor_owner ||
+      exact_identity.claims.front().claimed_destination.destination_value ==
+          exact_identity.destination.destination_value ||
+      exact_identity.claims.front().claimed_destination.destination_value_name !=
+          exact_identity.destination.destination_value_name) {
+    return fail("Route4 claim identity should preserve owner/value identity independently of diagnostics");
+  }
+
+  // A source program cannot assign proof-attribution identities to duplicate
+  // observations, so retain both internal claims even when their payload agrees.
+  const bir::Route4BlockEntryPublicationClaim agreeing_claim{
+      .attribution_id = 11,
+      .attributed = true,
+      .claimed_destination = destination,
+      .instruction_owner = &successor,
+      .instruction_owner_label_id = successor.label_id,
+      .instruction = &successor.insts.front(),
+      .instruction_index = 0,
+  };
+  auto independently_attributed_claim = agreeing_claim;
+  independently_attributed_claim.attribution_id = 12;
+  const bir::Route4BlockEntryPublicationClaimCollection duplicates{
+      .destination = destination,
+      .claims = {agreeing_claim, independently_attributed_claim},
+  };
+  if (duplicates.claims.size() != 2 ||
+      duplicates.claims[0].attribution_id == duplicates.claims[1].attribution_id ||
+      duplicates.claims[0].claimed_destination.destination_value !=
+          duplicates.claims[1].claimed_destination.destination_value) {
+    return fail("Route4 claim collection should preserve independently attributed multiplicity");
+  }
+
+  // Source syntax cannot inject stale post-lowering instruction coordinates;
+  // construct them directly so the collection must preserve the disagreement.
+  auto stale_claim = agreeing_claim;
+  stale_claim.attribution_id = 21;
+  stale_claim.instruction_owner = &same_spelling_successor;
+  stale_claim.instruction_owner_label_id = c4c::BlockLabelId{499};
+  stale_claim.instruction_index = 7;
+  const bir::Route4BlockEntryPublicationClaimCollection stale_coordinates{
+      .destination = destination,
+      .claims = {stale_claim},
+  };
+  if (stale_coordinates.claims.front().instruction_owner == &successor ||
+      stale_coordinates.claims.front().instruction_owner_label_id ==
+          successor.label_id ||
+      stale_coordinates.claims.front().instruction_index != 7) {
+    return fail("Route4 claim collection should preserve stale coordinates for later classification");
+  }
+
+  // Missing internal attribution is not a source-language state; this row
+  // proves the model represents it without manufacturing a claim identity.
+  auto unattributed_claim = agreeing_claim;
+  unattributed_claim.attribution_id = 0;
+  unattributed_claim.attributed = false;
+  const bir::Route4BlockEntryPublicationClaimCollection missing_attribution{
+      .destination = destination,
+      .claims = {unattributed_claim},
+  };
+  if (missing_attribution.claims.front().attributed ||
+      missing_attribution.claims.front().attribution_id != 0) {
+    return fail("Route4 claim collection should preserve missing attribution");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -15382,6 +15497,11 @@ int main() {
     return result;
   }
   if (const int result = verify_bir_block_entry_publication_identity_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_route4_block_entry_publication_claim_model_preserves_proof_facts();
       result != 0) {
     return result;
   }
