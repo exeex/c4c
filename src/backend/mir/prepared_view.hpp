@@ -5,6 +5,7 @@
 #include "../prealloc/control_flow.hpp"
 #include "../prealloc/names.hpp"
 #include "../prealloc/prepared_lookups.hpp"
+#include "../prealloc/publication_plans.hpp"
 #include "../prealloc/stack_layout/stack_layout.hpp"
 #include "../prealloc/value_locations.hpp"
 #include "../../target_profile.hpp"
@@ -242,6 +243,44 @@ struct PreparedMirBranchStackLoadAuthorityView {
   prepare::PreparedValueFreshnessSourceRank freshness_rank =
       prepare::PreparedValueFreshnessSourceRank::None;
 };
+
+// A bounded feature-facing copy of the producer-owned stack-destination row.
+// This carrier deliberately has no lookup inputs: consuming it cannot select a
+// route, inspect source order, or reconstruct authority from MIR.
+struct PreparedMirStackDestinationAuthorityView {
+  prepare::PreparedStackDestinationComposerInputStatus status =
+      prepare::PreparedStackDestinationComposerInputStatus::MissingEvidence;
+  prepare::PreparedStackDestinationPublicationStatus upstream_relationship_status =
+      prepare::PreparedStackDestinationPublicationStatus::MissingPublication;
+  prepare::PreparedEdgeCopySourceFactsStatus upstream_source_facts_status =
+      prepare::PreparedEdgeCopySourceFactsStatus::MissingPublication;
+  const prepare::PreparedStackDestinationPublication* relationship = nullptr;
+  const prepare::PreparedEdgePublication* publication = nullptr;
+  const prepare::PreparedMoveResolution* move = nullptr;
+  const prepare::PreparedValueHome* source_home = nullptr;
+  const prepare::PreparedValueHome* destination_home = nullptr;
+  const prepare::PreparedValueFreshnessAuthority* source_freshness = nullptr;
+  const prepare::PreparedFrameSlot* destination_frame_slot = nullptr;
+  const prepare::PreparedStackObject* destination_stack_object = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  std::optional<prepare::PreparedValueId> source_value_id;
+  prepare::PreparedValueId destination_value_id = 0;
+  std::optional<std::size_t> cursor_block_index;
+  std::optional<std::size_t> cursor_instruction_index;
+  prepare::PreparedStackDestinationEvidenceApplicability branch_stack_load_applicability =
+      prepare::PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  prepare::PreparedStackDestinationEvidenceReason branch_stack_load_reason =
+      prepare::PreparedStackDestinationEvidenceReason::None;
+  prepare::PreparedStackDestinationEvidenceApplicability aggregate_source_applicability =
+      prepare::PreparedStackDestinationEvidenceApplicability::NotApplicable;
+  prepare::PreparedStackDestinationEvidenceReason aggregate_source_reason =
+      prepare::PreparedStackDestinationEvidenceReason::None;
+};
+
+[[nodiscard]] PreparedMirStackDestinationAuthorityView
+consume_prepared_stack_destination_authority(
+    const prepare::PreparedStackDestinationAuthorityView& authority);
 
 [[nodiscard]] PreparedMirBranchStackLoadAuthorityView
 query_prepared_mir_branch_stack_load_authority(

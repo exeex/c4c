@@ -11124,6 +11124,32 @@ int check_select_edge_source_producer_placement_contract() {
           produced_relationship.aggregate_source_reason) {
     return fail("expected complete uniquely identity-bound stack destination authority row");
   }
+  const auto mir_authority =
+      mir_prepared::consume_prepared_stack_destination_authority(authority);
+  if (mir_authority.status !=
+          prepare::PreparedStackDestinationComposerInputStatus::Available ||
+      mir_authority.relationship != authority.relationship ||
+      mir_authority.publication != authority.publication ||
+      mir_authority.move != authority.move ||
+      mir_authority.source_home != authority.source_home ||
+      mir_authority.destination_home != authority.destination_home ||
+      mir_authority.source_freshness != authority.source_freshness ||
+      mir_authority.destination_frame_slot != authority.destination_frame_slot ||
+      mir_authority.destination_stack_object != authority.destination_stack_object ||
+      mir_authority.predecessor_label != authority.predecessor_label ||
+      mir_authority.successor_label != authority.successor_label ||
+      mir_authority.source_value_id != authority.source_value_id ||
+      mir_authority.destination_value_id != authority.destination_value_id ||
+      mir_authority.cursor_block_index != authority.cursor_block_index ||
+      mir_authority.cursor_instruction_index != authority.cursor_instruction_index ||
+      mir_authority.branch_stack_load_applicability !=
+          authority.branch_stack_load_applicability ||
+      mir_authority.branch_stack_load_reason != authority.branch_stack_load_reason ||
+      mir_authority.aggregate_source_applicability !=
+          authority.aggregate_source_applicability ||
+      mir_authority.aggregate_source_reason != authority.aggregate_source_reason) {
+    return fail("expected prepared MIR feature view to preserve the complete authority row");
+  }
   auto missing_query = composer_query;
   missing_query.source_facts = nullptr;
   const auto missing_input =
@@ -11134,6 +11160,27 @@ int check_select_edge_source_producer_placement_contract() {
           prepare::PreparedStackDestinationComposerInputStatus::MissingEvidence ||
       missing_authority.publication != nullptr || missing_authority.move != nullptr) {
     return fail("expected missing composer evidence to remain independently reachable");
+  }
+  const auto missing_mir_authority =
+      mir_prepared::consume_prepared_stack_destination_authority(missing_authority);
+  if (missing_mir_authority.status != missing_authority.status ||
+      missing_mir_authority.relationship != nullptr ||
+      missing_mir_authority.publication != nullptr) {
+    return fail("expected prepared MIR feature view to reject missing authority");
+  }
+  auto incomplete_available_authority = authority;
+  incomplete_available_authority.destination_stack_object = nullptr;
+  if (mir_prepared::consume_prepared_stack_destination_authority(
+          incomplete_available_authority).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::IncompleteStackEvidence) {
+    return fail("expected prepared MIR feature view to reject incomplete available authority");
+  }
+  auto mismatched_available_authority = authority;
+  mismatched_available_authority.destination_value_id = 12;
+  if (mir_prepared::consume_prepared_stack_destination_authority(
+          mismatched_available_authority).status !=
+      prepare::PreparedStackDestinationComposerInputStatus::IdentityMismatch) {
+    return fail("expected prepared MIR feature view to reject mismatched available authority");
   }
   auto invalid_freshness_facts = produced_source_facts;
   invalid_freshness_facts.source_freshness_status =

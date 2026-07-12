@@ -7,6 +7,85 @@
 
 namespace c4c::backend::mir::prepared {
 
+PreparedMirStackDestinationAuthorityView
+consume_prepared_stack_destination_authority(
+    const prepare::PreparedStackDestinationAuthorityView& authority) {
+  PreparedMirStackDestinationAuthorityView view{
+      .status = authority.status,
+      .upstream_relationship_status = authority.upstream_relationship_status,
+      .upstream_source_facts_status = authority.upstream_source_facts_status,
+  };
+  if (authority.status !=
+      prepare::PreparedStackDestinationComposerInputStatus::Available) {
+    return view;
+  }
+  if (authority.relationship == nullptr || authority.publication == nullptr ||
+      authority.move == nullptr || authority.source_home == nullptr ||
+      authority.destination_home == nullptr || authority.source_freshness == nullptr ||
+      authority.destination_frame_slot == nullptr ||
+      authority.destination_stack_object == nullptr ||
+      !authority.source_value_id.has_value() ||
+      !authority.cursor_block_index.has_value() ||
+      !authority.cursor_instruction_index.has_value() ||
+      authority.branch_stack_load_applicability ==
+          prepare::PreparedStackDestinationEvidenceApplicability::Unknown ||
+      authority.aggregate_source_applicability ==
+          prepare::PreparedStackDestinationEvidenceApplicability::Unknown) {
+    view.status =
+        prepare::PreparedStackDestinationComposerInputStatus::IncompleteStackEvidence;
+    return view;
+  }
+  const auto& relationship = *authority.relationship;
+  const auto& freshness = *authority.source_freshness;
+  if (relationship.status !=
+          prepare::PreparedStackDestinationPublicationStatus::Available ||
+      relationship.publication != authority.publication ||
+      relationship.move != authority.move ||
+      relationship.source_home != authority.source_home ||
+      relationship.destination_home != authority.destination_home ||
+      relationship.destination_frame_slot != authority.destination_frame_slot ||
+      relationship.destination_stack_object != authority.destination_stack_object ||
+      relationship.predecessor_label != authority.predecessor_label ||
+      relationship.successor_label != authority.successor_label ||
+      relationship.source_value_id != authority.source_value_id ||
+      relationship.destination_value_id != authority.destination_value_id ||
+      relationship.branch_stack_load_applicability !=
+          authority.branch_stack_load_applicability ||
+      relationship.branch_stack_load_reason != authority.branch_stack_load_reason ||
+      relationship.aggregate_source_applicability !=
+          authority.aggregate_source_applicability ||
+      relationship.aggregate_source_reason != authority.aggregate_source_reason ||
+      authority.move->block_index != authority.cursor_block_index ||
+      authority.move->instruction_index != authority.cursor_instruction_index ||
+      freshness.reference.edge_publication != authority.publication ||
+      freshness.reference.move != authority.move ||
+      freshness.reference.block_index != authority.cursor_block_index ||
+      freshness.reference.instruction_index != authority.cursor_instruction_index) {
+    view.status = prepare::PreparedStackDestinationComposerInputStatus::IdentityMismatch;
+    return view;
+  }
+
+  view.relationship = authority.relationship;
+  view.publication = authority.publication;
+  view.move = authority.move;
+  view.source_home = authority.source_home;
+  view.destination_home = authority.destination_home;
+  view.source_freshness = authority.source_freshness;
+  view.destination_frame_slot = authority.destination_frame_slot;
+  view.destination_stack_object = authority.destination_stack_object;
+  view.predecessor_label = authority.predecessor_label;
+  view.successor_label = authority.successor_label;
+  view.source_value_id = authority.source_value_id;
+  view.destination_value_id = authority.destination_value_id;
+  view.cursor_block_index = authority.cursor_block_index;
+  view.cursor_instruction_index = authority.cursor_instruction_index;
+  view.branch_stack_load_applicability = authority.branch_stack_load_applicability;
+  view.branch_stack_load_reason = authority.branch_stack_load_reason;
+  view.aggregate_source_applicability = authority.aggregate_source_applicability;
+  view.aggregate_source_reason = authority.aggregate_source_reason;
+  return view;
+}
+
 PreparedMirFunctionView::PreparedMirFunctionView(const PreparedMirCoreView* core,
                                                  const PreparedMirFunctionEntry* entry)
     : core_(core), entry_(entry) {}
