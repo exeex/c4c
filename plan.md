@@ -1,131 +1,100 @@
-# Common Current-Block Join Query Exposure Runbook
+# AArch64 Named Handoff Materializer Cleanup Runbook
 
 Status: Active
-Source Idea: ideas/open/729_common_current_block_join_query_exposure.md
-Supersedes: exhausted consumer runbook for idea 709, which remains open and parked
+Source Idea: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
+Activated from: handback after closure of idea 729
 
 ## Purpose
 
-Repair the query boundary that currently forces AArch64 to build executable
-current-block join routing arrays before consumer retirement can finish.
+Finish retiring executable route/index reconstruction from AArch64 MIR
+materialization after the common current-block query boundary was repaired.
 
 ## Goal
 
-Provide direct typed access to existing attached current-block join authority,
-remove the target-built routing array, and hand the bounded retirement route
-back to idea 709.
+Remove the remaining locally replaceable address-materialization lookup and
+prove that semantic AArch64 materialization consumes common named/prepared
+authority without target-local route or index recreation.
 
 ## Core Rule
 
-Expose existing prepared authority through its common owner. Do not change the
-authoritative fact set or reproduce lookup reasoning in target materializers.
+Consume existing attached common authority and keep only target instruction
+and ABI realization. Do not recreate semantic lookups under new names.
 
 ## Read First
 
-- `ideas/open/729_common_current_block_join_query_exposure.md`
 - `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
-- `ideas/closed/716_prealloc_current_block_routing_authority_closure.md`
-- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
-- the common prepared current-block routing query declarations and owner
-  attachment surfaces reached from those files
+- `ideas/closed/729_common_current_block_join_query_exposure.md`
+- the AArch64 address materializer and directly implicated common query APIs
 
 ## Current Scope
 
-- The attached current-block join consumption query contract.
-- Incoming-expression and source roles currently cached by
-  `CurrentBlockJoinPreparedQueryRouting`.
-- Bounded AArch64 callers required to prove and delete that routing array.
+- The locally replaceable address-materialization lookup reconstruction found
+  by the prior Step 3 audit.
+- The final semantic AArch64 route/index retirement search.
+- Focused address-materialization proof and a supervisor-selected broader
+  AArch64/backend checkpoint.
 
 ## Non-Goals
 
-- No change to current-block authority production or Route 5 diagnostic status.
-- No broad lookup, publication, BIR, CFG, or other-target migration.
-- No unrelated idea 709 retirement cleanup.
-- No expectation weakening or testcase-shaped routing rule.
+- No common producer or query-contract redesign.
+- No reopening the completed current-block or return-chain authority work.
+- No x86 or RV64 migration, target policy change, expectation weakening, or
+  testcase-shaped fallback.
+- Debug-only route vocabulary is not semantic authority and belongs to idea
+  712 when it cannot be removed locally and safely.
 
 ## Execution Rules
 
-- Preserve the complete prepared authority established by idea 716: owner
-  attachment, stable block/value identity, semantic role, and fail-closed
-  disagreement or incompleteness.
-- Keep common queries target-neutral and target callers limited to typed inputs
-  plus instruction realization.
-- Delete the routing array only after focused common and affected AArch64 proof
-  demonstrates equivalent supported behavior and fail-closed negatives.
-- Stop for lifecycle review if direct consumption requires changing the
-  authoritative fact set rather than exposing it.
+- Replace only executable reconstruction that an existing attached common
+  query already owns.
+- Validate owner and stable identity and fail closed when required authority is
+  absent or inconsistent.
+- Stop for lifecycle review if the remaining address relation is not expressible
+  through an existing common contract.
+- Delete obsolete builders/indexes after their final consumer disappears; do
+  not rename or wrap them.
 
 ## Ordered Steps
 
-### Step 1: Establish the direct common query seam
+### Step 3.1: Remove the address-materialization reconstruction
 
-Goal: expose the already attached current-block join consumption authority
-without a target-built routing cache.
+Goal: replace the remaining locally rebuilt address lookup with existing
+attached common authority.
 
-Primary targets: the common prepared query declaration/implementation owner and
-the smallest affected query contract tests.
-
-Actions:
-
-- Trace the existing private query to the authoritative prepared lookup and
-  select the lowest target-neutral declaration surface.
-- Define direct typed incoming-expression and source consumption queries using
-  stable block/value/role inputs already owned by the prepared contract.
-- Preserve explicit fail-closed results for missing attachment, stale or
-  incomplete identity, ambiguity, disagreement, and unsupported roles.
-- Add focused positive and negative proof across more than one instruction
-  shape; do not use Route 5 or instruction position as authority.
-
-Completion check:
-
-- Common callers can query the attached relation directly, focused contract
-  proof is green, and no target policy or new fact production entered the
-  common query.
-
-### Step 2: Remove the AArch64 routing-array reconstruction
-
-Goal: migrate the bounded AArch64 current-block join callers to the direct
-common query and delete the executable routing cache.
-
-Primary targets:
-
-- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
-- directly implicated callers in `src/backend/mir/aarch64/codegen/dispatch.cpp`
+Primary target: the AArch64 address materializer identified by the retirement
+audit and only its directly implicated callers.
 
 Actions:
 
-- Replace `CurrentBlockJoinPreparedQueryRouting` parameters and callers with
-  direct typed common-query consumption.
-- Delete the builder, boolean arrays, and private duplicate query reasoning
-  after their final executable consumers disappear.
-- Preserve target-local instruction behavior and fail closed when common
-  authority is unavailable or inconsistent.
-- Prove affected AArch64 current-block/join positives and nearby fail-closed
-  negatives without changing expectations.
+- Confirm the remaining lookup is executable semantic state rather than
+  target-local instruction realization.
+- Consume the existing typed attached query with owner and identity checks.
+- Delete the local builder, scan, or fallback after its final consumer is gone.
+- Preserve relocation, addressing, and ABI behavior and fail closed on missing
+  or inconsistent authority.
+- Run the supervisor-selected build and focused address/materialization tests
+  without expectation changes.
 
 Completion check:
 
-- The routing struct and builder are gone, no AArch64 instruction scan caches
-  executable join answers, and focused common plus AArch64 proof is green.
+- Address materialization no longer rebuilds semantic lookup state, focused
+  proof is green, and no common contract or testcase expectation changed.
 
-### Step 3: Prove the boundary and hand back idea 709
+### Step 3.2: Prove retirement and disposition
 
-Goal: establish that the query-contract initiative is complete and the parked
-consumer retirement route can resume without further scope expansion.
+Goal: demonstrate that semantic AArch64 materialization has no remaining route
+record, route index, or recreated lookup authority.
 
 Actions:
 
-- Search the affected common and AArch64 surfaces for renamed routing arrays,
-  copied prepared lookup reasoning, Route 5 authority, or expectation changes.
-- Run the supervisor-selected broader backend regression comparison.
-- Review the complete slice against the source idea reject signals.
-- Record the durable handback and reactivate idea 709 at its retirement step;
-  do not absorb its locally replaceable address-materialization cleanup here.
+- Search the scoped AArch64 semantic owner for executable route/index use and
+  renamed forms of the retired current-block and address reconstructions.
+- Classify surviving route-labelled text as non-semantic debug vocabulary for
+  idea 712, or remove it when local and safe.
+- Run the supervisor-selected broader AArch64/backend regression comparison.
+- Review the complete idea 709 implementation against its reject signals.
 
 Completion check:
 
-- Direct common authority is the only executable query path, broader proof has
-  no new failures, and lifecycle state can switch back to idea 709 with its
-  remaining retirement work explicit.
+- The semantic retirement guard is zero, broader proof has no new failures,
+  and no route/index recreation or expectation weakening remains.

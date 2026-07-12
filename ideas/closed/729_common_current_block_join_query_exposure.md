@@ -1,9 +1,19 @@
 # Common Current-Block Join Query Exposure
 
-Status: Open
+Status: Closed
 Type: common prepared-query contract repair
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 Blocks: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
+
+## Completion Note (2026-07-12)
+
+The attached common owner now exposes direct typed incoming-expression and
+source-role queries, and AArch64 no longer builds or consumes
+`CurrentBlockJoinPreparedQueryRouting`. Focused proof passed across the common
+contract and affected AArch64 shapes. The close-time backend regression guard
+was monotonic at 344/400 before and after with the identical 56 known failures.
+Idea 709 may resume its locally replaceable address-materialization cleanup and
+final retirement proof without another current-block query expansion.
 
 ## Goal
 

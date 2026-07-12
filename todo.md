@@ -1,34 +1,30 @@
 # Current Packet
 
-Status: Complete
-Source Idea Path: ideas/open/729_common_current_block_join_query_exposure.md
+Status: Active
+Source Idea Path: ideas/open/709_aarch64_named_handoff_materializer_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove the boundary and hand back idea 709
+Current Step ID: 3.1
+Current Step Title: Remove the address-materialization reconstruction
 
 ## Just Finished
 
-- Plan Step 3 audited the common/AArch64 boundary and proved that the two
-  AArch64 role wrappers extract only stable owner/block/value identity and call
-  the direct attached-owner common queries. No renamed routing cache, copied
-  prepared-fact lookup loop, Route 5 authority, or expectation change remains.
+- Lifecycle closed idea 729 after its direct common current-block query and
+  AArch64 routing-array removal passed focused proof and the matching backend
+  regression guard.
 
 ## Suggested Next
 
-- Hand lifecycle control back to idea 709 at its remaining named-handoff
-  materializer retirement step; keep its address-materialization cleanup out of
-  idea 729.
+- Execute Plan Step 3.1 against only the locally replaceable AArch64
+  address-materialization lookup reconstruction.
 
 ## Watchouts
 
-- The broader backend suite retains 56 known baseline failures. The failure set
-  and pass count exactly match `test_before.log`; these remain baseline debt and
-  are not regressions from idea 729.
+- Stop for lifecycle review if no existing attached common query owns the
+  required address relation. Do not reopen current-block authority or copy
+  prepared lookup reasoning into AArch64.
 
 ## Proof
 
-- Monotonic against baseline: `cmake --build --preset default && ctest
-  --test-dir build -j --output-on-failure -R '^backend_'` ran 400 tests with
-  344 passes and the same 56 known failures as `test_before.log` (no new
-  failures and no reduced pass count). Combined exact output is preserved in
-  `test_after.log`.
+- Lifecycle close gate passed: matching `^backend_` before/after runs each
+  reported 344/400 passed with the identical 56 known failures.
+- Step 3.1 implementation proof is pending.

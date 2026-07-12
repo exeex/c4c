@@ -49,12 +49,11 @@ requires a target-built `CurrentBlockJoinPreparedQueryRouting` array. Removing
 that reconstruction therefore requires a common producer/query contract change
 outside this consumer-only idea.
 
-Idea 709 is parked pending `ideas/open/729_common_current_block_join_query_exposure.md`.
-The address-materialization lookup reconstruction is locally replaceable, but
-was deliberately not landed alone while its sibling current-block routing
-reconstruction remained. Resume the retirement proof only after idea 729
-provides direct typed attached-authority consumption; do not move the private
-query logic into `dispatch.cpp` or preserve the routing array behind a rename.
+Idea 729 is closed after providing direct typed attached-authority consumption
+and deleting the AArch64 current-block routing array. Idea 709 is reactivated
+for the locally replaceable address-materialization lookup reconstruction and
+the final retirement proof. Do not move prepared lookup reasoning into target
+code or preserve either retired reconstruction behind a rename.
 
 ## First Owner And Scope
 
