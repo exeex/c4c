@@ -8,26 +8,25 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
-- Plan Step 2 migrated the AArch64 call-boundary same-block publication source
-  lookup in `calls.cpp` from a locally rebuilt Route 4 publication-availability
-  index to the common named-producer record, retaining the prepared
-  current-block publication query as the cross-block fallback. It also removed
-  the unused `Route6CallUseSourceIndex` parameter from the adjacent direct-global
-  select call-argument materialization API and its sole call site.
+- Plan Step 2 migrated the AArch64 fused-comparison operand-producer consumer
+  family in `comparison.cpp` from executable Route 7 agreement/index queries
+  (and the selected-operand Route 7/raw-scan fallback) to the existing common
+  prepared fused-comparison producer facts. Missing prepared producer authority
+  now fails closed instead of selecting a target-local fallback.
 
 ## Suggested Next
 
-- Continue Plan Step 2 with one narrow comparison or ALU authority-family
-  packet selected by the supervisor; keep the packet limited to one semantic
-  route-index consumer family and its focused proof.
+- Continue Plan Step 2 with one narrow remaining materialized-condition or ALU
+  authority-family packet selected by the supervisor; keep it limited to one
+  semantic route-index consumer family and its focused proof.
 
 ## Watchouts
 
-- The call-boundary source path now accepts only the common same-block named
-  producer record or prepared current-block publication consumption; the raw
-  instruction visitor fallback was removed so missing authority fails closed.
-- Comparison and ALU route-index construction remains outside this completed
-  packet and still belongs to Step 2.
+- The legacy Route 7 conversion/agreement helpers remain for focused contract
+  tests, but executable fused-comparison materialization no longer consults
+  them.
+- Materialized-condition comparison and ALU route-index consumers remain
+  outside this completed packet and still belong to Step 2.
 - The delegated subset retains the known baseline failure in test 354 (`bl
   printf` missing); all other 34 tests pass, including the call-boundary
   scalability and prepared-memory records coverage.

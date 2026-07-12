@@ -460,16 +460,6 @@ find_prepared_fused_compare_operand_producer_facts(
   if (!prepared.has_value()) {
     return prepared;
   }
-
-  if (const auto agreed =
-          detail::read_agreeing_route7_fused_compare_operand_producer_facts(
-              {.context = context,
-               .branch_condition = branch_condition,
-               .before_instruction_index = before_instruction_index},
-              *prepared);
-      agreed.has_value()) {
-    return agreed;
-  }
   return prepared;
 }
 
@@ -1969,6 +1959,14 @@ namespace {
          producer->producer_instruction != nullptr;
 }
 
+[[nodiscard]] bool prepared_fused_compare_operand_has_select_producer(
+    const std::optional<prepare::PreparedFusedCompareOperandProducer>& producer) {
+  return producer.has_value() &&
+         producer->kind ==
+             prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
+         producer->select != nullptr;
+}
+
 [[nodiscard]] std::optional<std::uint8_t>
 preferred_fused_compare_operand_publication_target(
     const module::BlockLoweringContext& context,
@@ -2887,29 +2885,12 @@ bool fused_compare_uses_selected_operand(
   if (!branch_facts.has_value()) {
     return false;
   }
-  if (context.bir_block == nullptr) {
-    return false;
-  }
-  const auto route7_index =
-      bir::route7_build_comparison_condition_index(*context.bir_block);
-  const auto route7_producer_facts =
-      bir::route7_find_fused_compare_operand_producer_facts(
-          route7_index,
-          *context.bir_block,
-          branch_facts->lhs,
-          branch_facts->rhs,
-          context.bir_block->insts.size());
-  const auto bir_producer_facts = bir::find_fused_compare_operand_producer_facts(
-      *context.bir_block,
-      branch_facts->lhs,
-      branch_facts->rhs,
-      context.bir_block->insts.size());
-  const auto& producer_facts =
-      route7_producer_facts.available ? route7_producer_facts
-                                      : bir_producer_facts;
-  return producer_facts.available &&
-         (fused_compare_operand_has_select_producer(producer_facts.lhs) ||
-          fused_compare_operand_has_select_producer(producer_facts.rhs));
+  const auto producer_facts =
+      find_prepared_fused_compare_operand_producer_facts(
+          context, *branch_facts->branch_condition);
+  return producer_facts.has_value() &&
+         (prepared_fused_compare_operand_has_select_producer(producer_facts->lhs) ||
+          prepared_fused_compare_operand_has_select_producer(producer_facts->rhs));
 }
 
 
