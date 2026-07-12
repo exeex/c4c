@@ -3,31 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/720_block_entry_publication_proof_evidence_multiplicity.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Bind MIR validation to the authoritative result
+Current Step ID: 6.1
+Current Step Title: Restore conservative production compatibility
 
 ## Just Finished
 
-- Completed Plan Step 5 by adding a MIR validation boundary that consumes
-  Route4's authoritative typed block-entry publication classification.
-- Validated the selected claim's exact attribution, destination ownership, and
-  instruction coordinate against prepared evidence, failing closed for
-  missing, unattributed, stale, inconsistent, and ambiguous classifications.
+- Plan Step 6 final acceptance was rejected by
+  `review/idea720_step6_final_acceptance_review.md`; the route remains active
+  and has been split into bounded repair and proof substeps 6.1 through 6.5.
 
 ## Suggested Next
 
-- Execute Plan Step 6: prove the decomposition seam and hand back to idea 718.
+- Execute Plan Step 6.1: restore conservative production compatibility without
+  name-based availability recovery or duplicate fail-closed downgrade.
 
 ## Watchouts
 
-- The direct MIR boundary trusts Route4 alone to select a claim; it performs no
-  PHI/name/order rescan and treats any absent or invalid selection as failure.
-- The legacy pointer overload remains as a compatibility bridge for existing
-  callers, but focused ambiguity evidence now enters MIR only through Route4's
-  explicit multi-claim classification.
+- Do not hand back to idea 718 until Steps 6.1 through 6.5 and the final audit
+  are complete.
+- The legacy pointer overload is a production boundary: it must not turn a
+  display-name/type scan into a synthetic available claim or lose the former
+  duplicate fail-closed behavior.
+- Keep Route4 authoritative for the complete modeled coordinate, including
+  `instruction_owner_label_id`.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_prepared_lookup_helper$' | tee
-  test_after.log` passed (1/1); `test_after.log` is the proof log.
+- Pending supervisor-delegated build and focused proof for Plan Step 6.1.

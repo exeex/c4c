@@ -163,19 +163,111 @@ Completion check:
 - MIR agrees with the authoritative result for every focused row and performs
   no display-name/source-order recovery.
 
-### Step 6: Prove the decomposition seam and hand back to idea 718
+### Step 6.1: Restore conservative production compatibility
 
-Goal: establish focused acceptance for the new model and make the parked
-production route resumable.
+Goal: prevent the surviving production pointer overload from converting
+name-scanned evidence into a synthetic available claim or weakening the prior
+duplicate fail-closed behavior.
+
+Primary targets:
+
+- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
+- `src/backend/mir/query.cpp`
+- `src/backend/bir/bir_route4_publication.cpp`
 
 Actions:
 
-- Run the supervisor-delegated build and focused internal backend BIR subset.
-- Audit the diff against the source idea's reviewer reject signals.
+- Trace the non-test pointer-overload caller through the legacy Route4 record
+  bridge.
+- Prefer routing an explicit attributed claim collection from production when
+  the existing model can supply it without expanding this idea's scope.
+- Otherwise keep the compatibility overload conservative: evidence recovered
+  only by display name/type must not become an available synthetic claim, and
+  same-name/same-type duplicates must continue to fail closed.
+- Do not add a new name-, order-, fixture-, or proximity-shaped availability
+  path.
+
+Completion check:
+
+- The production caller cannot report availability from name-based recovery,
+  preserves no-downgrade fail-closed behavior, and the delegated build plus
+  focused compatibility proof is green.
+
+### Step 6.2: Complete Route4 instruction-coordinate authority
+
+Goal: make Route4 validate every modeled owner/instruction coordinate before
+classifying a claim as available.
+
+Actions:
+
+- Validate `instruction_owner_label_id` against the exact instruction owner
+  and destination identity alongside the existing owner pointer, instruction
+  pointer, index bound, and pointer-at-index checks.
+- Return the precise typed `Stale` result at the Route4 boundary for a stale
+  owner label coordinate; do not defer that fact to MIR as `ProofMismatch`.
+- Add a focused row that changes only the owner-label coordinate while keeping
+  owner pointer, instruction pointer, and index exact.
+
+Completion check:
+
+- Route4 alone classifies the isolated stale-label row as `Stale`, with fresh
+  build and focused proof.
+
+### Step 6.3: Prove independent same-name destination availability
+
+Goal: prove that exact attributed identity keeps two same-name/same-type
+destinations independently available.
+
+Actions:
+
+- Construct independently selected claim collections for each exact
+  same-spelling destination.
+- Assert each collection classifies as `Available` for its own destination.
+- Retain mismatched-destination rejection as a separate contract rather than
+  using it as the positive identity proof.
+
+Completion check:
+
+- Both exact destinations independently classify as `Available`, while the
+  mismatched destination remains rejected, under the focused subset.
+
+### Step 6.4: Prove production-overload no-downgrade behavior
+
+Goal: make the actual production compatibility boundary demonstrate that the
+repair did not weaken unavailable or ambiguous behavior.
+
+Actions:
+
+- Exercise the production pointer overload, not only a directly constructed
+  Route4 classification.
+- Cover same-name/same-type duplicate evidence and any name-only compatibility
+  input affected by Step 6.1.
+- Assert the boundary fails closed and does not manufacture one attributed
+  available claim.
+
+Completion check:
+
+- A focused production-overload row would fail against the rejected bridge and
+  passes with no expectation downgrade or unsupported reclassification.
+
+### Step 6.5: Run fresh focused acceptance and handback audit
+
+Goal: establish reproducible acceptance for the repaired decomposition seam
+before making idea 718 resumable.
+
+Actions:
+
+- Run the supervisor-delegated build and focused internal backend BIR subset,
+  recording the exact command in canonical `test_after.log`.
+- Confirm the proof covers conservative production compatibility, complete
+  Route4 owner-label coordinate validation, independently available same-name
+  destinations, and production-overload no-downgrade behavior.
+- Audit the complete idea 720 diff against its reviewer reject signals.
 - Record the exact resulting seam and remaining idea 718 production/broader
   acceptance work.
 
 Completion check:
 
-- Focused proof is green with no expectation downgrade or heuristic recovery,
-  reviewer reject signals are absent, and lifecycle can return to idea 718.
+- Fresh canonical focused proof is green, the handback audit finds no
+  expectation downgrade or heuristic identity recovery, and only then may the
+  lifecycle return to idea 718.
