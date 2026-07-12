@@ -8,21 +8,27 @@ Current Step Title: Revalidate the focused independent-identity boundary
 
 ## Just Finished
 
-- Activated idea 719 after its idea-718 block-entry publication prerequisite
-  closed.
+- Completed plan Step 1 by revalidating the prepared/BIR CFG source-identity
+  boundary across load, cast, binary, select, memory, and bounded-authority
+  cases. The focused matrix is green with the BIR identity derived from its
+  independent CFG request, so no idea-719-owned semantic defect or code change
+  was found.
 
 ## Suggested Next
 
-- Inspect the existing prepared/BIR CFG agreement matrix and run the
-  supervisor-delegated build plus focused `backend_prepared_lookup_helper`
-  proof. Stop at the first failing fact and classify ownership before editing.
+- Proceed to plan Step 2, auditing route quality and focused acceptance from
+  the idea-719 activation history point through `HEAD`.
 
 ## Watchouts
 
-- The BIR side must derive authority from the CFG request independently of
-  prepared facts.
+- Preserve the independently requested BIR CFG authority; the green focused
+  proof does not replace Step 2's explicit review for circular prepared-fact,
+  fixture-order, display-name, expectation, or target-output shortcuts.
 - Idea 717, idea 716, and idea 721 remain separate initiatives.
 
 ## Proof
 
-- Activation is lifecycle-only; no implementation proof has run yet.
+- Passed the exact supervisor-selected command:
+  `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'; } > test_after.log 2>&1`
+- The build completed and `backend_prepared_lookup_helper` passed 1/1;
+  `test_after.log` is the canonical proof log.
