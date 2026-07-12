@@ -5,6 +5,15 @@ Type: common BIR CFG identity repair
 Parent: `ideas/closed/703_bir_mir_contract_abstraction_umbrella.md`
 Unblocks: `ideas/open/717_prepared_mir_join_source_identity_completion.md`
 
+## Parked Execution Note
+
+The focused source-family proof now passes the owned load, cast, binary,
+select, memory-source, and bounded authority assertions. Its next failure is
+the block-entry publication identity boundary explicitly excluded below and
+owned by `ideas/open/718_block_entry_publication_identity_completion.md`.
+Resume this idea for its broader acceptance comparison after idea 718 restores
+that prerequisite; do not absorb block-entry publication work here.
+
 ## Goal
 
 Make the legacy BIR CFG edge-publication source query resolve exact typed source

@@ -10825,6 +10825,7 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
           prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = &source_producer,
       .source_producer_evidence = producer_evidence,
+      .source_producer_block_label = block.label,
   };
 
   const auto agreed =
