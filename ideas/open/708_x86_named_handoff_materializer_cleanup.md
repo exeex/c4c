@@ -4,6 +4,18 @@ Status: Open
 Type: x86 MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/706_common_mir_named_query_migration.md`
+Blocked By: `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
+
+## Parked Execution Note
+
+Step 2 is parked before implementation completion. The attempted x86 slice was
+rejected and reverted after the supported direct-extern fixture exposed a
+common producer gap: semantic calls exist at instruction cursors 0 and 1, but
+preparation publishes only the later `printf` call as a `PreparedCallPlan`
+keyed at cursor 0. Exact callee/cursor validation therefore correctly fails
+closed for the first call. Idea 716 owns cursor-complete common production;
+resume this idea's direct-call/scalar migration only after that contract has
+positive and negative proof.
 
 ## First Owner And Scope
 

@@ -1,192 +1,129 @@
-# X86 Named Handoff Materializer Cleanup Runbook
+# Cursor-Complete Prepared Call Plan Production Runbook
 
 Status: Active
-Source Idea: ideas/open/708_x86_named_handoff_materializer_cleanup.md
-Activated after completion of: ideas/closed/706_common_mir_named_query_migration.md
+Source Idea: ideas/open/716_prepared_call_plan_cursor_complete_production.md
+Activated after parking: ideas/open/708_x86_named_handoff_materializer_cleanup.md
 
 ## Purpose
 
-Remove executable route dependencies from x86 MIR materialization while
-preserving x86 instruction selection, ABI policy, and supported handoff
-behavior.
+Repair common prepared-call production so target consumers receive complete,
+cursor-exact authority for every supported semantic callsite.
 
 ## Goal
 
-Make x86 semantic materializers consume common named and prepared views as
-their sole handoff authority, fail closed when prepared placement authority is
-missing or inconsistent, and reach zero route-vocabulary hits in semantic x86
-materialization files.
+Publish exactly one correctly keyed `PreparedCallPlan` per supported semantic
+call and prove that incomplete or inconsistent plan identity still fails
+closed.
 
 ## Core Rule
 
-Common/prepared producers own handoff semantics. X86 may realize those facts
-as target instructions and ABI operations, but must not rebuild route indexes,
-use route agreement as an emission condition, or retain route-derived
-fallbacks.
+Common preparation owns call enumeration and identity. Consumers must never
+recover a missing plan by source order, nearest cursor, callee-name special
+case, or route-derived fallback.
 
 ## Read First
 
+- `ideas/open/716_prepared_call_plan_cursor_complete_production.md`
 - `ideas/open/708_x86_named_handoff_materializer_cleanup.md`
-- `ideas/closed/706_common_mir_named_query_migration.md`
-- `src/backend/mir/x86/module/module.cpp`
-- `src/backend/mir/x86/x86.hpp`
-- `tests/backend/bir/backend_x86_handoff_boundary_multi_defined_call_test.cpp`
-- `tests/backend/bir/backend_x86_handoff_boundary_joined_branch_test.cpp`
+- `src/backend/prealloc/calls.hpp`
+- `src/backend/prealloc/call_plans.hpp`
+- `src/backend/prealloc/prepared_lookups.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
 
 ## Current Scope
 
-- X86 semantic MIR materialization, beginning in
-  `src/backend/mir/x86/module/module.cpp`.
-- Direct-call, scalar, memory, publication, and joined-branch handoff paths.
-- Common named/prepared view consumption and fail-closed placement checks.
-- Focused x86 boundary proof plus broader backend validation at acceptance.
+- Common semantic-call enumeration and `PreparedCallPlan` production.
+- Block/instruction cursor, callee, argument, result, ABI, move, and
+  preservation identity.
+- Producer-level mixed-call proof and affected x86 boundary proof.
 
 ## Non-Goals
 
-- Do not migrate AArch64 or RV64 consumers owned by ideas 709 and 710.
-- Do not quarantine or delete private BIR route implementations owned by idea
-  711.
-- Do not perform route-labelled debug and fixture vocabulary cleanup owned by
-  idea 712 unless a label directly selects x86 codegen.
-- Do not change x86 ABI or instruction-selection policy.
-- Do not weaken expectations, supported behavior, or proof breadth.
-
-## Working Model
-
-- Common named queries identify semantic values and memory/publication facts.
-- Prepared views own placement, homes, move bundles, call preservation, edge
-  publication, frame, and ABI handoff facts.
-- X86 code validates the named/prepared identity and realizes it using
-  target-local instructions.
-- Missing, ambiguous, incomplete, or inconsistent prepared authority rejects
-  the materialization; route records never provide compatibility authority.
-- Debug-only route labels may remain for idea 712 only when they cannot affect
-  executable decisions.
+- Do not change target materializers or restore Route 6 authority.
+- Do not change ABI classification or supported call behavior.
+- Do not absorb memory, publication, joined-control, or route-vocabulary work.
+- Do not weaken exact lookup or fail-closed behavior.
 
 ## Execution Rules
 
-- Migrate one coherent consumer family at a time and keep nearby positive and
-  fail-closed proof green.
-- Replace route-derived decisions with an existing named/prepared contract;
-  if that contract is incomplete, stop and record the producer gap instead of
-  reconstructing authority in x86.
-- Remove target-local route indexes and compatibility fallbacks as their last
-  semantic consumers disappear.
-- Audit all semantic files under `src/backend/mir/x86/`, distinguishing
-  executable route dependencies from debug-only vocabulary deferred to 712.
-- Run the supervisor-delegated build and focused x86 tests for each code step;
-  require broader backend validation before closure.
+- Establish the first incorrect producer fact before changing code.
+- Repair semantic enumeration/cursor accounting generally across supported
+  call shapes; reject fixture-shaped or callee-shaped shortcuts.
+- Keep exact identity validation intact and add negative proof alongside the
+  positive producer repair.
+- Use the supervisor-delegated build and focused tests for each code step, then
+  broader regression proof before closure.
 
 ## Ordered Steps
 
-### Step 1: Inventory x86 route dependencies and bind migration packets
+### Step 1: Trace the missing-call producer path
 
-Goal: classify every route-derived x86 semantic decision by consumer family
-and identify the named/prepared authority that replaces it.
+Goal: identify where the first semantic call is filtered, overwritten, or
+assigned the later call's cursor.
 
 Actions:
 
-- Inventory direct route records, route-index construction, agreement gates,
-  route-derived source selection, compatibility fallbacks, and executable
-  route labels in `src/backend/mir/x86/`.
-- Classify hits into direct-call/scalar, memory, edge publication,
-  joined-branch/control, or debug-only families.
-- Map each semantic hit to an existing idea-706 common query or prepared view,
-  including its missing, ambiguous, incomplete, and mismatch states.
-- Record the focused x86 handoff tests for each family and identify at least
-  one nearby positive and fail-closed case per implementation packet.
+- Trace the supported direct-extern fixture from semantic instructions through
+  common call enumeration into `PreparedCallPlansFunction::calls`.
+- Compare the two semantic calls' block, cursor, callee, arguments, result,
+  ABI, move-bundle, and preservation inputs.
+- Identify the earliest incorrect producer fact and nearby supported call
+  shapes that exercise the same rule.
 
 Completion check:
 
-- Every semantic route dependency has a bounded owner, replacement contract,
-  negative-state rule, and proof surface; any producer gap is explicit and no
-  x86-local reconstruction is proposed.
+- The exact common producer defect is localized, and the proposed repair is a
+  semantic rule that covers more than the named fixture.
 
-### Step 2: Migrate direct-call and scalar handoff materialization
+### Step 2: Produce one cursor-exact plan per supported call
 
-Goal: remove route-derived call argument and scalar source authority from x86
-materialization.
+Goal: repair common production without weakening consumer identity checks.
 
 Actions:
 
-- Make direct-call argument, preservation, return, and scalar materialization
-  consume named/prepared call, value-home, move, and ABI facts.
-- Remove x86-owned route indexes and route-derived source fallback for the
-  migrated paths.
-- Preserve target-local register, stack-argument, frame, and instruction
-  choices only after prepared authority validates.
-- Add or tighten positive and fail-closed direct-call/scalar boundary proof
-  across more than one fixture shape.
+- Correct call enumeration, filtering, or cursor accounting at the owning
+  common layer.
+- Preserve complete callee, argument, result, ABI, move, and preservation
+  identity for every emitted plan.
+- Ensure zero-argument fixed-arity, variadic, result-producing, and adjacent
+  supported calls follow the same production rule.
 
 Completion check:
 
-- Direct-call and scalar emission no longer depends on route records or route
-  fallback, missing prepared authority rejects precisely, and focused x86 call
-  proof is green.
+- The mixed direct-extern function publishes distinct correct plans at cursors
+  0 and 1, and nearby supported shapes retain correct plan identity.
 
-### Step 3: Migrate memory and edge-publication materialization
+### Step 3: Prove positive completeness and negative rejection
 
-Goal: remove Route 3/5 agreement and compatibility decisions from x86 memory
-and publication paths.
+Goal: lock the producer contract without introducing fallback authority.
 
 Actions:
 
-- Consume common/prepared source-memory, frame-slot, value-home, move-bundle,
-  and edge-publication facts directly.
-- Remove target-local Route 3 memory lookup and Route 5 publication agreement
-  or compatibility gates from executable emission.
-- Preserve address, width, volatility, alignment, frame, and move identity
-  checks using producer-owned facts.
-- Prove local/global memory and publication behavior plus missing, ambiguous,
-  stale, and mismatched prepared rejection.
+- Add producer-focused assertions for plan count and exact block/cursor/callee/
+  argument identity across adjacent mixed-shape calls.
+- Prove missing, duplicate, stale-cursor, and callee/cursor mismatch states are
+  unavailable or rejected by exact lookup/consumption.
+- Run the affected x86 direct-extern boundary test without changing its
+  supported expectation.
 
 Completion check:
 
-- X86 memory and edge-publication emission is selected only by named/prepared
-  authority, all route-derived fallbacks are gone, and focused proof is green.
+- Producer-focused positive and negative tests plus the x86 boundary proof are
+  green, with no expectation downgrade or target-local synthesis.
 
-### Step 4: Migrate joined-branch and control materialization
+### Step 4: Run acceptance proof and hand back to idea 708
 
-Goal: make joined-branch and related control paths consume prepared branch,
-join, value, memory, and publication authority without route reconstruction.
-
-Actions:
-
-- Replace remaining route-derived selected-arm, source-memory, join, and
-  transfer decisions with common/prepared views.
-- Preserve x86 comparison, branch, label, and instruction realization while
-  validating producer-owned block, edge, cursor, value, home, and move
-  identity.
-- Reject unavailable or inconsistent prepared branch/join authority without a
-  plain-branch, source-order, or route-agreement fallback.
-- Prove joined scalar, local-memory, publication, and control shapes plus
-  nearby fail-closed mutations.
-
-Completion check:
-
-- Joined-branch/control materialization contains no executable route
-  dependency, supported shapes remain green, and invalid prepared handoffs
-  fail closed.
-
-### Step 5: Enforce the x86 retirement guard and acceptance proof
-
-Goal: establish closure-quality evidence that semantic x86 materialization is
-route-independent without absorbing later cleanup ideas.
+Goal: establish closure-quality evidence and unblock the parked consumer work.
 
 Actions:
 
-- Audit `src/backend/mir/x86/` for route vocabulary and classify any remaining
-  hit as debug-only for idea 712 or as a blocking semantic dependency.
-- Confirm no x86 helper rebuilds route indexes, hides route analysis, or uses
-  debug state to select codegen.
-- Run focused direct-call and joined-branch handoff tests covering scalar,
-  memory, publication, call, and fail-closed placement behavior.
+- Audit the diff for fixture, callee-name, source-order, nearest-plan, or route
+  shortcuts.
 - Run the supervisor-selected broader backend before/after regression guard.
-- Record any debug/test vocabulary residue for idea 712 without renaming it as
-  semantic completion work.
+- Record the proven producer contract needed when idea 708 resumes Step 2.
 
 Completion check:
 
-- Semantic x86 materialization has zero route-vocabulary dependencies, debug
-  residue cannot affect lowering, focused and broader proof are green, and no
-  expectation or behavior contract was weakened.
+- Focused and broader proof are green, reviewer reject signals are absent, and
+  idea 708 can resume with cursor-complete common prepared-call authority.
