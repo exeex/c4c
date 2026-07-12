@@ -1,8 +1,18 @@
 # X86 Defined-Function Prepared-Core Completion
 
-Status: Open
+Status: Complete
 Type: x86 prepared-core producer-contract repair
 Discovered by: `ideas/open/718_block_entry_publication_identity_completion.md`
+
+## Completion
+
+Closed after the common preallocation phase boundary was repaired so eligible
+defined functions publish legalized control flow before prepared-core
+admission. Focused coverage proves genuine prepared-core production for the
+original grouped-spill shape and a nearby fully legalized definition, while
+missing addressing and mismatched value-location facts remain fail closed.
+The matching full-suite regression guard passed at 3374/3429 before and after,
+with the same 55 known failures and no new failures or timeouts.
 
 ## Goal
 
