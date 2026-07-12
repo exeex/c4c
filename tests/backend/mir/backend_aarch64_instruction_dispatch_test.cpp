@@ -34256,6 +34256,42 @@ int scalar_call_argument_source_producer_reads_prepared_materialization() {
     return fail("expected Route 6-only binary producer materialization to fail closed without prepared typed fact");
   }
 
+  auto missing_authority_context = block_context;
+  missing_authority_context.function.prepared_lookups_owner.reset();
+  missing_authority_context.function.prepared_lookups = nullptr;
+  aarch64_codegen::BlockScalarLoweringState missing_authority_scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics missing_authority_diagnostics;
+  const auto missing_authority_lowered =
+      aarch64_codegen::lower_scalar_call_argument_producers(
+          missing_authority_context,
+          prepared.call_plans.functions.front().calls.front(),
+          call->args,
+          1,
+          missing_authority_scalar_state,
+          missing_authority_diagnostics);
+  if (!missing_authority_lowered.empty() ||
+      !missing_authority_diagnostics.empty()) {
+    return fail("expected missing traversal-attached lookup authority to fail closed for scalar call-argument materialization");
+  }
+
+  auto detached_authority_context = block_context;
+  detached_authority_context.function.prepared_lookups =
+      route_only_function_context.prepared_lookups;
+  aarch64_codegen::BlockScalarLoweringState detached_authority_scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics detached_authority_diagnostics;
+  const auto detached_authority_lowered =
+      aarch64_codegen::lower_scalar_call_argument_producers(
+          detached_authority_context,
+          prepared.call_plans.functions.front().calls.front(),
+          call->args,
+          1,
+          detached_authority_scalar_state,
+          detached_authority_diagnostics);
+  if (!detached_authority_lowered.empty() ||
+      !detached_authority_diagnostics.empty()) {
+    return fail("expected detached traversal lookup pointer to fail closed for scalar call-argument materialization");
+  }
+
   struct ScalarArgumentProducerLowering {
     bool ok = false;
     std::size_t instruction_count = 0;

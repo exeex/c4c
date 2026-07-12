@@ -6666,21 +6666,13 @@ lower_scalar_call_argument_producers(
   if (is_inline_variadic_entry_helper_call(call_plan)) {
     return lowered;
   }
-  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
-      fallback_source_producers;
-  const auto* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : nullptr;
-  if (source_producers == nullptr &&
-      context.function.prepared != nullptr &&
-      context.function.control_flow != nullptr) {
-    fallback_source_producers =
-        prepare::make_prepared_edge_publication_source_producer_lookups(
-            *context.function.prepared,
-            *context.function.control_flow);
-    source_producers = &*fallback_source_producers;
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get()) {
+    return lowered;
   }
+  const auto* source_producers =
+      &context.function.prepared_lookups->edge_publication_source_producers;
   for (std::size_t argument_index = 0; argument_index < arguments.size(); ++argument_index) {
     const auto& argument = arguments[argument_index];
     std::vector<std::string_view> active_values;
