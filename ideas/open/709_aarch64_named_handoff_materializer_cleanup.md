@@ -5,7 +5,7 @@ Type: AArch64 MIR consumer migration
 Parent: `ideas/open/703_bir_mir_contract_abstraction_umbrella.md`
 After: `ideas/open/706_common_mir_named_query_migration.md`
 
-## Return-Chain Authority Gate (2026-07-12)
+## Parked Return-Chain Authority Gate (2026-07-12)
 
 Step 2.1 proved that the existing traversal-attached common API does not own
 the complete return-chain relation required by AArch64 ALU materialization.
@@ -15,13 +15,18 @@ first successor ALU non-chain operand home, or their cross-instruction
 move/scalar-producer relation. Reconstructing those facts in `alu.cpp` violates
 this idea's consumer-only boundary.
 
-Idea 727 is now closed after publishing and proving the traversal-attached
-`PreparedObjectReturnChainClassification`. Its available relation supplies the
-terminal return-ABI home and register placement, the first successor ALU
-non-chain operand home, and the authenticated move/producer/operand/freshness
-chain. Idea 709 is reactivated at Step 2.1 to consume that relation and delete
-`find_prepared_return_chain_facts` plus its generated-lookup fallback; do not
-preserve or extend the target-local reconstruction.
+The first Step 2.1 consumer attempt was rejected and fully reverted. Replacing
+the AArch64 helper with the traversal-attached classification caused the
+existing return-chain inputs to classify `Stale`: their move bundles lack the
+proof-attribution/freshness authority required to publish an `Available`
+relation. The focused proof added two failures beyond the known baseline, so
+no helper removal or consumer migration was accepted.
+
+Idea 727 is reopened to repair and prove common production authority on real
+return-chain inputs. Idea 709 remains open but parked at Step 2.1 until that
+initiative can demonstrate consumable, fresh, attributed authority. Do not
+rebuild the relation in AArch64, weaken the fail-closed classification, or
+claim the reverted helper deletion as progress.
 
 ## First Owner And Scope
 

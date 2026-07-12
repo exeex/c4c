@@ -5,19 +5,21 @@ Type: common prepared-MIR producer/query contract repair
 Discovered by: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
 Unblocks: `ideas/open/709_aarch64_named_handoff_materializer_cleanup.md`
 
-## Completion Note (2026-07-12)
+## Reopened Authority Gap (2026-07-12)
 
-Closed after the traversal-attached `PreparedObjectReturnChainClassification`
-proved the full consumer handoff required by idea 709. The available relation
-contains the authenticated start and terminal homes, terminal return-ABI move,
-binding and register placement, the first successor ALU non-chain operand home,
-and each intervening move, scalar producer, operand role, and freshness
-authority. Missing or incoherent evidence remains typed and fail closed.
+The earlier close proved the classification API and synthetic common contract,
+but not that existing production return-chain inputs carry the proof
+attribution and freshness needed to make the relation consumable. The first
+idea 709 consumer attempt was rejected and reverted after those inputs
+classified `Stale`, producing two new focused failures beyond the known
+baseline.
 
-The focused common contract covers two distinct valid chain shapes and the
-nearby negative matrix. A matching close-time regression comparison passed.
-Idea 709 may now resume at Step 2.1 and delete the AArch64 reconstruction and
-its generated-lookup fallback without requiring new common authority.
+This is the same common production/fixture authority contract, so idea 727 is
+reopened rather than replaced. Closure now requires proof that representative
+production AArch64 return-chain inputs receive authenticated `Available`
+relations through the common producer path. Fixture-only injection,
+classification weakening, or target-side reconstruction does not satisfy the
+contract.
 
 ## Goal
 
