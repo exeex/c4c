@@ -335,82 +335,23 @@ find_prepared_fp_same_block_global_load_access(
   if (const auto* load_global =
           producer != nullptr ? std::get_if<bir::LoadGlobalInst>(producer) : nullptr;
       load_global != nullptr) {
-    const auto global_load_identity =
-        mir::find_bir_same_block_global_load_access_identity(
-            mir::BirSameBlockGlobalLoadAccessRequest{
-                .block = context.bir_block,
-                .block_label = context.bir_block != nullptr
-                                   ? std::string_view{context.bir_block->label}
-                                   : std::string_view{},
-                .root_value = &value,
-                .before_instruction_index = before_instruction_index,
-            });
-    if (global_load_identity) {
-      const auto* prepared_access =
-          prepared_memory_access(context,
-                                 global_load_identity.producer.instruction_index);
-      if (!prepared_memory_access_matches_instruction(
-              context, prepared_access, *global_load_identity.producer.inst)) {
-        return false;
-      }
-      if (emit_prepared_fp_global_load_to_register(context,
-                                                   *prepared_access,
-                                                   *destination_view,
-                                                   gp_scratch_index,
-                                                   lines)) {
-        return true;
-      }
-    }
-
-    if (context.function.prepared != nullptr) {
-      const auto producer_index = producer_instruction_index(context, producer);
-      if (!producer_index.has_value()) {
-        return false;
-      }
-      const auto prepared_access =
-          find_prepared_fp_same_block_global_load_access(context,
-                                                        *load_global,
-                                                        producer,
-                                                        *producer_index);
-      return prepared_access.has_value() &&
-             prepared_access->load_global != nullptr &&
-             prepared_access->access != nullptr &&
-             emit_prepared_fp_global_load_to_register(context,
-                                                      *prepared_access->access,
-                                                      *destination_view,
-                                                      gp_scratch_index,
-                                                      lines);
-    }
-
-    const auto address = abi::gp_register(gp_scratch_index, abi::RegisterView::X);
-    if (!address.has_value() || load_global->global_name.empty()) {
+    const auto producer_index = producer_instruction_index(context, producer);
+    if (!producer_index.has_value()) {
       return false;
     }
-    const bir::Global* target_global = find_load_global_target(context, *load_global);
-    const auto symbol_label = load_global_symbol_label(context, *load_global, target_global);
-    if (symbol_label.empty()) {
-      return false;
-    }
-    if (target_global != nullptr &&
-        target_global->address_materialization_policy ==
-            bir::GlobalAddressMaterializationPolicy::GotRequired) {
-      lines.push_back("adrp " + std::string{abi::register_name(*address)} + ", :got:" +
-                      symbol_label);
-      lines.push_back("ldr " + std::string{abi::register_name(*address)} + ", [" +
-                      std::string{abi::register_name(*address)} + ", :got_lo12:" +
-                      symbol_label + "]");
-      lines.push_back("ldr " + std::string{abi::register_name(*destination_view)} + ", " +
-                      register_indirect_address(abi::register_name(*address),
-                                                load_global->byte_offset));
-      return true;
-    }
-    const auto symbol = relocation_operand(symbol_label, load_global->byte_offset);
-    lines.push_back("adrp " + std::string{abi::register_name(*address)} + ", " + symbol);
-    lines.push_back("add " + std::string{abi::register_name(*address)} + ", " +
-                    std::string{abi::register_name(*address)} + ", :lo12:" + symbol);
-    lines.push_back("ldr " + std::string{abi::register_name(*destination_view)} + ", [" +
-                    std::string{abi::register_name(*address)} + "]");
-    return true;
+    const auto prepared_access =
+        find_prepared_fp_same_block_global_load_access(context,
+                                                       *load_global,
+                                                       producer,
+                                                       *producer_index);
+    return prepared_access.has_value() &&
+           prepared_access->load_global != nullptr &&
+           prepared_access->access != nullptr &&
+           emit_prepared_fp_global_load_to_register(context,
+                                                    *prepared_access->access,
+                                                    *destination_view,
+                                                    gp_scratch_index,
+                                                    lines);
   }
   if (const auto* cast =
           producer != nullptr ? std::get_if<bir::CastInst>(producer) : nullptr;
