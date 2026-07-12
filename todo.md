@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/719_bir_cfg_edge_publication_source_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement independent typed CFG identity resolution
+Current Step ID: 3
+Current Step Title: Prove independent agreement across the source family
 
 ## Just Finished
 
@@ -38,17 +38,21 @@ Current Step Title: Implement independent typed CFG identity resolution
 
 ## Suggested Next
 
-- Investigate the first remaining focused failure:
-  `store-source producer metadata should publish for complete prepared agreement`.
-  It occurs after all CFG edge-publication source identity assertions now pass
-  and is outside the Step 2 query/Route 5 edge slice.
+- Execute Plan Step 3 with focused positive proof for load, cast, binary,
+  select, and relevant memory producer shapes.
+- Add bounded negative proof for wrong-edge, missing-destination,
+  unavailable-source, stale, duplicate, producer-mismatch, and memory-mismatch
+  requests, showing typed authority changes alter or reject the BIR result.
 
 ## Watchouts
 
 - The focused test remains red only at the later store-source prepared-agreement
-  assertion. Do not widen this packet into prepared store-source publication.
+  assertion. Treat it only as a Step 3 proof target where it belongs to the
+  source-family agreement contract; do not widen into unrelated publication.
 - Route 5 source/destination pointer fields refer to the authoritative values
   owned inside the phi instruction, not the request's compatibility value.
+- The non-monotonic full-suite baseline candidate was rejected and retained as
+  `test_baseline.new.log` for diagnosis; it is not an accepted baseline.
 
 ## Proof
 
