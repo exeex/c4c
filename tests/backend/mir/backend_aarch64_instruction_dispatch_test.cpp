@@ -28249,12 +28249,15 @@ int current_block_join_query_routing_uses_bir_identity_with_prepared_fallback() 
                         }},
                 }},
         });
+    prepared.addressing.functions.push_back(
+        prepare::PreparedAddressingFunction{.function_name = function_name});
     return prepared;
   };
 
   auto verify = [&](prepare::PreparedBirModule prepared,
                     std::size_t source_instruction_index,
-                    bool expect_bir_available) {
+                    bool expect_prepared_available) {
+    const mir::prepared::PreparedMirCoreView prepared_core(prepared);
     const auto& function_cf = prepared.control_flow.functions.front();
     auto prepared_lookups =
         prepare::make_prepared_function_lookups(prepared, function_cf);
@@ -28265,16 +28268,32 @@ int current_block_join_query_routing_uses_bir_identity_with_prepared_fallback() 
         aarch64_codegen::make_block_lowering_context(function_context,
                                                      function_cf.blocks[1],
                                                      1);
+    const auto prepared_function = prepared_core.function_view(
+        prepared.module.functions.front().name);
+    if (!prepared_function.has_value()) {
+      return fail("expected prepared current-block join function view");
+    }
+    const auto prepared_sources =
+        prepared_function->current_block_direct_edge_publication_sources(1);
+    const bool prepared_available =
+        prepared_sources.status == mir::prepared::
+            PreparedMirDirectEdgePublicationSourceQueryStatus::Available &&
+        !prepared_sources.sources.empty() &&
+        std::all_of(prepared_sources.sources.begin(), prepared_sources.sources.end(),
+                    [](const auto& source) {
+                      return source.status == mir::prepared::
+                          PreparedMirDirectEdgePublicationSourceStatus::Available;
+                    });
+    if (prepared_available != expect_prepared_available) {
+      return fail(expect_prepared_available
+                      ? "expected prepared join source authority to be available"
+                      : "expected prepared join source authority to fail closed");
+    }
     const auto bir_identity = mir::find_bir_current_block_join_source_identity(
-        mir::BirCurrentBlockJoinSourceRequest{
-            .successor_block = join_context.bir_block,
-            .successor_label_id = function_cf.blocks[1].block_label,
-        });
+        prepared_core.prepared_names(), prepared_sources);
     if ((bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available) !=
-        expect_bir_available) {
-      return fail(expect_bir_available
-                      ? "expected BIR current-block join identity to be available"
-                      : "expected BIR current-block join identity to be absent");
+        expect_prepared_available) {
+      return fail("expected common join adapter to match fixture authority expectation");
     }
 
     const auto routing =
@@ -28306,7 +28325,7 @@ int current_block_join_query_routing_uses_bir_identity_with_prepared_fallback() 
   if (const int status = verify(make_prepared(true), 1, true); status != 0) {
     return status;
   }
-  if (const int status = verify(make_prepared(false), 0, false); status != 0) {
+  if (const int status = verify(make_prepared(false), 0, true); status != 0) {
     return status;
   }
   return 0;

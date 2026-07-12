@@ -19,11 +19,11 @@ struct RouteInventory {
 // Step 1 inventory.  Counts are deliberately exact: later migration packets may
 // only ratchet them down (and update this inventory), never add new authority.
 constexpr std::array<RouteInventory, 8> kInventory{{
-    {1, 17, "BIR same-block producer semantics", "named producer view"},
+    {1, 5, "BIR same-block producer semantics", "named producer view"},
     {2, 0, "BIR select-chain semantics", "named select/dependency view"},
     {3, 19, "BIR memory-access semantics", "named memory-access view"},
-    {4, 31, "BIR publication semantics", "named publication view"},
-    {5, 112, "BIR edge/join semantics", "named edge/join publication view"},
+    {4, 14, "BIR publication semantics", "named publication view"},
+    {5, 33, "BIR edge/join semantics", "named edge/join publication view"},
     {6, 0, "BIR call-boundary semantics", "named call-boundary view"},
     {7, 0, "BIR comparison semantics", "named comparison view"},
     {8, 0, "BIR return/control semantics", "named return/control view"},
@@ -101,13 +101,10 @@ int main() {
     return fail("bounded memory-access query reconstructed named BIR evidence");
   }
 
-  // The sole current public route payload is the Route 5 edge/join index.
-  // This check catches route records, indexes, and route-return wrappers added
-  // under otherwise generic common-query names.
+  // Public common-query signatures must not expose route-owned payload types.
   const std::regex public_route_payload{R"(\b(bir::)?Route[1-8][A-Za-z0-9_]*\b)"};
-  if (count_matches(header, public_route_payload) != 1 ||
-      header.find("bir::Route5EdgeJoinSourceIndex") == std::string::npos) {
-    return fail("public route payload changed; expected only Route5EdgeJoinSourceIndex");
+  if (count_matches(header, public_route_payload) != 0) {
+    return fail("public route payload detected");
   }
 
   const std::regex route_record_or_index{R"(\bRoute[1-8][A-Za-z0-9_]*(Record|Index)\b)"};

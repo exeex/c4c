@@ -4,6 +4,7 @@
 #include "../bir/query.hpp"
 #include "../prealloc/names.hpp"
 #include "../prealloc/publication_plans.hpp"
+#include "prepared_view.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -231,17 +232,6 @@ enum class BirCurrentBlockJoinSourceStatus {
   MissingSuccessorLabel,
   MissingPublication,
   MissingSourceProducer,
-};
-
-struct BirCurrentBlockJoinSourceRequest {
-  const bir::Block* successor_block = nullptr;
-  const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources = nullptr;
-  std::string_view successor_label;
-  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
-
-  [[nodiscard]] explicit operator bool() const {
-    return successor_block != nullptr;
-  }
 };
 
 struct BirCurrentBlockJoinSourceFact {
@@ -499,7 +489,8 @@ find_bir_cfg_edge_publication_source_identity(
 
 [[nodiscard]] BirCurrentBlockJoinSourceIdentity
 find_bir_current_block_join_source_identity(
-    BirCurrentBlockJoinSourceRequest request);
+    const prepare::PreparedNameTables& names,
+    const prepared::PreparedMirDirectEdgePublicationSourceQuery& prepared);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;

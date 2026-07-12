@@ -383,13 +383,10 @@ int verify_direct_edge_publication_source_freshness_view() {
   const auto rejected_query =
       rejected_function->current_block_direct_edge_publication_sources(0);
   const auto route_discovery = mir::find_bir_current_block_join_source_identity(
-      mir::BirCurrentBlockJoinSourceRequest{
-          .successor_block = &rejected_module.module.functions.front().blocks.front(),
-          .successor_label_id =
-              rejected_module.module.functions.front().blocks.front().label_id,
-      });
-  if (route_discovery.status != mir::BirCurrentBlockJoinSourceStatus::Available) {
-    return fail("expected negative fixture to retain BIR route discovery for the no-fallback contract");
+      rejected_core.prepared_names(), rejected_query);
+  if (route_discovery.status !=
+      mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
+    return fail("expected negative fixture to fail closed without Route 5 discovery");
   }
   if (rejected_query.status !=
           prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available ||

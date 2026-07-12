@@ -353,21 +353,13 @@ route4_publication_source_kind_to_same_block_kind(
 route5_publication_source_kind_to_same_block_kind(
     bir::Route5PublicationSourceKind kind) {
   switch (kind) {
-    case bir::Route5PublicationSourceKind::Binary:
-      return SameBlockProducerKind::Binary;
-    case bir::Route5PublicationSourceKind::Cast:
-      return SameBlockProducerKind::Cast;
-    case bir::Route5PublicationSourceKind::SelectMaterialization:
-      return SameBlockProducerKind::Select;
-    case bir::Route5PublicationSourceKind::LoadLocal:
-      return SameBlockProducerKind::LoadLocal;
-    case bir::Route5PublicationSourceKind::LoadGlobal:
-      return SameBlockProducerKind::LoadGlobal;
-    case bir::Route5PublicationSourceKind::Unknown:
-    case bir::Route5PublicationSourceKind::Immediate:
-      return SameBlockProducerKind::Unknown;
+    case bir::Route5PublicationSourceKind::Binary: return SameBlockProducerKind::Binary;
+    case bir::Route5PublicationSourceKind::Cast: return SameBlockProducerKind::Cast;
+    case bir::Route5PublicationSourceKind::SelectMaterialization: return SameBlockProducerKind::Select;
+    case bir::Route5PublicationSourceKind::LoadLocal: return SameBlockProducerKind::LoadLocal;
+    case bir::Route5PublicationSourceKind::LoadGlobal: return SameBlockProducerKind::LoadGlobal;
+    default: return SameBlockProducerKind::Unknown;
   }
-  return SameBlockProducerKind::Unknown;
 }
 
 [[nodiscard]] SameBlockValueIdentity route1_source_value_identity_to_same_block(
@@ -466,29 +458,6 @@ select_chain_producer_result_to_same_block(
   return BirCfgEdgePublicationSourceStatus::MissingPublication;
 }
 
-[[nodiscard]] BirCurrentBlockJoinSourceStatus route5_join_status_to_mir(
-    bir::Route5PublicationStatus status) {
-  switch (status) {
-    case bir::Route5PublicationStatus::Available:
-      return BirCurrentBlockJoinSourceStatus::Available;
-    case bir::Route5PublicationStatus::MissingSourceProducer:
-    case bir::Route5PublicationStatus::MissingSourceMemoryAccess:
-    case bir::Route5PublicationStatus::IncompleteSourceMemoryAccess:
-      return BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
-    case bir::Route5PublicationStatus::Unavailable:
-    case bir::Route5PublicationStatus::NoSource:
-    case bir::Route5PublicationStatus::MemorySource:
-    case bir::Route5PublicationStatus::MissingPredecessor:
-    case bir::Route5PublicationStatus::MissingSuccessor:
-    case bir::Route5PublicationStatus::MissingDestination:
-    case bir::Route5PublicationStatus::MissingPublication:
-    case bir::Route5PublicationStatus::MissingSourceValue:
-    case bir::Route5PublicationStatus::NoMatch:
-      return BirCurrentBlockJoinSourceStatus::MissingPublication;
-  }
-  return BirCurrentBlockJoinSourceStatus::MissingPublication;
-}
-
 [[nodiscard]] const bir::Value* route5_original_source_value(
     const bir::Block& predecessor_block,
     const bir::Block& successor_block,
@@ -513,40 +482,6 @@ select_chain_producer_result_to_same_block(
     }
   }
   return nullptr;
-}
-
-[[nodiscard]] SameBlockProducerIdentity route5_join_source_producer_to_mir(
-    const bir::Route5CurrentBlockJoinSourceRecord& record,
-    const bir::Block& successor_block,
-    std::string_view successor_label) {
-  if (!record.source_producer_instruction_index.has_value() ||
-      *record.source_producer_instruction_index >= successor_block.insts.size()) {
-    return {};
-  }
-  const auto kind = route5_publication_source_kind_to_same_block_kind(
-      record.source_producer_kind);
-  if (kind == SameBlockProducerKind::Unknown) {
-    return {};
-  }
-  const auto& inst =
-      successor_block.insts[*record.source_producer_instruction_index];
-  const auto* produced_value = produced_value_for_same_block_identity(inst);
-  if (produced_value == nullptr ||
-      produced_value->kind != bir::Value::Kind::Named ||
-      produced_value->name != record.source_value_name ||
-      produced_value->type != record.source_value_type) {
-    return {};
-  }
-  return SameBlockProducerIdentity{
-      .inst = &inst,
-      .instruction_index = *record.source_producer_instruction_index,
-      .kind = kind,
-      .block_label = normalized_block_label(successor_block, successor_label),
-      .before_instruction_index = successor_block.insts.size(),
-      .produced_value = same_block_value_identity(*produced_value),
-      .materialization_available =
-          same_block_producer_kind_has_materialization(kind),
-  };
 }
 
 [[nodiscard]] SameBlockProducerIdentity route5_edge_source_producer_to_mir(
@@ -666,264 +601,6 @@ route5_edge_record_to_mir(
     }
   }
   return result;
-}
-
-[[nodiscard]] bir::Route5CurrentBlockJoinSourceRecord
-route5_missing_current_block_join_source_record(
-    const BirCurrentBlockJoinSourceRequest& request,
-    const bir::PhiInst* phi,
-    const bir::PhiIncoming* incoming,
-    std::size_t instruction_index,
-    bir::Route5PublicationStatus status) {
-  bir::Route5CurrentBlockJoinSourceRecord record{
-      .status = status,
-      .successor_block = request.successor_block,
-      .successor_label =
-          request.successor_block != nullptr ? request.successor_block->label
-                                             : std::string_view{},
-      .successor_label_id =
-          request.successor_block != nullptr ? request.successor_block->label_id
-                                             : c4c::kInvalidBlockLabel,
-      .predecessor_label = incoming != nullptr ? incoming->label : std::string_view{},
-      .predecessor_label_id =
-          incoming != nullptr ? incoming->label_id : c4c::kInvalidBlockLabel,
-      .destination_instruction =
-          request.successor_block != nullptr &&
-                  instruction_index < request.successor_block->insts.size()
-              ? &request.successor_block->insts[instruction_index]
-              : nullptr,
-      .destination_phi = phi,
-      .destination_instruction_index = instruction_index,
-  };
-  if (phi != nullptr) {
-    record.destination_value = bir::route1_source_value_identity(phi->result);
-    record.destination_value_name =
-        phi->result.kind == bir::Value::Kind::Named
-            ? std::string_view{phi->result.name}
-            : std::string_view{};
-    record.destination_value_type = phi->result.type;
-  }
-  if (incoming != nullptr) {
-    record.source_value = bir::route1_source_value_identity(incoming->value);
-    record.source_value_name =
-        incoming->value.kind == bir::Value::Kind::Named
-            ? std::string_view{incoming->value.name}
-            : std::string_view{};
-    record.source_value_kind = incoming->value.kind;
-    record.source_value_type = incoming->value.type;
-  }
-  return record;
-}
-
-[[nodiscard]] bool route5_index_block_matches(
-    const bir::Block* record_block,
-    std::string_view record_label,
-    c4c::BlockLabelId record_label_id,
-    const bir::Block& expected_block) {
-  if (record_block == &expected_block) {
-    return true;
-  }
-  if (record_label_id != c4c::kInvalidBlockLabel &&
-      expected_block.label_id != c4c::kInvalidBlockLabel) {
-    return record_label_id == expected_block.label_id;
-  }
-  return !record_label.empty() && record_label == expected_block.label;
-}
-
-[[nodiscard]] bool route5_index_predecessor_matches(
-    const bir::Route5CurrentBlockJoinSourceRecord& record,
-    const bir::PhiIncoming& incoming) {
-  if (record.predecessor_label_id != c4c::kInvalidBlockLabel &&
-      incoming.label_id != c4c::kInvalidBlockLabel) {
-    return record.predecessor_label_id == incoming.label_id;
-  }
-  return !record.predecessor_label.empty() &&
-         record.predecessor_label == incoming.label;
-}
-
-[[nodiscard]] bool route5_index_value_matches(
-    const bir::Route1SourceValueIdentity& record_value,
-    std::string_view record_name,
-    bir::TypeKind record_type,
-    const bir::Value& value) {
-  if (record_type != value.type) {
-    return false;
-  }
-  if (value.kind == bir::Value::Kind::Named) {
-    return !record_name.empty() && record_name == value.name;
-  }
-  if (value.kind == bir::Value::Kind::Immediate) {
-    return record_value.integer_constant.has_value() &&
-           *record_value.integer_constant == value.immediate;
-  }
-  return false;
-}
-
-[[nodiscard]] bool route5_index_join_record_matches(
-    const bir::Route5CurrentBlockJoinSourceRecord& record,
-    const bir::Block& successor_block,
-    const bir::PhiInst& phi,
-    const bir::PhiIncoming& incoming) {
-  return route5_index_block_matches(record.successor_block,
-                                    record.successor_label,
-                                    record.successor_label_id,
-                                    successor_block) &&
-         route5_index_predecessor_matches(record, incoming) &&
-         route5_index_value_matches(record.destination_value,
-                                    record.destination_value_name,
-                                    record.destination_value_type,
-                                    phi.result) &&
-         route5_index_value_matches(record.source_value,
-                                    record.source_value_name,
-                                    record.source_value_type,
-                                    incoming.value);
-}
-
-[[nodiscard]] bir::Route5PublicationStatus
-validate_route5_index_join_record(
-    const bir::Route5CurrentBlockJoinSourceRecord& record,
-    const bir::Block& successor_block,
-    const bir::Inst& destination_instruction,
-    const bir::PhiInst& destination_phi,
-    std::size_t destination_instruction_index,
-    const bir::PhiIncoming& incoming) {
-  if (record.status != bir::Route5PublicationStatus::Available) {
-    return record.status;
-  }
-  if (!record ||
-      record.destination_instruction != &destination_instruction ||
-      record.destination_phi != &destination_phi ||
-      record.destination_instruction_index != destination_instruction_index) {
-    return bir::Route5PublicationStatus::MissingPublication;
-  }
-  if (!route5_index_join_record_matches(record,
-                                        successor_block,
-                                        destination_phi,
-                                        incoming)) {
-    return bir::Route5PublicationStatus::NoMatch;
-  }
-  if (incoming.value.kind == bir::Value::Kind::Named &&
-      (!record.source_producer_instruction_index.has_value() ||
-       *record.source_producer_instruction_index >= successor_block.insts.size() ||
-       record.source_producer_instruction !=
-           &successor_block.insts[*record.source_producer_instruction_index])) {
-    return bir::Route5PublicationStatus::MissingSourceProducer;
-  }
-  return bir::Route5PublicationStatus::Available;
-}
-
-[[nodiscard]] bir::Route5CurrentBlockJoinSourceRecord
-find_validated_indexed_current_block_join_source_record(
-    const BirCurrentBlockJoinSourceRequest& request,
-    const bir::Inst& destination_instruction,
-    const bir::PhiInst& phi,
-    const bir::PhiIncoming& incoming,
-    std::size_t instruction_index) {
-  if (request.successor_block == nullptr ||
-      request.route5_edge_join_sources == nullptr) {
-    return route5_missing_current_block_join_source_record(
-        request,
-        &phi,
-        &incoming,
-        instruction_index,
-        bir::Route5PublicationStatus::MissingSuccessor);
-  }
-
-  const bir::Route5CurrentBlockJoinSourceRecord* match = nullptr;
-  std::size_t match_count = 0;
-  for (const auto& candidate : request.route5_edge_join_sources->join_records) {
-    if (!route5_index_join_record_matches(
-            candidate, *request.successor_block, phi, incoming)) {
-      continue;
-    }
-    match = &candidate;
-    ++match_count;
-  }
-  if (match_count == 0) {
-    auto missing = bir::route5_find_current_block_join_source(
-        *request.route5_edge_join_sources,
-        *request.successor_block,
-        phi.result,
-        incoming.value);
-    if (missing.status == bir::Route5PublicationStatus::Available) {
-      missing.status = bir::Route5PublicationStatus::NoMatch;
-      missing.available = false;
-    }
-    if (missing.destination_instruction == nullptr) {
-      missing.destination_instruction = &destination_instruction;
-      missing.destination_phi = &phi;
-      missing.destination_instruction_index = instruction_index;
-    }
-    if (missing.predecessor_label.empty()) {
-      missing.predecessor_label = incoming.label;
-      missing.predecessor_label_id = incoming.label_id;
-    }
-    return missing;
-  }
-  if (match_count != 1) {
-    return route5_missing_current_block_join_source_record(
-        request,
-        &phi,
-        &incoming,
-        instruction_index,
-        bir::Route5PublicationStatus::NoMatch);
-  }
-
-  auto record = *match;
-  const auto validation_status = validate_route5_index_join_record(
-      record,
-      *request.successor_block,
-      destination_instruction,
-      phi,
-      instruction_index,
-      incoming);
-  if (validation_status != bir::Route5PublicationStatus::Available) {
-    record.status = validation_status;
-    record.available = false;
-  }
-  return record;
-}
-
-[[nodiscard]] std::vector<bir::Route5CurrentBlockJoinSourceRecord>
-route5_indexed_current_block_join_source_records(
-    const BirCurrentBlockJoinSourceRequest& request) {
-  std::vector<bir::Route5CurrentBlockJoinSourceRecord> records;
-  if (request.successor_block == nullptr) {
-    records.push_back(route5_missing_current_block_join_source_record(
-        request,
-        nullptr,
-        nullptr,
-        std::size_t{0},
-        bir::Route5PublicationStatus::MissingSuccessor));
-    return records;
-  }
-
-  bool saw_phi = false;
-  for (std::size_t instruction_index = 0;
-       instruction_index < request.successor_block->insts.size();
-       ++instruction_index) {
-    const auto& inst = request.successor_block->insts[instruction_index];
-    const auto* phi = std::get_if<bir::PhiInst>(&inst);
-    if (phi == nullptr) {
-      break;
-    }
-    saw_phi = true;
-    for (const auto& incoming : phi->incomings) {
-      auto record = find_validated_indexed_current_block_join_source_record(
-          request, inst, *phi, incoming, instruction_index);
-      records.push_back(record);
-    }
-  }
-
-  if (!saw_phi || records.empty()) {
-    records.push_back(bir::Route5CurrentBlockJoinSourceRecord{
-        .status = bir::Route5PublicationStatus::MissingPublication,
-        .successor_block = request.successor_block,
-        .successor_label = request.successor_block->label,
-        .successor_label_id = request.successor_block->label_id,
-    });
-  }
-  return records;
 }
 
 struct SelectChainViewResult {
@@ -1099,20 +776,6 @@ find_select_chain_view_result(BirSelectChainIdentityRequest request) {
 
 [[nodiscard]] bool successor_block_label_matches(
     const BirCfgEdgePublicationSourceRequest& request) {
-  if (request.successor_block == nullptr) {
-    return false;
-  }
-  if (request.successor_label_id != c4c::kInvalidBlockLabel &&
-      request.successor_block->label_id != c4c::kInvalidBlockLabel &&
-      request.successor_label_id != request.successor_block->label_id) {
-    return false;
-  }
-  return request.successor_label.empty() ||
-         request.successor_label == request.successor_block->label;
-}
-
-[[nodiscard]] bool successor_block_label_matches(
-    const BirCurrentBlockJoinSourceRequest& request) {
   if (request.successor_block == nullptr) {
     return false;
   }
@@ -1545,89 +1208,35 @@ find_bir_cfg_edge_publication_source_identity(
 
 [[nodiscard]] BirCurrentBlockJoinSourceIdentity
 find_bir_current_block_join_source_identity(
-    BirCurrentBlockJoinSourceRequest request) {
+    const prepare::PreparedNameTables& names,
+    const prepared::PreparedMirDirectEdgePublicationSourceQuery& prepared_query) {
   BirCurrentBlockJoinSourceIdentity result;
-  if (request.successor_block != nullptr) {
-    result.successor_label =
-        normalized_block_label(*request.successor_block, request.successor_label);
-    result.successor_label_id =
-        request.successor_block->label_id != c4c::kInvalidBlockLabel
-            ? request.successor_block->label_id
-            : request.successor_label_id;
-  }
-  if (request.successor_block == nullptr) {
-    result.status = BirCurrentBlockJoinSourceStatus::MissingBlock;
+  if (prepared_query.status !=
+      prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available) {
     return result;
   }
-  if (!successor_block_label_matches(request)) {
-    result.status = BirCurrentBlockJoinSourceStatus::MissingSuccessorLabel;
-    return result;
-  }
-
-  const bool use_route5_index = request.route5_edge_join_sources != nullptr;
-  const auto join_records =
-      use_route5_index
-          ? route5_indexed_current_block_join_source_records(request)
-          : bir::route5_current_block_join_source_records(request.successor_block);
-  bool saw_missing_publication = false;
-  for (const auto& record : join_records) {
-    if (record.status == bir::Route5PublicationStatus::MissingPublication) {
-      if (!use_route5_index) {
-        continue;
-      }
-      saw_missing_publication = true;
-    }
+  for (const auto& record : prepared_query.sources) {
     BirCurrentBlockJoinSourceFact fact{
-        .status = route5_join_status_to_mir(record.status),
-        .predecessor_label = record.predecessor_label,
-        .predecessor_label_id = record.predecessor_label_id,
-        .successor_label = result.successor_label,
-        .successor_label_id = result.successor_label_id,
-        .destination_instruction = record.destination_instruction,
-        .destination_phi = record.destination_phi,
-        .destination_instruction_index = record.destination_instruction_index,
-        .destination_value = record.destination_value.value,
-        .destination_value_identity =
-            route1_source_value_identity_to_same_block(record.destination_value),
-        .destination_value_name = record.destination_value_name,
-        .destination_value_type = record.destination_value_type,
-        .source_value = record.source_value.value,
-        .source_value_identity =
-            route1_source_value_identity_to_same_block(record.source_value),
-        .source_value_name = record.source_value_name,
-        .source_value_kind = record.source_value_kind,
-        .source_value_type = record.source_value_type,
-        .source_producer_kind =
-            route5_publication_source_kind_to_same_block_kind(
-                record.source_producer_kind),
-        .source_producer_instruction_index =
-            record.source_producer_instruction_index,
+        .status = record.status ==
+                          prepared::PreparedMirDirectEdgePublicationSourceStatus::Available
+                      ? BirCurrentBlockJoinSourceStatus::Available
+                      : BirCurrentBlockJoinSourceStatus::MissingPublication,
+        .predecessor_label = prepare::prepared_block_label(names, record.predecessor_label),
+        .predecessor_label_id = record.predecessor_label,
+        .successor_label = prepare::prepared_block_label(names, record.successor_label),
+        .successor_label_id = record.successor_label,
+        .destination_value_name = prepare::prepared_value_name(names, record.destination_value_name),
+        .source_value_name = prepare::prepared_value_name(names, record.source_value_name),
+        .source_value_kind = record.immediate_source ? bir::Value::Kind::Immediate
+                                                     : bir::Value::Kind::Named,
     };
-    if (use_route5_index &&
-        fact.status == BirCurrentBlockJoinSourceStatus::MissingPublication) {
-      saw_missing_publication = true;
-    }
-    append_unique_value_identity(result.source_values,
-                                 fact.destination_value_identity);
-    if (record.source_value_kind == bir::Value::Kind::Named) {
-      append_unique_value_identity(result.source_values,
-                                   fact.source_value_identity);
-      append_unique_value_identity(result.incoming_expression_values,
-                                   fact.source_value_identity);
-    }
-    if (record.status == bir::Route5PublicationStatus::Available &&
-        record.source_value_kind == bir::Value::Kind::Named) {
-      fact.source_producer = route5_join_source_producer_to_mir(
-          record, *request.successor_block, result.successor_label);
-      if (!fact.source_producer) {
-        fact.status = BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
-        fact.source_producer_kind = SameBlockProducerKind::Unknown;
-        fact.source_producer_instruction_index.reset();
-      } else {
-        fact.source_producer_kind = fact.source_producer.kind;
-        fact.source_producer_instruction_index =
-            fact.source_producer.instruction_index;
-      }
+    fact.destination_value_identity.name = fact.destination_value_name;
+    fact.source_value_identity.name = fact.source_value_name;
+    if (result.successor_label_id == c4c::kInvalidBlockLabel) {
+      result.successor_label_id = record.successor_label;
+      result.successor_label = fact.successor_label;
+    } else if (result.successor_label_id != record.successor_label) {
+      return BirCurrentBlockJoinSourceIdentity{};
     }
     result.facts.push_back(fact);
   }
@@ -1637,49 +1246,14 @@ find_bir_current_block_join_source_identity(
     return result;
   }
 
-  const auto route1_index =
-      bir::route1_build_producer_index(*request.successor_block);
-  const auto route1_query = bir::Route1SameBlockProducerQuery{
-      .index = &route1_index,
-      .before_instruction_index = request.successor_block->insts.size(),
-  };
-  std::vector<SameBlockValueIdentity> pending =
-      result.incoming_expression_values;
-  std::vector<SameBlockValueIdentity> processed;
-  while (!pending.empty()) {
-    const auto value = pending.back();
-    pending.pop_back();
-    if (value.name.empty()) {
-      continue;
-    }
-    const auto already_processed =
-        std::find_if(processed.begin(), processed.end(),
-                     [&](const SameBlockValueIdentity& existing) {
-                       return existing.name == value.name &&
-                              existing.type == value.type;
-                     }) != processed.end();
-    if (already_processed) {
-      continue;
-    }
-    append_unique_value_identity(processed, value);
-    append_unique_value_identity(result.incoming_expression_values, value);
-    const auto producer = bir::route1_find_same_block_scalar_producer(
-        route1_query, bir::Value::named(value.type, std::string{value.name}));
-    if (producer.has_value() && producer->instruction != nullptr) {
-      append_bir_expression_operands(pending, *producer->instruction);
-    }
-  }
-
   result.available =
       std::all_of(result.facts.begin(), result.facts.end(), [](const auto& fact) {
         return fact.status == BirCurrentBlockJoinSourceStatus::Available;
       });
   if (result.available) {
     result.status = BirCurrentBlockJoinSourceStatus::Available;
-  } else if (saw_missing_publication) {
-    result.status = BirCurrentBlockJoinSourceStatus::MissingPublication;
   } else {
-    result.status = BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
+    result.status = BirCurrentBlockJoinSourceStatus::MissingPublication;
   }
   return result;
 }

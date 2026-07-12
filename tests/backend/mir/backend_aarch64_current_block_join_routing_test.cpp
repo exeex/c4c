@@ -227,8 +227,12 @@ prepare::PreparedBirModule make_current_join_routing_prepared(
                   }},
           }},
   });
+  prepared.addressing.functions.push_back(
+      prepare::PreparedAddressingFunction{.function_name = function_name});
 
   if (!include_prepared_policy) {
+    prepared.value_locations.functions.push_back(
+        prepare::PreparedValueLocationFunction{.function_name = function_name});
     return prepared;
   }
 
@@ -339,18 +343,19 @@ prepare::PreparedBirModule make_current_join_routing_prepared(
   return prepared;
 }
 
-int verify_current_join_routing(prepare::PreparedBirModule prepared,
-                                bool expect_bir_available,
+int verify_current_join_routing(prepare::PreparedBirModule prepared_module,
+                                bool expect_prepared_available,
                                 bool attach_prepared_policy,
                                 std::vector<bool> expected_incoming,
-                                std::vector<bool> expected_sources,
-                                std::optional<bool> expect_indexed_bir_available =
-                                    std::nullopt) {
-  const auto& function_cf = prepared.control_flow.functions.front();
+                                std::vector<bool> expected_sources) {
+  const mir::prepared::PreparedMirCoreView prepared_core(prepared_module);
+  const auto& function_cf = prepared_module.control_flow.functions.front();
+  const auto prepared_function =
+      prepared_core.function_view(prepared_module.module.functions.front().name);
   auto prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, function_cf);
+      prepare::make_prepared_function_lookups(prepared_module, function_cf);
   auto function_context = aarch64_codegen::make_function_lowering_context(
-      prepared, prepared.target_profile, function_cf);
+      prepared_module, prepared_module.target_profile, function_cf);
   if (attach_prepared_policy) {
     attach_prepared_function_lookups(function_context, prepared_lookups);
   } else {
@@ -384,40 +389,30 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks[1],
                                                    1);
-  const auto bir_identity = mir::find_bir_current_block_join_source_identity(
-      mir::BirCurrentBlockJoinSourceRequest{
-          .successor_block = join_context.bir_block,
-          .successor_label_id = function_cf.blocks[1].block_label,
-      });
-  if ((bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available) !=
-      expect_bir_available) {
-    return fail(expect_bir_available
-                    ? "expected Route 5 current-block join identity"
-                    : "expected absent Route 5 current-block join identity");
+  if (!prepared_function.has_value()) {
+    return fail("expected prepared current-block join function view");
   }
-  const auto route5_join_sources =
-      function_context.bir_function != nullptr
-          ? std::optional<bir::Route5EdgeJoinSourceIndex>{
-                bir::route5_build_edge_join_source_index(
-                    *function_context.bir_function)}
-          : std::nullopt;
-  const auto indexed_bir_identity =
-      mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = join_context.bir_block,
-              .route5_edge_join_sources =
-                  route5_join_sources.has_value() ? &*route5_join_sources
-                                                  : nullptr,
-              .successor_label_id = function_cf.blocks[1].block_label,
-          });
-  const bool expected_indexed_bir_available =
-      expect_indexed_bir_available.value_or(expect_bir_available);
-  if ((indexed_bir_identity.status ==
-       mir::BirCurrentBlockJoinSourceStatus::Available) !=
-      expected_indexed_bir_available) {
-    return fail(expected_indexed_bir_available
-                    ? "expected indexed Route 5 current-block join identity"
-                    : "expected absent indexed Route 5 current-block join identity");
+  const auto prepared_sources =
+      prepared_function->current_block_direct_edge_publication_sources(1);
+  const auto prepared_identity = mir::find_bir_current_block_join_source_identity(
+      prepared_core.prepared_names(), prepared_sources);
+  const bool prepared_available =
+      prepared_sources.status ==
+          mir::prepared::PreparedMirDirectEdgePublicationSourceQueryStatus::Available &&
+      !prepared_sources.sources.empty() &&
+      std::all_of(prepared_sources.sources.begin(), prepared_sources.sources.end(),
+                  [](const auto& source) {
+                    return source.status == mir::prepared::
+                        PreparedMirDirectEdgePublicationSourceStatus::Available;
+                  });
+  if (prepared_available != expect_prepared_available) {
+    return fail(expect_prepared_available
+                    ? "expected prepared join source authority to be available"
+                    : "expected prepared join source authority to fail closed");
+  }
+  if ((prepared_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available) !=
+      expect_prepared_available) {
+    return fail("expected common join adapter to match fixture authority expectation");
   }
 
   const auto routing =
@@ -461,28 +456,28 @@ int main() {
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::NormalPredecessor, false),
-          true, false, {false, false, false}, {false, false, false});
+          false, false, {false, false, false}, {false, false, false});
       status != 0) {
     return status;
   }
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::NormalPredecessor, true),
-          true, true, {false, true, true}, {false, true, false});
+          false, true, {false, true, true}, {false, true, false});
       status != 0) {
     return status;
   }
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::MissingPredecessor, true),
-          true, true, {false, true, true}, {false, true, false});
+          false, true, {false, true, true}, {false, true, false});
       status != 0) {
     return status;
   }
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::MismatchedSource, true),
-          true, true, {false, false, true}, {false, true, false});
+          false, true, {false, false, true}, {false, true, false});
       status != 0) {
     return status;
   }
@@ -496,15 +491,14 @@ int main() {
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(CurrentJoinRouteShape::DuplicateSource,
                                              true),
-          true, true, {false, false, true, true}, {false, false, true, false},
-          false);
+          false, true, {false, false, true, true}, {false, false, true, false});
       status != 0) {
     return status;
   }
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::MemorySource, true),
-          true, true, {false, true, false}, {false, false, false});
+          false, true, {false, true, false}, {false, false, false});
       status != 0) {
     return status;
   }

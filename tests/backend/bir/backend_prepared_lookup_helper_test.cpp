@@ -4910,6 +4910,37 @@ int verify_current_block_join_parallel_copy_source_query() {
       },
   };
 
+  auto prepared_join_query = [&](const bir::Block& query_block,
+                                 const prepare::PreparedControlFlowFunction& query_control_flow,
+                                 const prepare::PreparedValueLocationFunction& query_locations,
+                                 const prepare::PreparedRegallocFunction& query_regalloc) {
+    prepare::PreparedBirModule module;
+    module.names = names;
+    module.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+    module.module.target_triple = module.target_profile.triple;
+    module.module.functions.push_back(bir::Function{
+        .name = "current_join_query",
+        .return_type = bir::TypeKind::I32,
+        .blocks = {query_block},
+    });
+    auto function_control_flow = query_control_flow;
+    function_control_flow.blocks = {prepare::PreparedControlFlowBlock{
+        .block_label = successor_label,
+        .terminator_kind = bir::TerminatorKind::Return,
+    }};
+    module.control_flow.functions.push_back(std::move(function_control_flow));
+    module.value_locations.functions.push_back(query_locations);
+    module.regalloc.functions.push_back(query_regalloc);
+    module.addressing.functions.push_back(
+        prepare::PreparedAddressingFunction{.function_name = function_name});
+    const mir::prepared::PreparedMirCoreView core(module);
+    const auto function = core.function_view("current_join_query");
+    if (!function.has_value()) {
+      return mir::prepared::PreparedMirDirectEdgePublicationSourceQuery{};
+    }
+    return function->current_block_direct_edge_publication_sources(0);
+  };
+
   const auto value_home_lookups =
       prepare::make_prepared_value_home_lookups(&locations);
   const auto edge_publications =
@@ -4934,12 +4965,10 @@ int verify_current_block_join_parallel_copy_source_query() {
               .block = &block,
               .successor_label = successor_label,
           });
+  const auto prepared_bir_query =
+      prepared_join_query(block, control_flow, locations, regalloc);
   const auto bir_query = mir::find_bir_current_block_join_source_identity(
-      mir::BirCurrentBlockJoinSourceRequest{
-          .successor_block = &block,
-          .successor_label = "current_join.succ",
-          .successor_label_id = successor_label,
-      });
+      names, prepared_bir_query);
   const auto route5_join_records =
       bir::route5_current_block_join_source_records(&block);
 
@@ -5003,12 +5032,20 @@ int verify_current_block_join_parallel_copy_source_query() {
           stack_source_name) {
     return fail("current-block join query should require freshness for stack named sources too");
   }
-  if (!prepared_and_bir_current_block_join_source_identity_match(names, query,
-                                                                bir_query)) {
-    return fail("BIR current-block join-source identity should match prepared semantic facts");
-  }
-  if (bir_query.facts.size() != 3) {
-    return fail("BIR current-block join-source identity should expose only PHI source facts");
+  if (prepared_bir_query.status != mir::prepared::
+          PreparedMirDirectEdgePublicationSourceQueryStatus::Available ||
+      prepared_bir_query.sources.size() != 4 ||
+      prepared_bir_query.sources[0].status != mir::prepared::
+          PreparedMirDirectEdgePublicationSourceStatus::Available ||
+      prepared_bir_query.sources[1].status != mir::prepared::
+          PreparedMirDirectEdgePublicationSourceStatus::Available ||
+      prepared_bir_query.sources[2].status != mir::prepared::
+          PreparedMirDirectEdgePublicationSourceStatus::Available ||
+      prepared_bir_query.sources[3].status != mir::prepared::
+          PreparedMirDirectEdgePublicationSourceStatus::UnsupportedMove ||
+      bir_query.status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
+      bir_query.facts.size() != prepared_bir_query.sources.size()) {
+    return fail("prepared MIR join identity should expose complete typed source authority and fail closed on the unsupported move");
   }
   auto find_route5_join = [&](std::string_view destination_name) {
     return std::find_if(route5_join_records.begin(),
@@ -5289,38 +5326,9 @@ int verify_current_block_join_parallel_copy_source_query() {
         }
         return 0;
       };
-  const auto indexed_bir_query =
-      mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &route5_join_block,
-              .route5_edge_join_sources = &route5_join_index,
-              .successor_label = "current_join.succ",
-              .successor_label_id = successor_label,
-          });
-  if (indexed_bir_query.status !=
-          mir::BirCurrentBlockJoinSourceStatus::Available ||
-      indexed_bir_query.facts.size() != bir_query.facts.size() ||
-      !bir_value_identities_contain_name(
-          indexed_bir_query.incoming_expression_values, "%current.incoming") ||
-      !bir_value_identities_contain_name(
-          indexed_bir_query.source_values, "%current.destination")) {
-    return fail("indexed BIR current-block join query should expose Route 5 source identities");
-  }
   const bir::Route5EdgeJoinSourceIndex empty_route5_join_index{
       .function = &route5_join_function,
   };
-  const auto empty_index_bir_query =
-      mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &route5_join_block,
-              .successor_label = "current_join.succ",
-              .successor_label_id = successor_label,
-          });
-  if (empty_index_bir_query.status !=
-          mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
-      empty_index_bir_query.available) {
-    return fail("indexed BIR current-block join query should fail closed for incomplete Route 5 data");
-  }
   const auto empty_index_route5_supported_query =
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
@@ -5328,7 +5336,6 @@ int verify_current_block_join_parallel_copy_source_query() {
               .regalloc = &regalloc,
               .value_locations = &locations,
               .edge_publications = &edge_publications,
-              .route5_edge_join_sources = &empty_route5_join_index,
               .block = &route5_join_block,
               .successor_label = successor_label,
           });
@@ -5431,19 +5438,6 @@ int verify_current_block_join_parallel_copy_source_query() {
           "current-block join helper row should reject duplicate Route 5 evidence")) {
     return 1;
   }
-  const auto duplicate_index_bir_query =
-      mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &route5_join_block,
-              .route5_edge_join_sources = &duplicate_route5_join_index,
-              .successor_label = "current_join.succ",
-              .successor_label_id = successor_label,
-          });
-  if (duplicate_index_bir_query.status !=
-          mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
-      duplicate_index_bir_query.available) {
-    return fail("indexed BIR current-block join query should reject duplicate Route 5 join records");
-  }
   auto wrong_predecessor_route5_join_index = route5_join_index;
   wrong_predecessor_route5_join_index.join_records.front().predecessor_label =
       "current_join.other_pred";
@@ -5463,19 +5457,6 @@ int verify_current_block_join_parallel_copy_source_query() {
           wrong_predecessor_route5_supported_query,
           "current-block join helper row should keep prepared facts on Route 5 predecessor mismatch")) {
     return 1;
-  }
-  const auto wrong_predecessor_index_bir_query =
-      mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &route5_join_block,
-              .route5_edge_join_sources = &wrong_predecessor_route5_join_index,
-              .successor_label = "current_join.succ",
-              .successor_label_id = successor_label,
-          });
-  if (wrong_predecessor_index_bir_query.status !=
-          mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
-      wrong_predecessor_index_bir_query.available) {
-    return fail("indexed BIR current-block join query should reject wrong-predecessor Route 5 records");
   }
   const auto indexed_route5_named_join =
       bir::route5_find_current_block_join_source(
@@ -5548,27 +5529,11 @@ int verify_current_block_join_parallel_copy_source_query() {
       !contains_value_name(query.incoming_expression_value_names, operand_name)) {
     return fail("current-block join query should expose incoming expression closure");
   }
-  if (!bir_value_identities_contain_name(
-          bir_query.incoming_expression_values, "%current.incoming") ||
-      !bir_value_identities_contain_name(
-          bir_query.incoming_expression_values, "%current.operand")) {
-    return fail("BIR current-block join query should expose incoming expression closure");
-  }
   if (!contains_value_id(query.source_value_ids, destination_id) ||
       !contains_value_id(query.source_value_ids, immediate_destination_id) ||
       !contains_value_id(query.source_value_ids, stack_destination_id) ||
       !contains_value_id(query.source_value_ids, stack_source_id)) {
     return fail("current-block join query should expose source value identities");
-  }
-  if (!bir_value_identities_contain_name(bir_query.source_values,
-                                         "%current.destination") ||
-      !bir_value_identities_contain_name(bir_query.source_values,
-                                         "%current.immediate_destination") ||
-      !bir_value_identities_contain_name(bir_query.source_values,
-                                         "%current.stack_destination") ||
-      !bir_value_identities_contain_name(bir_query.source_values,
-                                         "%current.stack_source")) {
-    return fail("BIR current-block join query should expose source value identities");
   }
 
   const auto& named_fact = query.facts[0];
@@ -5618,9 +5583,9 @@ int verify_current_block_join_parallel_copy_source_query() {
     return fail("current-block join query should require shared edge publications");
   }
   if (mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{})
-          .status != mir::BirCurrentBlockJoinSourceStatus::MissingBlock) {
-    return fail("BIR current-block join query should fail closed without a successor block");
+          names, mir::prepared::PreparedMirDirectEdgePublicationSourceQuery{})
+          .status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
+    return fail("prepared MIR current-block join query should fail closed without a function view");
   }
   const auto route5_missing_successor_join =
       bir::route5_current_block_join_source_records(nullptr);
@@ -5633,13 +5598,9 @@ int verify_current_block_join_parallel_copy_source_query() {
   no_phi_block.label = "current_join.succ";
   no_phi_block.label_id = successor_label;
   if (mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &no_phi_block,
-              .successor_label = "current_join.succ",
-              .successor_label_id = successor_label,
-          })
+          names, prepared_join_query(no_phi_block, control_flow, locations, regalloc))
           .status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
-    return fail("BIR current-block join query should fail closed without PHIs");
+    return fail("prepared MIR current-block join query should fail closed without PHIs");
   }
   const auto route5_no_phi_join =
       bir::route5_current_block_join_source_records(&no_phi_block);
@@ -5648,14 +5609,15 @@ int verify_current_block_join_parallel_copy_source_query() {
           bir::Route5PublicationStatus::MissingPublication) {
     return fail("Route 5 current-block join records should fail closed without PHIs");
   }
+  auto mismatched_control_flow = control_flow;
+  mismatched_control_flow.blocks = {prepare::PreparedControlFlowBlock{
+      .block_label = names.block_labels.intern("current_join.other"),
+      .terminator_kind = bir::TerminatorKind::Return,
+  }};
   if (mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &block,
-              .successor_label = "current_join.other",
-              .successor_label_id = successor_label,
-          })
-          .status != mir::BirCurrentBlockJoinSourceStatus::MissingSuccessorLabel) {
-    return fail("BIR current-block join query should reject mismatched successors");
+          names, prepared_join_query(block, mismatched_control_flow, locations, regalloc))
+          .status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
+    return fail("prepared MIR current-block join query should reject mismatched successors");
   }
   bir::Block missing_source_block;
   missing_source_block.label = "current_join.succ";
@@ -5673,17 +5635,10 @@ int verify_current_block_join_parallel_copy_source_query() {
   });
   const auto missing_source_query =
       mir::find_bir_current_block_join_source_identity(
-          mir::BirCurrentBlockJoinSourceRequest{
-              .successor_block = &missing_source_block,
-              .successor_label = "current_join.succ",
-              .successor_label_id = successor_label,
-          });
+          names, prepared_join_query(missing_source_block, control_flow, locations, regalloc));
   if (missing_source_query.status !=
-          mir::BirCurrentBlockJoinSourceStatus::MissingSourceProducer ||
-      missing_source_query.facts.size() != 1 ||
-      missing_source_query.facts.front().status !=
-          mir::BirCurrentBlockJoinSourceStatus::MissingSourceProducer) {
-    return fail("BIR current-block join query should diagnose missing named source producers");
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
+    return fail("prepared MIR current-block join query should reject missing source authority");
   }
   const auto route5_missing_join =
       bir::route5_current_block_join_source_records(&missing_source_block);
