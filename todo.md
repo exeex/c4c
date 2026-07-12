@@ -4,7 +4,7 @@ Status: Active
 Source Idea Path: ideas/open/706_common_mir_named_query_migration.md
 Source Plan Path: plan.md
 Current Step ID: 6
-Current Step Title: Audit ownership and run integration proof — compile-repair prerequisite
+Current Step Title: Audit ownership and run integration proof — final three-target acceptance packet
 
 ## Just Finished
 
