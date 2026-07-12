@@ -570,16 +570,26 @@ std::optional<prepare::PreparedValueId> indexed_value_home_id(
 
 bool indexed_value_home_id_is_ambiguous(
     const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const prepare::PreparedValueLocationFunction* value_locations,
     c4c::ValueNameId value_name,
     prepare::PreparedValueId selected_value_id) {
-  if (value_home_lookups == nullptr || value_name == c4c::kInvalidValueName) {
+  if (value_name == c4c::kInvalidValueName) {
     return false;
   }
-  for (const auto& [value_id, home] : value_home_lookups->homes_by_id) {
-    if (home != nullptr &&
-        home->value_name == value_name &&
-        value_id != selected_value_id) {
-      return true;
+  if (value_home_lookups != nullptr) {
+    for (const auto& [value_id, home] : value_home_lookups->homes_by_id) {
+      if (home != nullptr && home->value_name == value_name &&
+          value_id != selected_value_id) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (value_locations != nullptr) {
+    for (const auto& home : value_locations->value_homes) {
+      if (home.value_name == value_name && home.value_id != selected_value_id) {
+        return true;
+      }
     }
   }
   return false;
@@ -600,7 +610,8 @@ PreparedMemoryOperandRecordError require_indexed_value_home_id(
   if (!found.has_value()) {
     return PreparedMemoryOperandRecordError::MissingPointerValueHome;
   }
-  if (indexed_value_home_id_is_ambiguous(value_home_lookups, value_name, *found)) {
+  if (indexed_value_home_id_is_ambiguous(
+          value_home_lookups, value_locations, value_name, *found)) {
     return PreparedMemoryOperandRecordError::AmbiguousPointerValueHome;
   }
 
@@ -1904,8 +1915,6 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
-  const auto value_home_lookups =
-      prepare::make_prepared_value_home_lookups(&value_locations);
   const auto* access =
       prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
   if (access == nullptr) {
@@ -1914,7 +1923,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = validate_memory_base_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           load.address ? &*load.address : nullptr,
@@ -1933,7 +1942,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_load_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           *access,
@@ -2216,8 +2225,6 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
-  const auto value_home_lookups =
-      prepare::make_prepared_value_home_lookups(&value_locations);
   const auto* access =
       prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
   if (access == nullptr) {
@@ -2226,7 +2233,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = validate_memory_base_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           store.address ? &*store.address : nullptr,
@@ -2245,7 +2252,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_store_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           *access,
@@ -2699,11 +2706,9 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
-  const auto value_home_lookups =
-      prepare::make_prepared_value_home_lookups(&value_locations);
   if (const auto error = validate_memory_base_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           load.address ? &*load.address : nullptr,
@@ -2722,7 +2727,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_load_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           *prepare::find_prepared_memory_access(
@@ -2785,11 +2790,9 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
-  const auto value_home_lookups =
-      prepare::make_prepared_value_home_lookups(&value_locations);
   if (const auto error = validate_memory_base_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           store.address ? &*store.address : nullptr,
@@ -2808,7 +2811,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_store_identity(
           names,
-          &value_home_lookups,
+          nullptr,
           nullptr,
           value_locations,
           *prepare::find_prepared_memory_access(
@@ -2867,7 +2870,8 @@ MemoryInstructionLoweringResult lower_memory_instruction(
   if (context.function.prepared == nullptr ||
       context.function.value_locations == nullptr ||
       context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
+      context.control_flow_block == nullptr ||
+      context.function.value_home_lookups == nullptr) {
     append_memory_diagnostic(
         diagnostics,
         module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
@@ -2962,17 +2966,10 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         memory_error_message(prepared.error));
     return MemoryInstructionLoweringResult{.handled = true};
   }
-  const auto local_value_home_lookups =
-      context.function.value_home_lookups == nullptr
-          ? prepare::make_prepared_value_home_lookups(context.function.value_locations)
-          : prepare::PreparedValueHomeLookups{};
-  const auto* value_home_lookups =
-      context.function.value_home_lookups == nullptr ? &local_value_home_lookups
-                                                     : context.function.value_home_lookups;
   if (context.function.prepared == nullptr ||
       !apply_stack_layout_to_memory_record(context.function.prepared->stack_layout,
                                            context.function.address_materialization_lookups,
-                                           value_home_lookups,
+                                           context.function.value_home_lookups,
                                            local_store,
                                            *prepared.record)) {
     append_memory_diagnostic(
