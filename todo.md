@@ -8,33 +8,41 @@ Current Step Title: Repair genuine prepared attribution and prove the adapter
 
 ## Just Finished
 
-- Reviewer report
-  `review/idea718_step6_genuine_attribution_acceptance_review.md` rejected the
-  uncommitted Step 6 slice: its query-local atomic minted a fresh synthetic
-  lookup token, the tests manually copied that token into claims, and the
-  production AArch64 path still used the fail-closed pointer overload.
-- The rejected code and test changes were removed. Step 6 remains active.
+- Plan Step 6 now assigns stable nonzero proof-attribution IDs when regalloc
+  produces prepared move bundles, preserves the concrete BIR owner/value/
+  instruction observation in the prepared block-entry publication, and turns
+  that producer-owned state into a production Route4 claim collection.
+- The AArch64 publication consumer now classifies that collection and calls
+  the authoritative MIR classification overload. Focused tests exercise the
+  adapter without copying attribution into a test-assembled production claim.
+- Independent review
+  `review/idea718_step6_producer_bridge_acceptance_review.md` accepted the
+  Step 6 producer bridge as aligned, semantic, and non-overfit.
 
 ## Suggested Next
 
-- Implement a real producer-owned production claim collection: preparation must
-  own or receive a stable nonzero attribution ID for the concrete proof claim,
-  Route4 must carry that same ID without test-side copying, and production must
-  classify the collection and call the authoritative MIR overload.
+- Execute plan Step 7 broader acceptance and closure proof for idea 718.
 
 ## Watchouts
 
 - The later exception `x86::module::emit requires prepared core facts for every
   defined function` belongs to idea 721. Do not change x86 emission or fixture
   construction to bypass it while executing idea 718.
-- Do not use query-local counters, coordinates, pointers, names, constants, or
-  test-side claim assembly as attribution authority.
-- Production currently calls the pointer overload in
-  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`; the next packet
-  must explicitly own the production bridge before claiming acceptance.
+- The attribution ID is bundle-producer sequence identity; coordinates, BIR
+  pointers, and diagnostic names remain validation evidence rather than the ID
+  authority.
 
 ## Proof
 
-- Rollback proof: `git diff --check`.
-- Rejected `test_after.log` removed; no canonical after-state proof is accepted
-  for the rejected route.
+- Ran `( cmake --build --preset default -j2 && ctest --test-dir build -j2
+  --output-on-failure -R
+  '^(backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract)$'
+  ) > test_after.log 2>&1`.
+- Build and `backend_prepared_lookup_helper` passed.
+- Matching before/after evidence isolates the unchanged, permitted idea 721
+  exception in `backend_prepare_frame_stack_call_contract` after the owned
+  adapter coverage:
+  `x86::module::emit requires prepared core facts for every defined function`.
+- The independent Step 6 acceptance review treats that unchanged exception as
+  outside this slice rather than a prerequisite for proceeding to Step 7.
+- Canonical proof log: `test_after.log`.

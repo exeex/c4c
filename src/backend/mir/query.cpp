@@ -821,7 +821,15 @@ find_bir_block_entry_publication_identity(
                         ? nullptr
                         : std::get_if<bir::PhiInst>(claim.instruction);
   if (!prepared.block_entry_publication_proof_attributed ||
-      !claim.attributed || claim.attribution_id == 0 ||
+      prepared.block_entry_publication_proof_attribution_id == 0 ||
+      !claim.attributed ||
+      claim.attribution_id !=
+          prepared.block_entry_publication_proof_attribution_id ||
+      prepared.block_entry_publication_proof_successor_block !=
+          destination.successor_owner ||
+      prepared.block_entry_publication_proof_destination_value !=
+          destination.destination_value ||
+      prepared.block_entry_publication_proof_instruction != claim.instruction ||
       claim.claimed_destination.successor_owner != destination.successor_owner ||
       claim.claimed_destination.destination_value != destination.destination_value ||
       claim.instruction_owner != destination.successor_owner ||

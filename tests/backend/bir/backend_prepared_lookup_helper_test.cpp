@@ -11422,6 +11422,7 @@ int verify_bir_block_entry_publication_identity_lookup() {
       },
       .move_bundles = {
           prepare::PreparedMoveBundle{
+              .proof_attribution_id = 41,
               .function_name = function_name,
               .phase = prepare::PreparedMovePhase::BlockEntry,
               .authority_kind =
@@ -11648,10 +11649,9 @@ int verify_bir_block_entry_publication_identity_lookup() {
   const auto authoritative_available =
       mir::find_bir_block_entry_publication_identity(
           prepared_available,
-          bir::route4_classify_block_entry_publication_claims({
-              .destination = duplicate_destination,
-              .claims = {duplicate_claim},
-          }));
+          bir::route4_classify_block_entry_publication_claims(
+              prepare::make_prepared_block_entry_publication_claim_collection(
+                  prepared_available)));
   const auto authoritative_missing =
       mir::find_bir_block_entry_publication_identity(
           prepared_available,

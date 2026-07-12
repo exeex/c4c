@@ -221,8 +221,13 @@ route4_current_block_entry_publication_identity(
       prepared_publication.destination_home == nullptr) {
     return {};
   }
+  const auto claims =
+      prepare::make_prepared_block_entry_publication_claim_collection(
+          prepared_publication);
+  const auto classification =
+      bir::route4_classify_block_entry_publication_claims(claims);
   return mir::find_bir_block_entry_publication_identity(
-      prepared_publication, context.bir_block, &value);
+      prepared_publication, classification);
 }
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,

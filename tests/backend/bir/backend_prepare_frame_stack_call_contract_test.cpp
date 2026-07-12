@@ -5607,6 +5607,7 @@ int check_call_argument_source_producer_materializability_contract() {
       },
       .move_bundles = {
           prepare::PreparedMoveBundle{
+              .proof_attribution_id = 71,
               .function_name = function_name,
               .phase = prepare::PreparedMovePhase::BlockEntry,
               .authority_kind =
@@ -5677,9 +5678,13 @@ int check_call_argument_source_producer_materializability_contract() {
                   &join_destination_value,
           },
           prepare::PreparedValueId{71});
-  const auto bir_entry_publication =
-      mir::find_bir_block_entry_publication_identity(
-          prepared_entry_publication, &join_block, &join_destination_value);
+  const auto entry_claims =
+      prepare::make_prepared_block_entry_publication_claim_collection(
+          prepared_entry_publication);
+  const auto entry_classification =
+      bir::route4_classify_block_entry_publication_claims(entry_claims);
+  const auto bir_entry_publication = mir::find_bir_block_entry_publication_identity(
+      prepared_entry_publication, entry_classification);
   if (prepared_entry_publication.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       !bir_entry_publication.available ||

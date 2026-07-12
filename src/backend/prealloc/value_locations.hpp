@@ -420,6 +420,9 @@ as_pointer_base_plus_offset_fact(const PreparedValueHome& home) {
 // prepared route only; semantic identity stays in PreparedValueId plus interned
 // function/value/block IDs.
 struct PreparedMoveBundle {
+  // Stable producer-assigned identity for proof claims carried by this bundle.
+  // Zero means the producer did not publish attribution authority.
+  std::uint64_t proof_attribution_id = 0;
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
   PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
@@ -614,10 +617,18 @@ struct PreparedCurrentBlockEntryPublication {
   bir::TypeKind destination_value_type = bir::TypeKind::Void;
   std::size_t publication_bundle_instruction_index = 0;
   bool block_entry_publication_proof_attributed = false;
+  std::uint64_t block_entry_publication_proof_attribution_id = 0;
   bir::BirViewStatus block_entry_publication_proof_status =
       bir::BirViewStatus::Unavailable;
   std::size_t block_entry_publication_proof_instruction_index = 0;
+  const bir::Block* block_entry_publication_proof_successor_block = nullptr;
+  const bir::Value* block_entry_publication_proof_destination_value = nullptr;
+  const bir::Inst* block_entry_publication_proof_instruction = nullptr;
 };
+
+[[nodiscard]] bir::Route4BlockEntryPublicationClaimCollection
+make_prepared_block_entry_publication_claim_collection(
+    const PreparedCurrentBlockEntryPublication& prepared);
 
 struct PreparedValueLocations {
   std::vector<PreparedValueLocationFunction> functions;

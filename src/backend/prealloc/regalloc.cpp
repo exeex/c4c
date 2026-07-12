@@ -256,6 +256,8 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
     return;
   }
   function_locations.move_bundles.push_back(PreparedMoveBundle{
+      .proof_attribution_id =
+          static_cast<std::uint64_t>(function_locations.move_bundles.size()) + 1U,
       .function_name = function_locations.function_name,
       .phase = phase,
       .authority_kind = move.authority_kind,
@@ -281,6 +283,8 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
       });
   if (existing == function_locations.move_bundles.end()) {
     function_locations.move_bundles.push_back(PreparedMoveBundle{
+        .proof_attribution_id =
+            static_cast<std::uint64_t>(function_locations.move_bundles.size()) + 1U,
         .function_name = function_locations.function_name,
         .phase = phase,
         .block_index = block_index,

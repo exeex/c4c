@@ -2316,7 +2316,8 @@ void attribute_block_entry_publication_proof_if_agreeing(
       query.successor_label == kInvalidBlockLabel ||
       result.destination_value_id == PreparedValueId{0} ||
       result.destination_value_name == kInvalidValueName ||
-      result.publication.bundle == nullptr) {
+      result.publication.bundle == nullptr ||
+      result.publication.bundle->proof_attribution_id == 0) {
     result.status = PreparedCurrentBlockEntryPublicationStatus::IncompletePayload;
     return;
   }
@@ -2391,6 +2392,13 @@ void attribute_block_entry_publication_proof_if_agreeing(
     result.status = PreparedCurrentBlockEntryPublicationStatus::ProofMismatch;
     return;
   }
+  const auto* proof_instruction =
+      &proof_successor_block->insts[proof_reference.instruction_index];
+  const auto* proof_phi = std::get_if<bir::PhiInst>(proof_instruction);
+  if (proof_phi == nullptr || &proof_phi->result != proof_destination_value) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::ProofMismatch;
+    return;
+  }
 
   result.successor_label_text = std::string{successor_label};
   result.successor_label_id = query.successor_label;
@@ -2399,6 +2407,42 @@ void attribute_block_entry_publication_proof_if_agreeing(
   result.publication_bundle_instruction_index =
       result.publication.bundle->instruction_index;
   result.block_entry_publication_proof_attributed = true;
+  result.block_entry_publication_proof_attribution_id =
+      result.publication.bundle->proof_attribution_id;
+  result.block_entry_publication_proof_successor_block = proof_successor_block;
+  result.block_entry_publication_proof_destination_value = &proof_phi->result;
+  result.block_entry_publication_proof_instruction = proof_instruction;
+}
+
+bir::Route4BlockEntryPublicationClaimCollection
+make_prepared_block_entry_publication_claim_collection(
+    const PreparedCurrentBlockEntryPublication& prepared) {
+  bir::Route4BlockEntryPublicationClaimCollection collection;
+  if (!prepared.block_entry_publication_proof_attributed ||
+      prepared.block_entry_publication_proof_attribution_id == 0 ||
+      prepared.block_entry_publication_proof_successor_block == nullptr ||
+      prepared.block_entry_publication_proof_destination_value == nullptr ||
+      prepared.block_entry_publication_proof_instruction == nullptr) {
+    return collection;
+  }
+  collection.destination = bir::Route4BlockEntryDestinationIdentity{
+      .successor_owner = prepared.block_entry_publication_proof_successor_block,
+      .successor_label_id = prepared.successor_label_id,
+      .destination_value = prepared.block_entry_publication_proof_destination_value,
+      .destination_value_name_id = prepared.destination_value_name,
+      .destination_value_name = prepared.destination_value_name_text,
+      .destination_value_type = prepared.destination_value_type,
+  };
+  collection.claims.push_back(bir::Route4BlockEntryPublicationClaim{
+      .attribution_id = prepared.block_entry_publication_proof_attribution_id,
+      .attributed = true,
+      .claimed_destination = collection.destination,
+      .instruction_owner = prepared.block_entry_publication_proof_successor_block,
+      .instruction_owner_label_id = prepared.successor_label_id,
+      .instruction = prepared.block_entry_publication_proof_instruction,
+      .instruction_index = prepared.block_entry_publication_proof_instruction_index,
+  });
+  return collection;
 }
 
 PreparedCurrentBlockEntryPublication
