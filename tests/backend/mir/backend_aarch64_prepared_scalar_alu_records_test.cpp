@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -1109,7 +1110,8 @@ std::optional<std::string> lower_select_publication_asm(prepare::PreparedBirModu
                                .base() -
                                block.insts.begin() - 1);
   const auto prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, control_flow);
+      std::make_shared<const prepare::PreparedFunctionLookups>(
+          prepare::make_prepared_function_lookups(prepared, control_flow));
 
   c4c::backend::aarch64::module::BlockLoweringContext context{
       .function =
@@ -1120,7 +1122,8 @@ std::optional<std::string> lower_select_publication_asm(prepare::PreparedBirModu
               .bir_function = &function,
               .value_locations = &prepared.value_locations.functions.front(),
               .storage_plan = &prepared.storage_plans.functions.front(),
-              .prepared_lookups = &prepared_lookups,
+              .prepared_lookups_owner = prepared_lookups,
+              .prepared_lookups = prepared_lookups.get(),
           },
       .control_flow_block = &control_flow.blocks.front(),
       .bir_block = &block,

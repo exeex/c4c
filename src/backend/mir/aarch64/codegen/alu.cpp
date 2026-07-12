@@ -2301,52 +2301,6 @@ lower_scalar_compare_publication(
   return make_control_publication_assembler(context, instruction_index, std::move(lines));
 }
 
-[[nodiscard]] prepare::PreparedScalarSelectChainMaterialization
-route2_control_select_chain_materialization(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return {};
-  }
-  const auto identity = mir::find_bir_select_chain_identity(
-      mir::BirSelectChainIdentityRequest{
-          .block = context.bir_block,
-          .block_label = std::string_view{context.bir_block->label},
-          .root_value = &value,
-          .before_instruction_index = before_instruction_index,
-      });
-  if (!identity ||
-      !identity.root_is_select ||
-      !identity.root_instruction_index.has_value() ||
-      !identity.scalar_materialization_available) {
-    return {};
-  }
-  const auto root_value_name =
-      !identity.root_value_name.empty() ? identity.root_value_name : value.name;
-  const auto root_value_name_id =
-      context.function.prepared->names.value_names.find(root_value_name);
-  if (root_value_name_id == c4c::kInvalidValueName) {
-    return {};
-  }
-  return prepare::PreparedScalarSelectChainMaterialization{
-      .available = true,
-      .root_value_name = root_value_name_id,
-      .root_is_select = identity.root_is_select,
-      .root_instruction_index = identity.root_instruction_index,
-      .direct_global_dependency =
-          prepare::PreparedDirectGlobalSelectChainDependency{
-              .contains_direct_global_load =
-                  static_cast<bool>(identity.direct_global_dependency),
-              .root_is_select = identity.root_is_select,
-              .root_instruction_index = identity.root_instruction_index,
-          },
-  };
-}
-
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_scalar_select_publication(
     const module::BlockLoweringContext& context,
@@ -2382,26 +2336,27 @@ lower_scalar_select_publication(
   if (!result.has_value()) {
     return std::nullopt;
   }
-  const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : nullptr;
-  auto select_chain_materialization = route2_control_select_chain_materialization(
-      context, select.result, instruction_index + 1U);
-  if (!select_chain_materialization.available) {
-    select_chain_materialization =
-        context.control_flow_block != nullptr
-            ? prepare::find_prepared_scalar_select_chain_materialization(
-                  context.function.prepared->names,
-                  source_producers,
-                  context.control_flow_block->block_label,
-                  context.bir_block,
-                  select.result,
-                  instruction_index + 1U)
-            : prepare::PreparedScalarSelectChainMaterialization{};
+  if (context.function.prepared_lookups_owner == nullptr ||
+      context.function.prepared_lookups !=
+          context.function.prepared_lookups_owner.get() ||
+      context.control_flow_block == nullptr || context.bir_block == nullptr) {
+    return std::nullopt;
   }
-  if (select_chain_materialization.available &&
-      select_chain_materialization.direct_global_dependency
+  const auto select_chain_materialization =
+      prepare::find_prepared_scalar_select_chain_materialization(
+          context.function.prepared->names,
+          &context.function.prepared_lookups->edge_publication_source_producers,
+          context.control_flow_block->block_label,
+          context.bir_block,
+          select.result,
+          instruction_index + 1U);
+  if (!select_chain_materialization.available ||
+      !select_chain_materialization.root_is_select ||
+      select_chain_materialization.root_value_name == c4c::kInvalidValueName ||
+      !select_chain_materialization.root_instruction_index.has_value()) {
+    return std::nullopt;
+  }
+  if (select_chain_materialization.direct_global_dependency
           .contains_direct_global_load &&
       select_chain_materialization.direct_global_dependency
           .root_instruction_index.has_value()) {

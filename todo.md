@@ -8,12 +8,10 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Just Finished
 
-- Plan Step 2 migrated the remaining AArch64 scalar ALU return-chain consumers
-  in `alu.cpp` from `Route8ReturnChainRecord` and
-  `Route1SourceValueIdentity` to existing prepared named handoffs. Return-chain
-  register selection now follows indexed `BeforeInstruction` value moves and
-  prepared same-block binary producer facts to the prepared before-return ABI
-  move; missing, ambiguous, or inconsistent handoff authority fails closed.
+- Plan Step 2 migrated AArch64 scalar-select publication in `alu.cpp` off its
+  target-local Route 2/BIR select-chain reconstruction. The consumer now uses
+  only the owned prepared lookup and named scalar-select-chain materialization
+  query; missing, stale, non-select, or incomplete authority fails closed.
 
 ## Suggested Next
 
@@ -23,22 +21,15 @@ Current Step Title: Migrate sibling AArch64 materializers
 
 ## Watchouts
 
-- The ALU return-chain traversal requires agreement between the prepared move
-  bundle destination, the named producer result, and the consuming binary's
-  unique chain operand; it intentionally rejects gaps and ambiguity.
+- The focused scalar-ALU fixture now attaches its prepared lookup through the
+  same owned lifetime contract required by production consumers.
 - Other AArch64 route-index consumers remain outside this packet and still
   belong to Step 2.
-- The delegated subset retains the known baseline failure in test 354 (`bl
-  printf` missing); all other 35 tests pass, including the branch-control,
-  call-boundary
-  scalability and prepared-memory records coverage.
 
 ## Proof
 
 - Ran `set -o pipefail; { cmake --build --preset default && ctest --test-dir
   build -j --output-on-failure -R
-  '^(backend_aarch64_(return_lowering|prepared_scalar_alu_records|scalar_alu_records)|backend_(codegen_route|cli)_aarch64_)';
-  } 2>&1 | tee test_after.log`. Build succeeded; 36/37 tests passed, including
-  return lowering and both scalar-ALU record suites. The sole failure is the
-  known baseline test 354 (`bl printf` missing). The delegated proof is
-  sufficient relative to that baseline. Proof log: `test_after.log`.
+  '^(backend_aarch64_(prepared_scalar_alu_records|scalar_alu_records)|backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy)$';
+  } 2>&1 | tee test_after.log`. Build succeeded and all 3 delegated tests
+  passed. The delegated proof is sufficient. Proof log: `test_after.log`.
