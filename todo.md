@@ -1,31 +1,34 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/729_common_current_block_join_query_exposure.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove the AArch64 routing-array reconstruction
+Current Step ID: 3
+Current Step Title: Prove the boundary and hand back idea 709
 
 ## Just Finished
 
-- Plan Step 2 migrated the bounded AArch64 current-block join consumers to the
-  direct attached-owner common queries and deleted the routing struct, builder,
-  boolean scan arrays, and private duplicate consumption query.
+- Plan Step 3 audited the common/AArch64 boundary and proved that the two
+  AArch64 role wrappers extract only stable owner/block/value identity and call
+  the direct attached-owner common queries. No renamed routing cache, copied
+  prepared-fact lookup loop, Route 5 authority, or expectation change remains.
 
 ## Suggested Next
 
-- Execute Plan Step 3: audit the completed boundary, run the supervisor-selected
-  broader regression comparison, and prepare the lifecycle handback to idea 709.
+- Hand lifecycle control back to idea 709 at its remaining named-handoff
+  materializer retirement step; keep its address-materialization cleanup out of
+  idea 729.
 
 ## Watchouts
 
-- The AArch64 wrappers now extract only stable successor/value identity; keep
-  executable consumption semantics in the common attached-owner queries during
-  the Step 3 audit. Three focused AArch64 tests required signature-only updates.
+- The broader backend suite retains 56 known baseline failures. The failure set
+  and pass count exactly match `test_before.log`; these remain baseline debt and
+  are not regressions from idea 729.
 
 ## Proof
 
-- Green (4/4): `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^(backend_(aarch64_current_block_join_routing|prealloc_current_block_(lookup_attachment_lifetime|incoming_expression_authority|routed_operand_authority)))$'`.
-  The supervisor-selected proof was sufficient; combined output is preserved in
+- Monotonic against baseline: `cmake --build --preset default && ctest
+  --test-dir build -j --output-on-failure -R '^backend_'` ran 400 tests with
+  344 passes and the same 56 known failures as `test_before.log` (no new
+  failures and no reduced pass count). Combined exact output is preserved in
   `test_after.log`.
