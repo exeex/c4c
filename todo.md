@@ -8,28 +8,29 @@ Current Step Title: Migrate select and comparison consumers
 
 ## Just Finished
 
-- Route review split the former broad Step 2 into bounded consumer families.
-  Step 2.1's return-chain authority gap was resolved through common-producer
-  ideas 727 and 728 before the AArch64 reconstruction was deleted, and Step
-  2.2's direct dispatch-producer migration is complete.
+- Plan Step 2.3 removed both local `PreparedValueHomeLookups` reconstruction
+  sites from select materialization. Select/comparison consumers now use only
+  traversal-attached common value-home authority and fail closed when it is
+  absent; comparison/select instruction policy was unchanged.
 
 ## Suggested Next
 
-- Execute Plan Step 2.3 only against the select/comparison value-home lookup
-  rebuilding family. Stop for lifecycle review if no existing attached common
-  query owns a required relation.
+- Execute Plan Step 2.4 as a bounded packet against
+  `fp_value_materialization.cpp`, migrating named-producer discovery to the
+  existing attached common query.
 
 ## Watchouts
 
-- Do not reopen the completed return-chain consumer or reproduce its relation
-  in AArch64. The scalability timeout predates Step 2.2, and the pre-existing
-  selected-global-load fused-branch stale-stack-home failure remains. Both
-  belong in the supervisor's broader proof assessment, not in Step 2.3 scope.
+- Step 2.3 required no test changes or common contract changes. Preserve its
+  fail-closed attached-authority boundary when working on later consumer
+  families. The prior scalability timeout and selected-global-load
+  fused-branch stale-stack-home failure remain supervisor-level broader-proof
+  watchouts.
 
 ## Proof
 
-- Lifecycle-only route reset; no code proof was run. Step 2.1 previously
-  passed its delegated build and 10/10 focused subset. Step 2.2 implementation
-  is complete, while its exact delegated command stopped on the pre-existing
-  scalability timeout before refreshing the focused proof log. Step 3 retains
-  the required broader AArch64 checkpoint.
+- Passed the exact supervisor-selected proof: `cmake --build --preset default`
+  followed by the four-test CTest subset for pointer-select aggregate copy,
+  branch comparison, branch control, and current-block join routing (4/4).
+  Canonical proof output is in `test_after.log`; the subset was sufficient for
+  this bounded Step 2.3 consumer migration.

@@ -290,22 +290,16 @@ namespace {
       return true;
     }
     lines.resize(previous_size);
-    std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
-    const auto* value_home_lookups = context.function.value_home_lookups;
-    if (value_home_lookups == nullptr &&
-        context.function.value_locations != nullptr) {
-      local_value_home_lookups =
-          prepare::make_prepared_value_home_lookups(context.function.value_locations);
-      value_home_lookups = &*local_value_home_lookups;
-    }
-    const auto* home = context.function.prepared != nullptr
-                           ? prepare::find_prepared_value_home_for_bir_value(
-                                 context.function.prepared->names,
-                                 value_home_lookups,
-                                 context.function.regalloc,
-                                 context.function.value_locations,
-                                 value)
-                           : nullptr;
+    const auto* home =
+        context.function.prepared != nullptr &&
+                context.function.value_home_lookups != nullptr
+            ? prepare::find_prepared_value_home_for_bir_value(
+                  context.function.prepared->names,
+                  context.function.value_home_lookups,
+                  context.function.regalloc,
+                  context.function.value_locations,
+                  value)
+            : nullptr;
     if (home == nullptr ||
         home->kind != prepare::PreparedValueHomeKind::Register ||
         !home->register_name.has_value()) {
@@ -486,20 +480,15 @@ materialize_direct_global_select_chain_call_argument(
   const auto value_name = prepared_named_value_id(context, value);
   if (!value_name.has_value() || argument_plan == nullptr ||
       argument_plan->instruction_index != before_instruction_index ||
-      !argument_plan->source_value_id.has_value()) {
+      !argument_plan->source_value_id.has_value() ||
+      context.function.prepared == nullptr ||
+      context.function.value_home_lookups == nullptr) {
     return std::nullopt;
-  }
-  std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
-  const auto* value_home_lookups = context.function.value_home_lookups;
-  if (value_home_lookups == nullptr && context.function.value_locations != nullptr) {
-    local_value_home_lookups =
-        prepare::make_prepared_value_home_lookups(context.function.value_locations);
-    value_home_lookups = &*local_value_home_lookups;
   }
   const auto* value_home =
       prepare::find_prepared_value_home_for_bir_value(
           context.function.prepared->names,
-          value_home_lookups,
+          context.function.value_home_lookups,
           context.function.regalloc,
           context.function.value_locations,
           value);
