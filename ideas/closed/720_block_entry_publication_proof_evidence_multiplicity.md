@@ -1,9 +1,20 @@
 # Block-Entry Publication Proof-Evidence Multiplicity
 
-Status: Open
+Status: Complete
 Type: decomposition of semantic proof-evidence identity and multiplicity
 Parent: `ideas/open/718_block_entry_publication_identity_completion.md`
 Returns To: `ideas/open/718_block_entry_publication_identity_completion.md`
+
+## Completion
+
+Completed and handed back to idea 718 after the accepted Step 6.5 audit in
+`review/idea720_step6_5_handback_audit.md`. Route4 now owns typed claim
+classification over exact destination and attributed claim identity, MIR
+consumes that classification without a competing ambiguity scan, stale
+coordinates fail closed, and the surviving production compatibility overload
+cannot manufacture availability from display-name evidence. Matching focused
+before/after proof passed for `backend_prepared_lookup_helper`. Idea 718 retains
+the production-facing frame/stack contract and broader backend acceptance work.
 
 ## Goal
 
