@@ -183,10 +183,8 @@ struct BirCfgEdgePublicationSourceIdentity {
   const bir::PhiInst* destination_phi = nullptr;
   std::size_t destination_instruction_index = 0;
   const bir::Value* destination_value = nullptr;
-  std::size_t destination_value_id = 0;
   SameBlockValueIdentity destination_value_identity;
   std::string_view destination_value_name;
-  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
   bir::TypeKind destination_value_type = bir::TypeKind::Void;
   const bir::Value* source_value = nullptr;
   std::optional<std::size_t> source_value_id;
@@ -213,9 +211,7 @@ struct BirCfgEdgePublicationSourceRequest {
   std::string_view successor_label;
   c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
   const bir::Value* destination_value = nullptr;
-  std::size_t destination_value_id = 0;
   std::string_view destination_value_name;
-  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
   bir::TypeKind destination_value_type = bir::TypeKind::Void;
 };
 

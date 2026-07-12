@@ -928,7 +928,7 @@ find_bir_cfg_edge_publication_source_identity(
 
   const auto edge = bir::route5_cfg_edge_publication_record(
       request.predecessor_block, request.successor_block,
-      *request.destination_value, request.destination_value_name_id);
+      *request.destination_value);
   result.predecessor_label = edge.predecessor_label;
   result.predecessor_label_id = edge.predecessor_label_id;
   result.successor_label = edge.successor_label;
@@ -937,9 +937,7 @@ find_bir_cfg_edge_publication_source_identity(
   result.destination_phi = edge.destination_phi;
   result.destination_instruction_index = edge.destination_instruction_index;
   result.destination_value = edge.destination_value_ptr;
-  result.destination_value_id = request.destination_value_id;
   result.destination_value_name = edge.destination_value_name;
-  result.destination_value_name_id = request.destination_value_name_id;
   result.destination_value_type = edge.destination_value_type;
   result.destination_value_identity = edge.destination_value_ptr != nullptr
       ? same_block_value_identity(*edge.destination_value_ptr)
