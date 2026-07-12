@@ -64,3 +64,18 @@ is outside prepared-call plan production.
   as capability repair.
 - Changes to prepared-call production, block-entry publication, target
   materializers, or move scheduling.
+
+## Parked Execution Note
+
+Steps 1 through 3 completed the idea-owned typed prepared-MIR join-source
+repair and its focused positive/negative assertions. The focused executable now
+advances beyond those assertions and first fails at the independent legacy BIR
+CFG edge-publication source identity boundary. That boundary is owned by
+`ideas/open/719_bir_cfg_edge_publication_source_identity_completion.md`.
+
+Keep this idea open and parked while idea 719 restores an independent BIR CFG
+oracle. The supervisor-selected broader backend comparison required by this
+idea's acceptance criteria has not been run for closure, so do not claim source
+idea completion or archive this file yet. After idea 719 is accepted, route back
+through the remaining focused and broader acceptance checks without absorbing
+the legacy CFG adapter into this idea.
