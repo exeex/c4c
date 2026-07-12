@@ -904,6 +904,7 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
 }  // namespace
 
 void BirPreAlloc::run_liveness() {
+  ensure_legalized_control_flow();
   prepared_.completed_phases.push_back("liveness");
   prepared_.liveness.functions.clear();
   prepared_.liveness.functions.reserve(prepared_.module.functions.size());

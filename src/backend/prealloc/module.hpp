@@ -402,6 +402,7 @@ class BirPreAlloc {
   PreparedBirModule run();
 
  private:
+  void ensure_legalized_control_flow();
   void note(std::string_view message);
 
   PrepareOptions options_;

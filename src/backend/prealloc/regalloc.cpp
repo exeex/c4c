@@ -730,6 +730,7 @@ void publish_prepared_move_bundle(PreparedValueLocationFunction& function_locati
 }
 
 void BirPreAlloc::run_regalloc() {
+  ensure_legalized_control_flow();
   prepared_.completed_phases.push_back("regalloc");
   prepared_.regalloc.functions.clear();
   prepared_.regalloc.functions.reserve(prepared_.liveness.functions.size());

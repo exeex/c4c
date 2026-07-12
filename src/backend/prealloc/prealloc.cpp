@@ -15,6 +15,7 @@
 #include "storage_plans.hpp"
 #include "variadic_entry_plans.hpp"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -26,6 +27,14 @@ void BirPreAlloc::note(std::string_view message) {
       .phase = "prealloc",
       .message = std::string(message),
   });
+}
+
+void BirPreAlloc::ensure_legalized_control_flow() {
+  if (std::find(prepared_.completed_phases.begin(),
+                prepared_.completed_phases.end(),
+                "legalize") == prepared_.completed_phases.end()) {
+    run_legalize();
+  }
 }
 
 PreparedBirModule BirPreAlloc::run() {

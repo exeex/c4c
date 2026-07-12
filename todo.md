@@ -3,63 +3,44 @@
 Status: Active
 Source Idea Path: ideas/open/721_x86_defined_function_prepared_core_completion.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize The Missing Prepared-Core Fact
+Current Step ID: 2
+Current Step Title: Repair General Prepared-Core Production
 
 ## Just Finished
 
-- Step 1 localized the focused abort to the defined BIR function
-  `grouped_spill_reload_contract` (module function index 1, prepared
-  `FunctionNameId` 0, `is_declaration == false`, one `entry` block). The name
-  resolves consistently at x86 lookup; this is not a stale or mismatched-name
-  failure.
-- Earliest first bad fact: `prepare_grouped_spill_reload_contract_module()`
-  admits the definition to stack layout, liveness, regalloc, addressing, and
-  value-location production without ever running `BirPreAlloc::run_legalize()`.
-  Consequently no `PreparedControlFlowFunction` is published for function id
-  0. `PreparedMirCoreView` binds the BIR definition but, at its common
-  three-bank admission check, omits the function entry because control flow is
-  null while addressing and value locations are present. x86 emission then
-  sees the definition in `defined_functions()` but no `function_view()` and
-  correctly fails closed.
-- Nearby successful comparison: the immediately preceding
-  `grouped_cross_call_preservation_contract` x86 module-emitter check uses
-  `prepare_grouped_riscv_module_with_overrides()`, which runs legalization
-  before stack layout/liveness/regalloc; that defined function publishes
-  control flow and receives a genuine prepared-core view.
-- Owning producer seam: common `BirPreAlloc` phase admission/publication for
-  control-flow readiness before later independently callable phases, with
-  `PreparedMirCoreView`'s all-three-bank admission as the first consumer that
-  exposes the omission. This is generic prepared-core completeness within idea
-  721, not call-plan cursor or block-entry attribution scope.
+- Step 2 added a common `BirPreAlloc` prerequisite guard for independently
+  callable stack-layout, liveness, and regalloc production. When legalization
+  has not completed, the first later producer runs the genuine common legalize
+  phase and publishes control-flow facts before admitting the same definitions
+  to addressing/liveness/value-location production.
+- The localized manual-phase `grouped_spill_reload_contract` route now reaches
+  x86 emission with a common prepared-core view. The already-legalized route is
+  unchanged because the guard recognizes its completed legalize phase, keeping
+  stable `FunctionNameId` interning from production through lookup.
+- States that already claim legalization are not cleared, synthesized, or
+  repaired by the guard, so missing or inconsistent published facts remain
+  subject to the existing fail-closed prepared-core admission and emitter
+  invariant.
 
 ## Suggested Next
 
-- Step 2: make the common preparation phase boundary ensure that an eligible
-  defined function admitted to later stack/liveness/regalloc production also
-  has matching prepared control-flow facts. Keep the repair semantic and
-  phase-general; do not inject readiness in this fixture or synthesize facts in
-  x86/`PreparedMirCoreView`. Prove both the localized manual-phase route and the
-  already-successful full/legalized route retain stable `FunctionNameId`
-  agreement.
+- Step 3: strengthen focused positive coverage across the manual-phase and
+  already-legalized defined-function shapes, plus negative coverage showing
+  genuinely absent or inconsistent preparation still fails closed.
 
 ## Watchouts
 
-- Do not weaken or bypass the x86 prepared-core invariant.
-- Do not key behavior to the fixture or function name, treat a definition as a
-  declaration, or manually inject readiness.
-- Stop for lifecycle review if the first bad fact belongs specifically to idea
-  716 call-plan cursor semantics or requires idea 718 scope.
-- `PreparedMirCoreView` currently makes no distinction among missing control
-  flow, value locations, and addressing when it skips entry construction; Step
-  2 should repair the producer boundary without relaxing that fail-closed
-  all-three-bank contract.
+- Step 3 should explicitly exercise a state that claims completed legalization
+  but lacks or mismatches a required bank; the prerequisite guard deliberately
+  does not overwrite such state.
+- Keep coverage on the common producer/admission contract and avoid any x86
+  fallback, fixture injection, expectation rewrite, idea 716 cursor change, or
+  idea 718 attribution/publication expansion.
 
 ## Proof
 
 - Ran exactly:
   `cmake --build --preset default > test_after.log 2>&1; ctest --test-dir build -j --output-on-failure -R '^backend_prepare_frame_stack_call_contract$' >> test_after.log 2>&1`.
-- Build passed; the focused test reproduced the expected abort with
-  `x86::module::emit requires prepared core facts for every defined function`.
-  This is sufficient localization/reproduction proof for Step 1 and remains a
-  failing acceptance test pending Step 2. Canonical log: `test_after.log`.
+- Build passed and the focused test passed (1/1) without expectation changes.
+  The supervisor-selected proof is sufficient for Step 2. Canonical log:
+  `test_after.log`.

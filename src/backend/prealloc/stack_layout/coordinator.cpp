@@ -2286,6 +2286,7 @@ void publish_function_addressing_facts(PreparedNameTables& names,
 }  // namespace
 
 void BirPreAlloc::run_stack_layout() {
+  ensure_legalized_control_flow();
   prepared_.completed_phases.push_back("stack_layout");
   prepared_.stack_layout = {};
   prepared_.addressing.functions.clear();
