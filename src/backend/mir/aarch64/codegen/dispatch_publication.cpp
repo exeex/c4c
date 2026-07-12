@@ -222,7 +222,7 @@ route4_current_block_entry_publication_identity(
     return {};
   }
   return mir::find_bir_block_entry_publication_identity(
-      prepared_publication);
+      prepared_publication, context.bir_block, &value);
 }
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,

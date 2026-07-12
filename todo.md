@@ -3,47 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/718_block_entry_publication_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Wire exact identity into the production block-entry consumer
+Current Step ID: 5
+Current Step Title: Move ambiguity authority to complete semantic identity
 
 ## Just Finished
 
-- Acceptance review rejected closure: the proof-bearing overload is called
-  only by the lookup-helper test, while the production block-entry consumer
-  and named frame/stack contract still use the old/manual-completion route.
-- Plan Steps 2 and 3 produced provisional query-seam and focused-helper
-  evidence only; they did not achieve the source idea's production semantic
-  repair or acceptance criteria.
-- The review also found display-name-only duplicate classification outside the
-  authoritative semantic view, missing frame/stack and broader proof, absent
-  `test_after.log`, and stale current-step metadata.
+- Plan Step 4 connected the AArch64 production block-entry register consumer
+  to the proof-bearing identity query using its existing BIR block and
+  destination value evidence.
+- The named frame/stack contract now supplies a prepared regalloc producer and
+  BIR block/value proof to the prepared lookup and proof-bearing query; it no
+  longer manually assigns successor/name/type/proof attribution.
+- Matching before/after evidence establishes that the repaired block-entry
+  assertion now passes. The slice preserves exact semantic producer/query
+  wiring without expectation downgrade, named-case recovery, or other
+  testcase overfit.
 
 ## Suggested Next
 
-- Execute bounded Plan Step 4: connect the exact proof-bearing query to the
-  production block-entry consumer and replace the named frame/stack fixture's
-  manual completion with producer/query-derived attribution.
-- Do not begin ambiguity-authority repair (Step 5), focused acceptance (Step
-  6), broader acceptance, or idea 719 resumption until this production wiring
-  packet is complete and reviewed.
+- Execute Plan Step 5: move ambiguity authority to complete semantic identity,
+  removing display-name-only duplicate classification from the adapter and
+  proving same-spelling/nonmatching-identity and true-duplicate behavior.
 
 ## Watchouts
 
-- Preserve the useful typed query statuses and pointer assertions, but do not
-  treat test-only calls as production capability.
-- Do not manually set publication completion/proof attribution in the named
-  frame/stack contract, and do not expand into prepared-call, join-source,
-  edge-publication, target-materialization, or emission policy.
-- Step 5 must remove display-name-only ambiguity ownership before focused or
-  broader acceptance can establish closure.
+- The aggregate focused frame/stack executable reaches an unrelated later
+  check, which aborts in
+  `check_x86_module_emitter_reads_grouped_spill_reload_authority` because
+  `x86::module::emit` reports missing prepared core facts. This disjoint x86
+  failure is outside idea 718 and must not be absorbed into this route.
+- Full aggregate focused acceptance remains pending for Plan Step 6; Step 4's
+  bounded differential evidence is complete but is not a green Step 6 pass.
 
 ## Proof
 
-- Historical focused evidence: `backend_prepared_lookup_helper` passed 1/1,
-  but the reviewer found only `test_before.log`; no canonical `test_after.log`
-  exists and this does not prove the production consumer or named frame/stack
-  contract.
-- Required after Steps 4 and 5: fresh supervisor-delegated build and matching
-  focused proof covering both `backend_prepared_lookup_helper` and
-  `backend_prepare_frame_stack_call_contract`, followed by the broader backend
-  before/after comparison in Plan Step 7.
+- Ran the exact delegated command: `cmake --build --preset default && ctest
+  --test-dir build -j --output-on-failure -R
+  '^(backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract)$'
+  | tee test_after.log`.
+- Build passed and `backend_prepared_lookup_helper` passed. The frame/stack
+  executable progressed beyond the repaired block-entry contract, then aborted
+  in the later disjoint x86 grouped spill/reload emitter check. Matching
+  `test_before.log` stopped at the old block-entry assertion, so the canonical
+  before/after logs sufficiently prove the bounded Step 4 repair. The aggregate
+  command is still red and does not establish Plan Step 6 acceptance.

@@ -5630,15 +5630,15 @@ int check_call_argument_source_producer_materializability_contract() {
   };
   const auto entry_value_home_lookups =
       prepare::make_prepared_value_home_lookups(&entry_publication_locations);
-  const auto prepared_entry_publication =
-      prepare::find_prepared_current_block_entry_publication(
-          prepare::PreparedCurrentBlockEntryPublicationQueryInputs{
-              .names = &names,
-              .value_locations = &entry_publication_locations,
-              .value_home_lookups = &entry_value_home_lookups,
-              .successor_label = join_label,
-          },
-          prepare::PreparedValueId{71});
+  const prepare::PreparedRegallocFunction entry_publication_regalloc{
+      .function_name = function_name,
+      .values = {prepare::PreparedRegallocValue{
+          .value_id = 71,
+          .function_name = function_name,
+          .value_name = join_value_name,
+          .type = bir::TypeKind::I32,
+      }},
+  };
   bir::Block join_block;
   join_block.label = "call_contract.join";
   join_block.label_id = join_label;
@@ -5662,14 +5662,24 @@ int check_call_argument_source_producer_materializability_contract() {
           },
       },
   });
-  auto complete_entry_publication = prepared_entry_publication;
-  complete_entry_publication.successor_label_text = join_block.label;
-  complete_entry_publication.successor_label_id = join_label;
-  complete_entry_publication.destination_value_name_text = "%join.arg";
-  complete_entry_publication.destination_value_type = bir::TypeKind::I32;
-  complete_entry_publication.block_entry_publication_proof_attributed = true;
+  const auto& join_destination_value =
+      std::get<bir::PhiInst>(join_block.insts.front()).result;
+  const auto prepared_entry_publication =
+      prepare::find_prepared_current_block_entry_publication(
+          prepare::PreparedCurrentBlockEntryPublicationQueryInputs{
+              .names = &names,
+              .regalloc = &entry_publication_regalloc,
+              .value_locations = &entry_publication_locations,
+              .value_home_lookups = &entry_value_home_lookups,
+              .successor_label = join_label,
+              .block_entry_publication_proof_successor_block = &join_block,
+              .block_entry_publication_proof_destination_value =
+                  &join_destination_value,
+          },
+          prepare::PreparedValueId{71});
   const auto bir_entry_publication =
-      mir::find_bir_block_entry_publication_identity(complete_entry_publication);
+      mir::find_bir_block_entry_publication_identity(
+          prepared_entry_publication, &join_block, &join_destination_value);
   if (prepared_entry_publication.status !=
           prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
       !bir_entry_publication.available ||
