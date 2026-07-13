@@ -223,6 +223,17 @@ void expect_single_signature_param(const c4c::codegen::lir::LirFunction& fn,
               msg + " should carry explicit structured byval metadata");
 }
 
+void expect_single_logical_param(const c4c::codegen::lir::LirFunction& fn,
+                                 c4c::TypeBase expected_base,
+                                 int expected_ptr_level,
+                                 const std::string& msg) {
+  expect_eq(std::to_string(fn.params.size()), "1",
+            msg + " should carry one HIR-owned logical parameter");
+  expect_true(fn.params[0].second.base == expected_base &&
+                  fn.params[0].second.ptr_level == expected_ptr_level,
+              msg + " should preserve its logical TypeSpec independently of ABI receipt");
+}
+
 void test_owned_type_spec_rejects_stale_rendered_compatibility() {
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct StaleOwnedCompat {
@@ -530,6 +541,19 @@ int defined_non_one_to_one(char narrow, int *pointer) { return 4; }
                     function.params[1].second.base == c4c::TB_INT &&
                     function.params[1].second.ptr_level == 1,
                 "narrow and pointer parameters should retain their logical shapes");
+    expect_true(function.signature_params.size() == 2 &&
+                    function.signature_param_type_refs.size() == 2 &&
+                    function.signature_params[0].type.base == c4c::TB_CHAR &&
+                    function.signature_params[0].type.ptr_level == 0 &&
+                    function.signature_param_type_refs[0].kind() ==
+                        c4c::codegen::lir::LirTypeKind::Integer &&
+                    function.signature_param_type_refs[0].str() == "i8" &&
+                    function.signature_params[1].type.base == c4c::TB_INT &&
+                    function.signature_params[1].type.ptr_level == 1 &&
+                    function.signature_param_type_refs[1].kind() ==
+                        c4c::codegen::lir::LirTypeKind::Pointer &&
+                    function.signature_param_type_refs[1].str() == "ptr",
+                "narrow and pointer ABI mirrors should remain structured but receiver-blocked pending extension and pointee authority");
     c4c::codegen::lir::verify_module(module);
   };
   expect_non_one_to_one_preserved("declared_non_one_to_one", true);
@@ -590,6 +614,43 @@ int defined_non_one_to_one(char narrow, int *pointer) { return 4; }
       "plain fixed scalar verification should reject a conflicting mirror width");
 }
 
+void test_aarch64_hfa_parameter_classification() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct HfaPair {
+  float first;
+  float second;
+};
+
+void declared_hfa(struct HfaPair input);
+void defined_hfa(struct HfaPair input) {}
+)c");
+  hir_module.target_profile =
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  const c4c::codegen::lir::LirModule module =
+      c4c::codegen::lir::lower(hir_module);
+
+  const auto expect_hfa = [&](std::string_view name, bool declaration) {
+    const auto& function = require_function(module, name, declaration);
+    expect_single_logical_param(function, c4c::TB_STRUCT, 0,
+                                "AArch64 HFA classification");
+    expect_true(function.signature_params.size() == 2 &&
+                    function.signature_param_type_refs.size() == 2,
+                "one logical HFA aggregate should expand into two structured ABI lanes without claiming receiver support");
+    for (std::size_t lane = 0; lane < 2; ++lane) {
+      expect_true(function.signature_params[lane].type.base == c4c::TB_FLOAT &&
+                      function.signature_params[lane].type.ptr_level == 0 &&
+                      !function.signature_params[lane].is_byval &&
+                      function.signature_param_type_refs[lane].kind() ==
+                          c4c::codegen::lir::LirTypeKind::Floating &&
+                      function.signature_param_type_refs[lane].str() == "float",
+                  "each expanded HFA lane should retain structured float ABI and mirror authority");
+    }
+  };
+  expect_hfa("declared_hfa", true);
+  expect_hfa("defined_hfa", false);
+  c4c::codegen::lir::verify_module(module);
+}
+
 }  // namespace
 
 int main() {
@@ -598,6 +659,7 @@ int main() {
   test_vrm_signature_type_refs_preserve_carrier_identity();
   test_vrm_call_boundaries_reject_non_expanded_carriers();
   test_definition_logical_parameter_publication();
+  test_aarch64_hfa_parameter_classification();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
@@ -639,6 +701,8 @@ int defined_void_params(void) {
   expect_type_ref_structured_equality_uses_name_id(lir_module);
 
   const auto& declared_pair = require_function(lir_module, "declared_pair", true);
+  expect_single_logical_param(declared_pair, c4c::TB_STRUCT, 0,
+                              "declared receiver-blocked direct aggregate classification");
   expect_struct_signature_refs(lir_module, declared_pair);
   expect_single_signature_param(declared_pair, "%p.input", c4c::TB_STRUCT, false,
                                 "declared aggregate signature metadata");
@@ -648,6 +712,8 @@ int defined_void_params(void) {
               "aggregate declaration should not carry a void-param-list flag");
 
   const auto& defined_pair = require_function(lir_module, "defined_pair", false);
+  expect_single_logical_param(defined_pair, c4c::TB_STRUCT, 0,
+                              "defined receiver-blocked direct aggregate classification");
   expect_struct_signature_refs(lir_module, defined_pair);
   expect_single_signature_param(defined_pair, "%p.input", c4c::TB_STRUCT, false,
                                 "defined aggregate signature metadata");
@@ -658,17 +724,23 @@ int defined_void_params(void) {
 
   const std::string byval_param_text = "ptr byval(%struct.Big) align 8";
   const auto& declared_big = require_function(lir_module, "declared_big", true);
+  expect_single_logical_param(declared_big, c4c::TB_STRUCT, 0,
+                              "declared receiver-blocked byval aggregate classification");
   expect_byval_signature_refs(declared_big, byval_param_text);
   expect_single_signature_param(declared_big, "%p.input", c4c::TB_STRUCT, true,
                                 "declared byval signature metadata");
 
   const auto& defined_big = require_function(lir_module, "defined_big", false);
+  expect_single_logical_param(defined_big, c4c::TB_STRUCT, 0,
+                              "defined receiver-blocked byval aggregate classification");
   expect_byval_signature_refs(defined_big, byval_param_text);
   expect_single_signature_param(defined_big, "%p.input", c4c::TB_STRUCT, true,
                                 "defined byval signature metadata");
 
   const auto& declared_variadic =
       require_function(lir_module, "declared_variadic", true);
+  expect_single_logical_param(declared_variadic, c4c::TB_INT, 0,
+                              "declared receiver-blocked variadic fixed-prefix classification");
   expect_true(declared_variadic.signature_is_variadic,
               "variadic declaration should carry a structured variadic flag");
   expect_true(!declared_variadic.signature_has_void_param_list,
@@ -680,6 +752,8 @@ int defined_void_params(void) {
 
   const auto& defined_variadic =
       require_function(lir_module, "defined_variadic", false);
+  expect_single_logical_param(defined_variadic, c4c::TB_INT, 0,
+                              "defined receiver-blocked variadic fixed-prefix classification");
   expect_true(defined_variadic.signature_is_variadic,
               "variadic definition should carry a structured variadic flag");
   expect_true(!defined_variadic.signature_has_void_param_list,
@@ -710,6 +784,8 @@ int defined_void_params(void) {
             "void-parameter definition should not expose a fixed signature parameter");
   expect_eq(std::to_string(defined_void_params.signature_param_type_refs.size()), "0",
             "void-parameter definition should not expose a fixed parameter mirror");
+
+  c4c::codegen::lir::verify_module(lir_module);
 
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
   expect_true(llvm_ir.find("declare %struct.Pair @declared_pair(%struct.Pair)") !=
