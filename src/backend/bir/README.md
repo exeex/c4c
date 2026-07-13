@@ -28,48 +28,61 @@ document is not yet converged.
 
 ## Normative stage and pass order
 
-Every always-on row has exactly one predecessor and successor. `S22` is an
+The letter identifies the major ownership phase; the number gives the strict
+execution order within that phase. The complete linear flow is therefore
+`A1 -> A2 -> B1 -> ... -> F3`. The canonical pass identities `P01` through
+`P07` remain visible inside phase B and are independent of this top-level
+stage notation.
+
+- Phase A — import and Raw publication.
+- Phase B — target-independent canonicalization.
+- Phase C — target facts and immutable preparation.
+- Phase D — pseudo formation and pre-allocation legalization.
+- Phase E — shared allocation and MIR-ready publication.
+- Phase F — MIR construction and emission.
+
+The normal success edge follows table order: `A1` has no predecessor, `F3` has
+no successor, and `E3 -> E1` is the one deliberate retry edge. `D4` is an
 always-on target-realizability gate whose legalization/expansion chain may be
 empty only when every input pseudo node is already directly realizable as one
 machine instruction. Separately reviewed target-specific optimizations may be
-entries in that same pre-allocation chain. `S26` has one deliberate retry edge
-to `S24`.
+entries in that same pre-allocation chain.
 
 | ID | Stage / pass | Consumes | Publishes or guarantees | Owner |
 |---|---|---|---|---|
-| `S00` | LIR import and draft construction | typed LIR | one private, frozen `ModuleDraft`; importer errors publish no BIR | [LIR-to-BIR](lir_to_bir/README.md), with [memory import](lir_to_bir/memory/README.md) reserved as a build-excluded migration placeholder |
-| `S01` | Draft/Raw verification and publication | `ModuleDraft` | verified, target-independent, unallocated `RawBir` | [BIR verifier](verify/README.md) over [Raw BIR core](core/README.md) |
-| `S02` | `P01 legalize` | `RawBir` | legal target-independent type/opcode forms | [legalize pass](passes/legalize/README.md) |
-| `S03` | `P02 scalar` | `P01` output | normalized scalar, comparison, and select forms | [scalar pass](passes/scalar/README.md) |
-| `S04` | `P03 cfg` | `P02` output | normalized terminators, blocks, and edges | [CFG pass](passes/cfg/README.md) |
-| `S05` | `P04 ssa` | `P03` output | canonical SSA definitions, uses, and phi form | [SSA pass](passes/ssa/README.md) |
-| `S06` | `P05 memory` | `P04` output | canonical memory, address, atomic, and effect-bearing forms | [memory pass](passes/memory/README.md) |
-| `S07` | `P06 aggregate` | `P05` output | normalized aggregate values, copies, and projections | [aggregate pass](passes/aggregate/README.md) |
-| `S08` | `P07 intrinsics` | `P06` output | canonical target-independent intrinsic forms | [intrinsics pass](passes/intrinsics/README.md) |
-| `S09` | Canonical verification and publication | stamped `P07` output | verified, target-independent, unallocated `CanonicalBir` | verifier `Canonical` profile; canonical orchestration is defined by the [pass framework](passes/README.md) and [pipeline contract](pipeline/README.md) |
-| `S10` | `TargetProfile` selection and validation | `CanonicalBir` plus requested triple/arch/OS/ABI/relocation/float-ABI capabilities | one exact validated target-context key; no BIR mutation | external target-profile authority; BIR consumes the selected profile without adding target facts to Raw or Canonical storage |
-| `S11` | BIR target-layout derivation | validated `TargetProfile` | verified profile-keyed pseudo categories, classes/groups, slots, aliases, reserved units, capacities, ABI eligibility, and concrete-mapping domain | [target layout](target_layout/README.md) |
-| `S12` | Preparation 1: ABI | `CanonicalBir` plus verified target layout | immutable typed parameter/result/byval/sret/classification requirements; no BIR mutation | [ABI plan](preparation/abi/README.md) |
-| `S13` | Preparation 2: calls | `S12` facts | immutable typed call input/output, preservation, clobber, and return requirements; no BIR mutation | [call plan](preparation/calls/README.md) |
-| `S14` | Preparation 3: variadic | `S13` facts | typed variadic entry, save-area, promotion, and traversal requirements | [variadic plan](preparation/variadic/README.md) |
-| `S15` | Preparation 4: address | `S14` facts | typed address-materialization and relocation requirements | [address plan](preparation/address/README.md) |
-| `S16` | Preparation 5: inline-asm target context | `S15` facts plus opaque canonical `InlineAsm` payloads | target constraint vocabulary, eligibility/context tables, and clobber vocabulary only; no constraint parsing or operand binding | [inline-asm preparation](preparation/inline_asm/README.md) |
-| `S17` | Preparation 6: runtime helpers | `S16` facts | complete verified cumulative preparation bundle, including helper interface requirements | [runtime-helper plan](preparation/runtime_helpers/README.md); preparation sequencing and atomic publication belong to [preparation](preparation/README.md) |
-| `S18` | Register-constraint parsing, typing, and binding | cumulative preparation facts, target-layout tables, raw strings such as `r`, `=r`, `VR`, and `VRM2`, and ordinary instruction operands/results | typed class/group requirements, ties, early-clobber exclusions, and abstract clobber units | [register constraints](regalloc/constraints/README.md), the sole BIR owner of this interpretation |
-| `S19` | Generic pseudo lowering | `CanonicalBir`, verified layout, cumulative preparation facts, and typed constraints | a new immutable revision containing only the admitted target-aware, machine-independent pseudo-node schema; helper-eligible semantics are rewritten to generic pseudo calls so ordinary and runtime-helper calls share one downstream call-lowering owner | [pseudo lowering](passes/pseudo_lowering/README.md) against the [pseudo instruction schema](pseudo/README.md) |
-| `S20` | Shared ABI-aware BIR call lowering | generic pseudo BIR plus verified ABI and CallPlan facts selected by `TargetProfile.backend_abi` | explicit pseudo argument moves, argument stores/outgoing-call slots, call nodes, result moves, hidden sret/byval/variadic transport, fixed abstract ABI-slot requirements, caller-saved clobbers, and callee-saved preservation requirements | one shared BIR pass for all supported targets; it uses only abstract pseudo slots and stack objects, cannot spell concrete registers/frame offsets/machine opcodes or perform general register assignment, and currently needs its own subordinate pass contract/placeholder during the ordered README review |
-| `S21` | Pseudo verification and publication | private `S20` candidate | verified Pseudo BIR; no allocation completeness is required yet | verifier `Pseudo` profile |
-| `S22` | Target-specific pseudo legalization/expansion and full reverification | verified Pseudo BIR | a directly realizable pseudo revision in which every semantic one-to-many target expansion, including required call-sequence legalization, has become explicit pseudo nodes, followed by full Pseudo reverification | [target pseudo-pass extension](passes/target/README.md); it cannot redo ABI classification or general call lowering; separately reviewed optimization entries remain optional |
-| `S23` | Out of SSA | reverified `S22` output | pseudo BIR with phi semantics lowered to directly realizable explicit edge/copy operations; it cannot reintroduce a one-to-many lowering requirement | [out-of-SSA pass](passes/out_of_ssa/README.md) |
-| `S24` | Allocation liveness and interference | exact post-out-of-SSA pseudo revision plus layout/constraint/call facts | revision-bound live ranges, interference, and pressure facts covering all call-lowering and legalization-introduced uses, definitions, fixed homes, and clobbers | shared allocation analysis consumed by the [BIR register allocator](regalloc/README.md) |
-| `S25` | Shared pseudo-physical register allocation | `S24` facts and finite target-layout pools | legal abstract `(category, class/group, slot)` homes or explicit eviction requests | the same shared BIR allocator for RV64, AArch64, and x86 |
-| `S26` | Explicit spill/reload insertion | allocation candidate, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted, directly realizable pseudo `Spill`/`Reload` nodes | [spill/reload](regalloc/spill_reload/README.md); candidate mutation invalidates allocation facts and retries at `S24` until stable or rejected |
-| `S27` | Allocated/MIR-ready verification and publication | stable allocation candidate with explicit spill state | `AllocatedBir`/`PreparedBir` capability and borrowed `MirReadyBirView` over the same immutable revision, with direct one-to-one target realizability rechecked for every node | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
-| `S28` | Strict one-to-one MIR construction | verified `MirReadyBirView` and the exact target mapping | target MIR with pseudo homes mapped to concrete registers and exactly one machine instruction record for each allocated pseudo instruction | external [MIR architecture](../mir/README.md); MIR cannot expand calls or instructions, synthesize argument/result moves, choose ABI locations, introduce allocatable temporaries, allocate registers, or pressure-spill |
-| `S29` | Machine verification | private target-MIR candidate | verified machine instruction graph; no ordinary BIR allocation repair | external MIR/target verifier |
-| `S30` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | target assembler and external [object boundary](../mir/object/README.md) |
+| `A1` | LIR import and draft construction | typed LIR | one private, frozen `ModuleDraft`; importer errors publish no BIR | [LIR-to-BIR](lir_to_bir/README.md), with [memory import](lir_to_bir/memory/README.md) reserved as a build-excluded migration placeholder |
+| `A2` | Draft/Raw verification and publication | `ModuleDraft` | verified, target-independent, unallocated `RawBir` | [BIR verifier](verify/README.md) over [Raw BIR core](core/README.md) |
+| `B1` | `P01 legalize` | `RawBir` | legal target-independent type/opcode forms | [legalize pass](passes/legalize/README.md) |
+| `B2` | `P02 scalar` | `P01` output | normalized scalar, comparison, and select forms | [scalar pass](passes/scalar/README.md) |
+| `B3` | `P03 cfg` | `P02` output | normalized terminators, blocks, and edges | [CFG pass](passes/cfg/README.md) |
+| `B4` | `P04 ssa` | `P03` output | canonical SSA definitions, uses, and phi form | [SSA pass](passes/ssa/README.md) |
+| `B5` | `P05 memory` | `P04` output | canonical memory, address, atomic, and effect-bearing forms | [memory pass](passes/memory/README.md) |
+| `B6` | `P06 aggregate` | `P05` output | normalized aggregate values, copies, and projections | [aggregate pass](passes/aggregate/README.md) |
+| `B7` | `P07 intrinsics` | `P06` output | canonical target-independent intrinsic forms | [intrinsics pass](passes/intrinsics/README.md) |
+| `B8` | Canonical verification and publication | stamped `P07` output | verified, target-independent, unallocated `CanonicalBir` | verifier `Canonical` profile; canonical orchestration is defined by the [pass framework](passes/README.md) and [pipeline contract](pipeline/README.md) |
+| `C1` | `TargetProfile` selection and validation | `CanonicalBir` plus requested triple/arch/OS/ABI/relocation/float-ABI capabilities | one exact validated target-context key; no BIR mutation | external target-profile authority; BIR consumes the selected profile without adding target facts to Raw or Canonical storage |
+| `C2` | BIR target-layout derivation | validated `TargetProfile` | verified profile-keyed pseudo categories, classes/groups, slots, aliases, reserved units, capacities, ABI eligibility, and concrete-mapping domain | [target layout](target_layout/README.md) |
+| `C3` | Preparation 1: ABI | `CanonicalBir` plus verified target layout | immutable typed parameter/result/byval/sret/classification requirements; no BIR mutation | [ABI plan](preparation/abi/README.md) |
+| `C4` | Preparation 2: calls | `C3` facts | immutable typed call input/output, preservation, clobber, and return requirements; no BIR mutation | [call plan](preparation/calls/README.md) |
+| `C5` | Preparation 3: variadic | `C4` facts | typed variadic entry, save-area, promotion, and traversal requirements | [variadic plan](preparation/variadic/README.md) |
+| `C6` | Preparation 4: address | `C5` facts | typed address-materialization and relocation requirements | [address plan](preparation/address/README.md) |
+| `C7` | Preparation 5: inline-asm target context | `C6` facts plus opaque canonical `InlineAsm` payloads | target constraint vocabulary, eligibility/context tables, and clobber vocabulary only; no constraint parsing or operand binding | [inline-asm preparation](preparation/inline_asm/README.md) |
+| `C8` | Preparation 6: runtime helpers | `C7` facts | complete verified cumulative preparation bundle, including helper interface requirements | [runtime-helper plan](preparation/runtime_helpers/README.md); preparation sequencing and atomic publication belong to [preparation](preparation/README.md) |
+| `C9` | Register-constraint parsing, typing, and binding | cumulative preparation facts, target-layout tables, raw strings such as `r`, `=r`, `VR`, and `VRM2`, and ordinary instruction operands/results | typed class/group requirements, ties, early-clobber exclusions, and abstract clobber units | [register constraints](regalloc/constraints/README.md), the sole BIR owner of this interpretation |
+| `D1` | Generic pseudo lowering | `CanonicalBir`, verified layout, cumulative preparation facts, and typed constraints | a new immutable revision containing only the admitted target-aware, machine-independent pseudo-node schema; helper-eligible semantics are rewritten to generic pseudo calls so ordinary and runtime-helper calls share one downstream call-lowering owner | [pseudo lowering](passes/pseudo_lowering/README.md) against the [pseudo instruction schema](pseudo/README.md) |
+| `D2` | Shared ABI-aware BIR call lowering | generic pseudo BIR plus verified ABI and CallPlan facts selected by `TargetProfile.backend_abi` | explicit pseudo argument moves, argument stores/outgoing-call slots, call nodes, result moves, hidden sret/byval/variadic transport, fixed abstract ABI-slot requirements, caller-saved clobbers, and callee-saved preservation requirements | one shared BIR pass for all supported targets; it uses only abstract pseudo slots and stack objects, cannot spell concrete registers/frame offsets/machine opcodes or perform general register assignment, and currently needs its own subordinate pass contract/placeholder during the ordered README review |
+| `D3` | Pseudo verification and publication | private `D2` candidate | verified Pseudo BIR; no allocation completeness is required yet | verifier `Pseudo` profile |
+| `D4` | Target-specific pseudo legalization/expansion and full reverification | verified Pseudo BIR | a directly realizable pseudo revision in which every semantic one-to-many target expansion, including required call-sequence legalization, has become explicit pseudo nodes, followed by full Pseudo reverification | [target pseudo-pass extension](passes/target/README.md); it cannot redo ABI classification or general call lowering; separately reviewed optimization entries remain optional |
+| `D5` | Out of SSA | reverified `D4` output | pseudo BIR with phi semantics lowered to directly realizable explicit edge/copy operations; it cannot reintroduce a one-to-many lowering requirement | [out-of-SSA pass](passes/out_of_ssa/README.md) |
+| `E1` | Allocation liveness and interference | exact post-out-of-SSA pseudo revision plus layout/constraint/call facts | revision-bound live ranges, interference, and pressure facts covering all call-lowering and legalization-introduced uses, definitions, fixed homes, and clobbers | shared allocation analysis consumed by the [BIR register allocator](regalloc/README.md) |
+| `E2` | Shared pseudo-physical register allocation | `E1` facts and finite target-layout pools | legal abstract `(category, class/group, slot)` homes or explicit eviction requests | the same shared BIR allocator for RV64, AArch64, and x86 |
+| `E3` | Explicit spill/reload insertion | allocation candidate, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted, directly realizable pseudo `Spill`/`Reload` nodes | [spill/reload](regalloc/spill_reload/README.md); candidate mutation invalidates allocation facts and retries at `E1` until stable or rejected |
+| `E4` | Allocated/MIR-ready verification and publication | stable allocation candidate with explicit spill state | `AllocatedBir`/`PreparedBir` capability and borrowed `MirReadyBirView` over the same immutable revision, with direct one-to-one target realizability rechecked for every node | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
+| `F1` | Strict one-to-one MIR construction | verified `MirReadyBirView` and the exact target mapping | target MIR with pseudo homes mapped to concrete registers and exactly one machine instruction record for each allocated pseudo instruction | external [MIR architecture](../mir/README.md); MIR cannot expand calls or instructions, synthesize argument/result moves, choose ABI locations, introduce allocatable temporaries, allocate registers, or pressure-spill |
+| `F2` | Machine verification | private target-MIR candidate | verified machine instruction graph; no ordinary BIR allocation repair | external MIR/target verifier |
+| `F3` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | target assembler and external [object boundary](../mir/object/README.md) |
 
-Every use, definition, fixed-home requirement, and clobber introduced by `S20`
+Every use, definition, fixed-home requirement, and clobber introduced by `D2`
 continues through target legalization, out-of-SSA, allocation liveness, the
 shared allocator, and spill/reload. Call lowering cannot bypass those stages or
 publish preassigned general-purpose homes.
@@ -83,20 +96,20 @@ preparation order is exactly `abi -> calls -> variadic -> address -> inline_asm
 ### Retry and failure behavior
 
 All publications are transactional: a failed verifier or planner publishes no
-capability and leaves its immutable input unchanged. `S26 -> S24` is not a new
+capability and leaves its immutable input unchanged. `E3 -> E1` is not a new
 semantic pipeline route. It is a private allocation-candidate loop because
 inserting `Spill` or `Reload` changes CFG-local uses and therefore invalidates
-liveness, interference, and assignments. The loop ends only when `S27` can
+liveness, interference, and assignments. The loop ends only when `E4` can
 prove complete homes and spill coverage, or when allocation fails closed.
 
 ## Verifier profiles
 
 | Profile | Boundary | Required contract |
 |---|---|---|
-| `Draft/Raw` | `S01` | The draft is fully typed and structurally valid before `RawBir` publication. Raw forms explicitly admitted for canonicalization are allowed. Register homes, target allocation facts, and spill/reload state are forbidden. |
-| `Canonical` | `S09` | Raw rules plus every `P01`-`P07` normal form. It remains target-independent and unallocated; ABI placement, register homes, and spill/reload state are forbidden. |
-| `Pseudo` | `S21`, and in full again after the complete `S22` chain | Only the closed pseudo-node schema is admitted, operand/result/terminator shapes are valid, and target/layout keys agree. The post-`S22` profile additionally proves that every non-`InlineAsm` pseudo node is directly realizable as exactly one target machine instruction. Allocation is not required yet, so unassigned allocatable values are valid at this boundary. Concrete registers, target opcodes, and frame offsets remain forbidden. |
-| `Allocated/MIR-ready` | `S27` | Every allocatable use/result has a legal pseudo-physical home or an explicit, verified spill/reload transition, and every non-`InlineAsm` node is still directly realizable as exactly one target machine instruction. Class/group, alias, reserved-unit, tie, clobber, dominance, capacity, and realizability rules are complete. Unresolved pressure, implicit spills, concrete target registers, and non-admitted nodes are rejected. |
+| `Draft/Raw` | `A2` | The draft is fully typed and structurally valid before `RawBir` publication. Raw forms explicitly admitted for canonicalization are allowed. Register homes, target allocation facts, and spill/reload state are forbidden. |
+| `Canonical` | `B8` | Raw rules plus every `P01`-`P07` normal form. It remains target-independent and unallocated; ABI placement, register homes, and spill/reload state are forbidden. |
+| `Pseudo` | `D3`, and in full again after the complete `D4` chain | Only the closed pseudo-node schema is admitted, operand/result/terminator shapes are valid, and target/layout keys agree. The post-`D4` profile additionally proves that every non-`InlineAsm` pseudo node is directly realizable as exactly one target machine instruction. Allocation is not required yet, so unassigned allocatable values are valid at this boundary. Concrete registers, target opcodes, and frame offsets remain forbidden. |
+| `Allocated/MIR-ready` | `E4` | Every allocatable use/result has a legal pseudo-physical home or an explicit, verified spill/reload transition, and every non-`InlineAsm` node is still directly realizable as exactly one target machine instruction. Class/group, alias, reserved-unit, tie, clobber, dominance, capacity, and realizability rules are complete. Unresolved pressure, implicit spills, concrete target registers, and non-admitted nodes are rejected. |
 
 `PreparedInput` may remain an internal cumulative input-checking capability for
 preparation, but it is not a replacement for any published BIR profile and is
@@ -113,14 +126,14 @@ fact preserved. Recalculation after invalidation is normal.
 
 | Analysis | Earliest normal point | Normal dependency / consumer |
 |---|---|---|
-| [CFG](analysis/cfg/README.md) | before `S04/P03` planning; recomputed from the resulting terminators afterward | CFG transforms, Raw/Canonical verification, dominance, SSA, and allocation |
-| [Dominance](analysis/dominance/README.md) | after the applicable CFG is available, normally for `S05/P04` | SSA construction/verification, provenance, and spill/reload placement |
-| [Memory effects](analysis/memory_effects/README.md) | from Raw BIR before memory/intrinsic normalization | `S06/P05`, `S08/P07`, calls, barriers, and later scheduling legality |
+| [CFG](analysis/cfg/README.md) | before `B3/P03` planning; recomputed from the resulting terminators afterward | CFG transforms, Raw/Canonical verification, dominance, SSA, and allocation |
+| [Dominance](analysis/dominance/README.md) | after the applicable CFG is available, normally for `B4/P04` | SSA construction/verification, provenance, and spill/reload placement |
+| [Memory effects](analysis/memory_effects/README.md) | from Raw BIR before memory/intrinsic normalization | `B5/P05`, `B7/P07`, calls, barriers, and later scheduling legality |
 | [Provenance](analysis/provenance/README.md) | once CFG/dominance and typed values exist | memory/address normalization and target address preparation |
 | [Call graph](analysis/call_graph/README.md) | from Raw or Canonical module call semantics | intrinsic/helper decisions, ABI/call preparation, recursion and visibility queries |
-| [Comparison/select](analysis/comparison/README.md) | before `S03/P02` when scalar relationships are needed | scalar normalization and later select/condition consumers |
+| [Comparison/select](analysis/comparison/README.md) | before `B2/P02` when scalar relationships are needed | scalar normalization and later select/condition consumers |
 | [Publication/value flow](analysis/publication/README.md) | once typed def-use and call semantics exist | SSA, calls, returns, ABI preparation, and diagnostics |
-| [Liveness](analysis/liveness/README.md) | semantic queries may begin after CFG/SSA; allocation liveness is freshly bound at `S24` | shared analysis machinery may expose revision-bound facts, while regalloc alone owns allocation policy and spill decisions |
+| [Liveness](analysis/liveness/README.md) | semantic queries may begin after CFG/SSA; allocation liveness is freshly bound at `E1` | shared analysis machinery may expose revision-bound facts, while regalloc alone owns allocation policy and spill decisions |
 
 The [analysis framework](analysis/README.md) owns revision keys, caching,
 preservation declarations, and stale-result rejection. Dense indices inside an
@@ -136,24 +149,24 @@ old input value and a distinct produced result; a constraint tie equates their
 assignments without merging their SSA identities.
 
 The assembly text remains opaque through BIR and MIR and reaches the assembler
-unchanged. `S16` supplies only the target vocabulary, context, and eligibility
-tables. `S18` alone parses/types/binds constraint descriptions such as `=r`,
+unchanged. `C7` supplies only the target vocabulary, context, and eligibility
+tables. `C9` alone parses/types/binds constraint descriptions such as `=r`,
 `r`, `VR`, and `VRM2` against ordinary operands/results. Explicit clobbers are
 compiler contracts and participate in allocation. Concrete names such as
 `a0`, `x3`, or `rax` written directly in opaque text are not inspected or
 reserved; unless the user also expresses them through supported constraints or
 clobbers, collisions are the user's responsibility.
 
-At `S28`, one allocated `InlineAsm` pseudo node becomes exactly one opaque MIR
+At `F1`, one allocated `InlineAsm` pseudo node becomes exactly one opaque MIR
 inline-asm record with its concrete operand mappings. MIR does not parse or
 expand its text and does not introduce hidden temporaries. The assembler first
-parses that payload at `S30`; this opaque assembler boundary does not weaken
+parses that payload at `F3`; this opaque assembler boundary does not weaken
 the strict one-node-to-one-record BIR-to-MIR allocation contract.
 
 ## Complete documentation review order
 
 The stage table and analysis table above are the first part of the review
-index. After reviewing them in numeric/dependency order, review the following
+index. After reviewing them in phase/dependency order, review the following
 cross-cutting and audit contracts in this exact order. Together, the links in
 this README name every current `src/backend/bir/**/*.md` file exactly once;
 this README itself is the overview entry.
@@ -193,10 +206,10 @@ stronger status.
 7. Pseudo and Allocated stages are new immutable revisions/capabilities, not
    target facts written backward into Canonical storage.
 8. Generic pseudo lowering routes ordinary and runtime-helper calls through the
-   shared `S20` ABI-aware call-lowering owner. That pass selects verified ABI
+   shared `D2` ABI-aware call-lowering owner. That pass selects verified ABI
    rules from `TargetProfile.backend_abi`, represents locations abstractly, and
    completes call transport before target legalization or allocation.
-9. All target-specific one-to-many expansion occurs in the `S22`
+9. All target-specific one-to-many expansion occurs in the `D4`
    pseudo-legalization chain before out-of-SSA, liveness, allocation, and
    spill/reload, so every introduced use, definition, value, and constraint is
    ordinary BIR state covered by those stages. It may legalize call-sequence
@@ -208,6 +221,6 @@ stronger status.
    spill/reload.
 11. Optional target-specific optimization is an explicit, reviewed,
     invalidation-declaring, fully reverified entry in the same pre-allocation
-    `S22` chain; it is never a hidden allocation authority.
+    `D4` chain; it is never a hidden allocation authority.
 12. Every authoritative stage has one verifier/publication gate, and failure
     publishes nothing.
