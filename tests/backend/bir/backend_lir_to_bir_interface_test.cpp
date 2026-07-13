@@ -1141,6 +1141,101 @@ void test_verifier_rejects_malformed_raw_type() {
   expect(malformed_vector_facts_reject("vector_spelling_conflict",
                                        std::move(vector_spelling_conflict)),
          "Raw publication verifier must reject vector spelling conflicts");
+
+  bir::Type vector_facts_on_integer_pointer{bir::TypeKind::Pointer};
+  vector_facts_on_integer_pointer.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Integer, 32, 1, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16}};
+  expect(malformed_pointer_facts_reject(
+             "vector_facts_on_integer_pointer",
+             std::move(vector_facts_on_integer_pointer)),
+         "Raw publication verifier must reject nested vector facts on non-vector pointees");
+
+  bir::Type missing_vector_pointer_facts{bir::TypeKind::Pointer};
+  missing_vector_pointer_facts.pointer_facts =
+      bir::PointerTypeFacts{bir::TypeKind::Vector, 0, 2};
+  expect(malformed_pointer_facts_reject(
+             "missing_vector_pointer_facts",
+             std::move(missing_vector_pointer_facts)),
+         "Raw publication verifier must require typed vector pointee facts");
+
+  bir::Type invalid_vector_pointer_facts{bir::TypeKind::Pointer};
+  invalid_vector_pointer_facts.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Vector, 0, 2, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Floating, 24, 4, 16}};
+  expect(malformed_pointer_facts_reject(
+             "invalid_vector_pointer_facts",
+             std::move(invalid_vector_pointer_facts)),
+         "Raw publication verifier must reject malformed vector pointee components");
+
+  bir::Type nonpositive_vector_pointer_shape{bir::TypeKind::Pointer};
+  nonpositive_vector_pointer_shape.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Vector, 0, 1, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 0, -16}};
+  expect(malformed_pointer_facts_reject(
+             "nonpositive_vector_pointer_shape",
+             std::move(nonpositive_vector_pointer_shape)),
+         "Raw publication verifier must reject nonpositive nested vector lane and storage facts");
+
+  bir::Type incompatible_vector_pointer_facts{bir::TypeKind::Pointer};
+  incompatible_vector_pointer_facts.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Vector, 0, 2,
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 32},
+      bir::PointerArrayTypeFacts{{3}, 1},
+      bir::VectorTypeFacts{bir::TypeKind::Floating, 32, 4, 16}};
+  expect(malformed_pointer_facts_reject(
+             "incompatible_vector_pointer_facts",
+             std::move(incompatible_vector_pointer_facts)),
+         "Raw publication verifier must reject complex and pointer-array facts beside vector pointee facts");
+
+  bir::Type vector_facts_on_integer_array{bir::TypeKind::Array, 0,
+                                          "[2 x i32]"};
+  vector_facts_on_integer_array.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::Integer, 32, 0, {2}, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16}};
+  expect(malformed_array_facts_reject(
+             "vector_facts_on_integer_array",
+             std::move(vector_facts_on_integer_array)),
+         "Raw publication verifier must reject nested vector facts on non-vector array elements");
+
+  bir::Type missing_vector_array_facts{bir::TypeKind::Array, 0,
+                                       "[2 x <4 x i32>]"};
+  missing_vector_array_facts.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Vector, 0, 0, {2}};
+  expect(malformed_array_facts_reject("missing_vector_array_facts",
+                                      std::move(missing_vector_array_facts)),
+         "Raw publication verifier must require typed vector element facts");
+
+  bir::Type invalid_vector_array_shape{bir::TypeKind::Array, 0,
+                                       "[2 x <4 x i32>]"};
+  invalid_vector_array_shape.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::Vector, 0, 0, {2}, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 0}};
+  expect(malformed_array_facts_reject("invalid_vector_array_shape",
+                                      std::move(invalid_vector_array_shape)),
+         "Raw publication verifier must reject nonpositive nested vector array storage facts");
+
+  bir::Type incompatible_vector_array_facts{bir::TypeKind::Array, 0,
+                                            "[2 x <4 x i32>]"};
+  incompatible_vector_array_facts.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::Vector, 0, 0, {2},
+      bir::ComplexTypeFacts{bir::TypeKind::Integer, 32},
+      bir::PointerArrayTypeFacts{{3}, 1},
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16}};
+  expect(malformed_array_facts_reject(
+             "incompatible_vector_array_facts",
+             std::move(incompatible_vector_array_facts)),
+         "Raw publication verifier must reject complex and pointer-array facts beside vector element facts");
+
+  bir::Type vector_array_spelling_conflict{bir::TypeKind::Array, 0,
+                                           "[2 x <8 x i32>]"};
+  vector_array_spelling_conflict.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::Vector, 0, 0, {2}, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16}};
+  expect(malformed_array_facts_reject(
+             "vector_array_spelling_conflict",
+             std::move(vector_array_spelling_conflict)),
+         "Raw publication verifier must reject visible vector array spelling conflicts");
 }
 
 void test_module_name_and_struct_declaration_receipt() {
@@ -3907,6 +4002,55 @@ void test_direct_vector_global_receipt_and_rejections() {
     declaration.align_bytes = 16;
     declaration.is_extern_decl = true;
     module.globals.push_back(std::move(declaration));
+
+    lir::LirGlobal pointer_definition;
+    pointer_definition.name = "deep_integer_vector_pointer";
+    pointer_definition.type = scalar_type(c4c::TB_INT);
+    pointer_definition.type.is_vector = true;
+    pointer_definition.type.vector_lanes = 8;
+    pointer_definition.type.vector_bytes = 32;
+    pointer_definition.type.ptr_level = 2;
+    pointer_definition.linkage_vis = "internal hidden ";
+    pointer_definition.qualifier = "global ";
+    pointer_definition.llvm_type = "ptr";
+    pointer_definition.init_text = "ptr null";
+    pointer_definition.align_bytes = 8;
+    pointer_definition.is_internal = true;
+    module.globals.push_back(std::move(pointer_definition));
+
+    lir::LirGlobal vector_array;
+    vector_array.name = "floating_vector_array";
+    vector_array.type = scalar_type(c4c::TB_FLOAT);
+    vector_array.type.is_vector = true;
+    vector_array.type.vector_lanes = 4;
+    vector_array.type.vector_bytes = 16;
+    vector_array.type.array_rank = 1;
+    vector_array.type.array_size = 3;
+    vector_array.type.array_dims[0] = 3;
+    vector_array.linkage_vis = "external protected ";
+    vector_array.qualifier = "global ";
+    vector_array.llvm_type = "[3 x <4 x float>]";
+    vector_array.align_bytes = 16;
+    vector_array.is_extern_decl = true;
+    module.globals.push_back(std::move(vector_array));
+
+    lir::LirGlobal vector_pointer_array;
+    vector_pointer_array.name = "weak_vector_pointer_array";
+    vector_pointer_array.type = scalar_type(c4c::TB_USHORT);
+    vector_pointer_array.type.is_vector = true;
+    vector_pointer_array.type.vector_lanes = 2;
+    vector_pointer_array.type.vector_bytes = 4;
+    vector_pointer_array.type.ptr_level = 3;
+    vector_pointer_array.type.array_rank = 2;
+    vector_pointer_array.type.array_size = 2;
+    vector_pointer_array.type.array_dims[0] = 2;
+    vector_pointer_array.type.array_dims[1] = 0;
+    vector_pointer_array.linkage_vis = "extern_weak hidden ";
+    vector_pointer_array.qualifier = "global ";
+    vector_pointer_array.llvm_type = "[2 x [0 x ptr]]";
+    vector_pointer_array.align_bytes = 32;
+    vector_pointer_array.is_extern_decl = true;
+    module.globals.push_back(std::move(vector_pointer_array));
     return module;
   };
 
@@ -3918,10 +4062,14 @@ void test_direct_vector_global_receipt_and_rejections() {
          "typed direct vector globals must remain Foundation-verifier reachable");
   const auto view = raw.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+  expect(ids.size() == 5 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3 && ids[4].slot == 4,
          "direct vector globals must preserve source order and stable identity");
   const auto definition = view.global_object(ids[0]).value();
   const auto declaration = view.global_object(ids[1]).value();
+  const auto pointer_definition = view.global_object(ids[2]).value();
+  const auto vector_array = view.global_object(ids[3]).value();
+  const auto vector_pointer_array = view.global_object(ids[4]).value();
   expect(definition.object_type.kind == bir::TypeKind::Vector &&
              definition.object_type.spelling == "<4 x i16>" &&
              definition.object_type.vector_facts ==
@@ -3954,13 +4102,55 @@ void test_direct_vector_global_receipt_and_rejections() {
              declaration.alignment == 16 &&
              declaration.is_extern_declaration && !declaration.initializer,
          "floating vector externs must preserve typed element, lanes, storage, linkage, visibility, and alignment");
+  expect(pointer_definition.object_type.kind == bir::TypeKind::Pointer &&
+             pointer_definition.object_type.spelling == "ptr" &&
+             pointer_definition.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Vector, 0, 2, std::nullopt, std::nullopt,
+                     bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 8,
+                                          32}}} &&
+             pointer_definition.is_internal &&
+             pointer_definition.visibility == bir::SymbolVisibility::Hidden &&
+             pointer_definition.alignment == 8 &&
+             !pointer_definition.is_extern_declaration &&
+             pointer_definition.initializer &&
+             pointer_definition.initializer->opaque_payload == "ptr null",
+         "initialized deep pointers to vectors must preserve nested typed vector authority and object facts");
+  expect(vector_array.object_type.kind == bir::TypeKind::Array &&
+             vector_array.object_type.spelling == "[3 x <4 x float>]" &&
+             vector_array.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Vector, 0, 0, {3}, std::nullopt,
+                     std::nullopt,
+                     bir::VectorTypeFacts{bir::TypeKind::Floating, 32, 4,
+                                          16}}} &&
+             vector_array.is_extern_declaration &&
+             vector_array.visibility == bir::SymbolVisibility::Protected &&
+             vector_array.alignment == 16 && !vector_array.initializer,
+         "fixed arrays of visible vectors must preserve nested component, lane, storage, dimension, and object facts");
+  expect(vector_pointer_array.object_type.kind == bir::TypeKind::Array &&
+             vector_pointer_array.object_type.spelling ==
+                 "[2 x [0 x ptr]]" &&
+             vector_pointer_array.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Vector, 0, 3, {2, 0}, std::nullopt,
+                     std::nullopt,
+                     bir::VectorTypeFacts{bir::TypeKind::Integer, 16, 2,
+                                          4}}} &&
+             vector_pointer_array.is_extern_declaration &&
+             vector_pointer_array.is_weak &&
+             vector_pointer_array.visibility ==
+                 bir::SymbolVisibility::Hidden &&
+             vector_pointer_array.alignment == 32 &&
+             !vector_pointer_array.initializer,
+         "multidimensional weak arrays of deep vector pointers must preserve opaque spelling and all nested typed facts");
 
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
   expect(canonical.has_value(),
          "producer-shaped direct vector globals must publish Canonical BIR");
   const auto canonical_view = canonical.value().view();
   const auto canonical_ids = canonical_view.global_objects();
-  expect(canonical_ids.size() == 2 &&
+  expect(canonical_ids.size() == 5 &&
              canonical_view.global_object(canonical_ids[0])
                      .value()
                      .object_type.vector_facts ==
@@ -3975,8 +4165,17 @@ void test_direct_vector_global_receipt_and_rejections() {
                  declaration.object_type.vector_facts &&
              canonical_view.global_object(canonical_ids[1])
                  .value()
-                 .is_extern_declaration,
-         "Canonical BIR must retain ordered direct vector authority and object facts");
+                 .is_extern_declaration &&
+             canonical_view.global_object(canonical_ids[2])
+                     .value()
+                     .object_type == pointer_definition.object_type &&
+             canonical_view.global_object(canonical_ids[3])
+                     .value()
+                     .object_type == vector_array.object_type &&
+             canonical_view.global_object(canonical_ids[4])
+                     .value()
+                     .object_type == vector_pointer_array.object_type,
+         "Canonical BIR must retain ordered direct and nested vector authority and object facts");
 
   const auto rejected = [&](auto mutate, const std::string& message) {
     auto candidate = valid_module();
@@ -4017,7 +4216,7 @@ void test_direct_vector_global_receipt_and_rejections() {
       },
       "residual vector lanes and storage must not fall through as scalar authority");
   rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = 1; },
-           "pointer-to-vector shapes remain outside direct vector globals");
+           "pointer-to-vector opaque spelling must exactly corroborate its structured shape");
   rejected(
       [](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
       "vector reference shapes remain unsupported");
@@ -4027,12 +4226,75 @@ void test_direct_vector_global_receipt_and_rejections() {
         m.globals[0].type.array_size = 2;
         m.globals[0].type.array_dims[0] = 2;
       },
-      "array-of-vector shapes remain outside direct vector globals");
+      "array-of-vector visible spelling must exactly corroborate its structured shape");
   rejected([](lir::LirModule& m) { m.globals[0].type.is_fn_ptr = true; },
            "function-pointer vector shapes remain unsupported");
   rejected(
       [](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
       "aggregate vector bases remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[2].type.base = c4c::TB_ENUM; },
+      "enum vector pointee bases must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].type.base = c4c::TB_COMPLEX_FLOAT;
+      },
+      "complex vector pointee bases must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].type.base = c4c::TB_VRM_REGISTER;
+        m.globals[2].type.vrm_width = 4;
+      },
+      "VRM vector pointee bases must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[2].type.base = c4c::TB_VA_LIST; },
+      "va-list vector pointee bases must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].type.is_ptr_to_array = true;
+        m.globals[2].type.array_rank = 1;
+        m.globals[2].type.array_size = 3;
+        m.globals[2].type.array_dims[0] = 3;
+        m.globals[2].type.inner_rank = 1;
+      },
+      "pointer-to-array split vector shapes must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[2].type.inner_rank = 1; },
+      "residual inner rank must remain unsupported for vector pointers");
+  rejected(
+      [](lir::LirModule& m) { m.globals[2].type.is_fn_ptr = true; },
+      "function-pointer vector shapes must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[2].type.is_rvalue_ref = true; },
+      "vector reference shapes must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].llvm_type_ref = lir::LirTypeRef("ptr");
+      },
+      "producer-valid vector pointers must not carry an LLVM type mirror");
+  rejected(
+      [](lir::LirModule& m) { m.globals[3].type.array_dims[0] = -1; },
+      "negative vector array dimensions must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[3].type.array_dims[0] = 4; },
+      "vector array front dimensions must match array_size");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].llvm_type_ref =
+            lir::LirTypeRef("[3 x <4 x float>]");
+      },
+      "producer-valid vector arrays must not carry an LLVM type mirror");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].type.is_ptr_to_array = true;
+        m.globals[3].type.inner_rank = 1;
+      },
+      "split pointer-to-array vector arrays must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[4].llvm_type = "[2 x [0 x <2 x i16>]]";
+      },
+      "arrays of vector pointers must retain opaque ptr spelling");
 }
 
 void test_named_aggregate_global_receipt_and_rejections() {

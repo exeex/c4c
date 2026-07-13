@@ -54,6 +54,13 @@ struct PointerArrayTypeFacts {
   int inner_rank = 0;
 };
 
+struct VectorTypeFacts {
+  TypeKind element_kind = TypeKind::Void;
+  std::uint32_t element_bit_width = 0;
+  std::int64_t lane_count = 0;
+  std::int64_t storage_bytes = 0;
+};
+
 struct ArrayTypeFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
@@ -61,6 +68,7 @@ struct ArrayTypeFacts {
   std::vector<std::int64_t> dimensions;
   std::optional<ComplexTypeFacts> element_complex_facts;
   std::optional<PointerArrayTypeFacts> element_pointee_array_facts;
+  std::optional<VectorTypeFacts> element_vector_facts;
 };
 
 struct PointerTypeFacts {
@@ -69,13 +77,7 @@ struct PointerTypeFacts {
   int pointer_depth = 0;
   std::optional<ComplexTypeFacts> pointee_complex_facts;
   std::optional<PointerArrayTypeFacts> pointee_array_facts;
-};
-
-struct VectorTypeFacts {
-  TypeKind element_kind = TypeKind::Void;
-  std::uint32_t element_bit_width = 0;
-  std::int64_t lane_count = 0;
-  std::int64_t storage_bytes = 0;
+  std::optional<VectorTypeFacts> pointee_vector_facts;
 };
 
 inline bool operator==(const ComplexTypeFacts& lhs,
@@ -119,7 +121,8 @@ inline bool operator==(const PointerTypeFacts& lhs,
          lhs.pointee_bit_width == rhs.pointee_bit_width &&
          lhs.pointer_depth == rhs.pointer_depth &&
          lhs.pointee_complex_facts == rhs.pointee_complex_facts &&
-         lhs.pointee_array_facts == rhs.pointee_array_facts;
+         lhs.pointee_array_facts == rhs.pointee_array_facts &&
+         lhs.pointee_vector_facts == rhs.pointee_vector_facts;
 }
 
 inline bool operator!=(const PointerTypeFacts& lhs,
@@ -135,7 +138,8 @@ inline bool operator==(const ArrayTypeFacts& lhs,
          lhs.dimensions == rhs.dimensions &&
          lhs.element_complex_facts == rhs.element_complex_facts &&
          lhs.element_pointee_array_facts ==
-             rhs.element_pointee_array_facts;
+             rhs.element_pointee_array_facts &&
+         lhs.element_vector_facts == rhs.element_vector_facts;
 }
 
 inline bool operator!=(const ArrayTypeFacts& lhs,
@@ -273,6 +277,14 @@ inline bool is_well_formed(const Type& type) {
     if (!component) return std::nullopt;
     return "{ " + *component + ", " + *component + " }";
   };
+  const auto vector_spelling = [&](const VectorTypeFacts& facts)
+      -> std::optional<std::string> {
+    if (facts.lane_count <= 0 || facts.storage_bytes <= 0) return std::nullopt;
+    const auto element = component_spelling(
+        ComplexTypeFacts{facts.element_kind, facts.element_bit_width});
+    if (!element) return std::nullopt;
+    return "<" + std::to_string(facts.lane_count) + " x " + *element + ">";
+  };
   switch (type.kind) {
     case TypeKind::Void:
       return type.bit_width == 0 && no_name &&
@@ -306,6 +318,15 @@ inline bool is_well_formed(const Type& type) {
         return false;
       if (!type.pointer_facts) return true;
       if (type.pointer_facts->pointer_depth <= 0) return false;
+      if (type.pointer_facts->pointee_kind == TypeKind::Vector) {
+        return type.pointer_facts->pointee_bit_width == 0 &&
+               type.pointer_facts->pointee_vector_facts &&
+               !type.pointer_facts->pointee_complex_facts &&
+               !type.pointer_facts->pointee_array_facts &&
+               vector_spelling(*type.pointer_facts->pointee_vector_facts)
+                   .has_value();
+      }
+      if (type.pointer_facts->pointee_vector_facts) return false;
       if (type.pointer_facts->pointee_array_facts) {
         const auto& array = *type.pointer_facts->pointee_array_facts;
         if (array.pointee_dimensions.empty() ||
@@ -360,29 +381,8 @@ inline bool is_well_formed(const Type& type) {
           type.spelling.front() != '<' || type.spelling.back() != '>')
         return false;
       if (!type.vector_facts) return true;
-      if (type.vector_facts->lane_count <= 0 ||
-          type.vector_facts->storage_bytes <= 0)
-        return false;
-      std::string element_spelling;
-      if (type.vector_facts->element_kind == TypeKind::Integer) {
-        if (type.vector_facts->element_bit_width == 0) return false;
-        element_spelling =
-            "i" + std::to_string(type.vector_facts->element_bit_width);
-      } else if (type.vector_facts->element_kind == TypeKind::Floating) {
-        switch (type.vector_facts->element_bit_width) {
-          case 16: element_spelling = "half"; break;
-          case 32: element_spelling = "float"; break;
-          case 64: element_spelling = "double"; break;
-          case 80: element_spelling = "x86_fp80"; break;
-          case 128: element_spelling = "fp128"; break;
-          default: return false;
-        }
-      } else {
-        return false;
-      }
-      return type.spelling ==
-             "<" + std::to_string(type.vector_facts->lane_count) + " x " +
-                 element_spelling + ">";
+      const auto expected = vector_spelling(*type.vector_facts);
+      return expected && type.spelling == *expected;
     }
     case TypeKind::Array: {
       if (type.bit_width != 0 || !no_name || type.spelling.size() < 2 ||
@@ -392,6 +392,26 @@ inline bool is_well_formed(const Type& type) {
       if (type.array_facts->dimensions.empty()) return false;
       for (const auto dimension : type.array_facts->dimensions)
         if (dimension < 0) return false;
+      if (type.array_facts->element_kind == TypeKind::Vector) {
+        if (type.array_facts->element_bit_width != 0 ||
+            !type.array_facts->element_vector_facts ||
+            type.array_facts->element_complex_facts ||
+            type.array_facts->element_pointee_array_facts)
+          return false;
+        const auto expected =
+            vector_spelling(*type.array_facts->element_vector_facts);
+        if (!expected) return false;
+        std::string spelling = type.array_facts->element_pointer_depth > 0
+                                   ? "ptr"
+                                   : *expected;
+        if (type.array_facts->element_pointer_depth < 0) return false;
+        for (auto dimension = type.array_facts->dimensions.rbegin();
+             dimension != type.array_facts->dimensions.rend(); ++dimension)
+          spelling = "[" + std::to_string(*dimension) + " x " + spelling +
+                     "]";
+        return type.spelling == spelling;
+      }
+      if (type.array_facts->element_vector_facts) return false;
       if (type.array_facts->element_pointee_array_facts) {
         const auto& pointee =
             *type.array_facts->element_pointee_array_facts;

@@ -8,11 +8,11 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid mixed outer-array / pointer-to-inner-
-  array globals from structured `TypeSpec` authority.
-- Exact pointer depth, scalar/complex/VRM base facts, rendered outer dimensions,
-  hidden pointee dimensions, `inner_rank`, source order, linkage, and initializer
-  facts survive Foundation, Raw BIR, and Canonical BIR.
+- Plan Step 3 now admits producer-valid pointers to vectors and ordinary fixed
+  arrays of vectors or pointers-to-vectors from structured `TypeSpec` authority.
+- Exact scalar component kind/width, vector lanes/storage bytes, pointer depth,
+  ordered dimensions, opaque/visible spelling, linkage, visibility, alignment,
+  and initializer facts survive Foundation, Raw BIR, and Canonical BIR.
 
 ## Suggested Next
 
@@ -21,12 +21,12 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Mixed receipt requires `0 < inner_rank < array_rank`; only the leading outer
-  dimensions appear in array storage spelling around opaque `ptr`, while the
-  trailing pointee dimensions remain structured facts. Pure pointer-to-array
-  and ordinary pointer-element array routes remain separate.
-- Negative/unsized or computed bounds, mirrors, aggregate/vector/va-list/
-  function-pointer pointees, references, and spelling conflicts remain closed.
+- Vector pointee/element facts are nested typed authority; visible vector
+  spelling is used only for direct elements, while positive pointer depth uses
+  opaque `ptr` without parsing.
+- Split pointer-to-array shapes, references, function pointers, mirrors,
+  negative/unsized/computed bounds, and enum/complex/VRM/aggregate/va-list
+  vector bases remain closed.
 
 ## Proof
 
