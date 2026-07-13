@@ -74,9 +74,13 @@ target meaning does not. Allocation liveness and interference are exact-revision
 `E1` BIR analysis products; chosen abstract homes are `E2` BIR allocation
 products; and abstract spill-object identities plus explicit `Spill`/`Reload`
 nodes are owned by the private `E3` Pseudo BIR candidate. None may be written
-back into Raw/Canonical core storage. Concrete registers, frame locations,
-target operations, and encodings remain MIR/backend facts after verified `E4`
-publication.
+back into Raw/Canonical core storage. E2 owns abstract homes, while C2 supplies
+the verified abstract-to-concrete mapping domain. The private `E4`
+`FrameRealizationTransaction` fixes exact frame placements and registered
+mapping-rule facts in its verified exact-revision plan; it does not choose
+concrete register spellings. F1 chooses and applies a concrete spelling only
+within the registered rule, applies the fixed frame placement one-to-one, and
+cannot plan or repair the frame, expand records, allocate, or spill.
 
 ### 1.3 Dependency boundary
 
@@ -1402,7 +1406,7 @@ belong in core.
 |---|---|---|---|
 | `src/backend/legacy/bir.hpp: TypeKind`, `Value` | scalar types; immediate/named values; exact F128 payload | interned integer/float/pointer/vector types; typed `ConstantId`; `ValueId` definitions | VRM register grouping and spelling-based identity are rejected from core |
 | `bir.hpp: Module`, `Function`, `Block`, `Terminator` | direct ownership and CFG body | stable module/function/block/inst/value stores; explicit order; terminator-only successors | raw vectors, label/name identity, instruction-index authority |
-| `bir.hpp: Global`, `StringConstant`, `GlobalInitializerRelocationSlot` | globals, bytes, pointer initializers, TLS/const/layout facts | `GlobalData`, byte/zero/relocation/label-difference initializers, symbol IDs, exact object layout | address planning belongs to C5 and target pseudo legalization to D4; F1 performs only concrete one-to-one mapping |
+| `bir.hpp: Global`, `StringConstant`, `GlobalInitializerRelocationSlot` | globals, bytes, pointer initializers, TLS/const/layout facts | `GlobalData`, byte/zero/relocation/label-difference initializers, symbol IDs, exact object layout | address planning belongs to C6 and target pseudo legalization to D4; E4 fixes the exact frame/mapping plan and F1 performs only concrete one-to-one application |
 | `bir.hpp: StructuredTypeSpellingContext`; `src/backend/bir/lir_to_bir/lowering.hpp: AggregateTypeLayout` | record spelling and importer-resolved layout | interned array/record/vector types with field offsets/size/alignment | LIR type strings and parity/fallback maps stay importer-private |
 | `bir.hpp: Param`, `LocalSlot`, `Function` | parameters, semantic locals, signature, declaration flag | parameter `ValueId`s, `LocalId`, `FunctionType`, semantic attributes | ABI classes, incoming stack offsets, sret/byval placement, frame slots |
 | `bir.hpp: BinaryInst`, `SelectInst`, `CastInst`, `PhiInst` | scalar ops, comparisons, select, casts, joins | typed semantic opcode/payload, explicit operands/results, phi `(EdgeKey,Operand)` | same-block producer/route snapshots become analyses or disappear |
