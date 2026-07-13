@@ -328,6 +328,33 @@ and F consumes E. Each child inspects its upstream producer and downstream
 consumer, but edits only owners declared within its phase unless a coordinated
 boundary packet explicitly names both phase owners and the exact shared seam.
 
+## Completed Runbook Handoff
+
+The initial umbrella runbook completed its queue-generation purpose and was
+retired after the supervisor's Step-4 audit accepted this strict docs-only
+sequence:
+
+1. Child A: `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
+2. Child B: `ideas/open/736_bir_phase_b_canonical_document_convergence.md`
+3. Child C: `ideas/open/737_bir_phase_c_preparation_document_convergence.md`
+4. Child D: `ideas/open/738_bir_phase_d_pseudo_document_convergence.md`
+5. Child E: `ideas/open/739_bir_phase_e_allocation_document_convergence.md`
+6. Child F: `ideas/open/740_bir_phase_f_mir_boundary_document_convergence.md`
+
+Acceptance is strictly `A -> B -> C -> D -> E -> F`; Child A is the only next
+activation. Idea 734 remains a deferred inactive implementation consumer after
+Child-A acceptance, and draft idea 733 remains parked with no implementation
+authority. The C1 external Markdown boundary question belongs to Child C; the
+F2 verifier and F3 assembler/object/link Markdown-authority or placeholder
+questions belong to Child F. They are not Child-A scope.
+
+This idea is **not closed**. It remains open while all six children execute in
+order and until the final umbrella-level cross-phase Markdown inventory,
+adjacency, implementation-truth, and failure/invalidation audit is accepted.
+The accepted queue-generation checkpoints were `8ba7a8f3`, `b4ab5b79`,
+`9c28f521`, and `aae105de`; they authorize documentation lifecycle handoff
+only, not implementation.
+
 ## Acceptance Criteria
 
 - Exactly six ordered child source ideas exist under `ideas/open/`, one for

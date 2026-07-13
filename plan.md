@@ -1,203 +1,364 @@
-# BIR Documentation Ownership And Seam Convergence Runbook
+# BIR Phase A Import And Raw Documentation Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/732_bir_stage_document_convergence_umbrella.md
-Activated from: the user-restored docs-only umbrella after ideas 733 was moved
-to draft and idea 734 was recorded as a deferred phase-A implementation
-consumer
+Source Idea: ideas/open/735_bir_phase_a_import_raw_document_convergence.md
+Activated from: completed queue handoff in open umbrella idea 732
 
 ## Purpose
 
-Settle the Markdown ownership, ordering, and producer/consumer seams for the
-complete BIR route before any additional new-BIR implementation is authorized.
+Converge the phase-A Markdown contracts from the complete current typed LIR
+surface through private `ModuleDraft` construction and full Draft/Raw
+verification to one move-only, verified, target-independent `RawBir` that the
+accepted phase-B contract can consume exactly.
 
 ## Goal
 
-Produce an exact ordered documentation-review queue for phases A through F,
-with phase A explicitly proving how the unchanged complete LIR surface maps to
-new Raw-BIR containers and the later idea-734 importer boundary.
+Edit only the three phase-A-owned documents in strict `A1 -> A2` order and
+prove the exhaustive 38-instruction, 6-terminator, 18-metadata-family intake,
+receiving, verification, failure, and downstream handoff contract.
 
 ## Core Rule
 
-This runbook is documentation classification and lifecycle planning only. It
-may inventory Markdown, compare contracts, and create ordered documentation
-child ideas. It must not edit C/C++ implementation, tests, build files, LIR,
-runtime behavior, unsupported expectations, or any downstream implementation
-proposal.
+This is a documentation-only runbook. Current LIR is complete, correct, and
+immutable for this route. Receiving gaps belong to new-BIR documentation and
+the deferred implementation consumer, not to LIR. No valid current source row
+is complete merely because an unsupported diagnostic rejects it.
 
-Existing LIR is authoritative and complete. A `source gap` label in current
-BIR documentation is an assumption to audit, not permission to change LIR.
-The sole possible LIR-schema exception is a minimal evidence-required inline-
-asm constraint carrier that records reviewed requirements against ordinary
-operand/result positions and roles. Missing receiving state otherwise belongs
-to new-BIR documentation or the future idea-734 importer wiring.
+The current inline-assembly carrier already preserves ordinary values, exact
+types, `Input`/`Output`/`ReadWrite` roles, constraint indices, original
+constraint text, and opaque byte-preservable asm text. No LIR schema exception
+is justified. Phase A documents only the missing Raw-BIR role/index receiving
+owner, importer rule, verifier rule, and stable failure.
 
 ## Read First
 
-- `ideas/open/732_bir_stage_document_convergence_umbrella.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` as a deferred,
-  inactive phase-A implementation consumer
-- `ideas/closed/731_inline_asm_transport_and_regalloc_contract.md` as bounded
-  historical proof only
-- `ideas/draft/733_accepted_bir_a1_f3_architecture_implementation.md` as a
-  parked proposal with no implementation authority
+- `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
+- `ideas/open/732_bir_stage_document_convergence_umbrella.md` for the queue and
+  final-audit lifecycle only
 - `src/backend/bir/README.md`
 - `src/backend/bir/lir_to_bir/README.md`
-- `src/backend/bir/LEGACY_COVERAGE.md`
-- `src/backend/bir/REVIEW_TEMPLATE.md`
+- `src/backend/bir/lir_to_bir/memory/README.md`
+- `src/backend/bir/core/README.md`
+- the Draft/Raw clauses of `src/backend/bir/verify/README.md`
+- applicable clauses in `src/backend/bir/analysis/README.md`,
+  `src/backend/bir/diagnostics/README.md`,
+  `src/backend/bir/compatibility/README.md`,
+  `src/backend/bir/LEGACY_COVERAGE.md`, and
+  `src/backend/bir/REVIEW_TEMPLATE.md`
+- `ideas/open/736_bir_phase_b_canonical_document_convergence.md` only as the
+  exact downstream acceptance contract
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` only as the
+  deferred inactive implementation consumer
 
-## Scope
+## Owned Documentation Targets
 
-- inventory every current BIR Markdown owner and the root-declared phase/order
-- classify each document as stage, pass, analysis, schema, boundary, support,
-  or audit owner
-- identify missing owners, duplicate authority, stale implementation claims,
-  and producer/consumer seams that are asserted rather than demonstrated
-- define input-coverage and output-handoff matrix requirements per phase
-- define phase A against every existing LIR variant and metadata family; keep
-  LIR immutable except for the sole inline-asm constraint-carrier exception
-- create exactly six ordered documentation-only child ideas A through F with
-  strict dependencies and collision-safe IDs
-- link phase A to deferred idea 734 without activating or implementing it
-- prepare the lifecycle handoff to the phase-A child while keeping umbrella
-  idea 732 open until all children and the final cross-phase audit complete
+Edit only these phase-A owners, in this order:
+
+1. `src/backend/bir/lir_to_bir/README.md`
+2. `src/backend/bir/lir_to_bir/memory/README.md`
+3. `src/backend/bir/core/README.md`
+
+Root, verifier, analysis, diagnostics, compatibility, coverage-ledger,
+review-template, and phase-B documents are read-only adjacency evidence. If an
+accepted repair must change a shared or adjacent owner, record the exact seam
+and stop that packet until a coordinated documentation boundary explicitly
+names both owners and the files it authorizes. Do not silently reassign or edit
+shared authority.
+
+## Required Matrix Inventory
+
+The accepted phase-A input matrix must contain exactly one individually named
+row for each current instruction alternative:
+
+1. `LirInst::LirConstInt`
+2. `LirInst::LirConstFloat`
+3. `LirInst::LirLoad`
+4. `LirInst::LirStore`
+5. `LirInst::LirBinary`
+6. `LirInst::LirCast`
+7. `LirInst::LirCmp`
+8. `LirInst::LirCall`
+9. `LirInst::LirGep`
+10. `LirInst::LirSelect`
+11. `LirInst::LirIntrinsic`
+12. `LirInst::LirInlineAsm`
+13. `LirInst::LirMemcpyOp`
+14. `LirInst::LirVaStartOp`
+15. `LirInst::LirVaEndOp`
+16. `LirInst::LirVaCopyOp`
+17. `LirInst::LirStackSaveOp`
+18. `LirInst::LirStackRestoreOp`
+19. `LirInst::LirAbsOp`
+20. `LirInst::LirIndirectBrOp`
+21. `LirInst::LirExtractValueOp`
+22. `LirInst::LirInsertValueOp`
+23. `LirInst::LirLoadOp`
+24. `LirInst::LirStoreOp`
+25. `LirInst::LirMemsetOp`
+26. `LirInst::LirCastOp`
+27. `LirInst::LirGepOp`
+28. `LirInst::LirCallOp`
+29. `LirInst::LirBinOp`
+30. `LirInst::LirCmpOp`
+31. `LirInst::LirPhiOp`
+32. `LirInst::LirSelectOp`
+33. `LirInst::LirInsertElementOp`
+34. `LirInst::LirExtractElementOp`
+35. `LirInst::LirShuffleVectorOp`
+36. `LirInst::LirVaArgOp`
+37. `LirInst::LirAllocaOp`
+38. `LirInst::LirInlineAsmOp`
+
+It must also contain exactly one row for each terminator:
+
+1. `LirTerminator::LirBr`
+2. `LirTerminator::LirCondBr`
+3. `LirTerminator::LirRet`
+4. `LirTerminator::LirSwitch`
+5. `LirTerminator::LirIndirectBr`
+6. `LirTerminator::LirUnreachable`
+
+And exactly one row for each metadata family:
+
+1. `module-context`
+2. `stable-identities`
+3. `operand-kinds`
+4. `type-system`
+5. `functions-signatures`
+6. `blocks-cfg-order`
+7. `values-def-use`
+8. `stack-objects-allocas`
+9. `globals-objects`
+10. `initializers`
+11. `strings`
+12. `externs`
+13. `specializations`
+14. `intrinsic-requirements`
+15. `inline-asm-metadata`
+16. `producer-indexes-caches`
+17. `source-order-origin`
+18. `module-publication`
+
+The source idea's row tables are the durable field-level contract. Every
+accepted row must name exact current LIR fields and authority class, one typed
+Raw destination or explicit validation-only non-destination, importer rule,
+current disposition, verifier owner/rule, stable failure, and positive plus
+malformed/neighboring proof obligation. Old/new twins remain separate source
+rows but converge on one semantic BIR owner; no catch-all or “remaining” row is
+allowed.
+
+## Target-Independent Raw Boundary
+
+- `LirModule::target_profile` and rendered `data_layout` are audited
+  validation/origin/parity-only source context with no semantic Raw
+  destination. They cannot influence target-independent Raw facts. C1 later
+  selects one exact `TargetProfile`; C2 derives target-layout facts.
+- Raw BIR may retain opaque target-authored asm bytes and existing requirement
+  tokens, but cannot interpret ABI placement, constraints, register classes,
+  homes, frame state, target profiles/layout text, target opcodes, relocations,
+  MIR, emission, or assembler syntax.
+- Stable semantic identity comes only from typed stable IDs, never names,
+  pointers, vector positions, render order, caches, or dense analysis indices.
+- Every failure is module-transactional: validate before mutation where safe,
+  poison/destroy unpublished state after mutation failure, preserve structured
+  source-located diagnostics, and publish only the exact fully verified draft
+  revision.
+
+## Uniform Document Contract
+
+Each owned document must carry the common metadata spine:
+`Contract-Status`, `Implementation-Status`, `Kind`, `Phase-ID`, `Upstream`,
+`Downstream`, `Owner-Path`, and `Last-Reconciled-Commit`. Its core-first order
+is `Purpose`, `Owns`, `Does Not Own`, `Inputs`, `Outputs`, and
+`Adjacent-Stage Contract`, followed by applicable ordered behavior,
+invariants, verification/publication, failure/diagnostics,
+analysis/invalidation, target/ABI rules, implementation state, proof, open
+questions, and review checklist.
+
+Heading insertion is not convergence. Every document requires an exhaustive
+input matrix and output-handoff matrix with exact producer/consumer clauses,
+revision/target binding, stable identities, validation and optional/error
+forms, publication/verifier gate, failure behavior, invalidated analyses, and
+checked implementation truth. Missing real owners may be documented as
+indexed placeholders; a placeholder must not be called implemented.
 
 ## Non-Goals
 
-- no C/C++ implementation, test, build, runtime, expectation, unsupported, or
-  allowlist changes
-- no LIR edit outside the evidence-proven minimal inline-asm constraint-carrier
-  exception; no separate inline-asm value subsystem or binding table
-- no idea-734 implementation and no activation of draft idea 733
-- no canonical-pass, target, preparation, constraint, ABI, out-of-SSA,
-  allocation, spill/reload, MIR-ready, MIR, emission, or late-assembly work
-- no stage reorder without a separately identified coordinated documentation
-  boundary packet
-- no heading-only, checkbox-only, formatting-only, or testcase-shaped claim of
-  documentation convergence
-
-## Working Model
-
-The umbrella classifies and creates the queue; it does not execute the child
-documentation repairs inside this runbook. Each child must later own only its
-phase's Markdown and must be activated in A-to-F order. Exhausting this runbook
-does not close idea 732: the umbrella remains open until all six children and
-the final audit satisfy its source criteria.
+- No C/C++ or other implementation, test, build, regression-log, runtime,
+  expectation, unsupported-marker, allowlist, or behavior change.
+- No LIR schema, producer, verifier, or source edit; no inline-asm carrier
+  exception, special value model, binding table, parsing, allocation,
+  projection, or assembler work.
+- No canonicalization, target/profile selection, target preparation, ABI work,
+  pseudo lowering, allocation, MIR, object, link, or emission work.
+- No edit to idea 734 and no activation or implementation of it. It remains a
+  deferred consumer after Child-A acceptance.
+- No activation of Child B, draft idea 733, or any other lifecycle transition
+  inside routine execution packets.
+- No shared-owner edit without an explicitly coordinated documentation
+  boundary; record the seam instead of broadening the packet.
 
 ## Execution Rules
 
-1. Use `src/backend/bir/README.md` as the initial order hypothesis, then verify
-   every indexed owner and adjacency rather than accepting headings as proof.
-2. Keep all work documentation-only. Stop if a packet requires code or test
-   behavior changes.
-3. Treat LIR as a complete producer boundary. Correct BIR docs that misclassify
-   existing LIR facts as missing. The only possible schema exception is the
-   minimal inline-asm constraint carrier defined above.
-4. Require each child to enumerate producer variants, stable identities,
-   revision/target keys, optional/error forms, receiving fields, verifier
-   gates, failure behavior, invalidation, and exact downstream acceptance.
-5. Keep idea 734 inactive. Phase A may define its prerequisite contract but
-   cannot implement new-BIR containers or importer wiring.
-6. Keep idea 733 under `ideas/draft/`; do not derive execution packets from it.
-7. Do not close idea 732 when this runbook hands off to Child A. Record the
-   generated queue and deactivate/switch lifecycle state through plan-owner.
+1. Follow the three owned-document order exactly. Keep packet edits confined
+   to the current owner unless the plan explicitly advances.
+2. Treat the source idea's 38/6/18 tables as mandatory exact coverage, not
+   examples. Adding a future source alternative cannot silently fall through;
+   document closed dispatch tripwires and the maintained family checklist.
+3. Classify current truth as already-proved coverage, stale documentation,
+   missing new-BIR receiving container, missing importer wiring, or both
+   container+wiring missing. Verify against checked-in/build-included code;
+   build-excluded designs are not implementation.
+4. Resolve ownership, full input coverage, output shape, and adjacent
+   acceptance before API/algorithm/data-layout detail.
+5. Never accept output by assertion. Cite the exact downstream clause that
+   consumes every artifact and variant.
+6. Preserve exact revision and target keys, deterministic order, optional and
+   error forms, declaration/definition splits, forward references,
+   duplicate/conflict behavior, invalidation, and failure atomicity.
+7. Reject expectation weakening, supported-to-unsupported changes, helper
+   renames, classification-only claims, rendered-text probes, named-case
+   matchers, allowlists, and testcase-shaped shortcuts as convergence.
+8. Update routine progress only in `todo.md`. Change this runbook only when its
+   route or proof contract genuinely changes; change the source idea only when
+   durable intent changes.
 
 ## Ordered Steps
 
-### Step 1 - Revalidate the root Markdown inventory and phase order
+### Step 1 - Converge A1 importer ownership and the exhaustive intake matrix
 
-Goal: establish the complete documentation owner set and the exact proposed
-A-to-F review order without changing implementation.
+Goal: make the top-level importer document the lossless, closed, transactional
+receipt of every current typed LIR fact.
 
-Actions:
-
-- enumerate every current `src/backend/bir/**/*.md` owner plus BIR-facing MIR
-  and external boundary documents referenced by the root
-- map each owner to one phase/kind and record missing-index, missing-file,
-  duplicate-authority, stale-status, and adjacency questions
-- compare root order with each producer/consumer declaration and flag every
-  seam that lacks evidence
-- distinguish current implementation truth from accepted architecture text
-
-Completion check:
-
-- one review inventory accounts for every relevant Markdown owner exactly once
-  or records an explicit cross-cutting/external classification; unresolved
-  order/ownership questions are concrete enough to assign to a child
-
-### Step 2 - Define phase A and the deferred idea-734 handoff
-
-Goal: make the typed-LIR-to-Raw-BIR documentation boundary exhaustive and
-prevent stale `source gap` language from redirecting work into LIR.
+Primary target: `src/backend/bir/lir_to_bir/README.md`
 
 Actions:
 
-- inventory every existing `LirInst`, `LirTerminator`, and relevant module,
-  function, type, global, value, object, initializer, symbol, and metadata fact
-  as external phase-A inputs
-- require phase-A input and output matrices to name the typed new-BIR receiving
-  container, importer disposition, verifier gate, and failure behavior for
-  every row
-- classify each current gap as missing new-BIR documentation/container,
-  missing importer wiring, stale documentation, or already-proved coverage
-- state explicitly that LIR is complete and immutable and that unsupported
-  diagnostics alone cannot prove receiving completeness
-- document inline-asm inputs/results as ordinary SSA values, reviewed `r`,
-  `=r`, `f`, `VR`, and other evidenced requirements against ordinary positions
-  and roles, and opaque byte-exact asm text; forbid special allocation,
-  projection machinery, and assembler parsing
-- bind deferred idea 734 to the accepted phase-A contract without activating it
+- normalize the metadata and core-first sections before implementation detail
+- replace stale source-gap assumptions with the exact 38/6/18 source and
+  receiving matrix contract
+- classify every field as semantic authority, compatibility mirror,
+  producer/cache index, or validation evidence
+- give every row one typed Raw destination or validation-only non-destination,
+  importer rule, disposition, verifier/failure rule, and positive plus
+  malformed/neighbor proof obligation
+- preserve exact source/nested order, stable IDs, forward references,
+  optional/error forms, declaration/definition splits and conflict behavior
+- document closed variant-count and metadata-family maintenance tripwires
+- preserve the no-LIR-edit and no-inline-asm-carrier-exception findings
 
 Completion check:
 
-- the phase-A child contract audits every existing LIR fact with no catch-all
-  and gives idea 734 a strict new-BIR-container/importer boundary plus only the
-  evidence-gated inline-asm carrier exception
+- the importer document contains exactly 38 individually named instruction
+  rows, six individually named terminator rows and 18 individually named
+  metadata-family rows; every row has the required fields, no catch-all exists,
+  and A1 failure publishes no draft, fixup table or partial capability
 
-### Step 3 - Create the ordered A-through-F documentation child queue
+### Step 2 - Converge the A1 memory import sub-boundary
 
-Goal: generate exactly six independently reviewable documentation ideas with
-strict predecessor/successor dependencies.
+Goal: make the build-excluded memory document a truthful subordinate migration
+boundary rather than a second importer, verifier, or implementation claim.
+
+Primary target: `src/backend/bir/lir_to_bir/memory/README.md`
 
 Actions:
 
-- assign collision-safe IDs and paths to Child A through Child F
-- copy the umbrella's uniform document contract, required review method, and
-  phase-specific owner inventory into each child
-- make B consume accepted A, C consume B, D consume C, E consume D, and F
-  consume E
-- require every child to reject direct implementation, mixed ownership,
-  assertion-only handoffs, and untruthful implementation-status claims
-- keep idea 734 separate from the six docs children and keep idea 733 in draft
+- normalize its metadata, ownership, inputs, outputs and adjacency
+- bind every memory-related phase-A matrix row to the top-level importer and
+  exact Raw receiving owner without duplicating dispatch or publication
+- preserve semantic memory/address/atomic facts while excluding target layout,
+  address selection, scalarization, ABI placement and machine lowering
+- state its build-excluded implementation truth and exact failure propagation
+  through the sole full A2 Draft/Raw gate
 
 Completion check:
 
-- exactly six open documentation child ideas exist, each has one phase owner,
-  explicit dependencies, acceptance criteria, closure requirements, and
-  concrete reviewer reject signals
+- every memory row has one top-level importer path and one Raw owner, the file
+  claims no independent verifier/publication or build coverage, and failure
+  cannot emit an opaque placeholder or partial draft
 
-### Step 4 - Audit the queue and hand off to Child A
+### Step 3 - Converge the Raw core receiving and ownership contract
 
-Goal: verify that the generated route is executable without authorizing code.
+Goal: prove the core can describe one typed, deterministic, target-independent
+receiving owner for every semantic phase-A row without claiming scaffolded
+storage exists.
+
+Primary target: `src/backend/bir/core/README.md`
 
 Actions:
 
-- check the six children against the umbrella inventory, phase order, matrix
-  contract, external-owner rules, and final-audit requirements
-- verify Child A is the only eligible next activation and that ideas 734 and
-  draft 733 remain inactive
-- record durable child IDs/paths and unresolved ownership questions in idea
-  732 at the lowest appropriate lifecycle layer
-- ask plan-owner to deactivate this runbook and activate Child A; do not close
-  idea 732
+- normalize metadata and core-first ownership/input/output/adjacency sections
+- reconcile the 38/6/18 destinations with the closed typed schema, stable ID
+  families, ownership graph, deterministic iteration and exact def-use/CFG
+- distinguish checked-in partial storage from missing target containers and
+  remove stale implementation or source-gap claims
+- keep target/profile/layout, ABI, constraints, homes, frames, MIR and emission
+  out of Raw semantics
+- define private `ModuleDraft` freeze and the single full A2
+  `verify_and_publish_raw(ModuleDraft&&)` handoff without a builder bypass
 
 Completion check:
 
-- the docs-only queue is internally consistent, Child A is ready for activation,
-  and no implementation or downstream lifecycle has been authorized
+- every semantic matrix row has exactly one typed core owner or an explicit
+  truthful missing-container disposition; validation-only rows publish no
+  semantic duplicate, all identities/orders are stable, and no target or
+  allocation state enters Raw BIR
+
+### Step 4 - Audit the shared A2 verifier and cross-cutting boundaries
+
+Goal: prove the three owned documents agree with shared Draft/Raw,
+analysis/invalidation, diagnostics, compatibility, coverage and review
+contracts without silently reassigning those owners.
+
+Actions:
+
+- audit the shared Draft/Raw verifier clauses against every row, exact revision
+  and publication/failure requirement
+- audit analysis cache/revision keys, invalidation and stale-result rejection
+- audit diagnostics as read-only rendering, compatibility as observational
+  quarantine, and coverage/status statements against implementation truth
+- record any necessary shared-owner change as a named coordinated
+  documentation boundary with both owners and the exact seam; do not edit it
+  in an unauthorized packet
+
+Completion check:
+
+- shared evidence accepts the exact A1/A2 contract and no duplicate verifier,
+  semantic owner, cache identity or publication path remains hidden; if a
+  shared-owner change is required, record the concrete coordinated boundary
+  requirement and stop Step 4 until that separately authorized documentation
+  repair is accepted
+
+### Step 5 - Prove phase-B acceptance and the deferred idea-734 boundary
+
+Goal: finish the phase-A documentation handoff without authorizing
+implementation or activating downstream work.
+
+Actions:
+
+- build the exhaustive output-handoff matrices from A1 private draft through
+  A2 Raw publication to phase B
+- prove phase B accepts only one move-only verified `RawBir` whose current LIR
+  facts have one typed owner, deterministic order and exact def-use/CFG
+- reject importer maps, partial drafts, hidden side tables, unsupported valid
+  rows, compatibility strings used as identity, target facts and allocation
+  state at the B boundary
+- record idea 734 only as the inactive implementation consumer of the accepted
+  container/importer/verifier contract after Child-A acceptance
+- run documentation structural, inventory, adjacency and diff checks; request
+  plan-owner lifecycle judgment rather than activating B or 734 directly
+
+Completion check:
+
+- all three owned documents are substantively conformant and implementation-
+  truthful; exact 38/6/18 input and complete output matrices pass structural
+  checks; the A/B clauses agree; failure is atomic; LIR and idea 734 remain
+  unchanged; and the accepted handoff authorizes documentation lifecycle only
 
 ## Runbook Completion
 
-This runbook is complete when Steps 1-4 produce and validate the ordered
-documentation queue and handoff. Idea 732 itself remains open until all six
-children execute in order and the umbrella-level final Markdown audit passes.
+Runbook exhaustion does not itself close Child A. After Step 5, plan-owner must
+decide from the source acceptance criteria and supervisor-owned documentation
+proof whether Child A is complete, needs a bounded coordinated boundary
+repair, or remains open. Umbrella idea 732 stays open through all six children
+and its final cross-phase audit.
