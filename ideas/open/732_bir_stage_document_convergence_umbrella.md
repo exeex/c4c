@@ -335,17 +335,17 @@ retired after the supervisor's Step-4 audit accepted this strict docs-only
 sequence:
 
 1. Child A: `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md`
-2. Child B: `ideas/open/736_bir_phase_b_canonical_document_convergence.md`
+2. Child B: `ideas/closed/736_bir_phase_b_canonical_document_convergence.md`
 3. Child C: `ideas/open/737_bir_phase_c_preparation_document_convergence.md`
 4. Child D: `ideas/open/738_bir_phase_d_pseudo_document_convergence.md`
 5. Child E: `ideas/open/739_bir_phase_e_allocation_document_convergence.md`
 6. Child F: `ideas/open/740_bir_phase_f_mir_boundary_document_convergence.md`
 
-Acceptance is strictly `A -> B -> C -> D -> E -> F`. Child A was accepted and
-closed by the proof in `2ec50b3e`; Child B is now the sole active/next child.
-Idea 734 remains a deferred inactive implementation consumer, and draft idea
-733 remains parked with no implementation authority. The C1 external Markdown
-boundary question belongs to Child C; the F2 verifier and F3
+Acceptance is strictly `A -> B -> C -> D -> E -> F`. Children A and B are
+accepted and closed by proofs `2ec50b3e` and `769f0d012`; Child C is now the
+sole active/next child. Idea 734 remains a deferred inactive implementation
+consumer, and draft idea 733 remains parked with no implementation authority.
+The C1 external Markdown boundary question belongs to Child C; the F2 verifier and F3
 assembler/object/link Markdown-authority or placeholder questions belong to
 Child F.
 
@@ -363,8 +363,19 @@ documentation route in `10d70b872`, `060a32c78`, `e759322a`, `237afcdf`,
 `ba1dcab8`, `65a20c2d`, and final proof `2ec50b3e`. Its exact
 `ModuleDraft -> A2 -> RawBir -> B1` handoff is accepted without claiming
 missing implementation complete, changing LIR, or activating idea 734. Child B
-is the only authorized successor. This umbrella remains open through Children
-B-F and the final cross-phase audit.
+was the only authorized successor at that checkpoint. This umbrella remains
+open through Children C-F and the final cross-phase audit.
+
+### Child-B Acceptance Checkpoint
+
+Child B completed its seven analysis owners, P01-P07 pass owners and B8
+framework/pipeline/Canonical-verifier boundary in `c7bb43d3e`, `ce3dacf3f`,
+`878e56a97`, `5eb4d6f43`, `b6cabf1d2`, `d4c73bdf4`, `c0e3cdc6e`,
+`938c7b43e`, `7b01fd0eb`, and final proof `769f0d012`. Its exact verified
+`CanonicalBir -> C1` handoff is accepted without claiming absent/partial
+implementation complete or authorizing target-aware work. Child C is the only
+authorized successor. Idea 734 stays deferred, and this umbrella remains open
+through Children C-F and the final cross-phase audit.
 
 ## Acceptance Criteria
 

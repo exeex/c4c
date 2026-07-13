@@ -3,7 +3,7 @@
 Status: Open
 Type: Documentation-only architecture convergence
 Phase Owner: C — target facts and immutable preparation
-Predecessor: accepted `ideas/open/736_bir_phase_b_canonical_document_convergence.md`
+Predecessor: accepted `ideas/closed/736_bir_phase_b_canonical_document_convergence.md`
 Successor: `ideas/open/738_bir_phase_d_pseudo_document_convergence.md`
 
 ## Goal

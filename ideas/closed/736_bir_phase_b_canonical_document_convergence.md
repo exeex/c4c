@@ -1,6 +1,6 @@
 # BIR Phase B Canonical Document Convergence
 
-Status: Open
+Status: Closed
 Type: Documentation-only architecture convergence
 Phase Owner: B — target-independent canonicalization
 Predecessor: accepted `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md`
@@ -83,6 +83,24 @@ supported behavior.
   allocation state, stale analysis, or compatibility identity.
 - Closure names all reviewed/created documents, matrices, implementation-truth
   corrections, invalidation results, and exact A/B and B/C adjacency proof.
+
+## Completion Note
+
+Accepted and closed after the supervisor-approved Step-9 proof in `769f0d012`.
+The completed documentation chain is `c7bb43d3e`, `ce3dacf3f`, `878e56a97`,
+`5eb4d6f43`, `b6cabf1d2`, `d4c73bdf4`, `c0e3cdc6e`, `938c7b43e`, and
+`7b01fd0eb`.
+
+All seven exact-revision analyses, P01-P07 pass owners, pass framework and
+pipeline now document the strict earliest-consumer and `P01 -> ... -> P07 ->
+B8` route. Framework, pipeline and shared Canonical-verifier authority remain
+distinct; B8 alone mints one exact-revision, target-independent, unallocated
+`CanonicalBir` accepted by C1. Failure is atomic, invalidation/stale-result
+rules are explicit, and no Raw alias or target/ABI/allocation state crosses the
+B/C boundary. Implementation truth remains 14 absent analysis/pass owners and
+two partial-foundation framework/pipeline owners; documentation acceptance
+does not claim runnable canonicalization. No code, test, build, LIR, idea 734,
+target-aware work or downstream implementation was changed or activated.
 
 ## Reviewer Reject Signals
 
