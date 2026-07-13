@@ -6,7 +6,8 @@ Supersedes: the documentation-convergence acceptance tail rejected by the
 first full review, the failed Step 13 tail recorded in
 `review/731_full_architecture_review_repeat.md`, and the repeated Step 13
 checkpoint rejected by
-`review/731_post_repair_full_architecture_review.md`
+`review/731_post_repair_full_architecture_review.md`; the current bounded reset
+consumes `review/731_final_frame_action_architecture_review.md`
 
 ## Purpose
 
@@ -37,6 +38,7 @@ no blocking finding.
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
 - `review/731_full_architecture_review_repeat.md`
 - `review/731_post_repair_full_architecture_review.md`
+- `review/731_final_frame_action_architecture_review.md`
 - `src/backend/bir/README.md`
 - `src/backend/bir/REVIEW_TEMPLATE.md`
 - `src/backend/bir/LEGACY_COVERAGE.md`
@@ -52,9 +54,10 @@ no blocking finding.
   E4 `AllocatedBir` revision.
 - Diagnostics remain read-only and compatibility remains a non-authoritative
   quarantine.
-- C9's immutable Canonical binding and shared per-revision projected-constraint
-  authority are already resolved; Step 9 repairs must preserve that Step 10
-  checkpoint rather than introduce a second binder.
+- C9's immutable Canonical binding and sole shared projected-constraint
+  authority remain resolved. The Step 9.2 frame-action repair reopened only
+  the Step 10 adjacency for the final D5-private/E4-materialized projection
+  invocation and key; no second binder or projection authority is permitted.
 - The strict no-late-allocation-repair decision is accepted and must not be
   reopened as a shortcut around D5 or E4.
 
@@ -106,10 +109,11 @@ bundle or invent a temporary.
 
 ## Execution Rules
 
-1. For this review reset, execute Steps 9.2, 12, and 13 in order. Steps 2.1-9.1,
-   10, and 11 are resolved checkpoints; recheck their adjacency when touched,
-   but do not create a separate repeat packet unless the Step 9.2 repair
-   invalidates one of their contracts.
+1. For this review reset, execute Step 9.2 with its reopened Step 10 projection
+   adjacency, then Steps 12 and 13 in order. Steps 2.1-9.1 and 11 are resolved
+   checkpoints; all other Step 10 projection routes remain resolved. Do not
+   create a broader repeat packet unless this bounded repair invalidates an
+   adjacent contract.
 2. Treat each substep as one bounded documentation packet. Compare all edited
    contracts with their immediate predecessor, successor, and root entry.
 3. Replace stale identifiers mechanically only after checking the semantic
@@ -398,11 +402,12 @@ Review in this order:
 3. `src/backend/bir/regalloc/spill_reload/README.md`
 4. `src/backend/bir/pseudo/README.md`
 5. `src/backend/bir/passes/out_of_ssa/README.md`
-6. `src/backend/bir/allocated/README.md`
-7. `src/backend/bir/pipeline/README.md`
-8. the E1-E4 profiles and ownership coverage ledgers in
+6. `src/backend/bir/regalloc/constraints/README.md`
+7. `src/backend/bir/allocated/README.md`
+8. `src/backend/bir/pipeline/README.md`
+9. the E1-E4 profiles and ownership coverage ledgers in
    `src/backend/bir/verify/README.md`
-9. root F1-F3 boundary language and the normative MIR boundary
+10. root F1-F3 boundary language and the normative MIR boundary
 
 Actions:
 
@@ -422,6 +427,16 @@ Actions:
   frame, and target-realizability recomputation order, verifier interval, and
   all-or-nothing rollback boundary; no predecessor-keyed product may be
   relabeled current
+- synchronize the sole C9 `ConstraintProjectionTransaction` owner with the
+  selected private-D5/E4-materialized route: D5 contributes its complete copy
+  mutation, replacement, and tombstone lineage without publishing a separate
+  current projection; E4 invokes the sole projection authority exactly once
+  after frame-action materialization
+- require the final `ProjectedConstraintKey` to bind the materialized
+  `PipelineStageStamp`, `CopyResolutionFingerprint`,
+  `FrameActionFingerprint`, and both complete D5 and frame-action mutation,
+  replacement, and tombstone summaries; projection remains the first product
+  in the atomic E4 six-product closure
 - cover E3 `Spill`/`Reload`, D2 outgoing-stack operations, dynamic-frame
   interactions, call/frame accesses, scratch state, and any displacement or
   address-materialization limit that could otherwise require multiple MIR
@@ -459,6 +474,10 @@ Completion check:
   candidate interval
 - the pipeline and verifier ownership ledgers agree that E4 privately owns the
   exact `FrameRealizationPlan` and F1 only applies it
+- the C9 projection owner, D5 owner, E4 owner, pseudo schema, verifier, and root
+  all agree that private D5 publishes no standalone projection and that E4's
+  single post-materialization projection key covers both mutation lineages and
+  both fingerprints
 
 ### Step 10 - Freeze per-revision constraint projection ownership
 
@@ -482,13 +501,24 @@ Actions:
   the stage responsible for invoking it and publishing the exact output key
 - define required fingerprints, invalidation, recomputation, failure
   atomicity, and consumer checks at each revision
+- preserve the selected final route: D5 copy resolution stages its mutation
+  lineage privately without publishing `ProjectedConstraintSet`; after E4
+  frame-action materialization, E4 invokes the sole projection authority once
+  for the final materialized revision
+- make that final `ProjectedConstraintKey` directly bind the materialized
+  stamp, `CopyResolutionFingerprint`, `FrameActionFingerprint`, and complete
+  mutation/replacement/tombstone summaries for both D5 copy resolution and E4
+  frame-action materialization; the projection then commits atomically with
+  the exact-current E1, E2, E3, frame, and target products
 - reject stable-ID equality as freshness proof
 
 Completion check:
 
-- every D1/D2/D4/D5/copy-resolution/E3 output has exactly one fresh projected
-  product or an explicit proof that no product applies; E1/E2/E4 never consume
-  a Canonical-keyed product as though it were keyed to a later revision
+- every published D1/D2/D4/initial-D5/E3 output has exactly one fresh projected
+  product or an explicit proof that no product applies; private D5 copy
+  resolution has lineage but no published projection; the sole final E4
+  projection covers both D5 and frame-action mutations; E1/E2/E4 never consume
+  a Canonical-keyed or predecessor product as though it were current
 
 ### Step 11 - Reconcile legacy and core dispositions
 
@@ -542,7 +572,10 @@ Actions:
   realizability proof, every required post-E3 final-frame action has an
   explicit BIR-owned producer/schema route, the pipeline and verifier ledgers
   assign the exact private `FrameRealizationPlan` to E4 and make F1 apply-only,
-  and the two D5 verifier intervals are distinct
+  the sole C9 projection owner binds the final materialized stamp plus both D5
+  and frame-action fingerprints and complete mutation/replacement/tombstone
+  summaries without a separate pre-E4 D5 projection, and the two D5 verifier
+  intervals are distinct
 - run `git diff --check`, local Markdown link/path validation, and focused
   searches for stale IDs, duplicate authority, unresolved acceptance choices,
   copied graphs, late allocation repair, absent legacy paths/owners, stale C5
@@ -575,6 +608,13 @@ Actions:
   post-E3 producer/schema route for every required final-frame action, and
   synchronized pipeline/verifier ledgers in which E4 owns the exact private
   `FrameRealizationPlan` while F1 is apply-only
+- independently recheck the blocker from
+  `review/731_final_frame_action_architecture_review.md`: the sole C9
+  projection owner must describe private D5 lineage with no standalone
+  projection, one E4 invocation after frame-action materialization, and a
+  final key covering the materialized stamp, `CopyResolutionFingerprint`,
+  `FrameActionFingerprint`, and both complete mutation/replacement/tombstone
+  summaries
 - explicitly re-judge the strict no-late-allocation-repair rule and verify it
   has not been used to conceal an unrealizable post-D5 node
 - classify every finding as resolved, intentionally deferred implementation,

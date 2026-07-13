@@ -3,67 +3,51 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 12
-Current Step Title: Reconcile the root and run the complete documentation proof
+Current Step ID: 9.2
+Current Step Title: Reconcile allocation and strict downstream realization
 
 ## Just Finished
 
-- Completed Plan Step 12 against architecture checkpoint `204760ff6` without
-  changing architecture documents. All 44 BIR Markdown contracts plus the
-  normative MIR root passed the complete structural, legacy, semantic, and
-  negative proof.
-- Confirmed the root has 43 subordinate links exactly once, the ordered 31-row
-  A1-F3 registry, one D2 owner, and a clean 45-document local-link audit.
-- Confirmed E4's bounded frame-action materializer and finite schema, private
-  D5 staging, final exact-current product order, verifier intervals, strict F1
-  apply-only boundary, failure atomicity, D2/E4 save separation, and core/E4
-  stack-operation separation are synchronized.
-- Confirmed the exact 164-file/44-disposition legacy inventory and all focused
-  stale-authority, unresolved-design, acceptance, and anti-overfit negatives.
+- Fresh Plan Step 13 review at
+  `review/731_final_frame_action_architecture_review.md` rejected Step 14 with
+  one bounded Step 9.2/Step 10 adjacency blocker.
+- The explicit E4 frame-action producer/schema, ownership ledgers, exact-current
+  E1/E2/E3/frame/target route, verifier intervals, legacy inventory, D2/C9
+  authority separation, strict F1 boundary, and docs-only scope remain resolved
+  checkpoints. Idea 731 remains open and unchanged.
 
 ## Suggested Next
 
-- Execute Plan Step 13 as a fresh independent review of exact checkpoint
-  `204760ff6` plus this proof record. Write the judgment under `review/`. Do not
-  enter Step 14 unless that review reports zero blockers.
+- Execute one bounded Plan Step 9.2 packet reopening only Step 10 adjacency:
+  repair `src/backend/bir/regalloc/constraints/README.md` as the sole projection
+  owner, then recheck `passes/out_of_ssa/README.md`, `allocated/README.md`,
+  `pseudo/README.md`, `verify/README.md`, and the root for the same route.
+- The repaired route must say private D5 contributes complete mutation lineage
+  without publishing a projection; E4 invokes projection once after frame-action
+  materialization; the final key binds the materialized stamp,
+  `CopyResolutionFingerprint`, `FrameActionFingerprint`, and both mutation/
+  replacement/tombstone summaries.
+- Repeat Step 12 after the focused repair, then obtain a new independent Step 13
+  review. Step 14 remains forbidden until that exact review reports zero
+  blockers.
 
 ## Watchouts
 
-- Post-E3 D5 copy resolution stages only a private candidate, fingerprint, and
-  mutation lineage inside E4. Only final E4 publication installs a revision,
-  products, or capabilities.
-- Preserve the final order: D5 resolution -> private frame-action draft -> E4
-  materialization -> constraint projection -> E1 liveness/interference -> E2
-  assignment validation -> E3 spill-state validation -> final frame plan ->
-  target realizability, installed atomically.
-- D2 `AbiPreserve`/`AbiRestore` remain per-call value transport and cannot
-  duplicate E4 entry/exit callee saves. Core semantic stack/lifetime nodes
-  remain distinct from E4 target frame establishment actions.
-- Preserve `PseudoPublicationGate` as allocation-free and
-  `AssignedAllocationCandidateGate` as the private assigned/materialized gate.
-  F1 consumes explicit one-record nodes and performs no repair or synthesis.
+- The blocker is in the sole projection owner: it still requires a separate
+  pre-E4 D5 projection and omits E4 frame-action occurrence lineage and
+  `FrameActionFingerprint`. Do not alter the already-selected E4 route or add a
+  second projection authority.
+- Preserve the final atomic order: private D5 resolution -> frame-action draft
+  -> E4 materialization -> sole constraint projection -> E1 -> E2 -> E3 ->
+  frame plan -> target realizability. No predecessor projection may be relabeled
+  current or published from private D5 staging.
+- Preserve all completed checkpoints, especially the finite frame-action schema,
+  strict no-late-repair/F1 apply-only boundary, distinct verifier intervals,
+  exact legacy ledger, and D2/C9 ownership.
 
 ## Proof
 
-- Passed `git diff --check`.
-- Passed the exact deterministic checker recovered from `todo.md` at
-  `919db26e5`:
-  `structure PASS: 44 files, 43 root links exactly once, 31 ordered A1-F3 rows,
-  D2 cardinality 1, 45-doc local-link audit`.
-- Passed the exact legacy checker recovered from that checkpoint:
-  `legacy inventory PASS: 164 files, 44 nonempty dispositions, exactly one
-  match per file; Accepted owners present and indexed`.
-- Passed positive semantic assertions:
-  `semantic PASS: E4 materializer/schema, D5 private staging, exact-current
-  six-product order, gates, strict F1, rollback/invalidation, and both
-  ownership separations`.
-- Passed focused negative searches: no stale MIR/backend frame owner; implicit
-  frame/prologue/epilogue producer; F1 frame insertion/synthesis/expansion/
-  repair; separate post-E3 D5 publication; stale S00-S29/G01 ID; unresolved
-  heading; C5 address owner; architecture-acceptance marker; testcase-specific
-  shortcut; expectation downgrade; or test-file change in the architecture
-  checkpoint.
-- After this update, `git status --short` contains only `todo.md` plus the two
-  pre-existing untracked review artifacts.
-- No build/test subset or regression log applies to this docs-only packet;
-  logs were not created or modified.
+- Lifecycle reset only. The focused executor must record fresh docs-only proof
+  for the sole-owner key and invocation route. Step 12 must then repeat the
+  complete structure, links, legacy inventory, and semantic/negative checks
+  before the new independent Step 13 review.
