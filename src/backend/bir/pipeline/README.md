@@ -1,873 +1,238 @@
-# Ordered BIR Pipeline Contract
+# Ordered Canonical BIR Pipeline Contract
 
-Status: design contract; implementation has not started.
+Contract-Status: under-review
+Implementation-Status: partial-foundation
+Kind: pipeline
+Phase-ID: B1 through B8
+Upstream: one move-only verified target-independent unallocated `RawBir`
+Downstream: one verifier-gated immutable target-independent unallocated `CanonicalBir`
+Owner-Path: `src/backend/bir/pipeline/README.md`
+Last-Reconciled-Commit: `938c7b43e`
 
-The root [`BIR README`](../README.md) owns the normative `A1`-through-`F3` total
-order. This document is subordinate to that order and expands orchestration
-only for its `B1`-`B8` canonicalization interval. Individual pass documents
-own local algorithms, but neither they nor this document may insert a stage,
-change a predecessor, weaken an input profile, or reorder a root row. An order
-change starts in the root contract and must update both affected adjacent
-contracts in the same review.
+## Purpose
 
-The pipeline is a canonicalization boundary, not a target backend hidden under
-a pass-manager name. It accepts one already typed and Raw-verified semantic
-module and publishes one immutable target-independent `CanonicalBir`. Target
-preparation, generic pseudo and shared call lowering, target pseudo
-legalization, out-of-SSA, and shared BIR allocation are downstream of this
-canonicalization pipeline. Those owners publish new exact pseudo/allocated
-revisions and never write their facts into `CanonicalBir`. E4 owns exact
-private frame layout/placements and explicit frame-action materialization.
-Concrete register spelling, target opcode/encoding choice within registered
-mappings, and emission remain later F1-F3 authority.
+This pipeline is the sole configured order/capability owner for canonical BIR.
+It consumes one verified `RawBir`, executes exactly P01-P07 with framework
+support, preserves deterministic checkpoint lineage/re-entry, then submits the
+same frozen B7 candidate to B8. Only a completely green B8 verifier token lets
+the pipeline atomically mint one `CanonicalBir`.
 
-## 1. Root-order anchor and local stage graph
+## Owns
 
-The root rows consumed and produced by this local runner are:
+- the immutable built-in P01-P07 occurrence order and unconditional B8 gate;
+- canonical-v1 plan/options fingerprints, occurrence ordinals, cumulative
+  property/stage stamps and exact module/function revision digest lineage;
+- move-only `RawBir` consumption, last-good internal checkpoints, private
+  occurrence forks and atomic checkpoint replacement;
+- deterministic function-wave/module barriers, skip/repeat validation and
+  failure/rollback orchestration;
+- checkpoint serialization/resumption strictly after a completed occurrence;
+- the B7-candidate-to-B8 capability boundary and atomic construction of
+  `CanonicalBir` only from the verifier-private green token.
 
-```text
-A1 LIR import -> private frozen ModuleDraft
-A2 Raw verification/publication -> RawBir
-B1 P01 legalize -> B2 P02 scalar -> B3 P03 cfg -> B4 P04 ssa
-  -> B5 P05 memory -> B6 P06 aggregate -> B7 P07 intrinsics
-B8 Canonical verification/publication -> CanonicalBir
-C1 TargetProfile selection/validation (outside run_bir_pipeline)
-```
+## Does Not Own
 
-This excerpt is an anchor, not a second order registry. The complete flow,
-including `C2`-`F3`, the `E3 -> E1` allocation retry edge, every verifier
-gate, and every target-aware phase is defined only in the root README.
+- pass descriptors, invocation transactions, analysis invalidation or
+  execution-control mechanics; the [pass framework](../passes/README.md) owns
+  those support functions;
+- local P01-P07 semantic rewrites; each pass document owns them;
+- analysis fact algorithms or verifier rule semantics;
+- core IDs/revisions/storage/editor behavior;
+- target selection/layout, ABI/helper preparation, pseudo lowering,
+  constraints, allocation, MIR, rendering or emission;
+- any alternate caller-supplied pass order or a way to relabel a checkpoint as
+  `RawBir`/`CanonicalBir`.
 
-`ModuleDraft` and `RawBir` are defined by
-[`core`](../core/README.md), import by
-[`lir_to_bir`](../lir_to_bir/README.md), and publication profiles by
-[`verify`](../verify/README.md). In particular:
+## Inputs
 
-- `ModuleDraft` is unpublished, frozen candidate storage;
-- only `verify_and_publish_raw(ModuleDraft&&)` may mint `RawBir`;
-- `RawBir` is move-only, fully typed, structurally valid, and verified with the
-  complete Raw rule registry;
-- a pass never repairs an unresolved reservation, malformed type, textual
-  operand, missing terminator, foreign ID, invalid call bundle, or importer
-  failure;
-- `CanonicalBir` is minted only from the last successful pipeline stage stamp by
-  the Canonical publication gate;
-- `PreparedInput` is a cumulative verifier profile, not another mutable BIR
-  stage and not a container of prepared facts;
-- `VerifiedPreparationInput` is a short-lived immutable capability tying a
-  `CanonicalBir` view, target context, verification report, and exact revision
-  axes/function-revision digest together for the external preparation API. It
-  borrows the immutable `CanonicalBir` storage and cannot outlive that owning
-  capability;
-- target layout publishes an immutable capability bound to that exact complete
-  stage stamp and target fingerprint; preparation products additionally bind
-  the layout and ordered predecessor-product fingerprints;
-- preparation dependency order is exactly `abi -> calls -> variadic -> address
-  -> inline_asm -> runtime_helpers`; after atomic cumulative-bundle
-  publication, `regalloc/constraints` alone interprets and binds source
-  constraint descriptions to ordinary operands/results;
-- D1 privately forks from Canonical into the closed pseudo schema, D2 completes
-  shared ABI-aware call transport, D3 publishes the first verified `PseudoBir`,
-  and D4 fully reverifies target realizability before D5 out-of-SSA;
-- E1 analyzes the exact fully reverified D5 revision, E2 alone assigns shared
-  abstract homes, and E3 alone inserts explicit capacity spill/reload state;
-  each E3 rewrite advances and fully reverifies its revision before fresh E1/
-  E2 retry, and only a complete assignment/spill candidate may advance;
-- after D5 copy resolution, E4 builds its frame draft, materializes bounded
-  fixed-role one-record action nodes, then performs final projection, E1
-  recomputation, E2/E3 non-mutating validation, final frame-plan derivation,
-  and target-realizability checking before atomically minting `AllocatedBir`
-  and its `PreparedBir` readiness capability; this is not a synonym for
-  `VerifiedPreparationInput` or preparation facts;
-- `MirReadyBirView` is a borrowing read-only view of that same revision and
-  cannot clone storage, change assignments, or survive its owning token;
-- F1 MIR construction rechecks the view keys and performs only concrete mapping
-  and one-to-one selection; mapping failure publishes no MIR and cannot trigger
-  allocation repair, capacity spill/reload, or an allocatable temporary.
+The public runner consumes one move-only exact `RawBir`, one closed
+canonical-v1 options product and deterministic execution control. The Raw
+capability already proves full A2 verification and contains no unresolved
+draft/import state, target context, preparation, allocation or MIR facts.
 
-There is no `src/backend/bir/mir` stage or namespace. Preparation, layout,
-allocation, and allocated-publication ownership are documented under their
-existing BIR directories; target MIR remains an external consumer of the
-verified `MirReadyBirView`.
+### Exact pipeline input matrix
 
-## 2. Immutable built-in canonical occurrence sequence
-
-Within the root `B1`-`B8` interval, the required canonical occurrence
-sequence is exactly:
-
-```text
-B1 P01 legalize
-B2 P02 scalar
-B3 P03 cfg
-B4 P04 ssa
-B5 P05 memory
-B6 P06 aggregate
-B7 P07 intrinsics
-B8 canonical publication gate
-```
-
-The seven named pass entries are mandatory in the initial implementation.
-`B8` is an unconditional publication gate, not a pass occurrence. The separately
-invoked prepared-input gate is not part of `run_bir_pipeline`; it consumes the
-published `CanonicalBir` only when an external preparation caller supplies a
-target context. A profile may select another implementation algorithm only
-when it produces the same canonical semantic fingerprint, ordered diagnostics,
-postconditions, and failure class. It may not omit or reorder an entry.
-
-The scaffold order has been challenged against its dependencies and is
-retained with two strict consequences:
-
-1. `aggregate` and `intrinsics` are **canonicalizers**, not lowering passes.
-   They may normalize descriptors but must not expand an aggregate or
-   intrinsic into fresh noncanonical scalar, CFG, SSA, or memory forms after
-   those owners have run. Such expansion belongs in an explicitly reviewed
-   earlier pass or outside Canonical BIR.
-2. `memory` may normalize semantic addresses and effects, but it may not select
-   address modes, assign storage, or split target operations. It must preserve
-   the canonical CFG and SSA profiles it receives.
-
-If either consequence proves impossible, the correct design change is to
-split and reorder named passes here. Silently invoking an earlier pass from a
-later pass, or running an undocumented cleanup pass, is forbidden.
-
-## 3. Adjacent-stage contract table
-
-| Entry | Accepted input | Required postcondition / next-pass contract | Forbidden authority |
+| Input/product | Exact required state | Optional/empty form | Failure / forbidden substitution |
 |---|---|---|---|
-| `legalize` | exact verified `RawBir`; all IDs, types, operands, terminators, call effects, asm payloads, globals and initializers are valid; documented Raw-only semantic forms may remain | every `legalize`-owned Raw form is eliminated or converted to its typed portable handoff; widths, constants, casts, effect descriptors and opcode families satisfy the legal semantic type universe accepted by `scalar`; forms owned by later entries, including opaque inline-asm template and constraint payload, remain lossless and unchanged except for typed reference repair caused by legalize edits | ABI locations, target register width policy disguised as semantic legality, target opcode choice, malformed-import repair |
-| `scalar` | legal semantic types and operations; no remaining `legalize`-owned Raw scalar, type, constant, or boolean-boundary form; lossless forms owned by `cfg`/`ssa`/`memory`/`aggregate`/`intrinsics` or a root-declared later stage may remain | scalar ops, casts, comparisons, select conditions, integer/floating exceptional behavior, undef/poison policy and helper-eligible semantic operations have unique canonical descriptors; opaque inline-asm template and constraint payloads remain unchanged; output is accepted by CFG mutation and never relies on rendered comparison text | branch fusion, runtime-helper selection, instruction selection, physical flag/register state |
-| `cfg` | canonical scalar conditions and valid terminators as sole edge authority | reachable block set, successor/predecessor `EdgeKey {source BlockId, SuccessorRole, index}` occurrences, branch/switch/indirect/asm-goto semantics, block order policy and explicit-`Phi` edge updates are canonical; all edge edits are atomic; output admits dominance and SSA construction | label spelling as a graph key, prepared branch records, machine fallthrough layout, out-of-SSA copies |
-| `ssa` | canonical CFG with exact parallel-edge identity and complete def-use | every definition and use obeys explicit-`Phi` SSA; phi incoming keys cover the exact predecessor-edge multiset, dominance holds, and trivial aliases are normalized; output admits memory analysis and mutation | block arguments, physical homes, phi move scheduling, spill slots, MIR parallel copies |
-| `memory` | canonical SSA plus typed semantic loads, stores, GEP/ptr-offset, atomics, stack-save/restore and memory-intrinsic descriptors | memory/access/address forms expose target-independent object, offset, alignment, volatility, ordering, scope and effect operands needed for recomputable analyses; output preserves CFG/SSA and admits aggregate descriptor normalization | address modes, frame offsets, alias conclusions stored as truth, ABI by-value placement |
-| `aggregate` | canonical scalar, CFG, SSA and memory profiles; resolved record/array/union/complex types | aggregate values, copies, extracts/inserts, layout-independent aggregate paths and by-value semantic boundaries have unique forms; it preserves memory-canonical GEP/address descriptors and emits no earlier-stage noncanonical operation | target layout decomposition, sret/register classification, stack copy sequence, target lane choice |
-| `intrinsics` | all preceding canonical profiles and structured intrinsic/inline-asm semantic payloads | intrinsic namespaces, signatures, effects, atomics represented as intrinsics, runtime-helper-eligible operations and opaque semantic inline asm satisfy the final Canonical profile; unsupported semantics fail with diagnostics | helper symbol choice, asm constraint realization, clobber registers, target instructions |
-| Canonical publication | successful `P07` candidate with a complete frozen stage stamp | full Canonical verifier passes on that same frozen module revision and ordered function-revision digest, then mints `CanonicalBir` atomically | partial publication or “verified earlier” shortcuts |
-| Prepared-input gate | immutable `CanonicalBir`, explicit `TargetContext`, no canonical edit capability | cumulative `PreparedInput` verification succeeds and returns a borrowing `VerifiedPreparationInput` bound to the complete `PipelineStageStamp` plus target fingerprint; layout/preparation/constraints consume it, then D1 may fork a separate pseudo candidate | writing target/pseudo/allocation facts into Canonical BIR, calling this gate's result `PreparedBir`, or treating preparation facts as an instruction graph |
+| owning input | one move-only verified `RawBir` with exact epoch/module/function revisions and Raw stamp | empty module valid | draft/view/copy/stale/foreign input is `PipelineWrongInput` |
+| canonical plan | closed build-versioned canonical-v1 P01-P07+B8 plan fingerprint | no caller extension points | reordered/missing/extra occurrence is `PipelinePlanInvalid` |
+| semantic options | normalized options fingerprint covering every configured pass/analysis choice | canonical defaults valid | environment/cache/worker timing cannot affect it |
+| execution control | deterministic cancellation/resource/iteration policy | optional observer sinks empty | invalid/unbounded policy is `PipelineOptionsInvalid` |
+| framework registry | exact validated P01-P07 descriptors/kinds/properties/analysis declarations | none | registry/plan disagreement fails before Raw consumption |
+| verifier registry | exact Raw plus cumulative Canonical profile/version | none | missing/mismatched registry is `PipelineVerifierInvalid` |
+| re-entry input | internal move-only checkpoint carrying exact lineage/stamp/fingerprints when resuming | absent for fresh run | copied/mixed/stale checkpoint is `PipelineCheckpointInvalid` |
+| target exclusion | no target/profile/layout/ABI/helper/preparation/constraint/allocation/MIR input | none | later-domain input is `PipelineForbiddenInput` |
 
-No pass may loosen its predecessor's postconditions. Every later pass either
-preserves those profiles or fails its transaction.
+## Outputs
 
-### 3.1 Exhaustive first-owner map for Raw-only forms
+Success returns exactly one move-only `CanonicalBir`; failure returns one
+structured failure plus only the explicitly permitted internal last-good
+checkpoint. No stage view, report, stamp or semantic hash is a public capability.
 
-This table is the pipeline transcription of the accepted import inventory. A
-form may be *validated* by an earlier entry, but only its first owner may
-normalize or eliminate it. Importer-only forms do not escape `RawBir`.
+### Exact pipeline output matrix
 
-| Raw/import-boundary form | First owner | Required disposition before the next entry |
+| Output/product | Exact consumer | Required binding | Failure / forbidden escape |
+|---|---|---|---|
+| immutable `CanonicalBir` | C1 and read-only observers | same B7 owning revision, full canonical stamp/digest/lineage and B8 verifier token | only successful B8 may create it |
+| final stage stamp | `CanonicalBir` owner and preparation input gate | exact epoch/module revision/function digest, plan/options fingerprints, ordinal 7 and all properties | copied/equal/reconstructed stamp is not capability |
+| structured pipeline failure | caller/diagnostics | stable phase/occurrence/rule/entity/key and deterministic order | no report changes success or grants resume |
+| internal last-good checkpoint | `resume_bir_pipeline` only | complete prior occurrence stamp and owning storage | cannot convert directly to `CanonicalBir` or skip next ordinal |
+| discard outcome | pipeline cleanup | failed private fork/cache candidates destroyed, predecessor retained | no partial function/module/revision/property escapes |
+| observer events/statistics | read-only diagnostics | stable keys/ordinals and deterministic sequence | no scheduling, semantic or publication authority |
+
+## Adjacent-Stage Contract
+
+[A2 Raw publication](../verify/README.md) alone supplies `RawBir`. The
+[framework](../passes/README.md) executes each configured occurrence but cannot
+change order. Each pass supplies its semantic postcondition. The read-only
+[Canonical verifier](../verify/README.md) consumes the exact frozen B7 candidate
+and returns a private token only after the complete same-revision profile is
+green. The pipeline consumes that token and candidate atomically to create
+`CanonicalBir`. C1 receives only the published immutable result.
+
+Authority is intentionally separated:
+
+| Authority | Sole owner | Cannot do |
 |---|---|---|
-| old/new duplicate LIR shapes, reservations and forward-reference shells | importer/publication | unified or resolved before `RawBir`; no canonical pass accepts a compatibility alternative or unresolved reservation |
-| arbitrary-width SSA integers, exact FP payload encoding, raw scalar opcode/predicate/cast aliases, non-`I1` truth uses | `legalize` | converted to typed portable semantic operations/bridges or rejected; exact values remain lossless |
-| original inline-asm template and constraint strings | root stage `C9` | preserved byte-for-byte as opaque payload by `P01`-`P07`; interpreted and bound only at `C9` |
-| portable scalar expression, compare, cast, select and helper-eligible semantic operation shapes | `scalar` | one canonical target-independent scalar descriptor; helper identity remains undecided |
-| raw switch ordering, indirect target sets, unreachable blocks and noncanonical branch/block shape | `cfg` | exact `EdgeKey`-based canonical CFG with no name- or fallthrough-derived authority |
-| resolved but noncanonical phi placement/incoming order, promotable local memory and trivial SSA aliases | `ssa` | explicit-`Phi` SSA, dominance and exact parallel-edge incoming coverage hold; block arguments are not a v1 alternative |
-| multi-index GEP, semantic address paths, load/store/access forms, atomics, stack-save/restore and memory-intrinsic descriptors | `memory` | one target-independent memory/address/effect representation; no address mode or physical storage decision |
-| aggregate insert/extract/copy/path forms and typed source-level by-value or hidden-result semantics | `aggregate` | one aggregate semantic form; source spellings such as `sret` are not ABI placement authority |
-| semantic/feature intrinsic identity, final intrinsic effects, structured opaque inline-asm semantic payload and top-level asm dependency registry | `intrinsics` | final Canonical registry/signature/effect form or fail-closed unsupported diagnostic; no helper symbol, constraint allocation or target opcode choice |
-
-Typed calls, globals, relocations, initializers, declarations, call bundles and
-call effects are already semantically complete at Raw publication. Entries may
-check and preserve their cross-module consistency, but may not recover missing
-facts from legacy routes, names, rendered text, or target/preparation state.
-
-## 4. Proposed public C++ API
-
-The pass framework owns `PassId`, `PassKind`, `PipelineOccurrence`,
-`PassVerifyOptions`, pass contexts/results, preservation sets and mutation
-summaries. This pipeline only owns its immutable occurrence list, runner policy,
-audit and stage-level result. The following names are concrete design targets;
-they intentionally do not redeclare framework types.
-
-```cpp
-namespace c4c::backend::bir {
-
-enum class PipelineProfile : std::uint8_t {
-  Debug,
-  Release,
-  ReproducibilityCheck,
-};
-
-class CanonicalPipelinePlanView final {
- public:
-  std::span<const PipelineOccurrence> entries() const;
-  Hash128 schema_fingerprint() const;
-};
-
-const CanonicalPipelinePlanView& canonical_pipeline_v1();
-
-struct PipelineOptions final {
-  PipelineProfile profile = PipelineProfile::Release;
-  PassVerifyOptions verification;
-  std::uint32_t max_function_workers = 1;
-  bool retain_reentry_checkpoint_on_failure = true;
-  bool collect_audit_events = true;
-  DiagnosticOptions diagnostics;
-};
-
-// Whole-stage freshness stamp. ModuleRevision covers module-owned tables;
-// function_revisions covers every body in canonical FunctionId order.
-struct PipelineStageStamp final {
-  ModuleEpoch epoch;
-  ModuleRevision module_revision;
-  FunctionRevisionDigest function_revisions;
-};
-
-struct PassStatistics final {
-  PassId id;
-  std::uint32_t ordinal;
-  std::uint32_t iterations;
-  std::uint64_t attempted_mutations;
-  std::uint64_t committed_mutations;
-  std::uint64_t analyzed_functions;
-  PipelineStageStamp before;
-  PipelineStageStamp after;
-};
-
-struct PipelineAudit final {
-  Hash128 plan_fingerprint;
-  Hash128 options_fingerprint;
-  Hash128 input_semantic_hash;
-  Hash128 output_semantic_hash;
-  PipelineStageStamp input_stamp;
-  PipelineStageStamp output_stamp;
-  std::vector<PassStatistics> passes;
-  std::vector<AuditEvent> events;
-};
-
-// Opaque owning capability over a committed pipeline candidate. Its storage
-// representation must be supplied by the core/pass-framework checkpoint
-// prerequisite; pipeline code must not name or share raw ModuleStorage.
-class PipelineCheckpoint final {
- public:
-  PipelineCheckpoint(PipelineCheckpoint&&) noexcept;
-  PipelineCheckpoint& operator=(PipelineCheckpoint&&) noexcept;
-  PipelineCheckpoint(const PipelineCheckpoint&) = delete;
-  PipelineCheckpoint& operator=(const PipelineCheckpoint&) = delete;
-  ~PipelineCheckpoint();
-
-  ModuleView view() const;
-  PipelineStageStamp stamp() const;
-  PropertySet established_properties() const;
-  std::uint32_t next_ordinal() const;
-  Hash128 plan_fingerprint() const;
-  Hash128 options_fingerprint() const;
-};
-
-struct PipelineSuccess final {
-  CanonicalBir module;
-  DiagnosticSet diagnostics;
-  PipelineAudit audit;
-};
-
-enum class PipelineFailureKind : std::uint8_t {
-  InvalidPlan,
-  InputRevisionMismatch,
-  PassRejectedInput,
-  PassFailed,
-  PassViolatedContract,
-  VerificationFailed,
-  FixedPointBudgetExceeded,
-  NonDeterministicResult,
-  Cancelled,
-};
-
-struct PipelineFailure final {
-  PipelineFailureKind kind;
-  std::optional<PassId> pass;
-  std::optional<FunctionId> function;
-  std::uint32_t iteration;
-  DiagnosticSet diagnostics;
-  std::optional<PipelineCheckpoint> continuation;
-  PipelineAudit partial_audit;
-};
-
-Result<PipelineSuccess, PipelineFailure> run_bir_pipeline(
-    RawBir&& input, PipelineOptions options = {});
-
-Result<PipelineSuccess, PipelineFailure> resume_bir_pipeline(
-    PipelineCheckpoint&& checkpoint, PipelineOptions options = {});
-
-struct TargetContext;
-struct PreparationInputFailure;
-
-class VerifiedPreparationInput final {
- public:
-  ModuleView module() const;
-  PipelineStageStamp stamp() const;
-  TargetFingerprint target_fingerprint() const;
-
- private:
-  friend Result<VerifiedPreparationInput, PreparationInputFailure>
-  verify_preparation_input(const CanonicalBir&, const TargetContext&,
-                           VerifyOptions);
-};
-
-Result<VerifiedPreparationInput, PreparationInputFailure>
-verify_preparation_input(const CanonicalBir& module,
-                         const TargetContext& target,
-                         VerifyOptions options = {});
-
-} // namespace c4c::backend::bir
-```
-
-`canonical_pipeline_v1()` stores the seven entries explicitly. It is not
-assembled by filesystem discovery, registration order, linker initialization,
-environment strings, or unordered containers. `ordinal` is stable and checked
-against `PassId`; duplicate, missing, or out-of-order mandatory entries make
-runner initialization fail before the input is consumed. There is deliberately
-no public plan builder and `run_bir_pipeline` accepts no caller-supplied pass
-list. A future sequence is a new reviewed, versioned pipeline entry point, not
-an options mutation of `canonical_v1`.
-
-`PipelineStageStamp` is a pipeline aggregate of the framework/core revision
-axes, not a replacement for invocation-local `RevisionStamp`. Equality checks
-all three fields. The ordered function digest is computed over
-`(FunctionId, FunctionRevision)` in canonical function order; a
-`ModuleRevision` match alone never establishes freshness of function bodies.
-
-## 5. Pass implementation interface
-
-The runner invokes only the closed `FunctionPass` and `ModulePass` interfaces
-defined by [`passes/README.md`](../passes/README.md). That document exclusively
-owns pass contexts, sessions, results, preservation declarations,
-`MutationSummary` validation, budgets and the registry. This file assigns each
-occurrence to one registered implementation and supplies its barriers; it does
-not wrap those interfaces in a second type system.
-
-Within `B1`-`B8`, the runner sequences transactions, verification and stage
-publication.
-A pass cannot construct a session, commit, mint a stage token, clear a
-diagnostic or retain mutable storage. A false no-change result, undeclared edit
-or invalid preservation claim is a framework contract violation and fails the
-current pipeline transaction.
-
-## 6. Function and module barriers
-
-Each entry names exactly one framework `PassKind`:
-
-- `Function`: one isolated transaction per function definition. Declarations
-  are visited only when the pass contract explicitly includes them.
-- `Module`: one exclusive module transaction; no function worker or borrowed
-  analysis may be active.
-
-There is no hybrid third pass kind. A module implementation may perform a
-read-only analysis/planning wave before acquiring its exclusive edit session,
-but it remains one registered `ModulePass` and publishes through one module
-transaction. A function implementation may participate in the framework's
-atomic function-wave publication, but it remains one registered `FunctionPass`.
-
-The initial scope plan is:
-
-| Pass | Scope | Barrier reason |
-|---|---|---|
-| `legalize` | `Module` | globals, declarations, definitions and shared type/symbol tables must agree; its typed whole-module plan and edits publish once |
-| `scalar` | `Function` | definitions are independent once shared types are legal |
-| `cfg` | `Function` | edges never cross function ownership |
-| `ssa` | `Function` | dominance and definitions are function-local |
-| `memory` | `Module` | global-object references and module memory consistency require one whole-module transaction; derived effect summaries remain analysis results |
-| `aggregate` | `Module` | named aggregate/type identities and by-value boundaries must agree across declarations and definitions |
-| `intrinsics` | `Module` | intrinsic declarations/signature registry and top-level asm dependencies are module-level |
-
-No function pass may add, remove, rename, or change linkage/type of a function,
-global, symbol, named type, intrinsic declaration, or top-level asm object.
-Those are cross-function mutations and require a registered module entry.
-
-## 7. Deterministic parallel scheduling
-
-Function-scope work may run concurrently only when
-`max_function_workers > 1` **and** core provides the atomic function-wave
-proposal/merge primitive required by the pass framework. Until that prerequisite
-exists, the normative runner clamps the worker count to one and evaluates each
-function invocation serially in canonical `FunctionId` order **inside one
-unpublished occurrence candidate**. The complete occurrence publishes once;
-failure discards that candidate and retains the pre-occurrence checkpoint. It
-must not expose intermediate function commits or simulate rollback after edits
-became externally visible. This serial candidate/checkpoint facility is itself
-a core/pass-framework implementation prerequisite; if unavailable, runner
-initialization fails before consuming `RawBir`. Once the atomic parallel merge
-primitive exists, parallelism changes latency, never semantics:
-
-1. Snapshot the complete `PipelineStageStamp` and enumerate eligible
-   definitions in canonical `FunctionId` order.
-2. Give each worker an immutable module view, one function transaction, a
-   function-local diagnostic/statistic/audit buffer, and revision-keyed
-   analyses.
-3. Prohibit worker access to another function's editor or mutable module
-   indexes. Cross-function facts are immutable inputs for the whole wave.
-4. Collect proposals without committing them to shared storage.
-5. Sort proposals by canonical `FunctionId`; within a proposal, preserve the
-   editor journal's stable entity order.
-6. Merge diagnostics by `(pass ordinal, iteration, FunctionId, entity order,
-   RuleId, source location)`; merge statistics by `(closed StatisticId,
-   FunctionId)` with checked arithmetic; merge audit events by their stable
-   occurrence/function/entity key. None uses worker completion time.
-7. If any proposal fails, discard every proposal in that wave. There is no
-   partial function-wave commit.
-8. Recheck the module epoch/revision and every proposal's base
-   `{FunctionId, FunctionRevision}` against the original stage stamp, commit
-   the complete sorted wave, update the ordered function-revision digest, then
-   release the next pass barrier. A body-only wave does not bump
-   `ModuleRevision`.
-
-Work stealing is permitted internally, but must not influence ID allocation.
-The selected reservation algorithm is deterministic plan-first reservation:
-each invocation inventories its complete insertion plan in
-`(FunctionId, entity kind, source entity, registered rule, insertion ordinal)`
-order, computes its typed counts, and receives contiguous transaction-local ID
-ranges in that order before mutation. Parallel function plans are reserved by
-canonical `FunctionId`, not worker completion; the sorted merge preserves those
-assigned IDs and never reallocates from a contended global counter. An
-incomplete inventory or exhausted range fails the whole occurrence rather than
-requesting an order-dependent extension. Stress and single/parallel identity
-tests remain required implementation proof of this chosen algorithm.
-
-`ReproducibilityCheck` runs the same plan with two legal schedules (normally
-one worker and configured parallel workers) and compares canonical semantic
-hashes, diagnostics and audit mutation identities. A mismatch returns
-`NonDeterministicResult` and publishes neither candidate. The runner forks two
-private candidates from one framework-owned committed checkpoint; it does not
-copy `RawBir`, `CanonicalBir`, or any other move-only stage token. Before the
-atomic wave prerequisite exists, reproducibility checks deterministic repeated
-serial execution and records that parallel proof is unavailable.
-
-## 8. Transactions, revisions and last-good state
-
-Each pass attempt starts from one immutable, verified last-good stage stamp.
-
-```text
-last-good committed checkpoint + complete PipelineStageStamp
-  -> framework-owned private occurrence stage fork
-  -> one independent transaction per framework invocation
-  -> invocation result + editor journal + local verifier gate
-  -> occurrence postconditions on the complete private fork
-  -> atomic verified fork promotion
-  -> new last-good committed checkpoint
-```
-
-Rules:
-
-- no mutation is visible before commit;
-- an unchanged pass cannot bump either revision axis;
-- each changed function invocation bumps only that `FunctionRevision` exactly
-  once; a body-only function edit or complete function wave does **not** bump
-  `ModuleRevision`;
-- a function wave atomically publishes all changed function revisions and a
-  newly checked ordered function-revision digest while retaining the same
-  module revision;
-- a module commit bumps `ModuleRevision` exactly once and bumps affected
-  function revisions only when the core mutation contract says their
-  observable function view changed;
-- IDs created in a rolled-back transaction never resolve in a later revision;
-- analyses, views, checkpoints, audit records and preparation capabilities
-  retain the complete applicable revision stamp; any whole-stage consumer that
-  reads bodies also retains the ordered function-revision digest and rejects a
-  mismatch;
-- `RawBir` is consumed by the run, but its backing snapshot and complete stage
-  stamp remain the first last-good checkpoint until the first successful
-  commit;
-- `CanonicalBir` is not created until final verification succeeds.
-
-On pass error, verifier error, cancellation, budget exhaustion or merge
-conflict, the current invocation transaction is rolled back and the complete
-private occurrence fork is discarded. Later passes do not run.
-`retain_reentry_checkpoint_on_failure` controls whether the single owning
-`PipelineCheckpoint` is moved into `PipelineFailure::continuation`. No
-move-only stage object is copied into a success or failure. The checkpoint does
-not convert to `CanonicalBir`; only `resume_bir_pipeline(PipelineCheckpoint&&)`
-may consume it after the re-entry checks in Section 13.
-
-Cancellation is sampled only at registered invocation and barrier safe points.
-If observed before an occurrence promotion, that occurrence is discarded and
-the preceding checkpoint is returned as last-good. If observed after an atomic
-pass barrier has completed, that completed barrier is the returned last-good
-checkpoint. In both cases the result is `PipelineFailure::Cancelled`, never
-pipeline success or `CanonicalBir`; resumption starts strictly after the stamp
-carried by the returned checkpoint.
-
-## 9. Analysis manager contract
-
-Analyses are derived, disposable and revision-bound. They are neither BIR
-fields nor hidden channels between passes.
-
-The closed `AnalysisId` registry and `AnalysisManager::require` API are owned
-by [`passes/README.md`](../passes/README.md) and
-[`analysis/README.md`](../analysis/README.md). The pipeline names no competing
-IDs or query signatures; it only enforces invalidation at occurrence barriers.
-
-An analysis key includes `AnalysisId`, module epoch, module revision, optional
-function ID/revision, algorithm/schema version, and relevant options. A
-module-wide analysis that reads bodies additionally includes the ordered
-function-revision digest; module revision alone is insufficient. Analyses may
-share prerequisite results, but dependency edges are explicit.
-
-Before an occurrence fork becomes the next checkpoint, the runner compares
-its exact `MutationSummary` with `PreservedAnalyses`. It invalidates all
-unpreserved results transitively and rebinds a preserved result only through
-the analysis manager's checked operation. At a
-minimum:
-
-- CFG mutation invalidates reachability, dominance, post-dominance, loop,
-  liveness and path-sensitive provenance/effects;
-- operand/def-use mutation invalidates def-use, liveness, memory effects and
-  dependent provenance;
-- call/intrinsic effect mutation invalidates call graph and memory effects;
-- type/object/address mutation invalidates memory effects and provenance;
-- module symbol/global/call-edge mutation invalidates module call graph and
-  every dependent function analysis.
-
-Preservation is checked against actual mutations. An analysis object cannot be
-carried across a revision merely because its pointer remains alive. Passes ask
-the manager again after every commit barrier.
-
-## 10. Verifier gates
-
-Verification is independent of pass success. Returning `Changed` is not proof
-of a valid candidate.
-
-| Policy/profile | Gate behavior |
-|---|---|
-| Release default | validate editor journal and pass-specific postconditions after every entry; run full Canonical verification at publication |
-| `AfterMutatingPass` | additionally run framework `verify_after_edit` (or its requested full fallback) after every changed entry/wave |
-| Debug default | `AfterEveryPass`: verify the candidate plus all accumulated `PassProperty` postconditions after every entry, including unchanged entries; expensive preservation and deterministic-order assertions enabled |
-| Reproducibility | Debug gates for both schedules plus semantic-hash/audit comparison |
-
-`PipelineProfile::Debug` upgrades a weaker requested verification policy; a
-caller cannot disable final Canonical publication verification. A future
-sampling mode may reduce internal checks, but must never sample publication.
-
-Pass-specific properties are cumulative: after `cfg`, Raw-verified + legal +
-scalar + CFG properties are checked; after `ssa`, those plus SSA; and so on.
-They are framework properties, not invented verifier profiles. The verifier's
-public profile names remain `Raw`, `Canonical`, and `PreparedInput`. The final
-gate freezes one exact candidate stage stamp, runs the complete Canonical
-registry, and atomically consumes the successful candidate into
-`CanonicalBir`.
-
-The prepared-input gate is separate because it also sees `TargetContext`. It
-may reject a canonical semantic feature unsupported by that preparation
-implementation, but cannot mutate or weaken Canonical BIR.
-
-## 11. Fixed-point groups and convergence
-
-The initial seven canonicalizers are required to be idempotent after one
-successful invocation. The built-in v1 plan therefore has no implicit outer
-fixed-point loop. Each pass may use a documented, internally bounded worklist
-to reach its own postcondition; iteration count and mutation count are audited.
-
-The API includes explicit fixed-point groups for future reviewed pipelines.
-Their contract is:
-
-- a group is a contiguous, statically listed sequence of framework
-  `PipelineOccurrence` objects in a newly reviewed pipeline version;
-- every iteration runs those entries in the same order;
-- before the first invocation, the framework forks one private owning stage
-  from the pre-group checkpoint; this is a stage-storage fork, **not** an outer
-  editor transaction and not a nested pass invocation;
-- the runner invokes every registered pass normally and sequentially against
-  that private fork. Each function/module invocation opens at most one editor
-  transaction and independently commits or rolls back exactly once according
-  to the pass-framework state machine; successful private commits advance the
-  correct revision axes on the fork and invalidate its analyses;
-- a successful invocation commit becomes the framework-published input for the
-  next invocation **within that fork** and has an ordinary before/after
-  `RevisionStamp`; it remains unreachable to pipeline callers and is not a
-  resumable `PipelineCheckpoint`;
-- iteration boundaries are runner bookkeeping only. They are not editor
-  savepoints, cannot keep an editor open across invocations, and do not permit
-  one pass to invoke another;
-- no private-fork revision becomes a public pipeline checkpoint until one full
-  no-change iteration proves convergence. The framework then atomically
-  promotes the complete verified fork as the next stage checkpoint;
-- entry skipping based on previous change counts is forbidden unless encoded
-  in a new immutable plan version;
-- convergence means every entry reports `Unchanged` and editor journals confirm
-  zero mutation during one complete iteration;
-- semantic-hash equality alone does not excuse a pass that mutates and restores
-  the same state;
-- both `max_iterations` and `max_total_mutations` are hard deterministic
-  budgets; exhaustion is `FixedPointBudgetExceeded` and rolls back the entire
-  currently open invocation, discards the private fork, and retains the exact
-  pre-group checkpoint/stamp;
-- wall-clock budget is telemetry unless the caller explicitly requests
-  cancellation semantics, because timing-based output is not reproducible;
-- the pre-group checkpoint remains last-good until convergence; no partially
-  completed iteration or nonconverged group can be resumed.
-
-This contract requires framework/core primitives for private owning stage
-fork, independent invocation commits on that fork, and atomic verified fork
-promotion. If any primitive is unavailable, a plan containing a fixed-point
-group fails validation before consuming its input. An implementation must not
-approximate the group with a long-lived outer editor, nested editor
-transactions, cross-invocation savepoints, or revision rollback.
-
-This rejects the reference compiler's heuristic “three iterations plus
-diminishing returns” as a correctness convergence rule. Its explicit repeated
-order and dirty-function idea are useful, but output must not depend on timing,
-unordered completion, or a change-count percentage.
-
-## 12. Enablement and profile policy
-
-The environment does not edit the pass list. CLI and configuration are parsed
-into typed `PipelineOptions`, validated, fingerprinted, and recorded before
-execution.
-
-- mandatory canonicalizers cannot be disabled, substituted, skipped or
-  repeated through `PipelineOptions`; v1 has no optional occurrence;
-- a “fast” algorithm and a “thorough” algorithm behind the same `PassId` must
-  produce the same canonical semantic fingerprint, deterministic ordered
-  diagnostics, mutation-independent postconditions and failure class;
-- debug/release affects checks, telemetry and parallelism defaults, not order;
-- optimization level must not cause malformed or noncanonical BIR to bypass a
-  pass;
-- unknown pass names, duplicate toggles and incompatible budgets are plan
-  errors, not ignored strings;
-- target feature flags are unavailable to canonical passes except where the
-  semantic type universe explicitly requires a target-independent capability.
-  Target support decisions belong at `PreparedInput` or later.
-
-## 13. Stage re-entry and resumption
-
-Normal APIs are single-directional. A caller cannot cast a `CanonicalBir` back
-to `RawBir`, run `P04` directly, or resume a failed transaction.
-
-Permitted re-entry is only the `resume_bir_pipeline(PipelineCheckpoint&&)` API
-in Section 4. A checkpoint may be created only by the runner at a committed
-pass barrier and carries one unforgeable, owning stage capability. Resume
-consumes that capability exactly once; success, failure or validation rejection
-leaves the caller with no reusable token. Before running the successor it
-rechecks the complete `PipelineStageStamp` including the ordered
-function-revision digest, accumulated framework properties, the applicable
-verifier rules, plan/options fingerprints, and that `next_ordinal` is exactly
-the successor of the last completed entry. A matching module revision with a
-different function digest is stale. Checkpoints are process-local until a
-separately versioned serialization format exists. Source edits, target changes,
-order changes, algorithm options, verifier-schema changes, or an already
-consumed token invalidate re-entry.
-
-`PipelineCheckpoint::view()` creates an ordinary revision-bound immutable
-borrow. Resume requires all such borrows to be destroyed before the checkpoint
-is moved; a live borrow is a deterministic re-entry failure, never a reason to
-clone the owning capability.
-
-Re-running the whole pipeline requires a new `RawBir` from the importer. It is
-not stage re-entry. Running only `verify_preparation_input` again with another
-target is allowed because `CanonicalBir` is immutable and preparation facts are
-external.
-
-## 14. Diagnostics, audit and provenance
-
-Every diagnostic carries:
-
-- stable diagnostic/rule ID and severity;
-- pass ID, ordinal and fixed-point iteration;
-- module epoch/revision and optional function revision;
-- stable entity ID plus structured source provenance when present;
-- concise message, related entities and causal diagnostic IDs;
-- whether it arose from pass rejection, pass contract checking, analysis,
-  verifier, merge, budget or cancellation.
-
-Passes emit diagnostics through their transaction-local sink. They cannot print
-directly, use rendered BIR as an error protocol, or make success depend on
-diagnostic formatting.
-
-Audit events record the plan/options fingerprints, compiler/schema version,
-input/output semantic hashes, complete before/after `PipelineStageStamp`s,
-invocation-local framework `RevisionStamp`s, requested analyses and their
-revision/digest keys, pass start/finish, mutation categories,
-preservation/invalidation decisions, verifier profiles/reports, worker count,
-deterministic merge order, rollback, budgets and final publication. Source
-provenance remains non-authoritative metadata: it explains where semantics came
-from but never substitutes for a typed operand or ID.
-
-Reproducible output requires canonical iteration order for modules, functions,
-blocks, instructions, operands, diagnostics, audit events and hash inputs.
-Pointer values, allocation addresses, thread IDs, wall time and unordered-map
-iteration are excluded from semantic hashes.
-
-## 15. Legacy capability coverage
-
-The legacy tree is evidence for capabilities, not a shape to preserve.
-
-| Legacy capability | New owner / disposition |
-|---|---|
-| `lir_to_bir.cpp`, `bir_route1.cpp` producer identity, route facade | importer plus core stable IDs; completed before this pipeline; route spellings/facades are not copied |
-| route 2/3 memory and provenance records | semantic operands survive in core; `memory` canonicalizes representation; effects/provenance remain revision-keyed analyses |
-| route 4/5 publication availability and block-entry records | exact def-use, CFG edge identity and dominance/SSA replace publication side tables |
-| route 6 call publication | typed call bundles/effects are Raw input; call ABI placement is external preparation |
-| route 7 comparison view | `scalar` owns comparison/select semantics; `cfg` consumes typed conditions; no trailing-compare text search |
-| route 8 and select-dependency views | explicit typed dependencies and def-use; recomputable analyses, not authoritative route records |
-| `prealloc/legalize.cpp` type/value normalization | target-independent portion moves to `legalize`; its ABI repair, target i1 promotion policy, prepared label tables and branch-fusion records are rejected from Canonical passes |
-| `prealloc/control_flow.hpp`, label lookup tables | CFG analysis plus `cfg` using `BlockId` and `EdgeKey`; prepared label interning is unnecessary |
-| `prealloc/comparison.*` | scalar canonical forms and comparison analysis; physical flags/branch fusion remain later |
-| `prealloc/addressing.hpp`, memory freshness, atomics, object data | memory/aggregate/intrinsic semantic canonicalization plus analyses; C6 owns typed address facts and E4 owns exact private object/frame placement; F1 only applies verified mappings |
-| `prealloc/liveness.*` | reusable revision-bound BIR analysis when needed; never a canonical pass or stored authority |
-| `prealloc/out_of_ssa.cpp` phi materialization, join transfers, parallel-copy bundles | rejected from the canonical interval; root stage `D5` BIR out-of-SSA owns it after target legalization and before `E1` allocation liveness |
-| `prealloc/regalloc.cpp`, allocation constraints, spill/reload and move bundles | typed target preparation plus shared BIR allocation own abstract constraints, assignments, capacity `Spill`/`Reload`, and D5 copy resolution; E4 owns explicit frame-action materialization and exact placement; F1 applies concrete spellings only |
-| stack layout, dynamic stack plan, frame plan, storage plan | E4 owns exact private layout/placements and materializes every required action as an explicit admitted one-record BIR node; F1 applies only the final plan and registered mappings |
-| call plans, variadic entry plans, inline-asm carriers, runtime-helper facts | `intrinsics` guarantees typed semantic inputs; external typed preparation owns classifications and plans |
-| prepared lookups, traversal coordinates and agreement tables | replaced by stable IDs, immutable typed plan handles and revision checks; no duplicate authority |
-| prepared printer and legacy notes/completed-phase strings | structured diagnostics/audit; strings are presentation only |
-
-The old `BirPreAlloc::run()` order (`legalize -> stack layout -> liveness ->
-out_of_ssa -> regalloc -> publish plans`) is therefore not the new BIR pass
-order. It mixed semantic cleanup, analyses, allocation, machine transition and
-publication in one mutable object. Only its capability inventory is retained.
-
-## 16. Reference compiler: adopt and reject
-
-Evidence reviewed under `ref/claudes-c-compiler/src/backend` and its directly
-used `src/passes` orchestration leads to these decisions:
-
-| Reference behavior | Decision |
-|---|---|
-| one explicit top-level pass list | adopt; the plan is inspectable and fingerprinted |
-| repeated CFG cleanup around transforms | adopt only when represented as distinct ordered entries in a future plan; never hidden recursion |
-| per-function dirty sets | adopt as an optimization only when skipping cannot bypass a mandatory postcondition and produces identical audit semantics |
-| shared CFG/dominator/loop computation for GVN/LICM/IVSR | adopt the explicit analysis manager and preservation model |
-| fixed backward liveness dataflow with dense bitsets | useful analysis evidence, outside canonical mutation authority |
-| centralized canonical operand traversal | adopt through core descriptors/def-use and analysis APIs |
-| all optimization levels exercising one sequence while compiler matures | adopt the reliability motivation; profiles cannot reorder canonicalization |
-| environment substring matching to disable passes | reject; use validated typed options and exact `PassId` |
-| hard-coded three iterations and diminishing-return percentage | reject as a correctness criterion; use deterministic convergence and hard budgets |
-| whole-module mutable IR passed directly among functions | reject; transactions, revisions and stage tokens are mandatory |
-| text assembly peephole passes | reject from BIR; target output work is later |
-| combined stack layout/regalloc/codegen state | split: shared BIR owns allocation and spill state; E4 owns exact private frame layout plus explicit action materialization; F1 owns only concrete spelling/selection within one registered mapping and encoding |
-| target-specific div-by-constant gating inside the semantic pass list | do not copy into canonicalization; target-dependent expansion requires a later target stage or a proven target-independent semantic transform |
-| inline asm symbol resolution after inlining | retain the need for explicit symbol dependencies, but Raw import must already provide structured identities; no text reparsing in this pipeline |
-
-The reference is not authority for c4c stage ownership. In particular, its
-backend consumes an SSA IR directly into stack layout/regalloc/instruction
-selection; that does not justify placing those activities in `src/backend/bir`.
-
-## 17. Coverage obligations before implementation
-
-The canonical pipeline is coverage-complete only if reviews establish all of
-the following:
-
-1. every Raw-only form listed by core/import/verify has exactly one owning pass
-   and a fail-closed unsupported outcome;
-2. every instruction/terminator descriptor declares which passes may mutate it
-   and which analyses observe it;
-3. every legacy route/prealloc capability is mapped either to a canonical pass,
-   a revision-bound analysis, typed preparation, MIR/backend, or explicit
-   rejection;
-4. every pass document repeats the exact adjacent pre/postconditions above and
-   lists its preserved/invalidated analyses;
-5. aggregate and intrinsic reviews prove they cannot recreate earlier
-   noncanonical forms under the retained order;
-6. cross-function declaration/definition, call-effect, global initializer,
-   top-level asm and intrinsic-registry consistency has one module barrier;
-7. every internal gate has cumulative framework-property checks plus the
-   configured verifier operation, and the full Canonical profile alone mints
-   an unforgeable publication token;
-8. preparation accepts only `VerifiedPreparationInput` and never mutates
-   `CanonicalBir`;
-9. deterministic single-worker and parallel schedules produce identical
-   semantic hashes and ordered diagnostics;
-10. failure injection at every analysis, pass, merge and verifier boundary
-    proves rollback and last-good behavior.
-
-## 18. Closed representation choices and remaining gaps
-
-The acceptance-critical representation choices are closed below. This section
-only transcribes each decision and points to its sole local owner; it does not
-create duplicate pipeline authority.
-
-- [`core`](../core/README.md) owns explicit `Phi` as canonical SSA and rejects
-  block arguments as a v1 alternative. It also owns the one shared
-  `EdgeKey {source BlockId, SuccessorRole, index}` schema; CFG, SSA,
-  diagnostics, verification, and audit carry that exact structural identity.
-- [`core`](../core/README.md) owns the closed, build-versioned intrinsic
-  namespace. A module's `RegistryVersion` interprets every `IntrinsicId`; P07
-  only canonicalizes registered aliases, and unknown IDs, mismatched versions,
-  or ISA identities fail closed.
-- [`core`](../core/README.md) owns asm-goto value availability and exception
-  topology. Paired `InlineAsm` results are ordinary definitions available on
-  every successor; edge-specific availability is rejected. `MayUnwind` means
-  escape only, and local invoke/cleanup/landing-pad edges are rejected source
-  gaps rather than hidden CFG.
-- [`aggregate`](../passes/aggregate/README.md) owns the closed disposition of
-  aggregate paths: layout-independent typed field/index paths are sufficient
-  for every admitted v1 case, while a case that cannot preserve semantic type
-  and field/index identity fails closed.
-- [`memory`](../passes/memory/README.md) owns canonical semantic effect operands.
-  Derived whole-module effect-summary reconciliation is analysis-only authority
-  of the revision-bound memory-effects analysis; it is not a P05 mutation or a
-  reason for P05's module barrier.
-- [`runtime_helpers`](../preparation/runtime_helpers/README.md) owns
-  runtime-helper eligibility. Only its closed semantic-operation eligibility
-  table plus the selected target profile may request a helper route; P02/P07
-  retain semantic identity and may not select a helper or symbol.
-- Sections 7 and 8 own the selected deterministic plan-first ID reservation and
-  cancellation/last-good semantics for this runner.
-
-The following are true implementation choices or producer/source gaps and must
-remain visible rather than being guessed:
-
-- Section 3.1 is the frozen first-owner inventory for the Raw forms currently
-  admitted by importer Section 11, but the implementation mechanism that
-  proves every closed descriptor is represented in that inventory (generated
-  table or exhaustive dispatch) remains to be selected;
-- each pass still needs an exhaustive postcondition checker and stable
-  pass-contract diagnostic codes; these must not be presented as new verifier
-  profiles;
-- the core/pass framework must define the opaque owning candidate/checkpoint,
-  private stage fork, independent committed invocations on a fork, serial
-  occurrence discard, atomic verified fork promotion and atomic function-wave
-  merge primitives before this runner or any fixed-point group can be
-  implemented; missing primitives fail plan validation before input
-  consumption, and serialization remains intentionally unspecified beyond
-  process-local ownership;
-- `VerifiedPreparationInput` is fixed as a short-lived borrow of immutable
-  `CanonicalBir` storage; the concrete C++ lifetime encoding remains an
-  implementation choice but may not copy the graph or outlive the owning
-  `CanonicalBir` capability;
-- no optimization family such as DCE/GVN/LICM is currently part of this
-  canonicalization plan. Adding one requires explicit source intent, ordered
-  entries, fixed-point policy, and separate semantic coverage review.
-
-Until those implementation choices and source gaps are resolved,
-implementations must fail closed at the relevant boundary and must not use
-legacy text, route tables, target state or prepared side data to synthesize
-missing semantic authority.
-
-## 19. Design checks
-
-Reviewers should reject a change to this contract if any answer is “yes”:
-
-- Can a pass run on an unverified `RawBir` or repair malformed import state?
-- Can configuration change mandatory order?
-- Can a later pass emit an earlier pass's noncanonical form?
-- Can worker completion order affect IDs, diagnostics or output?
-- Can a failed wave partially commit?
-- Can a preservation claim keep an analysis across the wrong revision axes or
-  ordered function-revision digest?
-- Can a last-good snapshot be mistaken for `CanonicalBir`?
-- Can a canonical pass choose ABI locations, registers, stack/frame offsets,
-  call moves, target opcodes or helper symbols?
-- Can preparation write facts back into canonical storage?
-- Can MIR appear under `src/backend/bir`?
-
-Expected implementation proof includes plan-validation unit tests, exhaustive
-pass dispatch, verifier fault injection, transaction rollback tests,
-single/parallel reproducibility tests, fixed-point budget tests, stale-analysis
-tests, stage-token construction tests, and legacy/reference coverage audits.
-
-## 20. Research anchors inspected
-
-- `src/backend/bir/core/README.md`
-- `src/backend/bir/lir_to_bir/README.md`
-- `src/backend/bir/verify/README.md`
-- `src/backend/legacy/bir_route*.cpp` and route/view headers
-- `src/backend/legacy/prealloc/prealloc.cpp`
-- `src/backend/legacy/prealloc/legalize.cpp`
-- `src/backend/legacy/prealloc/liveness.cpp`
-- `src/backend/legacy/prealloc/out_of_ssa.cpp`
-- `src/backend/legacy/prealloc/regalloc.cpp`
-- `src/backend/legacy/prealloc/README.md` and its published-plan headers
-- `ref/claudes-c-compiler/src/passes/mod.rs` and pass documentation
-- `ref/claudes-c-compiler/src/backend/README.md`
-- `ref/claudes-c-compiler/src/backend/generation.rs`
-- `ref/claudes-c-compiler/src/backend/liveness.rs`
-- `ref/claudes-c-compiler/src/backend/regalloc.rs`
-- `ref/claudes-c-compiler/src/backend/stack_layout/`
+| invocation transaction, occurrence support, analysis invalidation | pass framework | choose P01-P07 order, define Canonical rules, mint `CanonicalBir` |
+| exact order, stamps, checkpoints, re-entry and capability transitions | pipeline | define pass semantics or declare verifier success |
+| Raw/Canonical cumulative rules and private publication token | verifier | schedule passes, mutate candidates or create pipeline checkpoints |
+| final `CanonicalBir` construction from green token + same candidate | pipeline B8 boundary | accept an earlier report, stale candidate or partial wave |
+
+## Exact Built-In Occurrence Sequence
+
+| Ordinal | Occurrence / gate | Exact accepted input property | Exact established property / output | Mandatory analysis timing |
+|---|---|---|---|---|
+| B1 / P01 | `Legalize` | `RawVerified` | `TypesLegal` | none |
+| B2 / P02 | `ScalarCanonicalize` | `TypesLegal` | `ScalarsCanonical` | `ComparisonSelect` immediately before P02 |
+| B3 / P03 | `CfgCanonicalize` | `ScalarsCanonical` | `CfgCanonical` | `Cfg` before planning and recomputed from resulting terminators |
+| B4 / P04 | `SsaCanonicalize` | `CfgCanonical` | `SsaCanonical` | exact-current `Cfg`, `Dominance`, `PublicationValueFlow` |
+| B5 / P05 | `MemoryCanonicalize` | `SsaCanonical` | `MemoryCanonical` | exact-current `MemoryEffects`, `Provenance` closure |
+| B6 / P06 | `AggregateCanonicalize` | `MemoryCanonical` | `AggregatesCanonical` | recompute/invalidate observed facts by mutation summary |
+| B7 / P07 | `IntrinsicCanonicalize` | `AggregatesCanonical` | `IntrinsicsCanonical`; frozen B7 candidate | exact-current `CallGraph`; exact-B6 `MemoryEffects` rebind/recompute |
+| B8 | unconditional Canonical verification/publication gate, not a pass | frozen ordinal-7 candidate with every P01-P07 property | one `CanonicalBir` only after full verifier token | analyses are not publication capability |
+
+No occurrence may be omitted, reordered, recursively invoke an earlier pass or
+hide an extra cleanup/fixed point. B8 is unconditional and cannot be disabled.
+
+## Stage Stamp and Fingerprint Matrix
+
+| Axis | Exact content | Update/validation rule | Forbidden shortcut |
+|---|---|---|---|
+| storage identity | owning private checkpoint/candidate capability | move-only consumption at each boundary | borrowed view, pointer or semantic hash |
+| revision key | `ModuleEpoch`, `ModuleRevision`, ordered `(FunctionId, FunctionRevision)` digest | core-derived after committed effects; frozen for verification | module revision alone or mixed digest |
+| plan identity | build-versioned canonical-v1 sequence fingerprint | fixed before Raw consumption and identical through B8 | caller-supplied order or free-form names |
+| options identity | normalized pass/analysis semantic options fingerprint | fixed for lineage; resume must match exactly | environment/cache/worker count |
+| occurrence lineage | completed ordinal/`PassId`, parent stamp and occurrence fingerprint | append exactly once after complete barrier | copied stamp, skipped ordinal or similar reconstruction |
+| cumulative properties | `RawVerified` then exact P01-P07 properties | established only after corresponding postcondition/barrier | report or descriptor self-assertion |
+| verifier identity | Canonical registry/profile version and private green token | generated only for the same frozen B7 key | earlier/cached diagnostic-only report |
+
+## Ordered Behavior
+
+1. Validate Raw capability, closed plan/options, framework/verifier registries
+   and target exclusion before consuming input.
+2. Create the initial internal last-good Raw checkpoint with exact stamp and
+   canonical-v1 lineage.
+3. For each ordinal P01-P07, validate required cumulative property/analysis
+   timing, fork one private occurrence, invoke framework support and retain the
+   prior checkpoint until the whole occurrence barrier succeeds.
+4. On success, atomically replace last-good with the exact verified fork,
+   append the ordinal/property/fingerprint and invalidate/install analyses by
+   framework result. On failure, discard the fork and retain last-good.
+5. After P07, freeze the exact B7 owner/stamp and prohibit edits/analysis
+   publication races.
+6. Invoke B8 on that same candidate. Require all framework postconditions and
+   the complete Canonical verifier profile under the unchanged key.
+7. On a private green token, atomically consume candidate+token and return one
+   `CanonicalBir`; otherwise discard the B7 candidate and publish none.
+
+## Invariants
+
+- Exactly P01-P07 then B8 executes. Descriptors/properties do not create order.
+- Each occurrence is atomic at module-wave scope even when its function
+  proposals run concurrently.
+- Last-good is an internal recovery checkpoint, never success or Canonical.
+- `RawBir`, checkpoints, candidates, verifier tokens and `CanonicalBir` are
+  move-only capability states; views/stamps/reports cannot forge transitions.
+- Every checkpoint/candidate key and analysis handle is exact-current. Old
+  handles never retarget across revision increments.
+- Canonical BIR is target-independent and unallocated. No target/profile/
+  layout/ABI/helper/preparation/constraint/home/spill/frame/MIR fact appears.
+
+## Failure, Rollback, and Re-entry
+
+Failure before an occurrence barrier publishes no edit/function prefix/
+revision/property/cache entry. The private fork is discarded and last-good
+remains unchanged. Failure at B8 publishes no `CanonicalBir`, property, cache
+entry or reusable verifier token; an earlier checkpoint cannot be relabeled.
+
+An internal checkpoint records owning storage, exact completed ordinal,
+revision digest, plan/options fingerprints, occurrence lineage and cumulative
+properties. Serialization/reload validates all axes. Resume starts strictly
+after the completed ordinal, repeats no successful occurrence, skips none, and
+always runs B8. A checkpoint is consumed once; inspection uses a borrow only.
+
+## Verification and Canonical Publication
+
+B8 accepts only one private frozen B7 candidate whose stamp proves exact
+canonical-v1 lineage, plan/options fingerprints, ordinal 7,
+`IntrinsicsCanonical`, epoch/module revision and ordered function-revision
+digest. The candidate passed to the verifier is the same owner frozen by P07.
+
+The verifier runs Raw plus every P01-P07 obligation and rejects target/
+preparation/allocation/MIR facts. Any diagnostic, cancellation, resource
+failure or key/stamp change discards the candidate. Only the completely green
+private token permits the pipeline to mint exactly one immutable
+target-independent unallocated `CanonicalBir` carrying the verified stamp.
+
+## Target and ABI Rules
+
+Canonical options cannot include a target triple/profile/layout, calling
+placement, helper route, constraints, homes, spills, frame or MIR state. Source-
+semantic typed sizes, alignments and address spaces remain semantic BIR facts;
+C1 selects target context independently after publication.
+
+## Implementation State
+
+Implementation is partial foundation only:
+
+- checked in and build-included: revision/digest/stamp identity, internal
+  move-only `PipelineCheckpoint`, consume-verified-Raw, private fork/view,
+  distinct-storage check and discard; deterministic cancellation/work budget is
+  provided by framework storage;
+- absent: public `run_bir_pipeline`/resume APIs, canonical plan/options
+  fingerprint implementation, complete P01-P07 runner/barriers, property and
+  analysis orchestration, checkpoint serialization, B7 freeze capability, B8
+  verifier-token integration and `CanonicalBir` minting.
+
+No P01-P07 semantic pass implementation exists. Existing foundations cannot
+produce a Canonical pipeline success.
+
+## Proof Requirements
+
+- prove the immutable exact P01-P07+B8 order and descriptor agreement;
+- test stamp/digest/plan/options/lineage mismatch, move-only capability use,
+  atomic occurrence rollback and last-good non-success semantics;
+- test checkpoint serialization/re-entry strictly after completed ordinal and
+  unconditional B8;
+- prove framework/pipeline/verifier authority separation and same-owner B7/B8
+  verification;
+- prove only one full green gate mints target-independent unallocated
+  `CanonicalBir`;
+- reconcile implementation claims with storage, build inclusion and callable
+  reachability.
+
+## Open Questions
+
+Concrete APIs for the absent runner/resume/serialization/B8 integration remain
+implementation work; no API may weaken the capability or authority split.
+
+## Review Checklist
+
+- [x] Metadata, core-first ownership and substantive matrices are present.
+- [x] P01-P07 order, analyses, properties and unconditional B8 are exact.
+- [x] Stamps/fingerprints/capability transitions and re-entry are complete.
+- [x] Failure retains only internal last-good and publishes no mixed state.
+- [x] Framework, pipeline and verifier authorities are distinct.
+- [x] Only same-revision full B8 can mint one target-independent `CanonicalBir`.
+- [x] Partial-foundation implementation truth is explicit.
