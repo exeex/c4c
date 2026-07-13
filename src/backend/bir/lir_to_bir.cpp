@@ -251,6 +251,41 @@ std::optional<Type> lower_global_type(const LirModule& module,
                                       const LirGlobal& global) {
   constexpr int kArrayDimensionCapacity =
       sizeof(global.type.array_dims) / sizeof(global.type.array_dims[0]);
+  if (!global.type.is_vector &&
+      (global.type.vector_lanes != 0 || global.type.vector_bytes != 0))
+    return std::nullopt;
+  const bool direct_scalar_vector =
+      global.type.is_vector && global.type.vector_lanes > 0 &&
+      global.type.vector_bytes > 0 && global.type.vrm_width == 0 &&
+      global.type.ptr_level == 0 &&
+      !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
+      global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
+      global.type.inner_rank == 0 && !global.type.is_fn_ptr &&
+      global.type.array_size_expr == nullptr;
+  if (global.type.is_vector) {
+    if (!direct_scalar_vector) return std::nullopt;
+    if (global.llvm_type_ref) return std::nullopt;
+    TypeSpec element_spec = global.type;
+    element_spec.is_vector = false;
+    element_spec.vector_lanes = 0;
+    element_spec.vector_bytes = 0;
+    const auto element = lower_constant_type(module, element_spec);
+    if (!element || (element->kind != TypeKind::Integer &&
+                     element->kind != TypeKind::Floating))
+      return std::nullopt;
+
+    const std::string expected =
+        "<" + std::to_string(global.type.vector_lanes) + " x " +
+        element->spelling + ">";
+    if (global.llvm_type != expected) return std::nullopt;
+    Type result{TypeKind::Vector, 0, expected};
+    result.vector_facts =
+        VectorTypeFacts{element->kind, element->bit_width,
+                        global.type.vector_lanes, global.type.vector_bytes};
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
   const bool fixed_scalar_base_array =
       global.type.ptr_level >= 0 &&
       !global.type.is_lvalue_ref &&

@@ -849,6 +849,65 @@ void test_verifier_rejects_malformed_raw_type() {
              "invalid_pointer_storage_width",
              std::move(invalid_pointer_storage_width)),
          "Raw publication verifier must reject storage width on typed opaque pointers");
+
+  const auto malformed_vector_facts_reject = [](std::string name,
+                                                 bir::Type type) {
+    bir::ModuleBuilder malformed_builder;
+    if (!malformed_builder
+             .add_global_object(std::move(name), std::move(type), 16, false,
+                                false, false, true)
+             .has_value())
+      return false;
+    const auto published = std::move(malformed_builder).publish();
+    return !published.has_value() &&
+           published.error().reason ==
+               bir::PublishError::VerificationFailed &&
+           !published.error().verification.errors.empty();
+  };
+
+  bir::Type vector_facts_on_scalar{bir::TypeKind::Integer, 32, "i32"};
+  vector_facts_on_scalar.vector_facts =
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16};
+  expect(malformed_vector_facts_reject("vector_facts_on_scalar",
+                                       std::move(vector_facts_on_scalar)),
+         "Raw publication verifier must reject vector facts on non-vector types");
+
+  bir::Type zero_vector_lanes{bir::TypeKind::Vector, 0, "<4 x i32>"};
+  zero_vector_lanes.vector_facts =
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 0, 16};
+  expect(malformed_vector_facts_reject("zero_vector_lanes",
+                                       std::move(zero_vector_lanes)),
+         "Raw publication verifier must reject nonpositive vector lane facts");
+
+  bir::Type negative_vector_storage{bir::TypeKind::Vector, 0, "<4 x i32>"};
+  negative_vector_storage.vector_facts =
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, -16};
+  expect(malformed_vector_facts_reject("negative_vector_storage",
+                                       std::move(negative_vector_storage)),
+         "Raw publication verifier must reject nonpositive vector storage facts");
+
+  bir::Type nonscalar_vector_base{bir::TypeKind::Vector, 0,
+                                  "<4 x %struct.Payload>"};
+  nonscalar_vector_base.vector_facts =
+      bir::VectorTypeFacts{bir::TypeKind::Struct, 0, 4, 16};
+  expect(malformed_vector_facts_reject("nonscalar_vector_base",
+                                       std::move(nonscalar_vector_base)),
+         "Raw publication verifier must reject nonscalar vector element facts");
+
+  bir::Type invalid_vector_width{bir::TypeKind::Vector, 0, "<4 x float>"};
+  invalid_vector_width.vector_facts =
+      bir::VectorTypeFacts{bir::TypeKind::Floating, 24, 4, 16};
+  expect(malformed_vector_facts_reject("invalid_vector_width",
+                                       std::move(invalid_vector_width)),
+         "Raw publication verifier must reject invalid floating vector widths");
+
+  bir::Type vector_spelling_conflict{bir::TypeKind::Vector, 0,
+                                     "<8 x i32>"};
+  vector_spelling_conflict.vector_facts =
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16};
+  expect(malformed_vector_facts_reject("vector_spelling_conflict",
+                                       std::move(vector_spelling_conflict)),
+         "Raw publication verifier must reject vector spelling conflicts");
 }
 
 void test_module_name_and_struct_declaration_receipt() {
@@ -2571,6 +2630,172 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
       "nested rendered array spelling must match ordered typed dimensions");
 }
 
+void test_direct_vector_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto vector_link = module.link_names.intern("integer_vector_global");
+    const auto init_a = module.link_names.intern("vector_init_a");
+    const auto init_b = module.link_names.intern("vector_init_b");
+
+    lir::LirGlobal definition;
+    definition.name = "integer_vector_global";
+    definition.link_name_id = vector_link;
+    definition.type = scalar_type(c4c::TB_SHORT);
+    definition.type.is_vector = true;
+    definition.type.vector_lanes = 4;
+    definition.type.vector_bytes = 8;
+    definition.linkage_vis = "protected ";
+    definition.qualifier = "global ";
+    definition.llvm_type = "<4 x i16>";
+    definition.init_text =
+        std::string{"<i16 1, i16 2, i16 3, i16 4>\0tail", 33};
+    definition.initializer_function_link_name_ids = {init_b, init_a, init_b};
+    definition.align_bytes = 8;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "floating_vector_extern";
+    declaration.type = scalar_type(c4c::TB_DOUBLE);
+    declaration.type.is_vector = true;
+    declaration.type.vector_lanes = 2;
+    declaration.type.vector_bytes = 16;
+    declaration.linkage_vis = "external hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = "<2 x double>";
+    declaration.align_bytes = 16;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-shaped direct integer and floating vector globals must import");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed direct vector globals must remain Foundation-verifier reachable");
+  const auto view = raw.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+         "direct vector globals must preserve source order and stable identity");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto declaration = view.global_object(ids[1]).value();
+  expect(definition.object_type.kind == bir::TypeKind::Vector &&
+             definition.object_type.spelling == "<4 x i16>" &&
+             definition.object_type.vector_facts ==
+                 std::optional<bir::VectorTypeFacts>{bir::VectorTypeFacts{
+                     bir::TypeKind::Integer, 16, 4, 8}} &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             !definition.is_internal && !definition.is_weak &&
+             !definition.is_const &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 8 &&
+             !definition.is_extern_declaration && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 std::string{"<i16 1, i16 2, i16 3, i16 4>\0tail", 33} &&
+             definition.initializer->function_links.size() == 3 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "vector_init_b" &&
+             view.spelling(definition.initializer->function_links[1]).value() ==
+                 "vector_init_a" &&
+             definition.initializer->function_links[2] ==
+                 definition.initializer->function_links[0],
+         "integer vector definitions must preserve exact typed authority and all object and initializer facts");
+  expect(declaration.object_type.kind == bir::TypeKind::Vector &&
+             declaration.object_type.spelling == "<2 x double>" &&
+             declaration.object_type.vector_facts ==
+                 std::optional<bir::VectorTypeFacts>{bir::VectorTypeFacts{
+                     bir::TypeKind::Floating, 64, 2, 16}} &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 declaration.identity) &&
+             declaration.visibility == bir::SymbolVisibility::Hidden &&
+             declaration.alignment == 16 &&
+             declaration.is_extern_declaration && !declaration.initializer,
+         "floating vector externs must preserve typed element, lanes, storage, linkage, visibility, and alignment");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "producer-shaped direct vector globals must publish Canonical BIR");
+  const auto canonical_view = canonical.value().view();
+  const auto canonical_ids = canonical_view.global_objects();
+  expect(canonical_ids.size() == 2 &&
+             canonical_view.global_object(canonical_ids[0])
+                     .value()
+                     .object_type.vector_facts ==
+                 definition.object_type.vector_facts &&
+             canonical_view.global_object(canonical_ids[0])
+                     .value()
+                     .initializer->opaque_payload ==
+                 definition.initializer->opaque_payload &&
+             canonical_view.global_object(canonical_ids[1])
+                     .value()
+                     .object_type.vector_facts ==
+                 declaration.object_type.vector_facts &&
+             canonical_view.global_object(canonical_ids[1])
+                 .value()
+                 .is_extern_declaration,
+         "Canonical BIR must retain ordered direct vector authority and object facts");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() &&
+               rejected_raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& m) { m.globals[0].type.vector_lanes = 0; },
+           "zero vector lane counts must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vector_lanes = -4; },
+           "negative vector lane counts must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vector_bytes = 0; },
+           "zero vector storage bytes must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vector_bytes = -8; },
+           "negative vector storage bytes must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "<8 x i16>"; },
+           "vector spelling must exactly corroborate typed lane and element facts");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("<4 x i16>");
+      },
+      "producer-valid direct vectors must not carry llvm_type_ref");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vrm_width = 2; },
+           "VRM metadata must remain excluded from direct vector globals");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.is_vector = false;
+        m.globals[0].llvm_type = "i16";
+      },
+      "residual vector lanes and storage must not fall through as scalar authority");
+  rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = 1; },
+           "pointer-to-vector shapes remain outside direct vector globals");
+  rejected(
+      [](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
+      "vector reference shapes remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_rank = 1;
+        m.globals[0].type.array_size = 2;
+        m.globals[0].type.array_dims[0] = 2;
+      },
+      "array-of-vector shapes remain outside direct vector globals");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_fn_ptr = true; },
+           "function-pointer vector shapes remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
+      "aggregate vector bases remain unsupported");
+}
+
 void test_named_aggregate_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -3726,6 +3951,7 @@ int main() {
   test_scalar_global_type_authority_without_mirror();
   test_scalar_pointer_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
+  test_direct_vector_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();
   test_flexible_member_literal_struct_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();

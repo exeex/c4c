@@ -8,17 +8,15 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits arbitrary positive producer-valid pointer depth for
-  direct integer/floating scalar globals and fixed scalar-base array elements.
-  Typed BIR preserves exact scalar base, width, depth, ordered dimensions,
-  opaque `ptr` parity, and existing object/initializer facts through Foundation,
-  Raw BIR, and Canonical BIR.
-- Existing depth-zero scalar array elements and depth-one pointer rows remain
-  covered alongside a depth-two initialized direct-global definition and a
-  depth-three weak extern declaration. Zero/negative staged pointer facts,
-  negative producer depth, aggregate bases, function pointers,
-  pointer-to-array/inner-rank shapes, unexpected mirrors, and spelling
-  conflicts still reject transactionally.
+- Plan Step 3 now admits producer-valid direct integer and floating vector
+  globals from typed `TypeSpec` authority. Typed BIR preserves exact scalar
+  element kind and width, lane count, producer storage bytes, spelling parity,
+  and existing object/initializer facts through Foundation, Raw BIR, and
+  Canonical BIR.
+- Nearby coverage retains the existing scalar/global families and rejects
+  nonpositive vector facts, spelling and mirror conflicts, excluded declarator
+  shapes and bases, VRM metadata, residual vector facts without `is_vector`,
+  and malformed staged `VectorTypeFacts` transactionally.
 
 ## Suggested Next
 
@@ -27,10 +25,10 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Multi-level pointer depth is carried only by existing typed depth fields;
-  opaque LLVM spelling remains exactly `ptr` at every positive depth and must
-  not be parsed. Scalar-base, declarator-shape, and object-coherence exclusions
-  remain authoritative.
+- Direct vector authority is typed; LLVM vector spelling is reconstructed only
+  for exact parity and is never parsed. Unfactored `LirTypeRef` vectors outside
+  globals remain supported, while array, pointer/reference, function-pointer,
+  aggregate, and other excluded vector shapes remain closed.
 
 ## Proof
 

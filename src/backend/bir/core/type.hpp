@@ -56,6 +56,26 @@ struct PointerTypeFacts {
   int pointer_depth = 0;
 };
 
+struct VectorTypeFacts {
+  TypeKind element_kind = TypeKind::Void;
+  std::uint32_t element_bit_width = 0;
+  std::int64_t lane_count = 0;
+  std::int64_t storage_bytes = 0;
+};
+
+inline bool operator==(const VectorTypeFacts& lhs,
+                       const VectorTypeFacts& rhs) noexcept {
+  return lhs.element_kind == rhs.element_kind &&
+         lhs.element_bit_width == rhs.element_bit_width &&
+         lhs.lane_count == rhs.lane_count &&
+         lhs.storage_bytes == rhs.storage_bytes;
+}
+
+inline bool operator!=(const VectorTypeFacts& lhs,
+                       const VectorTypeFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
 inline bool operator==(const PointerTypeFacts& lhs,
                        const PointerTypeFacts& rhs) noexcept {
   return lhs.pointee_kind == rhs.pointee_kind &&
@@ -105,6 +125,7 @@ struct Type {
   std::optional<StructuredTypeSpecFacts> structured_spec;
   std::optional<ArrayTypeFacts> array_facts;
   std::optional<PointerTypeFacts> pointer_facts;
+  std::optional<VectorTypeFacts> vector_facts;
 
   Type() = default;
   Type(TypeKind type_kind) : kind(type_kind) {
@@ -132,6 +153,7 @@ struct Type {
 inline bool operator==(const Type& lhs, const Type& rhs) noexcept {
   if (lhs.array_facts != rhs.array_facts) return false;
   if (lhs.pointer_facts != rhs.pointer_facts) return false;
+  if (lhs.vector_facts != rhs.vector_facts) return false;
   const auto integer_width = [](const Type& type) -> std::uint32_t {
     switch (type.kind) {
       case TypeKind::I1: return 1;
@@ -173,6 +195,7 @@ inline bool operator!=(const Type& lhs, const Type& rhs) noexcept {
 inline bool is_well_formed(const Type& type) {
   if (type.kind != TypeKind::Array && type.array_facts) return false;
   if (type.kind != TypeKind::Pointer && type.pointer_facts) return false;
+  if (type.kind != TypeKind::Vector && type.vector_facts) return false;
   if (type.structured_spec) {
     const auto& spec = *type.structured_spec;
     if (type.kind != TypeKind::Void ||
@@ -230,9 +253,35 @@ inline bool is_well_formed(const Type& type) {
              ((!no_name) ||
               (type.spelling.size() >= 2 && type.spelling.front() == '{' &&
                type.spelling.back() == '}'));
-    case TypeKind::Vector:
-      return type.bit_width == 0 && no_name && type.spelling.size() >= 2 &&
-             type.spelling.front() == '<' && type.spelling.back() == '>';
+    case TypeKind::Vector: {
+      if (type.bit_width != 0 || !no_name || type.spelling.size() < 2 ||
+          type.spelling.front() != '<' || type.spelling.back() != '>')
+        return false;
+      if (!type.vector_facts) return true;
+      if (type.vector_facts->lane_count <= 0 ||
+          type.vector_facts->storage_bytes <= 0)
+        return false;
+      std::string element_spelling;
+      if (type.vector_facts->element_kind == TypeKind::Integer) {
+        if (type.vector_facts->element_bit_width == 0) return false;
+        element_spelling =
+            "i" + std::to_string(type.vector_facts->element_bit_width);
+      } else if (type.vector_facts->element_kind == TypeKind::Floating) {
+        switch (type.vector_facts->element_bit_width) {
+          case 16: element_spelling = "half"; break;
+          case 32: element_spelling = "float"; break;
+          case 64: element_spelling = "double"; break;
+          case 80: element_spelling = "x86_fp80"; break;
+          case 128: element_spelling = "fp128"; break;
+          default: return false;
+        }
+      } else {
+        return false;
+      }
+      return type.spelling ==
+             "<" + std::to_string(type.vector_facts->lane_count) + " x " +
+                 element_spelling + ">";
+    }
     case TypeKind::Array: {
       if (type.bit_width != 0 || !no_name || type.spelling.size() < 2 ||
           type.spelling.front() != '[' || type.spelling.back() != ']')
