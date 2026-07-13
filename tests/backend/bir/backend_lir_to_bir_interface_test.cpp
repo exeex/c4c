@@ -50,6 +50,17 @@ lir::LirBlock return_block(std::uint32_t id, std::string label) {
   return block;
 }
 
+lir::LirInlineAsmOp void_inline_asm(std::string asm_text,
+                                    std::string constraints) {
+  lir::LirInlineAsmOp op;
+  op.ret_type = lir::LirTypeRef("void");
+  op.asm_text = std::move(asm_text);
+  op.constraints = std::move(constraints);
+  op.side_effects = true;
+  op.clobbers = {"memory", "cc"};
+  return op;
+}
+
 void test_supported_import_and_views() {
   lir::LirModule module;
   module.functions.push_back(void_declaration("decl"));
@@ -63,12 +74,23 @@ void test_supported_import_and_views() {
   module.functions.push_back(void_definition(
       "branches", {std::move(branch_entry), return_block(1, "exit")}));
 
+  std::string asm_bytes = "add %0, %1";
+  asm_bytes.push_back('\0');
+  asm_bytes += "#opaque";
+  std::string constraint_bytes = "=r,r,VR,VRM2,~{memory}";
+  constraint_bytes.push_back('\0');
+  constraint_bytes += "tail";
+  auto asm_block = return_block(0, "entry");
+  asm_block.insts.push_back(void_inline_asm(asm_bytes, constraint_bytes));
+  module.functions.push_back(
+      void_definition("inline_asm", {std::move(asm_block)}));
+
   auto imported = bir::lower_lir_to_raw_bir(module);
   expect(imported.has_value(), "supported LIR subset should publish RawBir");
 
   const bir::ModuleView module_view = imported.value().view();
   const auto functions = module_view.functions();
-  expect(functions.size() == 3, "module view should preserve all functions");
+  expect(functions.size() == 4, "module view should preserve all functions");
 
   auto declaration = module_view.function(functions[0]);
   expect(declaration.has_value() && declaration.value().is_declaration(),
@@ -95,6 +117,113 @@ void test_supported_import_and_views() {
   expect(successors.has_value() && successors.value().size() == 1 &&
              successors.value()[0] == branch_blocks[1],
          "CFG successor view should resolve the imported branch target");
+
+  auto inline_asm_function = module_view.function(functions[3]);
+  expect(inline_asm_function.has_value(), "inline-asm function should resolve");
+  const auto asm_blocks = inline_asm_function.value().blocks();
+  auto asm_insts = inline_asm_function.value().instructions(asm_blocks[0]);
+  expect(asm_insts.has_value() && asm_insts.value().size() == 1,
+         "inline asm should publish one stable instruction identity");
+  auto asm_inst = inline_asm_function.value().instruction(asm_insts.value()[0]);
+  expect(asm_inst.has_value() &&
+             asm_inst.value().opcode() == bir::Opcode::InlineAsm,
+         "instruction view should expose the closed InlineAsm opcode");
+  const auto* payload =
+      std::get_if<bir::InlineAsmNode>(&asm_inst.value().payload());
+  expect(payload != nullptr, "InlineAsm opcode should carry InlineAsmNode");
+  expect(payload->asm_text == asm_bytes,
+         "inline asm template bytes must remain byte-exact and opaque");
+  expect(payload->constraint_text == constraint_bytes,
+         "aggregate constraint bytes must remain byte-exact and opaque");
+  expect(payload->side_effects &&
+             payload->clobbers == std::vector<std::string>({"memory", "cc"}),
+         "side-effect and ordered clobber fields must remain separate");
+  expect(asm_inst.value().operands().empty() &&
+             asm_inst.value().results().empty(),
+         "void/no-argument LIR asm must not acquire invented value identities");
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the same target-independent storage should pass canonical verification");
+  expect(canonical.value().view().functions().size() == functions.size(),
+         "canonical publication should preserve the verified graph");
+}
+
+void test_generic_inline_asm_ssa_edges() {
+  bir::ModuleBuilder builder;
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::I64};
+  signature.parameter_types = {bir::Type{bir::TypeKind::I64}};
+  auto function = builder.create_function(std::move(signature), "ssa_asm", false);
+  expect(function.has_value(), "SSA asm test function should be constructible");
+
+  bir::BlockId block_id{};
+  bir::InstId instruction_id{};
+  bir::ValueId parameter_id{};
+  bir::ValueId result_id{};
+  auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        auto block = function_builder.create_block("entry");
+        if (!block) return bir::Result<void, bir::BuildError>::failure(block.error());
+        block_id = block.value();
+        auto parameter = function_builder.parameter(0);
+        if (!parameter)
+          return bir::Result<void, bir::BuildError>::failure(parameter.error());
+        parameter_id = parameter.value();
+
+        bir::InlineAsmSpec malformed;
+        malformed.asm_text = "opaque";
+        malformed.constraint_text = "+r";
+        malformed.inputs = {
+            bir::ValueId{function.value(), bir::ValueKind::Parameter, 999, 1}};
+        auto rejected = function_builder.append(block_id, std::move(malformed));
+        expect(!rejected.has_value() &&
+                   rejected.error() == bir::BuildError::InvalidValue,
+               "missing SSA input must be rejected before instruction publication");
+
+        bir::InlineAsmSpec spec;
+        spec.asm_text = "# uses abstract SSA only";
+        spec.constraint_text = "+r";
+        spec.clobbers = {"memory"};
+        spec.side_effects = true;
+        spec.inputs = {parameter_id};
+        spec.result_types = {bir::Type{bir::TypeKind::I64}};
+        auto appended = function_builder.append(block_id, std::move(spec));
+        if (!appended)
+          return bir::Result<void, bir::BuildError>::failure(appended.error());
+        instruction_id = appended.value().instruction;
+        result_id = appended.value().results[0];
+        return function_builder.set_terminator(
+            block_id, bir::ReturnTerm{result_id});
+      });
+  expect(edited.has_value(), "generic SSA asm construction should succeed");
+
+  auto published = std::move(builder).publish();
+  expect(published.has_value(),
+         "generic inline-asm use/def edges should pass Raw BIR verification");
+  auto function_view = published.value().view().function(function.value());
+  expect(function_view.has_value(), "published SSA asm function should resolve");
+  auto instructions = function_view.value().instructions(block_id);
+  expect(instructions.has_value() && instructions.value().size() == 1 &&
+             instructions.value()[0] == instruction_id,
+         "failed append must leave no partial instruction in block order");
+  auto instruction = function_view.value().instruction(instruction_id);
+  expect(instruction.has_value() &&
+             instruction.value().operands() ==
+                 std::vector<bir::ValueId>({parameter_id}) &&
+             instruction.value().results() ==
+                 std::vector<bir::ValueId>({result_id}),
+         "InlineAsm must expose generic ordered SSA input and output edges");
+  auto result = function_view.value().value(result_id);
+  const auto* definition = result.has_value()
+                               ? std::get_if<bir::InstResultDef>(
+                                     &result.value().definition)
+                               : nullptr;
+  expect(definition && definition->instruction == instruction_id &&
+             definition->result_index == 0,
+         "inline-asm output must own a coherent InstResultDef coordinate");
+  expect(parameter_id != result_id,
+         "read/write asm must keep incoming use and produced result distinct");
 }
 
 void test_structured_rejection() {
@@ -109,10 +238,27 @@ void test_structured_rejection() {
          "structured import rejection should include diagnostic detail");
 }
 
+void test_inline_asm_shape_rejection() {
+  lir::LirModule module;
+  auto block = return_block(0, "entry");
+  auto unsupported = void_inline_asm("opaque", "=r,r");
+  unsupported.args_str = "i64 %arg";
+  block.insts.push_back(std::move(unsupported));
+  module.functions.push_back(void_definition("bad_asm", {std::move(block)}));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(!imported.has_value(),
+         "unstructured inline-asm arguments must publish no RawBir");
+  expect(imported.error().code == bir::ImportErrorCode::UnsupportedInlineAsmShape,
+         "unstructured argument rejection should remain structured");
+}
+
 }  // namespace
 
 int main() {
   test_supported_import_and_views();
+  test_generic_inline_asm_ssa_edges();
   test_structured_rejection();
+  test_inline_asm_shape_rejection();
   return 0;
 }

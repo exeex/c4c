@@ -183,6 +183,16 @@ Result<RawBir, PublishFailure> ModuleBuilder::publish() && {
       RawBir(std::move(data_), detail::RawStateToken{}));
 }
 
+Result<CanonicalBir, VerificationResult> canonicalize(RawBir&& raw) {
+  auto verification = FoundationVerifier::verify(
+      *raw.data_, VerifyProfile::TargetIndependentCanonical);
+  if (!verification)
+    return Result<CanonicalBir, VerificationResult>::failure(
+        std::move(verification));
+  return Result<CanonicalBir, VerificationResult>::success(
+      CanonicalBir(std::move(raw.data_)));
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 FunctionBuilder::mutable_function() const {
   auto valid = parent_->check_function_capability(function_, scope_token_);
@@ -224,8 +234,8 @@ Result<BlockId, BuildError> FunctionBuilder::create_block(
   return Result<BlockId, BuildError>::success(inserted.value());
 }
 
-Result<BuildResult, BuildError> FunctionBuilder::append(
-    BlockId block, UnsupportedInstSpec) {
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
+                                                         InlineAsmSpec spec) {
   auto function = mutable_function();
   if (!function)
     return Result<BuildResult, BuildError>::failure(function.error());
@@ -233,7 +243,73 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
     return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
   if (!function.value().get().blocks_.contains(function_, block))
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
-  return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (spec.result_types.size() >
+      static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()))
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  auto& function_data = function.value().get();
+  for (const auto input : spec.inputs) {
+    if (!same_owner(function_, input))
+      return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+    if (!function_data.values_.contains(function_, input))
+      return Result<BuildResult, BuildError>::failure(BuildError::InvalidValue);
+  }
+  for (const auto type : spec.result_types)
+    if (type.kind == TypeKind::Void)
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+
+  InlineAsmNode node{std::move(spec.asm_text),
+                     std::move(spec.constraint_text),
+                     std::move(spec.clobbers), spec.side_effects};
+  detail::InstData instruction;
+  instruction.opcode = Opcode::InlineAsm;
+  instruction.payload = std::move(node);
+  instruction.operands = std::move(spec.inputs);
+  auto inserted =
+      function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted)
+    return Result<BuildResult, BuildError>::failure(
+        storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+
+  std::vector<ValueId> results;
+  results.reserve(spec.result_types.size());
+  for (std::size_t index = 0; index < spec.result_types.size(); ++index) {
+    ValueDef value;
+    value.kind = ValueKind::InstResult;
+    value.type = spec.result_types[index];
+    value.definition =
+        InstResultDef{instruction_id, static_cast<std::uint16_t>(index)};
+    auto inserted_value =
+        function_data.values_.emplace(function_, std::move(value));
+    if (!inserted_value) {
+      for (const auto result : results)
+        function_data.values_.erase(function_, result);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(
+          storage_error(inserted_value.error()));
+    }
+    results.push_back(inserted_value.value());
+  }
+  auto stored_instruction =
+      function_data.insts_.get_mut(function_, instruction_id);
+  if (!stored_instruction) {
+    for (const auto result : results)
+      function_data.values_.erase(function_, result);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  stored_instruction.value().get().results = results;
+
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data ||
+      !block_data.value().get().instruction_order_.append(instruction_id)) {
+    for (const auto result : results)
+      function_data.values_.erase(function_, result);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(
+      BuildResult{instruction_id, std::move(results)});
 }
 
 Result<void, BuildError> FunctionBuilder::set_terminator(

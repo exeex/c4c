@@ -74,14 +74,42 @@ class RawBir {
   detail::RawStateToken token_;
 
   friend class ModuleBuilder;
+  friend Result<CanonicalBir, VerificationResult> canonicalize(RawBir&&);
 };
+
+class CanonicalBir {
+ public:
+  CanonicalBir(CanonicalBir&&) noexcept = default;
+  CanonicalBir& operator=(CanonicalBir&&) noexcept = default;
+  CanonicalBir(const CanonicalBir&) = delete;
+  CanonicalBir& operator=(const CanonicalBir&) = delete;
+
+  ModuleView view() const { return ModuleView(*data_); }
+
+ private:
+  explicit CanonicalBir(std::unique_ptr<detail::ModuleData> data)
+      : data_(std::move(data)) {}
+
+  std::unique_ptr<detail::ModuleData> data_;
+
+  friend Result<CanonicalBir, VerificationResult> canonicalize(RawBir&&);
+};
+
+Result<CanonicalBir, VerificationResult> canonicalize(RawBir&& raw);
 
 struct BuildResult {
   InstId instruction{};
   std::vector<ValueId> results;
 };
 
-struct UnsupportedInstSpec {};
+struct InlineAsmSpec {
+  std::string asm_text;
+  std::string constraint_text;
+  std::vector<std::string> clobbers;
+  bool side_effects = false;
+  std::vector<ValueId> inputs;
+  std::vector<Type> result_types;
+};
 
 using TerminatorSpec = Terminator;
 
@@ -133,8 +161,7 @@ class FunctionBuilder {
   FunctionId id() const noexcept { return function_; }
   Result<ValueId, BuildError> parameter(std::uint32_t ordinal) const;
   Result<BlockId, BuildError> create_block(std::string debug_name = {});
-  Result<BuildResult, BuildError> append(BlockId block,
-                                         UnsupportedInstSpec);
+  Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

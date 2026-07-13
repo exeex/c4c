@@ -11,6 +11,23 @@
 
 namespace c4c::backend::bir {
 
+class InstView {
+ public:
+  InstId id() const noexcept { return id_; }
+  Opcode opcode() const noexcept { return data_->opcode; }
+  const InstPayload& payload() const noexcept { return data_->payload; }
+  const std::vector<ValueId>& operands() const noexcept { return data_->operands; }
+  const std::vector<ValueId>& results() const noexcept { return data_->results; }
+
+ private:
+  InstView(InstId id, const detail::InstData& data) : id_(id), data_(&data) {}
+
+  InstId id_{};
+  const detail::InstData* data_ = nullptr;
+
+  friend class FunctionView;
+};
+
 class BlockView {
  public:
   BlockId id() const noexcept { return id_; }
@@ -46,6 +63,14 @@ class FunctionView {
     if (!resolved)
       return Result<ValueDef, ResolveError>::failure(resolved.error());
     return Result<ValueDef, ResolveError>::success(resolved.value().get());
+  }
+
+  Result<InstView, ResolveError> instruction(InstId id) const {
+    auto resolved = data_->insts_.get(id_, id);
+    if (!resolved)
+      return Result<InstView, ResolveError>::failure(resolved.error());
+    return Result<InstView, ResolveError>::success(
+        InstView(id, resolved.value().get()));
   }
 
   Result<std::vector<InstId>, ResolveError> instructions(BlockId id) const {
@@ -116,6 +141,7 @@ class ModuleView {
   const detail::ModuleData* data_ = nullptr;
 
   friend class RawBir;
+  friend class CanonicalBir;
   friend class ModuleBuilder;
 };
 

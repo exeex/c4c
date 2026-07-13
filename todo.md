@@ -8,20 +8,32 @@ Current Step Title: Implement the verified LIR-to-BIR carrier boundary
 
 ## Just Finished
 
-- Lifecycle reset only; no implementation packet has completed under the
-  narrowed runbook.
+- Step 1 now has a verified, target-independent `InlineAsmNode` carrier wired
+  from the current LLVM-style `LirInlineAsmOp` through Raw and Canonical BIR.
+- The carrier preserves opaque asm and aggregate constraint bytes plus the
+  current side-effect/clobber fields; unsupported textual result/argument
+  shapes and early `insn_r` metadata are rejected before publication.
+- Builders and read-only views expose generic ordered SSA input `ValueId`s and
+  distinct result `ValueId`s with coherent `InstResultDef` coordinates; a
+  rejected input leaves no partial instruction behind.
 
 ## Suggested Next
 
-- Delegate Step 1 as one bounded executor packet with a backend-enabled build
-  and `backend_lir_to_bir_interface` as the only acceptance test.
+- Review and commit this narrow InlineAsm carrier slice; a later LIR producer
+  packet can populate its generic SSA edges once LIR has structured values.
 
 ## Watchouts
 
 - Do not absorb the dirty broad docs/README/review slice into this packet.
-- Stop at verified target-independent Raw/Canonical BIR; allocation, target
-  budgets, spill/reload, and MIR remain deferred.
+- The current `LirInlineAsmOp` exposes operands only as opaque `args_str` and a
+  textual result, so this packet deliberately accepts only void/no-argument
+  imports rather than parsing text or inventing `ValueId`s. The BIR node itself
+  already supports generic input/use and output/def edges.
+- Ordinary instructions, allocation, target budgets, spill/reload, and MIR
+  remain deferred.
 
 ## Proof
 
-- Lifecycle-only reset; implementation proof is pending.
+- Passed the supervisor-selected command; `test_after.log` contains the
+  backend-enabled configure, target build, and passing
+  `backend_lir_to_bir_interface` CTest result.

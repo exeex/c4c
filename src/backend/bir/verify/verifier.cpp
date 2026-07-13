@@ -42,6 +42,14 @@ bool known(ValueKind kind) noexcept {
   return false;
 }
 
+bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
+  switch (instruction.opcode) {
+    case Opcode::InlineAsm:
+      return std::holds_alternative<InlineAsmNode>(instruction.payload);
+  }
+  return false;
+}
+
 template <class Id>
 std::unordered_map<Id, std::size_t> counts(const std::vector<Id>& ids) {
   std::unordered_map<Id, std::size_t> result;
@@ -149,12 +157,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         report(result, VerificationRule::InstructionStorageAndOrder,
                function_id, inst_id,
                "live instruction must appear once in exactly one block order");
-      // Opcode currently has no known alternatives, so any live instruction is
-      // invalid until a semantic instruction family lands atomically.
-      report(result, VerificationRule::BoundedAlternative, function_id, inst_id,
-             "instruction opcode is not in the bounded foundation set");
-
       const auto& instruction = *inst_storage.value;
+      if (instruction.payload.valueless_by_exception() ||
+          !opcode_matches_payload(instruction)) {
+        report(result, VerificationRule::BoundedAlternative, function_id,
+               inst_id,
+               "instruction opcode and closed payload alternative disagree");
+      }
       for (const auto operand : instruction.operands)
         if (operand.owner != function_id ||
             !function.values_.contains(function_id, operand))

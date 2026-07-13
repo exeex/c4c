@@ -8,7 +8,7 @@
 
 namespace c4c::backend::bir {
 
-enum class VerifyProfile { FoundationRaw };
+enum class VerifyProfile { FoundationRaw, TargetIndependentCanonical };
 
 enum class VerificationRule {
   ModuleEpoch,

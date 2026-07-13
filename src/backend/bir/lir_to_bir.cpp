@@ -15,6 +15,7 @@ using codegen::lir::LirBr;
 using codegen::lir::LirCondBr;
 using codegen::lir::LirFunction;
 using codegen::lir::LirIndirectBr;
+using codegen::lir::LirInlineAsmOp;
 using codegen::lir::LirModule;
 using codegen::lir::LirRet;
 using codegen::lir::LirSwitch;
@@ -124,10 +125,24 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (!block_ids.insert(block.id.value).second)
       return fail<void>(ImportErrorCode::DuplicateBlockId, name, block.label,
                         "LirBlockId values must be unique within a function");
-    if (!block.insts.empty())
-      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
-                        block.label,
-                        "ordinary instructions require a migrated opcode family");
+    for (const auto& instruction : block.insts) {
+      const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
+      if (!inline_asm)
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                          block.label,
+                          "only LirInlineAsmOp is in the bounded carrier slice");
+      if (inline_asm->insn_r)
+        return fail<void>(ImportErrorCode::UnsupportedInlineAsmMetadata, name,
+                          block.label,
+                          "parsed insn.r metadata is not Raw/Canonical BIR authority");
+      if (!inline_asm->result.empty() ||
+          inline_asm->ret_type.kind() != codegen::lir::LirTypeKind::Void ||
+          inline_asm->ret_type.str() != "void" || !inline_asm->args_str.empty())
+        return fail<void>(
+            ImportErrorCode::UnsupportedInlineAsmShape, name, block.label,
+            "result-bearing or argument-bearing inline asm lacks structured "
+            "LIR value identities and is rejected without parsing args_str");
+    }
   }
 
   if (!function.entry.valid() ||
@@ -263,6 +278,22 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           }
 
           for (const LirBlock& block : function.blocks) {
+            for (const auto& instruction : block.insts) {
+              const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);
+              InlineAsmSpec spec;
+              spec.asm_text = inline_asm.asm_text;
+              spec.constraint_text = inline_asm.constraints;
+              spec.side_effects = inline_asm.side_effects;
+              spec.clobbers = inline_asm.clobbers;
+              auto appended = function_builder.append(blocks.at(block.label),
+                                                      std::move(spec));
+              if (!appended) {
+                edit_error = builder_failure(name, block.label,
+                                             "append inline asm",
+                                             appended.error());
+                return Result<void, BuildError>::failure(appended.error());
+              }
+            }
             auto terminator =
                 lower_terminator(block.terminator, blocks, name, block.label);
             if (!terminator) {
@@ -297,6 +328,22 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     return Result<RawBir, ImportError>::failure(std::move(error));
   }
   return Result<RawBir, ImportError>::success(std::move(published).value());
+}
+
+Result<CanonicalBir, ImportError> lower_lir_to_canonical_bir(
+    const LirModule& module, ImportOptions options) {
+  auto raw = lower_lir_to_raw_bir(module, options);
+  if (!raw)
+    return Result<CanonicalBir, ImportError>::failure(std::move(raw.error()));
+  auto canonical = canonicalize(std::move(raw).value());
+  if (!canonical) {
+    ImportError error{ImportErrorCode::PublicationFailure};
+    error.detail = "canonical verification rejected imported RawBir";
+    error.verification_errors = std::move(canonical.error().errors);
+    return Result<CanonicalBir, ImportError>::failure(std::move(error));
+  }
+  return Result<CanonicalBir, ImportError>::success(
+      std::move(canonical).value());
 }
 
 }  // namespace c4c::backend::bir

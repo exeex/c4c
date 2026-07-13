@@ -35,6 +35,8 @@ enum class ImportErrorCode {
   InvalidEntryBlock,
   UnsupportedEntryBlock,
   UnsupportedOrdinaryInstruction,
+  UnsupportedInlineAsmShape,
+  UnsupportedInlineAsmMetadata,
   InvalidVoidReturn,
   MissingBranchTarget,
   UnsupportedTerminator,
@@ -53,6 +55,8 @@ struct ImportError {
 };
 
 Result<RawBir, ImportError> lower_lir_to_raw_bir(
+    const codegen::lir::LirModule& module, ImportOptions options = {});
+Result<CanonicalBir, ImportError> lower_lir_to_canonical_bir(
     const codegen::lir::LirModule& module, ImportOptions options = {});
 
 }  // namespace c4c::backend::bir

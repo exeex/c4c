@@ -28,13 +28,22 @@ struct ValueDef {
   std::variant<ParameterDef, InstResultDef> definition = ParameterDef{};
 };
 
-// Ordinary instructions are intentionally unavailable in the bootstrap schema.
-enum class Opcode : std::uint8_t {};
+enum class Opcode : std::uint8_t { InlineAsm };
+
+struct InlineAsmNode {
+  std::string asm_text;
+  std::string constraint_text;
+  std::vector<std::string> clobbers;
+  bool side_effects = false;
+};
+
+using InstPayload = std::variant<InlineAsmNode>;
 
 class BlockView;
 class FunctionView;
 class ModuleView;
 class RawBir;
+class CanonicalBir;
 class ModuleBuilder;
 class FunctionBuilder;
 class FoundationVerifier;
@@ -79,7 +88,8 @@ inline bool operator!=(const FunctionSignature& lhs,
 namespace detail {
 
 struct InstData {
-  Opcode opcode;
+  Opcode opcode = Opcode::InlineAsm;
+  InstPayload payload = InlineAsmNode{};
   std::vector<ValueId> operands;
   std::vector<ValueId> results;
 };

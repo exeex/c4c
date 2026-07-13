@@ -30,6 +30,7 @@ namespace c4c::backend::bir {
 
 struct Type;
 struct ValueDef;
+struct InlineAsmNode;
 struct JumpTerm;
 struct CondJumpTerm;
 struct ReturnTerm;
@@ -46,6 +47,7 @@ namespace c4c::backend::bir {
 class ModuleView;
 class FunctionView;
 class BlockView;
+class InstView;
 
 }  // namespace c4c::backend::bir
 
@@ -55,9 +57,11 @@ class BlockView;
 namespace c4c::backend::bir {
 
 class RawBir;
+class CanonicalBir;
 class ModuleBuilder;
 class FunctionBuilder;
 struct BuildResult;
+struct InlineAsmSpec;
 
 }  // namespace c4c::backend::bir
 
