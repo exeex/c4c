@@ -95,21 +95,23 @@ schedule a `ParallelCopy`; its assignment product supplies the already-chosen
 ordinary and scratch homes under which D5 must either emit directly realizable
 `EdgeCopy` nodes or reject the complete candidate.
 
-Because resolution advances the revision, the predecessor assignment product
-is never current for its output. After E1 recomputes exact resolved-graph facts,
-E2's allocator-owned assignment validator consumes those facts, the exact
-resolved `ProjectedConstraintSet`, target/layout keys, the
-`CopyResolutionFingerprint`, and the immutable predecessor assignment table.
+Because D5 resolution and E4 frame-action materialization advance the revision,
+the predecessor assignment product is never current for the final output.
+After projection and E1 recomputation on the materialized graph, E2's
+allocator-owned assignment validator consumes those facts, the exact final
+`ProjectedConstraintSet`, target/layout keys, `CopyResolutionFingerprint`,
+`FrameActionFingerprint`, and the immutable predecessor assignment table.
 It proves every ordinary value, reload result, resolved-copy role, and used
 scratch endpoint remains assigned; reruns the same class/group/slot, alias,
 tie, early-clobber, call-clobber, and interference legality relation; and
-installs one new E2 `AssignmentKey` product keyed to the resolved
+installs one new E2 `AssignmentKey` product keyed to the final materialized
 `PipelineStageStamp` and exact `LivenessInterferenceKey`. This validation does not reallocate,
-coalesce, change a home, evict, or issue a spill request. Stable identities,
+coalesce, change a home, evict, or issue a spill request. E4 frame-action nodes
+have fixed ABI/frame roles and introduce no allocatable identity. Stable identities,
 unchanged homes, and the copy preservation record alone cannot rekey the
-predecessor assignment product. Failure aborts the enclosing atomic resolution
-transaction, leaves both predecessor products immutable, and mints no E4
-input.
+predecessor assignment product. Failure aborts the enclosing atomic
+publication transaction, leaves predecessor products immutable, and mints no
+E4 capability.
 
 Any stale key, incomplete assignment, missing spill transition, verifier
 failure, or retry failure discards the entire private candidate and all E1/E2/

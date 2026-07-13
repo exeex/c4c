@@ -18,11 +18,11 @@ general values, or create frame offsets. It does not reinterpret any
 inline-assembly payload.
 
 Its outgoing-stack identities include complete size, alignment, lifetime,
-static/dynamic-region interaction, and access requirements. The E4-owned
-`FrameRealizationTransaction` later consumes those exact identities with the
-D2 operations and resolved allocation products, fixes their exact bases,
-offsets, displacements, adjustments, and registered mapping rules, and fails
-before `MirReadyBirView` if any call/frame action is not one-record realizable.
+static/dynamic-region interaction, and access requirements. E4's private
+frame-action draft later consumes those identities with D2 operations and
+allocation products, fixes their placements, and materializes every required
+call/frame action as one or more explicit one-record nodes. The final plan
+covers them; unrepresentable actions fail before `MirReadyBirView`.
 
 ## Binding and consumers
 

@@ -174,70 +174,42 @@ reservation nodes are tombstoned.
 The private rewrite preserves unchanged IDs, gives emitted copies fresh
 deterministic instruction IDs derived from the plan order, tombstones each
 replaced `ParallelCopy`, superseded `EdgeCopy`, and `CopyScratch` node, and
-publishes one new exact candidate revision plus a
+stages one new exact candidate revision plus a
 `CopyResolutionFingerprint`. Its preservation record maps every original
 simultaneous transfer to the ordered nodes that realize it and proves that
 virtual assignments, scratch homes, spill coverage, CFG, and edge-local
-placement are unchanged. Before the resolved candidate is verified, the
-`CopyResolutionTransaction` invokes the sole shared
-`ConstraintProjectionTransaction` with the current E3 projection, new
-resolved stamp, D5-resolution occurrence fingerprint, copy replacement map,
-used/unused scratch tombstones, and complete mutation summary. Its output is
-the only `ProjectedConstraintSet` keyed to the resolved revision. Projection
-failure discards the complete resolution candidate; stable IDs, structural
-equality, and copied records do not rekey it.
+placement are unchanged. It publishes no projection or E4 input. The resolved
+candidate, replacement map, tombstones, and mutation summary pass privately to
+E4's enclosing `AllocatedPublicationTransaction`.
 
-Projection is followed, inside the same enclosing
-`CopyResolutionTransaction`, by one deterministic exact-current product
-closure. The closure is ordered because each later validator consumes the
-products staged by the preceding owner:
+E4 next builds its deterministic frame-action draft from this exact graph and
+runs `FrameActionMaterializationTransaction`. Only after the explicit
+one-record frame actions have been inserted does the sole shared
+`ConstraintProjectionTransaction` project the final revision. E1 then
+recomputes `LivenessInterferenceKey`; E2 validates and installs unchanged
+assignments without reallocating; E3 validates and installs unchanged spill
+state without mutation; the non-mutating final frame owner derives
+`FrameRealizationPlan`/`FrameRealizationKey`; and the target registry installs
+`TargetRealizabilityKey`. The new frame nodes have fixed ABI/frame roles only,
+so E2 cannot choose a home for them.
 
-1. E1 recomputes liveness and interference from the frozen resolved graph,
-   resolved `PipelineStageStamp`, exact resolved `ProjectedConstraintSet`, and
-   existing target/layout keys, then stages one `LivenessInterferenceKey`
-   product keyed to that exact resolved revision;
-2. E2's allocator-owned assignment validator consumes that E1 product and the
-   predecessor assignment table, proves every ordinary, reload, copy, and
-   scratch endpoint remains completely and legally assigned under the new
-   facts, and stages one exact-resolved-revision `AssignmentKey` product. It
-   cannot choose or change a home, evict a value, or request E3;
-3. E3's spill-state validator consumes the resolved graph and exact current
-   E1/E2 products, proves the unchanged spill objects, `Spill`/`Reload` nodes,
-   and residency transitions remain complete and legal, and stages one
-   exact-resolved-revision `SpillStateKey` product. It cannot insert, remove,
-   or reposition spill state; and
-4. the E4/allocated-owned non-mutating `FrameRealizationTransaction` consumes
-   the exact current projection and E1/E2/E3 products plus D2 call, C6 address,
-   target-layout, preparation, and copy-resolution fingerprints. It stages one
-   exact-resolved-revision `FrameRealizationPlan`/`FrameRealizationKey` without
-   mutating the graph, allocation, or spill state; and
-5. the existing target realizability registry/checker consumes the resolved
-   graph, exact target/layout/schema keys, current projection, and current
-   E1/E2/E3 products plus that exact frame product, recomputes every admitted
-   node's mapping obligation, and stages one `TargetRealizabilityKey` product
-   keyed to the resolved revision and incorporating the exact
-   `FrameRealizationKey`.
-
-Each installed product names the resolved `PipelineStageStamp`, the
-`CopyResolutionFingerprint`, all exact upstream product keys, its owner/schema
-fingerprint, and the target/layout fingerprints where applicable. Rewriting
-invalidates every predecessor E1, E2, E3, and realizability product; the
-predecessor products remain immutable inputs to validation or lineage only.
-The preservation record, unchanged assignments, stable IDs, and structural
-equality cannot relabel, rekey, or mint any product. The enclosing transaction
-stages all six exact-current results--projection, E1, E2, E3, frame
-realization, and target realizability--and installs them together only after
+Each final product names the materialized `PipelineStageStamp`,
+`CopyResolutionFingerprint`, `FrameActionFingerprint`, all exact upstream
+keys, and applicable schema/target fingerprints. Copy rewriting and frame
+materialization invalidate every predecessor projection, E1, E2, E3, frame,
+and realizability product. Drafts and predecessor products are immutable
+lineage only. Stable IDs, unchanged assignments, and structural equality
+cannot relabel or mint a product. The enclosing E4 transaction installs the
+materialized revision and all six exact-current products together only after
 every owner succeeds.
 
 The pre-E4 verifier gate replays each sequence with alias-unit semantics,
 proves read-before-clobber behavior for acyclic, overlapping, and cyclic
-groups, checks the preservation record and current product keys, and requires
-that every remaining copy is directly realizable. Any missing/aliasing scratch
-home, unschedulable transfer, stale key, illegal move, product recomputation
-or validator failure, ID exhaustion, cancellation, or verification failure discards the complete resolution
-candidate. Failure publishes no partial sequence, tombstone, revision,
-fingerprint, projected/analysis/assignment/spill/frame/realizability product, E4
-capability, or MIR input. The predecessor candidate and products remain
-unchanged, and no E4 input is minted. E4 rejects every `ParallelCopy` and
+groups, checks the preservation record, and requires every remaining copy to
+be directly realizable. Any missing/aliasing scratch home, unschedulable
+transfer, stale key, illegal move, ID exhaustion, cancellation, or verification
+failure discards the complete enclosing candidate. Failure publishes no
+partial sequence, tombstone, revision, fingerprint, product, E4 capability, or
+MIR input. The predecessor candidate and products remain unchanged. E4 rejects every `ParallelCopy` and
 every `CopyScratch` node; MIR therefore receives only directly realizable
 single-move `EdgeCopy` nodes and performs no copy resolution or repair.

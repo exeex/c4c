@@ -68,6 +68,15 @@ canonical order required by its selected rule and exact `CallPlan`:
    and
 5. matching `AbiRestore` operations when control returns.
 
+`AbiPreserve` and `AbiRestore` are call-site value-transport nodes paired
+around that individual `AbiCall`; they preserve live values across its declared
+caller-clobber boundary. They are not function entry/exit frame operations.
+D2 records abstract function-level callee-save obligations required by the ABI
+but never emits saves for them. E4 alone intersects those obligations with
+post-allocation used callee-saved units and exact frame placement, then emits
+`FrameCalleeSave`/`FrameCalleeRestore`. Final verification requires exactly one
+applicable call-site or function-frame coverage record and rejects duplicates.
+
 An empty category is omitted. A proved tail call admits only the closed
 tail-call shape selected by the `CallPlan`; it cannot silently degrade to or
 from an ordinary returning call. Every introduced operand, result, definition,
@@ -89,11 +98,11 @@ one shared semantic ABI rewrite.
 Every outgoing-call stack object/store, hidden carrier, call-frame access, and
 implicit stack adjustment receives stable abstract identity and complete size,
 alignment, lifetime, and access requirements. After allocation and D5
-resolution, the E4-owned `FrameRealizationTransaction` is the sole owner that
-places those identities at exact bases/offsets/displacements. It must prove
-each admitted D2 operation and implicit call/frame action has a registered
-one-record mapping or fail atomically before `MirReadyBirView`; D2 and F1 cannot
-choose or repair the placement.
+resolution, E4's private frame-action draft is the sole placement authority for
+those identities. `FrameActionMaterializationTransaction` emits every required
+call/frame action as explicit one-record nodes, and the final frame plan covers
+each D2 operation and action. Unrepresentable needs fail atomically before
+`MirReadyBirView`; D2 and F1 cannot choose or repair placement.
 
 ## Stable identity, revision, and output key
 

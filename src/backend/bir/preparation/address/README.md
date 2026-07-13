@@ -20,12 +20,11 @@ every required one-to-many target expansion before allocation. F1 may only map
 the resulting directly realizable node one-to-one; it cannot reopen an address
 strategy as late instruction selection or repair.
 
-After D5 resolution, the E4-owned `FrameRealizationTransaction` consumes the
-exact C6 strategy lineage and resolved allocation products to choose exact
-frame-object bases, offsets, and displacements. If a dynamic-frame interaction
-or displacement would require address materialization or more than the one
-already admitted record, it fails atomically before publication; F1 cannot
-choose an alternate address sequence.
+After D5 resolution, E4's private frame-action draft consumes exact C6 lineage
+and allocation products to choose bases, offsets, and displacements; the
+materializer emits every required bounded action explicitly. The final
+`FrameRealizationPlan` covers the materialized graph. An unrepresentable
+address or scratch need fails atomically; F1 cannot choose another sequence.
 
 ## Binding and consumers
 

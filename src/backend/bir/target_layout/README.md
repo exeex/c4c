@@ -56,9 +56,9 @@ preparation consumes the vocabulary to publish admitted source-description
 tables. Constraint interpretation and allocation consume the same verified
 layout later. MIR may use the private mapping domain only after allocated
 publication has verified an abstract assignment.
-The E4-owned `FrameRealizationTransaction` also consumes the exact layout's
-stack alignment, displacement domains, frame-region/base vocabulary, and
-registered mapping-rule IDs to publish one immutable exact-revision
+E4's private frame-action draft consumes the exact layout's stack alignment,
+displacement domains, frame-region/base vocabulary, and mapping-rule IDs.
+After explicit action materialization, E4 publishes one immutable final
 `FrameRealizationPlan`. F1 only applies that plan; it does not choose offsets,
 bases, or stack adjustments.
 

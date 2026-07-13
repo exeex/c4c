@@ -75,26 +75,25 @@ realizability registry on every function. A mutation followed only by a local
 check is not eligible for D5.
 
 The same existing target realizability registry/checker is the sole owner of
-the exact product recomputed after D5 copy resolution; this is not another D4
-occurrence or a new A-F stage. It runs last in the enclosing
-`CopyResolutionTransaction` product closure and consumes the frozen resolved
-graph, resolved `PipelineStageStamp`, `CopyResolutionFingerprint`, exact
-target/layout/schema and `ProjectedConstraintSet` keys, and the newly staged
-exact-current `LivenessInterferenceKey`, `AssignmentKey`, and `SpillStateKey`.
-The E4-owned non-mutating `FrameRealizationTransaction` runs immediately
-before this checker, so the checker also consumes its exact-current
-`FrameRealizationKey`.
+the exact product recomputed after E4 frame-action materialization; this is not
+another D4 occurrence or a new A-F stage. It runs last in the enclosing
+`AllocatedPublicationTransaction` and consumes the final materialized graph,
+final `PipelineStageStamp`, `CopyResolutionFingerprint`,
+`FrameActionFingerprint`, exact target/layout/schema and
+`ProjectedConstraintSet` keys, and the newly staged exact-current
+`LivenessInterferenceKey`, `AssignmentKey`, and `SpillStateKey`. The E4-owned
+non-mutating final frame-plan derivation runs immediately before this checker,
+so the checker also consumes its exact-current `FrameRealizationKey`.
 It rechecks every surviving node, including each
 resolved `EdgeCopy`, against the registered direct-mapping rule and installs
 one `TargetRealizabilityKey` product keyed to that exact revision and exact
-frame product. The predecessor D4 or
-E3-retry product is invalid after the rewrite; stable IDs, structural equality,
-and D5's preservation record cannot rekey it. Checker failure aborts the whole
-copy-resolution transaction and publishes no realizability product or E4
-input. The frame transaction has already fixed every exact object base, offset,
-displacement, stack adjustment, static/dynamic interaction, and registered
-implicit-action rule. The checker proves each non-`InlineAsm` node directly
-maps under those facts; it cannot select placement, materialize an address,
+frame product. Every predecessor product is invalid after D5 and E4 rewrites;
+stable IDs, structural equality, and preservation records cannot rekey it.
+Checker failure aborts the whole publication transaction. E4 has already
+inserted each required action as an explicit one-record node and fixed every
+object base, offset, displacement, adjustment, and static/dynamic interaction.
+The checker proves each non-`InlineAsm` node directly maps under those facts;
+it cannot select placement, materialize an address, insert a frame action,
 expand a node, or return repair to D4.
 
 ## Forbidden authority and failure

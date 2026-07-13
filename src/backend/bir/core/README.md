@@ -75,10 +75,10 @@ target meaning does not. Allocation liveness and interference are exact-revision
 products; and abstract spill-object identities plus explicit `Spill`/`Reload`
 nodes are owned by the private `E3` Pseudo BIR candidate. None may be written
 back into Raw/Canonical core storage. E2 owns abstract homes, while C2 supplies
-the verified abstract-to-concrete mapping domain. The private `E4`
-`FrameRealizationTransaction` fixes exact frame placements and registered
-mapping-rule facts in its verified exact-revision plan; it does not choose
-concrete register spellings. F1 chooses and applies a concrete spelling only
+the verified abstract-to-concrete mapping domain. Private E4 frame-action
+drafting/materialization fixes exact placements and emits explicit action
+nodes; its final `FrameRealizationPlan` records mapping facts for that
+materialized revision. F1 chooses and applies a concrete spelling only
 within the registered rule, applies the fixed frame placement one-to-one, and
 cannot plan or repair the frame, expand records, allocate, or spill.
 
@@ -811,7 +811,11 @@ pointer result, while its payload records element type and requested alignment.
 exactly that pointer family and has no result. Their ordering and lifetime
 effects are semantic, but concrete stack-pointer arithmetic, frame offsets, and
 unwind realization are deferred. `LifetimeStart`/`LifetimeEnd` describe object
-liveness and cannot substitute for stack save/restore.
+liveness and cannot substitute for stack save/restore. These semantic
+`StackSave`/`StackRestore` and dynamic-lifetime nodes remain through E4. Target
+frame establishment/teardown uses separate
+`FrameBaseSetup`/`FrameBaseRestore`/`FrameAdjust` nodes derived from final
+placement; E4 cannot replace or reinterpret the semantic operations.
 
 `VarArgStart`, `VarArg`, `VarArgCopy`, and `VarArgEnd` are explicit operations,
 not magic calls or generic intrinsics. They expose every va-list address,

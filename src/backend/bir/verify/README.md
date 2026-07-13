@@ -13,8 +13,10 @@ later pass happens to repair it.
 
 The verifier is a trust boundary. A successful result permits passes and
 analyses to use typed IDs, complete operand traversal, exact definitions, and a
-well-formed CFG without defensive fallback. It does not certify target ABI,
-register allocation, frame layout, target opcodes, encodings, or final emission.
+well-formed CFG without defensive fallback. Raw/Canonical verification does
+not certify target ABI, register allocation, frame layout, target opcodes,
+encodings, or final emission. The later Allocated gate certifies E4's exact
+private frame placements and explicit actions.
 
 ## Confirmed current inline-assembly verifier boundary
 
@@ -46,7 +48,8 @@ private complete D2 call-lowering candidate --verify-and-publish(Pseudo)--> Pseu
 complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 private E3 rewrite --AssignedAllocationCandidateGate--> immutable E1/E2 retry input
 stable E3 candidate --D5 copy resolution--> private resolved candidate
-resolved candidate --AssignedAllocationCandidateGate + frame/Allocated gate--> AllocatedBir + PreparedBir
+resolved candidate --E4 frame-action materialization + final exact-current closure--> final candidate
+final candidate --AssignedAllocationCandidateGate + Allocated gate--> AllocatedBir + PreparedBir
                                                      \--> borrowed MirReadyBirView
 ```
 
@@ -69,7 +72,7 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | `Canonical` | later | The exact immutable B7 / P07 revision published by B8: Raw rules plus all P01-P07 normal forms, including B3 / P03 reachability. It is target-independent and is not a request to validate an arbitrary post-Raw snapshot. |
 | `PreparedInput` | later | A non-mutating C1 input-gate rule set over one already-published `CanonicalBir` plus one validated `TargetProfile`. It binds their exact stamp/fingerprint and proves complete typed semantic inputs for C2-C9; it is not a BIR publication profile and contains no prepared facts. |
 | `Pseudo` | later | The public `PseudoPublicationGate`: Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1 lowering and [D2 call lowering](../passes/call_lowering/README.md), and stage-specific realizability rules. It publishes D3/D4/initial-D5 `PseudoBir` and rejects assignments and spill state. |
-| `Allocated` | later | The private `AssignedAllocationCandidateGate` retains every applicable graph/Pseudo rule while admitting and requiring exact candidate assignments and explicit spill state; E4 then adds exact frame realization and Allocated rules before atomic MIR-ready publication. |
+| `Allocated` | later | The private `AssignedAllocationCandidateGate` retains every applicable graph/Pseudo rule while admitting exact assignments/spill state and the post-materialization bounded frame-action family; E4 requires final projection/E1/E2/E3/frame/target products before atomic MIR-ready publication. |
 
 The semantic profiles are cumulative. `PreparedInput` cannot weaken
 `Canonical`, `Canonical` cannot weaken `Raw`, `Pseudo` retains every applicable
@@ -86,10 +89,11 @@ ABI locations, allocation assignments, spill/reload state, frame facts, target
 operations, helpers, or encodings to BIR and then calling that object “Prepared
 BIR” would blur authority. Such facts are forbidden in Raw, Canonical,
 PreparedInput, and `PseudoPublicationGate`. Private E3
-retry and D5-resolved candidates instead pass
+retry, D5-resolved, and E4-materialized candidates instead pass
 `AssignedAllocationCandidateGate`, which admits and requires their exact
-abstract assignments and spill schema but cannot publish a second `PseudoBir`
-type. They remain private until the Allocated boundary succeeds.
+abstract assignments and spill schema; only the E4 interval also admits
+explicit frame-action nodes. The gate cannot publish a second `PseudoBir` type.
+Candidates remain private until the Allocated boundary succeeds.
 
 The exact additional `PreparedInput` promise is closed: the B8 stage capability
 and selected target fingerprint are current and mutually bound, and every
@@ -282,9 +286,11 @@ gate retains all applicable graph, identity, Pseudo-schema, stage-key,
 transaction, and failure-atomicity rules, but admits and requires exact-current
 E2 assignments and explicit E3 spill objects/`Spill`/`Reload`. Before D5
 resolution it also admits and checks `ParallelCopy` and `CopyScratch`; after
-resolution it forbids both and requires the exact assignment and spill-state
-products to match the new revision. It cannot mint `PseudoBir` or create a new
-A-F stage.
+resolution it forbids both. It admits the finite E4 frame-action family only
+after `FrameActionMaterializationTransaction` and then requires exact final
+assignment, spill, frame, and target coverage. `PseudoPublicationGate` always
+rejects frame-action nodes. This private gate cannot mint `PseudoBir` or create
+a new A-F stage.
 
 On the final stable post-E3 candidate, and only after the current E1 product
 models every `CopyScratch` interval/interference and E2 has assigned each
@@ -301,20 +307,34 @@ first save every simultaneously endangered source in distinct assigned
 non-aliasing scratch homes, and cycles use the group's canonical assigned
 scratch home. The output has a new exact revision and
 `CopyResolutionFingerprint`, no assignment change, no new allocatable
-identity, no new spill/reload, and current preserved or reprojected products.
-Before that output is accepted, copy resolution invokes the shared projection
-authority with its replacement and scratch-tombstone map and requires the
-result keyed to the resolved revision.
-It then deterministically invokes E1 recomputation, E2's non-reallocating
-assignment validator, E3's non-mutating spill-state validator, the E4-owned
-non-mutating `FrameRealizationTransaction`, and the existing target
-realizability registry/checker. Their outputs must be exact-current for
-the resolved `PipelineStageStamp` and `CopyResolutionFingerprint`, and each
-consumer checks all preceding product keys. The immutable exact-revision
-`FrameRealizationPlan` covers every stack/call/spill/frame access, base,
-offset, displacement, adjustment, static/dynamic-region interaction, and
-registered mapping rule; the final `TargetRealizabilityKey` incorporates its
-`FrameRealizationKey`. Every original simultaneous
+identity, and no new spill/reload. It stages no successor product.
+
+E4 then derives a private deterministic draft from exact D5/E3/C2/C3/C4/D2/C6
+and target facts and runs `FrameActionMaterializationTransaction`. The
+materializer inserts only bounded fixed-role `FrameAdjust`,
+`FrameBaseSetup`/`FrameBaseRestore`, `FrameCalleeSave`/`FrameCalleeRestore`, and
+`FrameProbe` one-record nodes at exact planned points. It advances the revision
+and emits a mutation summary and `FrameActionFingerprint`; it cannot add an
+allocatable result or scratch request.
+
+D2 `AbiPreserve`/`AbiRestore` cover per-call live-value transport only. E4
+`FrameCalleeSave`/`FrameCalleeRestore` cover exactly the post-allocation used
+callee-saved units selected from D2's abstract function obligations at function
+frame entry/exit points. The gate rejects a missing obligation, an E4 save for
+an unused unit, or duplicate call-site/function-frame coverage. Likewise, core
+`StackSave`/`StackRestore`, `DynamicAlloc`, and lifetime nodes retain source
+semantics; E4 `FrameBaseSetup`/`FrameBaseRestore`/`FrameAdjust` are separate
+placement actions and cannot replace or reinterpret those semantic nodes.
+
+Only then does the shared projection authority project the final revision,
+followed by E1 recomputation, E2's non-reallocating assignment validator, E3's
+non-mutating spill-state validator, non-mutating final
+`FrameRealizationPlan`/`FrameRealizationKey` derivation, and the target
+realizability registry/checker. Their outputs must be exact-current for the
+materialized `PipelineStageStamp`, `CopyResolutionFingerprint`, and
+`FrameActionFingerprint`, and each consumer checks every preceding key. The
+final plan covers every explicit action and stack/call/spill/frame access; the
+`TargetRealizabilityKey` incorporates its exact `FrameRealizationKey`. Every original simultaneous
 transfer must map to exactly one proved sequence. Stable IDs, unchanged homes
 or spill nodes, preservation records, and structural equality cannot rekey a
 predecessor product.
@@ -328,10 +348,10 @@ single-instruction-realizable `EdgeCopy` nodes before E4. Thus
 `ParallelCopy` is intermediate-only: neither E4 nor MIR may accept, resolve,
 schedule, or repair one.
 
-All product installation remains inside the failure-atomic resolution
-transaction. A failed owner rolls back the resolved revision and every staged
-projected/E1/E2/E3/frame-realization/target-realizability product, preserves
-all predecessor products unchanged, and cannot mint an E4 input.
+All graph and product installation remains inside the failure-atomic
+`AllocatedPublicationTransaction`. A failed owner rolls back copy resolution,
+frame-action materialization, and every staged product, preserves predecessor
+products unchanged, and cannot mint an E4 capability.
 
 Any failure discards the complete D3, D4, or D5 candidate and publishes no function
 subset, stage capability, property, cache entry, or derived product. Public
@@ -340,11 +360,11 @@ repair `PseudoBir`.
 
 ### Allocated profile and E4 publication
 
-The `Allocated` profile accepts only one private frozen candidate produced by
-the D5 copy-resolution closure from a stable E3 candidate.
+The `Allocated` profile accepts only the final private candidate produced by
+D5 copy resolution followed by E4 frame-action materialization.
 Its stage key names the exact module epoch/revision and ordered function-revision
 digest plus the target, layout, preparation, exact `ProjectedConstraintKey`,
-pseudo-schema, D4/D5,
+pseudo-schema, D4/D5, frame-action,
 liveness, assignment, spill, copy-resolution, frame-realization, and final
 target-realizability fingerprints. Every named
 product must be fresh for that same revision and publication transaction; equal
@@ -352,7 +372,7 @@ semantic hashes, copied reports, compatible targets, or predecessor-only keys
 do not establish identity.
 
 Verification is cumulative and fail-closed. It reruns the private
-`AssignedAllocationCandidateGate` for the resolved interval, then the frame,
+`AssignedAllocationCandidateGate` for the materialized interval, then the frame,
 direct-realizability, out-of-SSA, and Allocated rules. It never invokes the
 allocation-free `PseudoPublicationGate` on this candidate. It then proves that:
 
@@ -370,13 +390,19 @@ allocation-free `PseudoPublicationGate` on this candidate. It then proves that:
 4. no `ParallelCopy` or `CopyScratch` node remains, every former group has one
    exact resolution sequence, and each surviving `EdgeCopy` has one legal
    single-instruction target mapping;
-5. every node retains one verified target mapping under the exact immutable
+5. every required frame action occurs exactly once at its planned point as an
+   admitted fixed-role one-record node; prologue, epilogue, adjustment,
+   save/restore, probe, and every other record-producing action are explicit;
+   every node retains one verified target mapping under the exact immutable
    `FrameRealizationPlan`; every required stack/call/spill/frame access is
    directly one-record realizable, and every target/layout,
    preparation, constraint, call, inline-asm, liveness, assignment, spill,
    copy-resolution, frame-realization, and realizability binding is present, unique,
    revision-matched, and fresh; and
-6. target opcodes, concrete registers, frame offsets, encodings, machine
+6. final projection, `LivenessInterferenceKey`, `AssignmentKey`,
+   `SpillStateKey`, `FrameRealizationKey`, and `TargetRealizabilityKey` all
+   name the materialized revision and `FrameActionFingerprint`; and
+7. target opcodes, concrete registers, frame offsets, encodings, machine
    instructions, and MIR facts remain absent from BIR.
 
 E4 freezes the candidate once and performs these checks in one transaction.
@@ -395,7 +421,7 @@ mapping, and selects one machine record per allocated pseudo node. It cannot
 choose frame offsets, bases, stack displacements or adjustments; it cannot
 change assignments, introduce an allocatable temporary or capacity
 spill/reload, create scratch, resolve or schedule copies, reinterpret
-constraints, expand instructions or calls, or hide a missing transition.
+constraints, insert a frame record, expand instructions or calls, or hide a missing transition.
 Failure to map or encode the verified view fails the MIR transaction and
 requires an upstream schema/legalization change.
 
@@ -1309,8 +1335,9 @@ identity, type, CFG, or call facts.
 Raw, Canonical, PreparedInput, and the D3/D4/initial-D5
 `PseudoPublicationGate` reject allocation facts. The private
 `AssignedAllocationCandidateGate` admits only exact revision-bound assignments
-and explicit abstract spill state and never publishes `PseudoBir`; Allocated
-adds its frame and publication rules. Every gate rejects duplicate side-table
+and explicit abstract spill state, plus bounded fixed-role frame-action nodes
+after E4 materialization, and never publishes `PseudoBir`; Allocated adds exact
+frame coverage and publication rules. Every gate rejects duplicate side-table
 authority and MIR/emission facts, including:
 
 - legacy Route1–Route8 producer/publication/comparison/memory/call indices,
@@ -1484,7 +1511,8 @@ input is verified here but the named decision belongs after BIR.
 | D5 phi destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
 | ABI placement and abstract allocation/spill state | Contracted at the later Pseudo/Allocated boundaries; D2 and E1-E3 own production | semantic profiles use `ForbiddenStageFact` and `ForbiddenCompatibilityPayload`; `Allocated` requires exact same-revision product keys, complete assignments, explicit legal `Spill`/`Reload`, and fail-closed E4 publication |
-| frame layout, target operation/relocation encoding/emission | Deferred from BIR | never admitted as BIR authority |
+| frame layout and explicit frame actions | Contracted at E4; implementation deferred | private deterministic draft, bounded action materialization, `FrameActionFingerprint`, final exact-current products, and atomic Allocated publication |
+| target operation/relocation encoding/emission | Deferred from BIR | F1 applies registered mappings; encoding/emission is never BIR graph authority |
 
 ## Proof plan
 
@@ -1557,8 +1585,10 @@ Step 7 closes the two preparation-facing choices:
    immutable `BoundConstraintSet` or nothing. C7 remains tables-only.
 3. C9's subordinate `ConstraintProjectionTransaction` is the sole shared
    later-revision projection/preservation authority. D1, D2, every D4
-   occurrence, initial D5, every E3 retry, and D5 copy resolution invoke it
-   inside their own failure-atomic transactions. Each verifier consumes only
+   occurrence, initial D5, every E3 retry, and the final E4 frame-action
+   materialization invoke it inside failure-atomic transactions. Private D5
+   copy resolution contributes its mutation summary to that E4 projection and
+   does not publish a separately current projection. Each verifier consumes only
    the resulting `ProjectedConstraintSet` keyed to the exact candidate stamp;
    Canonical C9, predecessor products, stable IDs, structural equality, and
    copied records are not later-revision freshness proof.

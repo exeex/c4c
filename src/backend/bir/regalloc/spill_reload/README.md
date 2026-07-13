@@ -96,28 +96,28 @@ Failure, including projection failure, discards the entire private revision,
 spill objects, nodes, assignments, projected product, and derived products;
 the predecessor remains unchanged.
 
-Copy resolution itself cannot run E3 mutation, but its revision advance
-invalidates the predecessor spill-state product. Inside the enclosing
-`CopyResolutionTransaction`, after exact-current E1 recomputation and E2
-assignment validation, E3's spill-state owner runs a non-mutating validator
-over the frozen resolved graph. It consumes the resolved `PipelineStageStamp`,
-`CopyResolutionFingerprint`, exact resolved `ProjectedConstraintSet`, exact
+Neither copy resolution nor E4 frame-action materialization may run E3
+mutation, but both revision advances invalidate the predecessor spill-state
+product. Inside the enclosing `AllocatedPublicationTransaction`, after final
+projection, E1 recomputation, and E2 assignment validation, E3's spill-state
+owner runs a non-mutating validator over the materialized graph. It consumes
+the final `PipelineStageStamp`, `CopyResolutionFingerprint`,
+`FrameActionFingerprint`, exact final `ProjectedConstraintSet`, exact
 `LivenessInterferenceKey`/`AssignmentKey`, and the immutable predecessor spill
 object/transition inventory.
 It proves that no spill object, `Spill`/`Reload` node, placement, covered use,
 or residency transition changed; that every reload result retains a complete
 legal assignment under current E1/E2 facts; and that copy replacement did not
 introduce an implicit transition. Only then does it install one E3 spill-state
-`SpillStateKey` product keyed to the resolved revision. Stable IDs, an
+`SpillStateKey` product keyed to the final materialized revision. Stable IDs, an
 unchanged inventory, or
 the D5 preservation record cannot rekey it. The validator cannot add, remove,
-or reposition spill state; failure rolls back the whole resolution closure,
-leaves predecessor products unchanged, and produces no E4 input.
+or reposition spill state; failure rolls back the whole publication closure,
+leaves predecessor products unchanged, and produces no E4 capability.
 
-After that exact resolved spill-state product is staged, the E4-owned
-non-mutating `FrameRealizationTransaction` assigns exact spill-object regions,
-bases, offsets, and displacements and proves every `Spill`/`Reload` is one-record
-realizable under the registered target mapping. E3 never chooses those facts.
-Failure, including a displacement or dynamic-frame interaction requiring
-materialization or more than one record, aborts atomically before
-`MirReadyBirView`; it does not return a repair request to E3.
+The E4 frame-action draft has already fixed spill-object regions, bases,
+offsets, and displacements and materialized every required action as an
+explicit one-record node. After E3 validation, the non-mutating final
+`FrameRealizationPlan` covers those facts and proves every `Spill`/`Reload` and
+frame action directly realizable. E3 never chooses placement or adds actions;
+failure aborts atomically before `MirReadyBirView` and does not return repair.

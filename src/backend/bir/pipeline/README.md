@@ -16,9 +16,10 @@ module and publishes one immutable target-independent `CanonicalBir`. Target
 preparation, generic pseudo and shared call lowering, target pseudo
 legalization, out-of-SSA, and shared BIR allocation are downstream of this
 canonicalization pipeline. Those owners publish new exact pseudo/allocated
-revisions and never write their facts into `CanonicalBir`. Concrete registers, frame offsets, target opcodes,
-instruction selection, prologue/epilogue, and emission remain later MIR/backend
-authority.
+revisions and never write their facts into `CanonicalBir`. E4 owns exact
+private frame layout/placements and explicit frame-action materialization.
+Concrete register spelling, target opcode/encoding choice within registered
+mappings, and emission remain later F1-F3 authority.
 
 ## 1. Root-order anchor and local stage graph
 
@@ -72,8 +73,11 @@ gate, and every target-aware phase is defined only in the root README.
   abstract homes, and E3 alone inserts explicit capacity spill/reload state;
   each E3 rewrite advances and fully reverifies its revision before fresh E1/
   E2 retry, and only a complete assignment/spill candidate may advance;
-- E4 atomically mints the owning `AllocatedBir` and a `PreparedBir` readiness
-  capability over that exact immutable revision, not a synonym for
+- after D5 copy resolution, E4 builds its frame draft, materializes bounded
+  fixed-role one-record action nodes, then performs final projection, E1
+  recomputation, E2/E3 non-mutating validation, final frame-plan derivation,
+  and target-realizability checking before atomically minting `AllocatedBir`
+  and its `PreparedBir` readiness capability; this is not a synonym for
   `VerifiedPreparationInput` or preparation facts;
 - `MirReadyBirView` is a borrowing read-only view of that same revision and
   cannot clone storage, change assignments, or survive its owning token;
@@ -695,11 +699,11 @@ The legacy tree is evidence for capabilities, not a shape to preserve.
 | `prealloc/legalize.cpp` type/value normalization | target-independent portion moves to `legalize`; its ABI repair, target i1 promotion policy, prepared label tables and branch-fusion records are rejected from Canonical passes |
 | `prealloc/control_flow.hpp`, label lookup tables | CFG analysis plus `cfg` using `BlockId` and `EdgeKey`; prepared label interning is unnecessary |
 | `prealloc/comparison.*` | scalar canonical forms and comparison analysis; physical flags/branch fusion remain later |
-| `prealloc/addressing.hpp`, memory freshness, atomics, object data | memory/aggregate/intrinsic semantic canonicalization plus analyses; target addresses and storage plans remain preparation/MIR |
+| `prealloc/addressing.hpp`, memory freshness, atomics, object data | memory/aggregate/intrinsic semantic canonicalization plus analyses; C6 owns typed address facts and E4 owns exact private object/frame placement; F1 only applies verified mappings |
 | `prealloc/liveness.*` | reusable revision-bound BIR analysis when needed; never a canonical pass or stored authority |
 | `prealloc/out_of_ssa.cpp` phi materialization, join transfers, parallel-copy bundles | rejected from the canonical interval; root stage `D5` BIR out-of-SSA owns it after target legalization and before `E1` allocation liveness |
-| `prealloc/regalloc.cpp`, allocation constraints, spill/reload and move bundles | typed target preparation plus shared BIR allocation own abstract constraints, assignments, and capacity `Spill`/`Reload` in a new allocated revision; MIR owns concrete mapping and machine moves; no allocation fact is written to Canonical BIR |
-| stack layout, dynamic stack plan, frame plan, storage plan | semantic stack-save/restore/allocation operations remain BIR; physical slots/frame policy are external |
+| `prealloc/regalloc.cpp`, allocation constraints, spill/reload and move bundles | typed target preparation plus shared BIR allocation own abstract constraints, assignments, capacity `Spill`/`Reload`, and D5 copy resolution; E4 owns explicit frame-action materialization and exact placement; F1 applies concrete spellings only |
+| stack layout, dynamic stack plan, frame plan, storage plan | E4 owns exact private layout/placements and materializes every required action as an explicit admitted one-record BIR node; F1 applies only the final plan and registered mappings |
 | call plans, variadic entry plans, inline-asm carriers, runtime-helper facts | `intrinsics` guarantees typed semantic inputs; external typed preparation owns classifications and plans |
 | prepared lookups, traversal coordinates and agreement tables | replaced by stable IDs, immutable typed plan handles and revision checks; no duplicate authority |
 | prepared printer and legacy notes/completed-phase strings | structured diagnostics/audit; strings are presentation only |
@@ -727,7 +731,7 @@ used `src/passes` orchestration leads to these decisions:
 | hard-coded three iterations and diminishing-return percentage | reject as a correctness criterion; use deterministic convergence and hard budgets |
 | whole-module mutable IR passed directly among functions | reject; transactions, revisions and stage tokens are mandatory |
 | text assembly peephole passes | reject from BIR; target output work is later |
-| combined stack layout/regalloc/codegen state | split: shared BIR allocation owns abstract assignments and ordinary capacity spill/reload in a new revision; target MIR/backend owns concrete registers, frame layout, selection, and encoding |
+| combined stack layout/regalloc/codegen state | split: shared BIR owns allocation and spill state; E4 owns exact private frame layout plus explicit action materialization; F1 owns only concrete spelling/selection within one registered mapping and encoding |
 | target-specific div-by-constant gating inside the semantic pass list | do not copy into canonicalization; target-dependent expansion requires a later target stage or a proven target-independent semantic transform |
 | inline asm symbol resolution after inlining | retain the need for explicit symbol dependencies, but Raw import must already provide structured identities; no text reparsing in this pipeline |
 

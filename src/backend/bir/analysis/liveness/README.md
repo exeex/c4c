@@ -6,8 +6,8 @@ Status: converged design contract (unimplemented).
 
 `E1` is the sole shared liveness/interference analysis for RV64, AArch64, and
 x86 allocation. It consumes one immutable, fully reverified initial D5
-`PseudoBir` revision, one fully reverified E3 retry revision, or the frozen
-resolved revision staged inside D5's `CopyResolutionTransaction`, plus the exact
+`PseudoBir` revision, one fully reverified E3 retry revision, or the final
+E4-materialized revision staged inside `AllocatedPublicationTransaction`, plus the exact
 `VerifiedTargetLayout` and `ProjectedConstraintSet` keyed to that revision. Its
 `LivenessInterferenceKey`
 contains the complete pseudo stage stamp, module epoch and revision, ordered
@@ -69,16 +69,14 @@ with the matching E2 assignment and E3 spill facts, is input to D5's
 subordinate `CopyResolutionTransaction`; an earlier retry product cannot be
 used to resolve copies.
 
-Copy resolution advances the revision and therefore invalidates that final
-predecessor E1 product even though ordinary assignments and stable value IDs
-do not change. Inside the enclosing `CopyResolutionTransaction`, E1 recomputes
-the complete product from the resolved graph after constraint projection,
-using the resolved `PipelineStageStamp`, exact resolved
-`ProjectedConstraintKey`, target/layout keys, and
-`CopyResolutionFingerprint`. It models the emitted `EdgeCopy` sequence and
-every surviving scratch endpoint rather than predecessor `ParallelCopy` and
-reservation-node intervals, and installs one exact-resolved-revision
-`LivenessInterferenceKey`.
+Copy resolution and E4 frame-action materialization both advance the revision
+and invalidate that predecessor E1 product. Inside the enclosing
+`AllocatedPublicationTransaction`, E1 recomputes only after final constraint
+projection, using the materialized `PipelineStageStamp`, exact
+`ProjectedConstraintKey`, target/layout keys, `CopyResolutionFingerprint`, and
+`FrameActionFingerprint`. It models emitted `EdgeCopy` sequences and explicit
+fixed-role frame-action nodes rather than predecessor copy bundles or a frame
+draft, and installs one exact-final-revision `LivenessInterferenceKey`.
 No preservation record or structural equality may rekey the predecessor
 product. Recompute failure aborts the enclosing transaction and installs no E1
-product or E4 input.
+product or E4 capability.

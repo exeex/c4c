@@ -27,8 +27,9 @@ Status: scaffold; the allocated-BIR consumer described here is not implemented.
 
 The only input is an exact borrowed `MirReadyBirView` minted by E4. It names
 the resolved BIR revision, its `CopyResolutionFingerprint`, and every current
-target, layout, constraint, liveness, allocation, spill, frame realization,
-and target-realizability fingerprint. Every value requiring a register has a
+target, layout, constraint, liveness, allocation, spill,
+`FrameActionFingerprint`, frame realization, and target-realizability key.
+Every value requiring a register has a
 complete pseudo-physical
 assignment, or its movement is made explicit by admitted spill/reload nodes.
 The instruction body contains no unadmitted semantic or target-machine nodes,
@@ -39,8 +40,10 @@ instruction record.
 The immutable private frame plan already fixes each spill/reload object,
 outgoing-call object and access, static/dynamic frame region, base, exact
 offset/displacement, stack size/alignment and adjustment, and registered
-mapping-rule ID. Every implicit frame action either needs no record or is an
-explicit admitted one-record node. F1 does not choose these facts.
+mapping-rule ID. Every required record-producing frame action is an explicit
+admitted one-record node; prologue, epilogue, adjustment, save/restore, probe,
+and every other record-producing action are never implicit or hidden. F1 does
+not choose these facts.
 
 `InlineAsm` uses the same allocated generic operands and results as other BIR
 instructions. Its instruction text stays opaque through MIR. Explicit
@@ -63,8 +66,8 @@ opcode, and encoding only within the registered mapping rule. Mapping or
 lowering failure is a structured boundary failure; it is not permission to
 reallocate, create scratch, resolve copies, expand a node, or silently insert
 pressure spill/reload work. Repair requires an upstream D4 schema/legalization
-change and a new BIR transaction; F1 cannot return repair to D4 or mutate while
-consuming the view.
+change and a new BIR transaction. Machine construction is apply-only and cannot
+return repair to D4 or mutate while consuming the view.
 
 The existing target trees are current or legacy implementation evidence. Their
 presence does not mean that they satisfy this allocated-BIR boundary, and this

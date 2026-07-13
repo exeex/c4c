@@ -20,8 +20,8 @@ failure result, and next consumer for every row:
 | initial D5 -> E1 | Are liveness, interference, fixed homes, call/inline-asm roles, clobbers, simultaneous-copy semantics, scratch reservations, and pressure derived from the exact fully reverified initial-D5 candidate revision? |
 | E1 -> E2 | Does E2 alone assign legal abstract category/class-or-group/slot homes using the exact E1 and target-pool keys? |
 | E2 -> E3 -> E1 retry | Does E3 alone add explicit abstract spill identities and `Spill`/`Reload`; does every mutation advance and pass the private assigned-candidate gate before fresh E1/E2 facts, without invoking the allocation-free Pseudo publication gate? |
-| stable E3 -> D5 copy resolution -> E4 -> `AllocatedBir` | Does D5 alone resolve every bundle through assigned homes/scratch; do exact-current projection/E1/E2/E3 products feed the E4-owned non-mutating frame transaction; does the final target key bind its exact frame key; and does E4 rerun private assigned-candidate plus Allocated rules atomically? |
-| `AllocatedBir` -> `PreparedBir` / `MirReadyBirView` -> MIR | Do all capabilities name the same immutable revision and exact frame plan; does MIR apply fixed bases/offsets/displacements and one registered mapping per node without choosing placements, expanding, or returning repair to D4? |
+| stable E3 -> D5 copy resolution -> E4 -> `AllocatedBir` | Does D5 alone resolve every bundle; does E4 materialize every required frame action as a bounded fixed-role one-record node before final projection/E1/E2/E3/frame/target closure; do all final keys bind `FrameActionFingerprint`; and does E4 publish atomically? |
+| `AllocatedBir` -> `PreparedBir` / `MirReadyBirView` -> MIR | Do all capabilities name the same materialized revision and exact frame plan; does MIR apply one mapping per explicit node without choosing placement, inserting a frame record, expanding, or returning repair? |
 
 For each transition, attach the predecessor fingerprint set and prove the
 consumer rejects a missing, stale, foreign, mixed-target, or cross-revision
@@ -42,10 +42,10 @@ bounded retry. No later stage may be described as repairing malformed input.
   refreshed key, assignment fragment, or alternate graph?
 - Are `PreparedBir` and `MirReadyBirView` capabilities over the exact owning
   `AllocatedBir`, rather than copied or rebuilt instruction storage?
-- Does `FrameRealizationTransaction` cover every spill/reload, outgoing call,
-  static/dynamic frame interaction, displacement, adjustment, implicit frame
-  action, and mapping-rule ID, failing before publication if one record is
-  impossible?
+- Does `FrameActionMaterializationTransaction` insert every required entry,
+  exit, dynamic-lifetime, call, save/restore, probe, and adjustment action as a
+  bounded explicit one-record node before final projection, and does the final
+  `FrameRealizationPlan` cover each node and access without hidden F1 work?
 - Are published D3/D4/initial-D5 `PseudoBir` and private assigned E3/D5
   candidates checked by distinct gates with opposite allocation-state rules?
 

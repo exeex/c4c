@@ -55,8 +55,8 @@ literal `Producer/owner:`. Reject and Defer rows name their enforcing
 | `prealloc/out_of_ssa\.cpp` | Accepted phi elimination and copy-resolution semantics; reject residual phi or target-register copies | Producer/owner: indexed D5 `passes/out_of_ssa/README.md`. |
 | `prealloc/(?:decoded_home_storage\|special_carriers)\.(?:cpp\|hpp)` | Accepted only fixed abstract ABI roles representable as ordinary typed BIR; reject decoded-home mirrors and special carriers | Producer/owner: indexed D2 `passes/call_lowering/README.md`; E2 later assigns ordinary abstract homes. |
 | `prealloc/storage_plans\.(?:cpp\|hpp)` | Accepted abstract spill-state planning; reject concrete frame locations and hidden transitions | Producer/owner: indexed E3 `regalloc/spill_reload/README.md`, using abstract spill objects and explicit Spill/Reload nodes. |
-| `prealloc/(?:dynamic_stack\.(?:cpp\|hpp)\|frame\.hpp)` | Accepted semantic dynamic-stack operations; reject concrete placement in core or Canonical BIR | Producer/owner: indexed `core/README.md`; E4 later owns exact frame placement through `FrameRealizationTransaction`. |
-| `prealloc/frame_plan\.(?:cpp\|hpp)` | Accepted exact frame-placement capability; reject the legacy plan representation and any second planner | Producer/owner: indexed E4 `allocated/README.md` `FrameRealizationTransaction`; F1 is apply-only. |
+| `prealloc/(?:dynamic_stack\.(?:cpp\|hpp)\|frame\.hpp)` | Accepted semantic dynamic-stack operations; reject concrete placement in core or Canonical BIR | Producer/owner: indexed `core/README.md`; E4 later owns exact placement, explicit action materialization, and the final frame plan. |
+| `prealloc/frame_plan\.(?:cpp\|hpp)` | Accepted exact frame-placement capability; reject the legacy plan representation and any second planner | Producer/owner: indexed E4 `allocated/README.md` private draft/materializer plus final `FrameRealizationPlan`; F1 is apply-only. |
 | `prealloc/object_data\.(?:cpp\|hpp)` | Defer object bytes and relocations | Boundary: indexed `../mir/object/README.md`; Canonical BIR retains typed initializer and symbol semantics only. |
 | `prealloc/(?:prealloc\.(?:cpp\|hpp)\|README\.md)` | Reject the monolithic driver, phase flags, completed-phase strings, and alternate publication route | Boundary: the root indexed A1-F3 pipeline and its named stage owners. |
 | `prealloc/regalloc\.(?:cpp\|hpp)` | Reject the monolithic allocation coordinator, mixed physical-location record, and MIR repair route | Boundary: indexed E1, E2, E3, D5, and E4 contracts divide analysis, assignment, spill state, copy resolution, and publication. |
@@ -67,10 +67,10 @@ literal `Producer/owner:`. Reject and Defer rows name their enforcing
 | `prealloc/regalloc/(?:call_moves\|call_return_abi\|runtime_helpers)\.(?:cpp\|hpp)` | Accepted ABI/helper transport requirements; reject late side-record moves and register-name recovery | Producer/owner: indexed D2 `passes/call_lowering/README.md`, consuming C3/C4/C5/C8 facts. |
 | `prealloc/regalloc/(?:consumer_moves\|move_records\|phi_moves)\.(?:cpp\|hpp)` | Accepted phi/parallel-copy behavior; reject post-allocation hidden move records | Producer/owner: indexed D5 `passes/out_of_ssa/README.md` copy-resolution closure. |
 | `prealloc/regalloc/pointer_carriers\.(?:cpp\|hpp)` | Reject prepared pointer-carrier mirrors, cycle/name heuristics, and frame-address authority | Boundary: indexed provenance plus C6 preparation preserve semantic address requirements; D4 expands target forms and E4 fixes frame mappings. |
-| `prealloc/stack_layout/(?:analysis\|alloca_coalescing\|regalloc_helpers\|slot_assignment)\.cpp` | Accepted exact object/frame placement capability; reject legacy offset assignment and post-allocation repair | Producer/owner: indexed E4 `allocated/README.md` `FrameRealizationTransaction`, consuming exact E3 spill state and fixed call/frame requirements. |
+| `prealloc/stack_layout/(?:analysis\|alloca_coalescing\|regalloc_helpers\|slot_assignment)\.cpp` | Accepted exact object/frame placement capability; reject legacy offset assignment and post-allocation repair | Producer/owner: indexed E4 `allocated/README.md` draft/materializer/final-plan route, consuming exact E3 spill state and fixed call/frame requirements. |
 | `prealloc/stack_layout/copy_coalescing\.cpp` | Reject a second late copy/coalescing authority | Boundary: indexed D5 owns allocation-aware copy resolution before E4; E4 cannot rewrite copy semantics. |
 | `prealloc/stack_layout/inline_asm\.cpp` | Reject special-case late inline-asm placement | Boundary: C9 projection, E2 assignment, D5 resolution, and E4 frame realization supply complete facts; F1 only applies them. |
-| `prealloc/stack_layout/(?:README\.md\|coordinator\.cpp\|lookups\.cpp\|stack_layout\.hpp)` | Reject the duplicate stack-layout coordinator, cache, lookup authority, and alternate publication route | Boundary: indexed E4 alone owns atomic `FrameRealizationTransaction`; F1 cannot plan or repair layout. |
+| `prealloc/stack_layout/(?:README\.md\|coordinator\.cpp\|lookups\.cpp\|stack_layout\.hpp)` | Reject the duplicate stack-layout coordinator, cache, lookup authority, and alternate publication route | Boundary: indexed E4 alone owns atomic frame-action materialization and final-plan publication; F1 cannot plan or repair layout. |
 
 ## Coverage gate
 
@@ -88,8 +88,8 @@ cache, renderer, adapter, target hook, or test helper. In particular:
   spill state, D2 owns call transport, and D5 owns phi/copy realization.
 - C5 owns variadic planning only. Provenance supplies semantic origin facts and
   C6 owns address preparation.
-- E4 alone produces the immutable exact-revision `FrameRealizationPlan` through
-  `FrameRealizationTransaction`; F1 applies that plan one-to-one and cannot
+- E4 alone materializes explicit actions and produces the immutable final
+  `FrameRealizationPlan`; F1 applies that plan one-to-one and cannot
   select offsets, coordinate layout, expand records, allocate, or repair.
 
 Before implementation acceptance, symbol-level review must record exact
