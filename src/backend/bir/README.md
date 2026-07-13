@@ -7,6 +7,14 @@ allocation implementation starts. A listed owner or gate does not imply that
 its implementation is complete. Several owners are intentionally
 build-excluded placeholders.
 
+Architecture-Acceptance-Checkpoint: the documentation architecture at
+`8a7404a265ab24e230dcf4d001d6d1033e8d9736` was independently reviewed in
+`review/731_final_projection_architecture_review.md` with zero blockers. This
+accepts the documentation architecture only; it does not claim that the
+documented implementation exists and does not authorize implementation. Idea
+731 remains open and implementation-gated pending a separate plan-owner
+implementation runbook.
+
 BIR begins as target-independent, unallocated source semantics. `RawBir` and
 `CanonicalBir` contain neither register homes nor spill decisions. After
 Canonical publication, BIR validates a `c4c::TargetProfile`, derives a finite

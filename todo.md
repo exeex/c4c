@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
 Current Step ID: 14
@@ -8,38 +8,50 @@ Current Step Title: Record architecture acceptance
 
 ## Just Finished
 
-- Plan Step 13 is complete. The fresh independent report at
-  `review/731_final_projection_architecture_review.md` reviewed exact HEAD
-  `8a7404a265ab24e230dcf4d001d6d1033e8d9736`, found zero blocking or
-  non-blocking architecture findings, judged the route aligned, and explicitly
-  allowed Step 14 for that checkpoint.
-- All earlier architecture, structure, legacy, implementation-honesty, strict
-  F1, verifier-interval, frame-action, and final projection-lineage checkpoints
-  remain resolved. No architecture repair remains in this runbook.
+- Completed Plan Step 14 by adding exactly one root
+  `Architecture-Acceptance-Checkpoint:` marker for independently reviewed
+  document checkpoint `8a7404a265ab24e230dcf4d001d6d1033e8d9736` and
+  `review/731_final_projection_architecture_review.md`, which reported zero
+  blockers.
+- The marker accepts the documentation architecture only. It explicitly does
+  not claim implementation exists and does not authorize implementation.
+- All todo items are complete and this docs-only runbook is exhausted. Source
+  idea `731_inline_asm_transport_and_regalloc_contract.md` remains open and is
+  not complete; implementation remains gated pending a separate plan-owner
+  implementation runbook.
 
 ## Suggested Next
 
-- Execute bounded Plan Step 14 in `src/backend/bir/README.md`: add only the
-  explicit architecture-accepted marker for reviewed checkpoint
-  `8a7404a265ab24e230dcf4d001d6d1033e8d9736`, then rerun the prescribed
-  structural checks and record exact proof here.
-- Do not make a new architecture choice, edit a subordinate contract, or
-  authorize implementation in this packet.
+- Return lifecycle control to the plan owner to decide whether to deactivate,
+  retire, or replace this exhausted documentation runbook while preserving the
+  open source idea. Any implementation work requires a separate activated
+  runbook and is not authorized by this acceptance checkpoint.
 
 ## Watchouts
 
-- The marker must identify only the exact independently reviewed checkpoint;
-  any substantive architecture edit invalidates the Step 13 judgment and must
-  return to review rather than being bundled into Step 14.
-- Completing Step 14 exhausts this docs-only runbook but does not complete idea
-  731. Keep `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
-  open, keep implementation gated, and return lifecycle control to the plan
-  owner for a separate implementation-runbook decision.
+- The accepted architecture is exactly the independently reviewed document
+  checkpoint. Any substantive architecture change requires renewed proof and
+  review; the marker cannot be carried forward as implementation evidence.
+- Preserve the distinction between runbook exhaustion and source-idea
+  completion. Idea 731 remains in `ideas/open/` until a future implementation
+  lifecycle establishes its own completion evidence.
 
 ## Proof
 
-- Lifecycle transition only. Independent Step 13 evidence is recorded in
-  `review/731_final_projection_architecture_review.md` for exact reviewed HEAD
-  `8a7404a265ab24e230dcf4d001d6d1033e8d9736` with zero blockers.
-- The Step 14 executor must record fresh `git diff --check`, exact inventory,
-  root-link, stage-order, local-link, and acceptance-marker cardinality proof.
+- Passed `git diff --check`.
+- Exact structure/link checker output:
+  `structure PASS: 44 files, 43 root links exactly once, 31 ordered A1-F3 rows,
+  D2 cardinality 1, 45-doc local-link audit`.
+- Acceptance proof output:
+  `acceptance PASS: exactly one root marker; exact reviewed hash/report and
+  documentation-only implementation gate present; subordinate marker count
+  zero`.
+- Focused negative output:
+  `negative PASS: stale IDs/headings/C5 owner, F1/MIR late repair, separate D5
+  projection, implementation authorization/capability claim, overfit,
+  expectation, and test changes absent`.
+- After this update, `git status --short` contains only
+  `src/backend/bir/README.md` and `todo.md`, plus the four pre-existing untracked
+  review reports.
+- Docs-only packet: no build/test subset applies and no regression log was
+  created or modified.
