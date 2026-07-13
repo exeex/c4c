@@ -1999,6 +1999,155 @@ void test_global_object_rejections_and_transactionality() {
          "a valid definition after rejected receipt should publish normally");
 }
 
+void test_specialization_metadata_receipt_and_rejections() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId first_link =
+      module.link_names.intern("_Z4makeIiEvT_");
+  const c4c::LinkNameId second_link =
+      module.link_names.intern("_Z4makeIdEvT_");
+  module.spec_entries.push_back(
+      {"type=i32;value=7", "ns::make<T>", "_Z4makeIiEvT_", first_link});
+  module.spec_entries.push_back(
+      {"type=f64;value=9", "ns::make<T>", "_Z4makeIdEvT_", second_link});
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         imported.has_value()
+             ? "structured specialization metadata should import"
+             : "structured specialization metadata should import: " +
+                   imported.error().detail);
+  const auto view = imported.value().view();
+  const auto ids = view.specializations();
+  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+         "specialization IDs must preserve source vector order");
+  const auto first = view.specialization(ids[0]);
+  const auto second = view.specialization(ids[1]);
+  expect(first.has_value() && second.has_value(),
+         "ordered specialization IDs must resolve through the immutable view");
+  expect(first.value().spec_key == "type=i32;value=7" &&
+             first.value().template_origin == "ns::make<T>" &&
+             first.value().mangled_name == "_Z4makeIiEvT_" &&
+             view.spelling(first.value().mangled_link_name).value() ==
+                 "_Z4makeIiEvT_" &&
+             second.value().spec_key == "type=f64;value=9" &&
+             second.value().template_origin == "ns::make<T>" &&
+             second.value().mangled_name == "_Z4makeIdEvT_" &&
+             view.spelling(second.value().mangled_link_name).value() ==
+                 "_Z4makeIdEvT_",
+         "specialization views must retain every exact structured field and typed link identity");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "foundation verification must reach and accept specialization storage");
+
+  const auto rejected = [](lir::LirModule candidate) {
+    auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() &&
+               raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedSpecializations,
+           "malformed specialization metadata must publish no RawBir");
+    auto canonical = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedSpecializations,
+           "malformed specialization metadata must reject the whole module transactionally");
+  };
+
+  for (int empty_field = 0; empty_field != 3; ++empty_field) {
+    lir::LirModule candidate;
+    candidate.link_name_texts = std::make_shared<c4c::TextTable>();
+    candidate.link_names.attach_text_table(candidate.link_name_texts.get());
+    candidate.struct_names.attach_text_table(candidate.link_name_texts.get());
+    const auto link = candidate.link_names.intern("_Z3rowv");
+    lir::LirSpecEntry row{"key", "origin", "_Z3rowv", link};
+    if (empty_field == 0) row.spec_key.clear();
+    if (empty_field == 1) row.template_origin.clear();
+    if (empty_field == 2) row.mangled_name.clear();
+    candidate.spec_entries.push_back(std::move(row));
+    rejected(std::move(candidate));
+  }
+
+  lir::LirModule invalid_link;
+  invalid_link.spec_entries.push_back(
+      {"key", "origin", "_Z3rowv", c4c::kInvalidLinkName});
+  rejected(std::move(invalid_link));
+
+  lir::LirModule unresolved_link;
+  unresolved_link.spec_entries.push_back(
+      {"key", "origin", "_Z3rowv", static_cast<c4c::LinkNameId>(99)});
+  rejected(std::move(unresolved_link));
+
+  lir::LirModule mismatched_link;
+  mismatched_link.link_name_texts = std::make_shared<c4c::TextTable>();
+  mismatched_link.link_names.attach_text_table(
+      mismatched_link.link_name_texts.get());
+  mismatched_link.struct_names.attach_text_table(
+      mismatched_link.link_name_texts.get());
+  const auto mismatch = mismatched_link.link_names.intern("_Z5otherv");
+  mismatched_link.spec_entries.push_back(
+      {"key", "origin", "_Z3rowv", mismatch});
+  rejected(std::move(mismatched_link));
+
+  lir::LirModule duplicate_semantic;
+  duplicate_semantic.link_name_texts = std::make_shared<c4c::TextTable>();
+  duplicate_semantic.link_names.attach_text_table(
+      duplicate_semantic.link_name_texts.get());
+  duplicate_semantic.struct_names.attach_text_table(
+      duplicate_semantic.link_name_texts.get());
+  const auto semantic_a = duplicate_semantic.link_names.intern("_Z4samei");
+  const auto semantic_b = duplicate_semantic.link_names.intern("_Z4samed");
+  duplicate_semantic.spec_entries.push_back(
+      {"same-key", "same-origin", "_Z4samei", semantic_a});
+  duplicate_semantic.spec_entries.push_back(
+      {"same-key", "same-origin", "_Z4samed", semantic_b});
+  rejected(std::move(duplicate_semantic));
+
+  lir::LirModule duplicate_link;
+  duplicate_link.link_name_texts = std::make_shared<c4c::TextTable>();
+  duplicate_link.link_names.attach_text_table(
+      duplicate_link.link_name_texts.get());
+  duplicate_link.struct_names.attach_text_table(
+      duplicate_link.link_name_texts.get());
+  const auto shared_link = duplicate_link.link_names.intern("_Z6sharedv");
+  duplicate_link.spec_entries.push_back(
+      {"key-a", "origin", "_Z6sharedv", shared_link});
+  duplicate_link.spec_entries.push_back(
+      {"key-b", "origin", "_Z6sharedv", shared_link});
+  rejected(std::move(duplicate_link));
+
+  bir::ModuleBuilder builder;
+  expect(builder.add_link_name(1, "_Z5firstv").has_value() &&
+             builder.add_link_name(2, "_Z6secondv").has_value() &&
+             builder.add_link_name(3, "_Z5thirdv").has_value(),
+         "builder specialization test needs an ordered link-name domain");
+  expect(builder.add_specialization("", "origin", "_Z5firstv", 1).error() ==
+             bir::BuildError::EmptySpecializationField,
+         "builder must reject empty specialization fields");
+  expect(builder.add_specialization("key", "origin", "_Z5firstv", 99).error() ==
+             bir::BuildError::InvalidSpecializationLinkName,
+         "builder must reject unresolved specialization link identity");
+  expect(builder.add_specialization("key", "origin", "_Z6secondv", 1).error() ==
+             bir::BuildError::InvalidSpecializationLinkName,
+         "builder must reject link spelling mismatch");
+  const auto accepted =
+      builder.add_specialization("key", "origin", "_Z5firstv", 1);
+  expect(accepted.has_value() && accepted.value().slot == 0,
+         "failed specialization receipts must append no partial state");
+  expect(builder.add_specialization("key", "origin", "_Z6secondv", 2).error() ==
+             bir::BuildError::DuplicateSpecialization,
+         "builder must reject duplicate template-origin/spec-key identity");
+  expect(builder.add_specialization("other", "origin", "_Z5firstv", 1).error() ==
+             bir::BuildError::DuplicateSpecialization,
+         "builder must reject conflicting reuse of mangled link identity");
+  const auto second_accepted =
+      builder.add_specialization("other", "origin", "_Z6secondv", 2);
+  expect(second_accepted.has_value() && second_accepted.value().slot == 1,
+         "valid receipt after duplicate rejection must keep contiguous order");
+  expect(std::move(builder).publish().has_value(),
+         "valid specialization builder state should publish after rejected receipts");
+}
+
 void test_inline_asm_shape_rejection() {
   lir::LirModule module;
   auto block = return_block(0, "entry");
@@ -2041,6 +2190,7 @@ int main() {
   test_external_declaration_rejections_and_transactionality();
   test_global_object_receipt_and_views();
   test_global_object_rejections_and_transactionality();
+  test_specialization_metadata_receipt_and_rejections();
   test_inline_asm_shape_rejection();
   return 0;
 }

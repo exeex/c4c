@@ -324,6 +324,62 @@ Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
   return Result<GlobalObjectId, BuildError>::success(id);
 }
 
+Result<SpecializationId, BuildError> ModuleBuilder::add_specialization(
+    std::string spec_key, std::string template_origin,
+    std::string mangled_name, c4c::LinkNameId mangled_link_name_id) {
+  if (state_ == State::Consumed)
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::EpochExhausted);
+  if (spec_key.empty() || template_origin.empty() || mangled_name.empty())
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::EmptySpecializationField);
+  if (mangled_link_name_id == c4c::kInvalidLinkName)
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::InvalidSpecializationLinkName);
+
+  const auto linked =
+      data_->link_names_by_source_id_.find(mangled_link_name_id);
+  if (linked == data_->link_names_by_source_id_.end() ||
+      linked->second.slot >= data_->link_names_.size() ||
+      data_->link_names_[linked->second.slot].spelling != mangled_name)
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::InvalidSpecializationLinkName);
+
+  detail::ModuleData::SpecializationSemanticKey semantic_key{
+      spec_key, template_origin};
+  if (data_->specializations_by_semantic_key_.count(semantic_key) != 0 ||
+      data_->specializations_by_link_name_.count(linked->second) != 0)
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::DuplicateSpecialization);
+  if (data_->specializations_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<SpecializationId, BuildError>::failure(
+        BuildError::StorageExhausted);
+
+  const SpecializationId id{
+      data_->epoch_, static_cast<SlotIndex>(data_->specializations_.size())};
+  data_->specializations_.push_back(SpecializationMetadata{
+      spec_key, template_origin, std::move(mangled_name), linked->second});
+  try {
+    data_->specializations_by_semantic_key_.emplace(std::move(semantic_key), id);
+    data_->specializations_by_link_name_.emplace(linked->second, id);
+  } catch (...) {
+    data_->specializations_by_semantic_key_.erase(
+        detail::ModuleData::SpecializationSemanticKey{spec_key,
+                                                       template_origin});
+    data_->specializations_by_link_name_.erase(linked->second);
+    data_->specializations_.pop_back();
+    throw;
+  }
+  return Result<SpecializationId, BuildError>::success(id);
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 ModuleBuilder::mutable_function(FunctionId function) {
   if (!data_ || data_->epoch_ == 0)

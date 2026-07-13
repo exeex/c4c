@@ -65,6 +65,12 @@ struct GlobalObjectId {
   constexpr bool valid() const noexcept { return epoch != 0; }
 };
 
+struct SpecializationId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  constexpr bool valid() const noexcept { return epoch != 0; }
+};
+
 struct BlockId {
   FunctionId owner{};
   SlotIndex slot = 0;
@@ -144,6 +150,12 @@ constexpr bool operator==(GlobalObjectId lhs, GlobalObjectId rhs) noexcept {
 constexpr bool operator!=(GlobalObjectId lhs, GlobalObjectId rhs) noexcept {
   return !(lhs == rhs);
 }
+constexpr bool operator==(SpecializationId lhs, SpecializationId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
+}
+constexpr bool operator!=(SpecializationId lhs, SpecializationId rhs) noexcept {
+  return !(lhs == rhs);
+}
 constexpr bool operator==(BlockId lhs, BlockId rhs) noexcept {
   return lhs.owner == rhs.owner && lhs.slot == rhs.slot &&
          lhs.generation == rhs.generation;
@@ -189,6 +201,7 @@ static_assert(std::is_trivially_copyable_v<ConstantId>);
 static_assert(std::is_trivially_copyable_v<StringDataId>);
 static_assert(std::is_trivially_copyable_v<ExternalDeclId>);
 static_assert(std::is_trivially_copyable_v<GlobalObjectId>);
+static_assert(std::is_trivially_copyable_v<SpecializationId>);
 static_assert(std::is_trivially_copyable_v<BlockId>);
 static_assert(std::is_trivially_copyable_v<InstId>);
 static_assert(std::is_trivially_copyable_v<ValueId>);
@@ -256,6 +269,15 @@ struct hash<c4c::backend::bir::ExternalDeclId> {
 template <>
 struct hash<c4c::backend::bir::GlobalObjectId> {
   size_t operator()(c4c::backend::bir::GlobalObjectId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(
+        hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch),
+        hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::SpecializationId> {
+  size_t operator()(c4c::backend::bir::SpecializationId id) const noexcept {
     return c4c::backend::bir::detail::hash_combine(
         hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch),
         hash<c4c::backend::bir::SlotIndex>{}(id.slot));

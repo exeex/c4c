@@ -8,13 +8,13 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 weak-external global packet now admits the exact existing LIR
-  producer row with `linkage_vis == "extern_weak "`, `global ` qualifier, empty
-  initializer evidence, `is_extern_decl=true`, and `is_internal=false`.
-- Import preserves both typed Raw-BIR facts: weak linkage and external
-  declaration state. Ordinary `external ` declarations remain non-weak, while
-  definition-shaped, constant-qualified, and initializer-bearing extern-weak
-  near-neighbors reject the whole module transactionally.
+- Plan Step 3 specialization-metadata packet now gives every current
+  `LirSpecEntry` an ordered typed `SpecializationId`, structured Raw-BIR record,
+  builder receipt, immutable module view, verifier rule, and importer wiring.
+- Import preserves exact `spec_key`, `template_origin`, and `mangled_name`
+  strings plus the resolved typed link identity. Malformed fields, unresolved
+  or mismatched links, and duplicate semantic or link identities reject before
+  publication, while failed builder receipts append no partial state.
 
 ## Suggested Next
 
@@ -24,21 +24,21 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Weak external admission is exact to `extern_weak ` with no visibility suffix,
-  a `global ` qualifier, declaration state, no internal flag, and no initializer
-  payload or initializer links. Visibility-qualified variants and definition
-  shapes remain fail-closed.
-- Raw-BIR represents weak external declarations through the existing
-  independent `is_weak` and `is_extern_declaration` fields. The verifier still
-  rejects weak+internal and all declaration/initializer state mismatches.
-- Aggregate and flexible-special-type globals remain unsupported and were not
-  widened by this packet.
+- Producer evidence defines specialization uniqueness by both deduplicated
+  function `LinkNameId` and the `(template_origin, spec_key)` semantic pair;
+  Raw-BIR indexes and verifies both without globally forbidding legitimate key
+  reuse across different template origins.
+- The source link spelling must equal `mangled_name`; this matches the current
+  printer's authoritative-link behavior and prevents rendered metadata from
+  becoming identity evidence.
+- Intrinsic requirements and remaining aggregate/flexible-special-type global
+  shapes remain unsupported and were not widened by this packet.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers exact importer admission, typed weak and
-  external-declaration views, verifier publication, and transactional rejection
-  of malformed near-neighbor rows.
+  passing. The selected proof covers ordered structured views, exact importer
+  admission, builder rejection without partial append, verifier reachability,
+  uniqueness enforcement, and whole-module transactional rejection.

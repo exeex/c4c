@@ -85,6 +85,13 @@ struct GlobalObject {
   std::optional<GlobalInitializer> initializer;
 };
 
+struct SpecializationMetadata {
+  std::string spec_key;
+  std::string template_origin;
+  std::string mangled_name;
+  LinkNameId mangled_link_name{};
+};
+
 struct ValueDef {
   ValueKind kind = ValueKind::Parameter;
   Type type{};
@@ -212,6 +219,22 @@ struct FunctionData {
 
 struct ModuleData {
  private:
+  struct SpecializationSemanticKey {
+    std::string spec_key;
+    std::string template_origin;
+
+    bool operator==(const SpecializationSemanticKey& other) const noexcept {
+      return spec_key == other.spec_key &&
+             template_origin == other.template_origin;
+    }
+  };
+  struct SpecializationSemanticKeyHash {
+    std::size_t operator()(const SpecializationSemanticKey& key) const noexcept {
+      auto result = std::hash<std::string>{}(key.spec_key);
+      return detail::hash_combine(
+          result, std::hash<std::string>{}(key.template_origin));
+    }
+  };
   struct LinkNameData {
     c4c::LinkNameId source_id = c4c::kInvalidLinkName;
     std::string spelling;
@@ -244,6 +267,12 @@ struct ModuleData {
   std::vector<GlobalObject> globals_;
   std::unordered_map<std::string, GlobalObjectId> globals_by_name_;
   std::unordered_map<LinkNameId, GlobalObjectId> globals_by_link_name_;
+  std::vector<SpecializationMetadata> specializations_;
+  std::unordered_map<SpecializationSemanticKey, SpecializationId,
+                     SpecializationSemanticKeyHash>
+      specializations_by_semantic_key_;
+  std::unordered_map<LinkNameId, SpecializationId>
+      specializations_by_link_name_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;

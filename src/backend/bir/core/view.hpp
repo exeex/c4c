@@ -189,6 +189,13 @@ class ModuleView {
       ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
     return ids;
   }
+  std::vector<SpecializationId> specializations() const {
+    std::vector<SpecializationId> ids;
+    ids.reserve(data_->specializations_.size());
+    for (std::size_t i = 0; i < data_->specializations_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
 
   Result<std::string, ResolveError> spelling(LinkNameId id) const {
     if (id.epoch != data_->epoch_)
@@ -275,6 +282,17 @@ class ModuleView {
     if (id.slot >= data_->globals_.size())
       return Result<GlobalObject, ResolveError>::failure(ResolveError::OutOfRange);
     return Result<GlobalObject, ResolveError>::success(data_->globals_[id.slot]);
+  }
+  Result<SpecializationMetadata, ResolveError> specialization(
+      SpecializationId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<SpecializationMetadata, ResolveError>::failure(
+          ResolveError::WrongEpoch);
+    if (id.slot >= data_->specializations_.size())
+      return Result<SpecializationMetadata, ResolveError>::failure(
+          ResolveError::OutOfRange);
+    return Result<SpecializationMetadata, ResolveError>::success(
+        data_->specializations_[id.slot]);
   }
   Result<GlobalObjectId, ResolveError> global_object(
       const std::string& source_name) const {

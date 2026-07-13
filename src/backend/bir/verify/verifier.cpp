@@ -361,6 +361,61 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              "global link index contains a foreign or conflicting row");
   }
 
+  for (std::size_t index = 0; index < module.specializations_.size(); ++index) {
+    const SpecializationId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& specialization = module.specializations_[index];
+    const detail::ModuleData::SpecializationSemanticKey semantic_key{
+        specialization.spec_key, specialization.template_origin};
+    const auto semantic =
+        module.specializations_by_semantic_key_.find(semantic_key);
+    const auto linked = module.specializations_by_link_name_.find(
+        specialization.mangled_link_name);
+    if (!id.valid() || specialization.spec_key.empty() ||
+        specialization.template_origin.empty() ||
+        specialization.mangled_name.empty() ||
+        !specialization.mangled_link_name.valid() ||
+        specialization.mangled_link_name.epoch != module.epoch_ ||
+        specialization.mangled_link_name.slot >= module.link_names_.size() ||
+        (specialization.mangled_link_name.slot < module.link_names_.size() &&
+         module.link_names_[specialization.mangled_link_name.slot].spelling !=
+             specialization.mangled_name) ||
+        semantic == module.specializations_by_semantic_key_.end() ||
+        semantic->second != id ||
+        linked == module.specializations_by_link_name_.end() ||
+        linked->second != id)
+      report(result, VerificationRule::SpecializationMetadata, {}, id,
+             "specialization order, fields, link identity, and indexes must agree");
+  }
+  if (module.specializations_by_semantic_key_.size() !=
+          module.specializations_.size() ||
+      module.specializations_by_link_name_.size() !=
+          module.specializations_.size())
+    report(result, VerificationRule::SpecializationMetadata, {}, ModuleEntity{},
+           "specialization semantic and link indexes must match ordered storage");
+  for (const auto& entry : module.specializations_by_semantic_key_) {
+    if (entry.first.spec_key.empty() || entry.first.template_origin.empty() ||
+        entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.specializations_.size() ||
+        (entry.second.slot < module.specializations_.size() &&
+         (module.specializations_[entry.second.slot].spec_key !=
+              entry.first.spec_key ||
+          module.specializations_[entry.second.slot].template_origin !=
+              entry.first.template_origin)))
+      report(result, VerificationRule::SpecializationMetadata, {}, entry.second,
+             "specialization semantic index contains a foreign or conflicting row");
+  }
+  for (const auto& entry : module.specializations_by_link_name_) {
+    if (!entry.first.valid() || entry.first.epoch != module.epoch_ ||
+        entry.first.slot >= module.link_names_.size() ||
+        entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.specializations_.size() ||
+        (entry.second.slot < module.specializations_.size() &&
+         module.specializations_[entry.second.slot].mangled_link_name !=
+             entry.first))
+      report(result, VerificationRule::SpecializationMetadata, {}, entry.second,
+             "specialization link index contains a foreign or conflicting row");
+  }
+
   const auto function_counts = counts(module.function_order_.ids_);
   std::unordered_set<FunctionId> live_functions;
   std::unordered_map<std::string, FunctionId> live_names;

@@ -618,9 +618,23 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
   if (has_intrinsic_requirements(module))
     return fail<void>(ImportErrorCode::UnsupportedIntrinsicRequirements, {}, {},
                       "module intrinsic requirements are not yet represented");
-  if (!module.spec_entries.empty())
-    return fail<void>(ImportErrorCode::UnsupportedSpecializations, {}, {},
-                      "specialization metadata is not yet represented");
+  std::unordered_set<c4c::LinkNameId> specialization_link_ids;
+  std::unordered_set<std::string> specialization_semantic_keys;
+  for (const auto& entry : module.spec_entries) {
+    std::string semantic_key = std::to_string(entry.template_origin.size());
+    semantic_key.push_back(':');
+    semantic_key += entry.template_origin;
+    semantic_key += entry.spec_key;
+    if (entry.spec_key.empty() || entry.template_origin.empty() ||
+        entry.mangled_name.empty() ||
+        entry.mangled_link_name_id == c4c::kInvalidLinkName ||
+        module.link_names.spelling(entry.mangled_link_name_id) !=
+            entry.mangled_name ||
+        !specialization_link_ids.insert(entry.mangled_link_name_id).second ||
+        !specialization_semantic_keys.insert(std::move(semantic_key)).second)
+      return fail<void>(ImportErrorCode::UnsupportedSpecializations, {}, {},
+                        "specialization fields, link identity, or uniqueness are malformed");
+  }
   return Result<void, ImportError>::success();
 }
 
@@ -897,6 +911,15 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import global object", added.error()));
+  }
+  for (const auto& specialization : module.spec_entries) {
+    auto added = builder.add_specialization(
+        specialization.spec_key, specialization.template_origin,
+        specialization.mangled_name,
+        specialization.mangled_link_name_id);
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import specialization metadata", added.error()));
   }
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);
