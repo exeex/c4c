@@ -8,35 +8,40 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 named-aggregate global packet now imports actual ordinary struct
-  and union `lower_global` definitions whose `llvm_type_ref` carries a
-  resolvable `StructNameId`, preserving typed Struct identity, object/linkage
-  facts, opaque initializer payload, and ordered initializer links.
-- Receipt requires a direct aggregate `TypeSpec`, exact rendered parity, and a
-  matching structured declaration; absent, unresolved, mismatched, literal,
-  array, aggregate-extern, and pointer-to-aggregate shapes reject Raw and
-  Canonical import transactionally.
+- Plan Step 3 accumulated module-surface checkpoint now proves that one
+  imported module can preserve an admitted named structured declaration and
+  symbol domain, ordered string data, a link-backed external declaration,
+  fallback and named-aggregate globals, ordered initializer links, and
+  specialization metadata through stable typed Raw BIR views.
+- The same combined module reaches `FoundationVerifier`, publishes Canonical
+  BIR, and two distinct late invalid cross-references (initializer and
+  specialization links) reject with their exact existing typed errors in both
+  routes without publishing a partial result.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 accumulated module-level checkpoint packet proving
-  the admitted Step 2-3 named types, strings, externs, globals, initializers,
-  and specialization metadata coexist and roll back transactionally.
+- Execute one bounded Step 3 flexible-array-member global receipt packet for
+  the actual non-extern direct-struct definition emitted by `lower_global`
+  with literal aggregate `llvm_type` / `llvm_type_ref`; preserve its typed
+  object facts, opaque initializer payload, and ordered initializer links, with
+  neighboring positive/negative Raw and Canonical transactional proof.
 
 ## Watchouts
 
-- `llvm_type_ref` and its resolvable `StructNameId` are aggregate semantic
-  authority; `llvm_type` and `init_text` remain parity/opaque payload and are
-  never parsed into type identity or initializer topology.
-- Flexible-array-member globals intentionally use unkeyed literal types in the
-  producer and remain closed, as do literal aggregates, arrays, aggregate
-  externs, and pointer-to-aggregate shapes.
+- Step 3 is incomplete while this producer-valid literal aggregate global row
+  remains closed; do not treat the accepted accumulated checkpoint as a
+  completion decision.
+- Keep the packet specific to structured producer evidence rather than opening
+  arbitrary literal aggregates: rendered text remains parity or opaque
+  payload, never parsed semantic authority, and other closed global shapes
+  require their own producer evidence before admission.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers producer-shaped named struct and union
-  global receipt, FoundationVerifier reachability, preserved identity/object
-  facts, and Raw/Canonical rollback for all neighboring closed shapes.
+  passing. The selected proof covers the combined admitted Step 2-3 module
+  surface, verifier reachability, Canonical publication, stable typed
+  cross-references, and Raw/Canonical transactional rejection for two distinct
+  late invalid facts.

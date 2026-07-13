@@ -2484,6 +2484,218 @@ void test_specialization_metadata_receipt_and_rejections() {
          "valid specialization builder state should publish after rejected receipts");
 }
 
+void test_accumulated_module_surface_checkpoint() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+
+    const auto external_link = module.link_names.intern("checkpoint_external");
+    const auto aggregate_link =
+        module.link_names.intern("checkpoint_aggregate");
+    const auto init_a = module.link_names.intern("checkpoint_init_a");
+    const auto init_b = module.link_names.intern("checkpoint_init_b");
+    const auto specialization_link =
+        module.link_names.intern("_Z18checkpoint_makeIiEvT_");
+    const auto aggregate_name =
+        module.struct_names.intern("%struct.CheckpointAggregate");
+
+    lir::LirStructDecl aggregate_decl;
+    aggregate_decl.name_id = aggregate_name;
+    aggregate_decl.is_packed = true;
+    aggregate_decl.fields = {{lir::LirTypeRef::integer(32)},
+                             {lir::LirTypeRef("double")}};
+    module.record_struct_decl(std::move(aggregate_decl));
+
+    module.string_pool = {
+        lir::LirStringConst{"@.checkpoint.0", std::string{"A\0B", 3}, 4},
+        lir::LirStringConst{"@.checkpoint.1", "opaque\\00tail", -1},
+    };
+    module.str_pool_map.emplace("checkpoint-source", "@.checkpoint.0");
+    module.str_pool_idx = 2;
+
+    const lir::LirExternDecl external{
+        "checkpoint_external", "i32", lir::LirTypeRef::integer(32),
+        lir::LirExtAttr::ZeroExt, external_link};
+    module.extern_decls.push_back(external);
+    module.extern_decl_link_name_map.emplace(
+        external_link,
+        lir::LirModule::ExternDeclInfo{
+            external.name, external.return_type_str, external.return_type,
+            external.return_ext_attr, external.link_name_id});
+
+    lir::LirGlobal external_global;
+    external_global.name = "checkpoint_fallback_global";
+    external_global.type = scalar_type(c4c::TB_INT);
+    external_global.linkage_vis = "external hidden ";
+    external_global.qualifier = "global ";
+    external_global.llvm_type = "i32";
+    external_global.llvm_type_ref = lir::LirTypeRef::integer(32);
+    external_global.align_bytes = 4;
+    external_global.is_extern_decl = true;
+    module.globals.push_back(std::move(external_global));
+
+    lir::LirGlobal aggregate_global;
+    aggregate_global.name = "checkpoint_aggregate";
+    aggregate_global.link_name_id = aggregate_link;
+    aggregate_global.type = scalar_type(c4c::TB_STRUCT);
+    aggregate_global.linkage_vis = "protected ";
+    aggregate_global.qualifier = "global ";
+    aggregate_global.llvm_type = "%struct.CheckpointAggregate";
+    aggregate_global.llvm_type_ref = lir::LirTypeRef::struct_type(
+        aggregate_global.llvm_type, aggregate_name);
+    aggregate_global.init_text = "{ i32 7, double 2.5 }";
+    aggregate_global.initializer_function_link_name_ids = {
+        init_b, init_a, init_b};
+    aggregate_global.align_bytes = 8;
+    module.globals.push_back(std::move(aggregate_global));
+
+    module.spec_entries.push_back(
+        {"type=i32;value=7", "checkpoint::make<T>",
+         "_Z18checkpoint_makeIiEvT_", specialization_link});
+    return module;
+  };
+
+  auto module = valid_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "all admitted Step 2-3 module families should coexist in Raw BIR");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "the accumulated module surface must remain verifier reachable");
+
+  const auto view = imported.value().view();
+  const auto link_names = view.link_names();
+  expect(link_names.size() == 5 && link_names[0].slot == 0 &&
+             link_names[1].slot == 1 && link_names[2].slot == 2 &&
+             link_names[3].slot == 3 && link_names[4].slot == 4 &&
+             view.spelling(link_names[0]).value() == "checkpoint_external" &&
+             view.spelling(link_names[1]).value() == "checkpoint_aggregate" &&
+             view.spelling(link_names[2]).value() == "checkpoint_init_a" &&
+             view.spelling(link_names[3]).value() == "checkpoint_init_b" &&
+             view.spelling(link_names[4]).value() ==
+                 "_Z18checkpoint_makeIiEvT_",
+         "the combined module must preserve stable ordered symbol identity");
+
+  const auto struct_names = view.struct_names();
+  const auto struct_decls = view.struct_declarations();
+  expect(struct_names.size() == 1 && struct_decls.size() == 1 &&
+             view.spelling(struct_names[0]).value() ==
+                 "%struct.CheckpointAggregate",
+         "the combined module must preserve its named aggregate identity");
+  const auto aggregate_decl = view.struct_declaration(struct_decls[0]).value();
+  expect(aggregate_decl.name == struct_names[0] && aggregate_decl.is_packed &&
+             aggregate_decl.fields.size() == 2 &&
+             aggregate_decl.fields[0].type == bir::Type{bir::TypeKind::I32} &&
+             aggregate_decl.fields[1].type == bir::Type{bir::TypeKind::F64},
+         "the combined module must retain the structured declaration view");
+
+  const auto strings = view.string_data();
+  expect(strings.size() == 2 && strings[0].slot == 0 && strings[1].slot == 1,
+         "combined string data must retain vector authority and order");
+  const auto first_string = view.string_data(strings[0]).value();
+  const auto second_string = view.string_data(strings[1]).value();
+  expect(first_string.pool_name == "@.checkpoint.0" &&
+             first_string.raw_bytes == std::string{"A\0B", 3} &&
+             first_string.byte_length == 4 &&
+             second_string.pool_name == "@.checkpoint.1" &&
+             second_string.raw_bytes == "opaque\\00tail" &&
+             second_string.byte_length == -1 &&
+             view.string_data("@.checkpoint.0").value() == strings[0],
+         "combined string views must preserve typed identities and opaque bytes");
+
+  const auto externals = view.external_declarations();
+  expect(externals.size() == 1 && externals[0].slot == 0,
+         "the external declaration must retain its ordered index");
+  const auto external = view.external_declaration(externals[0]).value();
+  expect(external.source_name == "checkpoint_external" &&
+             external.return_type == bir::Type{bir::TypeKind::I32} &&
+             external.return_extension == bir::ReturnExtension::ZeroExt &&
+             std::holds_alternative<bir::LinkNameId>(external.identity) &&
+             std::get<bir::LinkNameId>(external.identity) == link_names[0] &&
+             view.external_declaration(link_names[0]).value() == externals[0],
+         "the external index and symbol lookup must resolve one typed identity");
+
+  const auto globals = view.global_objects();
+  expect(globals.size() == 2 && globals[0].slot == 0 && globals[1].slot == 1,
+         "multiple admitted global forms must preserve source order");
+  const auto fallback_global = view.global_object(globals[0]).value();
+  const auto aggregate_global = view.global_object(globals[1]).value();
+  expect(fallback_global.object_type == bir::Type{bir::TypeKind::I32} &&
+             fallback_global.is_extern_declaration &&
+             fallback_global.visibility == bir::SymbolVisibility::Hidden &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 fallback_global.identity) &&
+             !fallback_global.initializer,
+         "the combined module must preserve the admitted fallback extern global");
+  expect(aggregate_global.object_type.kind == bir::TypeKind::Struct &&
+             aggregate_global.object_type.struct_name_id ==
+                 module.globals[1].llvm_type_ref->struct_name_id() &&
+             aggregate_global.object_type.spelling ==
+                 "%struct.CheckpointAggregate" &&
+             std::get<bir::LinkNameId>(aggregate_global.identity) ==
+                 link_names[1] &&
+             aggregate_global.visibility == bir::SymbolVisibility::Protected &&
+             aggregate_global.alignment == 8 &&
+             !aggregate_global.is_extern_declaration &&
+             aggregate_global.initializer &&
+             aggregate_global.initializer->opaque_payload ==
+                 "{ i32 7, double 2.5 }" &&
+             aggregate_global.initializer->function_links ==
+                 std::vector<bir::LinkNameId>{link_names[3], link_names[2],
+                                               link_names[3]},
+         "the named aggregate global must retain identity and initializer topology");
+
+  const auto specializations = view.specializations();
+  expect(specializations.size() == 1 && specializations[0].slot == 0,
+         "specialization metadata must retain its ordered typed identity");
+  const auto specialization = view.specialization(specializations[0]).value();
+  expect(specialization.spec_key == "type=i32;value=7" &&
+             specialization.template_origin == "checkpoint::make<T>" &&
+             specialization.mangled_name == "_Z18checkpoint_makeIiEvT_" &&
+             specialization.mangled_link_name == link_names[4],
+         "specialization metadata must cross-reference the shared symbol table");
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the same accumulated module must publish Canonical BIR");
+  const auto canonical_view = canonical.value().view();
+  expect(canonical_view.struct_declarations().size() == 1 &&
+             canonical_view.string_data().size() == 2 &&
+             canonical_view.external_declarations().size() == 1 &&
+             canonical_view.global_objects().size() == 2 &&
+             canonical_view.specializations().size() == 1,
+         "canonical publication must retain every accumulated module family");
+
+  const auto rejected = [&](auto mutate, bir::ImportErrorCode expected,
+                            const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() && raw.error().code == expected,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& candidate) {
+        candidate.globals[1].initializer_function_link_name_ids.back() =
+            static_cast<c4c::LinkNameId>(999);
+      },
+      bir::ImportErrorCode::UnsupportedGlobals,
+      "a late invalid initializer cross-reference must publish no partial module");
+  rejected(
+      [](lir::LirModule& candidate) {
+        candidate.spec_entries[0].mangled_link_name_id =
+            static_cast<c4c::LinkNameId>(999);
+      },
+      bir::ImportErrorCode::UnsupportedSpecializations,
+      "a late invalid specialization cross-reference must publish no partial module");
+}
+
 void test_inline_asm_shape_rejection() {
   lir::LirModule module;
   auto block = return_block(0, "entry");
@@ -2529,6 +2741,7 @@ int main() {
   test_named_aggregate_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();
   test_specialization_metadata_receipt_and_rejections();
+  test_accumulated_module_surface_checkpoint();
   test_inline_asm_shape_rejection();
   return 0;
 }
