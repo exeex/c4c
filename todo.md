@@ -1,6 +1,7 @@
 # Current Packet
 
 Status: Active
+Runbook State: Steps Exhausted — Awaiting Plan-Owner Judgment
 Source Idea Path: ideas/open/735_bir_phase_a_import_raw_document_convergence.md
 Source Plan Path: plan.md
 Current Step ID: 5
@@ -8,66 +9,74 @@ Current Step Title: Prove phase-B acceptance and the deferred idea-734 boundary
 
 ## Just Finished
 
-- Completed plan Step 4 by repairing exactly the authorized five-document A2
-  shared boundary and freshly re-auditing every named shared row against the
-  accepted phase-A comparison owners. No sixth document was needed.
-- `verify/README.md` now excludes semantic target profile/triple/rendered
-  layout/language-ABI/pointer-layout and all other C1/C2 context from Raw and
-  Canonical storage. Validation-only origin/parity remains non-semantic, C1
-  independently selects the exact `TargetProfile`, and C2 derives layout.
-- The verifier's import and coverage ledgers now defer to the accepted complete
-  immutable 38/6/18 current-LIR matrices. Existing facts keep their named
-  container/wiring/validation dispositions; desired absent forms are outside
-  intake and do not authorize LIR/schema work.
-- Compatibility and legacy coverage now defer missing/current facts to the
-  owning phase-A matrix and remain observation only. B1 reports inherited A2
-  publication/contract failure and is never a producer-repair route. The root
-  index now records idea 731 as closed bounded historical proof only.
-- Preserved the sole exact-revision
-  `verify_and_publish_raw(ModuleDraft&&)` gate, full verification, failure
-  atomicity, stable identity/CFG authority, exact-revision analysis and stale
-  rejection, read-only diagnostics/quarantine, review gates, immutable B1
-  input and root phase order.
+- Completed plan Step 5 as a read-only final phase-A documentation and
+  adjacency proof. All five runbook steps are exhausted; this execution result
+  does not itself close Child A or activate Child B or idea 734.
+- Mechanically matched the importer and core matrices to the current source in
+  exact order at 38 `LirInst` alternatives, six `LirTerminator` alternatives,
+  and 18 metadata families. Every importer row has authority, destination or
+  non-destination, current disposition, A2 failure rule, and positive plus
+  malformed/neighbor proof; every core row has one owner/non-destination,
+  truthful implementation disposition and invariant.
+- Proved the only phase-A handoff is one private exact-revision move-only
+  `ModuleDraft` consumed by the sole full A2
+  `verify_and_publish_raw(ModuleDraft&&)` gate into one move-only verified,
+  target-independent and unallocated `RawBir`. B1 accepts only its immutable
+  exact published revision; no importer map, unresolved fixup, hidden side
+  table, unsupported valid row, target context, allocation fact or partial
+  capability crosses the boundary.
+- Rechecked metadata spines, core/detail heading order, checked review lists,
+  relative links, implementation truth, the repaired shared A2 rules and all
+  Child-A acceptance/reject signals. No stale unchecked obligation or
+  unresolved documentation seam remains.
+- History proves Child-A execution changed only its authorized documents and
+  lifecycle state. Current LIR and idea 734 were unchanged. Idea 734 remains
+  open, deferred and inactive; it can receive implementation authority only
+  through a later lifecycle decision after Child-A acceptance. Child B also
+  remains open and inactive.
 
-### Fresh shared-boundary audit matrix
+### Final phase-A acceptance matrix
 
-| Audited owner and clause | Result | Fresh post-edit finding |
+| Acceptance boundary | Result | Exact evidence |
 |---|---|---|
-| `verify/README.md`, **Profiles and stage boundary** plus **Transactional construction and publication** | Compatible | The private move-only exact-draft path remains the sole full Raw publication gate. Candidate checks are diagnostic-only; failure publishes no function subset, partial capability, cache fact or alternate stage token. |
-| `verify/README.md`, **Validation phase order** plus **Module, types, symbols, and globals / Type universe** | Compatible | Phase 2 validates only target-independent semantic state. Raw/Canonical exclude semantic target/profile/layout/ABI context and non-semantic origin/parity cannot create facts; C1/C2 retain independent profile/layout authority. |
-| `verify/README.md`, **LIR import gate and current-intake dispositions** plus **Backend coverage status ledger** | Compatible | The complete immutable 38/6/18 matrices control current receipt. Current facts retain exact phase-A dispositions; absent desired forms are outside intake, not LIR/schema work, and text/legacy placeholders remain forbidden. |
-| `analysis/README.md`, **Scope and ownership**, **Exact revision keys**, **Computation**, **Transaction**, and **Invalidation** | Compatible | Results remain immutable exact-revision consumers keyed by stable IDs; stale/foreign keys reject, mutation invalidates, failure publishes no result, and analyses cannot repair core facts or mint stage tokens. |
-| `diagnostics/README.md`, **Borrow and revision**, **Structured diagnostics**, **Deterministic rendering**, and **Failure and ownership** | Compatible | Observations remain read-only and exact-revision bound; presentation cannot alter success/severity/order, construct or publish stages, repair missing facts, or feed rendered text back as authority. |
-| `compatibility/README.md`, **Quarantine boundary**, **Revision and lifetime rules**, and **Deletion discipline** | Compatible | Missing facts defer to their owning accepted matrix. Quarantine remains post-producer observation with an empty production manifest and cannot create, repair, override or select semantic facts. |
-| `LEGACY_COVERAGE.md`, typed import/error row and ledger rules | Compatible | The row still rejects text recovery and partial publication, now defers every current fact to its exact phase-A receiving disposition, and forbids legacy evidence from reopening LIR or creating/repairing facts. |
-| `REVIEW_TEMPLATE.md`, **Complete boundary walk**, **Ownership and observation review**, **Legacy disposition review**, and **Same-family and anti-overfit proof** | Compatible | Review still requires exact owner/revision/verifier/failure/consumer evidence, one full atomic Raw gate, read-only consumers, one legacy disposition and neighboring proof without expectation weakening. |
-| Root `README.md`, A1/A2/B1 stage table, publication/invalidation/cross-cutting rules and architecture checkpoint | Compatible | Target-independent A1/A2/B1 order and single-gate authority are unchanged. Idea 731 is accurately closed as bounded non-goto inline-asm transport history without implying phase, semantic, implementation or activation change. |
-| `passes/legalize/README.md`, **Exact input checkpoint**, **Closed authority**, **Transaction**, and **Unsupported and failure behavior** | Compatible | B1 accepts only one immutable exact-revision fully verified `RawBir`, has no target/repair authority, reports malformed upstream state as inherited A2 failure, and publishes nothing on failure. |
+| A1 current-LIR intake | Pass | Source and importer rows are equal in exact order at 38 instructions and six terminators; the maintained metadata set is exactly 18. All six importer row fields are nonempty and carry authority, destination/import rule, truthful disposition, A2 failure, and `+`/`-`/`N` proof obligations. |
+| Memory subordinate | Pass | Exactly 11 current instruction rows and 11 applicable metadata rows bind by same name to one parent row/family and one core owner. It owns no dispatcher, storage, verifier, finish or publication path; every failure poisons the parent transaction. |
+| A2 core receiving | Pass | Core rows equal the source 38/6 order and the importer metadata set. Every row has one nonempty typed owner/non-destination, one checked-in `missing`/`partial`/`checked-in`/validation disposition and one invariant. Load/store/binary/cast/compare/call/GEP/select/inline-asm twins converge on the same semantic owner. |
+| Target-independent boundary | Pass | `target_profile` and rendered `data_layout` are validation/origin/parity-only non-destinations. Raw/Canonical contain no semantic C1/C2 target context; C1 independently selects the exact `TargetProfile`, C2 derives layout, and ABI/allocation/MIR facts remain excluded. |
+| A1 → A2 publication | Pass | A1 finishes one private move-only exact-revision `ModuleDraft`; the shared verifier alone consumes it through the full Raw registry. Diagnostic checks, builders, constructors and compatibility evidence cannot mint a stage token. Every failure destroys unpublished state and publishes no subset/capability. |
+| A2 → B1 / Child B | Pass | A2 produces one move-only verified target-independent/unallocated `RawBir`. B1's only input is the same immutable published exact revision with `RawVerified`; B1 cannot repair A2 failure. Child B names accepted Child A as predecessor and converts that one Raw input through P01-P07/B8 without changing phase-A authority. |
+| Forbidden escape/duplicate authority | Pass | Importer maps, fixups, partial drafts/functions, unsupported placeholders/valid rows, names/rendered text, compatibility side tables, target/profile/layout semantics, allocation state and stale analyses are explicitly rejected at the handoff. Terminators alone own CFG successors and ordinary values use exact def-use. |
+| Shared post-repair audit | Pass | Commit `65a20c2d` preserves the sole A2 gate, exact revision and failure atomicity while aligning verifier intake, compatibility/legacy matrix deference, B1 inherited-A2 failure and root idea-731 history. Analysis, diagnostics and review remain read-only and non-authoritative. |
+| Implementation truth | Pass | Importer/core are `partial`; the memory sub-boundary is `absent`. The documents name the bounded checked-in foundation and missing containers/wiring/full gate separately; unsupported valid rows and build-excluded design do not count as implementation. |
+| Document conformance | Pass | All three owners contain the exact metadata spine, core-first and applicable detail headings in order, complete input/output clauses, resolved local links and fully checked review lists. Their open-question sections authorize no work and record no live seam. |
+| Lifecycle and history | Pass | Commits `10d70b872`, `060a32c78`, `e759322a`, `237afcdf`, `ba1dcab88`, and `65a20c2d` touch only their authorized phase-A docs/shared repair/lifecycle files. No `src/codegen/lir/**` or idea-734 change occurs from Child-A activation through `HEAD`. Ideas 734, 735, 736 and umbrella 732 remain open as recorded; no downstream activation occurred. |
+| Source acceptance/reject signals | Pass | Documentation proves exhaustive ownership, exact adjacency, target independence, failure atomicity, truthful implementation status and deferred implementation authority without code/tests/build edits, LIR edits, text identity, source-gap redirection, expectation weakening, partial publication or activation. |
 
 ## Suggested Next
 
-- Execute plan Step 5 as a phase-A handoff proof: verify the exhaustive A1
-  private-draft through A2 `RawBir` output matrices against phase B's exact
-  immutable input, and keep idea 734 only as the inactive implementation
-  consumer. Request plan-owner lifecycle judgment after the docs-only proof;
-  do not activate phase B or idea 734.
+- Ask `c4c-plan-owner` for the required runbook-completion judgment: decide
+  from Child A's source acceptance criteria and this supervisor-selected proof
+  whether to close Child A, deactivate/replace the exhausted runbook, or record
+  a genuinely new bounded requirement. Do not activate Child B or idea 734 as
+  part of this executor packet.
 
 ## Watchouts
 
-- The verifier's full target-independent schema can describe desired Raw forms
-  that are outside current intake; that does not make them current-LIR gaps or
-  implementation coverage and never authorizes LIR/schema edits.
-- Preserve `target_profile` and rendered `data_layout` as validation/origin/
-  parity-only non-destinations through the Step-5 adjacency proof.
-- Idea 731's closed status is bounded history only. Idea 734 remains deferred,
-  and the open umbrella remains the lifecycle owner for later children.
+- Runbook exhaustion is evidence for, not authority to perform, lifecycle
+  closure. Child A remains open until plan-owner acts.
+- The strict umbrella order permits Child B only after accepted Child A; idea
+  734 remains a deferred implementation consumer and requires its own later
+  lifecycle decision. Neither follows automatically from this proof.
+- The documented missing new-BIR containers/wiring/full gate are truthful
+  deferred implementation gaps, not unresolved phase-A documentation gaps and
+  not permission to edit current LIR.
 
 ## Proof
 
-- Docs-only packet: the delegated proof explicitly requires no canonical logs;
-  neither `test_before.log` nor `test_after.log` changed.
-- Fresh link, former-conflict removal, preserved-authority, repaired-boundary,
-  exact diff-scope and whitespace proof:
+- Docs-only proof; the delegated packet explicitly requires no canonical
+  regression logs. Neither `test_before.log` nor `test_after.log` changed.
+- Exact inventory/row-field/owner, subordinate uniqueness, handoff,
+  conformance/link, shared-rule, history/lifecycle, scope and whitespace proof:
 
 ```bash
 python3 - <<'PY'
@@ -75,108 +84,244 @@ from pathlib import Path
 import re
 import subprocess
 
-paths = [Path(path) for path in [
-    'src/backend/bir/lir_to_bir/README.md',
-    'src/backend/bir/lir_to_bir/memory/README.md',
-    'src/backend/bir/core/README.md',
-    'src/backend/bir/verify/README.md',
-    'src/backend/bir/analysis/README.md',
-    'src/backend/bir/diagnostics/README.md',
-    'src/backend/bir/compatibility/README.md',
-    'src/backend/bir/LEGACY_COVERAGE.md',
-    'src/backend/bir/REVIEW_TEMPLATE.md',
-    'src/backend/bir/README.md',
-    'src/backend/bir/passes/legalize/README.md',
-]]
-assert all(path.is_file() for path in paths)
-docs = {path.as_posix(): path.read_text() for path in paths}
+source = Path('src/codegen/lir/ir.hpp').read_text()
+importer_path = Path('src/backend/bir/lir_to_bir/README.md')
+memory_path = Path('src/backend/bir/lir_to_bir/memory/README.md')
+core_path = Path('src/backend/bir/core/README.md')
+verify_path = Path('src/backend/bir/verify/README.md')
+legalize_path = Path('src/backend/bir/passes/legalize/README.md')
+child_a_path = Path('ideas/open/735_bir_phase_a_import_raw_document_convergence.md')
+child_b_path = Path('ideas/open/736_bir_phase_b_canonical_document_convergence.md')
+idea734_path = Path('ideas/open/734_lir_to_new_bir_container_completeness.md')
+umbrella_path = Path('ideas/open/732_bir_stage_document_convergence_umbrella.md')
+
+importer = importer_path.read_text()
+memory = memory_path.read_text()
+core = core_path.read_text()
+verify = verify_path.read_text()
+legalize = legalize_path.read_text()
+child_a = child_a_path.read_text()
+child_b = child_b_path.read_text()
+idea734 = idea734_path.read_text()
+umbrella = umbrella_path.read_text()
+
+def source_variants(alias):
+    match = re.search(rf'using {alias} = std::variant<(.*?)>;', source, re.S)
+    assert match, alias
+    return re.findall(r'\bLir[A-Za-z0-9_]+\b', match.group(1))
+
+def section(text, start, end):
+    return text.split(start, 1)[1].split(end, 1)[0]
+
+def rows(text, start, end, pattern):
+    result = []
+    for line in section(text, start, end).splitlines():
+        match = re.match(pattern, line)
+        if match:
+            cells = [cell.strip() for cell in line.split('|')[1:-1]]
+            result.append((match.group(1), cells))
+    return result
+
+source_inst = source_variants('LirInst')
+source_term = source_variants('LirTerminator')
+assert len(source_inst) == 38 and len(source_term) == 6
+
+import_inst = rows(importer, '## Exhaustive Instruction Input Matrix',
+                   '## Exhaustive Terminator Input Matrix',
+                   r'^\| `LirInst::(Lir[A-Za-z0-9_]+)` \|')
+import_term = rows(importer, '## Exhaustive Terminator Input Matrix',
+                   '## Exhaustive Metadata-Family Input Matrix',
+                   r'^\| `LirTerminator::(Lir[A-Za-z0-9_]+)` \|')
+core_inst = rows(core, '## Exhaustive Instruction Receiving Matrix',
+                 '## Exhaustive Terminator Receiving Matrix',
+                 r'^\| `LirInst::(Lir[A-Za-z0-9_]+)` \|')
+core_term = rows(core, '## Exhaustive Terminator Receiving Matrix',
+                 '## Exhaustive Metadata-Family Receiving Matrix',
+                 r'^\| `LirTerminator::(Lir[A-Za-z0-9_]+)` \|')
+assert [name for name, _ in import_inst] == source_inst
+assert [name for name, _ in import_term] == source_term
+assert [name for name, _ in core_inst] == source_inst
+assert [name for name, _ in core_term] == source_term
+
+metadata = [
+    'module-context', 'stable-identities', 'operand-kinds', 'type-system',
+    'functions-signatures', 'blocks-cfg-order', 'values-def-use',
+    'stack-objects-allocas', 'globals-objects', 'initializers', 'strings',
+    'externs', 'specializations', 'intrinsic-requirements',
+    'inline-asm-metadata', 'producer-indexes-caches', 'source-order-origin',
+    'module-publication',
+]
+import_meta = rows(importer, '## Exhaustive Metadata-Family Input Matrix',
+                   '## Ordered Behavior', r'^\| `([a-z][a-z0-9-]+)` \|')
+core_meta = rows(core, '## Exhaustive Metadata-Family Receiving Matrix',
+                 '## Ordered Behavior', r'^\| `([a-z][a-z0-9-]+)` \|')
+assert [name for name, _ in import_meta] == metadata
+assert [name for name, _ in core_meta] == metadata
+
+for name, cells in import_inst + import_term + import_meta:
+    assert len(cells) == 6 and all(cells), (name, cells)
+    assert any(mark in cells[1] for mark in ('S:', 'C:', 'V:', 'S current',
+                                              'S payload', 'S/V:')), name
+    assert any(word in cells[3] for word in
+               ('missing', 'partial', 'proved', 'coverage', 'stale',
+                'non-destination')), (name, cells[3])
+    assert any(term in cells[4] for term in
+               ('reject', 'fail', 'cannot', 'no successor/fallthrough')), (name, cells[4])
+    assert all(mark in cells[5] for mark in ('+', '-', 'N ')), (name, cells[5])
+
+for name, cells in core_inst + core_term + core_meta:
+    assert len(cells) == 4 and all(cells), (name, cells)
+    assert any(word in cells[2] for word in
+               ('missing', 'partial', 'checked-in', 'validation-only')), (name, cells[2])
+
+inst_owners = {name: cells[1] for name, cells in core_inst}
+twins = {
+    ('LirLoad', 'LirLoadOp'): 'Load',
+    ('LirStore', 'LirStoreOp'): 'Store',
+    ('LirBinary', 'LirBinOp'): 'binary/unary',
+    ('LirCast', 'LirCastOp'): 'Cast',
+    ('LirCmp', 'LirCmpOp'): 'Compare',
+    ('LirCall', 'LirCallOp'): 'Call',
+    ('LirGep', 'LirGepOp'): 'GetElementPtr',
+    ('LirSelect', 'LirSelectOp'): 'Select',
+    ('LirInlineAsm', 'LirInlineAsmOp'): 'InlineAsm',
+}
+for pair, token in twins.items():
+    assert all(token in inst_owners[name] for name in pair), (pair, token)
+
+memory_inst = rows(memory, '### Input handoff matrix', '## Outputs',
+                   r'^\| `(LirInst::Lir[A-Za-z0-9_]+)` \|')
+memory_meta = rows(memory, '### Input handoff matrix', '## Outputs',
+                   r'^\| `metadata::([a-z][a-z0-9-]+)` \|')
+expected_memory_inst = [
+    'LirInst::LirLoad', 'LirInst::LirStore', 'LirInst::LirGep',
+    'LirInst::LirMemcpyOp', 'LirInst::LirStackSaveOp',
+    'LirInst::LirStackRestoreOp', 'LirInst::LirLoadOp',
+    'LirInst::LirStoreOp', 'LirInst::LirMemsetOp', 'LirInst::LirGepOp',
+    'LirInst::LirAllocaOp',
+]
+expected_memory_meta = [
+    'stack-objects-allocas', 'stable-identities', 'operand-kinds',
+    'type-system', 'values-def-use', 'globals-objects', 'initializers',
+    'strings', 'intrinsic-requirements', 'source-order-origin',
+    'module-publication',
+]
+assert [name for name, _ in memory_inst] == expected_memory_inst
+assert [name for name, _ in memory_meta] == expected_memory_meta
+for name, cells in memory_inst:
+    assert len(cells) == 5 and f'Parent row `{name}`' in cells[2], (name, cells)
+    assert any(term in cells[4] for term in ('reject', 'inject')) and 'prove' in cells[4], (name, cells[4])
+for name, cells in memory_meta:
+    assert len(cells) == 5 and f'Parent family `{name}`' in cells[2], (name, cells)
+    assert any(term in cells[4] for term in ('reject', 'inject')) and 'prove' in cells[4], (name, cells[4])
+for phrase in (
+    "parent importer's closed 38/6 dispatcher", 'core storage, builders, the full A2 verifier',
+    'owns no verifier profile', 'cannot finish, freeze, return, verify, or publish the draft',
+):
+    assert phrase in memory, phrase
+
+spine = ['Contract-Status:', 'Implementation-Status:', 'Kind:', 'Phase-ID:',
+         'Upstream:', 'Downstream:', 'Owner-Path:', 'Last-Reconciled-Commit:']
+core_first = ['## Purpose', '## Owns', '## Does Not Own', '## Inputs',
+              '## Outputs', '## Adjacent-Stage Contract']
+details = ['## Ordered Behavior', '## Invariants',
+           '## Verification and Publication', '## Failure and Diagnostics',
+           '## Analysis and Invalidation', '## Target and ABI Rules',
+           '## Implementation State', '## Proof Requirements',
+           '## Open Questions', '## Review Checklist']
+for text in (importer, memory, core):
+    assert all(key in '\n'.join(text.splitlines()[:11]) for key in spine)
+    assert [text.index(heading) for heading in core_first] == sorted(
+        text.index(heading) for heading in core_first)
+    assert [text.index(heading) for heading in details] == sorted(
+        text.index(heading) for heading in details)
+    assert '- [ ]' not in text
+    assert 'No open question' in text or 'No A1 architecture question' in text
 
 link_count = 0
-for path in paths:
-    text = path.read_text()
-    text = re.sub(r'```.*?```', '', text, flags=re.S)
+for path in (importer_path, memory_path, core_path, verify_path, legalize_path):
+    text = re.sub(r'```.*?```', '', path.read_text(), flags=re.S)
     text = re.sub(r'`[^`]*`', '', text)
     for target in re.findall(r'\[[^]]*\]\(([^)#]+)(?:#[^)]*)?\)', text):
         if '://' in target:
             continue
-        resolved = (path.parent / target).resolve()
-        assert resolved.exists(), (path, target, resolved)
+        assert (path.parent / target).resolve().exists(), (path, target)
         link_count += 1
 
-verify = docs['src/backend/bir/verify/README.md']
-analysis = docs['src/backend/bir/analysis/README.md']
-diagnostics = docs['src/backend/bir/diagnostics/README.md']
-compatibility = docs['src/backend/bir/compatibility/README.md']
-legacy = docs['src/backend/bir/LEGACY_COVERAGE.md']
-review = docs['src/backend/bir/REVIEW_TEMPLATE.md']
-root = docs['src/backend/bir/README.md']
-legalize = docs['src/backend/bir/passes/legalize/README.md']
-
-former_conflicts = [
-    (verify, 'immutable\n   lowering-environment metadata'),
-    (verify, 'target triple,\ndata-layout version, pointer widths/address spaces, and language ABI mode'),
-    (verify, '## LIR import gate and explicit source gaps'),
-    (verify, 'missing typed initializer references are a source gap'),
-    (verify, 'explicit producer-schema gap'),
-    (compatibility, 'A missing typed fact is a producer gap'),
-    (legacy, 'missing structured source carriers remain explicit source failures'),
-    (legalize, 'other producer gaps are Raw\npublication failures'),
-    (root, 'Idea\n731 remains open'),
-]
-for text, conflict in former_conflicts:
-    assert conflict not in text, conflict
-
-preserved_rules = [
+handoff_rules = [
+    (importer, 'one\nmove-only `ModuleDraft`'),
+    (importer, '`verify_and_publish_raw(ModuleDraft&&)` and may mint one `RawBir`'),
+    (importer, 'one move-only, fully verified, target-independent,\nunallocated `RawBir` to phase B'),
+    (core, 'one complete move-only private `ModuleDraft`'),
+    (core, 'The sole public phase-A output is one move-only immutable `RawBir`'),
+    (core, 'B1 receives no draft, importer maps, hidden side table, malformed/unsupported valid row or target/allocation fact'),
     (verify, 'Only\n`verify_and_publish_raw(ModuleDraft&&)`'),
-    (verify, '`verify_candidate` is diagnostic-only'),
-    (verify, 'publishes no function subset'),
-    (analysis, 'An analysis result is an immutable, disposable view of one exact published BIR\nrevision'),
-    (analysis, 'A mismatch returns structured\n`StaleAnalysis`'),
-    (diagnostics, 'read-only, non-authoritative observations'),
-    (diagnostics, 'never semantic identity'),
-    (compatibility, 'cannot be consulted by import acceptance'),
-    (compatibility, 'change verifier severity'),
-    (legacy, 'reject text recovery and partial publication'),
-    (review, 'does full Raw verification atomically publish the exact frozen draft'),
-    (root, '| `A2` | Draft/Raw verification and publication | `ModuleDraft` | verified, target-independent, unallocated `RawBir` |'),
+    (verify, 'Raw and Canonical BIR carry no semantic `target_profile`'),
     (legalize, 'The only input is an immutable, published `RawBir` view'),
-    (legalize, 'Failure publishes no revision, property, partial rewrite, analysis result, or\nstage token'),
-]
-for text, rule in preserved_rules:
-    assert rule in text, rule
-
-repaired_rules = [
-    (verify, 'Raw and Canonical BIR carry no semantic `target_profile`, target triple,\nrendered `data_layout`, language-ABI mode, pointer-width/address-space layout\nselection, or other C1/C2 target context'),
-    (verify, 'C1 independently selects\nand validates one exact `TargetProfile`; C2 derives the target-layout facts'),
-    (verify, 'complete immutable current-LIR intake'),
-    (verify, 'does not authorize LIR or producer-schema work'),
-    (compatibility, 'follows the exact disposition in its owning accepted\nmatrix'),
-    (compatibility, 'quarantine evidence cannot reopen LIR or prescribe a\nproducer/schema change'),
-    (legacy, 'every current-LIR fact follows its exact accepted phase-A receiving disposition'),
-    (legacy, 'legacy evidence cannot reopen LIR or create/repair semantic facts'),
-    (legalize, 'inherited A2 publication or\ncontract failures'),
     (legalize, 'B1 is never a producer-repair route'),
-    (root, 'Idea\n731 is closed as bounded historical proof of structured non-goto inline-asm\ntransport only'),
+    (child_b, 'one accepted phase-A\n`RawBir` becomes one verified, unallocated `CanonicalBir`'),
 ]
-for text, rule in repaired_rules:
+for text, rule in handoff_rules:
     assert rule in text, rule
+for text, status in ((importer, 'partial'), (memory, 'absent'), (core, 'partial')):
+    assert f'Implementation-Status: {status}' in text
+    assert 'unsupported valid' in text.lower(), status
 
-changed = {
-    line for line in subprocess.check_output(
-        ['git', 'diff', '--name-only'], text=True).splitlines() if line
+assert 'Status: Open (deferred; not active)' in idea734
+assert 'inactive until this idea is accepted' in child_a
+assert 'This idea performs no implementation and does not\nactivate 734' in child_a
+assert 'Predecessor: accepted `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`' in child_b
+assert 'Acceptance is strictly `A -> B -> C -> D -> E -> F`' in umbrella
+assert 'Idea 734 remains a deferred inactive implementation consumer after\nChild-A acceptance' in umbrella
+
+expected_commits = [
+    '10d70b872b9a21d60524cf7688b26979622e472a',
+    '060a32c7826d34d6f13396945231665e00bb5e2f',
+    'e759322ab9c3fbfc1ced8e9475da1dec3f828844',
+    '237afcdf62216d8ba19bb325e27c98c20bdd5982',
+    'ba1dcab88cbe38d9beedcfcfe6a0dad9cb7fa5e3',
+    '65a20c2d325d48589f4d114bae148172db244db4',
+]
+actual_commits = subprocess.check_output(
+    ['git', 'rev-list', '--reverse', '934f6a985..HEAD'], text=True).splitlines()
+assert actual_commits == expected_commits, actual_commits
+expected_files = {
+    expected_commits[0]: {'src/backend/bir/lir_to_bir/README.md', 'todo.md'},
+    expected_commits[1]: {'src/backend/bir/lir_to_bir/memory/README.md', 'todo.md'},
+    expected_commits[2]: {'src/backend/bir/core/README.md', 'todo.md'},
+    expected_commits[3]: {'todo.md'},
+    expected_commits[4]: {'plan.md', 'todo.md'},
+    expected_commits[5]: {
+        'src/backend/bir/LEGACY_COVERAGE.md', 'src/backend/bir/README.md',
+        'src/backend/bir/compatibility/README.md',
+        'src/backend/bir/passes/legalize/README.md',
+        'src/backend/bir/verify/README.md', 'todo.md',
+    },
 }
-expected = {
-    'src/backend/bir/verify/README.md',
-    'src/backend/bir/compatibility/README.md',
-    'src/backend/bir/LEGACY_COVERAGE.md',
-    'src/backend/bir/passes/legalize/README.md',
-    'src/backend/bir/README.md',
-    'todo.md',
-}
-assert changed == expected, (changed, expected)
-print(f'PASS docs={len(paths)} links={link_count} former_conflicts=0 '
-      f'preserved_rules={len(preserved_rules)} repaired_rules={len(repaired_rules)} '
-      'scope=five-docs+todo next_step=5')
+for commit, expected in expected_files.items():
+    changed = set(subprocess.check_output(
+        ['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit],
+        text=True).splitlines())
+    assert changed == expected, (commit, changed, expected)
+for protected in ('src/codegen/lir',
+                  'ideas/open/734_lir_to_new_bir_container_completeness.md'):
+    changed = subprocess.check_output(
+        ['git', 'diff', '--name-only', '934f6a985^..HEAD', '--', protected],
+        text=True).strip()
+    assert not changed, (protected, changed)
+
+changed_now = set(subprocess.check_output(
+    ['git', 'diff', '--name-only'], text=True).splitlines())
+assert changed_now == {'todo.md'}, changed_now
+todo = Path('todo.md').read_text()
+assert re.search(r'^Status: Active$', todo, re.M)
+assert re.search(
+    r'^Runbook State: Steps Exhausted — Awaiting Plan-Owner Judgment$',
+    todo, re.M)
+print('PASS inst=38 term=6 metadata=18 memory=11+11 twins=9 '
+      f'links={link_count} handoff={len(handoff_rules)} history=6 '
+      'protected=LIR+idea734 scope=todo lifecycle=active/exhausted '
+      'next=plan-owner')
 PY
 git diff --check
 ```
@@ -184,6 +329,6 @@ git diff --check
 - Result:
 
 ```text
-PASS docs=11 links=85 former_conflicts=0 preserved_rules=14 repaired_rules=11 scope=five-docs+todo next_step=5
+PASS inst=38 term=6 metadata=18 memory=11+11 twins=9 links=31 handoff=11 history=6 protected=LIR+idea734 scope=todo lifecycle=active/exhausted next=plan-owner
 git diff --check: PASS
 ```
