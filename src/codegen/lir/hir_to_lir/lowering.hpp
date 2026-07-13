@@ -373,8 +373,8 @@ class StmtEmitter {
   void emit_term_br(FnCtx& ctx, const std::string& target_label);
   void emit_term_condbr(FnCtx& ctx, const std::string& cond,
                         const std::string& true_label, const std::string& false_label);
-  void emit_term_ret(FnCtx& ctx, const std::string& type_str,
-                     const std::optional<std::string>& value_str);
+  void emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
+                     std::optional<lir::LirOperand> value_str);
   void emit_term_switch(FnCtx& ctx, const std::string& sel_name,
                         const std::string& sel_type, const std::string& default_label,
                         std::vector<std::pair<long long, std::string>> cases);

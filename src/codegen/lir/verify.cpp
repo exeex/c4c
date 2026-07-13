@@ -988,6 +988,10 @@ void verify_function_value_ownership(const LirFunction& function) {
     for (const auto& inst : block.insts) {
       visit_modeled_value_uses(inst, verify_use);
     }
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator);
+        ret && ret->value_str.has_value()) {
+      verify_use(*ret->value_str);
+    }
   }
 }
 
@@ -1001,15 +1005,44 @@ void verify_terminator(const LirTerminator& terminator) {
     return;
   }
   if (const auto* ret = std::get_if<LirRet>(&terminator)) {
-    if (!ret->value_str.has_value() && !ret->type_str.empty() &&
-        ret->type_str != "void") {
-      fail_verify("LirRet.type_str",
-                  "must be void when the return has no value");
+    require_type_ref(ret->type_str, "LirRet.type_str", true);
+    if (ret->type_str.kind() == LirTypeKind::Void) {
+      if (ret->value_str.has_value()) {
+        fail_verify("LirRet.value_str", "void return must not carry a value");
+      }
+      return;
     }
-    if (ret->value_str.has_value() && ret->type_str.empty()) {
-      fail_verify("LirRet.type_str",
-                  "must not be empty when the return has a value");
+    if (!ret->value_str.has_value()) {
+      fail_verify("LirRet.value_str", "non-void return must carry a value");
     }
+
+    const LirOperand& value = *ret->value_str;
+    require_operand_kind(value, "LirRet.value_str",
+                         {LirOperandKind::SsaValue,
+                          LirOperandKind::Global,
+                          LirOperandKind::Immediate,
+                          LirOperandKind::SpecialToken,
+                          LirOperandKind::RawText});
+    if (!value.has_authority()) return;
+
+    if (ret->type_str.kind() != LirTypeKind::Integer) {
+      fail_verify("LirRet.type_str",
+                  "authoritative scalar return requires integer type");
+    }
+    if (const auto* immediate = value.integer_immediate()) {
+      const std::optional<unsigned> width = ret->type_str.integer_bit_width();
+      if (!width || !integer_immediate_representable(immediate->value, *width)) {
+        fail_verify("LirRet.value_str",
+                    "integer immediate is not representable by return type");
+      }
+      return;
+    }
+    if (value.value_id()) return;
+    if (value.link_name_id()) {
+      fail_verify("LirRet.value_str",
+                  "LinkNameId authority is not a scalar return value");
+    }
+    fail_verify("LirRet.value_str", "unsupported scalar return authority");
     return;
   }
   if (const auto* sw = std::get_if<LirSwitch>(&terminator)) {

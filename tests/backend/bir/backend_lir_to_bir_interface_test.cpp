@@ -91,6 +91,32 @@ void test_structured_gep_index_adapter() {
          "raw SSA index should retain display-keyed compatibility lookup");
 }
 
+void test_authoritative_return_stays_outside_new_bir_receipt() {
+  lir::LirBlock block;
+  block.id = lir::LirBlockId{0};
+  block.label = "entry";
+  block.terminator = lir::LirRet{
+      lir::LirOperand::integer("void", 7), lir::LirTypeRef::integer(32)};
+
+  lir::LirFunction function;
+  function.name = "authoritative_return";
+  function.signature_return_type_ref = lir::LirTypeRef("void");
+  function.blocks.push_back(std::move(block));
+  function.entry = lir::LirBlockId{0};
+
+  lir::LirModule module;
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(!raw.has_value() &&
+             raw.error().code == bir::ImportErrorCode::InvalidVoidReturn,
+         "new-BIR must reject authoritative scalar return before display interpretation");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(!canonical.has_value() &&
+             canonical.error().code == bir::ImportErrorCode::InvalidVoidReturn,
+         "canonical new-BIR boundary must preserve InvalidVoidReturn");
+}
+
 lir::LirFunction void_declaration(std::string name) {
   lir::LirFunction function;
   function.name = std::move(name);
@@ -6549,6 +6575,7 @@ void test_inline_asm_shape_rejection() {
 
 int main() {
   test_structured_gep_index_adapter();
+  test_authoritative_return_stays_outside_new_bir_receipt();
   test_supported_import_and_views();
   test_generic_inline_asm_ssa_edges();
   test_structured_lir_import_ssa_chain();

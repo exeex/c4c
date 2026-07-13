@@ -527,8 +527,10 @@ struct LirCondBr {
 };
 
 struct LirRet {
-  std::optional<std::string> value_str;  // e.g. "%t7", "null", "0"
-  std::string type_str;                  // e.g. "i32", "ptr", "void"
+  // Field spellings remain source-compatible with aggregate producers, but
+  // their values now carry the same structured authority as instructions.
+  std::optional<LirOperand> value_str;  // e.g. "%t7", "null", "0"
+  LirTypeRef type_str;                  // e.g. "i32", "ptr", "void"
 };
 
 struct LirSwitch {

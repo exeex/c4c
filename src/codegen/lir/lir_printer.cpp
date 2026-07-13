@@ -483,7 +483,15 @@ void render_terminator(std::ostringstream& os, const LirTerminator& term) {
     if (!ret->value_str.has_value()) {
       os << "  ret void\n";
     } else {
-      os << "  ret " << ret->type_str << " " << *ret->value_str << "\n";
+      os << "  ret " << require_type_ref(ret->type_str, "LirRet.type_str")
+         << " "
+         << require_operand_kind(*ret->value_str, "LirRet.value_str",
+                                 {LirOperandKind::SsaValue,
+                                  LirOperandKind::Global,
+                                  LirOperandKind::Immediate,
+                                  LirOperandKind::SpecialToken,
+                                  LirOperandKind::RawText})
+         << "\n";
     }
   } else if (const auto* sw = std::get_if<LirSwitch>(&term)) {
     os << "  switch " << sw->selector_type << " " << sw->selector_name

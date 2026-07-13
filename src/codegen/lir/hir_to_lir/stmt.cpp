@@ -363,28 +363,51 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s) {
     const auto& rts = ctx.fn->return_type.spec;
     if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
         !rts.is_lvalue_ref && !rts.is_rvalue_ref) {
-      emit_term_ret(ctx, "void", std::nullopt);
+      emit_term_ret(ctx, lir::LirTypeRef("void"), std::nullopt);
     } else {
       const std::string ret_ty = llvm_return_ty(mod_, rts);
       if (ret_ty == "ptr") {
-        emit_term_ret(ctx, "ptr", "null");
+        emit_term_ret(ctx, lir::LirTypeRef("ptr"), lir::LirOperand("null"));
       } else if (is_float_base(rts.base) && rts.ptr_level == 0) {
-        emit_term_ret(ctx, ret_ty, "0.0");
+        emit_term_ret(ctx, lir::LirTypeRef(ret_ty), lir::LirOperand("0.0"));
       } else {
-        emit_term_ret(ctx, ret_ty, "0");
+        emit_term_ret(ctx, lir::LirTypeRef(ret_ty),
+                      lir::LirOperand::integer("0", 0));
       }
     }
     return;
   }
   TypeSpec ts{};
-  std::string val = emit_rval_id(ctx, *s.expr, ts);
+  const lir::LirOperand source = emit_rval_operand(ctx, *s.expr, ts);
+  const auto& function_return = ctx.fn->return_type.spec;
+  if (function_return.base == TB_VOID && function_return.ptr_level == 0 &&
+      function_return.array_rank == 0 && !function_return.is_lvalue_ref &&
+      !function_return.is_rvalue_ref) {
+    emit_term_ret(ctx, lir::LirTypeRef("void"), std::nullopt);
+    return;
+  }
   TypeSpec coerce_target = ctx.fn->return_type.spec;
   if ((coerce_target.is_lvalue_ref || coerce_target.is_rvalue_ref) &&
       coerce_target.ptr_level == 0) {
     coerce_target.ptr_level++;
   }
-  val = coerce(ctx, val, ts, coerce_target);
-  emit_term_ret(ctx, llvm_return_ty(mod_, ctx.fn->return_type.spec), val);
+  const bool same_representation =
+      llvm_value_ty(mod_, ts) == llvm_value_ty(mod_, coerce_target);
+  // coerce() returns immediately, before emitting an instruction, when these
+  // LLVM representations match. Any representation-changing path therefore
+  // remains raw compatibility instead of inheriting the source authority.
+  std::string presentation = coerce(ctx, source.str(), ts, coerce_target);
+  lir::LirTypeRef return_type(
+      llvm_return_ty(mod_, ctx.fn->return_type.spec));
+  lir::LirOperand value = lir::LirOperand::raw(presentation);
+  if (same_representation && return_type.kind() == lir::LirTypeKind::Integer) {
+    if (const auto* immediate = source.integer_immediate()) {
+      value = lir::LirOperand::integer(std::move(presentation), immediate->value);
+    } else if (const auto* id = source.value_id()) {
+      value = lir::LirOperand::ssa(std::move(presentation), *id);
+    }
+  }
+  emit_term_ret(ctx, std::move(return_type), std::move(value));
 }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s) { emit_control_flow_stmt(ctx, s); }

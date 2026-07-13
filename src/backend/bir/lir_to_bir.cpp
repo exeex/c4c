@@ -1442,7 +1442,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
         [&](const auto& terminator) -> Result<void, ImportError> {
           using Term = std::decay_t<decltype(terminator)>;
           if constexpr (std::is_same_v<Term, LirRet>) {
-            if (terminator.value_str || terminator.type_str != "void")
+            if (terminator.value_str ||
+                terminator.type_str.kind() != codegen::lir::LirTypeKind::Void)
               return fail<void>(ImportErrorCode::InvalidVoidReturn, name,
                                 block.label,
                                 "LirRet must carry type 'void' and no value");
@@ -1495,7 +1496,9 @@ Result<Terminator, ImportError> lower_terminator(
           return Result<Terminator, ImportError>::success(
               JumpTerm{target->second});
         } else if constexpr (std::is_same_v<Term, LirRet>) {
-          if (lir_terminator.value_str || lir_terminator.type_str != "void")
+          if (lir_terminator.value_str ||
+              lir_terminator.type_str.kind() !=
+                  codegen::lir::LirTypeKind::Void)
             return fail<Terminator>(ImportErrorCode::InvalidVoidReturn,
                                     function, block,
                                     "LirRet must carry type 'void' and no value");

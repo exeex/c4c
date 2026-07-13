@@ -743,6 +743,18 @@ c4c::codegen::lir::LirFunction make_gep_test_function(
   return function;
 }
 
+c4c::codegen::lir::LirFunction make_return_test_function(
+    std::string name, c4c::codegen::lir::LirRet ret) {
+  namespace lir = c4c::codegen::lir;
+  lir::LirFunction function;
+  function.name = std::move(name);
+  function.signature_text = "define i32 @" + function.name + "() {";
+  function.blocks.push_back(lir::LirBlock{});
+  function.blocks.back().label = "entry";
+  function.blocks.back().terminator = std::move(ret);
+  return function;
+}
+
 void test_global_store_identity_contract() {
   namespace lir = c4c::codegen::lir;
 
@@ -1142,6 +1154,176 @@ int read_counter_again(void) { return g_counter; }
       lir::LirOperand::global("@duplicate_load_result", duplicate_result_id)});
   expect_identity_verification_rejected(
       duplicate_result, "verifier should reject duplicate global-load result IDs");
+}
+
+void test_return_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int return_source;
+void return_void_helper(void) {}
+
+int return_immediate(void) { return 7; }
+unsigned int return_same_width(void) { return 7; }
+unsigned char return_narrowed(void) { return 7; }
+int return_loaded(void) { return return_source; }
+int return_synthesized_zero(void) { return; }
+void return_void_expression(void) { return return_void_helper(); }
+)c", "x86_64-linux-gnu");
+
+  const auto require_return = [](lir::LirFunction& function) -> lir::LirRet& {
+    for (auto& block : function.blocks) {
+      if (auto* ret = std::get_if<lir::LirRet>(&block.terminator)) return *ret;
+    }
+    fail("fixture function should contain a return terminator");
+  };
+
+  lir::LirRet& immediate =
+      require_return(require_function(lowered, "return_immediate"));
+  expect_true(immediate.value_str &&
+                  immediate.value_str->integer_immediate() &&
+                  immediate.value_str->integer_immediate()->value == 7 &&
+                  immediate.type_str.kind() == lir::LirTypeKind::Integer &&
+                  immediate.type_str.integer_bit_width() == 32,
+              "ordinary integer literal return should retain native payload and type");
+
+  lir::LirRet& same_width =
+      require_return(require_function(lowered, "return_same_width"));
+  expect_true(same_width.value_str &&
+                  same_width.value_str->integer_immediate() &&
+                  same_width.value_str->integer_immediate()->value == 7,
+              "same-representation signedness coercion should emit no cast and retain authority");
+
+  lir::LirFunction& narrowed_function =
+      require_function(lowered, "return_narrowed");
+  lir::LirRet& narrowed = require_return(narrowed_function);
+  expect_true(narrowed.value_str && !narrowed.value_str->has_authority(),
+              "representation-changing return coercion must remain raw compatibility");
+  bool saw_narrowing_cast = false;
+  for (const auto& block : narrowed_function.blocks) {
+    saw_narrowing_cast = saw_narrowing_cast ||
+        std::any_of(block.insts.begin(), block.insts.end(), [](const lir::LirInst& inst) {
+          return std::holds_alternative<lir::LirCastOp>(inst);
+        });
+  }
+  expect_true(saw_narrowing_cast,
+              "representation-changing return fixture should prove an emitted cast path");
+
+  lir::LirFunction& loaded_function =
+      require_function(lowered, "return_loaded");
+  lir::LirLoadOp* load = nullptr;
+  for (auto& block : loaded_function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirLoadOp>(&inst)) load = candidate;
+    }
+  }
+  lir::LirRet& loaded = require_return(loaded_function);
+  expect_true(load && load->result.value_id() && loaded.value_str &&
+                  loaded.value_str->value_id() &&
+                  *load->result.value_id() == *loaded.value_str->value_id(),
+              "scalar load return should reuse the defining function-local value ID");
+
+  lir::LirRet& synthesized = require_return(
+      require_function(lowered, "return_synthesized_zero"));
+  expect_true(synthesized.value_str &&
+                  synthesized.value_str->integer_immediate() &&
+                  synthesized.value_str->integer_immediate()->value == 0,
+              "synthesized scalar integer return should carry native zero authority");
+  lir::LirRet& void_expression = require_return(
+      require_function(lowered, "return_void_expression"));
+  expect_true(!void_expression.value_str &&
+                  void_expression.type_str.kind() == lir::LirTypeKind::Void,
+              "void return expression should emit its side effect without a value");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading;
+  lir::LirFunction misleading_function = make_return_test_function(
+      "misleading_return",
+      lir::LirRet{lir::LirOperand::ssa("@display-is-not-an-id",
+                                       lir::LirValueId{4}),
+                  lir::LirTypeRef::integer(32)});
+  misleading_function.blocks[0].insts.push_back(lir::LirStackSaveOp{
+      lir::LirOperand::ssa("7", lir::LirValueId{4})});
+  misleading.functions.push_back(std::move(misleading_function));
+  lir::verify_module(misleading);
+  expect_contains(lir::print_llvm(misleading),
+                  "ret i32 @display-is-not-an-id",
+                  "return printer should preserve presentation after native-ID verification");
+
+  lir::LirModule misleading_immediate;
+  misleading_immediate.functions.push_back(make_return_test_function(
+      "misleading_immediate",
+      lir::LirRet{lir::LirOperand::integer("999", 7),
+                  lir::LirTypeRef::integer(8)}));
+  lir::verify_module(misleading_immediate);
+  expect_contains(lir::print_llvm(misleading_immediate), "ret i8 999",
+                  "return verifier should range-check native payload, while printer preserves display");
+
+  lir::LirModule void_compatibility;
+  void_compatibility.functions.push_back(make_return_test_function(
+      "void_compatibility", lir::LirRet{std::nullopt, lir::LirTypeRef("void")}));
+  lir::verify_module(void_compatibility);
+
+  lir::LirModule raw_compatibility;
+  raw_compatibility.functions.push_back(make_return_test_function(
+      "raw_return", lir::LirRet{lir::LirOperand("%legacy"),
+                                lir::LirTypeRef("i32")}));
+  lir::verify_module(raw_compatibility);
+
+  lir::LirModule void_with_value;
+  void_with_value.functions.push_back(make_return_test_function(
+      "void_with_value", lir::LirRet{lir::LirOperand::integer("0", 0),
+                                     lir::LirTypeRef("void")}));
+  expect_identity_verification_rejected(
+      void_with_value, "verifier should reject a value on a void return");
+
+  lir::LirModule missing_value;
+  missing_value.functions.push_back(make_return_test_function(
+      "missing_value", lir::LirRet{std::nullopt, lir::LirTypeRef::integer(32)}));
+  expect_identity_verification_rejected(
+      missing_value, "verifier should reject a missing non-void return value");
+
+  lir::LirModule unsupported_authority;
+  unsupported_authority.functions.push_back(make_return_test_function(
+      "unsupported_authority",
+      lir::LirRet{lir::LirOperand::global("7", c4c::LinkNameId{1}),
+                  lir::LirTypeRef::integer(32)}));
+  expect_identity_verification_rejected(
+      unsupported_authority, "verifier should reject LinkNameId return authority");
+
+  lir::LirModule out_of_range;
+  out_of_range.functions.push_back(make_return_test_function(
+      "out_of_range_return",
+      lir::LirRet{lir::LirOperand::integer("0", 256),
+                  lir::LirTypeRef::integer(8)}));
+  expect_identity_verification_rejected(
+      out_of_range, "verifier should reject out-of-range return immediate authority");
+
+  lir::LirModule unknown_ssa;
+  unknown_ssa.functions.push_back(make_return_test_function(
+      "unknown_return",
+      lir::LirRet{lir::LirOperand::ssa("7", lir::LirValueId{9}),
+                  lir::LirTypeRef::integer(32)}));
+  expect_identity_verification_rejected(
+      unknown_ssa, "verifier should reject unknown current-function return ID");
+
+  lir::LirModule cross_function;
+  cross_function.functions.push_back(
+      make_identity_test_function("return_owner", lir::LirValueId{7}));
+  cross_function.functions.push_back(make_return_test_function(
+      "cross_function_return",
+      lir::LirRet{lir::LirOperand::ssa("%cross", lir::LirValueId{7}),
+                  lir::LirTypeRef::integer(32)}));
+  expect_identity_verification_rejected(
+      cross_function, "verifier should reject cross-function return ID");
+
+  lir::LirModule type_parity;
+  type_parity.functions.push_back(make_return_test_function(
+      "return_type_parity",
+      lir::LirRet{lir::LirOperand::integer("7", 7),
+                  lir::LirTypeRef("i32", lir::LirTypeKind::Integer, 64)}));
+  expect_identity_verification_rejected(
+      type_parity, "verifier should reject return type-ref mirror disagreement");
 }
 
 void test_global_array_gep_identity_contract() {
@@ -1784,6 +1966,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_structured_operand_identity_foundation();
   test_global_store_identity_contract();
   test_global_load_identity_contract();
+  test_return_identity_contract();
   test_global_array_gep_identity_contract();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";

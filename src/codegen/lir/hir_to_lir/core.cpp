@@ -1361,9 +1361,10 @@ void StmtEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
   (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
 }
 
-void StmtEmitter::emit_term_ret(FnCtx& ctx, const std::string& type_str,
-                                const std::optional<std::string>& value_str) {
-  (void)set_terminator_if_open(ctx, lir::LirRet{value_str, type_str});
+void StmtEmitter::emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
+                                std::optional<lir::LirOperand> value_str) {
+  (void)set_terminator_if_open(
+      ctx, lir::LirRet{std::move(value_str), std::move(type_str)});
 }
 
 void StmtEmitter::emit_term_switch(
