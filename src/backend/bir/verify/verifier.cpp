@@ -17,22 +17,6 @@ void report(VerificationResult& result, VerificationRule rule,
                         std::move(message)});
 }
 
-bool known(TypeKind kind) noexcept {
-  switch (kind) {
-    case TypeKind::Void:
-    case TypeKind::I1:
-    case TypeKind::I8:
-    case TypeKind::I16:
-    case TypeKind::I32:
-    case TypeKind::I64:
-    case TypeKind::F32:
-    case TypeKind::F64:
-    case TypeKind::Pointer:
-      return true;
-  }
-  return false;
-}
-
 bool known(ValueKind kind) noexcept {
   switch (kind) {
     case ValueKind::Parameter:
@@ -87,13 +71,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              function_id, "live function must appear exactly once in module order");
 
     const auto& function = *slot.value;
-    if (!known(function.signature_.return_type.kind))
+    if (!is_well_formed(function.signature_.return_type))
       report(result, VerificationRule::BoundedAlternative, function_id,
-             function_id, "function return type has an unknown TypeKind");
-    for (const auto type : function.signature_.parameter_types)
-      if (!known(type.kind))
+             function_id, "function return type is malformed");
+    for (const auto& type : function.signature_.parameter_types)
+      if (!is_well_formed(type))
         report(result, VerificationRule::BoundedAlternative, function_id,
-               function_id, "function parameter type has an unknown TypeKind");
+               function_id, "function parameter type is malformed");
 
     if (function.link_name_.empty())
       report(result, VerificationRule::LinkNameIndex, function_id, function_id,
@@ -230,9 +214,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           !function.values_.contains(function_id, value_id))
         report(result, VerificationRule::ValueDefinition, function_id,
                value_id, "live value does not resolve by exact owner/kind/ID");
-      if (!known(value.type.kind))
+      if (!is_well_formed(value.type))
         report(result, VerificationRule::BoundedAlternative, function_id,
-               value_id, "value type has an unknown TypeKind");
+               value_id, "value type is malformed");
       if (value.definition.valueless_by_exception()) {
         report(result, VerificationRule::BoundedAlternative, function_id,
                value_id, "value definition has no known variant alternative");
@@ -290,7 +274,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               const auto condition =
                   function.values_.get(function_id, term.condition);
               if (term.condition.owner != function_id || !condition ||
-                  condition.value().get().type.kind != TypeKind::I1)
+                  condition.value().get().type != Type{TypeKind::I1})
                 report(result, VerificationRule::Terminator, function_id,
                        block_id,
                        "conditional jump condition must resolve to local I1");

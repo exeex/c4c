@@ -40,15 +40,6 @@ std::string function_link_name(const LirModule& module,
   return function.name;
 }
 
-bool is_void_return(const LirFunction& function) noexcept {
-  if (function.signature_return_type_ref)
-    return function.signature_return_type_ref->kind() ==
-           codegen::lir::LirTypeKind::Void;
-  const auto& type = function.return_type;
-  return type.base == TB_VOID && type.ptr_level == 0 && !type.is_lvalue_ref &&
-         !type.is_rvalue_ref && type.array_rank == 0 && !type.is_fn_ptr;
-}
-
 bool has_intrinsic_requirements(const LirModule& module) noexcept {
   return module.need_va_start || module.need_va_end || module.need_va_copy ||
          module.need_memcpy || module.need_memset || module.need_stacksave ||
@@ -56,26 +47,89 @@ bool has_intrinsic_requirements(const LirModule& module) noexcept {
          module.prefer_semantic_va_ops;
 }
 
-std::optional<Type> lower_inline_asm_type(
-    const codegen::lir::LirTypeRef& type) {
+std::optional<Type> lower_lir_type(const LirModule& module,
+                                  const codegen::lir::LirTypeRef& type) {
   using codegen::lir::LirTypeKind;
-  if (type.kind() == LirTypeKind::Integer) {
-    const auto width = type.integer_bit_width();
-    if (width == 1) return Type{TypeKind::I1};
-    if (width == 8) return Type{TypeKind::I8};
-    if (width == 16) return Type{TypeKind::I16};
-    if (width == 32) return Type{TypeKind::I32};
-    if (width == 64) return Type{TypeKind::I64};
-    return std::nullopt;
+  const auto classified = codegen::lir::LirTypeRef(type.str()).kind();
+  switch (type.kind()) {
+    case LirTypeKind::Void:
+      if (type.str() == "void") return Type{TypeKind::Void, 0, "void"};
+      break;
+    case LirTypeKind::Integer:
+      if (classified == LirTypeKind::Integer && type.integer_bit_width() &&
+          *type.integer_bit_width() != 0)
+        return Type{TypeKind::Integer, *type.integer_bit_width(), type.str()};
+      break;
+    case LirTypeKind::Floating: {
+      std::uint32_t width = 0;
+      if (type.str() == "half") width = 16;
+      else if (type.str() == "float") width = 32;
+      else if (type.str() == "double") width = 64;
+      else if (type.str() == "x86_fp80") width = 80;
+      else if (type.str() == "fp128") width = 128;
+      if (width != 0)
+        return Type{TypeKind::Floating, width, type.str()};
+      break;
+    }
+    case LirTypeKind::Pointer:
+      if (type.str() == "ptr") return Type{TypeKind::Pointer};
+      break;
+    case LirTypeKind::Vector:
+      if (classified == LirTypeKind::Vector && type.str().back() == '>')
+        return Type{TypeKind::Vector, 0, type.str()};
+      break;
+    case LirTypeKind::VrmRegister:
+      if (classified == LirTypeKind::VrmRegister && type.vrm_width())
+        return Type{TypeKind::VrmRegister, *type.vrm_width(), type.str()};
+      break;
+    case LirTypeKind::Array:
+      if (classified == LirTypeKind::Array && type.str().back() == ']')
+        return Type{TypeKind::Array, 0, type.str()};
+      break;
+    case LirTypeKind::Struct:
+      if (type.has_struct_name_id() &&
+          !module.struct_names.spelling(type.struct_name_id()).empty() &&
+          module.struct_names.spelling(type.struct_name_id()) == type.str())
+        return Type{TypeKind::Struct, 0, type.str(), type.struct_name_id()};
+      if (!type.has_struct_name_id() && classified == LirTypeKind::Struct &&
+          type.str().front() == '{' && type.str().back() == '}')
+        return Type{TypeKind::Struct, 0, type.str()};
+      break;
+    case LirTypeKind::Function:
+      if (classified == LirTypeKind::Function)
+        return Type{TypeKind::Function, 0, type.str()};
+      break;
+    case LirTypeKind::Opaque:
+      if (classified == LirTypeKind::Opaque)
+        return Type{TypeKind::Opaque, 0, type.str()};
+      break;
+    case LirTypeKind::RawText: break;
   }
-  if (type.kind() == LirTypeKind::Floating) {
-    if (type.str() == "float") return Type{TypeKind::F32};
-    if (type.str() == "double") return Type{TypeKind::F64};
-    return std::nullopt;
-  }
-  if (type.kind() == LirTypeKind::Pointer && type.str() == "ptr")
-    return Type{TypeKind::Pointer};
   return std::nullopt;
+}
+
+std::optional<Type> lower_signature_type(
+    const LirModule& module, const TypeSpec& structured,
+    const std::optional<codegen::lir::LirTypeRef>& mirror) {
+  if (structured.base != TB_VOID) return std::nullopt;
+
+  StructuredTypeSpecFacts facts;
+  facts.pointer_level = structured.ptr_level;
+  facts.is_lvalue_reference = structured.is_lvalue_ref;
+  facts.is_rvalue_reference = structured.is_rvalue_ref;
+  facts.array_rank = structured.array_rank;
+  facts.is_pointer_to_array = structured.is_ptr_to_array;
+  facts.inner_array_rank = structured.inner_rank;
+  facts.is_function_pointer = structured.is_fn_ptr;
+
+  Type result{TypeKind::Void, 0, "void"};
+  result.structured_spec = facts;
+  if (!is_well_formed(result)) return std::nullopt;
+  if (mirror) {
+    const auto mirrored = lower_lir_type(module, *mirror);
+    if (!mirrored || mirrored->kind != TypeKind::Void) return std::nullopt;
+  }
+  return result;
 }
 
 std::size_t inline_asm_constraint_count(std::string_view constraints) {
@@ -95,7 +149,8 @@ std::size_t inline_asm_constraint_count(std::string_view constraints) {
 }
 
 Result<void, ImportError> validate_inline_asm_shape(
-    const LirInlineAsmOp& inline_asm, const std::string& function,
+    const LirModule& module, const LirInlineAsmOp& inline_asm,
+    const std::string& function,
     const std::string& block,
     std::unordered_map<std::string, Type>& ordinary_values) {
   if (inline_asm.insn_r)
@@ -147,7 +202,7 @@ Result<void, ImportError> validate_inline_asm_shape(
                         "structured inputs do not follow original constraint order");
     }
     previous_input_constraint = input.constraint_index;
-    const auto type = lower_inline_asm_type(input.type);
+    const auto type = lower_lir_type(module, input.type);
     const auto found = ordinary_values.find(input.value.str());
     if (!type || found == ordinary_values.end()) {
       return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
@@ -179,7 +234,7 @@ Result<void, ImportError> validate_inline_asm_shape(
                         "structured results do not follow original constraint order");
     }
     previous_result_constraint = result.constraint_index;
-    const auto type = lower_inline_asm_type(result.type);
+    const auto type = lower_lir_type(module, result.type);
     if (!type || ordinary_values.find(result.value.str()) != ordinary_values.end() ||
         !pending_results.insert(result.value.str()).second) {
       return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
@@ -200,7 +255,7 @@ Result<void, ImportError> validate_inline_asm_shape(
     if (result.role == LirInlineAsmValueRole::ReadWrite) {
       if (!matching_input ||
           matching_input->role != LirInlineAsmValueRole::ReadWrite ||
-          lower_inline_asm_type(matching_input->type) != type) {
+          lower_lir_type(module, matching_input->type) != type) {
         return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
                           block,
                           "read/write result lacks a same-typed old-value input");
@@ -228,7 +283,7 @@ Result<void, ImportError> validate_inline_asm_shape(
 
   for (const auto& result : inline_asm.ordinary_results) {
     ordinary_values.emplace(result.value.str(),
-                            *lower_inline_asm_type(result.type));
+                            *lower_lir_type(module, result.type));
   }
   return Result<void, ImportError>::success();
 }
@@ -268,13 +323,15 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (!function.params.empty() || !function.signature_params.empty() ||
       !function.signature_param_type_refs.empty())
     return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
-                      "only zero-parameter functions are in this slice");
+                      "parameter/signature expansion belongs to Step 4A");
   if (function.signature_is_variadic)
     return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
                       "variadic functions require explicit signature lowering");
-  if (!is_void_return(function))
+  if (!lower_signature_type(module, function.return_type,
+                            function.signature_return_type_ref))
     return fail<void>(ImportErrorCode::UnsupportedReturnType, name, {},
-                      "only structured void returns are in this slice");
+                      "structured return TypeSpec is malformed, non-void, or "
+                      "conflicts with its optional mirror");
 
   const bool has_body_state = !function.blocks.empty() ||
                               !function.stack_objects.empty() ||
@@ -315,7 +372,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
                           block.label,
                           "only LirInlineAsmOp is in the bounded carrier slice");
       auto checked = validate_inline_asm_shape(
-          *inline_asm, name, block.label, ordinary_values);
+          module, *inline_asm, name, block.label, ordinary_values);
       if (!checked) return checked;
     }
   }
@@ -429,7 +486,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);
     FunctionSignature signature;
-    signature.return_type = Type{TypeKind::Void};
+    signature.return_type =
+        *lower_signature_type(module, function.return_type,
+                              function.signature_return_type_ref);
     auto created =
         builder.create_function(std::move(signature), name, function.is_declaration);
     if (!created)
@@ -477,7 +536,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               spec.result_types.reserve(inline_asm.ordinary_results.size());
               for (const auto& result : inline_asm.ordinary_results) {
                 spec.result_types.push_back(
-                    *lower_inline_asm_type(result.type));
+                    *lower_lir_type(module, result.type));
               }
               auto appended = function_builder.append(blocks.at(block.label),
                                                       std::move(spec));
@@ -500,7 +559,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 ordinary_values.emplace(
                     inline_asm.ordinary_results[index].value.str(),
                     std::pair{appended.value().results[index],
-                              *lower_inline_asm_type(
+                              *lower_lir_type(module,
                                   inline_asm.ordinary_results[index].type)});
               }
             }

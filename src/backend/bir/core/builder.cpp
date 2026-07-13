@@ -274,7 +274,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     if (!function_data.values_.contains(function_, input))
       return Result<BuildResult, BuildError>::failure(BuildError::InvalidValue);
   }
-  for (const auto type : spec.result_types)
+  for (const auto& type : spec.result_types)
     if (type.kind == TypeKind::Void)
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
 

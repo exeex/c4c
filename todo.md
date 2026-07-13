@@ -3,43 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the exhaustive coverage ledger and schema/import boundary
+Current Step ID: 2
+Current Step Title: Complete foundational identities, types and module containers
 
 ## Just Finished
 
-- Plan Step 1 completed: reconciled the checked implementation ledger against
-  the exact 38 `LirInst` alternatives, six `LirTerminator` alternatives, 18
-  metadata families, current Raw storage/builders/views/verifier, the sole
-  build-included top-level importer, build wiring, and legacy evidence.
-- Corrected stale lifecycle/source-gap/implementation claims and recorded the
-  dependency order with one unambiguous first C++ packet.
+- Plan Step 2 packet 2A completed: added closed typed Raw receipt for every
+  current `LirTypeKind`, including arbitrary integer widths, floating and VRM
+  widths, exact composite spellings, and `StructNameId` identity.
+- The bounded void-signature receipt now preserves structured `TypeSpec` base,
+  pointer/reference/array/function-pointer shape facts and reconciles them with
+  the optional `LirTypeRef` mirror; inline-asm bindings reuse the same mirror
+  conversion. Builders/views/verifier preserve and check these facts, and
+  malformed staged Raw types cannot publish.
 
 ## Suggested Next
 
-- Execute Step 2A only: add closed typed Raw receipt for current structured
-  `TypeSpec` and all `LirTypeKind` alternatives, one shared importer conversion
-  for signatures and inline-asm bindings, matching builder/view/verifier rules,
-  and neighboring positive/negative tests. Reject semantic `RawText`, missing
-  widths, invalid struct identities, and conflicting named definitions; do not
-  add globals, objects, constants, new opcodes, or new terminators.
+- Execute Step 2B only: add module type/name tables and stable module IDs for
+  `struct_decls`, `link_names`, and `struct_names`, with deterministic order,
+  immutable views, builder ownership, and cache-parity verification.
 
 ## Watchouts
 
-- `src/backend/bir/lir_to_bir.cpp` is the only production importer;
-  `src/backend/bir/lir_to_bir/*.cpp` remains build-excluded legacy evidence and
-  cannot be used to claim or implement coverage implicitly.
-- Checked-in `CondJumpTerm` schema/view/verifier support is not importer
-  coverage; conditional LIR branches still fail in the production importer.
-- Step 2A must preserve module-transactional publication and must not widen
-  into module name tables (Step 2B) or foundational constants/forward-use
-  reservation (Step 2C).
-- Do not resume current Child C after 734. Once 734 closes, reactivate 732 and
-  rerun documentation convergence from phase A, then B, then C and onward.
+- Step 2A intentionally retains the existing zero-parameter, void-definition
+  importer boundary. Non-void `TypeBase` receipt, complete signatures, and CFG
+  receipt remain Step 4A and are not claimed by this packet.
+- Named struct mirrors require a resolving, spelling-matching `StructNameId`,
+  while actual named definitions and conflict/cache checks remain Step 2B.
+- Module type declarations are still rejected transactionally; do not parse
+  their rendered text or move Step 2C constants/forward-use work into Step 2B.
 
 ## Proof
 
-- Passed the supervisor-selected exact proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-- All four matching backend tests passed; the proof was sufficient for this
-  documentation/ledger packet. Canonical log: `test_after.log`.
+- Passed the supervisor’s final broader matching regression checkpoint:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|frontend_lir_)'`.
+- The matching baseline and post-change runs both passed 8/8 tests. Canonical
+  logs: `test_before.log` and `test_after.log`.

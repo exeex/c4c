@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -491,6 +492,215 @@ void test_lir_inline_asm_structured_value_contract() {
                   "read/write input/result type mismatch must be rejected");
 }
 
+void test_closed_typed_lir_type_receipt() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.struct_names.attach_text_table(texts.get());
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+
+  const std::vector<lir::LirTypeRef> value_types = {
+      lir::LirTypeRef::integer(257),
+      lir::LirTypeRef("x86_fp80"),
+      lir::LirTypeRef("ptr"),
+      lir::LirTypeRef("<4 x i32>"),
+      lir::LirTypeRef::vrm_register(8),
+      lir::LirTypeRef("[3 x i16]"),
+      lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      lir::LirTypeRef("{ i32, ptr }"),
+      lir::LirTypeRef("i32 (i8)", lir::LirTypeKind::Function),
+      lir::LirTypeRef("%opaque.Payload", lir::LirTypeKind::Opaque),
+  };
+  const std::vector<bir::TypeKind> expected_kinds = {
+      bir::TypeKind::Integer,     bir::TypeKind::Floating,
+      bir::TypeKind::Pointer,     bir::TypeKind::Vector,
+      bir::TypeKind::VrmRegister, bir::TypeKind::Array,
+      bir::TypeKind::Struct,      bir::TypeKind::Struct,
+      bir::TypeKind::Function,    bir::TypeKind::Opaque,
+  };
+  auto producer = void_inline_asm(
+      "typed producers", "=r,=r,=r,=r,=r,=r,=r,=r,=r,=r");
+  for (std::size_t index = 0; index < value_types.size(); ++index)
+    producer.ordinary_results.push_back(lir::LirInlineAsmValueBinding{
+        lir::LirOperand("%typed." + std::to_string(index)), value_types[index],
+        lir::LirInlineAsmValueRole::Output, index});
+  auto block = return_block(0, "entry");
+  block.insts.push_back(std::move(producer));
+  module.functions.push_back(void_definition("typed_asm", {std::move(block)}));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(), "all value-capable LirTypeKind alternatives and "
+                               "the void signature should publish typed RawBir");
+  const auto view = imported.value().view();
+  const auto functions = view.functions();
+  expect(functions.size() == 1, "typed asm definition should survive");
+  auto function = view.function(functions.front());
+  expect(function.has_value() &&
+             function.value().signature().return_type.kind == bir::TypeKind::Void,
+         "function signature receipt should use the shared conversion for void");
+  const auto typed_block = function.value().blocks().front();
+  const auto typed_inst = function.value().instructions(typed_block).value().front();
+  const auto results = function.value().instruction(typed_inst).value().results();
+  expect(results.size() == value_types.size(),
+         "each closed value type should retain an ordinary result identity");
+  for (std::size_t index = 0; index < results.size(); ++index) {
+    const bir::Type type = function.value().value(results[index]).value().type;
+    expect(type.kind == expected_kinds[index] && bir::is_well_formed(type),
+           "Raw value view should expose a well-formed closed type kind");
+  }
+  expect(function.value().value(results[0]).value().type.bit_width == 257,
+         "integer widths beyond the legacy fixed enum must remain exact");
+  const auto fp80 = function.value().value(results[1]).value().type;
+  expect(fp80.bit_width == 80 && fp80.spelling == "x86_fp80",
+         "floating spelling and typed width must remain exact");
+  expect(function.value().value(results[6]).value().type.struct_name_id == pair_id,
+         "struct receipt must preserve StructNameId identity");
+}
+
+void test_structured_type_spec_signature_receipt() {
+  lir::LirModule module;
+  module.functions.push_back(void_declaration("mirrored_void"));
+  auto structured_only = void_declaration("structured_only_void");
+  structured_only.signature_return_type_ref.reset();
+  module.functions.push_back(std::move(structured_only));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "valid structured void TypeSpec should reconcile with or without a mirror");
+  const auto functions = imported.value().view().functions();
+  for (const auto function_id : functions) {
+    const auto function = imported.value().view().function(function_id);
+    const auto type = function.value().signature().return_type;
+    expect(type.kind == bir::TypeKind::Void && type.structured_spec.has_value(),
+           "Raw signature view must expose structured TypeSpec authority");
+    const auto& facts = *type.structured_spec;
+    expect(facts.base == bir::StructuredTypeBase::Void &&
+               facts.pointer_level == 0 && !facts.is_lvalue_reference &&
+               !facts.is_rvalue_reference && facts.array_rank == 0 &&
+               !facts.is_pointer_to_array && facts.inner_array_rank == 0 &&
+               !facts.is_function_pointer,
+           "valid structured void facts must survive without invented shape");
+  }
+}
+
+void test_typed_lir_type_rejections() {
+  const auto expect_value_rejected = [](lir::LirTypeRef type,
+                                        const std::string& message) {
+    lir::LirModule module;
+    auto producer = void_inline_asm("bad type", "=r");
+    producer.ordinary_results.push_back(lir::LirInlineAsmValueBinding{
+        lir::LirOperand("%bad"), std::move(type),
+        lir::LirInlineAsmValueRole::Output, 0});
+    auto block = return_block(0, "entry");
+    block.insts.push_back(std::move(producer));
+    module.functions.push_back(void_definition("bad_type", {std::move(block)}));
+    auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code ==
+                   bir::ImportErrorCode::UnsupportedInlineAsmShape,
+           message);
+  };
+  expect_value_rejected(
+      lir::LirTypeRef("not-an-integer", lir::LirTypeKind::Integer),
+      "integer receipt must reject a missing typed width");
+  expect_value_rejected(
+      lir::LirTypeRef("c4c.vrm", lir::LirTypeKind::VrmRegister),
+      "VRM receipt must reject a missing typed width");
+  expect_value_rejected(lir::LirTypeRef("semantic raw text"),
+                        "semantic RawText must be rejected");
+  expect_value_rejected(
+      lir::LirTypeRef("<4 x i32", lir::LirTypeKind::Vector),
+      "malformed vector shape must be rejected");
+  expect_value_rejected(
+      lir::LirTypeRef("i32 (", lir::LirTypeKind::Function),
+      "malformed function shape must be rejected");
+
+  lir::LirModule conflicting_type_spec;
+  auto conflicting_void = void_declaration("conflicting_type_spec");
+  conflicting_void.return_type.base = c4c::TB_INT;
+  conflicting_type_spec.functions.push_back(std::move(conflicting_void));
+  auto type_spec_conflict = bir::lower_lir_to_raw_bir(conflicting_type_spec);
+  expect(!type_spec_conflict.has_value() &&
+             type_spec_conflict.error().code ==
+                 bir::ImportErrorCode::UnsupportedReturnType,
+         "structured TypeSpec must not be overridden by a void type mirror");
+
+  const auto expect_signature_shape_rejected = [](auto mutate,
+                                                   const std::string& message) {
+    lir::LirModule module;
+    auto declaration = void_declaration("bad_signature_shape");
+    mutate(declaration);
+    module.functions.push_back(std::move(declaration));
+    auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code == bir::ImportErrorCode::UnsupportedReturnType,
+           message);
+  };
+  expect_signature_shape_rejected(
+      [](lir::LirFunction& function) { function.return_type.ptr_level = 1; },
+      "structured pointer shape must conflict with void receipt");
+  expect_signature_shape_rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_lvalue_ref = true;
+      },
+      "structured lvalue-reference shape must conflict with void receipt");
+  expect_signature_shape_rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_rvalue_ref = true;
+      },
+      "structured rvalue-reference shape must conflict with void receipt");
+  expect_signature_shape_rejected(
+      [](lir::LirFunction& function) { function.return_type.array_rank = 1; },
+      "structured array shape must conflict with void receipt");
+  expect_signature_shape_rejected(
+      [](lir::LirFunction& function) { function.return_type.is_fn_ptr = true; },
+      "structured function-pointer shape must conflict with void receipt");
+  expect_signature_shape_rejected(
+      [](lir::LirFunction& function) {
+        function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+      },
+      "non-void mirror must conflict with structured void TypeSpec");
+
+  lir::LirModule invalid_struct;
+  auto texts = std::make_shared<c4c::TextTable>();
+  invalid_struct.link_name_texts = texts;
+  invalid_struct.struct_names.attach_text_table(texts.get());
+  const c4c::StructNameId pair_id =
+      invalid_struct.struct_names.intern("%struct.Pair");
+  auto bad_struct_producer = void_inline_asm("bad struct", "=r");
+  bad_struct_producer.ordinary_results.push_back(lir::LirInlineAsmValueBinding{
+      lir::LirOperand("%bad"),
+      lir::LirTypeRef::struct_type("%struct.Other", pair_id),
+      lir::LirInlineAsmValueRole::Output, 0});
+  auto bad_struct_block = return_block(0, "entry");
+  bad_struct_block.insts.push_back(std::move(bad_struct_producer));
+  invalid_struct.functions.push_back(
+      void_definition("bad_struct", {std::move(bad_struct_block)}));
+  auto bad_struct = bir::lower_lir_to_raw_bir(invalid_struct);
+  expect(!bad_struct.has_value() &&
+             bad_struct.error().code ==
+                 bir::ImportErrorCode::UnsupportedInlineAsmShape,
+         "conflicting StructNameId/spelling identity must be rejected");
+}
+
+void test_verifier_rejects_malformed_raw_type() {
+  bir::ModuleBuilder builder;
+  bir::FunctionSignature malformed;
+  malformed.return_type = bir::Type{bir::TypeKind::Void, 0, "void"};
+  bir::StructuredTypeSpecFacts malformed_facts;
+  malformed_facts.pointer_level = 1;
+  malformed.return_type.structured_spec = malformed_facts;
+  auto function = builder.create_function(std::move(malformed),
+                                          "malformed_raw_type", true);
+  expect(function.has_value(),
+         "builder should retain malformed staged state for verifier diagnosis");
+  auto published = std::move(builder).publish();
+  expect(!published.has_value() &&
+             published.error().reason == bir::PublishError::VerificationFailed &&
+             !published.error().verification.errors.empty(),
+         "Raw publication verifier must reject malformed typed state");
+}
+
 void test_structured_rejection() {
   lir::LirModule module;
   module.globals.push_back(lir::LirGlobal{});
@@ -531,6 +741,10 @@ int main() {
   test_structured_lir_import_ssa_chain();
   test_structured_lir_import_rejections();
   test_lir_inline_asm_structured_value_contract();
+  test_closed_typed_lir_type_receipt();
+  test_structured_type_spec_signature_receipt();
+  test_typed_lir_type_rejections();
+  test_verifier_rejects_malformed_raw_type();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
   return 0;
