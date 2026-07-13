@@ -1711,6 +1711,59 @@ void test_global_object_receipt_and_views() {
          "global name and link lookups must resolve ordered typed identities");
 }
 
+void test_scalar_global_type_authority_without_mirror() {
+  lir::LirModule module;
+  module.target_profile.arch = c4c::TargetArch::I686;
+
+  lir::LirGlobal declaration;
+  declaration.name = "producer_long_declaration";
+  declaration.type = scalar_type(c4c::TB_LONG);
+  declaration.linkage_vis = "external hidden ";
+  declaration.qualifier = "global ";
+  declaration.llvm_type = "i32";
+  declaration.align_bytes = 4;
+  declaration.is_extern_decl = true;
+  module.globals.push_back(std::move(declaration));
+
+  lir::LirGlobal definition;
+  definition.name = "producer_double_definition";
+  definition.type = scalar_type(c4c::TB_DOUBLE);
+  definition.is_const = true;
+  definition.linkage_vis = "protected ";
+  definition.qualifier = "constant ";
+  definition.llvm_type = "double";
+  definition.init_text = "double 6.25";
+  definition.align_bytes = 8;
+  definition.is_extern_decl = false;
+  module.globals.push_back(std::move(definition));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "actual producer-shaped scalar globals should not require an optional type mirror");
+  const auto view = imported.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 2,
+         "scalar TypeSpec authority should preserve ordered global receipt");
+  const auto raw_declaration = view.global_object(ids[0]).value();
+  const auto raw_definition = view.global_object(ids[1]).value();
+  expect(raw_declaration.object_type ==
+                 bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             raw_declaration.is_extern_declaration &&
+             raw_declaration.visibility == bir::SymbolVisibility::Hidden &&
+             !raw_declaration.initializer,
+         "target-aware long TypeSpec authority must lower to i32 on I686 declarations");
+  expect(raw_definition.object_type ==
+                 bir::Type{bir::TypeKind::Floating, 64, "double"} &&
+             !raw_definition.is_extern_declaration &&
+             raw_definition.is_const &&
+             raw_definition.visibility == bir::SymbolVisibility::Protected &&
+             raw_definition.initializer &&
+             raw_definition.initializer->opaque_payload == "double 6.25",
+         "floating TypeSpec authority must retain definition, visibility, and initializer facts");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "mirror-free scalar global receipt must remain verifier reachable");
+}
+
 void test_global_object_rejections_and_transactionality() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -1756,8 +1809,29 @@ void test_global_object_rejections_and_transactionality() {
            "unresolved global link identities must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].name = "wrong_spelling"; },
            "link spelling mismatches must reject transactionally");
-  rejected([](lir::LirModule& m) { m.globals[0].llvm_type_ref.reset(); },
-           "missing structured global types must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "ptr";
+           },
+           "mirror-free pointer globals must remain separate and reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].type.array_rank = 1;
+             m.globals[0].llvm_type = "[1 x i32]";
+           },
+           "mirror-free array globals must remain unsupported transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].type = scalar_type(c4c::TB_STRUCT);
+             m.globals[0].llvm_type = "%struct.Payload";
+           },
+           "mirror-free aggregate globals must remain unsupported transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].llvm_type = "i64";
+           },
+           "mirror-free scalar rendered parity conflicts must reject transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].llvm_type_ref =
                  lir::LirTypeRef("not-an-integer", lir::LirTypeKind::Integer);
@@ -2229,6 +2303,7 @@ int main() {
   test_external_declaration_receipt_and_views();
   test_external_declaration_rejections_and_transactionality();
   test_global_object_receipt_and_views();
+  test_scalar_global_type_authority_without_mirror();
   test_global_object_rejections_and_transactionality();
   test_specialization_metadata_receipt_and_rejections();
   test_inline_asm_shape_rejection();

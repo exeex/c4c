@@ -253,6 +253,37 @@ std::optional<GlobalLinkageFacts> decode_global_linkage(
   return GlobalLinkageFacts{is_weak, visibility};
 }
 
+std::optional<Type> lower_global_type(const LirModule& module,
+                                      const LirGlobal& global,
+                                      bool allow_pointer) {
+  const auto authoritative =
+      lower_global_compatibility_type(module, global.type, allow_pointer);
+  if (!authoritative || authoritative->kind == TypeKind::Void ||
+      !is_well_formed(*authoritative))
+    return std::nullopt;
+
+  if (authoritative->kind == TypeKind::Pointer) {
+    if (!global.llvm_type_ref) return std::nullopt;
+    const auto mirror = lower_lir_type(module, *global.llvm_type_ref);
+    if (!mirror || *mirror != *authoritative ||
+        global.llvm_type != global.llvm_type_ref->str())
+      return std::nullopt;
+    return mirror;
+  }
+
+  if (authoritative->kind != TypeKind::Integer &&
+      authoritative->kind != TypeKind::Floating)
+    return std::nullopt;
+  if (global.llvm_type != authoritative->spelling) return std::nullopt;
+  if (global.llvm_type_ref) {
+    const auto mirror = lower_lir_type(module, *global.llvm_type_ref);
+    if (!mirror || *mirror != *authoritative ||
+        global.llvm_type_ref->str() != authoritative->spelling)
+      return std::nullopt;
+  }
+  return authoritative;
+}
+
 bool same_lir_type(const codegen::lir::LirTypeRef& lhs,
                    const codegen::lir::LirTypeRef& rhs) {
   return lhs.kind() == rhs.kind() && lhs.str() == rhs.str() &&
@@ -434,8 +465,7 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
   global_names.reserve(module.globals.size());
   global_link_ids.reserve(module.globals.size());
   for (const auto& global : module.globals) {
-    if (global.name.empty() || !global.llvm_type_ref.has_value() ||
-        !global_names.insert(global.name).second)
+    if (global.name.empty() || !global_names.insert(global.name).second)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global name and structured type identity must be present and unique");
     const auto linkage = decode_global_linkage(global);
@@ -446,14 +476,12 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         !linkage->is_weak && global.qualifier == "global " &&
         !global.init_text.empty();
-    const auto type = lower_lir_type(module, *global.llvm_type_ref);
-    const auto source_type = lower_global_compatibility_type(
-        module, global.type, const_pointer_producer_row);
-    if (!type || type->kind == TypeKind::Void || !source_type ||
-        *source_type != *type || global.llvm_type != global.llvm_type_ref->str())
+    const auto type =
+        lower_global_type(module, global, const_pointer_producer_row);
+    if (!type)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global structured type authority is malformed or conflicts with compatibility evidence");
-    if (global.llvm_type_ref->has_struct_name_id() &&
+    if (global.llvm_type_ref && global.llvm_type_ref->has_struct_name_id() &&
         module.find_struct_decl(global.llvm_type_ref->struct_name_id()) == nullptr)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global structured type names an unresolved declaration");
@@ -943,8 +971,14 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   }
   for (const auto& global : module.globals) {
     const auto linkage = decode_global_linkage(global);
+    const bool const_pointer_producer_row =
+        !global.is_extern_decl && !global.is_internal && global.is_const &&
+        !linkage->is_weak && global.qualifier == "global " &&
+        !global.init_text.empty();
+    const auto type =
+        lower_global_type(module, global, const_pointer_producer_row);
     auto added = builder.add_global_object(
-        global.name, *lower_lir_type(module, *global.llvm_type_ref),
+        global.name, *type,
         global.align_bytes, global.is_internal,
         linkage->is_weak,
         global.is_const, global.is_extern_decl,
