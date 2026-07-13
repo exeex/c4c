@@ -334,19 +334,20 @@ The initial umbrella runbook completed its queue-generation purpose and was
 retired after the supervisor's Step-4 audit accepted this strict docs-only
 sequence:
 
-1. Child A: `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
+1. Child A: `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md`
 2. Child B: `ideas/open/736_bir_phase_b_canonical_document_convergence.md`
 3. Child C: `ideas/open/737_bir_phase_c_preparation_document_convergence.md`
 4. Child D: `ideas/open/738_bir_phase_d_pseudo_document_convergence.md`
 5. Child E: `ideas/open/739_bir_phase_e_allocation_document_convergence.md`
 6. Child F: `ideas/open/740_bir_phase_f_mir_boundary_document_convergence.md`
 
-Acceptance is strictly `A -> B -> C -> D -> E -> F`; Child A is the only next
-activation. Idea 734 remains a deferred inactive implementation consumer after
-Child-A acceptance, and draft idea 733 remains parked with no implementation
-authority. The C1 external Markdown boundary question belongs to Child C; the
-F2 verifier and F3 assembler/object/link Markdown-authority or placeholder
-questions belong to Child F. They are not Child-A scope.
+Acceptance is strictly `A -> B -> C -> D -> E -> F`. Child A was accepted and
+closed by the proof in `2ec50b3e`; Child B is now the sole active/next child.
+Idea 734 remains a deferred inactive implementation consumer, and draft idea
+733 remains parked with no implementation authority. The C1 external Markdown
+boundary question belongs to Child C; the F2 verifier and F3
+assembler/object/link Markdown-authority or placeholder questions belong to
+Child F.
 
 This idea is **not closed**. It remains open while all six children execute in
 order and until the final umbrella-level cross-phase Markdown inventory,
@@ -355,11 +356,21 @@ The accepted queue-generation checkpoints were `8ba7a8f3`, `b4ab5b79`,
 `9c28f521`, and `aae105de`; they authorize documentation lifecycle handoff
 only, not implementation.
 
+### Child-A Acceptance Checkpoint
+
+Child A completed the three-owner and coordinated shared-boundary
+documentation route in `10d70b872`, `060a32c78`, `e759322a`, `237afcdf`,
+`ba1dcab8`, `65a20c2d`, and final proof `2ec50b3e`. Its exact
+`ModuleDraft -> A2 -> RawBir -> B1` handoff is accepted without claiming
+missing implementation complete, changing LIR, or activating idea 734. Child B
+is the only authorized successor. This umbrella remains open through Children
+B-F and the final cross-phase audit.
+
 ## Acceptance Criteria
 
-- Exactly six ordered child source ideas exist under `ideas/open/`, one for
-  each fixed phase A through F, with collision-safe IDs assigned at generation
-  time and explicit predecessor/successor dependencies.
+- Exactly six ordered child source ideas exist across lifecycle storage, one
+  for each fixed phase A through F, with collision-safe IDs assigned at
+  generation time and explicit predecessor/successor dependencies.
 - Each child is a documentation-only architecture review/edit route and embeds
   the uniform format, per-document review method, phase inventory, missing-file
   detection, input-coverage matrix, and output-handoff matrix requirements.

@@ -1,426 +1,361 @@
-# BIR Phase A Import And Raw Documentation Convergence Runbook
+# BIR Phase B Canonical Documentation Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/735_bir_phase_a_import_raw_document_convergence.md
-Activated from: completed queue handoff in open umbrella idea 732
+Source Idea: ideas/open/736_bir_phase_b_canonical_document_convergence.md
+Activated from: accepted and closed Child A 735
 
 ## Purpose
 
-Converge the phase-A Markdown contracts from the complete current typed LIR
-surface through private `ModuleDraft` construction and full Draft/Raw
-verification to one move-only, verified, target-independent `RawBir` that the
-accepted phase-B contract can consume exactly.
+Converge the target-independent canonicalization documentation from the exact
+accepted phase-A `RawBir` through immutable P01-P07 revisions and the B8
+Canonical publication boundary, producing one verified, target-independent,
+unallocated `CanonicalBir` accepted by phase C.
 
 ## Goal
 
-Edit only the three phase-A-owned documents in strict `A1 -> A2` order and
-prove the exhaustive 38-instruction, 6-terminator, 18-metadata-family intake,
-receiving, verification, failure, and downstream handoff contract.
+Review and edit phase-B Markdown in exact P01-P07 order with on-demand analyses
+immediately before their earliest consumers, then converge B8 in exact pass-
+framework, pipeline, shared-verifier order.
 
 ## Core Rule
 
-This is a documentation-only runbook. Current LIR is complete, correct, and
-immutable for this route. Receiving gaps belong to new-BIR documentation and
-the deferred implementation consumer, not to LIR. No valid current source row
-is complete merely because an unsupported diagnostic rejects it.
+Phase B consumes only the immutable exact-revision `RawBir` accepted by closed
+Child A. It performs target-independent canonicalization only. It cannot repair
+phase-A intake/publication failure, import target/profile/layout facts, select
+ABI behavior, prepare targets, lower pseudos, allocate, build MIR, or emit.
 
-The current inline-assembly carrier already preserves ordinary values, exact
-types, `Input`/`Output`/`ReadWrite` roles, constraint indices, original
-constraint text, and opaque byte-preservable asm text. No LIR schema exception
-is justified. Phase A documents only the missing Raw-BIR role/index receiving
-owner, importer rule, verifier rule, and stable failure.
+Every pass occurrence is transactional. Failure publishes no partial revision,
+property stamp, analysis cache entry or capability. Only B8's complete
+Canonical verifier gate may mint `CanonicalBir` after every P01-P07
+postcondition is current on the same frozen revision.
 
 ## Read First
 
-- `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
-- `ideas/open/732_bir_stage_document_convergence_umbrella.md` for the queue and
-  final-audit lifecycle only
+- `ideas/open/736_bir_phase_b_canonical_document_convergence.md`
+- `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md` as the
+  accepted predecessor contract
+- `ideas/open/737_bir_phase_c_preparation_document_convergence.md` only as the
+  downstream acceptance contract
 - `src/backend/bir/README.md`
-- `src/backend/bir/lir_to_bir/README.md`
-- `src/backend/bir/lir_to_bir/memory/README.md`
-- `src/backend/bir/core/README.md`
-- the Draft/Raw clauses of `src/backend/bir/verify/README.md`
-- applicable clauses in `src/backend/bir/analysis/README.md`,
-  `src/backend/bir/diagnostics/README.md`,
-  `src/backend/bir/compatibility/README.md`,
-  `src/backend/bir/LEGACY_COVERAGE.md`, and
-  `src/backend/bir/REVIEW_TEMPLATE.md`
-- `ideas/open/736_bir_phase_b_canonical_document_convergence.md` only as the
-  exact downstream acceptance contract
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` only as the
-  deferred inactive implementation consumer
+- `src/backend/bir/analysis/README.md`
+- `src/backend/bir/passes/README.md`
+- `src/backend/bir/pipeline/README.md`
+- the Canonical clauses of `src/backend/bir/verify/README.md`
+- the P01-P07 pass and earliest-consumer analysis documents named below
 
-## Owned Documentation Targets
+## Exact Review Order And Targets
 
-Edit only these phase-A owners, in this order:
+Review phase-B owners in this order:
 
-1. `src/backend/bir/lir_to_bir/README.md`
-2. `src/backend/bir/lir_to_bir/memory/README.md`
-3. `src/backend/bir/core/README.md`
+1. B1/P01: `passes/legalize/README.md`.
+2. `analysis/comparison/README.md`, then B2/P02
+   `passes/scalar/README.md`.
+3. `analysis/cfg/README.md`, then B3/P03 `passes/cfg/README.md`; recompute CFG
+   from the resulting terminators afterward.
+4. `analysis/dominance/README.md` and
+   `analysis/publication/README.md` at their earliest applicable SSA consumer,
+   then B4/P04 `passes/ssa/README.md`.
+5. `analysis/memory_effects/README.md` (available from Raw) and
+   `analysis/provenance/README.md` once CFG/dominance/typed-value prerequisites
+   exist, then B5/P05 `passes/memory/README.md`.
+6. B6/P06 `passes/aggregate/README.md`.
+7. `analysis/call_graph/README.md` at its earliest intrinsic/helper consumer,
+   then B7/P07 `passes/intrinsics/README.md`; reuse or recompute memory effects
+   according to its exact invalidation key.
+8. B8: `passes/README.md` as pass-framework and orchestration support;
+   `pipeline/README.md` as the ordered pipeline and capability boundary; then
+   the shared verifier's complete `Canonical` publication gate.
 
-Steps 1-3 edit only those three phase-A owners. Step 4 is the one explicitly
-coordinated documentation-boundary exception and authorizes edits to exactly
-the five shared documents named in that step. All accepted comparison owners,
-other root/verifier/analysis/diagnostic/support documents, phase-B documents,
-and the Child-A source remain read-only. Do not silently reassign or edit any
-other shared authority.
+`analysis/README.md` owns descriptors, exact revision keys, dependency caches,
+preservation/invalidation and stale-result rejection. Analyses are immutable
+on-demand dependencies, not extra linear passes. Root/core/diagnostic/support
+clauses are adjacency evidence and retain their own authority.
 
-## Required Matrix Inventory
+## Uniform Document And Matrix Contract
 
-The accepted phase-A input matrix must contain exactly one individually named
-row for each current instruction alternative:
+Each reviewed owner must carry the common metadata spine:
+`Contract-Status`, `Implementation-Status`, `Kind`, `Phase-ID` or
+`Applies-To`, `Upstream`, `Downstream`, `Owner-Path`, and
+`Last-Reconciled-Commit`. Stage/pass/boundary owners use the core-first order
+`Purpose`, `Owns`, `Does Not Own`, `Inputs`, `Outputs`, and
+`Adjacent-Stage Contract`, followed by applicable behavior, invariants,
+verification/publication, failure/diagnostics, analysis/invalidation,
+target/ABI rules, implementation state, proof, open questions and checklist.
 
-1. `LirInst::LirConstInt`
-2. `LirInst::LirConstFloat`
-3. `LirInst::LirLoad`
-4. `LirInst::LirStore`
-5. `LirInst::LirBinary`
-6. `LirInst::LirCast`
-7. `LirInst::LirCmp`
-8. `LirInst::LirCall`
-9. `LirInst::LirGep`
-10. `LirInst::LirSelect`
-11. `LirInst::LirIntrinsic`
-12. `LirInst::LirInlineAsm`
-13. `LirInst::LirMemcpyOp`
-14. `LirInst::LirVaStartOp`
-15. `LirInst::LirVaEndOp`
-16. `LirInst::LirVaCopyOp`
-17. `LirInst::LirStackSaveOp`
-18. `LirInst::LirStackRestoreOp`
-19. `LirInst::LirAbsOp`
-20. `LirInst::LirIndirectBrOp`
-21. `LirInst::LirExtractValueOp`
-22. `LirInst::LirInsertValueOp`
-23. `LirInst::LirLoadOp`
-24. `LirInst::LirStoreOp`
-25. `LirInst::LirMemsetOp`
-26. `LirInst::LirCastOp`
-27. `LirInst::LirGepOp`
-28. `LirInst::LirCallOp`
-29. `LirInst::LirBinOp`
-30. `LirInst::LirCmpOp`
-31. `LirInst::LirPhiOp`
-32. `LirInst::LirSelectOp`
-33. `LirInst::LirInsertElementOp`
-34. `LirInst::LirExtractElementOp`
-35. `LirInst::LirShuffleVectorOp`
-36. `LirInst::LirVaArgOp`
-37. `LirInst::LirAllocaOp`
-38. `LirInst::LirInlineAsmOp`
+Every owner needs substantive input and output matrices. Each meaningful form
+or product row names its exact producer and consumer clause, revision key,
+stable IDs, validation and optional/error forms, publication/verifier gate,
+failure behavior, invalidated analyses and checked implementation truth.
+Analysis variants additionally name cache/dependency keys, earliest consumer,
+derived facts, invalidation and stale-result rejection. Heading or status edits
+alone are not convergence.
 
-It must also contain exactly one row for each terminator:
+## Exact Input And Output Boundaries
 
-1. `LirTerminator::LirBr`
-2. `LirTerminator::LirCondBr`
-3. `LirTerminator::LirRet`
-4. `LirTerminator::LirSwitch`
-5. `LirTerminator::LirIndirectBr`
-6. `LirTerminator::LirUnreachable`
+- Input is exactly one accepted move-only, verified, target-independent,
+  unallocated `RawBir` revision. No draft, importer map, compatibility side
+  table, unsupported valid row, hidden target context or allocation state is
+  admitted.
+- P01-P07 identities and order are immutable. Each pass consumes the exact
+  accepted predecessor revision and publishes one immutable successor or
+  fails atomically. Every Raw-only form has one named owner and every
+  cumulative normal-form property is explicit.
+- Terminators remain the sole CFG-successor authority; typed stable IDs remain
+  semantic identity; names, pointers, vector positions, rendered text and
+  dense analysis indices cannot replace them.
+- Output is one exact-revision `CanonicalBir` that satisfies all Raw rules and
+  every P01-P07 postcondition while remaining target-independent and
+  unallocated. Phase C receives no Raw alias, stale analysis, compatibility
+  identity, ABI placement, register home or spill state.
 
-And exactly one row for each metadata family:
+## Implementation Truth And Shared Boundaries
 
-1. `module-context`
-2. `stable-identities`
-3. `operand-kinds`
-4. `type-system`
-5. `functions-signatures`
-6. `blocks-cfg-order`
-7. `values-def-use`
-8. `stack-objects-allocas`
-9. `globals-objects`
-10. `initializers`
-11. `strings`
-12. `externs`
-13. `specializations`
-14. `intrinsic-requirements`
-15. `inline-asm-metadata`
-16. `producer-indexes-caches`
-17. `source-order-origin`
-18. `module-publication`
+Check each status against current storage, build inclusion, callable pipeline,
+verifier reachability and proof. A scaffold, design-only owner, partial route,
+unsupported diagnostic or status label is not complete implementation.
 
-The source idea's row tables are the durable field-level contract. Every
-accepted row must name exact current LIR fields and authority class, one typed
-Raw destination or explicit validation-only non-destination, importer rule,
-current disposition, verifier owner/rule, stable failure, and positive plus
-malformed/neighboring proof obligation. Old/new twins remain separate source
-rows but converge on one semantic BIR owner; no catch-all or “remaining” row is
-allowed.
-
-## Target-Independent Raw Boundary
-
-- `LirModule::target_profile` and rendered `data_layout` are audited
-  validation/origin/parity-only source context with no semantic Raw
-  destination. They cannot influence target-independent Raw facts. C1 later
-  selects one exact `TargetProfile`; C2 derives target-layout facts.
-- Raw BIR may retain opaque target-authored asm bytes and existing requirement
-  tokens, but cannot interpret ABI placement, constraints, register classes,
-  homes, frame state, target profiles/layout text, target opcodes, relocations,
-  MIR, emission, or assembler syntax.
-- Stable semantic identity comes only from typed stable IDs, never names,
-  pointers, vector positions, render order, caches, or dense analysis indices.
-- Every failure is module-transactional: validate before mutation where safe,
-  poison/destroy unpublished state after mutation failure, preserve structured
-  source-located diagnostics, and publish only the exact fully verified draft
-  revision.
-
-## Uniform Document Contract
-
-Each owned document must carry the common metadata spine:
-`Contract-Status`, `Implementation-Status`, `Kind`, `Phase-ID`, `Upstream`,
-`Downstream`, `Owner-Path`, and `Last-Reconciled-Commit`. Its core-first order
-is `Purpose`, `Owns`, `Does Not Own`, `Inputs`, `Outputs`, and
-`Adjacent-Stage Contract`, followed by applicable ordered behavior,
-invariants, verification/publication, failure/diagnostics,
-analysis/invalidation, target/ABI rules, implementation state, proof, open
-questions, and review checklist.
-
-Heading insertion is not convergence. Every document requires an exhaustive
-input matrix and output-handoff matrix with exact producer/consumer clauses,
-revision/target binding, stable identities, validation and optional/error
-forms, publication/verifier gate, failure behavior, invalidated analyses, and
-checked implementation truth. Missing real owners may be documented as
-indexed placeholders; a placeholder must not be called implemented.
+Edit the phase-B pass/analysis/framework/pipeline owners assigned by this
+runbook. The Canonical verifier, root, core and other cross-cutting owners are
+shared or adjacent. If convergence requires changing one, record the exact
+two-sided seam and stop until the runbook explicitly authorizes a coordinated
+documentation boundary naming every file. Do not silently reassign authority
+or broaden a pass packet.
 
 ## Non-Goals
 
-- No C/C++ or other implementation, test, build, regression-log, runtime,
-  expectation, unsupported-marker, allowlist, or behavior change.
-- No LIR schema, producer, verifier, or source edit; no inline-asm carrier
-  exception, special value model, binding table, parsing, allocation,
-  projection, or assembler work.
-- No canonicalization, target/profile selection, target preparation, ABI work,
-  pseudo lowering, allocation, MIR, object, link, or emission work.
-- No edit to idea 734 and no activation or implementation of it. It remains a
-  deferred consumer after Child-A acceptance.
-- No activation of Child B, draft idea 733, or any other lifecycle transition
-  inside routine execution packets.
-- No shared-owner edit outside the exact five-file coordinated documentation
-  boundary in Step 4; record any additional seam instead of broadening the
-  packet.
+- No C/C++ or other code, tests, build files, regression logs, runtime
+  behavior, expected output, unsupported marker or allowlist change.
+- No phase-A import/core repair and no edit to closed Child A or deferred idea
+  734.
+- No target/profile/layout selection, ABI or preparation work, constraint
+  binding, pseudo lowering, call lowering, allocation, spill/reload, frame,
+  MIR, object, link or emission work.
+- No P01-P07 reorder/renumber, hidden pass insertion, target-dependent
+  canonical form, or analysis promoted to a semantic stage.
+- No activation of Child C or any lifecycle transition inside routine
+  execution packets.
 
 ## Execution Rules
 
-1. Follow the three owned-document order exactly. Keep packet edits confined
-   to the current owner unless the plan explicitly advances.
-2. Treat the source idea's 38/6/18 tables as mandatory exact coverage, not
-   examples. Adding a future source alternative cannot silently fall through;
-   document closed dispatch tripwires and the maintained family checklist.
-3. Classify current truth as already-proved coverage, stale documentation,
-   missing new-BIR receiving container, missing importer wiring, or both
-   container+wiring missing. Verify against checked-in/build-included code;
-   build-excluded designs are not implementation.
-4. Resolve ownership, full input coverage, output shape, and adjacent
-   acceptance before API/algorithm/data-layout detail.
-5. Never accept output by assertion. Cite the exact downstream clause that
-   consumes every artifact and variant.
-6. Preserve exact revision and target keys, deterministic order, optional and
-   error forms, declaration/definition splits, forward references,
-   duplicate/conflict behavior, invalidation, and failure atomicity.
-7. Reject expectation weakening, supported-to-unsupported changes, helper
-   renames, classification-only claims, rendered-text probes, named-case
-   matchers, allowlists, and testcase-shaped shortcuts as convergence.
-8. Update routine progress only in `todo.md`. Change this runbook only when its
-   route or proof contract genuinely changes; change the source idea only when
-   durable intent changes.
-9. Step 4 is a closed five-file documentation exception, not general shared-
-   owner authority. Keep every comparison owner and every unlisted file
-   read-only, and remain at Step 4 until the fresh full shared-row re-audit is
-   clean.
+1. Follow the exact review order. A later pass cannot begin until the previous
+   output and its consumer clause agree.
+2. Request analyses immediately before their earliest actual consumer. After a
+   mutation, invalidate/recompute unless exact preservation is proved.
+3. Preserve the distinction between pass framework (transactions, occurrences,
+   analysis access, invalidation and orchestration support), pipeline (ordered
+   configured sequence and capability boundary) and verifier (Canonical
+   acceptance/publication).
+4. Resolve ownership, input coverage, output shape and adjacency before API,
+   algorithm or data-layout detail. Detect and index missing real owners or
+   documentation placeholders without calling them implemented.
+5. Reject assertion-only handoffs, stale/mixed keys, partial publication,
+   unchecked implementation claims, expectation weakening, helper renames,
+   classification-only progress, rendered-text probes, named-case matchers,
+   allowlists and testcase-shaped shortcuts.
+6. Update routine progress in `todo.md`. Change this runbook only for a real
+   route/proof correction and the source idea only for durable intent.
 
 ## Ordered Steps
 
-### Step 1 - Converge A1 importer ownership and the exhaustive intake matrix
+### Step 1 - Establish the phase-B baseline and converge B1 P01 legalize
 
-Goal: make the top-level importer document the lossless, closed, transactional
-receipt of every current typed LIR fact.
+Goal: bind phase B to the accepted immutable Raw input and converge the sole
+P01 ownership/disposition contract.
 
-Primary target: `src/backend/bir/lir_to_bir/README.md`
-
-Actions:
-
-- normalize the metadata and core-first sections before implementation detail
-- replace stale source-gap assumptions with the exact 38/6/18 source and
-  receiving matrix contract
-- classify every field as semantic authority, compatibility mirror,
-  producer/cache index, or validation evidence
-- give every row one typed Raw destination or validation-only non-destination,
-  importer rule, disposition, verifier/failure rule, and positive plus
-  malformed/neighbor proof obligation
-- preserve exact source/nested order, stable IDs, forward references,
-  optional/error forms, declaration/definition splits and conflict behavior
-- document closed variant-count and metadata-family maintenance tripwires
-- preserve the no-LIR-edit and no-inline-asm-carrier-exception findings
-
-Completion check:
-
-- the importer document contains exactly 38 individually named instruction
-  rows, six individually named terminator rows and 18 individually named
-  metadata-family rows; every row has the required fields, no catch-all exists,
-  and A1 failure publishes no draft, fixup table or partial capability
-
-### Step 2 - Converge the A1 memory import sub-boundary
-
-Goal: make the build-excluded memory document a truthful subordinate migration
-boundary rather than a second importer, verifier, or implementation claim.
-
-Primary target: `src/backend/bir/lir_to_bir/memory/README.md`
+Primary targets: `src/backend/bir/passes/legalize/README.md` and read-only
+baseline evidence in the root, analysis framework, closed Child A and B8
+owners.
 
 Actions:
 
-- normalize its metadata, ownership, inputs, outputs and adjacency
-- bind every memory-related phase-A matrix row to the top-level importer and
-  exact Raw receiving owner without duplicating dispatch or publication
-- preserve semantic memory/address/atomic facts while excluding target layout,
-  address selection, scalarization, ABI placement and machine lowering
-- state its build-excluded implementation truth and exact failure propagation
-  through the sole full A2 Draft/Raw gate
+- verify the exact accepted `RawBir` input, current implementation status,
+  phase-B owner inventory and P01-P07/B8 order
+- normalize P01 metadata, core-first clauses and exhaustive input/output matrix
+- assign each Raw-only legalize form exactly one P01 disposition and explicit
+  failure; B1 may inherit A2 failure but cannot repair the producer
+- define exact revision, transaction, invalidation, cumulative postcondition
+  and B2 consumer clauses
 
 Completion check:
 
-- every memory row has one top-level importer path and one Raw owner, the file
-  claims no independent verifier/publication or build coverage, and failure
-  cannot emit an opaque placeholder or partial draft
+- the B1 owner consumes only the accepted immutable Raw revision, every P01
+  form has one lossless normalize/preserve/reject disposition, failure
+  publishes nothing, and the exact P01 output is accepted by B2
 
-### Step 3 - Converge the Raw core receiving and ownership contract
+### Step 2 - Converge comparison analysis and B2 P02 scalar
 
-Goal: prove the core can describe one typed, deterministic, target-independent
-receiving owner for every semantic phase-A row without claiming scaffolded
-storage exists.
+Goal: place comparison/select facts at their earliest consumer and converge
+scalar, comparison and select normalization.
 
-Primary target: `src/backend/bir/core/README.md`
+Primary targets: `analysis/comparison/README.md`, then
+`passes/scalar/README.md`.
 
 Actions:
 
-- normalize metadata and core-first ownership/input/output/adjacency sections
-- reconcile the 38/6/18 destinations with the closed typed schema, stable ID
-  families, ownership graph, deterministic iteration and exact def-use/CFG
-- distinguish checked-in partial storage from missing target containers and
-  remove stale implementation or source-gap claims
-- keep target/profile/layout, ABI, constraints, homes, frames, MIR and emission
-  out of Raw semantics
-- define private `ModuleDraft` freeze and the single full A2
-  `verify_and_publish_raw(ModuleDraft&&)` handoff without a builder bypass
+- define the analysis descriptor, dependencies, exact key, immutable result,
+  non-provable/error forms and invalidation
+- make P02 consume the exact P01 revision plus matching analysis facts
+- enumerate closed scalar/comparison/select dispositions, transaction,
+  postconditions, failure and B3 handoff
 
 Completion check:
 
-- every semantic matrix row has exactly one typed core owner or an explicit
-  truthful missing-container disposition; validation-only rows publish no
-  semantic duplicate, all identities/orders are stable, and no target or
-  allocation state enters Raw BIR
+- analysis facts are same-revision and non-authoritative, P02 owns every named
+  normalization without target interpretation, and one exact output reaches B3
 
-### Step 4 - Reconcile and re-audit the coordinated A2 shared-document boundary
+### Step 3 - Converge CFG analysis and B3 P03 CFG
 
-Goal: repair the exact shared wording conflicts discovered by the committed
-read-only audit at `237afcdf`, then prove every Step-4 shared row agrees with
-the accepted phase-A source/receiving contract.
+Goal: normalize terminators, blocks and edges while retaining terminators as
+the sole stored successor authority.
 
-Authorized edit targets, and no others:
-
-1. `src/backend/bir/verify/README.md`
-2. `src/backend/bir/compatibility/README.md`
-3. `src/backend/bir/LEGACY_COVERAGE.md`
-4. `src/backend/bir/passes/legalize/README.md`
-5. `src/backend/bir/README.md`
-
-Accepted comparison owners are read-only:
-
-- `src/backend/bir/lir_to_bir/README.md`
-- `src/backend/bir/lir_to_bir/memory/README.md`
-- `src/backend/bir/core/README.md`
-- `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
-
-Required semantic resolution:
-
-- state consistently that Raw and Canonical BIR contain no semantic
-  `target_profile`, target triple, rendered `data_layout`, language-ABI mode,
-  pointer-width/address-space layout selection, or other C1/C2 target context
-- retain validation-only origin/parity evidence only as explicitly
-  non-semantic state; it cannot create Raw identity, target facts or layout
-- preserve C1 as the independent exact `TargetProfile` selection authority and
-  C2 as the target-layout derivation authority
-- preserve every current 38/6/18 fact's accepted receiving-side container,
-  wiring or validation-only disposition; desired forms absent from current LIR
-  are outside this intake and do not reopen LIR or authorize a producer/schema
-  change
-- make compatibility and legacy coverage defer to the owning matrix and remain
-  observational/read-only evidence; neither may repair, create or override a
-  semantic fact
-- make B1 legalize describe malformed/missing upstream state only as an
-  inherited A2 publication failure; B1 accepts immutable exact-revision
-  `RawBir` and is never a producer-repair route
-- correct only the root README's stale sentence that idea 731 remains open;
-  its closed-history status is lifecycle truth, not a phase-order, semantic or
-  implementation change
-
-Preserved authority and failure rules:
-
-- `verify_and_publish_raw(ModuleDraft&&)` remains the sole full A2 gate; no
-  builder, diagnostic, compatibility, legacy or B1 bypass is permitted
-- success publishes only the exact frozen verified revision; every failure is
-  atomic and publishes no function subset, partial capability, cache fact or
-  alternate stage token
-- diagnostics/analyses remain read-only exact-revision consumers; compatibility
-  remains quarantined and empty-production; stable IDs and terminators retain
-  their accepted identity/CFG authority
-- no implementation, LIR, test/build/runtime, idea-734, phase-order or other
-  shared-document change is authorized
+Primary targets: `analysis/cfg/README.md`, then `passes/cfg/README.md`.
 
 Actions:
 
-- edit only the five authorized documents to apply the required semantic,
-  authority, failure and lifecycle-status resolution above
-- compare each edit against all four accepted read-only owners and reject any
-  weakening, duplicate authority, producer repair, target-context import or
-  change to the 38/6/18 dispositions
-- after the edits, freshly reread every Step-4 shared row from the committed
-  audit: verifier profiles/publication/validation/type/import/coverage;
-  analysis revision/invalidation; diagnostics; compatibility; legacy coverage;
-  review template; root A1/A2/B1/publication/invalidation/cross-cutting status;
-  and B1 input/authority/failure
-- run link, exact-conflict-removal, preserved-rule, scope and diff checks; do
-  not rely on the pre-edit audit result
+- bind pre-planning CFG facts to the exact P02 revision and define stale/failure
+  behavior
+- converge P03's closed CFG transformations, stable identity/order, transaction
+  and invalidation contract
+- require CFG recomputation from the resulting terminators before downstream
+  dominance/SSA use
 
 Completion check:
 
-- all five authorized documents express the exact resolution and the fresh
-  read-only re-audit finds every Step-4 shared row compatible with the accepted
-  comparison owners; the sole A2 gate, failure atomicity, exact revision,
-  read-only/quarantine rules and B1 immutable Raw input are preserved; only
-  the five authorized documentation files changed in the execution packet; if
-  any conflict remains or a sixth file appears necessary, stay at Step 4 and
-  record the exact unresolved seam without broadening scope
+- P03 publishes one verified exact revision with normalized CFG, no cached edge
+  becomes semantic authority, and recomputed CFG is ready for B4 dependencies
 
-### Step 5 - Prove phase-B acceptance and the deferred idea-734 boundary
+### Step 4 - Converge dominance/publication analyses and B4 P04 SSA
 
-Goal: finish the phase-A documentation handoff without authorizing
-implementation or activating downstream work.
+Goal: place exact dominance and value-publication facts before their earliest
+SSA consumer and converge canonical SSA/phi form.
+
+Primary targets: `analysis/dominance/README.md`,
+`analysis/publication/README.md`, then `passes/ssa/README.md`.
 
 Actions:
 
-- build the exhaustive output-handoff matrices from A1 private draft through
-  A2 Raw publication to phase B
-- prove phase B accepts only one move-only verified `RawBir` whose current LIR
-  facts have one typed owner, deterministic order and exact def-use/CFG
-- reject importer maps, partial drafts, hidden side tables, unsupported valid
-  rows, compatibility strings used as identity, target facts and allocation
-  state at the B boundary
-- record idea 734 only as the inactive implementation consumer of the accepted
-  container/importer/verifier contract after Child-A acceptance
-- run documentation structural, inventory, adjacency and diff checks; request
-  plan-owner lifecycle judgment rather than activating B or 734 directly
+- define exact CFG dependencies, immutable facts, failure and invalidation for
+  both analyses
+- converge P04 ownership of definitions, uses, phi edges and canonical SSA
+  without name/position inference
+- prove transaction rollback, cumulative postconditions and B5 acceptance
 
 Completion check:
 
-- all three owned documents are substantively conformant and implementation-
-  truthful; exact 38/6/18 input and complete output matrices pass structural
-  checks; the A/B clauses agree; failure is atomic; LIR and idea 734 remain
-  unchanged; and the accepted handoff authorizes documentation lifecycle only
+- exact-current analyses feed one P04 transaction, SSA/phi authority is unique,
+  failure publishes no repair/cache/revision, and B5 accepts the output
+
+### Step 5 - Converge memory/provenance analyses and B5 P05 memory
+
+Goal: normalize target-independent memory, address, atomic and effect-bearing
+forms using exact-current facts.
+
+Primary targets: `analysis/memory_effects/README.md`,
+`analysis/provenance/README.md`, then `passes/memory/README.md`.
+
+Actions:
+
+- bind memory effects to Raw/current revisions and provenance to its typed
+  value/CFG/dominance prerequisites
+- converge P05's closed form table, preservation/invalidation, transaction,
+  failure and B6 handoff
+- forbid ABI/address selection, target layout, scalarization by guesswork or
+  compatibility-text recovery
+
+Completion check:
+
+- exact-current facts justify every P05 rewrite/preservation, stale facts fail,
+  and one target-independent exact revision reaches B6
+
+### Step 6 - Converge B6 P06 aggregate
+
+Goal: converge aggregate values, copies and projections without introducing
+target policy or weakening cumulative normal forms.
+
+Primary target: `passes/aggregate/README.md`.
+
+Actions:
+
+- normalize metadata/core/matrices and enumerate the closed aggregate forms
+- preserve exact stable identities, types, transaction and invalidation
+- prove cumulative P01-P06 postconditions and B7 acceptance
+
+Completion check:
+
+- every aggregate form has one disposition, failure is atomic, and B7 receives
+  one exact revision satisfying P01-P06
+
+### Step 7 - Converge call-graph dependency and B7 P07 intrinsics
+
+Goal: place call-graph facts at their earliest intrinsic/helper consumer and
+produce the sole candidate eligible for B8.
+
+Primary targets: `analysis/call_graph/README.md`, then
+`passes/intrinsics/README.md`; audit/reuse memory effects by exact key.
+
+Actions:
+
+- define call-graph descriptor, call-semantics facts, exact key, failure and
+  invalidation
+- converge P07's closed target-independent intrinsic dispositions and preserve
+  `InlineAsm` as one opaque ordinary-value node
+- rebind/recompute memory effects when required and prove cumulative P01-P07
+  properties, rollback and B8 input acceptance
+
+Completion check:
+
+- P07 publishes one exact candidate with all canonical normal forms, matching
+  analysis products and no target/ABI interpretation; B8 accepts it exactly
+
+### Step 8 - Converge B8 framework, pipeline and Canonical publication
+
+Goal: separate framework, pipeline and verifier authority and publish exactly
+one verified `CanonicalBir`.
+
+Primary targets in order: `passes/README.md`, `pipeline/README.md`, then the
+shared Canonical clauses of `verify/README.md`.
+
+Actions:
+
+- converge framework transaction/occurrence/analysis/invalidation and
+  orchestration-support clauses without making it the ordered capability owner
+- converge pipeline's exact P01-P07 sequence, stamps, re-entry, rollback and
+  capability boundary
+- audit the shared Canonical verifier against every cumulative postcondition;
+  if its text must change, stop and request an exact coordinated documentation
+  boundary before editing it
+- prove only the full same-revision Canonical gate can mint `CanonicalBir`
+
+Completion check:
+
+- framework, pipeline and verifier authorities are distinct and adjacent;
+  P01-P07 order is exact; failure publishes no mixed/partial state; and one
+  target-independent unallocated `CanonicalBir` is published
+
+### Step 9 - Prove phase-C acceptance and Child-B completion
+
+Goal: complete the Canonical handoff without authorizing target-aware work.
+
+Actions:
+
+- build/finalize exhaustive phase-B input/output and cross-document adjacency
+  matrices
+- prove phase C accepts exactly the verified `CanonicalBir` plus no stale
+  analysis, Raw alias, target fact, ABI placement, home or spill state
+- run documentation structure, order, link, matrix, implementation-truth,
+  invalidation, failure and diff-scope checks
+- request plan-owner completion judgment; do not activate Child C directly
+
+Completion check:
+
+- every phase-B owner is substantively conformant and implementation-truthful;
+  P01-P07/B8 and analysis order are exact; all adjacency and failure checks
+  pass; and the phase-C handoff authorizes documentation lifecycle only
 
 ## Runbook Completion
 
-Runbook exhaustion does not itself close Child A. After Step 5, plan-owner must
-decide from the source acceptance criteria and supervisor-owned documentation
-proof whether Child A is complete, needs a bounded coordinated boundary
-repair, or remains open. Umbrella idea 732 stays open through all six children
-and its final cross-phase audit.
+Runbook exhaustion does not itself close Child B. After Step 9, plan-owner must
+decide from source acceptance criteria and supervisor-owned documentation proof
+whether Child B is complete, needs a bounded coordinated boundary repair, or
+remains open. Umbrella idea 732 stays open through Children B-F and its final
+cross-phase audit.

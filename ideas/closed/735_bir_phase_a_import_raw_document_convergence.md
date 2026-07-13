@@ -1,6 +1,6 @@
 # BIR Phase A Import/Raw Document Convergence
 
-Status: Open
+Status: Closed
 Type: Documentation-only architecture convergence
 Phase Owner: A — import and Raw publication
 Predecessor: external typed LIR contract
@@ -194,6 +194,23 @@ activate 734.
 - Closure records edited/created owners, matrices, stale claims corrected,
   implementation-truth findings, adjacency proof, unresolved external owners,
   and confirmation that idea 734 remained deferred and LIR unchanged.
+
+## Completion Note
+
+Accepted and closed after the supervisor-approved documentation proof in
+`2ec50b3e`. The completed route comprises importer convergence `10d70b872`,
+the subordinate memory boundary `060a32c78`, Raw core receiving ownership
+`e759322a`, the read-only shared audit `237afcdf`, coordinated-boundary
+authorization `ba1dcab8`, and the accepted shared-document repair `65a20c2d`.
+
+The three phase-A owners and their coordinated shared boundary now prove the
+exact 38 instruction, six terminator and 18 metadata-family intake and
+receiving contract; one private exact-revision `ModuleDraft` reaches the sole
+full A2 gate and publishes one move-only, target-independent, unallocated
+`RawBir` accepted as B1's immutable input. Implementation truth remains
+explicitly partial/absent: this documentation acceptance does not claim the
+missing containers, wiring or full gate are implemented. No LIR file or idea
+734 changed, and idea 734 remains a deferred inactive implementation consumer.
 
 ## Reviewer Reject Signals
 
