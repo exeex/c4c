@@ -376,7 +376,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       !global.type.is_lvalue_ref &&
       !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
       global.type.array_rank <= kArrayDimensionCapacity &&
-      global.type.array_size > 0 &&
+      global.type.array_size >= 0 &&
       !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
       !global.type.is_fn_ptr && !global.type.is_vector &&
       global.type.array_size_expr == nullptr;
@@ -385,7 +385,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
     std::vector<std::int64_t> dimensions;
     dimensions.reserve(global.type.array_rank);
     for (int i = 0; i < global.type.array_rank; ++i) {
-      if (global.type.array_dims[i] <= 0) return std::nullopt;
+      if (global.type.array_dims[i] < 0) return std::nullopt;
       dimensions.push_back(global.type.array_dims[i]);
     }
     if (dimensions.front() != global.type.array_size) return std::nullopt;

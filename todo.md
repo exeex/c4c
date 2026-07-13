@@ -8,12 +8,12 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid VRM-register direct, deep-pointer, and
-  fixed multidimensional pointer-element globals through existing typed
-  `VrmRegister` width authority.
-- Exact VRM width, reconstructed `c4c.vrmN` or opaque-pointer spelling, pointer
-  depth, dimensions, and object/initializer facts survive Foundation, Raw BIR,
-  and Canonical BIR.
+- Plan Step 3 now admits producer-valid zero-length dimensions across the
+  existing typed fixed-array element families without conflating zero with
+  negative unsized/invalid sentinels.
+- Exact zero outer and inner dimensions, reconstructed spelling, scalar base,
+  pointer depth, source order, and object/initializer facts survive Foundation,
+  Raw BIR, and Canonical BIR.
 
 ## Suggested Next
 
@@ -22,10 +22,11 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- VRM storage semantics come only from `TypeSpec.base == TB_VRM_REGISTER` plus
-  valid width 1/2/4/8; no LLVM spelling is parsed. Residual VRM metadata and
-  vector, function-pointer, pointer-to-array, reference, aggregate, va-list,
-  unexpected-mirror, and malformed-width neighbors remain closed.
+- Fixed arrays still require a nonempty bounded dimension vector, exact
+  `array_size`/outer-dimension agreement, no computed size expression, and
+  exact reconstructed LLVM spelling. Negative `-1`/`-2` dimensions, mirrors,
+  aggregate/vector/va-list/function-pointer elements, pointer-to-array and
+  reference shapes remain closed.
 
 ## Proof
 

@@ -359,7 +359,7 @@ inline bool is_well_formed(const Type& type) {
       if (!type.array_facts) return true;
       if (type.array_facts->dimensions.empty()) return false;
       for (const auto dimension : type.array_facts->dimensions)
-        if (dimension <= 0) return false;
+        if (dimension < 0) return false;
       std::string element_spelling;
       if (type.array_facts->element_kind == TypeKind::Integer) {
         if (type.array_facts->element_bit_width == 0 ||

@@ -747,6 +747,19 @@ void test_verifier_rejects_malformed_raw_type() {
              !rejected_empty_array.error().verification.errors.empty(),
          "Raw publication verifier must reject empty typed array dimensions");
 
+  bir::ModuleBuilder zero_array_builder;
+  bir::Type zero_array{bir::TypeKind::Array, 0, "[0 x i16]"};
+  zero_array.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 0, {0}};
+  expect(zero_array_builder
+             .add_global_object("zero_array", std::move(zero_array), 4,
+                                false, false, false, true)
+             .has_value(),
+         "builder should retain producer-valid zero-length array facts");
+  const auto accepted_zero_array = std::move(zero_array_builder).publish();
+  expect(accepted_zero_array.has_value(),
+         "Raw publication verifier must accept exact zero-length array facts");
+
   const auto malformed_array_facts_reject = [](std::string name,
                                                 bir::Type type) {
     bir::ModuleBuilder malformed_builder;
@@ -768,6 +781,21 @@ void test_verifier_rejects_malformed_raw_type() {
   expect(malformed_array_facts_reject("negative_pointer_depth",
                                       std::move(negative_pointer_depth)),
          "Raw publication verifier must reject negative array element pointer depth");
+
+  bir::Type negative_outer_dimension{bir::TypeKind::Array, 0, "[-1 x i16]"};
+  negative_outer_dimension.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 0, {-1}};
+  expect(malformed_array_facts_reject("negative_outer_dimension",
+                                      std::move(negative_outer_dimension)),
+         "Raw publication verifier must reject negative outer array dimensions");
+
+  bir::Type negative_inner_dimension{bir::TypeKind::Array, 0,
+                                     "[5 x [-2 x i16]]"};
+  negative_inner_dimension.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 0, {5, -2}};
+  expect(malformed_array_facts_reject("negative_inner_dimension",
+                                      std::move(negative_inner_dimension)),
+         "Raw publication verifier must reject negative inner array dimensions");
 
   bir::Type nonscalar_pointer_base{bir::TypeKind::Array, 0, "[5 x ptr]"};
   nonscalar_pointer_base.array_facts =
@@ -2694,7 +2722,7 @@ void test_complex_storage_global_receipt_and_rejections() {
            "aggregate TypeSpec neighbors must not borrow complex storage authority");
   rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_VA_LIST; },
            "va-list TypeSpec neighbors must remain closed");
-  rejected([](lir::LirModule& m) { m.globals[3].type.array_dims[1] = 0; },
+  rejected([](lir::LirModule& m) { m.globals[3].type.array_dims[1] = -2; },
            "malformed complex fixed-array dimensions must roll back transactionally");
 }
 
@@ -3092,12 +3120,12 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
     definition.link_name_id = array_link;
     definition.type = scalar_type(c4c::TB_SHORT);
     definition.type.array_rank = 1;
-    definition.type.array_size = 5;
-    definition.type.array_dims[0] = 5;
+    definition.type.array_size = 0;
+    definition.type.array_dims[0] = 0;
     definition.is_const = true;
     definition.linkage_vis = "weak protected ";
     definition.qualifier = "constant ";
-    definition.llvm_type = "[5 x i16]";
+    definition.llvm_type = "[0 x i16]";
     definition.init_text = std::string{"opaque\0array-payload", 20};
     definition.initializer_function_link_name_ids = {init_b, init_a, init_b};
     definition.align_bytes = 16;
@@ -3138,10 +3166,10 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
     pointer_elements.type.array_rank = 2;
     pointer_elements.type.array_size = 4;
     pointer_elements.type.array_dims[0] = 4;
-    pointer_elements.type.array_dims[1] = 2;
+    pointer_elements.type.array_dims[1] = 0;
     pointer_elements.linkage_vis = "external hidden ";
     pointer_elements.qualifier = "global ";
-    pointer_elements.llvm_type = "[4 x [2 x ptr]]";
+    pointer_elements.llvm_type = "[4 x [0 x ptr]]";
     pointer_elements.align_bytes = 16;
     pointer_elements.is_extern_decl = true;
     module.globals.push_back(std::move(pointer_elements));
@@ -3181,10 +3209,10 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
   const auto deep_pointer_elements = view.global_object(ids[4]).value();
   expect(definition.object_type.kind == bir::TypeKind::Array &&
              definition.object_type.bit_width == 0 &&
-             definition.object_type.spelling == "[5 x i16]" &&
+             definition.object_type.spelling == "[0 x i16]" &&
              definition.object_type.array_facts ==
                  std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
-                     bir::TypeKind::Integer, 16, 0, {5}}} &&
+                     bir::TypeKind::Integer, 16, 0, {0}}} &&
              std::holds_alternative<bir::LinkNameId>(definition.identity) &&
              !definition.is_internal && definition.is_weak &&
              definition.is_const &&
@@ -3224,10 +3252,10 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
          "multidimensional scalar arrays must retain outer-to-inner typed dimensions and object facts");
   expect(pointer_elements.object_type.kind == bir::TypeKind::Array &&
              pointer_elements.object_type.bit_width == 0 &&
-             pointer_elements.object_type.spelling == "[4 x [2 x ptr]]" &&
+             pointer_elements.object_type.spelling == "[4 x [0 x ptr]]" &&
              pointer_elements.object_type.array_facts ==
                  std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
-                     bir::TypeKind::Floating, 32, 1, {4, 2}}} &&
+                     bir::TypeKind::Floating, 32, 1, {4, 0}}} &&
              std::holds_alternative<bir::FallbackGlobalName>(
                  pointer_elements.identity) &&
              std::get<bir::FallbackGlobalName>(pointer_elements.identity).name ==
@@ -3259,6 +3287,16 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
   expect(canonical.has_value() && canonical_array_ids.size() == 5 &&
              canonical.value()
                      .view()
+                     .global_object(canonical_array_ids[0])
+                     .value()
+                     .object_type == definition.object_type &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_array_ids[3])
+                     .value()
+                     .object_type == pointer_elements.object_type &&
+             canonical.value()
+                     .view()
                      .global_object(canonical_array_ids[4])
                      .value()
                      .object_type.array_facts ==
@@ -3282,11 +3320,18 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
   };
   rejected(
       [](lir::LirModule& m) {
-        m.globals[0].type.array_size = 0;
-        m.globals[0].type.array_dims[0] = 0;
-        m.globals[0].llvm_type = "[0 x i16]";
+        m.globals[0].type.array_size = -1;
+        m.globals[0].type.array_dims[0] = -1;
+        m.globals[0].llvm_type = "[-1 x i16]";
       },
-      "zero-extent scalar arrays must remain unsupported");
+      "negative outer array dimensions must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_size = -2;
+        m.globals[0].type.array_dims[0] = -2;
+        m.globals[0].llvm_type = "[-2 x i16]";
+      },
+      "unsized outer array sentinels must remain unsupported");
   rejected(
       [](lir::LirModule& m) { m.globals[0].type.array_dims[0] = 6; },
       "array_size and outer dimension must agree");
@@ -3298,10 +3343,17 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
   rejected(
       [](lir::LirModule& m) {
         m.globals[0].type.array_rank = 2;
-        m.globals[0].type.array_dims[1] = 0;
-        m.globals[0].llvm_type = "[5 x [0 x i16]]";
+        m.globals[0].type.array_dims[1] = -2;
+        m.globals[0].llvm_type = "[0 x [-2 x i16]]";
       },
-      "nonpositive inner dimensions must remain unsupported");
+      "negative inner dimensions must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_rank = 2;
+        m.globals[0].type.array_dims[1] = -1;
+        m.globals[0].llvm_type = "[0 x [-1 x i16]]";
+      },
+      "unsized inner array sentinels must remain unsupported");
   rejected(
       [](lir::LirModule& m) {
         m.globals[3].type.ptr_level = -1;
@@ -3326,23 +3378,23 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
       "function-pointer element arrays must remain unsupported");
   rejected(
       [](lir::LirModule& m) {
-        m.globals[3].llvm_type_ref = lir::LirTypeRef("[4 x [2 x ptr]]");
+        m.globals[3].llvm_type_ref = lir::LirTypeRef("[4 x [0 x ptr]]");
       },
       "producer-valid pointer-element arrays must not carry llvm_type_ref");
   rejected(
       [](lir::LirModule& m) {
-        m.globals[3].llvm_type = "[4 x [2 x i32]]";
+        m.globals[3].llvm_type = "[4 x [0 x i32]]";
       },
       "pointer-element array LLVM spelling remains parity-only and must match opaque ptr nesting");
   rejected(
       [](lir::LirModule& m) {
         m.globals[0].type.base = c4c::TB_STRUCT;
-        m.globals[0].llvm_type = "[5 x %struct.Payload]";
+        m.globals[0].llvm_type = "[0 x %struct.Payload]";
       },
       "aggregate element arrays remain outside this packet");
   rejected(
       [](lir::LirModule& m) {
-        m.globals[0].llvm_type_ref = lir::LirTypeRef("[5 x i16]");
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("[0 x i16]");
       },
       "producer-valid fixed scalar arrays must not carry llvm_type_ref");
   rejected(
