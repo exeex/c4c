@@ -28,10 +28,12 @@ One private D5 copy-resolution output containing no `ParallelCopy` or
 `CopyScratch` node, its exact `CopyResolutionFingerprint`, verified
 abstract-register layout, exact `VerifiedPreparationBundle`, and exact current
 revision projections of the constraint, E1 liveness/interference, E2
-assignment, and E3 spill-state products. Every product is preserved or
-reprojected by its named owner for the resolved revision and carries the
-complete predecessor fingerprints; stable IDs alone do not establish
-freshness.
+assignment, and E3 spill-state products. The constraint product is exactly one
+`ProjectedConstraintSet` produced inside D5 copy resolution and keyed to the
+resolved revision; E4 never reads Canonical C9 or an E3 predecessor
+projection. Every other product is preserved or reprojected by its named owner
+for that revision and carries the complete predecessor fingerprints. Stable
+IDs, structural equality, and copied records do not establish freshness.
 
 ## Output
 
@@ -60,7 +62,8 @@ rules before checking allocation. The final allocation checks prove:
   class, every `Spill` stores an assigned resident value at a legal point, and
   every `Reload` defines an assigned value that dominates exactly the uses it
   covers; no implicit residency transition or unresolved eviction remains;
-- the target, layout, preparation, constraint, pseudo-schema, D4/D5,
+- the target, layout, preparation, exact `ProjectedConstraintKey`,
+  pseudo-schema, D4/D5,
   liveness, allocation, spill, and `CopyResolutionFingerprint` products all
   name this exact resolved revision and one transaction;
 - no `ParallelCopy` or `CopyScratch` node remains, every surviving `EdgeCopy`

@@ -6,7 +6,8 @@ Status: converged design contract (unimplemented).
 
 `E2` is the only ordinary pseudo-home allocator for RV64, AArch64, and x86.
 It consumes one immutable reverified D5 or E3-retry revision, the exact E1
-product for that revision, the exact `BoundConstraintSet`, and its reviewed
+product for that revision, the exact `ProjectedConstraintSet` keyed to that
+revision, and its reviewed
 `VerifiedTargetLayout`. Target differences enter only through layout records
 for abstract banks, alias units, eligible slots, legal groups, reserved units,
 and call-preservation/clobber rules. There are no target-specific allocator
@@ -62,8 +63,9 @@ request naming the exact revision, E1 key, pressure point, conflicts, and a
 spill-eligible original allocation identity. E3 may apply that request only to
 a private fork of the named revision. After E3 inserts explicit spill state,
 the candidate advances its stage revision and invalidates CFG/def-use facts,
-E1, E2, and every dependent constraint projection or realizability fact. The
-runner recomputes affected structural facts, fully reverifies the complete
+E1, E2, and the predecessor constraint projection and realizability facts. E3
+must invoke the shared projection authority before reverification; the runner
+then recomputes affected structural facts, fully reverifies the complete
 candidate, freezes it, recomputes E1, and starts a fresh E2 attempt. No E1
 fact, rejected-choice set, or partial assignment crosses the revision change.
 
@@ -84,7 +86,7 @@ is represented by verified explicit spill state whose every register-resident
 use is reached through an assigned `Reload` result. It also proves complete
 tie/group/clobber/call/copy legality, complete legal assignments for every
 non-spillable `CopyScratch` reservation, absence of forbidden overlapping
-alias units, exact E1/revision/layout/constraint keys, and no unassigned or
+alias units, exact E1/revision/layout/`ProjectedConstraintKey`, and no unassigned or
 implicit-spill escape.
 
 Only the stable post-E3 candidate and its exact current E1, E2, and E3 facts

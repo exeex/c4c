@@ -13,7 +13,7 @@ transaction:
   fingerprint;
 - the atomic `VerifiedPreparationBundle`, including its ordered product
   fingerprints; and
-- the complete `BoundConstraintSet` keyed to that same Canonical stamp, target,
+- the complete C9 `BoundConstraintSet` keyed to that same Canonical stamp, target,
   layout, bundle, source-description digest, and operand/result identities.
 
 Module-revision equality, a compatible-looking target, or equal semantic text
@@ -77,11 +77,17 @@ lowering-schema fingerprint. A deterministic replacement map records old-to-
 new/tombstoned identities for diagnostics and derived-fact projection; it is
 not semantic authority.
 
-Lowering, ID repair, def-use rebuild, projected-constraint construction, and
-candidate freeze are one transaction. Cancellation, resource failure,
+Lowering, ID repair, def-use rebuild, and candidate freeze are one transaction.
+Before its output is verified or frozen, D1 invokes the sole shared
+`ConstraintProjectionTransaction` with C9, the exact new candidate stamp, D1
+occurrence fingerprint, and complete replacement/tombstone and mutation maps.
+The resulting `ProjectedConstraintSet` is keyed to the D1 revision and is the
+only constraint product D2 may consume. D1 rolls back if projection cannot
+cover every current constraint-bearing occurrence; stable IDs or copied C9
+records are not freshness proof. Cancellation, resource failure,
 diagnostics, incomplete coverage, a revision change, or failure of the D1
-schema check discards the entire candidate and all derived facts. The exact
-immutable D1 candidate alone may enter `D2`; D1 does not mint the public
+schema or projection check discards the entire candidate and all derived
+facts. The exact immutable D1 candidate alone may enter `D2`; D1 does not mint the public
 `PseudoBir` capability.
 
 ## D2 and D3 handoff

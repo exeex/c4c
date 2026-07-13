@@ -6,7 +6,7 @@ Status: converged deferred extension contract (unimplemented).
 
 `D4` consumes the exact immutable `PseudoBir` published by D3 together with
 the matching `PseudoStageKey`, verified target layout, preparation bundle, and
-constraint facts. Its required purpose is to make every non-`InlineAsm` node
+exact current `ProjectedConstraintSet`. Its required purpose is to make every non-`InlineAsm` node
 directly realizable as exactly one machine instruction before out-of-SSA and
 allocation. The legalization/expansion chain may contain no mutation only when
 the target realizability checker proves that property for every input node.
@@ -50,10 +50,19 @@ additional nodes/results receive fresh IDs and removals become tombstones.
 Every mutation advances the exact function/module revision and produces a new
 `PseudoStageKey` with the ordered D4 occurrence fingerprint.
 
+Before any mutating occurrence can be verified or its output consumed by the
+next occurrence, the D4 runner invokes the sole shared
+`ConstraintProjectionTransaction` with the predecessor projection, new stamp,
+exact occurrence fingerprint, and complete replacement/tombstone and mutation
+maps. The final empty-chain gate invokes it as well to prove and key exact
+current-revision preservation. Each result is one `ProjectedConstraintSet`
+keyed to that candidate; D4 cannot locally copy, relabel, or reconstruct it.
+
 CFG edits invalidate CFG, dominance, SSA, def-use, liveness, and downstream
 facts unless explicitly rebuilt. Value/instruction edits invalidate def-use,
 SSA/dominance dependents, liveness, interference, assignment, realizability,
-and any revision-bound projected constraints unless preservation is proved.
+and the predecessor `ProjectedConstraintSet`; only the shared projection
+authority may establish preservation and emit the new exact-revision product.
 Constraint/effect edits additionally invalidate binding checks and clobber
 facts. Pre-D4 liveness, interference, assignment, spill, and publication
 products are never reusable after mutation.
@@ -79,6 +88,6 @@ schema and target layout declare a fixed ABI requirement.
 Unsupported operations, impossible expansion, missing scratch capacity,
 invalid target facts, stale products, pass-budget exhaustion, nondeterminism,
 cancellation, or failed reverification abort the whole D4 publication
-transaction. No partial function set, pass result, property, revision, or
+transaction, including any private projected product. No partial function set, pass result, property, revision, or
 fallback revision is published. The D3 input remains immutable and is not
 eligible for D5 unless a fresh complete D4 gate succeeds.

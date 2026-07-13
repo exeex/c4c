@@ -199,8 +199,9 @@ The `Pseudo` profile accepts only one private frozen candidate carrying a
 complete `PseudoStageKey`. That key must name the exact current
 `PipelineStageStamp`, parent Canonical stamp, `TargetFingerprint`, layout and
 pseudo-schema fingerprints, `VerifiedPreparationBundle` fingerprint,
-`BoundConstraintSet` fingerprint, and the ordered fingerprints of every D1,
-D2, and applicable D4/D5 occurrence. Equal module revisions, equal semantic
+Canonical `BoundConstraintSet` fingerprint, exact current
+`ProjectedConstraintKey`, and the ordered fingerprints of every D1, D2, and
+applicable D4/D5 occurrence. Equal module revisions, equal semantic
 hashes, compatible targets, or copied reports do not establish freshness.
 
 The cumulative Pseudo check rejects:
@@ -216,13 +217,15 @@ The cumulative Pseudo check rejects:
    illegal ties or early-clobbers, unresolved clobbers, mismatched `AsmGoto`
    slots/effects, or a binding digest/key that is stale for the instruction;
 4. a missing, stale, mixed-transaction, or partially rebuilt layout,
-   preparation, constraint, projected-binding, call-lowering, analysis, or
+   preparation, `ProjectedConstraintSet`, call-lowering, analysis, or
    realizability product; and
 5. a partial function publication, changed revision during verification,
    active editor, incomplete pass lineage, unpublished predecessor, or attempt
    to reuse a diagnostic-only report as publication authority.
 
-D3 additionally proves that D1 eliminated every Canonical instruction family
+D3 additionally requires the D2 transaction's `ProjectedConstraintSet` keyed
+to this exact candidate; Canonical C9 and the D1 projection are lineage only.
+It proves that D1 eliminated every Canonical instruction family
 and D2 eliminated every `GenericCall` while preserving the exact plan-derived
 ABI requirements. Unassigned allocatable values are valid; no allocation
 completeness rule runs. D3 atomically mints the first immutable `PseudoBir` only
@@ -230,7 +233,10 @@ after the full module and every function pass.
 
 D4 is an always-on target-realizability transaction even when its required
 rewrite chain is empty. Each mutation invalidates all affected revision-bound
-facts. After all required legalization and enabled reviewed optional entries,
+facts. Each occurrence invokes the sole shared `ConstraintProjectionTransaction`
+before its output can be checked, and the empty chain must still prove an
+exact current-revision projection. After all required legalization and enabled
+reviewed optional entries,
 the runner recomputes invalidated facts and reruns the entire `Pseudo` profile,
 not merely changed-function checks. The post-D4 gate also proves every
 non-`InlineAsm` instruction directly maps to exactly one machine instruction
@@ -257,7 +263,9 @@ appear.
 Any D5 CFG split, join removal, or copy insertion advances the revision and
 invalidates affected CFG, dominance, SSA, lowered def-use/value-flow, liveness,
 constraint, and realizability products. The runner recomputes the required
-facts and reruns the entire module `Pseudo` profile on one frozen candidate.
+facts, invokes the shared projection authority with the complete D5 mutation
+and tombstone map, and requires its exact current `ProjectedConstraintSet`
+before rerunning the entire module `Pseudo` profile on one frozen candidate.
 Only the green full gate atomically publishes the D5 `PseudoBir` capability
 accepted by E1; incremental verification cannot mint it.
 
@@ -267,7 +275,8 @@ reservation a finite non-spillable non-aliasing home, the subordinate D5
 `CopyResolutionTransaction` runs before E4. The stable candidate plus its
 exact current E1, E2, and E3 facts is its sole input. Its pre-E4 gate requires
 an exact `CopyResolutionInputKey` naming the current revision and D5, layout,
-constraint-projection, E1 liveness, E2 assignment, E3 spill-state, and scratch
+exact current `ProjectedConstraintSet`, E1 liveness, E2 assignment, E3
+spill-state, and scratch
 fingerprints. It checks the immutable plan and preservation record, replays
 each emitted `EdgeCopy` sequence over assigned alias units, and proves that
 acyclic moves execute only after their sources are safe, overlapping writes
@@ -276,6 +285,9 @@ non-aliasing scratch homes, and cycles use the group's canonical assigned
 scratch home. The output has a new exact revision and
 `CopyResolutionFingerprint`, no assignment change, no new allocatable
 identity, no new spill/reload, and current preserved or reprojected products.
+Before that output is accepted, copy resolution invokes the shared projection
+authority with its replacement and scratch-tombstone map and requires the
+result keyed to the resolved revision.
 Every original simultaneous transfer must map to exactly one proved sequence.
 
 The gate rejects stale/missing products, an unassigned or aliasing scratch
@@ -296,7 +308,8 @@ repair `PseudoBir`.
 The `Allocated` profile accepts only one private frozen candidate produced by
 the D5 copy-resolution closure from a stable E3 candidate.
 Its stage key names the exact module epoch/revision and ordered function-revision
-digest plus the target, layout, preparation, constraint, pseudo-schema, D4/D5,
+digest plus the target, layout, preparation, exact `ProjectedConstraintKey`,
+pseudo-schema, D4/D5,
 liveness, assignment, spill, and copy-resolution fingerprints. Every named
 product must be fresh for that same revision and publication transaction; equal
 semantic hashes, copied reports, compatible targets, or predecessor-only keys
@@ -1492,6 +1505,13 @@ Step 7 closes the two preparation-facing choices:
    `VerifiedTargetLayout`, and C3-C8 `VerifiedPreparationBundle`; reads original
    descriptions and ordinary identities from that snapshot; and publishes one
    immutable `BoundConstraintSet` or nothing. C7 remains tables-only.
+3. C9's subordinate `ConstraintProjectionTransaction` is the sole shared
+   later-revision projection/preservation authority. D1, D2, every D4
+   occurrence, initial D5, every E3 retry, and D5 copy resolution invoke it
+   inside their own failure-atomic transactions. Each verifier consumes only
+   the resulting `ProjectedConstraintSet` keyed to the exact candidate stamp;
+   Canonical C9, predecessor products, stable IDs, structural equality, and
+   copied records are not later-revision freshness proof.
 
 ## Research anchors inspected
 

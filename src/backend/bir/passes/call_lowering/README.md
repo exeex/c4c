@@ -39,9 +39,9 @@ view. Its input key must bind all of the following:
 - the C4 `CallPlan` whose key contains that same Canonical stamp and target,
   the layout and call-plan schema fingerprints, and the exact C3 `AbiPlan`
   fingerprint; and
-- the exact C9 `BoundConstraintSet` fingerprint inherited by the D1
-  `PseudoStageKey`, plus the selected ABI-rule-set and D2 call-lowering schema
-  fingerprints.
+- the immutable C9 `BoundConstraintSet` fingerprint carried as lineage, the
+  exact D1 `ProjectedConstraintSet` keyed to the D1 revision, and the selected
+  ABI-rule-set and D2 call-lowering schema fingerprints.
 
 Every `GenericCall` names one live Canonical call identity or one reviewed
 runtime-helper interface identity and its exact `CallPlan`/`AbiPlan` entries.
@@ -100,7 +100,8 @@ Every mutation advances each affected function revision and the module
 revision and produces a new complete `PipelineStageStamp`. The frozen output
 `PseudoStageKey` contains that exact stamp, the unchanged parent Canonical
 stamp, target and layout fingerprints, preparation-bundle and
-`BoundConstraintSet` fingerprints, pseudo-schema fingerprint, the ordered D1
+Canonical `BoundConstraintSet` fingerprint, the exact D2
+`ProjectedConstraintSet` fingerprint, pseudo-schema fingerprint, the ordered D1
 fingerprints, and one D2 occurrence fingerprint derived from the selected
 ABI-rule-set, call-lowering schema, exact `AbiPlan` and `CallPlan` fingerprints,
 and deterministic rewrite result. Stable IDs, an equal graph hash, or the D1
@@ -118,12 +119,16 @@ exact D2 mutation summary. Call-boundary products that describe Canonical
 requirements remain immutable planning inputs; they are not relabeled as
 facts keyed to the D2 revision.
 
-Any revision-bound projection of the Canonical `BoundConstraintSet` is stale
-after D2 mutation. D2 does not gain authority here to choose the architecture's
-single projection mechanism: the designated per-revision projection stage must
-supply a fresh product for the exact D2 output, or prove that no projection
-applies, before D3 can publish it. Reusing D1's projected record solely because
-an `InstId` survived is forbidden.
+The D1 `ProjectedConstraintSet` is stale after D2 mutation. Before candidate
+verification or freeze, the D2 transaction invokes the sole shared
+`ConstraintProjectionTransaction` with the immutable C9 root binding, exact
+D1 projection, new stamp, D2 occurrence fingerprint, call rewrite map,
+tombstones, and complete mutation summary. It must produce one
+`ProjectedConstraintSet` keyed to the D2 revision, preserving unchanged
+requirements and deriving introduced ABI requirements only from the exact
+`AbiPlan`, `CallPlan`, and selected rule. Any projection failure rolls back D2.
+Reusing D1's product because an `InstId` survived, records compare equal, or a
+mapping was copied is forbidden.
 
 `D3` accepts only the one frozen, complete D2 candidate and exact product set.
 Its full cumulative `Pseudo` profile proves that every planned call has exactly

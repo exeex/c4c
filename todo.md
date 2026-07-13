@@ -3,44 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 9.2
-Current Step Title: Reconcile allocation and strict downstream realization
+Current Step ID: 10
+Current Step Title: Freeze per-revision constraint projection ownership
 
 ## Just Finished
 
-- Plan Step 9.2 reconciled E1-E4 and MIR with the chosen D5
-  allocation-aware copy-resolution route.
-- E1 now models simultaneous-copy liveness plus every `CopyScratch`
-  reservation and exclusion; E2 assigns each reservation a finite legal
-  non-spillable, non-aliasing home or fails closed.
-- E3 preserves `ParallelCopy` and scratch-reservation semantics through every
-  retry, cannot spill scratch or resolve bundles, and yields the sole stable
-  candidate accepted by D5's subordinate resolver.
-- E4 accepts only the exact resolved revision and
-  `CopyResolutionFingerprint`; `MirReadyBirView` contains no unresolved copy
-  intermediate, and MIR maps every remaining non-`InlineAsm` node, including
-  `EdgeCopy`, one-to-one without allocation, scratch, expansion, or repair.
+- Plan Step 10 defined `ConstraintProjectionTransaction` as the sole shared
+  subordinate projection/preservation authority and `ProjectedConstraintSet`
+  plus `ProjectedConstraintKey` as the only later-revision product.
+- Immutable C9 `BoundConstraintSet` remains keyed to exact Canonical. D1, D2,
+  every D4 occurrence, initial D5, every E3 retry, and D5 copy resolution now
+  invoke the shared authority inside their own failure-atomic transactions.
+- D3-D5 and E1-E4 require the product keyed to their exact current revision;
+  Canonical C9, predecessor projections, stable IDs, structural equality, and
+  copied records cannot establish freshness.
 
 ## Suggested Next
 
-- Execute Plan Step 10, "Freeze per-revision constraint projection ownership."
+- Execute Plan Step 11, "Reconcile legacy and core dispositions."
 
 ## Watchouts
 
-- The D5 copy-resolution output creates a new exact revision. Step 10 still
-  owns the single general mechanism by which the constraint product is
-  preserved or reprojected for D1, D2, D4, initial D5, every E3 retry, and the
-  resolved revision; this packet only requires exact current products at its
-  adjacent boundaries.
-- Stable IDs never establish product freshness. E4 and MIR must continue to
-  reject any predecessor-revision constraint, liveness, assignment, spill, or
-  copy-resolution fingerprint.
+- Step 11 must preserve the shared E1-E3 BIR allocation ownership and strict
+  MIR non-ownership established by this projection and copy-resolution route.
 - Step 14 and implementation remain forbidden pending completion of the repair
   route and a new blocker-free independent Step 13 review.
 
 ## Proof
 
-- Passed: `git diff --check && rg -n 'CopyScratch|ParallelCopy|EdgeCopy|CopyResolution|E1|E2|E3|E4|liveness|interference|non-spillable|alias|retry|stable|directly realizable|MIR|repair|transaction|fingerprint' src/backend/bir/analysis/liveness/README.md src/backend/bir/regalloc/README.md src/backend/bir/regalloc/spill_reload/README.md src/backend/bir/allocated/README.md src/backend/bir/verify/README.md src/backend/bir/README.md src/backend/mir/README.md && ! rg -n 'MIR.*(resolve|schedule|repair).*(ParallelCopy|copy bundle)|ParallelCopy.*(maps|lowers).*(one|single).*machine instruction|CopyScratch.*spill' src/backend/bir/analysis/liveness/README.md src/backend/bir/regalloc/README.md src/backend/bir/regalloc/spill_reload/README.md src/backend/bir/allocated/README.md src/backend/bir/verify/README.md src/backend/bir/README.md src/backend/mir/README.md`.
+- Passed: `git diff --check && rg -n 'BoundConstraintSet|ProjectedConstraint|projection|project|preserv|Canonical|D1|D2|D4|D5|E1|E2|E3|E4|CopyResolution|PipelineStageStamp|revision|fingerprint|tombstone|invalidat|transaction|failure|stable ID|fresh' src/backend/bir/regalloc/constraints/README.md src/backend/bir/passes/pseudo_lowering/README.md src/backend/bir/passes/call_lowering/README.md src/backend/bir/passes/target/README.md src/backend/bir/passes/out_of_ssa/README.md src/backend/bir/analysis/liveness/README.md src/backend/bir/regalloc/README.md src/backend/bir/regalloc/spill_reload/README.md src/backend/bir/allocated/README.md src/backend/bir/verify/README.md src/backend/bir/pseudo/README.md src/backend/bir/README.md && ! rg -n '(D1|D2|D4|D5|E1|E2|E3|E4).*(consume|uses?).*Canonical[- ]keyed.*(constraint|BoundConstraintSet)|stable ID.*(prove|establish).*(fresh|key)' src/backend/bir`.
 - The supervisor-selected documentation proof was sufficient; this packet did
   not create or modify `test_after.log` because regression logs were explicitly
   outside packet ownership.

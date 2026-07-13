@@ -26,7 +26,7 @@ extension namespace.
 | `AggregatePiece`, `Vector`, `Intrinsic` | bounded piece/lane/portable-feature operations retained for reviewed legalization | `D1` | `D1` through `D4`; each instance is eliminated or directly realizable after `D4` |
 | `GenericCall` | ordinary or runtime-helper call awaiting the shared ABI transport rewrite | `D1` | private D1 candidate only; forbidden at `D3` publication |
 | `AbiArgMove`, `AbiArgStore`, `AbiCall`, `AbiResultMove`, `AbiPreserve`, `AbiRestore` | explicit shared call transport with abstract ABI-slot and stack-object requirements | [D2 shared call lowering](../passes/call_lowering/README.md) | `D2` onward; must be directly realizable after `D4` |
-| `InlineAsm` | one opaque template plus ordinary ordered uses/results and the exact projected bound-constraint record | `D1` preserves/binds | `D1` onward; one BIR node maps to one opaque MIR record |
+| `InlineAsm` | one opaque template plus ordinary ordered uses/results and the exact current `ProjectedConstraintSet` record | `D1` preserves/binds | `D1` onward; one BIR node maps to one opaque MIR record |
 | `ParallelCopy`, `EdgeCopy`, `CopyScratch` | typed edge-local assignments replacing phi/block-argument transport; `ParallelCopy` reads all sources before simultaneously writing its unique destinations, `EdgeCopy` is one directly realizable move, and `CopyScratch` is an explicit allocation-only reservation identity | `D5` | `ParallelCopy` and `CopyScratch` are intermediate from initial D5 publication through the post-E3 D5 resolution closure and forbidden at E4; only resolved `EdgeCopy` survives to E4/MIR, checked against exact originating `EdgeKey` provenance |
 | `Spill`, `Reload` | explicit capacity-repair transitions using abstract spill-object identity | `E3` | allocation retry candidate onward; forbidden in D-stage publication |
 
@@ -46,7 +46,7 @@ add one.
 `InlineAsm` retains one instruction ID, ordinary ordered input uses, ordinary
 ordered result definitions, declared effects, ordered clobbers, and any paired
 `AsmGoto` label slots. Its original template and constraint-description bytes
-remain unchanged. Its projected `BoundConstraintSet` record must cover every
+remain unchanged. Its `ProjectedConstraintSet` record for the exact current revision must cover every
 operand/result ordinal exactly once as required, preserve distinct read/write
 SSA identities, and carry valid ties, early-clobber exclusions, abstract alias
 units, and the exact source-description digest.
@@ -65,7 +65,8 @@ parent Canonical PipelineStageStamp
 TargetFingerprint
 target-layout schema fingerprint
 VerifiedPreparationBundle fingerprint
-BoundConstraintSet fingerprint
+Canonical BoundConstraintSet fingerprint
+exact current ProjectedConstraintKey and projection fingerprint
 pseudo-schema fingerprint
 ordered D1/D2/D4/initial-D5/E3/D5-resolution transformation fingerprints
 applicable to this stage
@@ -73,7 +74,9 @@ applicable to this stage
 
 The exact current stamp includes module epoch, module revision, and the ordered
 function-revision digest. Products keyed only by module revision, target name,
-or semantic equality are stale. A mutation always creates a new exact stamp;
+or semantic equality are stale. Every mutator invokes the subordinate shared
+`ConstraintProjectionTransaction` before verification, and only its
+`ProjectedConstraintSet` keyed to the new stamp is current. A mutation always creates a new exact stamp;
 unchanged entities preserve stable IDs, while new entities receive fresh IDs
 and removed ones become tombstones. Stable IDs never allow a product from the
 parent revision to be reused without an explicit preservation proof.
@@ -122,7 +125,8 @@ strict verified mapping consumer.
 ## Transactional publication
 
 Each mutating owner forks one private candidate, completes all graph and
-derived-fact updates, freezes one exact revision, and invokes the verifier
+derived-fact updates, invokes the shared constraint projection authority,
+freezes one exact revision, and invokes the verifier
 profile required at its boundary. Failure publishes no instruction subset,
 function subset, property, stage key, or reusable analysis result. D3 mints the
 first `PseudoBir`; D4 and later mutators publish replacement immutable

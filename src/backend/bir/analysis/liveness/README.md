@@ -7,9 +7,9 @@ Status: converged design contract (unimplemented).
 `E1` is the sole shared liveness/interference analysis for RV64, AArch64, and
 x86 allocation. It consumes one immutable, fully reverified initial D5
 `PseudoBir` revision, or one fully reverified E3 retry revision, plus the exact
-`VerifiedTargetLayout` and `BoundConstraintSet` named by that revision. Its key
+`VerifiedTargetLayout` and `ProjectedConstraintSet` keyed to that revision. Its key
 contains the complete pseudo stage stamp, module epoch and revision, ordered
-function-revision digest, target and layout fingerprints, constraint-product
+function-revision digest, target and layout fingerprints, projected-constraint
 fingerprint, and E1 schema fingerprint. An equal graph, stable value IDs, or a
 report from an earlier revision does not establish freshness.
 
@@ -29,8 +29,8 @@ The product records:
 
 - symmetric overlap interference, including loops and exceptional CFG shape;
 - typed category/class/group requirements without choosing a home;
-- assignment-equality ties and early-clobber exclusions from the exact bound
-  constraint record;
+- assignment-equality ties and early-clobber exclusions from the exact current
+  projected constraint record;
 - abstract alias-unit exclusions for inline-assembly clobbers and call
   boundaries, including values live across a call;
 - D5 `EdgeCopy` and `ParallelCopy` boundary semantics: all bundle sources are
@@ -59,8 +59,9 @@ clobber fail closed and publish no partial facts.
 Any graph, operand, definition, CFG, call, copy, scratch reservation,
 constraint binding, target layout, stage-stamp, or E3 spill/reload change
 invalidates the whole E1 product and every E2 result derived from it.
-Preservation is allowed only for a transaction that proves the complete key
-and all consumed identities are unchanged; revision equality by itself is
+E1 cannot preserve, relabel, or reconstruct a predecessor projection. Its
+exact `ProjectedConstraintKey` and all consumed identities must match the
+current revision; stable-ID, structural, or copied-record equality is
 insufficient. The final E1 product for the stable post-E3 candidate, together
 with the matching E2 assignment and E3 spill facts, is input to D5's
 subordinate `CopyResolutionTransaction`; an earlier retry product cannot be

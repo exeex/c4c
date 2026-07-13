@@ -13,7 +13,7 @@ or perform another out-of-SSA pass.
 D5 consumes the exact immutable `PseudoBir` revision published by the complete
 D4 full-profile gate. Its `PseudoStageKey` must contain the current module and
 ordered function revisions, the applicable D1/D2/D4 fingerprints, and the
-exact target, layout, preparation, constraint, schema, and realizability
+exact target, layout, preparation, current `ProjectedConstraintSet`, schema, and realizability
 fingerprints. A merely equivalent graph or a pre-D4 report is stale.
 
 The accepted input has canonical phi or block-argument semantics, exact
@@ -105,6 +105,13 @@ facts unless a registered complete preservation proof applies. Required
 post-edit CFG, lowered-value def-use, and copy-coverage facts are recomputed
 under the new revision; facts from D4 are never relabeled.
 
+Before the initial D5 candidate is verified or published, D5 invokes the sole
+shared `ConstraintProjectionTransaction` with the exact D4 projection, new
+stamp, initial-D5 occurrence fingerprint, and its join-removal, copy, scratch,
+CFG, replacement, and tombstone maps. The resulting `ProjectedConstraintSet`
+must be keyed to the initial D5 revision and cover every current occurrence;
+projection failure aborts the complete D5 transaction.
+
 Success removes every phi/block-argument instruction and incoming map, admits
 only the planned D5 `ParallelCopy`/`EdgeCopy` operations and their explicit
 `CopyScratch` reservation identities, advances the exact stage/revision key
@@ -135,7 +142,7 @@ facts.
 
 The transaction consumes one `CopyResolutionInputKey` containing the exact
 post-E3 `PipelineStageStamp`, D5 fingerprint, target/layout/schema fingerprints,
-the current projected constraint-product fingerprint, and the exact E1
+the current `ProjectedConstraintSet` fingerprint, and the exact E1
 liveness, E2 assignment, E3 spill-state, and scratch-reservation fingerprints.
 It first builds an immutable `CopyResolutionPlan` for every `ParallelCopy` and
 `EdgeCopy`, keyed by instruction ID, originating `EdgeKey`, ordered stable
@@ -171,9 +178,14 @@ publishes one new exact candidate revision plus a
 `CopyResolutionFingerprint`. Its preservation record maps every original
 simultaneous transfer to the ordered nodes that realize it and proves that
 virtual assignments, scratch homes, spill coverage, CFG, and edge-local
-placement are unchanged. Revision-bound products must be preserved or
-reprojected for that exact output by their named owners; stable IDs alone do
-not rekey them.
+placement are unchanged. Before the resolved candidate is verified, the
+`CopyResolutionTransaction` invokes the sole shared
+`ConstraintProjectionTransaction` with the current E3 projection, new
+resolved stamp, D5-resolution occurrence fingerprint, copy replacement map,
+used/unused scratch tombstones, and complete mutation summary. Its output is
+the only `ProjectedConstraintSet` keyed to the resolved revision. Projection
+failure discards the complete resolution candidate; stable IDs, structural
+equality, and copied records do not rekey it.
 
 The pre-E4 verifier gate replays each sequence with alias-unit semantics,
 proves read-before-clobber behavior for acyclic, overlapping, and cyclic

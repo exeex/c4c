@@ -12,7 +12,7 @@ repair path.
 
 Input is one typed E2 spill request and a private fork of the exact immutable
 revision named by that request. The request must name the matching E1 key,
-pressure point, complete conflict set, and one not-yet-spilled original
+`ProjectedConstraintKey`, pressure point, complete conflict set, and one not-yet-spilled original
 allocation identity. E3 rejects stale requests, requests synthesized without
 an exhausted E2 attempt, and identities prohibited from spilling by ABI,
 constraint, group, or explicit nonspillable rules.
@@ -49,7 +49,12 @@ convention, or MIR mapping.
 One E3 rewrite advances the candidate revision and E3 transformation
 fingerprint. It invalidates all affected CFG, dominance, def-use/value-flow,
 liveness/interference, constraint projections, allocation, and target
-realizability facts. The runner recomputes required structural facts and runs
+realizability facts. Before reverification, every E3 retry invokes the sole
+shared `ConstraintProjectionTransaction` with the predecessor projection, new
+stamp, exact E3 occurrence fingerprint, spill/reload and CFG mutation summary,
+replacement map, and tombstones. It must produce one `ProjectedConstraintSet`
+keyed to the retry revision; stable IDs, structurally equal requirements, or
+copied records cannot preserve freshness. The runner recomputes required structural facts and runs
 the complete retry-candidate verifier on one frozen module. Only a green full
 gate may become the immutable input to a new E1 analysis and a fresh E2
 attempt; incremental checks and facts from the prior revision have no
@@ -84,5 +89,6 @@ assigned. A candidate is stable only when E2 returns a complete legal
 assignment with no spill request and all non-spillable `CopyScratch`
 reservations assigned. That exact candidate plus its current E1/E2/E3 facts
 is the sole input to D5 copy resolution; E3 cannot run after resolution.
-Failure discards the entire private revision, spill objects, nodes,
-assignments, and derived products; the predecessor remains unchanged.
+Failure, including projection failure, discards the entire private revision,
+spill objects, nodes, assignments, projected product, and derived products;
+the predecessor remains unchanged.
