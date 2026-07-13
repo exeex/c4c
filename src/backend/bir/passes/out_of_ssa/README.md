@@ -206,11 +206,17 @@ products staged by the preceding owner:
    and residency transitions remain complete and legal, and stages one
    exact-resolved-revision `SpillStateKey` product. It cannot insert, remove,
    or reposition spill state; and
-4. the existing target realizability registry/checker consumes the resolved
+4. the E4/allocated-owned non-mutating `FrameRealizationTransaction` consumes
+   the exact current projection and E1/E2/E3 products plus D2 call, C6 address,
+   target-layout, preparation, and copy-resolution fingerprints. It stages one
+   exact-resolved-revision `FrameRealizationPlan`/`FrameRealizationKey` without
+   mutating the graph, allocation, or spill state; and
+5. the existing target realizability registry/checker consumes the resolved
    graph, exact target/layout/schema keys, current projection, and current
-   E1/E2/E3 products, recomputes every admitted node's mapping obligation,
-   and stages one `TargetRealizabilityKey` product keyed to the resolved
-   revision.
+   E1/E2/E3 products plus that exact frame product, recomputes every admitted
+   node's mapping obligation, and stages one `TargetRealizabilityKey` product
+   keyed to the resolved revision and incorporating the exact
+   `FrameRealizationKey`.
 
 Each installed product names the resolved `PipelineStageStamp`, the
 `CopyResolutionFingerprint`, all exact upstream product keys, its owner/schema
@@ -219,8 +225,9 @@ invalidates every predecessor E1, E2, E3, and realizability product; the
 predecessor products remain immutable inputs to validation or lineage only.
 The preservation record, unchanged assignments, stable IDs, and structural
 equality cannot relabel, rekey, or mint any product. The enclosing transaction
-stages all five exact-current results--projection, E1, E2, E3, and
-realizability--and installs them together only after every owner succeeds.
+stages all six exact-current results--projection, E1, E2, E3, frame
+realization, and target realizability--and installs them together only after
+every owner succeeds.
 
 The pre-E4 verifier gate replays each sequence with alias-unit semantics,
 proves read-before-clobber behavior for acyclic, overlapping, and cyclic
@@ -229,7 +236,7 @@ that every remaining copy is directly realizable. Any missing/aliasing scratch
 home, unschedulable transfer, stale key, illegal move, product recomputation
 or validator failure, ID exhaustion, cancellation, or verification failure discards the complete resolution
 candidate. Failure publishes no partial sequence, tombstone, revision,
-fingerprint, projected/analysis/assignment/spill/realizability product, E4
+fingerprint, projected/analysis/assignment/spill/frame/realizability product, E4
 capability, or MIR input. The predecessor candidate and products remain
 unchanged, and no E4 input is minted. E4 rejects every `ParallelCopy` and
 every `CopyScratch` node; MIR therefore receives only directly realizable
