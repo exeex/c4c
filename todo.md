@@ -8,14 +8,17 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid direct named struct and union extern
-  global declarations when `llvm_type_ref` carries an exact, resolvable
-  `StructNameId`. External and weak-external rows preserve link-backed or
-  fallback identity, source order, visibility, alignment, and no initializer
-  through verified Raw BIR and Canonical BIR.
-- Named definitions and flexible literal struct definitions retain their
-  existing paths; unkeyed literal aggregate externs and malformed authority or
-  declaration facts still reject transactionally.
+- Plan Step 3 now admits arbitrary positive producer-valid pointer depth for
+  direct integer/floating scalar globals and fixed scalar-base array elements.
+  Typed BIR preserves exact scalar base, width, depth, ordered dimensions,
+  opaque `ptr` parity, and existing object/initializer facts through Foundation,
+  Raw BIR, and Canonical BIR.
+- Existing depth-zero scalar array elements and depth-one pointer rows remain
+  covered alongside a depth-two initialized direct-global definition and a
+  depth-three weak extern declaration. Zero/negative staged pointer facts,
+  negative producer depth, aggregate bases, function pointers,
+  pointer-to-array/inner-rank shapes, unexpected mirrors, and spelling
+  conflicts still reject transactionally.
 
 ## Suggested Next
 
@@ -24,10 +27,10 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Direct aggregate externs require a named structured mirror with a valid,
-  resolvable `StructNameId` and exact rendered spelling parity. Do not widen
-  this route to literal aggregates, pointer/array aggregate neighbors, or
-  initializer-bearing declarations without separate producer evidence.
+- Multi-level pointer depth is carried only by existing typed depth fields;
+  opaque LLVM spelling remains exactly `ptr` at every positive depth and must
+  not be parsed. Scalar-base, declarator-shape, and object-coherence exclusions
+  remain authoritative.
 
 ## Proof
 

@@ -762,12 +762,12 @@ void test_verifier_rejects_malformed_raw_type() {
            !published.error().verification.errors.empty();
   };
 
-  bir::Type excessive_pointer_depth{bir::TypeKind::Array, 0, "[5 x ptr]"};
-  excessive_pointer_depth.array_facts =
-      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 2, {5}};
-  expect(malformed_array_facts_reject("excessive_pointer_depth",
-                                      std::move(excessive_pointer_depth)),
-         "Raw publication verifier must reject unsupported array element pointer depth");
+  bir::Type negative_pointer_depth{bir::TypeKind::Array, 0, "[5 x ptr]"};
+  negative_pointer_depth.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, -1, {5}};
+  expect(malformed_array_facts_reject("negative_pointer_depth",
+                                      std::move(negative_pointer_depth)),
+         "Raw publication verifier must reject negative array element pointer depth");
 
   bir::Type nonscalar_pointer_base{bir::TypeKind::Array, 0, "[5 x ptr]"};
   nonscalar_pointer_base.array_facts =
@@ -812,12 +812,20 @@ void test_verifier_rejects_malformed_raw_type() {
                                         std::move(pointer_facts_on_scalar)),
          "Raw publication verifier must reject pointer facts on non-pointer types");
 
-  bir::Type invalid_pointer_depth{bir::TypeKind::Pointer};
-  invalid_pointer_depth.pointer_facts =
-      bir::PointerTypeFacts{bir::TypeKind::Integer, 32, 2};
-  expect(malformed_pointer_facts_reject("invalid_pointer_depth",
-                                        std::move(invalid_pointer_depth)),
-         "Raw publication verifier must reject typed pointer depth other than one");
+  bir::Type zero_pointer_depth{bir::TypeKind::Pointer};
+  zero_pointer_depth.pointer_facts =
+      bir::PointerTypeFacts{bir::TypeKind::Integer, 32, 0};
+  expect(malformed_pointer_facts_reject("zero_pointer_depth",
+                                        std::move(zero_pointer_depth)),
+         "Raw publication verifier must reject zero typed pointer depth");
+
+  bir::Type negative_direct_pointer_depth{bir::TypeKind::Pointer};
+  negative_direct_pointer_depth.pointer_facts =
+      bir::PointerTypeFacts{bir::TypeKind::Floating, 64, -1};
+  expect(malformed_pointer_facts_reject(
+             "negative_direct_pointer_depth",
+             std::move(negative_direct_pointer_depth)),
+         "Raw publication verifier must reject negative typed pointer depth");
 
   bir::Type invalid_pointer_base{bir::TypeKind::Pointer};
   invalid_pointer_base.pointer_facts =
@@ -1940,7 +1948,7 @@ void test_scalar_pointer_global_receipt_and_rejections() {
     lir::LirGlobal weak_external;
     weak_external.name = "weak_external_float_pointer";
     weak_external.type = scalar_type(c4c::TB_FLOAT);
-    weak_external.type.ptr_level = 1;
+    weak_external.type.ptr_level = 3;
     weak_external.linkage_vis = "extern_weak protected ";
     weak_external.qualifier = "global ";
     weak_external.llvm_type = "ptr";
@@ -1952,7 +1960,7 @@ void test_scalar_pointer_global_receipt_and_rejections() {
     ordinary.name = "ordinary_integer_pointer";
     ordinary.link_name_id = ordinary_link;
     ordinary.type = scalar_type(c4c::TB_UINT);
-    ordinary.type.ptr_level = 1;
+    ordinary.type.ptr_level = 2;
     ordinary.linkage_vis.clear();
     ordinary.qualifier = "global ";
     ordinary.llvm_type = "ptr";
@@ -2056,7 +2064,7 @@ void test_scalar_pointer_global_receipt_and_rejections() {
   expect(weak_external.object_type.kind == bir::TypeKind::Pointer &&
              weak_external.object_type.pointer_facts ==
                  std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
-                     bir::TypeKind::Floating, 32, 1}} &&
+                     bir::TypeKind::Floating, 32, 3}} &&
              std::holds_alternative<bir::FallbackGlobalName>(
                  weak_external.identity) &&
              std::get<bir::FallbackGlobalName>(weak_external.identity).name ==
@@ -2065,11 +2073,11 @@ void test_scalar_pointer_global_receipt_and_rejections() {
              !weak_external.is_const && weak_external.is_extern_declaration &&
              weak_external.visibility == bir::SymbolVisibility::Protected &&
              weak_external.alignment == 16 && !weak_external.initializer,
-         "weak external scalar pointers must retain typed pointee, linkage, visibility, alignment, and identity");
+         "deep weak external scalar pointers must retain exact typed depth, pointee, linkage, visibility, alignment, and identity");
   expect(ordinary.object_type.kind == bir::TypeKind::Pointer &&
              ordinary.object_type.pointer_facts ==
                  std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
-                     bir::TypeKind::Integer, 32, 1}} &&
+                     bir::TypeKind::Integer, 32, 2}} &&
              std::holds_alternative<bir::LinkNameId>(ordinary.identity) &&
              view.spelling(std::get<bir::LinkNameId>(ordinary.identity))
                      .value() == "ordinary_integer_pointer" &&
@@ -2086,7 +2094,7 @@ void test_scalar_pointer_global_receipt_and_rejections() {
                  "pointer_init_a" &&
              ordinary.initializer->function_links[2] ==
                  ordinary.initializer->function_links[0],
-         "ordinary scalar-pointer definitions must preserve typed authority, identity, byte-exact payload, and ordered initializer links");
+         "deep ordinary scalar-pointer definitions must preserve exact typed depth, authority, identity, byte-exact payload, and ordered initializer links");
   expect(internal.object_type.kind == bir::TypeKind::Pointer &&
              internal.object_type.pointer_facts ==
                  std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
@@ -2184,14 +2192,14 @@ void test_scalar_pointer_global_receipt_and_rejections() {
                      .value()
                      .object_type.pointer_facts ==
                  std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
-                     bir::TypeKind::Floating, 32, 1}} &&
+                     bir::TypeKind::Floating, 32, 3}} &&
              canonical.value()
                      .view()
                      .global_object(canonical_ids[2])
                      .value()
                      .object_type.pointer_facts ==
                  std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
-                     bir::TypeKind::Integer, 32, 1}} &&
+                     bir::TypeKind::Integer, 32, 2}} &&
              canonical.value()
                      .view()
                      .global_object(canonical_ids[3])
@@ -2236,8 +2244,8 @@ void test_scalar_pointer_global_receipt_and_rejections() {
                    bir::ImportErrorCode::UnsupportedGlobals,
            message + " (Canonical rollback)");
   };
-  rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = 2; },
-           "scalar-pointer extern depth greater than one must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = -1; },
+           "negative scalar-pointer extern depth must remain closed");
   rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
            "aggregate scalar-pointer pointees must remain closed");
   rejected(
@@ -2273,8 +2281,8 @@ void test_scalar_pointer_global_receipt_and_rejections() {
            "internal const-pointer definitions cannot also be extern declarations");
   rejected([](lir::LirModule& m) { m.globals[6].is_extern_decl = true; },
            "weak const-pointer definitions cannot contradict external linkage");
-  rejected([](lir::LirModule& m) { m.globals[5].type.ptr_level = 2; },
-           "internal const-pointer depth greater than one must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[5].type.ptr_level = -2; },
+           "negative internal const-pointer depth must remain closed");
   rejected([](lir::LirModule& m) { m.globals[6].type.base = c4c::TB_STRUCT; },
            "weak const-pointer aggregate pointees must remain closed");
   rejected([](lir::LirModule& m) { m.globals[5].type.is_fn_ptr = true; },
@@ -2356,6 +2364,21 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
     pointer_elements.align_bytes = 16;
     pointer_elements.is_extern_decl = true;
     module.globals.push_back(std::move(pointer_elements));
+
+    lir::LirGlobal deep_pointer_elements;
+    deep_pointer_elements.name = "extern_deep_pointer_array";
+    deep_pointer_elements.type = scalar_type(c4c::TB_LONGLONG);
+    deep_pointer_elements.type.ptr_level = 3;
+    deep_pointer_elements.type.array_rank = 2;
+    deep_pointer_elements.type.array_size = 6;
+    deep_pointer_elements.type.array_dims[0] = 6;
+    deep_pointer_elements.type.array_dims[1] = 3;
+    deep_pointer_elements.linkage_vis = "external protected ";
+    deep_pointer_elements.qualifier = "global ";
+    deep_pointer_elements.llvm_type = "[6 x [3 x ptr]]";
+    deep_pointer_elements.align_bytes = 64;
+    deep_pointer_elements.is_extern_decl = true;
+    module.globals.push_back(std::move(deep_pointer_elements));
     return module;
   };
 
@@ -2367,13 +2390,14 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
          "fixed scalar-base array global storage must be verifier reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
-             ids[2].slot == 2 && ids[3].slot == 3,
+  expect(ids.size() == 5 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3 && ids[4].slot == 4,
          "fixed scalar-base arrays must preserve deterministic source order");
   const auto definition = view.global_object(ids[0]).value();
   const auto declaration = view.global_object(ids[1]).value();
   const auto multidimensional = view.global_object(ids[2]).value();
   const auto pointer_elements = view.global_object(ids[3]).value();
+  const auto deep_pointer_elements = view.global_object(ids[4]).value();
   expect(definition.object_type.kind == bir::TypeKind::Array &&
              definition.object_type.bit_width == 0 &&
              definition.object_type.spelling == "[5 x i16]" &&
@@ -2432,9 +2456,33 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
              pointer_elements.alignment == 16 &&
              !pointer_elements.initializer,
          "pointer-element arrays must retain scalar pointee facts, pointer depth, ordered dimensions, and object facts");
+  expect(deep_pointer_elements.object_type.kind == bir::TypeKind::Array &&
+             deep_pointer_elements.object_type.bit_width == 0 &&
+             deep_pointer_elements.object_type.spelling ==
+                 "[6 x [3 x ptr]]" &&
+             deep_pointer_elements.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Integer, 64, 3, {6, 3}}} &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 deep_pointer_elements.identity) &&
+             deep_pointer_elements.is_extern_declaration &&
+             deep_pointer_elements.visibility ==
+                 bir::SymbolVisibility::Protected &&
+             deep_pointer_elements.alignment == 64 &&
+             !deep_pointer_elements.initializer,
+         "deep pointer-element arrays must retain exact scalar base, width, pointer depth, dimensions, opaque ptr parity, and object facts");
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
-  expect(canonical.has_value() &&
-             canonical.value().view().global_objects().size() == 4,
+  const auto canonical_array_ids =
+      canonical.has_value() ? canonical.value().view().global_objects()
+                            : std::vector<bir::GlobalObjectId>{};
+  expect(canonical.has_value() && canonical_array_ids.size() == 5 &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_array_ids[4])
+                     .value()
+                     .object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Integer, 64, 3, {6, 3}}},
          "producer-shaped fixed scalar-base arrays must publish Canonical BIR");
 
   const auto rejected = [&](auto mutate, const std::string& message) {
@@ -2475,9 +2523,9 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
       "nonpositive inner dimensions must remain unsupported");
   rejected(
       [](lir::LirModule& m) {
-        m.globals[3].type.ptr_level = 2;
+        m.globals[3].type.ptr_level = -1;
       },
-      "pointer-element arrays deeper than one level must remain unsupported");
+      "negative pointer-element array depth must remain unsupported");
   rejected(
       [](lir::LirModule& m) {
         m.globals[3].type.base = c4c::TB_STRUCT;
@@ -2939,10 +2987,10 @@ void test_global_object_rejections_and_transactionality() {
            "link spelling mismatches must reject transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].llvm_type_ref.reset();
-             m.globals[0].type.ptr_level = 2;
+             m.globals[0].type.ptr_level = -2;
              m.globals[0].llvm_type = "ptr";
            },
-           "multi-level pointer extern declarations must remain unsupported transactionally");
+           "negative pointer extern depth must reject transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].is_extern_decl = false;
              m.globals[0].linkage_vis.clear();
@@ -2966,13 +3014,13 @@ void test_global_object_rejections_and_transactionality() {
   rejected([](lir::LirModule& m) {
              m.globals[0].is_extern_decl = false;
              m.globals[0].linkage_vis.clear();
-             m.globals[0].type.ptr_level = 2;
+             m.globals[0].type.ptr_level = -2;
              m.globals[0].llvm_type = "ptr";
              m.globals[0].llvm_type_ref.reset();
              m.globals[0].is_const = true;
              m.globals[0].init_text = "ptr null";
            },
-           "multi-level const-pointer definitions must remain unsupported transactionally");
+           "negative const-pointer definition depth must reject transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].llvm_type_ref.reset();
              m.globals[0].type.array_rank = 2;

@@ -252,7 +252,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
   constexpr int kArrayDimensionCapacity =
       sizeof(global.type.array_dims) / sizeof(global.type.array_dims[0]);
   const bool fixed_scalar_base_array =
-      (global.type.ptr_level == 0 || global.type.ptr_level == 1) &&
+      global.type.ptr_level >= 0 &&
       !global.type.is_lvalue_ref &&
       !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
       global.type.array_rank <= kArrayDimensionCapacity &&
@@ -282,7 +282,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       return std::nullopt;
 
     std::string expected =
-        element_pointer_depth == 1 ? "ptr" : element->spelling;
+        element_pointer_depth > 0 ? "ptr" : element->spelling;
     for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend();
          ++dimension)
       expected = "[" + std::to_string(*dimension) + " x " + expected + "]";
@@ -297,7 +297,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
 
   const bool scalar_pointer_global =
       (global.is_extern_decl || !global.init_text.empty()) &&
-      global.type.ptr_level == 1 &&
+      global.type.ptr_level > 0 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
       global.type.inner_rank == 0 && !global.type.is_fn_ptr &&
@@ -321,7 +321,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
 
     Type result{TypeKind::Pointer};
     result.pointer_facts =
-        PointerTypeFacts{pointee->kind, pointee->bit_width, 1};
+        PointerTypeFacts{pointee->kind, pointee->bit_width,
+                         global.type.ptr_level};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }

@@ -208,7 +208,7 @@ inline bool is_well_formed(const Type& type) {
       if (type.bit_width != 0 || !no_name || type.spelling != "ptr")
         return false;
       if (!type.pointer_facts) return true;
-      if (type.pointer_facts->pointer_depth != 1) return false;
+      if (type.pointer_facts->pointer_depth <= 0) return false;
       if (type.pointer_facts->pointee_kind == TypeKind::Integer)
         return type.pointer_facts->pointee_bit_width != 0;
       if (type.pointer_facts->pointee_kind != TypeKind::Floating) return false;
@@ -258,9 +258,9 @@ inline bool is_well_formed(const Type& type) {
       } else {
         return false;
       }
-      if (type.array_facts->element_pointer_depth == 1)
+      if (type.array_facts->element_pointer_depth > 0)
         element_spelling = "ptr";
-      else if (type.array_facts->element_pointer_depth != 0)
+      else if (type.array_facts->element_pointer_depth < 0)
         return false;
       for (auto dimension = type.array_facts->dimensions.rbegin();
            dimension != type.array_facts->dimensions.rend(); ++dimension)
