@@ -306,18 +306,47 @@ target instruction selection or concrete frame placement.
 Primary target: `preparation/address/README.md`; request provenance at this
 earliest address consumer.
 
+The current C6 packet established that the shared Provenance contract promises
+later exact-revision address queries but normatively admits only B4. Before
+completing the already-owned address contract, one narrow coordinated
+documentation-only repair is authorized in
+`src/backend/bir/analysis/provenance/README.md`.
+
+The complete documentation edit set for this repair is exactly:
+
+- `src/backend/bir/analysis/provenance/README.md`, then
+- `src/backend/bir/preparation/address/README.md`.
+
+The executor may additionally update only `todo.md` for canonical Step-6
+progress and proof; no other path, analysis owner, code, build, test or log is
+writable.
+
 Actions:
 
+- repair the Provenance input/stage contract to admit verified Canonical/B8 or
+  an exact-later semantic request only with exact-current same-revision CFG,
+  Dominance, PublicationValueFlow and MemoryEffects dependency closure
+- retain B5 as the earliest mutation consumer and preserve canonical empty
+  options, target key `None`, empty preparation, complete-key stale rejection,
+  `Known`/`Absent`/`Unknown` results and absent implementation truth
+- do not add analysis implementation or edit any other analysis/shared owner
 - bind every address/global/local/relocation form to exact predecessor and
-  provenance keys
+  fresh exact-B8 provenance keys; never reuse a B4 handle or silently refresh
+  dependencies beneath an old request
 - separate semantic requirements from D4 legalization, E4 frame placement and
   F1 one-to-one application
 - define verifier, failure, invalidation and C7 handoff
+- rerun the complete C6 seam proof after both documentation edits; remove the
+  blocker and advance only when exact scope, dependency freshness and all
+  address/consumer checks are green
 
 Completion check:
 
-- one immutable exact-key address product covers every form, stale provenance
-  fails, and C7 accepts the result
+- the narrow Provenance seam admits exact-current B8/later-semantic requests
+  without weakening its B4 consumer, target/preparation exclusions, statuses
+  or implementation truth; one immutable exact-key address product then covers
+  every form, stale provenance fails, and C7 accepts the result. Keep Step 6
+  current unless the post-repair seam proof is green.
 
 ### Step 7 - Converge C7 inline-assembly target vocabulary
 

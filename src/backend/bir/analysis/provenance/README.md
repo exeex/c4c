@@ -3,18 +3,21 @@
 Contract-Status: under-review
 Implementation-Status: absent
 Kind: analysis
-Applies-To: B5 / P05 earliest consumer and later exact-revision address queries
-Upstream: exact B4 typed SSA plus exact-current CFG, dominance, value-flow and effects
-Downstream: B5 / P05 memory/address normalization and later read-only planning
+Applies-To: B5 / P05 earliest consumer plus exact verified later target-independent semantic checkpoints, including B8, for read-only address queries
+Upstream: exact immutable verified B4-or-later semantic function plus exact-current same-revision CFG, dominance, value-flow and effects
+Downstream: B5 / P05 memory/address normalization and C6/later read-only planning
 Owner-Path: `src/backend/bir/analysis/provenance/README.md`
-Last-Reconciled-Commit: `b6cabf1d2`
+Last-Reconciled-Commit: `5e7909f3e`
 
 ## Purpose
 
 `Provenance` is an immutable target-independent function analysis explaining
-typed value/address origin from exact B4 semantic BIR. It follows registered
-carriers and exact phi edge occurrences without making pointers, snapshots,
-names, layout or route records authoritative.
+typed value/address origin from an exact verified B4-or-later target-independent
+semantic BIR checkpoint. B4 serves the earliest P05 mutation consumer; exact
+B8 Canonical and other admitted later semantic revisions serve read-only
+queries such as C6. The analysis follows registered carriers and exact phi edge
+occurrences without making pointers, snapshots, names, layout or route records
+authoritative.
 
 ## Owns
 
@@ -35,29 +38,36 @@ names, layout or route records authoritative.
 
 ## Inputs
 
-One frozen exact B4 `SsaCanonical` function is required with matching schema-1
-`Cfg`, `Dominance(Dominators)`, `PublicationValueFlow` and `MemoryEffects`
-handles. Typed values/types, exact phi `EdgeKey` transports, semantic objects,
-symbols, address spaces, source paths/offsets and module tables are observed.
+One frozen exact verified target-independent semantic function is required. It
+may be the B4 `SsaCanonical` checkpoint used by P05 or an exact later semantic
+checkpoint, including immutable B8 `CanonicalBir`, used by a read-only query.
+Schema-1 `Cfg`, `Dominance(Dominators)`, `PublicationValueFlow` and
+`MemoryEffects` handles must all be exact-current for that same module/function
+revision and checkpoint; the manager cannot carry B4 dependencies into B8 or
+silently refresh one dependency beneath an old request. Typed values/types,
+exact phi `EdgeKey` transports, semantic objects, symbols, address spaces,
+source paths/offsets and module tables are observed.
 
 ### Exact descriptor and input-key matrix
 
 | Input/key axis | Exact required value | Optional/non-provable form | Failure / forbidden substitution |
 |---|---|---|---|
 | descriptor | `AnalysisId::Provenance`, schema 1, `Function`, `CanonicalSemantic` | none | unknown/duplicate ID/schema is `ProvenanceRegistryInvalid` |
-| stage/property | immutable B4 checkpoint through `SsaCanonical` | declaration/empty body is valid | wrong/missing capability is `ProvenanceWrongInput` |
+| stage/property | immutable B4 checkpoint through `SsaCanonical`, or exact verified later target-independent semantic checkpoint including B8 `CanonicalBir` | declaration/empty body is valid | unverified, target-aware, mixed-checkpoint or wrong/missing capability is `ProvenanceWrongInput` |
 | module/function key | exact `ModuleEpoch`, `ModuleRevision`, `FunctionId`, `FunctionRevision` | empty body retains all keys | stale/foreign view is `StaleAnalysis` |
-| CFG dependency | schema-1 `AnalysisId::Cfg` under exact B4 key | empty CFG complete | stale/mismatch is `ProvenanceStaleDependency` |
-| dominance dependency | schema-1 `AnalysisId::Dominance(Dominators)` matching CFG/key | empty dominance complete | stale/mismatch is `ProvenanceStaleDependency` |
-| value-flow dependency | schema-1 `AnalysisId::PublicationValueFlow` matching CFG/dominance/key | unknown carrier facts are valid inputs | stale/mismatch is `ProvenanceStaleDependency` |
-| effects dependency | schema-1 `AnalysisId::MemoryEffects` at identical B4 key | known-empty effects valid | stale/mismatch is `ProvenanceStaleDependency` |
+| CFG dependency | schema-1 `AnalysisId::Cfg` exact-current under the accepted checkpoint's module/function key | empty CFG complete | B4 reuse at B8, stale/mismatch is `ProvenanceStaleDependency` |
+| dominance dependency | schema-1 `AnalysisId::Dominance(Dominators)` exact-current and matching that CFG/checkpoint key | empty dominance complete | stale/mismatch is `ProvenanceStaleDependency` |
+| value-flow dependency | schema-1 `AnalysisId::PublicationValueFlow` exact-current and matching CFG/dominance/checkpoint key | unknown carrier facts are valid inputs | stale/mismatch is `ProvenanceStaleDependency` |
+| effects dependency | schema-1 `AnalysisId::MemoryEffects` exact-current at the identical checkpoint/module/function key | known-empty effects valid | stale/mismatch is `ProvenanceStaleDependency` |
 | dependency key | ordered complete keys `{Cfg, Dominance, PublicationValueFlow, MemoryEffects}` | none | missing/additional/cyclic dependency is `ProvenanceRegistryInvalid` |
 | options/target key | canonical empty options; target key `None`; preparation empty | v1 has no semantic option | unsupported option/later-domain input is `ProvenanceForbiddenInput` |
 | semantic input | typed stable values/objects/symbols/paths, exact def-use and phi edge transports | ambiguity/unregistered valid carrier yields `Unknown(reason)`; absent origin is `Absent` | malformed type/edge/def-use/object is `ProvenanceInputInvalid` |
 
-The result key binds exact epoch/module/function revisions, all four complete
-dependency keys, empty options, no target layout and empty preparation digest.
-The manager cannot silently refresh one dependency beneath an old request.
+The result key binds the accepted semantic checkpoint identity, exact epoch/
+module/function revisions, all four complete same-revision dependency keys,
+empty options, no target layout and empty preparation digest. The manager
+cannot silently refresh one dependency beneath an old request, substitute a
+B4 handle for B8, or retag a result under a later checkpoint.
 
 ## Outputs
 
@@ -89,13 +99,20 @@ never degrade to an unknown result.
 
 [P04 SSA](../../passes/ssa/README.md) supplies exact B4 typed values and phi
 coverage. Exact-current [memory effects](../memory_effects/README.md), CFG,
-dominance and publication/value-flow form the dependency closure.
-[P05 memory](../../passes/memory/README.md) is the earliest mutation consumer
-and must match every complete key to its B4 input.
+dominance and publication/value-flow form the dependency closure at every
+accepted checkpoint. [P05 memory](../../passes/memory/README.md) remains the
+earliest mutation consumer and must match every complete key to its B4 input.
+
+After all B1-B8 mutations, immutable B8 Canonical supplies the exact revision
+for [C6 address preparation](../../preparation/address/README.md). C6 is a
+read-only consumer and must request a fresh B8 result whose four dependencies
+all match that same B8 module/function revision. It cannot reuse the P05/B4
+handle even when the stable facts would compare equal.
 
 ## Ordered Behavior
 
-1. Validate exact B4 view, all dependency keys/order, empty options and target
+1. Validate the exact accepted B4-or-later semantic checkpoint, all exact-
+   current same-revision dependency keys/order, empty options and target
    exclusion.
 2. Freeze module objects/symbols/types/constants, typed SSA, CFG/dominance,
    value-flow and effects.
@@ -128,7 +145,8 @@ dereference returns `StaleAnalysis`; old handles never rebind or recompute.
 
 ## Analysis and Invalidation
 
-Any dependency invalidation transitively invalidates provenance. Any observed
+Any dependency invalidation transitively invalidates provenance. Any accepted
+checkpoint/revision change or observed
 definition/use, operand, phi incoming, CFG occurrence, address/path, object/
 symbol/type, memory effect, call descriptor, asm semantic edge or body revision
 change also invalidates it. After revision increment every old handle is stale.
@@ -149,7 +167,8 @@ runtime proof for `AnalysisId::Provenance` exists.
 
 ## Proof Requirements
 
-- prove exact B4/dependency keys, stale rejection and deterministic fixed point;
+- prove exact B4 and exact later/B8 checkpoint keys, same-revision dependency
+  closure, stale rejection and deterministic fixed point;
 - cover object/symbol/null/path/phi/call/allocation/escape/asm/alias statuses;
 - prove parallel-edge joins and Known/Absent/Unknown/malformed distinctions;
 - prove target/layout/ABI exclusion, invalidation and checked preservation;
@@ -161,9 +180,9 @@ None for v1. New carrier or alias proof classes require schema registration.
 
 ## Review Checklist
 
-- [x] Exact B4 typed-value/CFG/dominance/value-flow/effect inputs required.
+- [x] Exact B4 and later/B8 typed-value/CFG/dominance/value-flow/effect inputs require one same-revision checkpoint.
 - [x] Stable object/path/parallel-edge facts are exhaustive.
 - [x] Known, Absent, Unknown and malformed forms are distinct.
 - [x] Stale rejection and transitive invalidation are explicit.
-- [x] P05 is earliest mutation consumer; target inference is forbidden.
+- [x] P05 remains earliest mutation consumer; C6 is a fresh exact-B8 read-only consumer and target inference is forbidden.
 - [x] Implementation truth is absent.
