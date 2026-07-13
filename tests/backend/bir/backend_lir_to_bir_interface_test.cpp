@@ -1777,6 +1777,164 @@ void test_scalar_global_type_authority_without_mirror() {
          "mirror-free scalar global receipt must remain verifier reachable");
 }
 
+void test_named_aggregate_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+
+    const auto pair_id = module.struct_names.intern("%struct.PairGlobal");
+    const auto choice_id = module.struct_names.intern("%struct.ChoiceGlobal");
+    module.record_struct_decl(lir::LirStructDecl{
+        pair_id,
+        {{lir::LirTypeRef::integer(32)}, {lir::LirTypeRef("double")}}});
+    module.record_struct_decl(lir::LirStructDecl{
+        choice_id,
+        {{lir::LirTypeRef::integer(64)}, {lir::LirTypeRef("double")}}});
+
+    const auto pair_link = module.link_names.intern("named_pair_global");
+    const auto init_a = module.link_names.intern("aggregate_init_a");
+    const auto init_b = module.link_names.intern("aggregate_init_b");
+
+    lir::LirGlobal pair;
+    pair.name = "named_pair_global";
+    pair.link_name_id = pair_link;
+    pair.type = scalar_type(c4c::TB_STRUCT);
+    pair.linkage_vis = "protected ";
+    pair.qualifier = "global ";
+    pair.llvm_type = "%struct.PairGlobal";
+    pair.llvm_type_ref =
+        lir::LirTypeRef::struct_type(pair.llvm_type, pair_id);
+    pair.init_text = std::string{"{ i32 7, double 2.5 }\0tail", 26};
+    pair.initializer_function_link_name_ids = {init_b, init_a, init_b};
+    pair.align_bytes = 8;
+    module.globals.push_back(std::move(pair));
+
+    lir::LirGlobal choice;
+    choice.name = "named_choice_global";
+    choice.type = scalar_type(c4c::TB_UNION);
+    choice.is_internal = true;
+    choice.is_const = true;
+    choice.linkage_vis = "internal hidden ";
+    choice.qualifier = "constant ";
+    choice.llvm_type = "%struct.ChoiceGlobal";
+    choice.llvm_type_ref =
+        lir::LirTypeRef::union_type(choice.llvm_type, choice_id);
+    choice.init_text = "{ i64 11 }";
+    choice.initializer_function_link_name_ids = {init_a, init_b};
+    choice.align_bytes = 16;
+    module.globals.push_back(std::move(choice));
+    return module;
+  };
+
+  auto module = valid_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "producer-shaped named struct and union definitions must import");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "named aggregate global storage must be verifier reachable");
+  const auto view = imported.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 2,
+         "named aggregate globals must preserve deterministic source order");
+  const auto pair = view.global_object(ids[0]).value();
+  const auto choice = view.global_object(ids[1]).value();
+  expect(pair.object_type.kind == bir::TypeKind::Struct &&
+             pair.object_type.struct_name_id ==
+                 module.globals[0].llvm_type_ref->struct_name_id() &&
+             pair.object_type.spelling == "%struct.PairGlobal" &&
+             std::holds_alternative<bir::LinkNameId>(pair.identity) &&
+             !pair.is_internal && !pair.is_weak && !pair.is_const &&
+             pair.visibility == bir::SymbolVisibility::Protected &&
+             pair.alignment == 8 && !pair.is_extern_declaration &&
+             pair.initializer &&
+             pair.initializer->opaque_payload ==
+                 std::string{"{ i32 7, double 2.5 }\0tail", 26} &&
+             pair.initializer->function_links.size() == 3 &&
+             view.spelling(pair.initializer->function_links[0]).value() ==
+                 "aggregate_init_b" &&
+             view.spelling(pair.initializer->function_links[1]).value() ==
+                 "aggregate_init_a" &&
+             pair.initializer->function_links[2] ==
+                 pair.initializer->function_links[0],
+         "named struct globals must preserve semantic type identity and all object facts");
+  expect(choice.object_type.kind == bir::TypeKind::Struct &&
+             choice.object_type.struct_name_id ==
+                 module.globals[1].llvm_type_ref->struct_name_id() &&
+             choice.object_type.spelling == "%struct.ChoiceGlobal" &&
+             std::holds_alternative<bir::FallbackGlobalName>(choice.identity) &&
+             choice.is_internal && !choice.is_weak && choice.is_const &&
+             choice.visibility == bir::SymbolVisibility::Hidden &&
+             choice.alignment == 16 && !choice.is_extern_declaration &&
+             choice.initializer &&
+             choice.initializer->opaque_payload == "{ i64 11 }" &&
+             choice.initializer->function_links.size() == 2 &&
+             view.spelling(choice.initializer->function_links[0]).value() ==
+                 "aggregate_init_a" &&
+             view.spelling(choice.initializer->function_links[1]).value() ==
+                 "aggregate_init_b",
+         "named union globals must preserve Struct identity, const linkage facts, and ordered initializer links");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto rejected_module = valid_module();
+    mutate(rejected_module);
+    const auto raw = bir::lower_lir_to_raw_bir(rejected_module);
+    expect(!raw.has_value() &&
+               raw.error().code == bir::ImportErrorCode::UnsupportedGlobals,
+           message);
+    const auto canonical = bir::lower_lir_to_canonical_bir(rejected_module);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (canonical rollback)");
+  };
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type_ref.reset(); },
+           "named aggregate globals require structured type identity transactionally");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef::struct_type(
+            "%struct.UnresolvedGlobal", static_cast<c4c::StructNameId>(999));
+        m.globals[0].llvm_type = "%struct.UnresolvedGlobal";
+      },
+      "unresolved aggregate StructNameId authority must reject transactionally");
+  rejected(
+      [](lir::LirModule& m) {
+        const auto choice_id = m.globals[1].llvm_type_ref->struct_name_id();
+        m.globals[0].llvm_type_ref =
+            lir::LirTypeRef::struct_type("%struct.PairGlobal", choice_id);
+      },
+      "mismatched aggregate spelling and StructNameId must reject transactionally");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type = "{ i32, [3 x i8] }";
+        m.globals[0].llvm_type_ref = lir::LirTypeRef(m.globals[0].llvm_type);
+      },
+      "flexible-member literal aggregate globals must remain closed transactionally");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].is_extern_decl = true;
+        m.globals[0].linkage_vis = "external ";
+        m.globals[0].init_text.clear();
+        m.globals[0].initializer_function_link_name_ids.clear();
+      },
+      "aggregate extern declarations must remain closed transactionally");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.ptr_level = 1;
+        m.globals[0].llvm_type = "ptr";
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("ptr");
+      },
+      "pointer-to-aggregate global shapes must remain closed transactionally");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_rank = 1;
+        m.globals[0].llvm_type = "[1 x %struct.PairGlobal]";
+        m.globals[0].llvm_type_ref = lir::LirTypeRef(m.globals[0].llvm_type);
+      },
+      "array aggregate global shapes must remain closed transactionally");
+}
+
 void test_global_object_rejections_and_transactionality() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -2368,6 +2526,7 @@ int main() {
   test_external_declaration_rejections_and_transactionality();
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
+  test_named_aggregate_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();
   test_specialization_metadata_receipt_and_rejections();
   test_inline_asm_shape_rejection();

@@ -256,6 +256,27 @@ std::optional<GlobalLinkageFacts> decode_global_linkage(
 std::optional<Type> lower_global_type(const LirModule& module,
                                       const LirGlobal& global,
                                       bool allow_pointer) {
+  const bool direct_aggregate =
+      (global.type.base == TB_STRUCT || global.type.base == TB_UNION) &&
+      global.type.ptr_level == 0 && !global.type.is_lvalue_ref &&
+      !global.type.is_rvalue_ref && global.type.array_rank == 0 &&
+      !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
+      !global.type.is_fn_ptr;
+  if (direct_aggregate) {
+    if (global.is_extern_decl || global.init_text.empty() ||
+        !global.llvm_type_ref)
+      return std::nullopt;
+    const auto authoritative =
+        lower_lir_type(module, *global.llvm_type_ref);
+    if (!authoritative || authoritative->kind != TypeKind::Struct ||
+        authoritative->struct_name_id == c4c::kInvalidStructName ||
+        module.find_struct_decl(authoritative->struct_name_id) == nullptr ||
+        global.llvm_type_ref->str() != global.llvm_type ||
+        !is_well_formed(*authoritative))
+      return std::nullopt;
+    return authoritative;
+  }
+
   const auto authoritative =
       lower_global_compatibility_type(module, global.type, allow_pointer);
   if (!authoritative || authoritative->kind == TypeKind::Void ||
