@@ -45,7 +45,8 @@ C1 target selection + Canonical --verify_preparation_input--> VerifiedPreparatio
 private complete D2 call-lowering candidate --verify-and-publish(Pseudo)--> PseudoBir
 complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 private E3 rewrite --full verify(retry candidate)--> immutable E1/E2 retry input
-stable E3 candidate --verify-and-publish(Allocated)--> AllocatedBir + PreparedBir
+stable E3 candidate --D5 copy resolution--> private resolved candidate
+resolved candidate --verify-and-publish(Allocated)--> AllocatedBir + PreparedBir
                                                      \--> borrowed MirReadyBirView
 ```
 
@@ -68,7 +69,7 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | `Canonical` | later | The exact immutable B7 / P07 revision published by B8: Raw rules plus all P01-P07 normal forms, including B3 / P03 reachability. It is target-independent and is not a request to validate an arbitrary post-Raw snapshot. |
 | `PreparedInput` | later | A non-mutating C1 input-gate rule set over one already-published `CanonicalBir` plus one validated `TargetProfile`. It binds their exact stamp/fingerprint and proves complete typed semantic inputs for C2-C9; it is not a BIR publication profile and contains no prepared facts. |
 | `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1 lowering and [D2 call lowering](../passes/call_lowering/README.md), and stage-specific realizability rules. Allocation completeness is not required. |
-| `Allocated` | later | Full graph/Pseudo rules plus the exact stable E3 revision, complete legal abstract assignments, explicit verified spill/reload transitions, fresh target/product bindings, and atomic MIR-ready publication. |
+| `Allocated` | later | Full graph/Pseudo rules plus the exact post-E3 D5 copy-resolution revision, complete legal abstract assignments, explicit verified spill/reload transitions, no unresolved copy intermediate, fresh target/product bindings, and atomic MIR-ready publication. |
 
 The semantic profiles are cumulative. `PreparedInput` cannot weaken
 `Canonical`, `Canonical` cannot weaken `Raw`, `Pseudo` retains every applicable
@@ -237,15 +238,20 @@ without adding a use, definition, temporary, CFG edge, or allocation action.
 `InlineAsm` instead retains the specified one-node-to-one-opaque-record rule.
 
 D5 accepts only that exact fully reverified D4 publication. Before D5, the
-profile rejects `ParallelCopy` and `EdgeCopy`; after D5, it requires the D5
-fingerprint, rejects every phi instruction, incoming map, and
+profile rejects `ParallelCopy`, `EdgeCopy`, and `CopyScratch`; after initial D5
+publication, it requires the D5 fingerprint, rejects every phi instruction,
+incoming map, and
 SSA-only edge use, and checks each copy against the exact terminator-derived
 `EdgeKey` occurrence and its edge-local placement. Copy destinations are the
 stable former join-result allocation identities and are valid only in admitted
 copy assignment roles. `EdgeCopy` must be a typed singleton. `ParallelCopy`
 must have canonical entry order, unique typed destinations, and simultaneous
-read-before-write semantics, including cycles without an implicit temporary.
-Every planned incoming transfer must appear once and no unplanned transfer may
+read-before-write semantics. Every entry in a multi-entry potential-alias
+component must have exactly one typed edge-local `CopyScratch` identity with
+finite legal-home requirements. The reservation set is allocation-only,
+non-spillable, mutually non-aliasing when simultaneously needed, disjoint from
+the transferred homes, and has no execution semantics. Every planned incoming
+transfer must appear once and no unplanned transfer or scratch reservation may
 appear.
 
 Any D5 CFG split, join removal, or copy insertion advances the revision and
@@ -255,6 +261,28 @@ facts and reruns the entire module `Pseudo` profile on one frozen candidate.
 Only the green full gate atomically publishes the D5 `PseudoBir` capability
 accepted by E1; incremental verification cannot mint it.
 
+On the final stable post-E3 candidate, the subordinate D5
+`CopyResolutionTransaction` runs before E4. Its pre-E4 gate requires an exact
+`CopyResolutionInputKey` naming the current revision and D5, layout,
+constraint-projection, E1 liveness, E2 assignment, E3 spill-state, and scratch
+fingerprints. It checks the immutable plan and preservation record, replays
+each emitted `EdgeCopy` sequence over assigned alias units, and proves that
+acyclic moves execute only after their sources are safe, overlapping writes
+first save every simultaneously endangered source in distinct assigned
+non-aliasing scratch homes, and cycles use the group's canonical assigned
+scratch home. The output has a new exact revision and
+`CopyResolutionFingerprint`, no assignment change, no new allocatable
+identity, no new spill/reload, and current preserved or reprojected products.
+Every original simultaneous transfer must map to exactly one proved sequence.
+
+The gate rejects stale/missing products, an unassigned or aliasing scratch
+identity, a source clobbered before its final read, a changed home, an illegal
+or non-direct move, an unresolved group, and any partial rewrite. Success
+requires no `ParallelCopy` or `CopyScratch` node and permits only
+single-instruction-realizable `EdgeCopy` nodes before E4. Thus
+`ParallelCopy` is intermediate-only: neither E4 nor MIR may accept, resolve,
+schedule, or repair one.
+
 Any failure discards the complete D3, D4, or D5 candidate and publishes no function
 subset, stage capability, property, cache entry, or derived product. Public
 rechecks and incremental edit verification diagnose only; they cannot mint or
@@ -262,13 +290,14 @@ repair `PseudoBir`.
 
 ### Allocated profile and E4 publication
 
-The `Allocated` profile accepts only one private frozen stable E3 candidate.
+The `Allocated` profile accepts only one private frozen candidate produced by
+the D5 copy-resolution closure from a stable E3 candidate.
 Its stage key names the exact module epoch/revision and ordered function-revision
 digest plus the target, layout, preparation, constraint, pseudo-schema, D4/D5,
-liveness, assignment, and spill fingerprints. Every named product must be
-fresh for that same revision and publication transaction; equal semantic
-hashes, copied reports, compatible targets, or predecessor-only keys do not
-establish identity.
+liveness, assignment, spill, and copy-resolution fingerprints. Every named
+product must be fresh for that same revision and publication transaction; equal
+semantic hashes, copied reports, compatible targets, or predecessor-only keys
+do not establish identity.
 
 Verification is cumulative and fail-closed. It reruns every applicable graph,
 Pseudo schema, direct-realizability, and out-of-SSA rule, then proves that:
@@ -278,16 +307,20 @@ Pseudo schema, direct-realizability, and out-of-SSA rule, then proves that:
    explicit verified spill residency at that program point;
 2. assignments satisfy class/group/slot eligibility, group width/alignment,
    ties, early-clobbers, interference, aliases, reserved units, call clobbers,
-   and simultaneous-copy semantics;
+   and the resolved-copy preservation record;
 3. each spill object is unique and type/class compatible, each `Spill` consumes
    an assigned resident value at a legal dominance/liveness point, and each
    `Reload` produces an assigned value dominating all and only its covered
    uses; no hidden transition, unassigned reload result, unresolved eviction,
    or pressure deficit remains;
-4. every node retains one verified target mapping, and every target/layout,
-   preparation, constraint, call, inline-asm, liveness, assignment, spill, and
-   realizability binding is present, unique, revision-matched, and fresh; and
-5. target opcodes, concrete registers, frame offsets, encodings, machine
+4. no `ParallelCopy` or `CopyScratch` node remains, every former group has one
+   exact resolution sequence, and each surviving `EdgeCopy` has one legal
+   single-instruction target mapping;
+5. every node retains one verified target mapping, and every target/layout,
+   preparation, constraint, call, inline-asm, liveness, assignment, spill,
+   copy-resolution, and realizability binding is present, unique,
+   revision-matched, and fresh; and
+6. target opcodes, concrete registers, frame offsets, encodings, machine
    instructions, and MIR facts remain absent from BIR.
 
 E4 freezes the candidate once and performs these checks in one transaction.
