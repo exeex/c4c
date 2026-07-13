@@ -20,9 +20,9 @@ exists; it does not mean the behavior has been exhaustively reviewed.
 | Variadics | variadic plan, call lowering, prologue/epilogue | Mapped |
 | Inline assembly | canonical opaque op, inline-asm plan, instruction selection | Mapped |
 | i128/f128 and runtime helpers | scalar/intrinsic passes and helper plan | Mapped |
-| Liveness and allocation intervals | BIR analysis for semantics; MIR allocator analysis for allocation | Mapped; boundary review required |
-| Register allocation and value homes | MIR register allocation | Mapped |
-| Spill/reload and stack slots | MIR spill/reload and frame layout | Mapped |
+| Liveness and allocation intervals | revision-bound BIR liveness/interference analysis at `S23`; BIR regalloc consumes it | Mapped; exact revision binding required |
+| Register allocation and value homes | shared BIR pseudo-physical allocator at `S24`; MIR only maps verified abstract homes | Mapped |
+| Spill/reload and stack slots | BIR spill/reload insertion at `S25` owns abstract spill identities and retry invalidation; later frame/MIR maps verified abstractions | Mapped |
 | Frame, local storage, dynamic stack | MIR frame layout and prologue/epilogue | Mapped |
 | Object data and relocations | `mir/emission` | Mapped |
 | Prepared printer and debug rendering | `diagnostics` | Mapped |

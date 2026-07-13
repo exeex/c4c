@@ -5,8 +5,10 @@ Status: design contract; no implementation is claimed.
 This document defines how a BIR pass is identified, scheduled, given authority,
 committed, verified, invalidated, observed, and failed. It deliberately does not
 define the semantic rewrite performed by any one pass. The documents below this
-directory own those local transformations; [`pipeline/README.md`](../pipeline/README.md)
-owns their order.
+directory own those local transformations. The root
+[`BIR README`](../README.md) owns their normative `S02`-`S08` order;
+[`pipeline/README.md`](../pipeline/README.md) expands orchestration within that
+fixed interval.
 
 The central rule is:
 
@@ -36,7 +38,8 @@ communicates by leaving mutable side tables attached to BIR.
 
 ### 1.2 This framework does not own
 
-- pass order, repetitions, or pipeline phase composition; those belong to
+- pass order, repetitions, or pipeline phase composition; those belong to the
+  root [`BIR README`](../README.md), with local orchestration detail in
   [`pipeline/README.md`](../pipeline/README.md);
 - the semantic rules of legalize, scalar, CFG, SSA, memory, aggregate, or
   intrinsic rewriting; those belong to their pass documents;
@@ -48,7 +51,17 @@ communicates by leaving mutable side tables attached to BIR.
 - verifier rule semantics; those belong to
   [`verify/README.md`](../verify/README.md);
 - ABI classification, call placement, frame layout, register allocation,
-  spills, target opcodes, emission, or rendering.
+  spills, target opcodes, emission, or rendering. Root stages `S11`-`S29` use
+  their own reviewed target-aware preparation, pseudo-pass, out-of-SSA,
+  allocation, spill/reload, publication, and MIR contracts; they do not gain
+  authority by registering as canonical `P01`-`P07` passes here.
+
+This is the target-independent canonical pass framework for root stages
+`S02`-`S09`. A later target-aware phase may reuse implementation-neutral
+utilities only when its own contract defines the capability, revision,
+transaction, verifier, and publication boundary. It may not receive this
+framework's `PassProperty`, `CanonicalBir` publication authority, analysis
+cache, or canonical occurrence registry by implication.
 
 ### 1.3 Allowed dependency direction
 
@@ -787,8 +800,10 @@ carry an arbitrary callback.
 Pipeline validation checks property flow, kind/barrier placement, fixed-point
 contracts, required verifier profiles, analysis availability, and publication
 fingerprint. This framework validates the supplied sequence but never invents
-one. The current documented order remains solely in
-[`pipeline/README.md`](../pipeline/README.md).
+one. The current documented order remains solely in the root
+[`BIR README`](../README.md); the pipeline document transcribes the canonical
+interval into a checked descriptor without becoming an independent order
+source.
 
 Disabling a pass is legal only when the resulting pipeline still establishes
 every property required at publication. A debug option cannot bypass a
@@ -969,8 +984,9 @@ declared effects, verification, and explicit stage publication.
 - `analysis/README.md` and each analysis document must define stamps,
   dependencies, semantic equality, and invalidation traits before a pass may
   preserve that analysis.
-- `pipeline/README.md` alone lists pass order and fixed-point groups. This file
-  defines what executing any listed occurrence means.
+- the root `BIR README` alone defines stage/pass order. `pipeline/README.md`
+  expands canonical occurrence and fixed-point orchestration beneath it. This
+  file defines what executing any canonical occurrence means.
 - An individual pass README may narrow its authority but may not widen this
   framework, reorder itself, weaken a verifier rule, or declare an analysis
   preserved contrary to registered traits.
@@ -1022,8 +1038,9 @@ yes to every item:
 - [ ] Every registered pass has one stable closed `PassId` and `PassKind`.
 - [ ] The registry rejects duplicates, missing implementations, unknown
       analyses/properties, and invalid fixed-point contracts.
-- [ ] Pipeline order exists only in `pipeline/README.md` and a checked pipeline
-      descriptor, not in pass callbacks.
+- [ ] Pipeline order is transcribed from the root `BIR README` into one checked
+      descriptor and is never independently invented by this framework,
+      pipeline options, or pass callbacks.
 - [ ] Pass code receives immutable views plus exactly one scoped editor facade;
       no direct storage mutation path exists.
 - [ ] The executor, not the pass, owns commit/rollback and derives the mutation

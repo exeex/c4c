@@ -2,10 +2,12 @@
 
 Status: design contract; implementation has not started.
 
-This file is the authority for **BIR stage order and orchestration**. Individual
-pass documents own local algorithms, but they cannot insert themselves, change
-their predecessor, weaken their input profile, or reorder the pipeline. A
-change to order must update this file and the two affected adjacent-pass
+The root [`BIR README`](../README.md) owns the normative `S00`-`S29` total
+order. This document is subordinate to that order and expands orchestration
+only for its `S02`-`S09` canonicalization interval. Individual pass documents
+own local algorithms, but neither they nor this document may insert a stage,
+change a predecessor, weaken an input profile, or reorder a root row. An order
+change starts in the root contract and must update both affected adjacent
 contracts in the same review.
 
 The pipeline is a canonicalization boundary, not a target backend hidden under
@@ -18,22 +20,22 @@ into `CanonicalBir`. Concrete registers, frame offsets, target opcodes,
 instruction selection, prologue/epilogue, and emission remain later MIR/backend
 authority.
 
-## 1. Normative stage graph
+## 1. Root-order anchor and local stage graph
 
-The exact public stage flow is:
+The root rows consumed and produced by this local runner are:
 
 ```text
-ModuleBuilder
-  --finish() &&--> ModuleDraft
-  --verify_and_publish_raw()--> RawBir
-  --run_bir_pipeline()--> CanonicalBir
-  --verify_preparation_input(target)--> VerifiedPreparationInput
-  --target layout + prepare_canonical_bir(...)--> verified preparation facts
-  --shared BIR allocation--> immutable allocated BIR revision
-  --allocated publication--> PreparedBir / MirReadyBirView
-  --external target MIR construction--> verified target MIR
-  --late assembly--> target output
+S00 LIR import -> private frozen ModuleDraft
+S01 Raw verification/publication -> RawBir
+S02 P01 legalize -> S03 P02 scalar -> S04 P03 cfg -> S05 P04 ssa
+  -> S06 P05 memory -> S07 P06 aggregate -> S08 P07 intrinsics
+S09 Canonical verification/publication -> CanonicalBir
+S10 TargetProfile selection/validation (outside run_bir_pipeline)
 ```
+
+This excerpt is an anchor, not a second order registry. The complete flow,
+including `S11`-`S29`, the `S25 -> S23` allocation retry edge, every verifier
+gate, and every target-aware phase is defined only in the root README.
 
 `ModuleDraft` and `RawBir` are defined by
 [`core`](../core/README.md), import by
@@ -69,9 +71,10 @@ allocation, and allocated-publication ownership are documented under their
 existing BIR directories; target MIR remains an external consumer of the
 verified `MirReadyBirView`.
 
-## 2. Immutable built-in pass order
+## 2. Immutable built-in canonical occurrence sequence
 
-The required canonical sequence is exactly:
+Within the root `S02`-`S09` interval, the required canonical occurrence
+sequence is exactly:
 
 ```text
 P01 legalize
@@ -311,7 +314,8 @@ owns pass contexts, sessions, results, preservation declarations,
 occurrence to one registered implementation and supplies its barriers; it does
 not wrap those interfaces in a second type system.
 
-The runner alone sequences transactions, verification and stage publication.
+Within `S02`-`S09`, the runner sequences transactions, verification and stage
+publication.
 A pass cannot construct a session, commit, mint a stage token, clear a
 diagnostic or retain mutable storage. A false no-change result, undeclared edit
 or invalid preservation claim is a framework contract violation and fails the
@@ -460,8 +464,10 @@ module-wide analysis that reads bodies additionally includes the ordered
 function-revision digest; module revision alone is insufficient. Analyses may
 share prerequisite results, but dependency edges are explicit.
 
-After a commit the runner compares `MutationSummary` with
-`PreservedAnalyses`. It invalidates all unpreserved results transitively. At a
+Before an occurrence fork becomes the next checkpoint, the runner compares
+its exact `MutationSummary` with `PreservedAnalyses`. It invalidates all
+unpreserved results transitively and rebinds a preserved result only through
+the analysis manager's checked operation. At a
 minimum:
 
 - CFG mutation invalidates reachability, dominance, post-dominance, loop,
