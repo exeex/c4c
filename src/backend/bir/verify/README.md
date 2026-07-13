@@ -1,16 +1,1183 @@
-# BIR Verification Contract
+# BIR verifier design
 
-Status: scaffold over an existing partial verifier.
+Status: design under review. The checked-in `verifier.hpp/.cpp` is a partial
+foundation implementation, not the complete contract described here.
 
-Required profiles are Raw, Canonical, and PreparedInput. Verification covers ID
-ownership/generation, order membership, types and opcode roles, exact def-use,
-dominance, terminators, CFG/phi agreement, call signatures, stage legality, and
-the absence of legacy/prepared/MIR authority in canonical storage.
+This directory owns structural and semantic validation of published BIR. The
+first implementation target is **RawBir**: the result of LIR lowering and the
+input to the ordered canonicalization pipeline. Raw means “not canonicalized”; it
+does not mean malformed, partly built, text-identified, or safe only because a
+later pass happens to repair it.
 
-Debug/test mode verifies after every mutating pass. Publication of `RawBir`,
-`CanonicalBir`, and `PreparedBir` always verifies. Diagnostics are structured by
-rule and semantic ID; rendered strings are never used to make decisions.
+The verifier is a trust boundary. A successful result permits passes and
+analyses to use typed IDs, complete operand traversal, exact definitions, and a
+well-formed CFG without defensive fallback. It does not certify target ABI,
+register allocation, frame layout, target opcodes, encodings, or final emission.
 
-Legacy coverage includes `prealloc/prepared_contract_verifier.*`; every legacy
-agreement check must become a named stage invariant or be deleted as duplicate
-authority.
+## Profiles and stage boundary
+
+```text
+LIR lowering -> ModuleBuilder -> frozen ModuleDraft --verify_and_publish_raw--> RawBir
+                                      \--verify_candidate(Raw)--> diagnostics only
+ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
+preparation input gate --verify(PreparedInput)--> accepted input for typed plans
+```
+
+The arrow from `ModuleDraft` to `RawBir` is an unforgeable publication boundary,
+not a verifier that receives an already-created `RawBir`. Only
+`verify_and_publish_raw(ModuleDraft&&)` may freeze one exact draft revision, run
+full Raw verification, and consume it into `RawBir` after a successful report.
+`verify_candidate` is diagnostic-only and can never manufacture a stage token,
+even when its report is green. Canonical pass publication uses the analogous
+private transaction capability. Public
+`verify(ModuleView)` exists to re-check an already published snapshot, not to
+legitimize an unverified one. `RawBir` never means “verification disabled,”
+including in unit tests: tests that intentionally build malformed storage may
+inspect a candidate/report through a private test fixture but cannot obtain a
+`RawBir` stage token.
+
+| Profile | Required now | Meaning |
+|---|---:|---|
+| `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
+| `Canonical` | later | Raw rules plus the post-pass normal forms promised by the pipeline: legalized types/opcodes, canonical memory/address form, SSA/phi rules, and normalized aggregate/intrinsic forms. |
+| `PreparedInput` | later | Canonical rules plus prerequisites required to derive ABI/address/call plans. It still contains no prepared facts. |
+
+The profiles are cumulative. `PreparedInput` cannot weaken `Canonical`, and
+`Canonical` cannot weaken `Raw`. A builder-only object may temporarily violate
+the rules, but it is not a published stage and must not be passed to an analysis
+or downstream consumer.
+
+There is deliberately no verifier profile named simply `Prepared`.
+`PreparedInput` verifies the immutable semantic input to target preparation;
+prepared plans are different typed products with their own verifiers. Adding
+ABI locations, register allocation, spill/reload state, frame facts, target
+opcodes, helpers, or encodings to BIR and then calling that object “Prepared
+BIR” would blur authority and is forbidden in every BIR profile.
+
+Raw allowances are explicit:
+
+- blocks may be unreachable and the verifier diagnoses but does not reject them
+  unless an option requests reachability closure;
+- the CFG may have critical edges, duplicate semantic destinations from distinct
+  switch cases, loops, irreducible regions, and blocks in non-RPO storage order;
+- memory-resident variables and repeated loads/stores are valid;
+- phi nodes are optional before SSA construction; if a raw phi is present, it is
+  already a real edge-defined value and must obey the structural phi rules below;
+- target-independent raw opcodes that a later ordered pass legalizes are valid
+  only when enumerated in the Raw opcode schema. “Unknown” is never a profile.
+
+An operation that is semantically known but not yet lowerable by the current
+backend is also not “unknown.” It may be published only if the Raw schema has a
+closed, typed alternative and an explicit later legalizer/fallback owner. A
+source construct that cannot be represented losslessly is rejected by the LIR
+importer before publication; an `Unsupported` instruction, string payload, or
+opaque side record is not valid Raw BIR.
+
+## Proposed public API
+
+Names are proposed and may change with the core schema. The API must consume
+read-only views, not renderer text or legacy structs.
+
+```cpp
+enum class VerifyProfile : std::uint8_t {
+  Raw,
+  Canonical,
+  PreparedInput,
+};
+
+struct VerifyOptions {
+  std::size_t max_diagnostics = 256;
+  bool warnings_as_errors = false;
+  bool reject_unreachable_blocks = false;
+  bool verify_cached_def_use = true;
+};
+
+enum class DiagnosticSeverity : std::uint8_t { Note, Warning, Error };
+enum class VerifyPhase : std::uint8_t {
+  Storage,
+  Module,
+  SymbolsAndGlobals,
+  FunctionShape,
+  Cfg,
+  InstructionSchema,
+  Types,
+  DefUse,
+  Ssa,
+  StageBoundary,
+};
+
+enum class VerifyRule : std::uint16_t {
+  ModuleEpochInvalid = 0x0100,
+  ModuleRevisionInvalid = 0x0101,
+  RevisionChanged = 0x0102,
+  IdWrongEpoch = 0x0103,
+  IdWrongOwner = 0x0104,
+  IdOutOfRange = 0x0105,
+  IdTombstone = 0x0106,
+  IdStaleGeneration = 0x0107,
+  IdWrongKind = 0x0108,
+  ForeignReference = 0x0109,
+  OrderMissing = 0x010A,
+  OrderDuplicate = 0x010B,
+  OrderForeign = 0x010C,
+  StorageOrphan = 0x010D,
+  ReservationUnresolved = 0x010E,
+  ReservationDuplicate = 0x010F,
+  ReservationKindMismatch = 0x0110,
+  ReservationDefinitionMismatch = 0x0111,
+  ForwardReferenceUnresolved = 0x0112,
+  ActiveEditAtFreeze = 0x0113,
+
+  DataLayoutInvalid = 0x0200,
+  TypeKindInvalid = 0x0201,
+  TypeChildInvalid = 0x0202,
+  TypeRecursionInvalid = 0x0203,
+  TypeRoleInvalid = 0x0204,
+  IntegerWidthInvalid = 0x0205,
+  FloatFormatInvalid = 0x0206,
+  AddressSpaceInvalid = 0x0207,
+  TypeLayoutInvalid = 0x0208,
+  ConstantKindInvalid = 0x0209,
+  ConstantTypeMismatch = 0x020A,
+  ConstantPayloadInvalid = 0x020B,
+  UndefPoisonRoleInvalid = 0x020C,
+
+  SymbolIndexMismatch = 0x0300,
+  SymbolNameInvalid = 0x0301,
+  SymbolDuplicate = 0x0302,
+  SymbolKindConflict = 0x0303,
+  DeclarationConflict = 0x0304,
+  DefinitionDuplicate = 0x0305,
+  LinkageInvalid = 0x0306,
+  VisibilityInvalid = 0x0307,
+  SectionInvalid = 0x0308,
+  TlsInvalid = 0x0309,
+  AliasInvalid = 0x030A,
+  AliasCycle = 0x030B,
+  DirectiveInvalid = 0x030C,
+  GlobalStateInvalid = 0x030D,
+  GlobalLayoutInvalid = 0x030E,
+  InitializerKindInvalid = 0x030F,
+  InitializerShapeInvalid = 0x0310,
+  InitializerBoundsInvalid = 0x0311,
+  RelocationTargetInvalid = 0x0312,
+  RelocationRangeInvalid = 0x0313,
+  RelocationOverlap = 0x0314,
+  BlockAddressInvalid = 0x0315,
+  TopLevelAsmDependencyInvalid = 0x0316,
+
+  FunctionShapeInvalid = 0x0400,
+  SignatureInvalid = 0x0401,
+  FunctionAttributeInvalid = 0x0402,
+  ParameterMismatch = 0x0403,
+  ParameterDefinitionInvalid = 0x0404,
+  LocalInvalid = 0x0405,
+  EntryBlockInvalid = 0x0406,
+  BlockShapeInvalid = 0x0407,
+  TerminatorMissing = 0x0408,
+  TerminatorSchemaInvalid = 0x0409,
+  ReturnOperandInvalid = 0x040A,
+  EdgeTargetInvalid = 0x040B,
+  EdgeKeyInvalid = 0x040C,
+  SuccessorSlotInvalid = 0x040D,
+  SwitchCaseInvalid = 0x040E,
+  IndirectTargetSetInvalid = 0x040F,
+  AsmGotoPairInvalid = 0x0410,
+  UnreachableBlock = 0x0411,
+
+  OpcodeInvalid = 0x0500,
+  OpcodeProfileInvalid = 0x0501,
+  DescriptorMissing = 0x0502,
+  DescriptorMismatch = 0x0503,
+  OperandArityInvalid = 0x0504,
+  OperandKindInvalid = 0x0505,
+  OperandTypeMismatch = 0x0506,
+  ResultArityInvalid = 0x0507,
+  ResultTypeMismatch = 0x0508,
+  DuplicateDefinition = 0x0509,
+  MissingDefinition = 0x050A,
+  ResultDefinitionInvalid = 0x050B,
+  DefUseMismatch = 0x050C,
+  StaleUse = 0x050D,
+  PhiPlacementInvalid = 0x050E,
+  PhiEdgeMultisetMismatch = 0x050F,
+  PhiTypeMismatch = 0x0510,
+  UseBeforeDefinition = 0x0511,
+  UseNotDominated = 0x0512,
+  CrossComponentUse = 0x0513,
+
+  CallCalleeInvalid = 0x0600,
+  CallSignatureMismatch = 0x0601,
+  CallArgumentMismatch = 0x0602,
+  CallEffectsInvalid = 0x0603,
+  CallOperandBundleInvalid = 0x0604,
+  CallReturnMismatch = 0x0605,
+  TailCallInvalid = 0x0606,
+  NoReturnContractInvalid = 0x0607,
+  VarArgInvalid = 0x0608,
+
+  MemoryAccessInvalid = 0x0700,
+  MemoryAlignmentInvalid = 0x0701,
+  GepInvalid = 0x0702,
+  GepIndexInvalid = 0x0703,
+  DynamicAllocInvalid = 0x0704,
+  DynamicSizeOverflow = 0x0705,
+  StackStateInvalid = 0x0706,
+  MemoryIntrinsicInvalid = 0x0707,
+  AtomicTypeInvalid = 0x0708,
+  AtomicOrderingInvalid = 0x0709,
+  AtomicResultInvalid = 0x070A,
+  FenceInvalid = 0x070B,
+
+  AggregatePathInvalid = 0x0800,
+  AggregateLayoutMismatch = 0x0801,
+  VectorLaneInvalid = 0x0802,
+  VectorMaskInvalid = 0x0803,
+  IntrinsicIdInvalid = 0x0804,
+  IntrinsicSchemaInvalid = 0x0805,
+  InlineAsmStructureInvalid = 0x0806,
+  InlineAsmConstraintInvalid = 0x0807,
+  InlineAsmTieInvalid = 0x0808,
+  InlineAsmClobberInvalid = 0x0809,
+  InlineAsmEffectInvalid = 0x080A,
+
+  DebugReferenceInvalid = 0x0900,
+  DebugCardinalityInvalid = 0x0901,
+  ProvenanceInvalid = 0x0902,
+  ForbiddenStageFact = 0x0903,
+  ForbiddenCompatibilityPayload = 0x0904,
+};
+
+struct ReservationSite {
+  FunctionId owner;
+  InstId instruction;
+  std::uint64_t reservation_nonce;
+};
+
+using VerifyEntity = std::variant<
+    std::monostate, ModuleEntityId, FunctionEntityId, EdgeKey, SuccessorSlot,
+    ReservationSite, OperandSite, InitializerPath>;
+
+// ModuleEntityId is the exact core variant containing TypeId, TypeNameId,
+// ConstantId, InitializerId, SymbolId, GlobalId, DirectiveId, FunctionId,
+// DebugFileId, DebugScopeId, DebugLocId, and OriginId. FunctionEntityId contains
+// LocalId, BlockId, InstId, and ValueId. monostate denotes the module as a whole.
+
+struct VerifyLocation {
+  FunctionId function{};
+  BlockId block{};
+  InstId instruction{};
+  std::optional<std::uint32_t> operand_index;
+  std::optional<std::uint32_t> result_index;
+};
+
+struct VerifyDiagnostic {
+  VerifyRule rule;
+  VerifyPhase phase;
+  DiagnosticSeverity severity;
+  VerifyEntity entity;
+  VerifyLocation location;
+  std::optional<VerifyEntity> related_entity;
+  std::string detail;       // presentation only
+};
+
+struct VerificationReport {
+  VerifyProfile profile;
+  std::vector<VerifyDiagnostic> diagnostics;
+  bool truncated = false;
+  [[nodiscard]] bool ok() const noexcept;
+};
+
+class ModuleDraft;          // move-only unpublished storage
+class CandidateModuleView;  // read-only borrow of one frozen draft revision
+
+class PublicationFailure {
+ public:
+  PublicationFailure(PublicationFailure&&) noexcept = default;
+  PublicationFailure& operator=(PublicationFailure&&) noexcept = default;
+  PublicationFailure(const PublicationFailure&) = delete;
+  PublicationFailure& operator=(const PublicationFailure&) = delete;
+
+  [[nodiscard]] const VerificationReport& verification() const noexcept;
+  [[nodiscard]] const std::optional<BirError>& preceding_error() const noexcept;
+
+ private:
+  PublicationFailure(VerificationReport verification,
+                     std::optional<BirError> preceding_error);
+
+  VerificationReport verification_;  // always present, including early failure
+  std::optional<BirError> preceding_error_;
+
+  friend class RawPublisher;
+};
+
+[[nodiscard]] VerificationReport verify(
+    ModuleView module, VerifyProfile profile, VerifyOptions options = {});
+[[nodiscard]] VerificationReport verify_candidate(
+    CandidateModuleView module, VerifyProfile diagnostic_profile,
+    VerifyOptions options = {});
+[[nodiscard]] Result<RawBir, PublicationFailure> verify_and_publish_raw(
+    ModuleDraft&& draft, VerifyOptions options = {});
+[[nodiscard]] VerificationReport verify_function(
+    ModuleView module, FunctionId function, VerifyProfile profile,
+    VerifyOptions options = {});
+[[nodiscard]] VerificationReport verify_after_edit(
+    CandidateModuleView module, const MutationSummary& edit,
+    VerifyProfile profile, VerifyOptions options = {});
+```
+
+`RawPublisher` is verifier-private implementation machinery used only by
+`verify_and_publish_raw`; no builder, importer, or caller can construct or copy
+`PublicationFailure`. Even an early storage/build failure receives a complete
+Raw-profile report (possibly containing one quarantining rule) plus the original
+`BirError` in `preceding_error_`.
+
+### Stable rule registry
+
+The enum above is the complete registry for this schema revision. Numeric values
+are serialization/test API and never change meaning; new rules receive unused
+values rather than renumbering an existing rule. Messages are presentation only.
+
+| Range | Rule IDs | Required coverage |
+|---|---|---|
+| `0x0100–0x0113` | `ModuleEpochInvalid` through `ActiveEditAtFreeze` | module revision; stale/foreign IDs; exact order/storage membership; every `ReservedInst` resolved exactly once with matching owner/results/types; no active edit at freeze |
+| `0x0200–0x020C` | `DataLayoutInvalid` through `UndefPoisonRoleInvalid` | type graph, recursion, role legality, integer/float/address-space domains, object layout, constants including exact x87 extended-80/IEEE binary128 payloads, `undef`, and `poison` |
+| `0x0300–0x0316` | `SymbolIndexMismatch` through `TopLevelAsmDependencyInvalid` | declarations/definitions, linkage/visibility/section/TLS, aliases/directives, typed top-level-asm dependencies, global state/layout, initializer trees, relocations, label differences, and block addresses |
+| `0x0400–0x0411` | `FunctionShapeInvalid` through `UnreachableBlock` | signatures/attributes/parameters/locals, entry and block shape, one terminator, optional return operand, exact `SuccessorSlot`/`EdgeKey`, switch/indirect/asm-goto edges, reachability warning |
+| `0x0500–0x0513` | `OpcodeInvalid` through `CrossComponentUse` | opcode/profile/descriptor closure, operand/result arity/kind/type, unique definitions, exact def-use, phi placement and edge-key multiset, same-block order and dominance |
+| `0x0600–0x0608` | `CallCalleeInvalid` through `VarArgInvalid` | direct `SymbolId` or indirect callee, signature/arguments, `CallEffects`, typed operand bundles, optional semantic result/return, tail/noreturn, and variadics |
+| `0x0700–0x070B` | `MemoryAccessInvalid` through `FenceInvalid` | loads/stores/address spaces/alignment, GEP, dynamic allocation and stack state, memcpy/memmove/memset, atomics and fences |
+| `0x0800–0x080A` | `AggregatePathInvalid` through `InlineAsmEffectInvalid` | aggregates, layouts, vector lanes/masks, intrinsic registry/schema, structured inline-asm operands/constraints/ties/clobbers/effects |
+| `0x0900–0x0904` | `DebugReferenceInvalid` through `ForbiddenCompatibilityPayload` | debug/provenance structure and the absence of route/preparation/regalloc/MIR/text-placeholder authority |
+
+The coverage ledger below maps every feature family to these IDs. A feature
+cannot be called verifier-covered until its negative tests assert the mapped
+rule IDs.
+
+`verify_function` still receives the module so symbol, type, and global
+references can be checked. Scope and profile are explicit entry-point inputs,
+not mutable options that can silently retain `Raw` while publishing a
+`Canonical` object. `CandidateModuleView` is immutable to the
+verifier but represents a builder/pass transaction that has not been
+published; it is not constructible from arbitrary storage. `verify_after_edit`
+is an optimization, never a weaker contract: it expands the edit to all
+affected owners, CFG neighbors, users, and dominance dependents. Publication
+and CI run the same full Raw rule set, but only
+`verify_and_publish_raw(ModuleDraft&&)` can atomically convert its successful
+candidate to the public stage type. `verify_candidate`, `verify_function`, and
+`verify_after_edit` cannot issue a module publication proof even when their
+report is green.
+
+The checked-in bootstrap names (`FoundationVerifier`, `VerificationResult`, and
+`VerifyProfile::FoundationRaw`) remain the implementation adapter until this
+API lands atomically. They are not a second verification contract. In
+particular, builder publication must not run the bootstrap verifier and then
+advertise the result as satisfying this document's full `Raw` profile.
+
+`VerificationReport` is a value, not a second `Result` template or a thrown
+exception. Core builder operations continue to use `BirResult<T>` (the common
+`Result<T, BirError>` alias). The publication entry point returns
+`Result<RawBir, PublicationFailure>`, where `PublicationFailure` owns the
+complete `VerificationReport` on every failure and may additionally carry the
+preceding `BirError` that prevented or accompanied semantic verification. The
+LIR importer wraps this exact move-only `PublicationFailure` in its
+`ImportFailure`; it does not extract/rebuild the report, translate `VerifyRule`
+IDs, or return candidate storage. This keeps import diagnostics, builder errors,
+and verification findings layered without competing success types.
+
+Diagnostics are sorted deterministically by phase, module order, function order,
+block order, instruction order, operand/result index, rule, and semantic ID.
+Traversal order, hash iteration order, pointer values, debug names, and rendered
+BIR never affect acceptance or output order. Diagnostics are deduplicated by
+structured rule/location/entity key, fully sorted, and only then truncated to
+`max_diagnostics`; stopping at the first N hash-discovered failures would be
+nondeterministic. An implementation safety cap uses the same deterministic
+key-retention rule and sets `truncated`. Invalid references are quarantined so
+later phases do not dereference them. A diagnostic may relate two IDs, for
+example a duplicate definition and the first definition.
+
+## Validation phase order
+
+The ordering prevents semantic checks from trusting corrupt storage:
+
+1. **Storage and ID safety.** Establish resolvable live objects, owners,
+   generations, kinds, and exact order membership.
+2. **Module/type universe.** Validate the semantic type graph and immutable
+   lowering-environment metadata without consulting ABI/codegen policy.
+3. **Symbols and globals.** Build semantic symbol indices and validate
+   declarations, definitions, object data, and initializer references.
+4. **Function shape.** Check signature, parameter definitions, declaration/body
+   split, local objects, and ordered ownership.
+5. **CFG.** Decode every ordered `SuccessorSlot`, derive incoming slot
+   multisets/deduplicated adjacency as separate views, and classify reachability.
+6. **Instruction schema.** Check bounded opcode/terminator alternatives and the
+   exact operand/result roles of each.
+7. **Types and feature-specific rules.** Check operands, results, calls, memory,
+   atomics, aggregates, intrinsics, and inline assembly.
+8. **Complete def-use.** Recompute definitions and uses from the semantic IR and
+   compare any cached index exactly.
+9. **SSA/dominance.** Apply profile-specific use ordering, phi edge, and
+   dominance rules.
+10. **Stage boundary.** Reject legacy route data and any prepared/MIR authority.
+
+If a prerequisite phase is corrupt, dependent checks emit at most a concise
+“not checked because …” note. They must not guess through names or side tables.
+
+## Storage, stable IDs, and order ownership
+
+Raw publication requires:
+
+- module epoch is nonzero; every ID has the module epoch of the view being
+  verified;
+- `FunctionId` belongs to the module; `BlockId`, `InstId`, `ValueId`, and local
+  object IDs belong to exactly one `FunctionId`;
+- slot is in range, live rather than tombstoned, generation is exact, and the
+  ID’s discriminant agrees with stored object kind;
+- every live function occurs exactly once in module order; every live block
+  exactly once in its function’s block order; every live instruction exactly
+  once in exactly one owned block’s instruction order;
+- every ordered ID resolves to a live object of the expected owner, and no live
+  storage object is orphaned from its owning order;
+- every result `ValueId` resolves to exactly one `InstResultDef(inst, index)` and
+  the instruction’s result list points back; every parameter resolves to exactly
+  one `ParameterDef(ordinal)` and the signature order points back;
+- deletion/reuse makes old generations stale. A stale, foreign-module, or
+  foreign-function ID is always an error even if the slot currently contains an
+  object with similar text or type;
+- every `ReservedInst` is defined exactly once before draft freeze using its
+  unexpired move-only capability. Owner, `InstId`, result IDs/count/types, block
+  membership, and order remain identical to the reservation. A dropped token
+  leaves `ReservationUnresolved`; duplicate/expired consumption is
+  `ReservationDuplicate`; owner/kind disagreement is
+  `ReservationKindMismatch`; result/order disagreement is
+  `ReservationDefinitionMismatch`. Other symbol/type/function declarations use
+  explicit complete declaration states rather than undefined reservations, and
+  every semantic forward reference must resolve (`ForwardReferenceUnresolved`);
+- freeze rejects any live builder/editor capability (`ActiveEditAtFreeze`); no
+  later completion is allowed against the frozen revision;
+- physical slot index is not program order. Passes use explicit order and IDs;
+  renderer/debug names are non-authoritative.
+
+Function-local IDs make accidental cross-function operands, branch targets,
+phi predecessors, and local objects diagnosable as `WrongOwner`; module epochs
+make IDs retained from a replaced module diagnosable as `WrongEpoch` or
+`StaleGeneration`.
+
+## Module, types, symbols, and globals
+
+### Type universe
+
+The module carries one immutable lowering-environment identity (target triple,
+data-layout version, pointer widths/address spaces, and language ABI mode) so
+source-chosen object sizes and floating semantics can be checked consistently.
+Its fields are bounded and mutually coherent, and the identity cannot change
+within an epoch. This context does not authorize physical registers, argument
+placement, frame layout, instruction encodings, or relocation encodings in BIR.
+
+Every type alternative must be bounded and recursively well-formed. Raw coverage
+must eventually include: void only in permitted roles; booleans; signedness-free
+integer widths including 1/8/16/32/64/128; F32/F64/F128; pointers with address
+space and, if the chosen schema retains it, pointee/function signature; arrays;
+vectors/scalable-vector metadata; structs/unions with complete, opaque, packed,
+and named forms; and function types including variadicness and calling
+convention. Rules include:
+
+- no void value, parameter, load/store element, aggregate field, or phi input;
+- positive legal integer/vector widths and array counts; no size arithmetic
+  overflow;
+- referenced child `TypeId`s resolve in the module; recursive records use the
+  explicit named/opaque mechanism rather than cyclic value storage;
+- field offsets, explicit size/alignment, when present in Raw, agree internally
+  and satisfy nonzero/power-of-two and bounds rules. Target-computed layout is
+  not invented by this verifier;
+- function return/parameter types and calling convention are legal IR facts;
+  ABI classes, registers, and stack locations are not.
+
+The verifier contract assumes immutable, module-owned `TypeId` and `ConstantId`
+entities. Constants appear in typed `Operand` alternatives and therefore have
+uses but are not fake `ValueId` definitions; exact value def-use remains limited
+to parameters, block arguments if adopted, and instruction results.
+
+The current `core/type.hpp` scalar enum is only bootstrap coverage and must not
+be read as the final backend feature set.
+
+`F128` cannot be verified as a universal synonym for IEEE binary128. The
+source/reference backends use the same language-level long-double family for
+IEEE binary128 on AArch64/RISC-V and x87 extended precision with padded
+10/12/16-byte storage on x86 targets. The final type schema therefore records
+floating semantics separately from object storage size/alignment (for example
+`IeeeBinary128` versus `X87Extended80`). Constants carry exact semantic bits and
+defined padding policy. The verifier rejects a target/profile combination whose
+semantic format, payload width, or storage layout disagree; it never host-
+round-trips the payload through `double`.
+
+Legacy `Vrm1`/`Vrm2`/`Vrm4`/`Vrm8` and LIR `VrmRegister` are target carrier
+types, not portable scalar types. Import must translate them to an equivalent
+semantic vector/aggregate when lossless, or report a source gap. Raw verification
+rejects VRM register-group width as value type authority.
+
+### Symbols and declarations
+
+`SymbolId`/`GlobalId`/`FunctionId` are semantic identity. Link spelling is an
+attribute indexed to that identity, never a parallel authority. The module must
+enforce:
+
+- nonempty link names where linkage requires a name and uniqueness in the
+  relevant linker namespace;
+- exact agreement between symbol index and owned function/global;
+- compatible repeated declarations if the schema permits them, at most one
+  definition, and no function/object kind collision;
+- function declaration: signature and attributes are valid, no blocks,
+  instructions, parameters-as-values, or local objects;
+- function definition: body is present, entry block is first in semantic order,
+  parameter count/types equal the signature, and linkage/visibility attributes
+  are coherent;
+- global declaration/extern: no object bytes requiring emitted storage;
+- global/common/tentative/defined forms obey their explicit linkage model;
+  defined storage has a valid size/alignment and a permitted initializer;
+- constructors, destructors, aliases, weak/visibility/version metadata, TLS,
+  sections, and top-level assembly reference declared semantic symbols where
+  applicable. Alias chains are kind/type compatible, remain in one valid linker
+  namespace, and are acyclic; constructor/destructor entries have valid
+  function signatures and deterministic priorities. Section/linkage/visibility,
+  TLS model, explicit alignment, and used/retain state obey their closed
+  combinations. None of these facts can be recovered by parsing display text.
+
+Top-level assembly uses the exact core carrier:
+
+```cpp
+struct TopLevelAsmSpec {
+  std::string source_text;
+  std::vector<SymbolId> symbol_dependencies;
+  OriginId origin;
+};
+```
+
+The verifier checks that every `symbol_dependencies` entry resolves in the same
+module epoch, has a link-visible symbol kind usable by assembly, and appears in
+deterministic declared order. Duplicate IDs are rejected unless the schema
+later gives dependency multiplicity meaning. `origin` resolves normally.
+`source_text` is preserved for the assembler but is never scanned to discover,
+add, reorder, or repair symbol identity. Missing/foreign/stale dependencies are
+`TopLevelAsmDependencyInvalid`; malformed directive structure remains
+`DirectiveInvalid`.
+
+### Global initializer and object data rules
+
+Initializer validation recursively walks every element and relocation slot:
+
+- initializer kind is legal for the global’s type and declaration state;
+- emitted byte count fits the object, required padding is explicit or defined by
+  the initializer schema, alignment is valid, and range arithmetic cannot wrap;
+- zero-sized objects/arrays are accepted only when the selected language
+  extension and object schema explicitly permit them; they retain distinct
+  symbol identity and never justify underflowed bounds or overlapping
+  relocation slots;
+- integer/floating bit payload has the declared width; arrays/vectors have the
+  declared count; structs/unions obey selected field/layout representation;
+- zero, scalar, string/wide string/char16 data, compound data, address,
+  address-plus-addend, label difference, and relocation-bearing bytes have
+  explicit schemas;
+- every symbol/label relocation resolves by ID, has supported width/alignment,
+  lies within object bounds, and relocation slots do not overlap illegally;
+- an address initializer targets a compatible function/global/TLS/label kind;
+  text spelling may be printed but cannot repair a missing ID;
+- label-address and label-difference initializers carry an owning `FunctionId`
+  plus live local `BlockId`s; both labels in a difference belong to that same
+  function. Their semantic addend/width is validated here, while target
+  relocation encoding and whether a particular object format supports the
+  expression are checked later;
+- extern declarations do not smuggle initializer/object data; defined objects do
+  not depend on prepared `object_data` records as their semantic source.
+
+## Functions, blocks, terminators, and CFG
+
+Every definition has at least one block and one semantic entry block. Each block
+has an instruction order and exactly one terminator stored separately from
+ordinary instructions. No instruction may appear after a terminator. Each
+terminator variant has an exact schema:
+
+```cpp
+struct ReturnTerm { std::optional<Operand> value; };
+struct SuccessorSlot {
+  BlockId source;
+  SuccessorRole role;
+  std::uint32_t index;
+  BlockId target;
+};
+struct EdgeKey {
+  BlockId source;
+  SuccessorRole role;
+  std::uint32_t successor_index;
+};
+```
+
+- `return`: one optional semantic operand; it is absent exactly for void and
+  otherwise has the function's semantic return type, including an aggregate
+  type when applicable. Raw has no hidden ABI return lane or multivalue return
+  carrier (`ReturnOperandInvalid`);
+- `jump`: one local live target;
+- `cond_jump`: local I1 condition and two local live targets (the targets may be
+  equal if the Raw schema deliberately permits this);
+- `switch`: integer selector, unique case constants representable by its type,
+  one default, and all local targets;
+- `indirect_jump`: pointer/code-address operand and a nonempty ordered list of
+  possible local target slots when required for analysis;
+- `asm_goto`: references a structured `InlineAsm` instruction that is the final
+  ordinary instruction in the same block, plus one explicit fallthrough slot
+  and ordered goto-target slots. Constraint label slots match terminator slots
+  one-for-one (`AsmGotoPairInvalid`); no mid-block instruction owns hidden exits;
+- `unreachable`: no operands or successors;
+
+CFG successor authority is the ordered `SuccessorSlot` sequence derived solely
+from semantic terminators. Each slot has
+`EdgeKey{source, successor_role, successor_index}` and a target. Parallel slots
+remain distinct even when they share source and target—for example two switch
+cases or asm labels targeting the same block. An analysis may additionally
+derive a deduplicated adjacency set, but it cannot replace slot authority.
+Ordinary non-goto inline asm contributes no edge; an importer encountering asm
+goto splits the source block at that operation and publishes `asm_goto` as the
+first block's terminator. This avoids pretending that values defined after a
+mid-block exit dominate its target. CFG edges are not stored as authoritative
+side tables (`SuccessorSlotInvalid`, `EdgeKeyInvalid`, `EdgeTargetInvalid`).
+Entry reachability is computed from slot targets. Raw accepts
+unreachable blocks by default but still validates their local contents, IDs,
+types, def-use, and internal dominance as separate roots. A warning identifies
+them deterministically. Canonical policy may later require removal.
+
+## Instruction schema and complete operand traversal
+
+Each opcode owns a declarative schema: legal profiles, fixed/variadic operand
+roles, result arity, operand/result type predicates, side-effect class, may-trap
+flag, memory effect, and control-flow contribution. The verifier dispatches on
+the bounded opcode variant, not strings. Unknown, valueless, mismatched payload,
+or stage-illegal alternatives are errors.
+
+A single semantic visitor must enumerate **every** `ValueId`, `BlockId`,
+`FunctionId`, `GlobalId`, local object, type, and symbol reference in an
+instruction/terminator/initializer. The verifier, def-use builder, liveness,
+rewriter, cloning, and deletion preconditions share this visitor or generated
+schema. Special payloads are not exceptions: indirect callee, call arguments,
+phi incoming values and predecessor IDs, GEP indices, atomic operands, intrinsic
+arguments, inline-asm inputs/outputs/ties/goto labels, switch values, and return
+values all participate.
+
+Exact def-use means:
+
+- every used `ValueId` resolves locally and has one coherent definition;
+- every instruction result is unique and its declared result type matches the
+  stored `ValueDef`;
+- recomputed `(user, operand-role/index)` multisets equal any cached use lists;
+- replacing/removing/cloning instructions cannot leave stale users or duplicate
+  definitions;
+- constants, globals, blocks, and local objects use their own typed references,
+  not fake value names;
+- no consumer may discover a use by parsing printer output or by maintaining a
+  second hand-written partial visitor.
+
+## LIR import gate and explicit source gaps
+
+Raw verification is not a substitute for lossless import. The importer first
+validates the LIR alternative, converts every semantic reference to a typed BIR
+ID, and records a structured source location. It then submits one unpublished
+candidate to full Raw verification. A failed conversion or verification returns
+an error and publishes no `RawBir`.
+
+The import dispatch is exhaustive by `std::variant` alternative **index**. The
+current source has 38 unique `LirInst` alternatives and six `LirTerminator`
+alternatives; inventory tests pin both counts and require an explicit import or
+rejection path for every index. The legacy stub and typed forms
+(`LirLoad`/`LirLoadOp`, `LirCall`/`LirCallOp`, and peers) are separate source
+alternatives even when they lower to one BIR opcode.
+
+| Current LIR source family | Raw publication requirement | Gap/deferred disposition |
+|---|---|---|
+| constants, scalar ops, casts, comparisons, select, aggregate/vector insert/extract/shuffle | typed operands, exact bit payloads, result types, predicates and indices | malformed or text-only opcode/type is `UnsupportedSourceForm`; legalization of a representable operation is a later pass |
+| load/store/GEP, hoisted and inline alloca, memcpy/memset, stack save/restore | one semantic memory/object operation with typed address, size, alignment, volatility and address space | `alloca_insts` is merged into semantic entry order; it is never a second instruction list |
+| direct/indirect calls and variadic operations | typed callee identity or callee value, complete function signature, fixed/extra argument boundary and every argument value | `callee_name`, `args_str`, or incomplete extern return-only data cannot supply missing identity/signature; ABI classification is deferred |
+| branch/conditional/return/switch/indirect branch/unreachable | one typed terminator per block | `LirIndirectBrOp` must agree with and be consumed into terminator authority; disagreement or an instruction-only carrier is rejected |
+| inline asm | structured template, operand roles/values/types, constraint tokens, clobbers, symbols, address spaces and goto block IDs; asm-goto import splits the block and creates an `asm_goto` terminator | current `LirInlineAsmOp::args_str` and raw constraint text are insufficient by themselves; reject until a lossless carrier exists |
+| globals, strings, externs, struct declarations and initializers | typed symbol/type/object identity and recursive initializer/relocation tree | `init_text`, pool names, or initializer name scans are compatibility text, not importer authority; missing typed initializer references are a source gap |
+| atomics | closed load/store/RMW/cmpxchg/fence payload with ordering and result mode | current `LirInst` has no structured atomic alternatives; this is an explicit producer-schema gap, not permission to copy the legacy parallel table |
+| i128/f128, complex/multivalue and runtime-helper-capable operations | preserve full semantic type, exact constant bits, operands and semantic results | target helper choice, split lanes and physical return carriers are deferred to legalization/preparation/MIR |
+| specialization/layout observations and printer/debug text | retain only downstream semantic IDs or optional non-authoritative diagnostics | resolved specialization is reflected in symbols before import; observations/text never repair missing semantic data |
+
+Every rejected source family reports a stable import error containing source
+function/block/instruction index (or module field), source alternative index,
+feature family, and missing semantic carrier. It must not create a placeholder
+instruction and hope a later pass repairs it. The Raw verifier still rejects a
+candidate containing any compatibility placeholder in case an importer bug
+bypasses this gate.
+
+## Type checking by instruction family
+
+The final opcode table is owned with core IR design. The Raw verifier must at
+least cover these compiler-backend families:
+
+- integer/float/vector unary, binary, shifts, division/remainder and comparison;
+  comparison result is I1, shift count is integer, and opcode/type domains are
+  explicit;
+- select condition is I1 and both alternatives/result have the same type;
+- casts have a legal `(opcode, source type, destination type)` relation,
+  including integer width changes, FP changes/conversions, pointer/integer, and
+  representation-preserving bitcasts;
+- copy/materialize/constant results agree exactly with payload type. Integer,
+  floating, null, zero, `undef`, and `poison` are distinct closed typed operand
+  alternatives; `undef`/`poison` are never magic names or missing `ValueId`s,
+  cannot appear where the opcode forbids them, and retain their distinct
+  semantics through cloning and rewriting;
+- aggregate insert/extract/copy and multi-result operations use in-range field or
+  lane paths and compatible aggregate types;
+- stack/static local allocation has sized non-void element type, nonzero legal
+  alignment, and coherent constant/dynamic size;
+- all memory, call, phi, intrinsic, asm, and terminator rules below.
+
+I128 and F128 are ordinary semantic types, not implicit helper calls. Their
+constants retain all 128 bits; integer division/remainder, floating arithmetic,
+conversions, comparisons, and complex/multivalue forms use the same closed
+opcode/type rules as narrower forms. Raw acceptance requires exact semantics and
+a registered later legalization owner. The legalizer may derive a target
+capability classification (`Native`, `Expand`, `RuntimeFallback`, or
+`UnsupportedForTarget`) outside the instruction; the Raw verifier does not
+choose a helper. `RuntimeFallback` selection, helper
+symbol/signature, split lanes, calling convention, and result bridging are later
+facts. `UnsupportedForTarget` may be diagnosed at the ordered legalization gate,
+but can never be converted into a silently valid no-op or an opaque Raw opcode.
+
+## Calls
+
+Direct calls reference one declared `SymbolId` of function kind and its function
+type. If that symbol has a body, its unique `FunctionId` relation must agree;
+external declarations need no body ID. A `FunctionId` alone is ownership of a
+body, not linker identity. Indirect calls carry a local pointer/callable operand
+plus an explicit function signature; they do not carry a contradictory direct
+callee or a link-name fallback (`CallCalleeInvalid`). For both:
+
+- result arity is zero exactly for void and otherwise matches the semantic return
+  type as exactly one result; aggregate return remains one aggregate-typed
+  semantic result, not sret/register lanes (`CallReturnMismatch`);
+- fixed argument count and types match the prototype;
+- non-variadic calls have no extra arguments; variadic calls have at least the
+  fixed arguments, `num_fixed_args` agrees with the prototype, and extra
+  arguments already reflect language-level default promotions promised by LIR;
+- calling convention and function attributes (`noreturn`, etc.) agree with the
+  declaration or the explicit indirect-call type;
+- `CallEffects` is a closed semantic record covering return behavior
+  (`ReturnsOnce`, `ReturnsTwice`, `NeverReturns`), unwind behavior, memory
+  effect, convergence, and duplication permission. It must agree with
+  declaration attributes and cannot be reconstructed from a callee name
+  (`CallEffectsInvalid`);
+- semantic call-site attributes such as tail kind are closed flags with legal
+  combinations. A `noreturn`
+  call is followed only by an `unreachable` terminator; values live only across
+  a `returns_twice` call are not optimized under ordinary single-return
+  assumptions. Setjmp/longjmp behavior is expressed by these semantic flags,
+  never inferred from a callee spelling;
+- by-value aggregate intent lives in typed per-argument attributes
+  (object type/size/alignment), not a register class, stack offset, copy slot,
+  or move plan;
+- every operand bundle has a registered typed tag (`Deopt`, `Funclet`,
+  `GcTransition`, or `Assume` in this schema), closed payload schema,
+  permitted call/signature/effect combination, and descriptor-visible operands;
+  unknown tags or opaque byte/text bundles fail as `CallOperandBundleInvalid`;
+- indirect callee, every argument, every bundle operand, and any semantic result
+  is visited by the shared descriptor and exact def-use audit;
+- inline assembly and intrinsics use their own opcodes, not magic callee names.
+
+Raw verification must reject legacy `CallArgAbiInfo`, `CallResultAbiInfo`, sret
+slot names, result lanes, call move records, chosen source routes, physical
+registers, stack offsets, and helper-name inference. `PreparedInput` may require
+enough semantic aggregate/calling-convention data to compute those facts, but it
+still must not contain the computed facts.
+
+## Memory, addresses, GEP, and atomics
+
+Memory is expressed with typed pointer/value/object identities:
+
+- load: pointer address space is legal, loaded type is sized/non-void, result
+  matches, alignment is zero/default or a legal power of two, and volatile is a
+  semantic access flag;
+- store: stored value and memory element type agree, pointer/address space and
+  alignment are valid, and there is no result;
+- local/global/TLS/string/label address formation references a live entity of
+  the right kind; TLS address formation preserves the declared address space
+  and thread-local symbol attribute. A block-address/computed-goto constant is
+  a typed `(FunctionId, BlockId)` semantic reference whose owners agree, not a
+  printable label or ordinary data symbol; a generic pointer address uses a
+  `ValueId`;
+- GEP has pointer base, structured source element type, correctly typed indices,
+  in-range struct indices, explicit inbounds semantics if present, and pointer
+  result/address space. Dynamic array indices are allowed in Raw;
+- pointer arithmetic and int-pointer round trips remain explicit operations;
+  provenance/debug annotations may describe them but cannot authorize them;
+- memcpy/memmove/memset have pointer operands, integer size, legal alignment,
+  address spaces, overlap semantics, and no hidden prepared address plan;
+- dynamic allocation has a sized element, integer count/byte size whose
+  multiplication cannot overflow, legal alignment, and an explicit dynamic
+  lifetime. Stack-save defines a distinguished function-local stack-state
+  pointer result; stack-restore consumes a value derived only from a dominating
+  matching save through token-preserving copy/phi operations. Stack-state
+  pointers cannot escape through stores/calls/returns, participate in pointer
+  arithmetic, or cross functions. Each restore closes the lifetime of dynamic
+  objects allocated after that save on its outgoing paths; a use reached after
+  closure without a new dominating allocation is invalid. Multiple restore
+  sites are legal when CFG/lifetime analysis proves their paths coherent. No
+  frame offset or physical SP decision appears in BIR.
+
+Atomic rules include legal width/type, pointer/value agreement, alignment,
+address space, and ordering matrix: load forbids release/acq_rel; store forbids
+acquire/acq_rel; RMW has an opcode supported for its scalar domain; compare
+exchange has compatible expected/desired and legal success/failure pairing
+(failure is never release/acq_rel and is no stronger than success); fence uses a
+fence ordering; result type matches old-value versus boolean-success semantics.
+There must be one semantic atomic instruction, not an ordinary memory op plus a
+parallel `atomic_operations` agreement table.
+
+## Phi, SSA, dominance, and edges
+
+BIR values always have exact single definitions even before the SSA construction
+pass. “Pre-SSA Raw” means addressable variables can remain in memory and phi
+insertion is not required; it does not permit ambiguous named definitions.
+
+For every phi that does exist in Raw:
+
+- phis form a contiguous prefix of the block;
+- result and every incoming have one identical non-void type;
+- each incoming is `(EdgeKey, Operand)`. Its key resolves to one live local
+  `SuccessorSlot` whose target is the phi block;
+- the incoming `EdgeKey` multiset equals the exact derived incoming-slot
+  multiset (`PhiEdgeMultisetMismatch`). It is not one-per-predecessor-block:
+  parallel same-destination switch/indirect/asm slots each require their own
+  incoming, and no key may be omitted or duplicated;
+- an incoming value is used on its labeled successor slot: its definition must
+  dominate that edge's source terminator (or be a phi-edge-legal self/loop
+  value), not the phi instruction text position;
+- asm-goto predecessors participate exactly like other terminator predecessors;
+- critical edges and loop-carried values are legal in Raw.
+
+Non-phi use policy:
+
+- parameters dominate every reachable block in their function;
+- an instruction result used in its defining block must be earlier in instruction
+  order; self-use is invalid except through a phi backedge;
+- across reachable blocks, the defining block must dominate the use block;
+- terminator operands are after all ordinary instructions in their block;
+- unreachable components are checked using a synthetic-root dominator forest.
+  Cross-component uses are invalid; within a component, ordinary dominance
+  applies. For an unreachable SCC with no incoming edge from another
+  unreachable SCC, the synthetic root connects to every block in that root SCC,
+  avoiding an arbitrary chosen block that would falsely dominate its peers.
+  This avoids accepting arbitrary uses merely because textbook entry dominance
+  is undefined there.
+
+Raw therefore already enforces valid SSA identity/use dominance for values that
+exist. The future `Canonical` profile adds pipeline promises such as required
+mem2reg coverage, absence of designated raw memory pseudo-ops, canonical phi
+placement/order, and possibly reachable-only CFG. Those are not retroactively
+required of Raw.
+
+## Aggregates, intrinsics, variadics, and inline assembly
+
+Aggregate operations verify complete type/path/size/alignment relationships.
+Opaque records cannot be inspected by field; unions require an explicit chosen
+representation; bitfield/vector lane indices and counts are in range; aggregate
+copies have compatible sizes and address spaces. Semantic complex/multivalue
+operations cannot be encoded as hidden physical return lanes.
+
+Intrinsic opcodes are a closed registry. Each entry declares legal profiles,
+target-independent feature class, operand/result schema, immediate constraints,
+memory effects, and fallback/legalization requirement. Unknown intrinsic IDs and
+magic call spellings fail. Runtime helper selection is later lowering policy.
+Coverage includes overflow operations, bit operations, SIMD/vector operations,
+CRC/crypto when represented with closed semantics, fences, memory intrinsics,
+frame/return-address queries, and thread-pointer queries. A target-flavored
+intrinsic retains an explicit required-feature tag and receives target support
+validation before preparation; it never smuggles a selected machine opcode into
+Raw BIR.
+
+Variadic semantic operations (`va_start`, scalar/aggregate `va_arg`, `va_copy`,
+`va_end`) validate function variadicness, pointer/list object types, result/object
+type, size/alignment, and operation arity. Register-save areas, GP/FP offsets,
+overflow areas, helper operand homes, and HFA register plans are forbidden.
+
+Inline assembly has exactly one Raw representation: structured
+`InlineAsmPayload`. There is no opaque/text-only Raw inline-asm opcode. The
+verifier validates the structured payload rather than parsing its rendered form
+as authority (`InlineAsmStructureInvalid`):
+
+- template exists; outputs, inputs, symbolic names, operand types, address-space
+  metadata, and constraints have matching cardinality;
+- each operand constraint is parsed into a bounded semantic constraint object;
+  ties name an earlier compatible output; read/write and early-clobber roles are
+  coherent; duplicate symbolic names are rejected;
+- register, immediate, address, and memory operand kinds agree with value/type;
+  register outputs define explicit BIR result slots, memory outputs reference
+  writable lvalues, and read/write outputs expose both their input use and output
+  definition; clobbers are deduplicated and do not conflict with fixed/tied
+  operands under the target-independent constraint contract;
+- asm-goto labels and fallthrough are live local `BlockId`s and live only in the
+  paired `AsmGotoTerm`; successor keys are unique but multiple label slots may
+  target the same block. Goto form obeys output restrictions selected by the
+  language contract;
+- `volatile`, side-effect, memory, and condition-code semantics are explicit.
+
+Raw validation separates target-independent structure from target constraint
+meaning. It proves cardinality, roles, ties, symbolic references, value types,
+and that constraint/template tokens are losslessly represented; it does not
+claim that an architecture accepts a register class, fixed-register name,
+modifier, or instruction encoding. Those tokens are checked by a target
+constraint validator during preparation. Fixed registers written by the source
+are semantic requirements and must be preserved as constraint tokens, but they
+are not allocator assignments. Unknown target tokens are a deferred target
+validation error, never silently treated as generic registers. Raw/Canonical
+BIR stores no allocated homes, spill slots, spill/reload nodes, or rewritten
+assembly. Current LIR `insn_r` opcode/funct metadata and legacy
+`unsupported_facts` are not Raw semantic authority: the former is target
+encoding data to be derived/validated later, and the latter becomes a
+structured import failure rather than a published marker.
+
+## Debug and provenance are non-authoritative
+
+Source locations, debug names, original spellings, comments, and provenance
+records may be absent. If present, their IDs/ranges and parallel-array lengths
+must be structurally valid, but deleting all of them cannot change whether the
+semantic BIR verifies. Provenance cannot make an otherwise illegal GEP, symbol
+reference, or memory access legal. Renderer output is never reparsed to recover
+identity, type, CFG, or call facts.
+
+## Stage-forbidden facts
+
+Raw, Canonical, and PreparedInput reject all allocation facts. Every profile
+rejects duplicate side-table authority and MIR/emission facts, including:
+
+- legacy Route1–Route8 producer/publication/comparison/memory/call indices,
+  route/view pointers, agreement records, selected proof paths, and lookup
+  agreement mirrors;
+- ABI register classes, assigned argument/result registers, call boundary moves,
+  hidden sret storage selection, variadic entry homes, helper selection, or
+  incoming stack offsets;
+- physical/virtual register assignment, spill/reload instructions or slots,
+  live intervals as persistent authority, value homes, rematerialization
+  recipes, and coalescing decisions;
+- frame indices resolved to offsets, final stack size/alignment, prologue/
+  epilogue decisions, callee-saved sets, and dynamic-stack realization;
+- selected instruction encodings, target opcodes, relocation encodings, emitted
+  object bytes as a second semantic initializer, or prepared printer records.
+
+Analyses may cache derived data keyed by module/function revision outside core
+IR. The verifier may recompute and compare a cache in debug mode, but a cache
+never repairs or overrides core facts.
+
+## Transactional construction and publication
+
+The builder/pass transaction owns mutable candidate storage; `RawBir`,
+`CanonicalBir`, and preparation input views expose only successfully published
+immutable stage snapshots. Raw publication is one atomic operation:
+
+1. `verify_and_publish_raw(ModuleDraft&&)` rejects active edit capabilities and
+   freezes the draft's exact revision;
+2. it creates one read-only `CandidateModuleView`, checks reservation
+   completeness, and runs the full Raw registry against that same revision;
+3. if any error or revision change is observed, it returns
+   move-only `PublicationFailure` retaining the complete structured report plus
+   any preceding `BirError`, and publishes no `RawBir`; candidate IDs cannot
+   resolve through any public stage view;
+4. on success, it atomically consumes the frozen draft and uses the private
+   verifier token to create exactly one `RawBir`. Old IDs cannot resolve in a
+   replacement module merely because slot numbers were reused.
+
+Calling `verify_candidate` before publication is optional diagnostic work and
+does not shorten or replace step 2. A green diagnostic report cannot be traded
+for a token, cached across a revision, or supplied to a separate constructor.
+
+Function edit callbacks are failure-atomic too. Returning `BuildError` or
+throwing cannot leave appended blocks, instructions, results, symbol entries,
+or order mutations in a candidate that the caller assumes was rolled back.
+Implementations may use copy-on-write, an undo log, or a disposable child
+builder, but the observable rule is commit-on-success. Nested capability tokens
+expire on both commit and rollback.
+
+Verification itself is side-effect free: it does not intern names, repair
+indices, fill predecessor/use caches, canonicalize order, or rewrite malformed
+payloads. Any repair is a separate explicit transaction followed by a new full
+publication check. Concurrent mutation of the candidate invalidates the view;
+the verifier reports `RevisionChanged` rather than accepting a mixed snapshot.
+
+The checked-in bootstrap `ModuleBuilder::publish() &&` is a temporary adapter,
+not the final public boundary. The final API exposes only
+`verify_and_publish_raw(ModuleDraft&&)` for stage creation. In addition,
+`with_function` currently restores its scope state without rolling back edits
+made before a callback failure. The full Raw profile must not be declared
+implemented until the atomic draft publication path, rollback/child-transaction
+behavior, and the full verifier land together.
+
+## Incremental verification and mutation contracts
+
+Full verification is required after LIR-to-Raw publication, before/after a pass
+in debug/CI configurations, and at Canonical/PreparedInput publication.
+Incremental verification is for edit loops:
+
+- value/operand edit: containing instruction schema, both definitions, all old
+  and new users, type/dominance, and cached def-use;
+- instruction insertion/removal/move: old/new blocks, order membership, all
+  results/users, same-block ordering, and dominance dependents;
+- terminator/asm-goto edit: source and old/new successor neighborhoods, complete
+  CFG, affected phis, reachability, and dominance;
+- signature/symbol/global/type edit: module scope, because callers,
+  initializers, and recursive types may be affected.
+
+`MutationSummary` is produced by trusted builders and contains semantic IDs plus
+the pre/post revision. Missing or stale summaries force full verification. A
+local green result must never be advertised as module publication proof.
+
+## Legacy-to-rule coverage
+
+This table extracts semantic rules; it does not preserve legacy layout or
+agreement side tables.
+
+| Legacy source anchor | Rule adopted into new verifier | Disposition |
+|---|---|---|
+| `legacy/bir_validate.cpp::validate`, `validate_link_name_id`, `validate_global_link_name_matches_visible_name` | unique semantic symbols; IDs resolve and agree with owned declaration | Adopt by typed ID; reject name fallback |
+| `legacy/bir_validate.cpp::validate_named_value`, `find_function`, `find_global` | symbol pointer references target declared function/global of correct kind | Adopt; no `@` stripping/text lookup |
+| `legacy/bir_validate.cpp::validate_params` | parameters are unique exact definitions matching signature ordinal/type | Adopt and strengthen |
+| `legacy/bir_validate.cpp::validate_phi` | typed incoming values and local predecessor identity | Adopt and strengthen to exact `EdgeKey`/incoming-`SuccessorSlot` multiset plus edge dominance; do not preserve legacy one-per-block identity |
+| `legacy/bir_validate.cpp::validate_call` | direct/indirect callee shape, declared direct target, all args/callee/result traversed | Adopt; ABI/sret storage fields move later |
+| `legacy/bir_validate.cpp::validate_local_slot_names`, `find_local_slot` | local object ID belongs to function, size/alignment/type valid | Adopt by `LocalId`; reject spelling agreement |
+| `legacy/bir_validate.cpp::validate_load_local`, `validate_load_global`, `validate_store_local`, `validate_store_global` | memory entity exists, value/address/type/order valid | Adopt and generalize to typed memory ops |
+| `legacy/bir_validate.cpp::validate_initializer_symbol_link_name` and global loop in `validate` | declaration/definition and recursive initializer symbol/object rules | Adopt and extend to relocation bounds/object data |
+| `legacy/bir_validate.cpp::validate_terminator`, `validate_return` | local live CFG targets and typed condition/return | Adopt and extend to switch/indirect/unreachable/asm-goto |
+| `legacy/bir.hpp::TypeKind`, `Value`, `Inst`, `Terminator`, `Module` | bounded alternatives and feature inventory | Coverage input only; schema is not target truth |
+| `legacy/bir.hpp::MemoryAddress`, `AtomicOperation` | address/atomic payload must be coherent | Fold into semantic instructions; delete parallel atomic agreement table |
+| `legacy/bir.hpp::CallArgAbiInfo`, `CallResultAbiInfo`, `Function::atomic_operations` and local-array/global-static route records | some early semantic facts are needed, but prepared/route authority is not BIR | Extract type/address/operation rules; reject side-table authority |
+| `legacy/bir_route1.cpp::route1_build_producer_index` and `route1_find_same_block_scalar_producer` | exact definitions and complete uses make producer discovery deterministic | Replace with core def-use; no route index |
+| `legacy/bir_route2.cpp::route2_build_select_chain_value_index` | select/cast/binary dependency traversal sees every operand | Replace with shared operand visitor |
+| `legacy/bir_route3_memory.cpp::route3_build_memory_access_index` | memory effects, base identity, ranges, volatility/atomicity are explicit | Replace with instruction schema plus analysis |
+| `legacy/bir_route4_publication.cpp`, `bir_route5_publication.cpp` | CFG-edge/phi value availability follows dominance and phi semantics | Replace with CFG/SSA verifier |
+| `legacy/bir_route6_call_publication.cpp` | calls expose every argument/result use and semantic aggregate relationship | Replace with typed call schema; prepared source selection forbidden |
+| `legacy/bir_route7_comparison.cpp`, `bir_comparison_view.cpp` | comparisons have typed operands/result and conditions use the result | Replace with opcode schema and def-use |
+| `legacy/bir_control_flow_view.cpp`, `bir_select_dependency_view.cpp`, `bir_memory_access_view.hpp`, `bir_publication_view.hpp` | consumers require complete CFG/operand access | Satisfied by core views/analysis; views are not verifier inputs |
+| `legacy/lir_to_bir.cpp::try_lower_to_bir_with_options` and string-pointer rewrite helpers | LIR publication must produce typed symbol/value identity before verification | Adopt publication gate; reject post-hoc spelling repair |
+| `legacy/prealloc/prepared_contract_verifier.cpp::verify_prepared_decoded_home_storage_contract` | no ambiguous storage-kind payload | Prepared/MIR verifier rule, not Raw; Raw rejects home storage |
+| `verify_prepared_call_boundary_move_contract` | call boundary data must be internally complete | Later prepared/MIR rule; Raw validates only semantic call |
+| `verify_prepared_variadic_entry_plan_contract`, `verify_prepared_variadic_entry_helper_operand_homes_contract` | semantic variadic op prerequisites exist early | Raw adopts op/type/function rules; homes/plans remain later |
+| `verify_prepared_rematerializable_integer_immediate_contract`, `verify_prepared_pointer_base_plus_offset_contract` | constants and pointer derivations are typed and exact | Raw adopts semantic constant/GEP rules; rematerialization/home decision later |
+| `verify_prepared_selected_local_storage_contract`, `verify_prepared_selected_object_data_contract` | local/global object initialization is coherent before preparation | Raw owns initializer/object semantics; selection and prepared object data later |
+| `classify_prepared_frame_slot_*_source_route_contract`, `classify_prepared_local_frame_address_materialization_source_route_contract` | source references cannot conflict or be missing | Raw exact ID/def-use replaces cross-route agreement; frame route is forbidden |
+| `verify_prepared_call_argument_binary_producer_materialization_contract`, `verify_prepared_raw_call_argument_abi_coherence_contract` | argument producer/type is available and call semantics coherent | Raw def-use/call typing; ABI placement and materialization later |
+
+## Reference compiler: adopt and reject
+
+The second research source is
+`ref/claudes-c-compiler/src/{ir,backend}`. It is a feature/consumer oracle, not a
+schema to copy.
+
+| Reference anchor | Adopt | Reject or strengthen |
+|---|---|---|
+| `ir/instruction.rs::{Instruction, Terminator, BasicBlock}` | closed instruction families; explicit phi, switch, indirect branch, and asm-goto feature coverage | raw `u32` IDs without owner/generation; public vectors as integrity boundary; strengthen reference mid-block asm-goto edges into a split-block terminator |
+| `Instruction::used_values`, `Terminator::used_values` and `backend/liveness.rs::for_each_operand_in_instruction/terminator` | one exhaustive semantic operand traversal used across backend consumers | multiple hand-maintained visitors that can silently diverge; generate/share schema |
+| `ir/analysis.rs::{build_label_map, build_cfg}` | predecessor/successor analysis is disposable and must include asm-goto control flow | silently ignoring unresolved labels or retaining hidden mid-block exits; new CFG is derived from typed terminators after import splitting |
+| `ir/mem2reg/promote.rs` | phis at block prefix, incoming values filled per successor edge, dominance-based SSA construction | treating pass-produced shape as implicit correctness; publish through verifier |
+| `ir/mem2reg/phi_eliminate.rs` | phi inputs are edge uses and critical edges may need splitting later | putting phi copies or target decisions in Raw verifier |
+| `ir/module.rs::{IrModule, IrGlobal, GlobalInit, IrFunction}` | broad symbol/global/initializer/backend feature inventory and recursive reference traversal | name strings as semantic identity; target pointer size inside generic initializer size |
+| `Instruction::ParamRef` and `Get/SetReturn*Second` | parameters and complex returns must remain explicitly representable | no parameter-load pseudo-op in Raw: parameters are definitions; no physical “second return register/lane” pseudo-op: calls and `ReturnTerm` use one optional aggregate-typed semantic operand until later lowering |
+| `backend/generation.rs` and `backend/liveness.rs` | evidence that terminators, calls, GEP, phi, asm, intrinsics, atomics, variadics all need complete operand/CFG contracts | backend `unreachable!`, `panic!`, or forgiving lookups as validation strategy |
+| architecture codegen `debug_assert!`/`unreachable!` patterns | convert assumptions about legalized op/type pairs into earlier named profile rules | release-build-only trust in assertions and target-specific validation of Raw |
+
+## Backend coverage status ledger
+
+`Contracted` means this design has stable rule IDs and a closed validation
+contract; it does not claim implementation. `Source gap` means current LIR
+cannot transport the full contract. `Deferred stage` means the semantic Raw
+input is verified here but the named decision belongs after BIR.
+
+| Feature family | Status | Stable rules / disposition |
+|---|---|---|
+| module epoch/revision, deterministic order, stale/foreign IDs, instruction reservations | Contracted | `ModuleEpochInvalid`–`ActiveEditAtFreeze`; `VerifyEntity` embeds exact core `ModuleEntityId`/`FunctionEntityId`, publication requires every `ReservedInst` defined and every forward reference resolved |
+| I1–I128, pointers/address spaces, arrays, records/unions, packed/opaque, vectors and functions | Contracted | `DataLayoutInvalid`–`TypeLayoutInvalid`; named-record diagnostics retain `TypeNameId` through `ModuleEntityId` |
+| F32/F64 and long double | Contracted | `FloatFormatInvalid`, `TypeLayoutInvalid`, `ConstantPayloadInvalid`; explicitly distinguishes IEEE binary128 from x87 extended-80 semantic bits and padded 10/12/16-byte storage |
+| constants, null/zero, `undef`, `poison`, scalar/cast/compare/select | Contracted | `ConstantKindInvalid`–`UndefPoisonRoleInvalid`, `OpcodeInvalid`–`ResultTypeMismatch` |
+| linkage/visibility/sections/TLS/aliases/symver/constructors/destructors/top-level asm | Contracted | `SymbolIndexMismatch`–`TopLevelAsmDependencyInvalid`; `TopLevelAsmSpec::symbol_dependencies` is ordered typed authority and `source_text` is never parsed for identity |
+| globals and recursive initializer/relocation/object data | Contracted; source gap for text-only LIR initializer fields | `GlobalStateInvalid`–`BlockAddressInvalid`; `InitializerId` is carried by `ModuleEntityId`, importer rejects missing typed trees |
+| functions, signatures, attributes, parameters, `LocalId`, optional semantic return | Contracted | `FunctionShapeInvalid`–`ReturnOperandInvalid` |
+| jump/conditional/switch/indirect/asm-goto/unreachable CFG | Contracted | `EdgeTargetInvalid`–`UnreachableBlock`; exact ordered `SuccessorSlot` authority preserves parallel destinations |
+| phi, SSA, edge uses, dominance, unreachable components | Contracted | `PhiPlacementInvalid`–`CrossComponentUse`; exact incoming `EdgeKey` multiset |
+| descriptor traversal, definitions and exact def-use | Contracted | `DescriptorMissing`–`StaleUse`; all value-bearing call bundles/asm/terminator payloads participate |
+| direct/indirect/by-value/variadic calls, `CallEffects`, typed bundles, aggregate result | Contracted; source gap where current LIR lacks structured metadata | `CallCalleeInvalid`–`VarArgInvalid`; direct identity is `SymbolId` |
+| local/static/dynamic allocation, stack save/restore, lifetime | Contracted | `LocalInvalid`, `DynamicAllocInvalid`, `DynamicSizeOverflow`, `StackStateInvalid` |
+| load/store/GEP/address formation, memcpy/memmove/memset | Contracted | `MemoryAccessInvalid`–`MemoryIntrinsicInvalid` |
+| atomic load/store/RMW/cmpxchg/fence | Contracted Raw schema; current LIR source gap | `AtomicTypeInvalid`–`FenceInvalid`; never a legacy parallel agreement table |
+| aggregates, complex values, vector lanes/masks | Contracted | `AggregatePathInvalid`–`VectorMaskInvalid`; physical return lanes are deferred stage facts |
+| semantic intrinsics, overflow, bit/memory/SIMD/CRC/crypto | Contracted; target support is deferred stage | `IntrinsicIdInvalid`, `IntrinsicSchemaInvalid`; no selected opcode/helper in BIR |
+| structured inline asm and asm-goto | Contracted; current text-only operand transport is a source gap | `InlineAsmStructureInvalid`–`InlineAsmEffectInvalid`, `AsmGotoPairInvalid` |
+| debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
+| ABI placement, register allocation, spill/reload, frame, target opcode/relocation encoding/emission | Deferred stage and forbidden in BIR | `ForbiddenStageFact`, `ForbiddenCompatibilityPayload` |
+
+## Proof plan
+
+1. **Rule unit negatives:** one minimal malformed module per `VerifyRule`, plus
+   paired valid boundary cases. Assert structured rule/entity/location, never
+   full rendered text.
+2. **ID corruption matrix:** wrong epoch, wrong function owner, out of range,
+   tombstone, stale generation, wrong kind, duplicate/missing order membership,
+   and foreign block/value/global references.
+3. **Opcode table properties:** generate every opcode with each legal and illegal
+   arity/type/profile combination; require exhaustive registry coverage when an
+   opcode is added.
+4. **Def-use properties:** generate functions, recompute all uses independently,
+   mutate one hidden operand role at a time (call callee/arg, phi edge, GEP,
+   asm, intrinsic, terminator), and require exact mismatch detection.
+5. **CFG/SSA properties:** random reducible/irreducible graphs, unreachable
+   components, parallel same-destination successor slots, loops, critical edges,
+   asm-goto, phi `EdgeKey` permutations/missing/extra entries, and dominance
+   violations.
+6. **Initializer fuzzing:** recursive object data with bounded depth, relocation
+   overlap/out-of-bounds, symbol-kind mismatch, overflowed sizes, and string
+   width/padding cases.
+7. **Feature-family negatives:** direct/indirect/variadic calls, atomics ordering,
+   aggregate paths, intrinsic immediates, and inline-asm cardinality/ties/goto.
+8. **Mutation differential:** after random builder edits, compare incremental
+   diagnostics to full verification after deterministic sorting.
+9. **Parser-independent fuzzing:** mutate in-memory typed BIR, not textual dumps,
+   under ASan/UBSan; verifier must return diagnostics without crash or hang.
+10. **Legacy/reference corpus:** lower existing backend tests to Raw, verify,
+    and maintain explicit expected failures for features not yet modeled. Never
+    weaken a rule merely to accept a legacy side table.
+
+## Unresolved review questions
+
+1. How are recursive named records completed without mutating already published
+   `TypeId` payloads: importer-only opaque shells or a two-part declaration/body
+   entity?
+2. Is unreachable code accepted indefinitely in Raw, and does Canonical require
+   its removal? The synthetic-root dominance policy should be confirmed.
+3. Are equal true/false conditional targets legal Raw shape or immediately
+   canonicalized by the builder?
+4. Are exception/invoke edges required in the first complete Raw schema, or an
+   explicit producer gap? Tail requests, switch, indirect branch, and asm-goto
+   are already covered in this contract.
+5. What is the exact registry/API boundary between Raw inline-asm structural
+   checks and the target constraint verifier that must run before preparation?
+6. Which single service owns aggregate object layout and long-double storage
+   layout while immutable `TypeId` records retain the verified result?
+7. Will debug provenance be attached by IDs or parallel arrays? Parallel arrays
+   need exact cardinality checks but remain optional.
+8. Should cached def-use be stored in core, or always be an analysis keyed by
+   revision? The latter better preserves one source of truth.
+9. What exact pass promise distinguishes `Canonical` from `PreparedInput` once
+    preparation APIs are designed?
+
+## Research anchors inspected
+
+- New partial implementation: `bir/core/{ids,storage,type,ir}.hpp`,
+  `bir/verify/{verifier.hpp,verifier.cpp}`.
+- Legacy Raw/schema and validator: `legacy/bir.hpp`, `bir_private.hpp`,
+  `bir_validate.cpp`, `lir_to_bir.cpp`.
+- Legacy consumers: control-flow, memory-access, publication, comparison,
+  select-dependency, call-boundary views and Route1–Route8 implementation files.
+- Legacy prepared boundary: `prealloc/prepared_contract_verifier.{hpp,cpp}` and
+  its decoded-home, call-move, variadic, object/storage, frame-source,
+  materialization, and ABI-coherence contracts.
+- Reference compiler: `ref/claudes-c-compiler/src/ir/{instruction,module,
+  analysis}.rs`, `ir/mem2reg/{promote,phi_eliminate}.rs`, and backend
+  `liveness.rs`, `regalloc.rs`, `generation.rs`, plus architecture codegen
+  invariant patterns.
