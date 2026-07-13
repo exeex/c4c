@@ -1,9 +1,9 @@
 # LIR-to-Raw-BIR Import Contract
 
-Contract-Status: under-review
+Contract-Status: checked implementation ledger
 Implementation-Status: partial
 Kind: stage
-Phase-ID: A1
+Plan-Step: 1
 Upstream: complete current typed `codegen::lir::LirModule`
 Downstream: private `ModuleDraft` submitted to the A2 Draft/Raw publication gate
 Owner-Path: `src/backend/bir/lir_to_bir/README.md`
@@ -93,12 +93,16 @@ unallocated `RawBir` to phase B. The exact B1 consumer clause is
 [`passes/legalize/README.md`](../passes/legalize/README.md): its only input is
 an immutable published `RawBir` view. B1 receives no draft, importer map,
 unsupported valid row, hidden side table, target context, or partial
-capability. The ordered phase-B documentation work remains owned by
-[Child B](../../../../ideas/open/736_bir_phase_b_canonical_document_convergence.md).
+capability. The phase-B contract is historical evidence from closed
+[Child B](../../../../ideas/closed/736_bir_phase_b_canonical_document_convergence.md);
+subsequent ordered documentation convergence remains owned by open
+[umbrella 732](../../../../ideas/open/732_bir_stage_document_convergence_umbrella.md)
+after idea 734 closes.
 
-The accepted contract may later be implemented by deferred
-[idea 734](../../../../ideas/open/734_lir_to_new_bir_container_completeness.md),
-which remains inactive. This document does not activate it.
+The active implementation owner is
+[idea 734](../../../../ideas/open/734_lir_to_new_bir_container_completeness.md).
+This ledger fixes its bounded packet order; it does not itself claim that a
+missing container, importer case, verifier rule, or proof has landed.
 
 ## Exhaustive Instruction Input Matrix
 
@@ -176,7 +180,7 @@ coverage; it is an obligation, not a claim that missing implementation exists.
 | `strings` | S current payload: ordered pool name/raw bytes/byte length; V: map/counter parity | typed string/data object with exact bytes/spelling classification, length and symbol | container+wiring missing; absent-row prose stale | content/length/name/cache parity and vector order; reject hash-order identity | + empty/embedded/ordered strings; - length/cache conflict; N globals |
 | `externs` | S: ordered extern declarations/info with return type/attr/link ID; V: link/name maps | typed external symbol/declaration/signature; maps parity-only | container+wiring missing; map-as-authority stale | coherent merge by stable ID, map parity; reject declaration conflict | + repeated coherent decl; - type/link conflict; N function decl |
 | `specializations` | S: ordered key/origin/mangled name/link ID | typed specialization/origin record linked to ordinary symbol | container+wiring missing | order/identities/parity; reject dangling symbol or mismatch | + multiple ordered entries; - bad link/mangle parity; N symbols |
-| `intrinsic-requirements` | V: all `need_va_*`, `need_mem*`, `need_stack*`, `need_abs`, `need_ptrmask`, `prefer_semantic_va_ops` | validation-only typed requirement/parity result; never synthesize operations | importer parity wiring missing; second instruction authority stale | cross-check actual ops/declarations; reject inconsistent flag set | + matching flags; - missing/spurious flag; N intrinsic rows |
+| `intrinsic-requirements` | V: `need_va_start`, `need_va_end`, `need_va_copy`, `need_memcpy`, `need_memset`, `need_stacksave`, `need_stackrestore`, `need_abs`, `need_ptrmask`, `prefer_semantic_va_ops` | validation-only typed requirement/parity result; never synthesize operations | importer parity wiring missing; second instruction authority stale | cross-check actual ops/declarations; reject inconsistent flag set | + matching flags; - missing/spurious flag; N intrinsic rows |
 | `inline-asm-metadata` | S: bindings/roles/indices/original texts/clobbers/effects; V: `insn_r`; C: render mirrors | ordinary value edges, opaque payload and typed role/index attachment; audit-only `insn_r` | payload/edges proved; role/index container+wiring missing | bytes/order/roles/indices/types/read-write; reject parsing/allocation | + `r`,`=r`,`f`,`VR` evidence by position; - bad pair/index; N asm variants |
 | `producer-indexes-caches` | V: extern/struct/string/intern/name/layout indexes, observations and counters | validation/import report only unless an ordered semantic row names a destination | semantic-input claims stale; parity wiring missing | deterministic comparison to ordered authority; reject pointer/hash/storage identity | + coherent cache; - mismatch/hash-order dependence; N source order |
 | `source-order-origin` | S: all module/function/block/inst and nested argument/case/index/binding orders; C/V: labels/sites | typed deterministic module/function/block orders plus non-authoritative origin/debug | function/block/inst partial; remaining container+wiring missing | preserve every nested order and stable diagnostic site; reject hash leakage | + reordered declarations/nested lists; - nondeterministic/missing site; N identities |
@@ -201,6 +205,87 @@ coverage; it is an obligation, not a claim that missing implementation exists.
 Duplicate old/new operation shapes converge before publication. A Raw module
 cannot contain compatibility alternatives, unresolved reservations, importer
 sentinels, or a generic “unsupported” instruction placeholder.
+
+## Checked Source And Build Census
+
+- Typed source authority is `codegen/lir/ir.hpp`, `types.hpp`, and
+  `operands.hpp`: the checked aliases contain exactly the 38 instruction rows
+  and six terminator rows above. The metadata matrix covers every current
+  module/function/block/object field, including ordered vectors, stable IDs,
+  invalid sentinels, link/struct/type-tag storage and indexes, allocation
+  counters, intrinsic flags, layout observations, and string-pool caches.
+- Checked-in Raw storage has only module/function/block/instruction/value IDs,
+  scalar/pointer `Type`, function signature/parameters, ordinary SSA edges,
+  `InlineAsmNode`, and the four terminators `JumpTerm`, `CondJumpTerm`,
+  `ReturnTerm`, and `UnreachableTerm`. Its builder and immutable views expose
+  only those families.
+- `FoundationVerifier` is reachable from `ModuleBuilder::publish()` and checks
+  storage/order, signature parameters, ordinary definitions/uses, the closed
+  inline-asm payload, the four checked-in terminators, and link-name indexing.
+  A matrix row that needs another type, object, instruction, terminator, entry,
+  metadata, or publication rule therefore has a real verifier gap even when
+  the table can name its required rule.
+- Production calls from `backend.cpp` reach only top-level
+  `bir/lir_to_bir.cpp`. `src/backend/CMakeLists.txt` deliberately excludes
+  every nested `bir/lir_to_bir/*.cpp`, so those files are legacy behavior
+  evidence, never current implementation coverage.
+- `LEGACY_COVERAGE.md` was checked only as a historical family checklist. It
+  adds no typed destination and cannot override the current LIR aliases, Raw
+  storage, build graph, importer, or verifier.
+
+## Bounded Implementation Packet Order
+
+Each packet must change storage/IDs, builder, immutable view, verifier,
+production importer, and neighboring positive/negative proof together. A
+later packet may not use an earlier packet's missing destination as a text or
+position fallback.
+
+1. **Step 2A — closed typed LIR type receipt.** Extend the Raw `Type`
+   representation and verifier to losslessly receive current structured
+   `TypeSpec` and every `LirTypeKind` alternative with its typed width/name
+   identity needed by signatures and ordinary values; add one importer
+   conversion shared by function signatures and inline-asm bindings.
+   Explicitly reject semantic `RawText`, missing integer/VRM widths, invalid
+   struct IDs, and conflicting named-type definitions. Prove every admitted
+   kind plus malformed and neighboring kinds. Do not add globals, objects,
+   constants, new opcodes, or new terminators in this packet.
+2. **Step 2B — module type/name tables and stable module IDs.** Add the typed
+   interned/named aggregate definitions, deterministic orders, builders/views,
+   and cache-parity verification required by `struct_decls`, `link_names`, and
+   `struct_names`; keep compatibility type text and storage pointers
+   non-authoritative.
+3. **Step 2C — foundational constant/value receipt.** Add typed constants and
+   complete parameter/result reservation and forward-use identity without an
+   instruction-shaped placeholder.
+4. **Step 3A — symbols, externs, globals, and strings.** Add stable symbol and
+   object IDs, exact ordered declarations/definitions, external signatures,
+   and byte-exact string data with index/cache parity.
+5. **Step 3B — initializers and specializations.** Add typed initializer
+   ownership/current compatibility-payload disposition, symbol references,
+   and ordered specialization records.
+6. **Step 4A — complete signatures and explicit entry/CFG identities.** Remove
+   the zero-parameter/void/first-block restrictions only with entry storage,
+   parameter/result views, and verifier coverage.
+7. **Step 4B — stack objects and alloca ordering.** Add local object IDs,
+   hoisted/inline alloca semantics, alignment/count checks, and source order
+   without frame placement.
+8. **Step 5 — ordinary instruction families.** Land constants, scalar
+   arithmetic/compare/cast/select, aggregate/vector, memory/stack/variadic,
+   calls/intrinsics, phi, and inline-asm role/index attachment as separately
+   proven coherent family slices in that dependency order.
+9. **Step 6 — remaining terminators.** Wire checked-in conditional and
+   non-void return receipt, then add switch and indirect-jump destinations and
+   reconcile the legacy indirect-branch instruction carrier by its sentinel
+   rule.
+10. **Steps 7-8 — dispatcher/build/publication closure.** Remove bounded
+    rejections only after their rows are typed and verified, integrate each
+    production translation unit once, and prove exhaustive dispatch plus
+    whole-module rollback and lossless publication.
+
+The first coherent C++ packet is therefore **Step 2A only**. It is bounded by
+the current `TypeSpec`/`LirTypeRef` discriminant and identity facts and supplies
+the shared type conversion required by every later signature, object, value,
+instruction, and terminator packet.
 
 ## Invariants
 
@@ -319,17 +404,17 @@ or wiring are checked in.
 - resolve every relative Markdown link;
 - inspect build inclusion, top-level importer dispatch, current core schema and
   shared A2/B1 adjacency without treating design prose as implementation;
-- require neighboring positive and malformed coverage for each row when the
-  deferred implementation consumer executes the contract;
+- require neighboring positive and malformed coverage for each row when its
+  corresponding implementation packet executes the contract;
 - reject completion if any valid current row remains unsupported, loses a fact,
   bypasses the full A2 gate, or lets target/allocation state enter Raw.
 
 ## Open Questions
 
-No A1 architecture question authorizes a source-side change. If Step 2, Step 3,
-or the shared-boundary audit finds that memory/core/verifier/phase-B wording
-cannot accept a row exactly, that is a named coordinated documentation seam;
-it must be recorded in `todo.md` and repaired only by an authorized owner.
+No Step 1 ambiguity blocks Step 2A, and no source-side LIR change is justified.
+If a later implementation packet proves that a current typed fact cannot be
+received by the named destination without changing LIR, that is a new
+evidence-gated route decision rather than permission to widen that packet.
 
 ## Review Checklist
 
@@ -343,4 +428,4 @@ it must be recorded in `todo.md` and repaired only by an authorized owner.
 - [x] Build-included bootstrap truth is distinct from build-excluded design.
 - [x] The contract gives one private draft to one full A2 gate; failure publishes nothing.
 - [x] B1 receives only the exact move-only verified `RawBir`.
-- [x] Idea 734 remains deferred and inactive.
+- [x] Active idea 734 has an exact dependency order and one bounded first C++ packet.
