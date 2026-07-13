@@ -3,48 +3,41 @@
 Status: Active
 Source Idea Path: ideas/open/741_lir_structured_operand_and_terminator_identity_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Enumerate identity-authority seams
+Current Step ID: 3
+Current Step Title: Extract or confirm focused probes
 
 ## Just Finished
 
-- Plan Step 1 established four reproducible, module-transactional identity
-  baselines at clean HEAD `a80243c0b`:
-  - `global_store.c` first fails at `LirStoreOp` (`store i32 7, ptr
-    @g_counter`): typed `LirTypeRef(i32)`, but text-only Immediate `7` and
-    Global `@g_counter`; no typed immediate payload or `LinkNameId`.
-  - `defined_pointer_global_pointer.c` first fails at `LirLoadOp` (`%t0 = load
-    ptr, ptr @gpp`): typed `LirTypeRef(ptr)`, but text-only SsaValue result and
-    Global pointer; no result `LirValueId` or global `LinkNameId`. The producer
-    is the global-rvalue route in `hir_to_lir/expr/coordinator.cpp`.
-  - `defined_global_array.c` first fails at `LirCastOp` (`%t0 = sext i32 1 to
-    i64`), not its later GEP: cast kind and source/destination `LirTypeRef`s are
-    typed, but result and Immediate operand are text-only. Later `LirGepOp`
-    also has text-only result/pointer identity and raw combined index fragments.
-  - `riscv64_zero_aggregate_global_storage.c` has no ordinary instructions in
-    `main` and first fails at `LirRet` (`ret i32 0`): only
-    `value_str="0"` and `type_str="i32"`, with no typed immediate/value identity.
-- Global load, store, and cast producer paths were corroborated in
-  `expr/coordinator.cpp`, `lvalue.cpp`, and typed `LirCastOp` helpers.
+- Plan Step 2 produced
+  `docs/lir_structured_identity/authority_matrix.md`, exhaustively naming all
+  38 `LirInst` and 6 `LirTerminator` alternatives and every direct/nested
+  operand, result, immediate, symbol, label, and compatibility field.
+- Each row now records current carrier authority, actual producer or explicit
+  producerless legacy status, verifier reach/gap, focused coverage/gap, blocked
+  idea-734 relevance, and an exact disposition. The checked smallest candidate
+  family is the existing `LirValueId`/`LinkNameId`/`LirBlockId`/native-immediate
+  conventions, with display text retained only for presentation/parity.
 
 ## Suggested Next
 
-- Produce the exhaustive checked `LirInst` / `LirTerminator` authority matrix.
-  Give every operand, result, immediate, and symbol row its authority class,
-  producer, verifier, focused probe, blocked 734 consumer, and disposition.
+- Execute Plan Step 3: confirm whether the load/store integration cases isolate
+  one identity contract each, bind the array case to its cast-first/later-GEP
+  seams, and extract a minimal scalar non-void return probe if needed.
 
 ## Watchouts
 
-- Step 2 is inventory-only: do not edit LIR schema, producers, verifier, new
-  BIR, or importer code before the exhaustive matrix and probe bindings exist.
-- Do not parse or match operand text, `value_str`, `type_str`, symbol spelling,
-  printer output, or testcase identity.
-- Preserve the moving-first-fact result: the array case reaches `LirCastOp`
-  before `LirGepOp`; do not label GEP as its first failure.
+- The matrix confirms that modern `LirOperand` is still text plus kind, not a
+  stable identity. Compound GEP/PHI/indirect-target/terminator text fields are
+  shallow or unverified, while all legacy instruction stubs are ignored by the
+  verifier and have no ordinary HIR producer.
+- Preserve the cast-first/later-GEP fact for `defined_global_array.c`; do not
+  infer focused coverage for matrix rows marked `C-gap—Step 3 candidate`.
 
 ## Proof
 
-- Fresh backend proof at HEAD `a80243c0b` is 4/4; accepted full baseline is
-  3033/3033.
-- All four focused commands fail before publication; no partial Raw or
-  Canonical module escapes.
+- Documentation-only proof: `git diff --check` plus a mechanical comparison of
+  the current variant lists against the matrix. The inventory is 38/38
+  `LirInst` alternatives and 6/6 `LirTerminator` alternatives with no missing
+  direct or nested field names.
+- No build, tests, schema edits, producer edits, verifier edits, consumer edits,
+  or proof-log changes were required for Plan Step 2.
