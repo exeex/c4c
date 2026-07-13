@@ -255,6 +255,70 @@ Completion check:
 - every current instruction row has an exact supported typed path or a durable
   blocked-source disposition; accumulated focused and broader proof passes
 
+### Step 5.1 - Receive direct zero-argument void calls
+
+Goal: receive the smallest production `LirCallOp` row with complete structured
+callee identity and signature authority, without admitting arguments, results,
+indirect targets, or presentation-derived semantics.
+
+Primary target:
+
+- minimal Raw-BIR `Call` opcode/node plus core builder/view/verifier and
+  `src/backend/bir/lir_to_bir.cpp` function-body import dispatch
+
+Exact source row:
+
+- modern `LirCallOp` whose `result` is empty and carries no authority
+- typed `return_type` is void and `return_ext_attr` is `LirExtAttr::None`
+- native `direct_callee_link_name_id` resolves to exactly one module function
+- `structured_args` and `arg_type_refs` are empty
+- `callee_signature` is present with a typed void return, extension attribute
+  `None`, no fixed parameter types or mirrors, nonvariadic state,
+  `has_unspecified_params=false`, and a known zero-fixed-parameter empty or
+  explicit-void shape
+- `callee`, function/name spelling, `args_str`, and `callee_type_suffix` are
+  presentation only and never identity, argument, or signature authority
+
+Actions:
+
+- add the minimal typed `Call` payload storing exactly one target `FunctionId`,
+  with zero operands and zero results
+- extend builder creation, immutable Raw/Canonical view exposure, and reachable
+  verification for opcode/payload agreement, target ownership/existence,
+  no-result/no-operand shape, block/function ownership, and source order
+- build a structured `LinkNameId -> FunctionId` registry for all accepted
+  module functions before lowering bodies, using a two-pass create-then-body
+  flow or an equivalent exact design
+- support arbitrary source order, forward calls, and recursive/self calls where
+  the exact row is otherwise valid; never depend on a callee having been
+  encountered earlier
+- resolve declaration/definition identities through the established function
+  merge contract and require the call-site structured callee signature to agree
+  with the resolved target's imported zero/void nonvariadic signature
+- import only the exact source row above and ignore presentation drift after
+  structured authority has passed
+- reject missing/invalid/unresolved/ambiguous `LinkNameId`, absent or
+  conflicting structured callee signature, target-signature disagreement,
+  non-`None` return extension, result/nonvoid calls, any structured arguments
+  or argument type refs, indirect calls, variadic or unspecified signatures,
+  and malformed declaration/definition merges
+- prove whole-module rollback for failures discovered in forward/recursive
+  target resolution, body lowering, and final verification
+- add structural positive tests for declaration and definition targets,
+  misleading callee/name/args/suffix presentation, arbitrary source order,
+  forward calls, and recursive calls where production supports them
+- add a production-focused direct void no-argument call and neighboring
+  malformed/conflicting/rollback proof without matching testcase identity
+
+Completion check:
+
+- a fresh build and exact focused proof publish zero-operand/zero-result BIR
+  `Call` nodes targeting the correct `FunctionId` for production direct void
+  no-argument calls in arbitrary valid source order; forward/recursive and
+  declaration/definition identity are safe; misleading presentation has no
+  effect; all excluded call shapes reject atomically; and the later generic
+  Step 5 instruction-family contract remains unchanged
+
 ### Step 6 - Complete terminators and structured inline-assembly transport
 
 Goal: complete structured terminator receipt and preserve inline-assembly facts

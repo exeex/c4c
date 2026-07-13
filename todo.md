@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Complete ordinary instruction semantic families
+Current Step ID: 5.1
+Current Step Title: Receive direct zero-argument void calls
 
 ## Just Finished
 
@@ -17,28 +17,30 @@ Current Step Title: Complete ordinary instruction semantic families
 - Proved a production static literal-return function retained by a structured
   global function-pointer initializer reaches semantic BIR with its ordinary
   external neighbor; no global-row blocker remained.
+- Supervisor authority audit selected only the modern direct zero-argument
+  void `LirCallOp` row for the first bounded Step 5 packet.
 
 ## Suggested Next
 
-- Begin Plan Step 5 by selecting one bounded ordinary-instruction family with
-  complete typed operand/result authority and an exact builder/view/verifier/
-  importer proof contract.
+- Execute Plan Step 5.1 by adding a zero-operand/zero-result BIR `Call` node,
+  exact `LinkNameId -> FunctionId` resolution, two-pass/equivalent forward
+  target safety, verifier coverage, and transactional proof.
 
 ## Watchouts
 
-- Function linkage/elision facts remain native booleans; do not infer them from
-  names, signature rendering, body presence, source order, or testcase
-  identity, and do not OR/overwrite merge conflicts.
-- Keep CFG, block targets/edges, stack slots, allocas, local objects, body
-  parameter binding, and lifetime state outside this packet.
-- Keep `long` and `unsigned long` fail-closed pending inactive idea 743; do not
-  change I686 width semantics inside idea 734.
-- Signature `ParameterDef` ordinals are BIR storage order only. Body parameter
-  use still lacks native source identity and must not be reconstructed from
-  names, raw operands, signature text, or ABI position.
-- Production `param_slot.c` now passes signature receipt and rejects later at
-  `UnsupportedAllocaInstructions`; pointer parameters still reject at stable
-  `UnsupportedFunctionParameters`.
+- Call identity comes only from native `direct_callee_link_name_id`; `callee`,
+  names, `args_str`, and `callee_type_suffix` are presentation only.
+- Require a present structured void, zero-fixed, nonvariadic, specified callee
+  signature that agrees with the resolved module function; do not parse text to
+  fill missing or conflicting facts.
+- Function creation must precede or otherwise safely support body target
+  resolution so source order, forward calls, and valid recursion do not change
+  semantics.
+- Keep nonvoid/result calls, all arguments, indirect calls, variadic or
+  unspecified signatures, CFG/local/body binding, and every other ordinary
+  instruction row fail-closed.
+- Preserve existing function linkage/elision merge rules and keep `long`/
+  `unsigned long` blocked pending inactive idea 743.
 
 ## Proof
 
