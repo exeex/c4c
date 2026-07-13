@@ -714,6 +714,22 @@ void test_verifier_rejects_malformed_raw_type() {
              published.error().reason == bir::PublishError::VerificationFailed &&
              !published.error().verification.errors.empty(),
          "Raw publication verifier must reject malformed typed state");
+
+  bir::ModuleBuilder array_builder;
+  bir::Type malformed_array{bir::TypeKind::Array, 0, "[5 x i16]"};
+  malformed_array.scalar_array =
+      bir::ScalarArrayFacts{bir::TypeKind::Integer, 32, 5};
+  expect(array_builder
+             .add_global_object("malformed_array", std::move(malformed_array),
+                                4, false, false, false, true)
+             .has_value(),
+         "builder should retain incoherent typed array facts for verifier diagnosis");
+  auto rejected_array = std::move(array_builder).publish();
+  expect(!rejected_array.has_value() &&
+             rejected_array.error().reason ==
+                 bir::PublishError::VerificationFailed &&
+             !rejected_array.error().verification.errors.empty(),
+         "Raw publication verifier must reject array element facts that disagree with typed spelling");
 }
 
 void test_module_name_and_struct_declaration_receipt() {
@@ -1777,6 +1793,148 @@ void test_scalar_global_type_authority_without_mirror() {
          "mirror-free scalar global receipt must remain verifier reachable");
 }
 
+void test_fixed_scalar_array_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto array_link = module.link_names.intern("fixed_scalar_array");
+    const auto init_a = module.link_names.intern("array_init_a");
+    const auto init_b = module.link_names.intern("array_init_b");
+
+    lir::LirGlobal definition;
+    definition.name = "fixed_scalar_array";
+    definition.link_name_id = array_link;
+    definition.type = scalar_type(c4c::TB_SHORT);
+    definition.type.array_rank = 1;
+    definition.type.array_size = 5;
+    definition.type.array_dims[0] = 5;
+    definition.is_const = true;
+    definition.linkage_vis = "weak protected ";
+    definition.qualifier = "constant ";
+    definition.llvm_type = "[5 x i16]";
+    definition.init_text = std::string{"opaque\0array-payload", 20};
+    definition.initializer_function_link_name_ids = {init_b, init_a, init_b};
+    definition.align_bytes = 16;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "extern_scalar_array";
+    declaration.type = scalar_type(c4c::TB_DOUBLE);
+    declaration.type.array_rank = 1;
+    declaration.type.array_size = 3;
+    declaration.type.array_dims[0] = 3;
+    declaration.linkage_vis = "external hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = "[3 x double]";
+    declaration.align_bytes = 8;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+    return module;
+  };
+
+  auto module = valid_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "producer-shaped fixed scalar array definitions and declarations must import");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "fixed scalar array global storage must be verifier reachable");
+  const auto view = imported.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+         "fixed scalar arrays must preserve deterministic source order");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto declaration = view.global_object(ids[1]).value();
+  expect(definition.object_type.kind == bir::TypeKind::Array &&
+             definition.object_type.bit_width == 0 &&
+             definition.object_type.spelling == "[5 x i16]" &&
+             definition.object_type.scalar_array ==
+                 std::optional<bir::ScalarArrayFacts>{bir::ScalarArrayFacts{
+                     bir::TypeKind::Integer, 16, 5}} &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             !definition.is_internal && definition.is_weak &&
+             definition.is_const &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 16 &&
+             !definition.is_extern_declaration && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 std::string{"opaque\0array-payload", 20} &&
+             definition.initializer->function_links.size() == 3 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "array_init_b" &&
+             view.spelling(definition.initializer->function_links[1]).value() ==
+                 "array_init_a" &&
+             definition.initializer->function_links[2] ==
+                 definition.initializer->function_links[0],
+         "fixed scalar array definitions must preserve exact typed shape and all object facts");
+  expect(declaration.object_type.kind == bir::TypeKind::Array &&
+             declaration.object_type.spelling == "[3 x double]" &&
+             declaration.object_type.scalar_array ==
+                 std::optional<bir::ScalarArrayFacts>{bir::ScalarArrayFacts{
+                     bir::TypeKind::Floating, 64, 3}} &&
+             declaration.is_extern_declaration &&
+             declaration.visibility == bir::SymbolVisibility::Hidden &&
+             !declaration.initializer,
+         "extern fixed scalar arrays must use the same typed array path");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value() &&
+             canonical.value().view().global_objects().size() == 2,
+         "producer-shaped fixed scalar arrays must publish Canonical BIR");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() &&
+               raw.error().code == bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_size = 0;
+        m.globals[0].type.array_dims[0] = 0;
+        m.globals[0].llvm_type = "[0 x i16]";
+      },
+      "zero-extent scalar arrays must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[0].type.array_dims[0] = 6; },
+      "array_size and outer dimension must agree");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_rank = 2;
+        m.globals[0].type.array_dims[1] = 2;
+        m.globals[0].llvm_type = "[5 x [2 x i16]]";
+      },
+      "multidimensional scalar arrays remain outside this packet");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.ptr_level = 1;
+        m.globals[0].llvm_type = "[5 x ptr]";
+      },
+      "pointer element arrays remain outside this packet");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.base = c4c::TB_STRUCT;
+        m.globals[0].llvm_type = "[5 x %struct.Payload]";
+      },
+      "aggregate element arrays remain outside this packet");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("[5 x i16]");
+      },
+      "producer-valid fixed scalar arrays must not carry llvm_type_ref");
+  rejected(
+      [](lir::LirModule& m) { m.globals[0].llvm_type = "[5 x i32]"; },
+      "rendered array compatibility spelling must match structured facts");
+}
+
 void test_named_aggregate_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -2141,10 +2299,13 @@ void test_global_object_rejections_and_transactionality() {
            "weak const-pointer definitions must remain unsupported transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].llvm_type_ref.reset();
-             m.globals[0].type.array_rank = 1;
-             m.globals[0].llvm_type = "[1 x i32]";
+             m.globals[0].type.array_rank = 2;
+             m.globals[0].type.array_size = 1;
+             m.globals[0].type.array_dims[0] = 1;
+             m.globals[0].type.array_dims[1] = 1;
+             m.globals[0].llvm_type = "[1 x [1 x i32]]";
            },
-           "mirror-free array globals must remain unsupported transactionally");
+           "multidimensional array globals must remain unsupported transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].llvm_type_ref.reset();
              m.globals[0].type = scalar_type(c4c::TB_STRUCT);
@@ -2840,6 +3001,7 @@ int main() {
   test_external_declaration_rejections_and_transactionality();
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
+  test_fixed_scalar_array_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();
   test_flexible_member_literal_struct_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();

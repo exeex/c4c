@@ -42,6 +42,24 @@ struct StructuredTypeSpecFacts {
   bool is_function_pointer = false;
 };
 
+struct ScalarArrayFacts {
+  TypeKind element_kind = TypeKind::Void;
+  std::uint32_t element_bit_width = 0;
+  std::int64_t extent = 0;
+};
+
+inline bool operator==(const ScalarArrayFacts& lhs,
+                       const ScalarArrayFacts& rhs) noexcept {
+  return lhs.element_kind == rhs.element_kind &&
+         lhs.element_bit_width == rhs.element_bit_width &&
+         lhs.extent == rhs.extent;
+}
+
+inline bool operator!=(const ScalarArrayFacts& lhs,
+                       const ScalarArrayFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
 inline bool operator==(const StructuredTypeSpecFacts& lhs,
                        const StructuredTypeSpecFacts& rhs) noexcept {
   return lhs.base == rhs.base && lhs.pointer_level == rhs.pointer_level &&
@@ -64,6 +82,7 @@ struct Type {
   c4c::StructNameId struct_name_id = c4c::kInvalidStructName;
   std::string spelling;
   std::optional<StructuredTypeSpecFacts> structured_spec;
+  std::optional<ScalarArrayFacts> scalar_array;
 
   Type() = default;
   Type(TypeKind type_kind) : kind(type_kind) {
@@ -89,6 +108,7 @@ struct Type {
 };
 
 inline bool operator==(const Type& lhs, const Type& rhs) noexcept {
+  if (lhs.scalar_array != rhs.scalar_array) return false;
   const auto integer_width = [](const Type& type) -> std::uint32_t {
     switch (type.kind) {
       case TypeKind::I1: return 1;
@@ -128,6 +148,7 @@ inline bool operator!=(const Type& lhs, const Type& rhs) noexcept {
 }
 
 inline bool is_well_formed(const Type& type) {
+  if (type.kind != TypeKind::Array && type.scalar_array) return false;
   if (type.structured_spec) {
     const auto& spec = *type.structured_spec;
     if (type.kind != TypeKind::Void ||
@@ -175,8 +196,32 @@ inline bool is_well_formed(const Type& type) {
       return type.bit_width == 0 && no_name && type.spelling.size() >= 2 &&
              type.spelling.front() == '<' && type.spelling.back() == '>';
     case TypeKind::Array:
-      return type.bit_width == 0 && no_name && type.spelling.size() >= 2 &&
-             type.spelling.front() == '[' && type.spelling.back() == ']';
+      if (type.bit_width != 0 || !no_name || type.spelling.size() < 2 ||
+          type.spelling.front() != '[' || type.spelling.back() != ']')
+        return false;
+      if (!type.scalar_array) return true;
+      if (type.scalar_array->extent <= 0) return false;
+      if (type.scalar_array->element_kind == TypeKind::Integer) {
+        if (type.scalar_array->element_bit_width == 0) return false;
+        return type.spelling ==
+               "[" + std::to_string(type.scalar_array->extent) + " x i" +
+                   std::to_string(type.scalar_array->element_bit_width) + "]";
+      }
+      if (type.scalar_array->element_kind == TypeKind::Floating) {
+        std::string element_spelling;
+        switch (type.scalar_array->element_bit_width) {
+          case 16: element_spelling = "half"; break;
+          case 32: element_spelling = "float"; break;
+          case 64: element_spelling = "double"; break;
+          case 80: element_spelling = "x86_fp80"; break;
+          case 128: element_spelling = "fp128"; break;
+          default: return false;
+        }
+        return type.spelling ==
+               "[" + std::to_string(type.scalar_array->extent) + " x " +
+                   element_spelling + "]";
+      }
+      return false;
     case TypeKind::Function:
       return type.bit_width == 0 && no_name &&
              type.spelling.find('(') != std::string::npos &&

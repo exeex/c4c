@@ -8,40 +8,43 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits the producer-valid non-extern direct `TB_STRUCT`
-  flexible-member global row when its required `llvm_type_ref` is an unkeyed,
-  well-formed brace-delimited literal Struct exactly matching `llvm_type`.
-- Nearby proof preserves byte-exact typed spelling with invalid
-  `StructNameId`, link-backed identity, linkage/const/visibility/alignment
-  facts, opaque initializer bytes, and ordered initializer links through Raw
-  verification and Canonical publication; literal unions, missing or
-  mismatched mirrors, literal externs, and TypeSpec array/pointer neighbors
-  reject transactionally in both routes.
+- Plan Step 3 now admits producer-valid fixed-size, one-dimensional direct
+  scalar TypeSpec array globals with no `llvm_type_ref`. Raw `TypeKind::Array`
+  carries coherent typed scalar element kind/width plus positive extent, and
+  the importer renders exact `llvm_type` parity from those structured facts
+  without parsing compatibility text.
+- Nearby proof covers an initialized weak constant definition and an extern
+  declaration through Foundation verification and Raw/Canonical publication,
+  including exact object/linkage/visibility/alignment facts, opaque initializer
+  bytes, and ordered links. Invalid extents/dimensions, rank greater than one,
+  pointer/aggregate elements, unexpected mirrors, parity conflicts, and
+  malformed staged Raw array facts reject transactionally.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 producer-valid TypeSpec array-global receipt
-  packet. `lower_global` emits ordinary array declarations/definitions through
-  its generic path with structured TypeSpec array facts and rendered LLVM type,
-  while `lower_constant_type` currently rejects every nonzero `array_rank`.
+- Execute one bounded Step 3 multidimensional scalar TypeSpec array-global
+  receipt packet, first confirming the producer's outer-to-inner
+  `array_dims`/`array_size` invariants and choosing a non-recursive typed Raw
+  shape extension that keeps rendered LLVM spelling parity-only.
 
 ## Watchouts
 
-- Literal aggregate admission is intentionally limited to initialized,
-  non-extern, direct `TB_STRUCT` rows whose typed unkeyed Struct mirror exactly
-  matches the brace-delimited spelling. Named structs/unions still require a
-  resolvable `StructNameId`; literal unions and all TypeSpec array/pointer
-  aggregate neighbors remain closed.
-- For the suggested array packet, derive authority from TypeSpec and any
-  producer-provided typed evidence; do not parse rendered LLVM type or opaque
-  initializer payload to infer element type, extent, or topology.
+- Fixed scalar array admission is intentionally limited to rank one, matching
+  positive `array_size == array_dims[0]`, a direct integer/floating element,
+  no vector/pointer/reference/function-pointer/aggregate shape, and absent
+  `llvm_type_ref`. Aggregate-element, pointer-element, unsized, and
+  multidimensional globals remain closed.
+- The generic `LirTypeRef` array value path preserves its existing typed
+  discriminant plus opaque exact spelling contract without decoding element or
+  extent semantics. Global TypeSpec array authority is separate and never
+  parses `llvm_type`.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers typed literal-Struct receipt,
+  passing. The selected proof covers typed fixed scalar array receipt,
   `FoundationVerifier` reachability, Canonical publication, exact object-fact
-  preservation, and Raw/Canonical transactional rejection of neighboring
-  unsupported global shapes.
+  preservation, Raw type-fact coherence, and Raw/Canonical transactional
+  rejection of neighboring unsupported global shapes.
