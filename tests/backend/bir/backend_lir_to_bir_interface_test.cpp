@@ -4297,6 +4297,438 @@ void test_direct_vector_global_receipt_and_rejections() {
       "arrays of vector pointers must retain opaque ptr spelling");
 }
 
+void test_va_list_global_receipt_and_rejections() {
+  const auto make_module = [](bool pointer_object) {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    if (pointer_object) {
+      module.target_profile.triple = "riscv64-unknown-linux-gnu";
+      module.target_profile.arch = c4c::TargetArch::Riscv64;
+      module.target_profile.os = c4c::TargetOs::Linux;
+      module.target_profile.backend_abi = c4c::BackendAbiKind::RiscvLp64D;
+    } else {
+      module.target_profile.triple = "x86_64-unknown-linux-gnu";
+      module.target_profile.arch = c4c::TargetArch::X86_64;
+      module.target_profile.os = c4c::TargetOs::Linux;
+      module.target_profile.backend_abi = c4c::BackendAbiKind::SysV_X86_64;
+      const auto va_list_id =
+          module.struct_names.intern("%struct.__va_list_tag_");
+      module.record_struct_decl(lir::LirStructDecl{
+          va_list_id,
+          {{lir::LirTypeRef::integer(32)}, {lir::LirTypeRef::integer(32)},
+           {lir::LirTypeRef("ptr")}, {lir::LirTypeRef("ptr")}}});
+    }
+
+    const std::string storage =
+        pointer_object ? "ptr" : "%struct.__va_list_tag_";
+    const int storage_alignment = pointer_object ? 8 : 16;
+    const auto definition_link = module.link_names.intern("va_list_definition");
+    const auto init_link = module.link_names.intern("va_list_initializer");
+
+    lir::LirGlobal definition;
+    definition.name = "va_list_definition";
+    definition.link_name_id = definition_link;
+    definition.type = scalar_type(c4c::TB_VA_LIST);
+    definition.linkage_vis = "weak protected ";
+    definition.qualifier = "constant ";
+    definition.llvm_type = storage;
+    definition.init_text = storage + " zeroinitializer";
+    definition.initializer_function_link_name_ids = {init_link};
+    definition.align_bytes = storage_alignment;
+    definition.is_const = true;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "va_list_extern";
+    declaration.type = scalar_type(c4c::TB_VA_LIST);
+    declaration.linkage_vis = "external hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = storage;
+    declaration.align_bytes = storage_alignment;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+
+    lir::LirGlobal pointer;
+    pointer.name = "va_list_deep_pointer";
+    pointer.type = scalar_type(c4c::TB_VA_LIST);
+    pointer.type.ptr_level = 3;
+    pointer.linkage_vis = "extern_weak protected ";
+    pointer.qualifier = "global ";
+    pointer.llvm_type = "ptr";
+    pointer.llvm_type_ref = lir::LirTypeRef("ptr");
+    pointer.align_bytes = 8;
+    pointer.is_extern_decl = true;
+    module.globals.push_back(std::move(pointer));
+
+    lir::LirGlobal array;
+    array.name = "va_list_fixed_array";
+    array.type = scalar_type(c4c::TB_VA_LIST);
+    array.type.array_rank = 2;
+    array.type.array_size = 2;
+    array.type.array_dims[0] = 2;
+    array.type.array_dims[1] = 3;
+    array.linkage_vis = "external protected ";
+    array.qualifier = "global ";
+    array.llvm_type = "[2 x [3 x " + storage + "]]";
+    array.align_bytes = storage_alignment;
+    array.is_extern_decl = true;
+    module.globals.push_back(std::move(array));
+
+    lir::LirGlobal pointer_array;
+    pointer_array.name = "va_list_pointer_array";
+    pointer_array.type = scalar_type(c4c::TB_VA_LIST);
+    pointer_array.type.ptr_level = 2;
+    pointer_array.type.array_rank = 1;
+    pointer_array.type.array_size = 4;
+    pointer_array.type.array_dims[0] = 4;
+    pointer_array.linkage_vis = "external hidden ";
+    pointer_array.qualifier = "global ";
+    pointer_array.llvm_type = "[4 x ptr]";
+    pointer_array.align_bytes = 8;
+    pointer_array.is_extern_decl = true;
+    module.globals.push_back(std::move(pointer_array));
+    return module;
+  };
+
+  const auto check_profile = [&](bool pointer_object) {
+    auto module = make_module(pointer_object);
+    const auto va_list_id = pointer_object
+                                ? c4c::kInvalidStructName
+                                : module.struct_names.find(
+                                      "%struct.__va_list_tag_");
+    const bir::VaListTypeFacts facts{
+        pointer_object, static_cast<std::uint32_t>(pointer_object ? 8 : 24),
+        static_cast<std::uint32_t>(pointer_object ? 8 : 16), va_list_id};
+    const std::string storage =
+        pointer_object ? "ptr" : "%struct.__va_list_tag_";
+
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+           "target-shaped va-list globals must reach verified Raw BIR");
+    const auto view = raw.value().view();
+    const auto ids = view.global_objects();
+    expect(ids.size() == 5,
+           "va-list direct, pointer, and fixed-array globals must preserve order");
+    const auto definition = view.global_object(ids[0]).value();
+    const auto declaration = view.global_object(ids[1]).value();
+    const auto pointer = view.global_object(ids[2]).value();
+    const auto array = view.global_object(ids[3]).value();
+    const auto pointer_array = view.global_object(ids[4]).value();
+    bir::Type direct{bir::TypeKind::VaList, 0, storage};
+    direct.va_list_facts = facts;
+    expect(definition.object_type == direct &&
+               std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+               view.spelling(std::get<bir::LinkNameId>(definition.identity))
+                       .value() == "va_list_definition" &&
+               definition.is_weak &&
+               definition.is_const && !definition.is_internal &&
+               !definition.is_extern_declaration &&
+               definition.visibility == bir::SymbolVisibility::Protected &&
+               definition.alignment == (pointer_object ? 8 : 16) &&
+               definition.initializer &&
+               definition.initializer->opaque_payload ==
+                   storage + " zeroinitializer" &&
+               definition.initializer->function_links.size() == 1 &&
+               view.spelling(definition.initializer->function_links[0])
+                       .value() == "va_list_initializer",
+           "va-list definitions must preserve exact storage and object facts");
+    expect(declaration.object_type == direct &&
+               std::holds_alternative<bir::FallbackGlobalName>(
+                   declaration.identity) &&
+               declaration.is_extern_declaration && !declaration.is_weak &&
+               !declaration.is_internal && !declaration.is_const &&
+               declaration.visibility == bir::SymbolVisibility::Hidden &&
+               declaration.alignment == (pointer_object ? 8 : 16) &&
+               !declaration.initializer,
+           "va-list externs must preserve exact storage and declaration facts");
+    expect(pointer.object_type.pointer_facts ==
+                   std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                       bir::TypeKind::VaList, 0, 3, std::nullopt,
+                       std::nullopt, std::nullopt, facts}} &&
+               pointer.is_extern_declaration && pointer.is_weak &&
+               !pointer.is_internal && !pointer.is_const &&
+               pointer.visibility == bir::SymbolVisibility::Protected &&
+               pointer.alignment == 8 && !pointer.initializer,
+           "deep va-list pointers must preserve nested target facts and depth");
+    expect(array.object_type.array_facts ==
+                   std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                       bir::TypeKind::VaList, 0, 0, {2, 3}, std::nullopt,
+                       std::nullopt, std::nullopt, facts}} &&
+               array.object_type.spelling ==
+                   "[2 x [3 x " + storage + "]]" &&
+               array.is_extern_declaration &&
+               !array.is_internal && !array.is_weak && !array.is_const &&
+               array.visibility == bir::SymbolVisibility::Protected &&
+               array.alignment == (pointer_object ? 8 : 16) &&
+               !array.initializer,
+           "fixed va-list arrays must preserve storage form and dimensions");
+    expect(pointer_array.object_type.array_facts ==
+                   std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                       bir::TypeKind::VaList, 0, 2, {4}, std::nullopt,
+                       std::nullopt, std::nullopt, facts}} &&
+               pointer_array.object_type.spelling == "[4 x ptr]" &&
+               pointer_array.is_extern_declaration &&
+               !pointer_array.is_internal && !pointer_array.is_weak &&
+               !pointer_array.is_const &&
+               pointer_array.visibility == bir::SymbolVisibility::Hidden &&
+               pointer_array.alignment == 8 && !pointer_array.initializer,
+           "va-list pointer-element arrays must preserve nested facts and depth");
+
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    const auto canonical_ids =
+        canonical.has_value() ? canonical.value().view().global_objects()
+                              : std::vector<bir::GlobalObjectId>{};
+    expect(canonical.has_value() && canonical_ids.size() == 5 &&
+               canonical.value().view().global_object(canonical_ids[0])
+                       .value().object_type == direct &&
+               canonical.value().view().global_object(canonical_ids[2])
+                       .value().object_type.pointer_facts ==
+                   pointer.object_type.pointer_facts &&
+               canonical.value().view().global_object(canonical_ids[3])
+                       .value().object_type.array_facts ==
+                   array.object_type.array_facts &&
+               canonical.value().view().global_object(canonical_ids[4])
+                       .value().object_type.array_facts ==
+                   pointer_array.object_type.array_facts,
+           "va-list storage facts must survive Canonical BIR publication");
+  };
+  check_profile(false);
+  check_profile(true);
+
+  {
+    auto inconsistent_apple_profile = make_module(false);
+    inconsistent_apple_profile.target_profile.triple =
+        "aarch64-unknown-linux-gnu";
+    inconsistent_apple_profile.target_profile.arch = c4c::TargetArch::Aarch64;
+    inconsistent_apple_profile.target_profile.os = c4c::TargetOs::Darwin;
+    inconsistent_apple_profile.target_profile.backend_abi =
+        c4c::BackendAbiKind::Aapcs64;
+    inconsistent_apple_profile.struct_decls[0].fields = {
+        {lir::LirTypeRef("ptr")}, {lir::LirTypeRef("ptr")},
+        {lir::LirTypeRef("ptr")}, {lir::LirTypeRef::integer(32)},
+        {lir::LirTypeRef::integer(32)}};
+    for (auto& global : inconsistent_apple_profile.globals)
+      global.align_bytes = 8;
+    const auto imported =
+        bir::lower_lir_to_raw_bir(inconsistent_apple_profile);
+    expect(imported.has_value(),
+           "the canonical helper-selected struct-backed profile must import");
+    const auto objects = imported.value().view().global_objects();
+    expect(!objects.empty(),
+           "the canonical helper profile must retain direct va-list storage");
+    const auto direct =
+        imported.value().view().global_object(objects[0]).value();
+    expect(direct.object_type.va_list_facts ==
+                   std::optional<bir::VaListTypeFacts>{bir::VaListTypeFacts{
+                       false, 32, 8,
+                       inconsistent_apple_profile.struct_names.find(
+                           "%struct.__va_list_tag_")}},
+           "va-list import must follow the canonical Apple target helper when typed profile fields and triple disagree");
+  }
+
+  const auto verifier_rejects = [](std::string name, bir::Type type) {
+    bir::ModuleBuilder builder;
+    if (!builder.add_global_object(std::move(name), std::move(type), 8, false,
+                                   false, false, true)
+             .has_value())
+      return false;
+    const auto result = std::move(builder).publish();
+    return !result.has_value() &&
+           result.error().reason == bir::PublishError::VerificationFailed;
+  };
+  const bir::VaListTypeFacts pointer_facts{true, 8, 8,
+                                           c4c::kInvalidStructName};
+  bir::Type facts_on_wrong_kind{bir::TypeKind::Integer, 32, "i32"};
+  facts_on_wrong_kind.va_list_facts = pointer_facts;
+  expect(verifier_rejects("va_facts_wrong_kind",
+                          std::move(facts_on_wrong_kind)),
+         "verifier must reject va-list facts on the wrong kind");
+  expect(verifier_rejects("va_missing_facts",
+                          bir::Type{bir::TypeKind::VaList, 0, "ptr"}),
+         "verifier must reject direct va-list types without facts");
+  bir::Type malformed_direct{bir::TypeKind::VaList, 0, "ptr"};
+  malformed_direct.va_list_facts = bir::VaListTypeFacts{
+      true, 24, 8, c4c::kInvalidStructName};
+  expect(verifier_rejects("va_bad_storage", std::move(malformed_direct)),
+         "verifier must reject inconsistent va-list form, size, and alignment");
+  bir::Type missing_struct_identity{bir::TypeKind::VaList, 0,
+                                    "%struct.__va_list_tag_"};
+  missing_struct_identity.va_list_facts = bir::VaListTypeFacts{
+      false, 24, 16, c4c::kInvalidStructName};
+  expect(verifier_rejects("va_missing_struct_identity",
+                          std::move(missing_struct_identity)),
+         "verifier must reject struct-backed va-list facts without identity");
+  bir::Type pointer_without_nested{bir::TypeKind::Pointer};
+  pointer_without_nested.pointer_facts =
+      bir::PointerTypeFacts{bir::TypeKind::VaList, 0, 2};
+  expect(verifier_rejects("va_pointer_missing_nested",
+                          std::move(pointer_without_nested)),
+         "verifier must require nested va-list pointer facts");
+  bir::Type array_without_nested{bir::TypeKind::Array, 0, "[2 x ptr]"};
+  array_without_nested.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::VaList, 0, 1, {2}};
+  expect(verifier_rejects("va_array_missing_nested",
+                          std::move(array_without_nested)),
+         "verifier must require nested va-list array facts");
+  bir::Type incompatible_nested{bir::TypeKind::Array, 0, "[2 x ptr]"};
+  incompatible_nested.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::VaList, 0, 1, {2}, std::nullopt, std::nullopt,
+      bir::VectorTypeFacts{bir::TypeKind::Integer, 32, 4, 16}, pointer_facts};
+  expect(verifier_rejects("va_array_incompatible_nested",
+                          std::move(incompatible_nested)),
+         "verifier must reject incompatible nested va-list/vector facts");
+  bir::Type incompatible_pointer_nested{bir::TypeKind::Pointer};
+  incompatible_pointer_nested.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::VaList, 0, 1,
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 64}, std::nullopt,
+      std::nullopt, pointer_facts};
+  expect(verifier_rejects("va_pointer_incompatible_nested",
+                          std::move(incompatible_pointer_nested)),
+         "verifier must reject incompatible nested va-list/complex facts");
+  bir::Type incompatible_pointer_array_nested{bir::TypeKind::Array, 0,
+                                               "[2 x ptr]"};
+  incompatible_pointer_array_nested.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::VaList, 0, 1, {2}, std::nullopt,
+      bir::PointerArrayTypeFacts{{3}, 1}, std::nullopt, pointer_facts};
+  expect(verifier_rejects("va_array_pointer_array_nested",
+                          std::move(incompatible_pointer_array_nested)),
+         "verifier must reject incompatible nested va-list/pointer-array facts");
+  const bir::VaListTypeFacts forged_struct_facts{false, 24, 16, 999};
+  bir::Type forged_direct{bir::TypeKind::VaList, 0,
+                          "%struct.__va_list_tag_"};
+  forged_direct.va_list_facts = forged_struct_facts;
+  expect(verifier_rejects("va_forged_direct_id", std::move(forged_direct)),
+         "Foundation verifier must reject a forged direct va-list struct identity");
+  bir::Type forged_pointer{bir::TypeKind::Pointer};
+  forged_pointer.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::VaList, 0, 2, std::nullopt, std::nullopt, std::nullopt,
+      forged_struct_facts};
+  expect(verifier_rejects("va_forged_pointer_id", std::move(forged_pointer)),
+         "Foundation verifier must reject a forged nested va-list pointer identity");
+  bir::Type forged_array{bir::TypeKind::Array, 0,
+                         "[2 x %struct.__va_list_tag_]"};
+  forged_array.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::VaList, 0, 0, {2}, std::nullopt, std::nullopt,
+      std::nullopt, forged_struct_facts};
+  expect(verifier_rejects("va_forged_array_id", std::move(forged_array)),
+         "Foundation verifier must reject a forged nested va-list array identity");
+  {
+    bir::ModuleBuilder wrong_layout_builder;
+    expect(wrong_layout_builder
+               .add_struct_name(1, "%struct.__va_list_tag_")
+               .has_value(),
+           "staged va-list layout test must retain the canonical struct name");
+    expect(wrong_layout_builder
+               .add_struct_declaration(
+                   1,
+                   {{bir::Type{bir::TypeKind::Integer, 32, "i32"}},
+                    {bir::Type{bir::TypeKind::Pointer}},
+                    {bir::Type{bir::TypeKind::Pointer}},
+                    {bir::Type{bir::TypeKind::Pointer}}},
+                   false, false)
+               .has_value(),
+           "builder must retain a deliberately wrong staged va-list layout");
+    bir::Type staged_va_list{bir::TypeKind::VaList, 0,
+                             "%struct.__va_list_tag_"};
+    staged_va_list.va_list_facts = bir::VaListTypeFacts{false, 24, 16, 1};
+    expect(wrong_layout_builder
+               .add_global_object("wrong_staged_va_list_layout",
+                                  std::move(staged_va_list), 16, false, false,
+                                  false, true)
+               .has_value(),
+           "builder must retain the staged va-list global for verifier diagnosis");
+    const auto rejected_wrong_layout =
+        std::move(wrong_layout_builder).publish();
+    expect(!rejected_wrong_layout.has_value() &&
+               rejected_wrong_layout.error().reason ==
+                   bir::PublishError::VerificationFailed,
+           "Foundation verifier must reject a resolving canonical va-list declaration with the wrong layout");
+  }
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module(false);
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(),
+           message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& m) {
+        m.target_profile.arch = c4c::TargetArch::Riscv64;
+        m.target_profile.backend_abi = c4c::BackendAbiKind::RiscvLp64;
+      },
+      "target/profile and va-list storage form must agree");
+  rejected(
+      [](lir::LirModule& m) {
+        m.struct_decls.clear();
+        m.struct_decl_index.clear();
+      },
+      "struct-backed va-list storage requires a resolvable declaration");
+  rejected(
+      [](lir::LirModule& m) {
+        const auto wrong = m.struct_names.intern("%struct.wrong_va_list");
+        m.struct_decls[0].name_id = wrong;
+        m.struct_decl_index.clear();
+        m.struct_decl_index.emplace(wrong, 0);
+      },
+      "struct-backed va-list storage rejects the wrong declaration identity");
+  rejected(
+      [](lir::LirModule& m) { m.struct_decls[0].is_packed = true; },
+      "struct-backed va-list storage rejects packed declarations");
+  rejected(
+      [](lir::LirModule& m) { m.struct_decls[0].is_opaque = true; },
+      "struct-backed va-list storage rejects opaque declarations");
+  rejected(
+      [](lir::LirModule& m) {
+        m.struct_decls[0].fields = {
+            {lir::LirTypeRef::integer(32)}, {lir::LirTypeRef("ptr")},
+            {lir::LirTypeRef("ptr")}, {lir::LirTypeRef("ptr")}};
+      },
+      "struct-backed va-list storage rejects wrong producer layouts");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "ptr"; },
+           "direct va-list spelling must match target storage");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref =
+            lir::LirTypeRef("%struct.__va_list_tag_");
+      },
+      "direct va-list storage rejects unexpected mirrors");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vrm_width = 1; },
+           "va-list storage rejects residual VRM facts");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.is_vector = true;
+        m.globals[0].type.vector_lanes = 2;
+        m.globals[0].type.vector_bytes = 16;
+      },
+      "va-list storage rejects residual vector facts");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.enum_underlying_base = c4c::TB_INT;
+      },
+      "va-list storage rejects residual enum facts");
+  rejected([](lir::LirModule& m) { m.globals[2].type.is_fn_ptr = true; },
+           "va-list function pointers remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
+           "va-list references remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].type.is_ptr_to_array = true;
+        m.globals[2].type.array_rank = 1;
+        m.globals[2].type.array_size = 2;
+        m.globals[2].type.array_dims[0] = 2;
+        m.globals[2].type.inner_rank = 1;
+      },
+      "va-list pointer-to-array shapes remain closed");
+  rejected([](lir::LirModule& m) { m.globals[3].type.array_dims[1] = -1; },
+           "va-list fixed arrays reject negative dimensions");
+  rejected([](lir::LirModule& m) { m.globals[3].type.array_size = 3; },
+           "va-list fixed arrays require matching front dimensions");
+}
+
 void test_named_aggregate_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -5458,6 +5890,7 @@ int main() {
   test_mixed_pointer_array_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
   test_direct_vector_global_receipt_and_rejections();
+  test_va_list_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();
   test_flexible_member_literal_struct_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();

@@ -24,6 +24,7 @@ enum class TypeKind : std::uint8_t {
   Floating,
   Complex,
   Vector,
+  VaList,
   VrmRegister,
   Array,
   Struct,
@@ -61,6 +62,13 @@ struct VectorTypeFacts {
   std::int64_t storage_bytes = 0;
 };
 
+struct VaListTypeFacts {
+  bool is_pointer_object = false;
+  std::uint32_t storage_size = 0;
+  std::uint32_t storage_alignment = 0;
+  c4c::StructNameId struct_name_id = c4c::kInvalidStructName;
+};
+
 struct ArrayTypeFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
@@ -69,6 +77,7 @@ struct ArrayTypeFacts {
   std::optional<ComplexTypeFacts> element_complex_facts;
   std::optional<PointerArrayTypeFacts> element_pointee_array_facts;
   std::optional<VectorTypeFacts> element_vector_facts;
+  std::optional<VaListTypeFacts> element_va_list_facts;
 };
 
 struct PointerTypeFacts {
@@ -78,7 +87,21 @@ struct PointerTypeFacts {
   std::optional<ComplexTypeFacts> pointee_complex_facts;
   std::optional<PointerArrayTypeFacts> pointee_array_facts;
   std::optional<VectorTypeFacts> pointee_vector_facts;
+  std::optional<VaListTypeFacts> pointee_va_list_facts;
 };
+
+inline bool operator==(const VaListTypeFacts& lhs,
+                       const VaListTypeFacts& rhs) noexcept {
+  return lhs.is_pointer_object == rhs.is_pointer_object &&
+         lhs.storage_size == rhs.storage_size &&
+         lhs.storage_alignment == rhs.storage_alignment &&
+         lhs.struct_name_id == rhs.struct_name_id;
+}
+
+inline bool operator!=(const VaListTypeFacts& lhs,
+                       const VaListTypeFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
 
 inline bool operator==(const ComplexTypeFacts& lhs,
                        const ComplexTypeFacts& rhs) noexcept {
@@ -122,7 +145,8 @@ inline bool operator==(const PointerTypeFacts& lhs,
          lhs.pointer_depth == rhs.pointer_depth &&
          lhs.pointee_complex_facts == rhs.pointee_complex_facts &&
          lhs.pointee_array_facts == rhs.pointee_array_facts &&
-         lhs.pointee_vector_facts == rhs.pointee_vector_facts;
+         lhs.pointee_vector_facts == rhs.pointee_vector_facts &&
+         lhs.pointee_va_list_facts == rhs.pointee_va_list_facts;
 }
 
 inline bool operator!=(const PointerTypeFacts& lhs,
@@ -139,7 +163,8 @@ inline bool operator==(const ArrayTypeFacts& lhs,
          lhs.element_complex_facts == rhs.element_complex_facts &&
          lhs.element_pointee_array_facts ==
              rhs.element_pointee_array_facts &&
-         lhs.element_vector_facts == rhs.element_vector_facts;
+         lhs.element_vector_facts == rhs.element_vector_facts &&
+         lhs.element_va_list_facts == rhs.element_va_list_facts;
 }
 
 inline bool operator!=(const ArrayTypeFacts& lhs,
@@ -173,6 +198,7 @@ struct Type {
   std::optional<PointerTypeFacts> pointer_facts;
   std::optional<VectorTypeFacts> vector_facts;
   std::optional<ComplexTypeFacts> complex_facts;
+  std::optional<VaListTypeFacts> va_list_facts;
 
   Type() = default;
   Type(TypeKind type_kind) : kind(type_kind) {
@@ -202,6 +228,7 @@ inline bool operator==(const Type& lhs, const Type& rhs) noexcept {
   if (lhs.pointer_facts != rhs.pointer_facts) return false;
   if (lhs.vector_facts != rhs.vector_facts) return false;
   if (lhs.complex_facts != rhs.complex_facts) return false;
+  if (lhs.va_list_facts != rhs.va_list_facts) return false;
   const auto integer_width = [](const Type& type) -> std::uint32_t {
     switch (type.kind) {
       case TypeKind::I1: return 1;
@@ -245,6 +272,7 @@ inline bool is_well_formed(const Type& type) {
   if (type.kind != TypeKind::Pointer && type.pointer_facts) return false;
   if (type.kind != TypeKind::Vector && type.vector_facts) return false;
   if (type.kind != TypeKind::Complex && type.complex_facts) return false;
+  if (type.kind != TypeKind::VaList && type.va_list_facts) return false;
   if (type.structured_spec) {
     const auto& spec = *type.structured_spec;
     if (type.kind != TypeKind::Void ||
@@ -285,6 +313,20 @@ inline bool is_well_formed(const Type& type) {
     if (!element) return std::nullopt;
     return "<" + std::to_string(facts.lane_count) + " x " + *element + ">";
   };
+  const auto va_list_spelling = [](const VaListTypeFacts& facts)
+      -> std::optional<std::string> {
+    if (facts.is_pointer_object) {
+      if (facts.storage_size != 8 || facts.storage_alignment != 8 ||
+          facts.struct_name_id != c4c::kInvalidStructName)
+        return std::nullopt;
+      return "ptr";
+    }
+    if (facts.struct_name_id == c4c::kInvalidStructName ||
+        !((facts.storage_size == 24 && facts.storage_alignment == 16) ||
+          (facts.storage_size == 32 && facts.storage_alignment == 8)))
+      return std::nullopt;
+    return "%struct.__va_list_tag_";
+  };
   switch (type.kind) {
     case TypeKind::Void:
       return type.bit_width == 0 && no_name &&
@@ -313,11 +355,28 @@ inline bool is_well_formed(const Type& type) {
       const auto expected = complex_spelling(*type.complex_facts);
       return expected && type.spelling == *expected;
     }
+    case TypeKind::VaList: {
+      if (type.bit_width != 0 || !no_name || !type.va_list_facts)
+        return false;
+      const auto expected = va_list_spelling(*type.va_list_facts);
+      return expected && type.spelling == *expected;
+    }
     case TypeKind::Pointer:
       if (type.bit_width != 0 || !no_name || type.spelling != "ptr")
         return false;
       if (!type.pointer_facts) return true;
       if (type.pointer_facts->pointer_depth <= 0) return false;
+      if (type.pointer_facts->pointee_kind == TypeKind::VaList) {
+        return type.pointer_facts->pointee_bit_width == 0 &&
+               type.pointer_facts->pointee_va_list_facts &&
+               !type.pointer_facts->pointee_complex_facts &&
+               !type.pointer_facts->pointee_array_facts &&
+               !type.pointer_facts->pointee_vector_facts &&
+               va_list_spelling(
+                   *type.pointer_facts->pointee_va_list_facts)
+                   .has_value();
+      }
+      if (type.pointer_facts->pointee_va_list_facts) return false;
       if (type.pointer_facts->pointee_kind == TypeKind::Vector) {
         return type.pointer_facts->pointee_bit_width == 0 &&
                type.pointer_facts->pointee_vector_facts &&
@@ -392,6 +451,26 @@ inline bool is_well_formed(const Type& type) {
       if (type.array_facts->dimensions.empty()) return false;
       for (const auto dimension : type.array_facts->dimensions)
         if (dimension < 0) return false;
+      if (type.array_facts->element_kind == TypeKind::VaList) {
+        if (type.array_facts->element_bit_width != 0 ||
+            type.array_facts->element_pointer_depth < 0 ||
+            !type.array_facts->element_va_list_facts ||
+            type.array_facts->element_complex_facts ||
+            type.array_facts->element_pointee_array_facts ||
+            type.array_facts->element_vector_facts)
+          return false;
+        const auto expected =
+            va_list_spelling(*type.array_facts->element_va_list_facts);
+        if (!expected) return false;
+        std::string spelling =
+            type.array_facts->element_pointer_depth > 0 ? "ptr" : *expected;
+        for (auto dimension = type.array_facts->dimensions.rbegin();
+             dimension != type.array_facts->dimensions.rend(); ++dimension)
+          spelling = "[" + std::to_string(*dimension) + " x " + spelling +
+                     "]";
+        return type.spelling == spelling;
+      }
+      if (type.array_facts->element_va_list_facts) return false;
       if (type.array_facts->element_kind == TypeKind::Vector) {
         if (type.array_facts->element_bit_width != 0 ||
             !type.array_facts->element_vector_facts ||

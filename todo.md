@@ -8,11 +8,12 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid pointers to vectors and ordinary fixed
-  arrays of vectors or pointers-to-vectors from structured `TypeSpec` authority.
-- Exact scalar component kind/width, vector lanes/storage bytes, pointer depth,
-  ordered dimensions, opaque/visible spelling, linkage, visibility, alignment,
-  and initializer facts survive Foundation, Raw BIR, and Canonical BIR.
+- Plan Step 3 now admits producer-valid `TB_VA_LIST` globals through direct,
+  ordinary pointer, and ordinary fixed-array routes.
+- Target-shaped pointer-object versus `%struct.__va_list_tag_` storage, exact
+  size/alignment, structured declaration identity, pointer depth, dimensions,
+  object/linkage/visibility/alignment, and initializer facts survive Foundation,
+  Raw BIR, and Canonical BIR.
 
 ## Suggested Next
 
@@ -21,12 +22,13 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Vector pointee/element facts are nested typed authority; visible vector
-  spelling is used only for direct elements, while positive pointer depth uses
-  opaque `ptr` without parsing.
-- Split pointer-to-array shapes, references, function pointers, mirrors,
-  negative/unsized/computed bounds, and enum/complex/VRM/aggregate/va-list
-  vector bases remain closed.
+- Va-list pointee/element facts carry the target storage form and require the
+  canonical structured declaration identity and exact unpacked/nonopaque
+  producer layout on struct-backed targets; Foundation cross-resolves direct
+  and nested identities, and no rendered spelling is parsed for authority.
+- Split pointer-to-array shapes, references, function pointers, direct mirrors,
+  residual enum/vector/VRM facts, and negative/unsized/computed bounds remain
+  closed.
 
 ## Proof
 

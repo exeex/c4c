@@ -297,6 +297,71 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               global.object_type.spelling &&
           module.struct_decls_by_name_.count(struct_name->second) != 0;
     }
+    const auto nested_va_list_facts_resolve =
+        [&](const std::optional<VaListTypeFacts>& facts) {
+          if (!facts || facts->is_pointer_object) return true;
+          const auto struct_name =
+              module.struct_names_by_source_id_.find(facts->struct_name_id);
+          if (struct_name == module.struct_names_by_source_id_.end() ||
+              !struct_name->second.valid() ||
+              struct_name->second.epoch != module.epoch_ ||
+              struct_name->second.slot >= module.struct_names_.size() ||
+              module.struct_names_[struct_name->second.slot].spelling !=
+                  "%struct.__va_list_tag_")
+            return false;
+          const auto declaration =
+              module.struct_decls_by_name_.find(struct_name->second);
+          if (declaration == module.struct_decls_by_name_.end() ||
+              !declaration->second.valid() ||
+              declaration->second.epoch != module.epoch_ ||
+              declaration->second.slot >= module.struct_decls_.size())
+            return false;
+          const auto& resolved =
+              module.struct_decls_[declaration->second.slot];
+          if (resolved.name != struct_name->second || resolved.is_packed ||
+              resolved.is_opaque)
+            return false;
+          const auto is_i32 = [](const StructField& field) {
+            const auto& type = field.type;
+            return type.kind == TypeKind::Integer && type.bit_width == 32 &&
+                   type.spelling == "i32" &&
+                   type.struct_name_id == c4c::kInvalidStructName &&
+                   !type.structured_spec && !type.array_facts &&
+                   !type.pointer_facts && !type.vector_facts &&
+                   !type.complex_facts && !type.va_list_facts &&
+                   !field.referenced_name.valid();
+          };
+          const auto is_ptr = [](const StructField& field) {
+            const auto& type = field.type;
+            return type.kind == TypeKind::Pointer && type.bit_width == 0 &&
+                   type.spelling == "ptr" &&
+                   type.struct_name_id == c4c::kInvalidStructName &&
+                   !type.structured_spec && !type.array_facts &&
+                   !type.pointer_facts && !type.vector_facts &&
+                   !type.complex_facts && !type.va_list_facts &&
+                   !field.referenced_name.valid();
+          };
+          const auto& fields = resolved.fields;
+          if (facts->storage_size == 24 &&
+              facts->storage_alignment == 16)
+            return fields.size() == 4 && is_i32(fields[0]) &&
+                   is_i32(fields[1]) && is_ptr(fields[2]) &&
+                   is_ptr(fields[3]);
+          if (facts->storage_size == 32 && facts->storage_alignment == 8)
+            return fields.size() == 5 && is_ptr(fields[0]) &&
+                   is_ptr(fields[1]) && is_ptr(fields[2]) &&
+                   is_i32(fields[3]) && is_i32(fields[4]);
+          return false;
+        };
+    type_resolves =
+        type_resolves &&
+        nested_va_list_facts_resolve(global.object_type.va_list_facts) &&
+        (!global.object_type.pointer_facts ||
+         nested_va_list_facts_resolve(
+             global.object_type.pointer_facts->pointee_va_list_facts)) &&
+        (!global.object_type.array_facts ||
+         nested_va_list_facts_resolve(
+             global.object_type.array_facts->element_va_list_facts));
     const bool valid_alignment =
         global.alignment >= 0 &&
         (global.alignment == 0 ||

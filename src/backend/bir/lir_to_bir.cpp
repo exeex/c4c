@@ -1,6 +1,7 @@
 #include "lir_to_bir.hpp"
 
 #include "../../codegen/lir/ir.hpp"
+#include "../../codegen/shared/llvm_helpers.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -160,6 +161,58 @@ std::optional<Type> lower_constant_type(const LirModule& module,
 
   if (type.base != TB_VRM_REGISTER && type.vrm_width != 0)
     return std::nullopt;
+  if (type.base == TB_VA_LIST) {
+    if (type.enum_underlying_base != TB_VOID || type.is_vector ||
+        type.vector_lanes != 0 || type.vector_bytes != 0)
+      return std::nullopt;
+
+    namespace llvm_helpers = c4c::codegen::llvm_helpers;
+    const bool pointer_object =
+        llvm_helpers::llvm_va_list_is_pointer_object(module.target_profile);
+    VaListTypeFacts facts;
+    facts.is_pointer_object = pointer_object;
+    facts.storage_size = static_cast<std::uint32_t>(
+        llvm_helpers::llvm_va_list_storage_size(module.target_profile));
+    facts.storage_alignment = static_cast<std::uint32_t>(
+        llvm_helpers::llvm_va_list_alignment(module.target_profile));
+    if (!pointer_object) {
+      facts.struct_name_id =
+          module.struct_names.find("%struct.__va_list_tag_");
+      const auto* declaration = module.find_struct_decl(facts.struct_name_id);
+      if (facts.struct_name_id == c4c::kInvalidStructName || !declaration ||
+          declaration->is_packed || declaration->is_opaque)
+        return std::nullopt;
+
+      const auto is_i32 = [](const codegen::lir::LirStructField& field) {
+        return field.type.kind() == codegen::lir::LirTypeKind::Integer &&
+               field.type.str() == "i32" &&
+               field.type.integer_bit_width() == 32 &&
+               !field.type.has_struct_name_id();
+      };
+      const auto is_ptr = [](const codegen::lir::LirStructField& field) {
+        return field.type.kind() == codegen::lir::LirTypeKind::Pointer &&
+               field.type.str() == "ptr" &&
+               !field.type.has_struct_name_id();
+      };
+      const bool amd64_sysv =
+          llvm_helpers::llvm_target_is_amd64_sysv(module.target_profile);
+      const auto& fields = declaration->fields;
+      if ((amd64_sysv &&
+           (fields.size() != 4 || !is_i32(fields[0]) || !is_i32(fields[1]) ||
+            !is_ptr(fields[2]) || !is_ptr(fields[3]))) ||
+          (!amd64_sysv &&
+           (fields.size() != 5 || !is_ptr(fields[0]) || !is_ptr(fields[1]) ||
+            !is_ptr(fields[2]) || !is_i32(fields[3]) ||
+            !is_i32(fields[4]))))
+        return std::nullopt;
+    }
+
+    Type result{TypeKind::VaList, 0,
+                llvm_helpers::llvm_va_list_storage_ty(module.target_profile)};
+    result.va_list_facts = facts;
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
   if (type.base == TB_VRM_REGISTER) {
     if (type.vrm_width != 1 && type.vrm_width != 2 &&
         type.vrm_width != 4 && type.vrm_width != 8)
@@ -519,7 +572,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     if (!element || (element->kind != TypeKind::Integer &&
                      element->kind != TypeKind::Floating &&
                      element->kind != TypeKind::Complex &&
-                     element->kind != TypeKind::VrmRegister))
+                     element->kind != TypeKind::VrmRegister &&
+                     element->kind != TypeKind::VaList))
       return std::nullopt;
 
     std::string expected =
@@ -532,7 +586,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     result.array_facts =
         ArrayTypeFacts{element->kind, element->bit_width,
                        element_pointer_depth, std::move(dimensions),
-                       element->complex_facts};
+                       element->complex_facts, std::nullopt, std::nullopt,
+                       element->va_list_facts};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }
@@ -598,7 +653,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     if (!pointee || (pointee->kind != TypeKind::Integer &&
                      pointee->kind != TypeKind::Floating &&
                      pointee->kind != TypeKind::Complex &&
-                     pointee->kind != TypeKind::VrmRegister))
+                     pointee->kind != TypeKind::VrmRegister &&
+                     pointee->kind != TypeKind::VaList))
       return std::nullopt;
 
     if (global.llvm_type_ref) {
@@ -612,7 +668,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     Type result{TypeKind::Pointer};
     result.pointer_facts = PointerTypeFacts{
         pointee->kind, pointee->bit_width, global.type.ptr_level,
-        pointee->complex_facts};
+        pointee->complex_facts, std::nullopt, std::nullopt,
+        pointee->va_list_facts};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }
@@ -668,9 +725,12 @@ std::optional<Type> lower_global_type(const LirModule& module,
   if (authoritative->kind != TypeKind::Integer &&
       authoritative->kind != TypeKind::Floating &&
       authoritative->kind != TypeKind::Complex &&
-      authoritative->kind != TypeKind::VrmRegister)
+      authoritative->kind != TypeKind::VrmRegister &&
+      authoritative->kind != TypeKind::VaList)
     return std::nullopt;
-  if (authoritative->kind == TypeKind::VrmRegister && global.llvm_type_ref)
+  if ((authoritative->kind == TypeKind::VrmRegister ||
+       authoritative->kind == TypeKind::VaList) &&
+      global.llvm_type_ref)
     return std::nullopt;
   if (global.llvm_type != authoritative->spelling) return std::nullopt;
   if (global.llvm_type_ref) {
