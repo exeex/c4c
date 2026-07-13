@@ -3,60 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 12
-Current Step Title: Reconcile the root and run the complete documentation proof
+Current Step ID: 14
+Current Step Title: Record architecture acceptance
 
 ## Just Finished
 
-- Completed repeated Plan Step 12 at exact architecture checkpoint
-  `7f1e50aef` without changing architecture documents.
-- All 44 BIR Markdown contracts plus the normative MIR root passed the complete
-  structure/link, exact legacy-inventory, semantic, and focused-negative gate.
-- Reconfirmed the full E4 frame-action materializer/schema route, private D5
-  staging, six-product exact-current order, verifier intervals, strict F1
-  boundary, failure atomicity, and the D2/E4 and core/E4 ownership separations.
-- Confirmed the repaired sole C9 projection owner: private D5 emits no
-  projection; E4 invokes projection exactly once after materialization; the
-  final key binds the materialized stamp, both fingerprints, and both complete
-  mutation/replacement/tombstone lineage families.
+- Plan Step 13 is complete. The fresh independent report at
+  `review/731_final_projection_architecture_review.md` reviewed exact HEAD
+  `8a7404a265ab24e230dcf4d001d6d1033e8d9736`, found zero blocking or
+  non-blocking architecture findings, judged the route aligned, and explicitly
+  allowed Step 14 for that checkpoint.
+- All earlier architecture, structure, legacy, implementation-honesty, strict
+  F1, verifier-interval, frame-action, and final projection-lineage checkpoints
+  remain resolved. No architecture repair remains in this runbook.
 
 ## Suggested Next
 
-- Execute a new independent Plan Step 13 review of exact checkpoint
-  `7f1e50aef` plus this Step 12 proof record. Write a new transient report under
-  `review/`; do not reuse a prior rejection as the current judgment.
-- Do not enter Step 14 unless that fresh review reports zero blockers.
+- Execute bounded Plan Step 14 in `src/backend/bir/README.md`: add only the
+  explicit architecture-accepted marker for reviewed checkpoint
+  `8a7404a265ab24e230dcf4d001d6d1033e8d9736`, then rerun the prescribed
+  structural checks and record exact proof here.
+- Do not make a new architecture choice, edit a subordinate contract, or
+  authorize implementation in this packet.
 
 ## Watchouts
 
-- Preserve one C9 `ConstraintProjectionTransaction` authority. Earlier
-  D1/D2/D4/initial-D5/E3 revisions retain their existing projection rules;
-  private post-E3 D5 stages lineage only, and final E4 projects once after
-  frame-action materialization.
-- Preserve final order: projection -> E1 `LivenessInterferenceKey` -> E2
-  `AssignmentKey` -> E3 `SpillStateKey` -> `FrameRealizationPlan`/key ->
-  `TargetRealizabilityKey`, with all six products installed atomically.
-- Stable IDs, structural equality, preservation records, and predecessor keys
-  never establish final-revision freshness. F1 remains one-record apply-only.
+- The marker must identify only the exact independently reviewed checkpoint;
+  any substantive architecture edit invalidates the Step 13 judgment and must
+  return to review rather than being bundled into Step 14.
+- Completing Step 14 exhausts this docs-only runbook but does not complete idea
+  731. Keep `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+  open, keep implementation gated, and return lifecycle control to the plan
+  owner for a separate implementation-runbook decision.
 
 ## Proof
 
-- Passed `git diff --check`.
-- Exact deterministic structure/link checker output:
-  `structure PASS: 44 files, 43 root links exactly once, 31 ordered A1-F3 rows,
-  D2 cardinality 1, 45-doc local-link audit`.
-- Exact legacy checker output:
-  `legacy inventory PASS: 164 files, 44 nonempty dispositions, exactly one
-  match per file; Accepted owners present and indexed`.
-- Complete semantic output:
-  `semantic PASS: full E4 route plus sole C9 post-materialization projection,
-  complete dual lineage, six-product order, gates, strict F1, rollback, and
-  ownership separations`.
-- Focused negative output:
-  `negative PASS: stale ownership/production, late repair, separate or early
-  projection, alternate authority, stale IDs/headings/C5 owner, acceptance,
-  overfit, expectation, and test changes absent`.
-- After this update, `git status --short` contains only `todo.md` plus the three
-  pre-existing untracked historical review reports.
-- Docs-only packet: no build/test subset applies and no regression log was
-  created or modified.
+- Lifecycle transition only. Independent Step 13 evidence is recorded in
+  `review/731_final_projection_architecture_review.md` for exact reviewed HEAD
+  `8a7404a265ab24e230dcf4d001d6d1033e8d9736` with zero blockers.
+- The Step 14 executor must record fresh `git diff --check`, exact inventory,
+  root-link, stage-order, local-link, and acceptance-marker cardinality proof.
