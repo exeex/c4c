@@ -418,6 +418,52 @@ std::optional<Type> lower_global_type(const LirModule& module,
     return result;
   }
 
+  const bool pure_pointer_to_array_global =
+      (global.is_extern_decl || !global.init_text.empty()) &&
+      global.type.ptr_level > 0 && !global.type.is_lvalue_ref &&
+      !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
+      global.type.array_rank <= kArrayDimensionCapacity &&
+      global.type.array_size >= 0 && global.type.is_ptr_to_array &&
+      (global.type.inner_rank < 0 ||
+       global.type.inner_rank == global.type.array_rank) &&
+      !global.type.is_fn_ptr && !global.type.is_vector &&
+      global.type.array_size_expr == nullptr;
+  if (pure_pointer_to_array_global) {
+    if (global.llvm_type != "ptr" || global.llvm_type_ref)
+      return std::nullopt;
+    std::vector<std::int64_t> pointee_dimensions;
+    pointee_dimensions.reserve(global.type.array_rank);
+    for (int i = 0; i < global.type.array_rank; ++i) {
+      if (global.type.array_dims[i] < 0) return std::nullopt;
+      pointee_dimensions.push_back(global.type.array_dims[i]);
+    }
+    if (pointee_dimensions.front() != global.type.array_size)
+      return std::nullopt;
+
+    TypeSpec pointee_spec = global.type;
+    pointee_spec.ptr_level = 0;
+    pointee_spec.array_rank = 0;
+    pointee_spec.array_size = -1;
+    for (auto& dimension : pointee_spec.array_dims) dimension = -1;
+    pointee_spec.is_ptr_to_array = false;
+    pointee_spec.inner_rank = 0;
+    const auto pointee = lower_constant_type(module, pointee_spec);
+    if (!pointee || (pointee->kind != TypeKind::Integer &&
+                     pointee->kind != TypeKind::Floating &&
+                     pointee->kind != TypeKind::Complex &&
+                     pointee->kind != TypeKind::VrmRegister))
+      return std::nullopt;
+
+    Type result{TypeKind::Pointer};
+    result.pointer_facts = PointerTypeFacts{
+        pointee->kind, pointee->bit_width, global.type.ptr_level,
+        pointee->complex_facts,
+        PointerArrayTypeFacts{std::move(pointee_dimensions),
+                              global.type.inner_rank}};
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
   const bool scalar_pointer_global =
       (global.is_extern_decl || !global.init_text.empty()) &&
       global.type.ptr_level > 0 &&

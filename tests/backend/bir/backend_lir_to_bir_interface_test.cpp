@@ -923,6 +923,62 @@ void test_verifier_rejects_malformed_raw_type() {
                                         std::move(malformed_complex_pointer)),
          "Raw publication verifier must reject mismatched complex pointer facts");
 
+  const auto pointer_array_facts = [](std::vector<std::int64_t> dimensions,
+                                      int inner_rank) {
+    return bir::PointerTypeFacts{
+        bir::TypeKind::Integer, 32, 1, std::nullopt,
+        bir::PointerArrayTypeFacts{std::move(dimensions), inner_rank}};
+  };
+  bir::Type empty_pointer_array{bir::TypeKind::Pointer};
+  empty_pointer_array.pointer_facts = pointer_array_facts({}, -1);
+  expect(malformed_pointer_facts_reject("empty_pointer_array",
+                                        std::move(empty_pointer_array)),
+         "Raw publication verifier must reject empty pointer-array dimensions");
+
+  bir::Type negative_pointer_array{bir::TypeKind::Pointer};
+  negative_pointer_array.pointer_facts = pointer_array_facts({3, -1}, -1);
+  expect(malformed_pointer_facts_reject("negative_pointer_array",
+                                        std::move(negative_pointer_array)),
+         "Raw publication verifier must reject negative pointer-array dimensions");
+
+  bir::Type split_pointer_array{bir::TypeKind::Pointer};
+  split_pointer_array.pointer_facts = pointer_array_facts({3, 5}, 1);
+  expect(malformed_pointer_facts_reject("split_pointer_array",
+                                        std::move(split_pointer_array)),
+         "Raw publication verifier must reject pointer-array facts with an outer array rank");
+
+  bir::Type untyped_pointer_array{bir::TypeKind::Pointer};
+  untyped_pointer_array.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Void, 0, 1, std::nullopt,
+      bir::PointerArrayTypeFacts{{3}, -1}};
+  expect(malformed_pointer_facts_reject("untyped_pointer_array",
+                                        std::move(untyped_pointer_array)),
+         "Raw publication verifier must reject pointer-array facts without typed pointee authority");
+
+  bir::Type pointer_array_facts_on_scalar{bir::TypeKind::Integer, 32, "i32"};
+  pointer_array_facts_on_scalar.pointer_facts = pointer_array_facts({3}, 1);
+  expect(malformed_pointer_facts_reject(
+             "pointer_array_facts_on_scalar",
+             std::move(pointer_array_facts_on_scalar)),
+         "Raw publication verifier must reject pointer-array facts on non-pointer types");
+
+  bir::Type oversized_pointer_array{bir::TypeKind::Pointer};
+  oversized_pointer_array.pointer_facts =
+      pointer_array_facts({1, 2, 3, 4, 5, 6, 7, 8, 9}, 9);
+  expect(malformed_pointer_facts_reject("oversized_pointer_array",
+                                        std::move(oversized_pointer_array)),
+         "Raw publication verifier must bound typed pointer-array dimensions");
+
+  bir::Type incompatible_complex_pointer_array{bir::TypeKind::Pointer};
+  incompatible_complex_pointer_array.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Complex, 64, 1,
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 32},
+      bir::PointerArrayTypeFacts{{3}, 1}};
+  expect(malformed_pointer_facts_reject(
+             "incompatible_complex_pointer_array",
+             std::move(incompatible_complex_pointer_array)),
+         "Raw publication verifier must reject incompatible nested complex pointer-array facts");
+
   bir::Type malformed_complex_array{bir::TypeKind::Array, 0,
                                     "[2 x { i32, i32 }]"};
   malformed_complex_array.array_facts = bir::ArrayTypeFacts{
@@ -3105,6 +3161,181 @@ void test_scalar_pointer_global_receipt_and_rejections() {
            "weak const-pointer rendered spelling is parity-only and must be ptr");
 }
 
+void test_pointer_to_array_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto definition_link =
+        module.link_names.intern("complex_pointer_to_array");
+    const auto init_a = module.link_names.intern("pointer_array_init_a");
+    const auto init_b = module.link_names.intern("pointer_array_init_b");
+
+    lir::LirGlobal definition;
+    definition.name = "complex_pointer_to_array";
+    definition.link_name_id = definition_link;
+    definition.type = scalar_type(c4c::TB_COMPLEX_DOUBLE);
+    definition.type.ptr_level = 2;
+    definition.type.array_rank = 1;
+    definition.type.array_size = 4;
+    definition.type.array_dims[0] = 4;
+    definition.type.is_ptr_to_array = true;
+    definition.type.inner_rank = -1;
+    definition.linkage_vis = "protected ";
+    definition.qualifier = "global ";
+    definition.llvm_type = "ptr";
+    definition.align_bytes = 16;
+    definition.init_text = std::string{"ptr @matrix\0tail", 16};
+    definition.initializer_function_link_name_ids = {init_b, init_a, init_b};
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal weak_external;
+    weak_external.name = "vrm_pointer_to_array";
+    weak_external.type = scalar_type(c4c::TB_VRM_REGISTER);
+    weak_external.type.vrm_width = 4;
+    weak_external.type.ptr_level = 1;
+    weak_external.type.array_rank = 3;
+    weak_external.type.array_size = 2;
+    weak_external.type.array_dims[0] = 2;
+    weak_external.type.array_dims[1] = 0;
+    weak_external.type.array_dims[2] = 5;
+    weak_external.type.is_ptr_to_array = true;
+    weak_external.type.inner_rank = 3;
+    weak_external.linkage_vis = "extern_weak hidden ";
+    weak_external.qualifier = "global ";
+    weak_external.llvm_type = "ptr";
+    weak_external.align_bytes = 8;
+    weak_external.is_extern_decl = true;
+    module.globals.push_back(std::move(weak_external));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-shaped pure pointer-to-array globals must import from TypeSpec authority");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed pure pointer-to-array globals must be Foundation reachable");
+  const auto view = raw.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+         "pure pointer-to-array globals must preserve source order");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto weak_external = view.global_object(ids[1]).value();
+  expect(definition.object_type.kind == bir::TypeKind::Pointer &&
+             definition.object_type.bit_width == 0 &&
+             definition.object_type.spelling == "ptr" &&
+             definition.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Complex, 64, 2,
+                     bir::ComplexTypeFacts{bir::TypeKind::Floating, 64},
+                     bir::PointerArrayTypeFacts{{4}, -1}}} &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             view.spelling(std::get<bir::LinkNameId>(definition.identity))
+                     .value() == "complex_pointer_to_array" &&
+             !definition.is_internal && !definition.is_weak &&
+             !definition.is_const && !definition.is_extern_declaration &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 16 && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 std::string{"ptr @matrix\0tail", 16} &&
+             definition.initializer->function_links.size() == 3 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "pointer_array_init_b" &&
+             view.spelling(definition.initializer->function_links[1]).value() ==
+                 "pointer_array_init_a" &&
+             definition.initializer->function_links[2] ==
+                 definition.initializer->function_links[0],
+         "initialized complex pointer-to-array definitions must preserve exact nested type and object facts");
+  expect(weak_external.object_type.kind == bir::TypeKind::Pointer &&
+             weak_external.object_type.spelling == "ptr" &&
+             weak_external.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::VrmRegister, 4, 1, std::nullopt,
+                     bir::PointerArrayTypeFacts{{2, 0, 5}, 3}}} &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 weak_external.identity) &&
+             weak_external.is_weak && weak_external.is_extern_declaration &&
+             !weak_external.is_internal && !weak_external.is_const &&
+             weak_external.visibility == bir::SymbolVisibility::Hidden &&
+             weak_external.alignment == 8 && !weak_external.initializer,
+         "weak VRM pointer-to-array externs must preserve zero dimensions, exact-rank form, and all object facts");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  const auto canonical_ids =
+      canonical.has_value() ? canonical.value().view().global_objects()
+                            : std::vector<bir::GlobalObjectId>{};
+  expect(canonical.has_value() && canonical_ids.size() == 2 &&
+             canonical.value().view().global_object(canonical_ids[0])
+                     .value().object_type == definition.object_type &&
+             canonical.value().view().global_object(canonical_ids[1])
+                     .value().object_type == weak_external.object_type,
+         "pure pointer-to-array globals must publish exact Canonical BIR facts");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() &&
+               rejected_raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_size = -1;
+        m.globals[0].type.array_dims[0] = -1;
+      },
+      "negative pointer-to-array dimensions must remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_size = -2;
+        m.globals[0].type.array_dims[0] = -2;
+      },
+      "unsized pointer-to-array dimensions must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.array_dims[0] = 3; },
+           "pointer-to-array outer size and first dimension must agree");
+  rejected([](lir::LirModule& m) { m.globals[1].type.inner_rank = 2; },
+           "mixed outer-array and inner-array pointer shapes remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_ptr_to_array = false; },
+           "ordinary pointers must reject residual array shape");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_fn_ptr = true; },
+           "function-pointer-to-array shapes remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
+           "reference pointer-to-array shapes remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.is_vector = true;
+        m.globals[0].type.vector_lanes = 2;
+        m.globals[0].type.vector_bytes = 32;
+      },
+      "vector pointer-to-array shapes remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
+           "aggregate pointer-to-array pointees remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_VA_LIST; },
+           "va-list pointer-to-array pointees remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("ptr");
+      },
+      "producer-shaped pointer-to-array globals reject unexpected mirrors");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "[4 x ptr]"; },
+           "pointer-to-array storage spelling remains opaque ptr");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.array_size_expr =
+            reinterpret_cast<c4c::Node*>(static_cast<std::uintptr_t>(1));
+      },
+      "computed pointer-to-array bounds remain closed");
+}
+
 void test_fixed_scalar_base_array_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -4727,6 +4958,7 @@ int main() {
   test_vrm_register_global_receipt_and_rejections();
   test_complex_storage_global_receipt_and_rejections();
   test_scalar_pointer_global_receipt_and_rejections();
+  test_pointer_to_array_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
   test_direct_vector_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();

@@ -8,12 +8,11 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid zero-length dimensions across the
-  existing typed fixed-array element families without conflating zero with
-  negative unsized/invalid sentinels.
-- Exact zero outer and inner dimensions, reconstructed spelling, scalar base,
-  pointer depth, source order, and object/initializer facts survive Foundation,
-  Raw BIR, and Canonical BIR.
+- Plan Step 3 now admits producer-valid pure pointer-to-array globals from
+  structured `TypeSpec` authority while retaining opaque `ptr` storage parity.
+- Exact pointer depth, scalar/complex/VRM base facts, ordered nonnegative inner
+  dimensions, `inner_rank`, source order, linkage, and initializer facts survive
+  Foundation, Raw BIR, and Canonical BIR.
 
 ## Suggested Next
 
@@ -22,11 +21,11 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Fixed arrays still require a nonempty bounded dimension vector, exact
-  `array_size`/outer-dimension agreement, no computed size expression, and
-  exact reconstructed LLVM spelling. Negative `-1`/`-2` dimensions, mirrors,
-  aggregate/vector/va-list/function-pointer elements, pointer-to-array and
-  reference shapes remain closed.
+- Pointer-to-array receipt is limited to pure outer-rank-zero shapes where all
+  recorded dimensions belong to the pointee (`inner_rank < 0` or exact rank).
+  Mixed outer arrays, arrays of pointers-to-arrays, negative/unsized or computed
+  bounds, mirrors, aggregate/vector/va-list/function-pointer pointees,
+  references, and non-`ptr` storage spelling remain closed.
 
 ## Proof
 

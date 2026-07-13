@@ -57,11 +57,17 @@ struct ArrayTypeFacts {
   std::optional<ComplexTypeFacts> element_complex_facts;
 };
 
+struct PointerArrayTypeFacts {
+  std::vector<std::int64_t> pointee_dimensions;
+  int inner_rank = 0;
+};
+
 struct PointerTypeFacts {
   TypeKind pointee_kind = TypeKind::Void;
   std::uint32_t pointee_bit_width = 0;
   int pointer_depth = 0;
   std::optional<ComplexTypeFacts> pointee_complex_facts;
+  std::optional<PointerArrayTypeFacts> pointee_array_facts;
 };
 
 struct VectorTypeFacts {
@@ -95,12 +101,24 @@ inline bool operator!=(const VectorTypeFacts& lhs,
   return !(lhs == rhs);
 }
 
+inline bool operator==(const PointerArrayTypeFacts& lhs,
+                       const PointerArrayTypeFacts& rhs) noexcept {
+  return lhs.pointee_dimensions == rhs.pointee_dimensions &&
+         lhs.inner_rank == rhs.inner_rank;
+}
+
+inline bool operator!=(const PointerArrayTypeFacts& lhs,
+                       const PointerArrayTypeFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
 inline bool operator==(const PointerTypeFacts& lhs,
                        const PointerTypeFacts& rhs) noexcept {
   return lhs.pointee_kind == rhs.pointee_kind &&
          lhs.pointee_bit_width == rhs.pointee_bit_width &&
          lhs.pointer_depth == rhs.pointer_depth &&
-         lhs.pointee_complex_facts == rhs.pointee_complex_facts;
+         lhs.pointee_complex_facts == rhs.pointee_complex_facts &&
+         lhs.pointee_array_facts == rhs.pointee_array_facts;
 }
 
 inline bool operator!=(const PointerTypeFacts& lhs,
@@ -285,6 +303,17 @@ inline bool is_well_formed(const Type& type) {
         return false;
       if (!type.pointer_facts) return true;
       if (type.pointer_facts->pointer_depth <= 0) return false;
+      if (type.pointer_facts->pointee_array_facts) {
+        const auto& array = *type.pointer_facts->pointee_array_facts;
+        if (array.pointee_dimensions.empty() ||
+            array.pointee_dimensions.size() > 8 ||
+            !(array.inner_rank < 0 ||
+              array.inner_rank ==
+                  static_cast<int>(array.pointee_dimensions.size())))
+          return false;
+        for (const auto dimension : array.pointee_dimensions)
+          if (dimension < 0) return false;
+      }
       if (type.pointer_facts->pointee_kind == TypeKind::Integer)
         return type.pointer_facts->pointee_bit_width != 0 &&
                !type.pointer_facts->pointee_complex_facts;
