@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active)
+Status: Open (blocked consumer)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -17,22 +17,39 @@ Give every semantic fact in the existing complete typed LIR surface a
 lossless, target-independent typed container in new Raw BIR and a faithful,
 module-transactional LIR-to-new-BIR importer path.
 
-This is an active C++ implementation initiative. It owns the new Raw-BIR typed
+This is a C++ implementation initiative. It owns the new Raw-BIR typed
 structs/containers, builders, immutable views, verifier, importer, build wiring
 and tests required to make that goal callable. It is not documentation-only.
 
 ## Lifecycle Sequencing
 
 The user's current sequencing supersedes the former umbrella-wide docs-first
-prohibition. Idea 734 runs now, while the in-progress phase-C documentation
-child remains open but parked. The already-landed phase-A and phase-B
-documentation acceptances and phase-C C1-C6 slices are preserved as historical
-evidence; they are not current post-implementation acceptance.
+prohibition. Idea 734 ran until the structured LIR identity blocker recorded
+below; idea 741 now owns that decomposition while the in-progress phase-C
+documentation child remains open but parked. The already-landed phase-A and
+phase-B documentation acceptances and phase-C C1-C6 slices are preserved as
+historical evidence; they are not current post-implementation acceptance.
 
 After this idea is implemented, accepted and closed, reactivate idea 732 and
 rerun documentation convergence against the landed C++ implementation from
 phase A, then B, then C and onward. Do not resume directly at the old phase-C
 Step 7 checkpoint.
+
+## Blocked Consumer Status
+
+Execution is paused at Plan Step 4 after module/global/signature receipt exposed
+a missing structured identity seam in current typed LIR. `LirLoadOp`,
+`LirStoreOp`, `LirGepOp`, several other ordinary instructions, and non-void
+`LirRet` do not consistently carry stable typed value, global-symbol, or
+immediate identities; their remaining authority is classified or raw text.
+This idea's unchanged-LIR premise and prohibition on reconstructing identity
+from rendered text correctly prevent importer-side continuation.
+
+`ideas/open/741_lir_structured_operand_and_terminator_identity_decomposition.md`
+is the active decomposition initiative and owns the smallest evidence-proven
+typed LIR carrier, producer, and verifier changes needed to unblock this idea.
+Idea 734 remains the open blocked consumer: 741 does not implement new-BIR
+instruction or terminator receipt and does not supersede this receiving goal.
 
 ## Why This Exists
 
