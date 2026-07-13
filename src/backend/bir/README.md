@@ -12,8 +12,9 @@ Architecture-Acceptance-Checkpoint: the documentation architecture at
 `review/731_final_projection_architecture_review.md` with zero blockers. This
 accepts the documentation architecture only; it does not claim that the
 documented implementation exists and does not authorize implementation. Idea
-731 remains open and implementation-gated pending a separate plan-owner
-implementation runbook.
+731 is closed as bounded historical proof of structured non-goto inline-asm
+transport only; that lifecycle fact does not change phase order, semantic
+authority, implementation status, or authorize broader implementation.
 
 BIR begins as target-independent, unallocated source semantics. `RawBir` and
 `CanonicalBir` contain neither register homes nor spill decisions. After

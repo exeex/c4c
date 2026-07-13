@@ -31,9 +31,10 @@ constraint text, clobber spellings, and side-effect flag as opaque payload.
 
 Input rejection is mandatory when the capability or any revision component is
 missing or stale. Missing operands, unresolved references, ill-typed values,
-text standing in for semantic operands, and other producer gaps are Raw
-publication failures; P01 reports the inherited verifier failure and performs
-no repair.
+or text standing in for semantic operands are inherited A2 publication or
+contract failures; P01 reports the inherited verifier failure and performs no
+repair. B1 is never a producer-repair route and cannot reopen the accepted
+current-LIR intake.
 
 ## 2. Closed authority
 

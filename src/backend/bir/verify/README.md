@@ -791,8 +791,9 @@ The ordering prevents semantic checks from trusting corrupt storage:
 
 1. **Storage and ID safety.** Establish resolvable live objects, owners,
    generations, kinds, and exact order membership.
-2. **Module/type universe.** Validate the semantic type graph and immutable
-   lowering-environment metadata without consulting ABI/codegen policy.
+2. **Module/type universe.** Validate the target-independent semantic type
+   graph and bounded module state without consulting target, ABI, or codegen
+   policy.
 3. **Symbols and globals.** Build semantic symbol indices and validate
    declarations, definitions, object data, and initializer references.
 4. **Function shape.** Check signature, parameter definitions, declaration/body
@@ -856,12 +857,14 @@ make IDs retained from a replaced module diagnosable as `WrongEpoch` or
 
 ### Type universe
 
-The module carries one immutable lowering-environment identity (target triple,
-data-layout version, pointer widths/address spaces, and language ABI mode) so
-source-chosen object sizes and floating semantics can be checked consistently.
-Its fields are bounded and mutually coherent, and the identity cannot change
-within an epoch. This context does not authorize physical registers, argument
-placement, frame layout, instruction encodings, or relocation encodings in BIR.
+Raw and Canonical BIR carry no semantic `target_profile`, target triple,
+rendered `data_layout`, language-ABI mode, pointer-width/address-space layout
+selection, or other C1/C2 target context. Validation-only source origin and
+parity evidence is explicitly non-semantic: it cannot create Raw identity,
+target facts, type layout, or acceptance authority. C1 independently selects
+and validates one exact `TargetProfile`; C2 derives the target-layout facts
+bound to that profile. Neither decision is imported into Raw or Canonical
+storage.
 
 Every type alternative must be bounded and recursively well-formed. Raw coverage
 must eventually include: void only in permitted roles; booleans; signedness-free
@@ -903,8 +906,9 @@ round-trips the payload through `double`.
 
 Legacy `Vrm1`/`Vrm2`/`Vrm4`/`Vrm8` and LIR `VrmRegister` are target carrier
 types, not portable scalar types. Import must translate them to an equivalent
-semantic vector/aggregate when lossless, or report a source gap. Raw verification
-rejects VRM register-group width as value type authority.
+semantic vector/aggregate when lossless, or report the accepted receiving-side
+validation failure. Raw verification rejects VRM register-group width as value
+type authority.
 
 ### Symbols and declarations
 
@@ -1071,7 +1075,7 @@ Exact def-use means:
 - no consumer may discover a use by parsing printer output or by maintaining a
   second hand-written partial visitor.
 
-## LIR import gate and explicit source gaps
+## LIR import gate and current-intake dispositions
 
 Raw verification is not a substitute for lossless import. The importer first
 validates the LIR alternative, converts every semantic reference to a typed BIR
@@ -1086,15 +1090,21 @@ rejection path for every index. The legacy stub and typed forms
 (`LirLoad`/`LirLoadOp`, `LirCall`/`LirCallOp`, and peers) are separate source
 alternatives even when they lower to one BIR opcode.
 
+The accepted phase-A 38-instruction, 6-terminator, and 18-metadata-family
+matrices are the authority for the complete immutable current-LIR intake. Every
+existing fact keeps its named container, importer-wiring, or validation-only
+disposition. A desired form absent from current LIR is outside this intake; it
+is not a current-source gap and does not authorize LIR or producer-schema work.
+
 | Current LIR source family | Raw publication requirement | Gap/deferred disposition |
 |---|---|---|
 | constants, scalar ops, casts, comparisons, select, aggregate/vector insert/extract/shuffle | typed operands, exact bit payloads, result types, predicates and indices | malformed or text-only opcode/type is `UnsupportedSourceForm`; legalization of a representable operation is a later pass |
 | load/store/GEP, hoisted and inline alloca, memcpy/memset, stack save/restore | one semantic memory/object operation with typed address, size, alignment, volatility and address space | `alloca_insts` is merged into semantic entry order; it is never a second instruction list |
 | direct/indirect calls and variadic operations | typed callee identity or callee value, complete function signature, fixed/extra argument boundary and every argument value | `callee_name`, `args_str`, or incomplete extern return-only data cannot supply missing identity/signature; ABI classification is deferred |
 | branch/conditional/return/switch/indirect branch/unreachable | one typed terminator per block | `LirIndirectBrOp` must agree with and be consumed into terminator authority; disagreement or an instruction-only carrier is rejected |
-| inline asm | generic typed value operands/results plus opaque original template/constraint payload, ordered clobbers, and side effects; future symbol/address-space/goto support must use ordinary typed carriers | `args_str` and compatibility result/type text are never authority; bounded shape is checked by the importer, while missing typed carriers remain rejected and parsed constraint facts are deferred |
-| globals, strings, externs, struct declarations and initializers | typed symbol/type/object identity and recursive initializer/relocation tree | `init_text`, pool names, or initializer name scans are compatibility text, not importer authority; missing typed initializer references are a source gap |
-| atomics | closed load/store/RMW/cmpxchg/fence payload with ordering and result mode | current `LirInst` has no structured atomic alternatives; this is an explicit producer-schema gap, not permission to copy the legacy parallel table |
+| inline asm | generic typed value operands/results plus opaque original template/constraint payload, ordered clobbers, and side effects | `args_str` and compatibility result/type text are never authority; current typed roles/indices follow the accepted phase-A matrix, parsed constraint facts are deferred, and desired symbol/address-space/goto forms absent from current LIR are outside this intake |
+| globals, strings, externs, struct declarations and initializers | typed symbol/type/object identity and recursive initializer/relocation tree | `init_text`, pool names, or initializer name scans are compatibility text, not importer authority; every current field follows its exact accepted container/wiring/validation disposition, while desired absent initializer forms are outside this intake |
+| atomics | closed load/store/RMW/cmpxchg/fence payload with ordering and result mode | current `LirInst` has no structured atomic alternative, so atomic forms are outside this intake; this does not authorize a new LIR alternative or a legacy parallel table |
 | i128/f128, complex/multivalue and runtime-helper-capable operations | preserve full semantic type, exact constant bits, operands and semantic results | target helper choice, split lanes and physical return carriers are deferred to legalization/preparation/MIR |
 | specialization/layout observations and printer/debug text | retain only downstream semantic IDs or optional non-authoritative diagnostics | resolved specialization is reflected in symbols before import; observations/text never repair missing semantic data |
 
@@ -1483,11 +1493,12 @@ schema to copy.
 `Contracted` means this design has stable rule IDs and a closed validation
 contract; it does not claim implementation. An unimplemented rule does not
 become optional: no adapter may advertise the full Raw or Canonical profile
-until it enforces every required rule. `Source gap` means current LIR cannot
-transport the full contract, so the importer rejects that source construct and
-publishes no `RawBir`; it is never permission for a verifier profile to accept
-an opaque substitute or skip a rule. `Deferred stage` means the semantic Raw
-input is verified here but the named decision belongs after BIR.
+until it enforces every required rule. `Outside current intake` means a desired
+form has no alternative in the complete immutable current LIR; it does not
+authorize LIR/schema work, an opaque substitute, or a skipped verifier rule.
+Current facts instead retain their exact accepted phase-A receiving
+dispositions. `Deferred stage` means the semantic Raw input is verified here
+but the named decision belongs after BIR.
 
 | Feature family | Status | Stable rules / disposition |
 |---|---|---|
@@ -1496,18 +1507,18 @@ input is verified here but the named decision belongs after BIR.
 | F32/F64 and long double | Contracted | `FloatFormatInvalid`, `TypeLayoutInvalid`, `ConstantPayloadInvalid`; explicitly distinguishes IEEE binary128 from x87 extended-80 semantic bits and padded 10/12/16-byte storage |
 | constants, null/zero, `undef`, `poison`, scalar/cast/compare/select | Contracted | `ConstantKindInvalid`–`UndefPoisonRoleInvalid`, `OpcodeInvalid`–`ResultTypeMismatch` |
 | linkage/visibility/sections/TLS/aliases/symver/constructors/destructors/top-level asm | Contracted | `SymbolIndexMismatch`–`TopLevelAsmDependencyInvalid`; `TopLevelAsmSpec::symbol_dependencies` is ordered typed authority and `source_text` is never parsed for identity |
-| globals and recursive initializer/relocation/object data | Contracted; source gap for text-only LIR initializer fields | `GlobalStateInvalid`–`BlockAddressInvalid`; `InitializerId` is carried by `ModuleEntityId`, importer rejects missing typed trees |
+| globals and recursive initializer/relocation/object data | Contracted Raw schema; current fields follow the accepted phase-A receiving dispositions and desired absent forms are outside this intake | `GlobalStateInvalid`–`BlockAddressInvalid`; `InitializerId` is carried by `ModuleEntityId`, and compatibility text never supplies identity |
 | functions, signatures, attributes, parameters, `LocalId`, optional semantic return | Contracted | `FunctionShapeInvalid`–`ReturnOperandInvalid` |
 | jump/conditional/switch/indirect/asm-goto/unreachable CFG | Contracted | `EdgeTargetInvalid`–`UnreachableBlock`; exact ordered `SuccessorSlot` authority preserves parallel destinations |
 | phi, SSA, edge uses, dominance, unreachable components | Contracted | `PhiPlacementInvalid`–`CrossComponentUse`; exact incoming `EdgeKey` multiset |
 | descriptor traversal, definitions and exact def-use | Contracted | `DescriptorMissing`–`StaleUse`; all value-bearing call bundles/asm/terminator payloads participate |
-| direct/indirect/by-value/variadic calls, `CallEffects`, typed bundles, aggregate result | Contracted; source gap where current LIR lacks structured metadata | `CallCalleeInvalid`–`VarArgInvalid`; direct identity is `SymbolId` |
+| direct/indirect/by-value/variadic calls, `CallEffects`, typed bundles, aggregate result | Contracted Raw schema; current fields follow the accepted phase-A receiving dispositions and desired absent forms are outside this intake | `CallCalleeInvalid`–`VarArgInvalid`; direct identity is `SymbolId` |
 | local/static/dynamic allocation, stack save/restore, lifetime | Contracted | `LocalInvalid`, `DynamicAllocInvalid`, `DynamicSizeOverflow`, `StackStateInvalid` |
 | load/store/GEP/address formation, memcpy/memmove/memset | Contracted | `MemoryAccessInvalid`–`MemoryIntrinsicInvalid` |
-| atomic load/store/RMW/cmpxchg/fence | Contracted Raw schema; current LIR source gap | `AtomicTypeInvalid`–`FenceInvalid`; never a legacy parallel agreement table |
+| atomic load/store/RMW/cmpxchg/fence | Contracted Raw schema; no current `LirInst` atomic alternative, so these forms are outside this intake | `AtomicTypeInvalid`–`FenceInvalid`; absence does not authorize LIR/schema work or a legacy parallel agreement table |
 | aggregates, complex values, vector lanes/masks | Contracted | `AggregatePathInvalid`–`VectorMaskInvalid`; physical return lanes are deferred stage facts |
 | semantic intrinsics, overflow, bit/memory/SIMD/CRC/crypto | Contracted; target support is deferred stage | `IntrinsicIdInvalid`, `IntrinsicSchemaInvalid`; no selected opcode/helper in BIR |
-| opaque inline asm and asm-goto | Bounded non-goto generic SSA transport is current; typed symbol/address-space carriers and asm-goto remain source gaps; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
+| opaque inline asm and asm-goto | Bounded non-goto generic SSA transport follows the accepted phase-A matrix; desired symbol/address-space/asm-goto forms absent from current LIR are outside this intake; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
 | D5 phi destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
 | ABI placement and abstract allocation/spill state | Contracted at the later Pseudo/Allocated boundaries; D2 and E1-E3 own production | semantic profiles use `ForbiddenStageFact` and `ForbiddenCompatibilityPayload`; `Allocated` requires exact same-revision product keys, complete assignments, explicit legal `Spill`/`Reload`, and fail-closed E4 publication |

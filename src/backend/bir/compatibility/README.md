@@ -37,7 +37,11 @@ pass mutation, preparation, constraint binding, D1-D5 pseudo work, E1
 liveness, E2 assignment, E3 spill/reload insertion, E4 publication, MIR
 mapping/selection, or emission.
 
-A missing typed fact is a producer gap and fails closed at its owning boundary.
+A missing typed fact follows the exact disposition in its owning accepted
+matrix and fails closed at that boundary. For the complete immutable phase-A
+current-LIR intake, absence at receipt is a named container, importer-wiring,
+or verifier failure; quarantine evidence cannot reopen LIR or prescribe a
+producer/schema change.
 The quarantine cannot create an opcode, type, ID, CFG edge, operand/result,
 call or ABI fact, inline-asm role, constraint meaning, analysis result, abstract
 home, spill object, target mapping, frame fact, relocation, or object byte. It
