@@ -1,6 +1,6 @@
 # 715-Guided BIR Core Redesign And LIR Import Migration
 
-Status: Open
+Status: Open (Paused)
 Type: backend core redesign and interface migration
 
 ## Lifecycle Progress
@@ -10,6 +10,18 @@ semantic-BIR, and `backend_lir_to_bir_notes` registrations were removed; CMake
 generation succeeds without `src/backend/legacy/**` compile entries.  The first
 production seam is the missing active `src/backend/bir/bir.hpp` included by
 `src/backend/backend.hpp`.
+
+## Paused State (2026-07-13)
+
+This idea remains open but is no longer the active plan.  Steps 1--5 completed
+through `2b6148590`: the bounded new-BIR foundation and minimal verified
+LIR-to-BIR import are active, legacy/prealloc/MIR sources remain quarantined,
+and the selected broader proof was green.  Step 6.1 globals work was started
+but was not accepted or committed; its eight-file working patch is preserved
+in `stash@{0}` (`wip step 6.1 globals before inline asm priority switch`).
+Globals and all later migration families remain incomplete.  Resume only by a
+future lifecycle switch that first reviews that stash against the then-current
+BIR schema.
 
 ## Intent
 
