@@ -1002,39 +1002,69 @@ declared effects, verification, and explicit stage publication.
 When adjacent contracts disagree, publication fails closed until the documents
 are reconciled. An implementation must not choose the more permissive reading.
 
-## 17. Source gaps and open design questions
+## 17. Implementation prerequisites and fail-closed defaults
 
-The following remain design work; none is implemented by this document:
+The normative choices used below are assigned to the existing owners. The
+remaining work is implementation or local-schema completion; none permits a
+different stage order, publication route, identity model, or invalidation
+policy:
 
-1. Define the concrete move-only internal `PassStage` that carries verified Raw
-   semantics across pass commits without making `CanonicalBir` forgeable.
-2. Add the core/framework-owned private occurrence fork and atomic occurrence
-   publication primitive required even for serial function-scope execution;
-   without it the occurrence must fail before consuming input. Separately add
-   the deterministic multi-function proposal/merge primitive required for
-   parallel execution; until then only the serial private-fork path is legal.
-3. Finalize the closed `PassProperty`, `MutationEffect`, `AnalysisId`, statistic,
-   and diagnostic numeric registries with neighboring documents.
-4. Define semantic equality and preservation validators for every analysis;
-   until then every non-empty mutation invalidates every affected analysis.
-5. Specify whether any current named pass is truly a module pass, and how a
-   future interprocedural canonical pass atomically edits multiple bodies.
-6. Split broad directory-level pass names into concrete subpasses only after
-   their local documents define transactional seams; reserve IDs without
-   changing established meanings.
-7. Define the exact canonical postcondition checker and property proof for each
-   pass, including unreachable-code policy.
-8. Choose deterministic resource work units that cannot vary by host speed.
-9. Define the canonical semantic fingerprint used for idempotence, oscillation,
-   and stage-publication fingerprints.
-10. Specify analysis-cache ownership across threads and whether preserved
-    results are deep immutable values or reference-counted immutable storage.
-11. Resolve whether attachment-only changes increment semantic revisions or a
-    separate attachment revision in core; analysis traits must follow that
-    decision.
-Until a gap is closed, the conservative behavior is single-threaded execution,
-full invalidation, full verification, bounded one-shot passes, and no stage
-publication based on an unproven property.
+1. The concrete internal spelling of move-only `PassStage` remains an
+   implementation detail. It must carry verified Raw semantics across private
+   occurrence commits, cannot expose a forgeable stage tag, and cannot mint
+   `CanonicalBir` outside the B8 publication gate.
+2. Core/framework must implement the owning private occurrence fork and atomic
+   occurrence publication primitive before even serial function-scope
+   execution is admitted. The deterministic multi-function proposal/merge
+   primitive is an additional prerequisite for parallel execution; without it
+   the runner uses the serial private-fork path, and without the serial
+   prerequisite it fails before consuming input.
+3. `PassProperty`, `MutationEffect`, `AnalysisId`, statistic, and diagnostic
+   identities are closed registries owned by their named documents. Generating
+   the exact numeric tables and rejecting unknown or duplicate entries is
+   implementation work, not permission to add a second registry.
+4. Every analysis owner must implement its declared semantic equality and any
+   preservation validator. Until a validator exists and proves equality, every
+   overlapping non-empty mutation invalidates that analysis and its transitive
+   dependents.
+5. The initial `PassKind` choices are exactly the function/module scope table in
+   `pipeline/README.md`. A future interprocedural pass that edits multiple
+   bodies requires the already-specified exclusive `ModuleEditor` transaction
+   and a separately reviewed registry extension; no current pass has an
+   undecided scope.
+6. The seven current `PassId` values remain the registered units. Any future
+   split into concrete subpasses requires local transactional seams, reserved
+   IDs, an explicit root/pipeline review, and no reinterpretation of an
+   existing ID.
+7. Each local pass contract supplies its canonical postcondition and
+   unreachable-code policy; implementing those checkers cannot weaken the B8
+   cumulative Canonical verifier or substitute a local check for publication.
+8. Resource accounting may use only the host-independent closed units already
+   admitted by `PassContext`: semantic work units, entity creation,
+   diagnostics, and recursion/worklist depth. An implementation that has not
+   defined a deterministic unit for an operation cannot use host timing or an
+   implementation-dependent count to make a semantic decision.
+9. The canonical semantic fingerprint is an implementation of canonical
+   semantic equality over the exact stable-ID-addressed graph content and
+   declared semantic attachments. It excludes pointers, cache state, worker
+   count, timing, rendering, and diagnostic-only attachments; it is never
+   sufficient by itself to excuse a non-empty mutation or mint a stage
+   capability.
+10. `AnalysisManager` owns cache publication and may share only immutable
+    exact-key results or one exact-key in-flight computation across threads.
+    Deep immutable versus reference-counted immutable storage is an
+    implementation choice with no semantic effect; editors, mutable storage,
+    and retargeted handles remain forbidden.
+11. A committed attachment-only edit advances the owning core revision and is
+    classified separately in `MutationSummary`; there is no second public
+    attachment-revision axis. Registered traits may preserve and reinstall a
+    semantically unaffected analysis under the new exact key, but an old handle
+    is always stale after the revision advances.
+
+Until a required implementation or local checker exists, the conservative
+behavior is single-threaded execution, full invalidation, full verification,
+bounded one-shot passes, and no stage publication based on an unproven
+property.
 
 ## 18. Acceptance checklist
 

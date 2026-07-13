@@ -15,15 +15,19 @@ displacement domains, relocation kind requirements, dynamic-stack/object
 requirements, and whether a later closed pseudo expansion is needed. It does
 not construct target instructions, choose concrete registers, allocate general
 values, establish frame offsets, or turn an analysis conclusion into semantic
-BIR truth. MIR selection realizes only already verified strategies after the
-closed pseudo stages.
+BIR truth. D1 materializes the admitted generic pseudo form and D4 performs
+every required one-to-many target expansion before allocation. F1 may only map
+the resulting directly realizable node one-to-one; it cannot reopen an address
+strategy as late instruction selection or repair.
 
 ## Binding and consumers
 
 The product key contains the complete Canonical `PipelineStageStamp`, exact
 `TargetFingerprint`, layout and address schema fingerprints, and exact ordered
 ABI/call/variadic product fingerprints. Inline-assembly preparation is the
-immediate consumer; pseudo lowering and MIR selection are later consumers.
+immediate consumer; D1 pseudo lowering and D4 target legalization are later
+consumers. E4/F1 retain only exact product lineage and the already-realized
+pseudo node.
 
 ## Publication
 

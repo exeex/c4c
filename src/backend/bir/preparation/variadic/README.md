@@ -21,8 +21,10 @@ prologue/epilogue code.
 The `VariadicPlan` key contains the complete Canonical `PipelineStageStamp`,
 exact `TargetFingerprint`, layout and variadic schema fingerprints, and the
 exact ordered `AbiPlan` and `CallPlan` fingerprints. `AddressPlan` is the
-immediate consumer; call lowering and later frame planning consume the
-published facts.
+immediate consumer. D2 call lowering consumes the published facts to make
+abstract save-area and transport pseudos. D4, E4, and F1 consume the resulting
+revision and product lineage; none may reopen this plan as a late frame-repair
+authority.
 
 ## Publication
 

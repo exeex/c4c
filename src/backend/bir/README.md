@@ -183,8 +183,9 @@ the strict one-node-to-one-record BIR-to-MIR allocation contract.
 The stage table and analysis table above are the first part of the review
 index. After reviewing them in phase/dependency order, review the following
 cross-cutting and audit contracts in this exact order. Together, the links in
-this README name every current `src/backend/bir/**/*.md` file exactly once;
-this README itself is the overview entry.
+this README name all 43 current subordinate `src/backend/bir/**/*.md` files
+exactly once; this README itself is the overview entry, for an exact inventory
+of 44 Markdown files.
 
 1. [Diagnostics and rendering](diagnostics/README.md) — read-only views of
    published stages and analysis facts; never semantic authority.

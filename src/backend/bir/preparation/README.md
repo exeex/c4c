@@ -69,12 +69,12 @@ Each fact has one producer and declared consumers:
 | `VerifiedTargetLayout` | target layout (`C2`) | ABI (`C3`) | all later planners, constraint stage, allocator, boundary verification |
 | `AbiPlan` | ABI (`C3`) | calls (`C4`) | variadic, helpers, call lowering, verification |
 | `CallPlan` | calls (`C4`) | variadic (`C5`) | helpers, call lowering, allocation |
-| `VariadicPlan` | variadic (`C5`) | address (`C6`) | call lowering and frame planning |
-| `AddressPlan` | address (`C6`) | inline-asm tables (`C7`) | pseudo lowering and MIR selection |
+| `VariadicPlan` | variadic (`C5`) | address (`C6`) | D2 call lowering; later boundaries consume the resulting pseudo/revision lineage, not a late frame-planning authority |
+| `AddressPlan` | address (`C6`) | inline-asm tables (`C7`) | D1 pseudo lowering and D4 target legalization; F1 consumes only the resulting directly realizable nodes |
 | `InlineAsmTargetTables` | inline-asm preparation (`C7`) | runtime helpers (`C8`) | register constraints (`C9`) |
 | `RuntimeHelperPlan` | runtime helpers (`C8`) | bundle publication | pseudo and shared call lowering |
 | `VerifiedPreparationBundle` | preparation publication gate after `C8` | register constraints (`C9`) | pseudo lowering, allocation, verification |
-| `BoundConstraintSet` | `bind_constraints` (`C9`) | pseudo lowering (`D1`) | E1/E2 and boundary verification as immutable Canonical bindings |
+| `BoundConstraintSet` | `bind_constraints` (`C9`) | D1's initial `ConstraintProjectionTransaction` | no later direct consumer; its fingerprint remains lineage inside each exact-revision `ProjectedConstraintSet` |
 
 The register-constraint stage is the only interpreter of source constraint
 descriptions. Preparation supplies data tables; it does not produce typed

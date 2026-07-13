@@ -16,11 +16,11 @@ failure result, and next consumer for every row:
 | `RawBir` -> `CanonicalBir` | Does each ordered canonical pass preserve predecessor profiles, own only its declared forms, invalidate analyses correctly, and end in full Canonical verification of one frozen revision? |
 | `CanonicalBir` -> preparation | Does `VerifiedPreparationInput` borrow the exact Canonical revision and target, and do layout plus `abi -> calls -> variadic -> address -> inline_asm -> runtime_helpers` publish immutable products with ordered predecessor fingerprints? |
 | preparation -> D1 -> D2 -> D3 `PseudoBir` | Do constraints bind ordinary values, D1 fork a separate closed pseudo schema, D2 alone add shared ABI-aware call transport, and D3 fully verify before publication? |
-| `PseudoBir` -> D4 -> D5 | Does D4 perform every required target one-to-many expansion and full reverification, then does D5 remove all phi semantics using directly realizable edge/copy operations? |
-| D5 -> E1 | Are liveness, interference, fixed homes, call/inline-asm roles, clobbers, and pressure derived from the exact fully reverified D5 candidate revision? |
+| `PseudoBir` -> D4 -> initial D5 | Does D4 perform every required target one-to-many expansion and full reverification, then does initial D5 remove all phi semantics into the bounded intermediate `ParallelCopy`/`EdgeCopy` and `CopyScratch` schema with exact projection? |
+| initial D5 -> E1 | Are liveness, interference, fixed homes, call/inline-asm roles, clobbers, simultaneous-copy semantics, scratch reservations, and pressure derived from the exact fully reverified initial-D5 candidate revision? |
 | E1 -> E2 | Does E2 alone assign legal abstract category/class-or-group/slot homes using the exact E1 and target-pool keys? |
 | E2 -> E3 -> E1 retry | Does E3 alone add explicit abstract spill identities and `Spill`/`Reload`; does every mutation advance and fully reverify the candidate before fresh E1/E2 facts? |
-| stable E3 -> E4 -> `AllocatedBir` | Does E4 freeze one candidate, rerun cumulative graph/Pseudo/D5/allocation checks, reject mixed or stale products, and publish atomically? |
+| stable E3 -> D5 copy resolution -> E4 -> `AllocatedBir` | Does D5 alone transactionally resolve every bundle through already assigned homes and scratch, emit an exact resolved projection without allocation repair, then does E4 freeze that candidate, rerun cumulative graph/Pseudo/D5/allocation checks, reject mixed or stale products, and publish atomically? |
 | `AllocatedBir` -> `PreparedBir` / `MirReadyBirView` -> MIR | Do all capabilities name the same immutable revision, with the readiness object owning no graph and the view only borrowing; does MIR perform same-key concrete mapping and one-to-one selection without ordinary allocation fallback? |
 
 For each transition, attach the predecessor fingerprint set and prove the
