@@ -1,38 +1,66 @@
 # Register Constraints
 
-Status: scaffold (unimplemented).
+Status: converged design contract (unimplemented).
 
-## Owns
+## Sole interpretation authority
 
-Typed interpretation of admitted allocation constraints. The initial RV64
-table contains `r`, `=r`, `VR`, `VRM2`, `VRM4`, and `VRM8`, including reviewed
-read/write, numeric ties, early-clobbers, and clobbers. Constraints attach to
-ordinary ordered operands/results of `InlineAsm`; they do not create a
-separate value system. `VRM1`, alternatives, named/fixed-register operands,
-and unreviewed AArch64/x86 spellings fail closed.
+This `C9` stage is the sole constraint interpreter in BIR. It is the only
+owner that parses original source constraint descriptions, types each admitted
+form against `InlineAsmTargetTables` and `VerifiedTargetLayout`, and binds the
+result to an `InlineAsm` instruction's ordinary ordered operands and results.
+No importer, canonical pass, planner, allocator, MIR builder, or target emitter
+duplicates any part of that interpretation.
 
-## Does not own
+The initial RV64 vocabulary admits `r`, `=r`, `VR`, `VRM2`, `VRM4`, and
+`VRM8`, including reviewed read/write forms, numeric ties, early-clobbers, and
+explicit clobbers. `VRM1`, alternatives, named/fixed-register operands, and
+unreviewed AArch64/x86 spellings fail closed. Assembly template bytes remain
+opaque; mnemonics, directives, placeholders, `.insn`, and concrete names in
+template text are first interpreted by the late assembler.
 
-Parsing inline assembly instruction text, interpreting hard-coded register
-names inside that text, SSA construction, allocation policy, or concrete target
-register selection.
+## Input and ordinary-value binding
 
-## Input
-
-Raw source constraint descriptions, ordinary BIR operand/result ordinals, and
-the verified target-layout contract.
-
-## Output
-
-Typed, verifier-checked category/class/group requirements, assignment-equality
-ties, early-clobber exclusions, and resolved abstract clobber units keyed to
-the complete BIR revision, target-layout version, and instruction/value
+Input is one verified cumulative preparation bundle, its exact
+`VerifiedPreparationInput` borrow, verified target layout, immutable target
+tables, each original constraint description and ordered clobber description,
+and the containing instruction's ordinary operand/result ordinals and stable
 identities.
 
-## Verification and publication gate
+Parsing produces a private syntax result; typing resolves admitted spelling,
+role, category/class/group, width, and target eligibility; binding attaches
+those requirements to ordinary use/result identities. A read/write operand
+retains a distinct incoming use and produced result. A numeric tie requires
+assignment equality but never merges SSA identities. Early-clobbers become
+interference exclusions, and explicit clobbers resolve to abstract alias units.
+No separate inline-assembly value family is created.
 
-Publication must reject unknown or target-ineligible constraints, missing
-operand/result bindings, illegal ties or role combinations, incompatible
-classes/groups, missing capacity, unresolved clobbers, and stale identity or
-target keys. A tie never merges SSA identities. Opaque asm text is never
-inspected by this gate, and failure publishes no partial fact bundle.
+## Immutable output and consumers
+
+The atomic output is one immutable `BoundConstraintSet` containing typed
+class/group requirements, roles, assignment-equality ties, early-clobber
+exclusions, resolved abstract clobber units, and complete instruction/value
+bindings. Its key contains the complete Canonical `PipelineStageStamp`, exact
+`TargetFingerprint`, layout schema fingerprint, cumulative preparation-bundle
+fingerprint, constraint-interpreter schema fingerprint, and a deterministic
+digest of every consumed original description and ordered identity binding.
+
+Pseudo lowering, liveness, allocation, and boundary verification consume this
+product. They may use the published facts but may not reparse, retype, repair,
+or rebind them. This stage does not classify ABI values, derive target
+capacity, select calls/helpers/address strategies, allocate general values,
+choose concrete registers, or create spill/reload state.
+
+## Transaction, verification, and invalidation
+
+All module constraints are parsed, typed, and bound in one private transaction.
+Publication rejects unknown or target-ineligible spellings, malformed roles,
+missing operand/result bindings, illegal or cyclic ties, incompatible
+classes/groups, absent capacity, impossible early-clobber combinations,
+unresolved clobbers, stale identities, incomplete coverage, digest mismatch,
+or any Canonical/target/layout/preparation key mismatch. One error publishes
+no `BoundConstraintSet`; all inputs remain unchanged.
+
+Any change to the Canonical stage stamp, target fingerprint, layout schema,
+preparation-bundle fingerprint, interpreter schema, source description,
+clobber order, or operand/result identity/order invalidates the entire product.
+Facts from separate transactions cannot be combined.

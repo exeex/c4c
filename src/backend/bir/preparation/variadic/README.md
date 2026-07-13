@@ -1,7 +1,35 @@
 # Variadic Plan
 
-Status: scaffold. Extends ABI and call plans with variadic entry, argument-save
-area, `va_list`, promotions, and target-specific register/stack traversal facts.
+Status: converged design contract (unimplemented).
+
+## Contract
+
+Variadic planning is `C5`. It consumes the exact prepared-input borrow,
+matching target layout, `AbiPlan`, and `CallPlan`. It derives immutable facts
+for variadic function entry, promoted arguments, named/unnamed boundaries,
+argument-save areas, `va_list` state and traversal, register/stack exhaustion,
+alignment, and aggregate or floating variadic transport.
+
+The layout owns eligible classes and capacities; ABI owns classification; calls
+owns per-call requirements. This stage extends those facts for variadic
+semantics without recreating them. It plans abstract save-area objects and
+traversal requirements, never offsets, instructions, register assignments, or
+prologue/epilogue code.
+
+## Binding and consumers
+
+The `VariadicPlan` key contains the complete Canonical `PipelineStageStamp`,
+exact `TargetFingerprint`, layout and variadic schema fingerprints, and the
+exact ordered `AbiPlan` and `CallPlan` fingerprints. `AddressPlan` is the
+immediate consumer; call lowering and later frame planning consume the
+published facts.
+
+## Publication
+
+One transaction covers all variadic definitions and call sites. Unsupported
+ABI traversal, impossible alignment/capacity, inconsistent named boundaries,
+missing promotion facts, stale IDs, predecessor mismatch, or diagnostics
+publish no product. Inputs remain unchanged.
 
 Legacy coverage: `variadic.hpp`, `variadic_entry_plans.*`, target variadic
 emission, aggregate and floating variadic arguments.

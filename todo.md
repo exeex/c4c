@@ -3,52 +3,53 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Converge canonical passes P05-P07 and semantic analyses
+Current Step ID: 7
+Current Step Title: Converge target layout and ordered preparation dependencies
 
 ## Just Finished
 
-- Plan Step 6 is complete. P05-P07 now consume exact predecessor revisions in
-  the fixed order, preserve every cumulative earlier property or fail, and use
-  one private whole-module occurrence transaction with complete rollback.
-- P05 closes target-independent memory/address/effect representation, P06
-  closes layout-independent aggregate semantics without recreating earlier
-  forms, and P07 freezes the sole final intrinsic candidate admitted by G01.
-- Memory-effects, provenance, and call-graph results are immutable analyses with
-  explicit schema/dependency keys, exact module/function revision binding,
-  deterministic output, stale-handle rejection, invalidation, and atomic cache
-  publication.
-- Canonical verification now accepts only the exact frozen P07 lineage and full
-  stage stamp at G01, checks the cumulative P01-P07 profile on that revision,
-  and atomically publishes `CanonicalBir` or publishes nothing.
-- All Step 6 facts remain target-independent. `InlineAsm` remains one ordinary-
-  value opaque semantic node; its texts are preserved and never interpreted or
-  rewritten in P05-P07, semantic analyses, or Canonical verification.
+- Plan Step 7 is complete. Target-layout publication and all six preparation
+  products are immutable, transactionally published, and keyed to the complete
+  Canonical `PipelineStageStamp`, exact `TargetFingerprint`, layout/schema
+  fingerprints, and ordered predecessor-product fingerprints.
+- The dependency order is fixed as target layout, ABI, calls, variadic,
+  address, inline-assembly target tables, runtime helpers, cumulative bundle,
+  then register-constraint interpretation. Each product has one producer and
+  declared immediate and later consumers.
+- Target layout owns abstract categories/classes/groups/slots, aliases,
+  capacities, ABI eligibility, and the private concrete-mapping domain.
+  Preparation owns classification, vocabulary tables, and planning only; it
+  keeps Canonical storage read-only and makes no general assignment decision.
+- `regalloc/constraints` is the sole interpreter that parses, types, and binds
+  `r`, `=r`, `VR`, `VRM2`, `VRM4`, `VRM8`, ties, early-clobbers, and clobbers
+  to ordinary `InlineAsm` operands/results. Preparation publishes declarative
+  vocabulary/eligibility tables and no instruction-specific bindings.
 
 ## Suggested Next
 
-- Execute Plan Step 7 in its declared order: converge target layout,
-  preparation, ABI, calls, variadics, address, runtime helpers, inline-assembly
-  preparation, and allocation-constraint ownership. Bind every derived product
-  to immutable `CanonicalBir` plus one exact target fingerprint without writing
-  prepared or allocation facts back into Canonical BIR.
+- Execute Plan Step 8 in order: converge generic pseudo lowering, the closed
+  pseudo schema, the Pseudo verifier profile, and the optional target-pass
+  gate. Bind the new immutable pseudo revision and all derived facts to the
+  exact Step 7 products without letting pseudo lowering absorb allocation.
 
 ## Watchouts
 
 - Do not begin implementation before explicit architecture acceptance.
-- Keep Step 7 products external, immutable, and keyed to the complete Canonical
-  stage stamp plus target fingerprint; a module revision alone is insufficient.
-- Preserve the single owner split: preparation may classify and plan, while the
-  allocation-constraints stage alone interprets and binds target constraint
-  meaning. Neither may replace the ordinary BIR value graph.
-- Do not let preparation select allocation homes or mutate Canonical BIR, and
-  do not let allocation constraints become a duplicate target-layout, ABI,
-  call-plan, or inline-assembly semantic owner.
+- Preserve `C7 -> C8 -> C9`: inline-assembly target tables precede runtime
+  helpers, the cumulative bundle publishes atomically, and only then may the
+  constraint interpreter consume instruction descriptions and ordinals.
+- Do not treat `VerifiedPreparationInput`, a target layout, any planner fact,
+  or `VerifiedPreparationBundle` as `PreparedBir`; that name remains reserved
+  for the later verified allocated revision.
+- Step 8 must consume the exact Canonical stamp, target fingerprint, layout,
+  cumulative preparation bundle, and `BoundConstraintSet`; compatible-looking
+  or module-revision-only products are stale.
 - Keep idea 731 open when this docs-only runbook is exhausted.
 
 ## Proof
 
-- `git diff --check && ! rg -n 'target opcode|physical register|ABI (location|placement)|frame offset|parse.*(asm|constraint)|constraint.*parse' src/backend/bir/passes/memory/README.md src/backend/bir/analysis/memory_effects/README.md src/backend/bir/analysis/provenance/README.md src/backend/bir/passes/aggregate/README.md src/backend/bir/passes/intrinsics/README.md src/backend/bir/analysis/call_graph/README.md && rg -n 'CanonicalBir|Canonical.*profile|P07|revision|rollback|opaque|InlineAsm' src/backend/bir/passes/memory/README.md src/backend/bir/passes/aggregate/README.md src/backend/bir/passes/intrinsics/README.md src/backend/bir/verify/README.md` — exit 0.
+- `git diff --check && ! rg -n '(preparation|inline.asm).*(parse|type|bind).*(constraint|=r|VRM)|constraint.*(parse|type|bind).*(preparation|inline.asm)|allocation home|physical register assignment|mutat.*Canonical' src/backend/bir/preparation/README.md src/backend/bir/preparation/inline_asm/README.md src/backend/bir/preparation/{abi,calls,variadic,address,runtime_helpers}/README.md src/backend/bir/target_layout/README.md && rg -n '(sole|only).*(constraint|interpreter)|parse|type|bind|revision|fingerprint|transaction' src/backend/bir/regalloc/constraints/README.md` — exit 0.
+- ``git diff --check && rg -n '`E1`|`E2`|`E3`' src/backend/bir/LEGACY_COVERAGE.md && ! rg -n '`S23`|`S24`|`S25`' src/backend/bir/LEGACY_COVERAGE.md`` — exit 0; the legacy allocation rows now use the root-authoritative stage labels.
 - The supervisor selected a docs-only structural proof that does not produce a
   test log; no `test_after.log` or other regression log was created or
   modified.

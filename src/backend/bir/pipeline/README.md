@@ -58,7 +58,13 @@ gate, and every target-aware phase is defined only in the root README.
   axes/function-revision digest together for the external preparation API. It
   borrows the immutable `CanonicalBir` storage and cannot outlive that owning
   capability;
-- preparation facts bind to that exact borrow and target-layout version;
+- target layout publishes an immutable capability bound to that exact complete
+  stage stamp and target fingerprint; preparation products additionally bind
+  the layout and ordered predecessor-product fingerprints;
+- preparation dependency order is exactly `abi -> calls -> variadic -> address
+  -> inline_asm -> runtime_helpers`; after atomic cumulative-bundle
+  publication, `regalloc/constraints` alone interprets and binds source
+  constraint descriptions to ordinary operands/results;
 - shared BIR allocation privately forks from the Canonical revision and may
   publish a distinct immutable allocated revision only after complete
   assignment/spill verification;
