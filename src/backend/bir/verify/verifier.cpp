@@ -71,6 +71,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<LoadNode>(instruction.payload);
     case Opcode::GetElementPtr:
       return std::holds_alternative<GetElementPtrNode>(instruction.payload);
+    case Opcode::Call:
+      return std::holds_alternative<CallNode>(instruction.payload);
   }
   return false;
 }
@@ -689,6 +691,21 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "getelementptr must have one exact global array base, nonempty ordered integer indices, and one source-backed pointer result");
+      }
+      if (const auto* call = std::get_if<CallNode>(&instruction.payload)) {
+        const auto callee =
+            module.functions_.get(module.epoch_, call->callee);
+        const bool exact_signature =
+            callee &&
+            callee.value().get().signature_.return_type.kind ==
+                TypeKind::Void &&
+            callee.value().get().signature_.parameter_types.empty() &&
+            !callee.value().get().signature_.is_variadic;
+        if (!instruction.operands.empty() || !instruction.results.empty() ||
+            !exact_signature)
+          report(result, VerificationRule::ValueDefinition, function_id,
+                 inst_id,
+                 "call must target one module-owned zero-parameter nonvariadic void function and have no operands or results");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {

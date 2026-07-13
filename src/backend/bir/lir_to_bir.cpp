@@ -18,6 +18,7 @@ namespace {
 
 using codegen::lir::LirBlock;
 using codegen::lir::LirBr;
+using codegen::lir::LirCallOp;
 using codegen::lir::LirCondBr;
 using codegen::lir::LirConstFloat;
 using codegen::lir::LirConstInt;
@@ -329,6 +330,45 @@ std::optional<std::vector<Type>> lower_function_parameter_types(
     lowered.push_back(*type);
   }
   return lowered;
+}
+
+bool exact_direct_void_call(const LirModule& module, const LirCallOp& call) {
+  if (!call.result.empty() || call.result.has_authority() ||
+      call.return_type.kind() != codegen::lir::LirTypeKind::Void ||
+      call.return_type.str() != "void" ||
+      call.return_ext_attr != LirExtAttr::None ||
+      call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
+      !call.structured_args.empty() || !call.arg_type_refs.empty() ||
+      !call.callee_signature)
+    return false;
+
+  const auto return_type = lower_lir_type(module, call.return_type);
+  const auto& signature = *call.callee_signature;
+  if (!return_type || return_type->kind != TypeKind::Void ||
+      !signature.return_type_ref ||
+      signature.return_type_ref->kind() !=
+          codegen::lir::LirTypeKind::Void ||
+      signature.return_type_ref->str() != "void" ||
+      *signature.return_type_ref != call.return_type ||
+      signature.return_ext_attr != LirExtAttr::None ||
+      !signature.fixed_param_types.empty() ||
+      !signature.fixed_param_type_refs.empty() || signature.is_variadic ||
+      signature.has_unspecified_params)
+    return false;
+
+  bool resolved = false;
+  for (const auto& target : module.functions) {
+    if (target.link_name_id != call.direct_callee_link_name_id) continue;
+    const auto target_return = lower_signature_type(
+        module, target.return_type, target.signature_return_type_ref);
+    const auto target_params = lower_function_parameter_types(module, target);
+    if (!target_return || target_return->kind != TypeKind::Void ||
+        !target_params || !target_params->empty() ||
+        target.signature_is_variadic)
+      return false;
+    resolved = true;
+  }
+  return resolved;
 }
 
 std::optional<Type> lower_constant_type(const LirModule& module,
@@ -1696,6 +1736,14 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "duplicate authoritative LirValueId definition");
         continue;
       }
+      if (const auto* call = std::get_if<LirCallOp>(&instruction)) {
+        if (!exact_direct_void_call(module, *call))
+          return fail<void>(
+              ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+              block.label,
+              "call requires a structured direct LinkNameId target and an exact zero-parameter nonvariadic void signature");
+        continue;
+      }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
       if (!inline_asm)
         return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -1982,6 +2030,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import specialization metadata", added.error()));
   }
+  std::vector<FunctionId> function_ids;
+  function_ids.reserve(module.functions.size());
+  std::unordered_map<c4c::LinkNameId, FunctionId> functions_by_link_name_id;
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);
     const Type imported_return_type =
@@ -1998,11 +2049,29 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     if (!created)
       return Result<RawBir, ImportError>::failure(builder_failure(
           name, {}, "create function", created.error()));
+    function_ids.push_back(created.value());
+    if (function.link_name_id != c4c::kInvalidLinkName) {
+      const auto registered = functions_by_link_name_id.emplace(
+          function.link_name_id, created.value());
+      if (!registered.second && registered.first->second != created.value())
+        return fail<RawBir>(
+            ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+            "function LinkNameId resolves to conflicting BIR identities");
+    }
+  }
+
+  for (std::size_t function_index = 0;
+       function_index < module.functions.size(); ++function_index) {
+    const auto& function = module.functions[function_index];
+    const std::string name = function_link_name(module, function);
+    const Type imported_return_type =
+        *lower_signature_type(module, function.return_type,
+                              function.signature_return_type_ref);
     if (function.is_declaration) continue;
 
     std::optional<ImportError> edit_error;
     auto edited = builder.with_function(
-        created.value(), [&](FunctionBuilder& function_builder) {
+        function_ids[function_index], [&](FunctionBuilder& function_builder) {
           std::unordered_map<std::string, BlockId> blocks;
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
@@ -2245,6 +2314,34 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       "getelementptr result collided in the current-function source registry"};
                   return Result<void, BuildError>::failure(
                       BuildError::DuplicateSourceValue);
+                }
+                continue;
+              }
+              if (const auto* call = std::get_if<LirCallOp>(&instruction)) {
+                const auto callee = functions_by_link_name_id.find(
+                    call->direct_callee_link_name_id);
+                if (callee == functions_by_link_name_id.end()) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated call target disappeared from the function LinkNameId registry"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::InvalidFunction);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.label), CallSpec{callee->second});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append call",
+                                               appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (!appended.value().results.empty()) {
+                  edit_error = ImportError{
+                      ImportErrorCode::BuilderFailure, name, block.label,
+                      "void call builder returned an inconsistent result count"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::StorageExhausted);
                 }
                 continue;
               }

@@ -8,23 +8,23 @@ Current Step Title: Receive direct zero-argument void calls
 
 ## Just Finished
 
-- Completed Plan Step 4.5.3 by preserving native `LirFunction::is_internal`
-  and `can_elide_if_unreferenced` through typed FunctionData, builder creation,
-  immutable Raw/Canonical views, reachable verification, and LIR import.
-- Enforced exactly the producer-valid false/false declaration and definition,
-  false/true helper definition, and true/true static definition combinations;
-  invalid metadata and conflicting merges reject before mutation.
-- Proved a production static literal-return function retained by a structured
-  global function-pointer initializer reaches semantic BIR with its ordinary
-  external neighbor; no global-row blocker remained.
-- Supervisor authority audit selected only the modern direct zero-argument
-  void `LirCallOp` row for the first bounded Step 5 packet.
+- Completed Plan Step 5.1's bounded modern `LirCallOp` receipt with a typed
+  `CallNode` carrying only `FunctionId`, zero operands, and zero results.
+- Added builder creation, immutable Raw/Canonical call views, foundation
+  verification, and semantic dump rendering using only the target FunctionId.
+- Reworked module import into create-all-functions then lower-definition-bodies
+  passes, backed by a native `LinkNameId -> FunctionId` registry, so forward,
+  recursive, and declaration/definition-merged calls are source-order safe.
+- Kept `callee`, names, `args_str`, and `callee_type_suffix` presentation-only;
+  all excluded result, argument, indirect, nonvoid, extended, variadic,
+  unspecified, unresolved, and conflicting shapes reject atomically.
+- Proved a production forward direct zero-argument void C call publishes
+  `call fn1`; the producer supplied the exact structured row without blockers.
 
 ## Suggested Next
 
-- Execute Plan Step 5.1 by adding a zero-operand/zero-result BIR `Call` node,
-  exact `LinkNameId -> FunctionId` resolution, two-pass/equivalent forward
-  target safety, verifier coverage, and transactional proof.
+- Supervisor should validate this coherent Step 5.1 slice, commit it if
+  accepted, and delegate lifecycle selection of the next bounded Step 5 row.
 
 ## Watchouts
 
@@ -47,11 +47,11 @@ Current Step Title: Receive direct zero-argument void calls
 - Fresh `cmake --build --preset default` completed successfully.
 - `ctest --test-dir build -R '^backend_lir_to_bir_interface$'
   --output-on-failure` passed 1/1 with builder, verifier, Raw/Canonical view,
-  misleading-display, merge-conflict, and module-rollback coverage.
-- `c4cll --dump-bir` published the retained static literal-return production
-  function; the neighboring LLVM observation confirmed its structured global
-  function-pointer initializer kept it reachable and was not used as metadata
-  authority.
+  misleading-presentation, forward/recursive/merge, exclusion, and rollback
+  coverage.
+- `build/c4cll --dump-bir
+  tests/backend/case/new_bir_direct_zero_arg_void_call.c` completed and printed
+  `call fn1` from the production C row.
 - `ctest --test-dir build -j --output-on-failure > test_after.log` passed
   3033/3033. The monotonic guard against `test_before.log` passed with delta
-  `passed=0 failed=0` and no new over-30-second tests.
+  `passed=0 failed=0`, no new failures, and no new over-30-second tests.

@@ -8463,6 +8463,255 @@ void test_inline_asm_shape_rejection() {
          "textual-only inline asm must publish no partial CanonicalBir");
 }
 
+lir::LirCallOp direct_void_call(c4c::LinkNameId target) {
+  lir::LirCallOp call;
+  call.return_type = lir::LirTypeRef("void");
+  call.callee = lir::LirOperand::raw("%misleading_indirect_display");
+  call.direct_callee_link_name_id = target;
+  call.callee_type_suffix = "(i64) presentation-only";
+  call.args_str = "i64 99 presentation-only";
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("void");
+  signature.has_void_param_list = true;
+  call.callee_signature = std::move(signature);
+  return call;
+}
+
+lir::LirModule direct_void_call_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto caller_link = module.link_names.intern("direct_void_caller");
+  const auto recursive_link = module.link_names.intern("direct_void_recursive");
+  const auto target_link = module.link_names.intern("direct_void_target");
+
+  auto caller_block = return_block(0, "caller_entry");
+  caller_block.insts.push_back(direct_void_call(target_link));
+  auto caller = void_definition("misleading_caller_name",
+                                {std::move(caller_block)});
+  caller.link_name_id = caller_link;
+  module.functions.push_back(std::move(caller));
+
+  auto recursive_block = return_block(0, "recursive_entry");
+  recursive_block.insts.push_back(direct_void_call(recursive_link));
+  auto recursive = void_definition("misleading_recursive_name",
+                                   {std::move(recursive_block)});
+  recursive.link_name_id = recursive_link;
+  module.functions.push_back(std::move(recursive));
+
+  auto declaration = void_declaration("misleading_target_declaration");
+  declaration.link_name_id = target_link;
+  module.functions.push_back(std::move(declaration));
+
+  auto definition = void_definition(
+      "misleading_target_definition", {return_block(0, "target_entry")});
+  definition.link_name_id = target_link;
+  module.functions.push_back(std::move(definition));
+  return module;
+}
+
+void expect_direct_void_call_view(const bir::ModuleView& view,
+                                  std::size_t caller_index,
+                                  bir::FunctionId expected_target,
+                                  const std::string& context) {
+  const auto functions = view.functions();
+  expect(caller_index < functions.size(), context + " caller must exist");
+  const auto function = view.function(functions[caller_index]).value();
+  const auto blocks = function.blocks();
+  expect(blocks.size() == 1, context + " caller must retain one block");
+  const auto instructions = function.instructions(blocks[0]).value();
+  expect(instructions.size() == 1,
+         context + " caller must retain exactly one instruction");
+  const auto instruction = function.instruction(instructions[0]).value();
+  expect(instruction.opcode() == bir::Opcode::Call && instruction.call() &&
+             instruction.call()->callee == expected_target &&
+             instruction.operands().empty() && instruction.results().empty(),
+         context +
+             " must expose one immutable zero-operand/zero-result typed Call");
+}
+
+void test_direct_zero_argument_void_call_receipt() {
+  auto module = direct_void_call_module();
+  auto raw = bir::lower_lir_to_raw_bir(module);
+  if (!raw.has_value())
+    fail("forward, recursive, and merged direct void calls should import: " +
+         raw.error().detail);
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "direct void calls must remain foundation-verifier reachable");
+  const auto raw_functions = raw.value().view().functions();
+  expect(raw_functions.size() == 3,
+         "declaration and definition must merge to one FunctionId");
+  expect_direct_void_call_view(raw.value().view(), 0, raw_functions[2],
+                               "Raw forward call");
+  expect_direct_void_call_view(raw.value().view(), 1, raw_functions[1],
+                               "Raw recursive call");
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the same direct void call module should canonicalize");
+  const auto canonical_functions = canonical.value().view().functions();
+  expect(canonical_functions.size() == 3,
+         "Canonical BIR must retain merged target identity");
+  expect_direct_void_call_view(canonical.value().view(), 0,
+                               canonical_functions[2],
+                               "Canonical forward call");
+  expect_direct_void_call_view(canonical.value().view(), 1,
+                               canonical_functions[1],
+                               "Canonical recursive call");
+}
+
+void test_direct_zero_argument_void_call_builder_contract() {
+  bir::ModuleBuilder builder;
+  const bir::FunctionSignature void_signature{bir::Type{bir::TypeKind::Void},
+                                               {}, false};
+  const auto target =
+      builder.create_function(void_signature, "builder_target", true);
+  const auto caller =
+      builder.create_function(void_signature, "builder_caller", false);
+  expect(target.has_value() && caller.has_value(),
+         "builder call fixture functions should be created");
+  auto edited = builder.with_function(
+      caller.value(), [&](bir::FunctionBuilder& function) {
+        const auto block = function.create_block("entry");
+        if (!block) return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto call = function.append(block.value(),
+                                          bir::CallSpec{target.value()});
+        if (!call)
+          return bir::Result<void, bir::BuildError>::failure(call.error());
+        expect(call.value().results.empty(),
+               "builder direct void Call must return no result IDs");
+        return function.set_terminator(block.value(),
+                                       bir::ReturnTerm{std::nullopt});
+      });
+  expect(edited.has_value(), "builder should append an exact direct void Call");
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "builder direct void Call must publish and verify");
+
+  bir::ModuleBuilder rejected;
+  const bir::FunctionSignature value_signature{bir::Type{bir::TypeKind::I32},
+                                                {}, false};
+  const auto value_target =
+      rejected.create_function(value_signature, "value_target", true);
+  const auto rejected_caller =
+      rejected.create_function(void_signature, "rejected_caller", false);
+  expect(value_target.has_value() && rejected_caller.has_value(),
+         "negative builder fixture functions should be created");
+  auto rejected_edit = rejected.with_function(
+      rejected_caller.value(), [&](bir::FunctionBuilder& function) {
+        const auto block = function.create_block("entry");
+        if (!block) return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto call = function.append(block.value(),
+                                          bir::CallSpec{value_target.value()});
+        expect(!call.has_value() &&
+                   call.error() == bir::BuildError::UnsupportedOpcode,
+               "builder must reject a nonvoid target for the bounded Call");
+        return bir::Result<void, bir::BuildError>::failure(call.error());
+      });
+  expect(!rejected_edit.has_value(),
+         "rejected Call edits must not publish a partial body");
+
+  bir::ModuleBuilder foreign_owner;
+  const auto foreign_target =
+      foreign_owner.create_function(void_signature, "foreign_target", true);
+  bir::ModuleBuilder local_owner;
+  const auto local_caller =
+      local_owner.create_function(void_signature, "local_caller", false);
+  expect(foreign_target.has_value() && local_caller.has_value(),
+         "foreign-owner Call fixture functions should be created");
+  auto foreign_edit = local_owner.with_function(
+      local_caller.value(), [&](bir::FunctionBuilder& function) {
+        const auto block = function.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto call = function.append(
+            block.value(), bir::CallSpec{foreign_target.value()});
+        expect(!call.has_value() &&
+                   call.error() == bir::BuildError::InvalidFunction,
+               "builder must reject a Call target owned by another module");
+        return bir::Result<void, bir::BuildError>::failure(call.error());
+      });
+  expect(!foreign_edit.has_value(),
+         "foreign-target rejection must not publish a partial body");
+}
+
+void test_direct_zero_argument_void_call_rejections() {
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto module = direct_void_call_module();
+    auto& call = std::get<lir::LirCallOp>(
+        module.functions[0].blocks[0].insts[0]);
+    mutate(module, call);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() &&
+               raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+
+  rejected([](auto&, auto& call) { call.direct_callee_link_name_id = 999; },
+           "unresolved direct LinkNameId must reject");
+  rejected([](auto&, auto& call) { call.direct_callee_link_name_id = 0; },
+           "an indirect call without native target identity must reject");
+  rejected([](auto&, auto& call) { call.result = lir::LirOperand::raw("%r"); },
+           "a presentation-only result must not become result authority");
+  rejected([](auto&, auto& call) {
+             call.result = lir::LirOperand::ssa("", lir::LirValueId{7});
+           },
+           "an empty display must not hide result authority");
+  rejected([](auto&, auto& call) {
+             call.return_type = lir::LirTypeRef::integer(32);
+           },
+           "nonvoid call return types must reject");
+  rejected([](auto&, auto& call) {
+             call.return_ext_attr = lir::LirExtAttr::ZeroExt;
+           },
+           "call return extension must be None");
+  rejected([](auto&, auto& call) { call.structured_args.emplace_back(); },
+           "structured call arguments remain excluded");
+  rejected([](auto&, auto& call) {
+             call.arg_type_refs.push_back(lir::LirTypeRef::integer(32));
+           },
+           "argument type refs remain excluded");
+  rejected([](auto&, auto& call) { call.callee_signature.reset(); },
+           "missing structured callee signature must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->return_type_ref.reset();
+           },
+           "missing typed callee return must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->return_ext_attr =
+                 lir::LirExtAttr::SignExt;
+           },
+           "callee return extension must be None");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->is_variadic = true;
+           },
+           "variadic callee signatures remain excluded");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->has_unspecified_params = true;
+           },
+           "unspecified callee signatures remain excluded");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->fixed_param_types.push_back("i32");
+             call.callee_signature->fixed_param_type_refs.push_back(
+                 lir::LirTypeRef::integer(32));
+             call.callee_signature->has_void_param_list = false;
+           },
+           "fixed call parameters remain excluded");
+  rejected([](auto& module, auto&) {
+             module.functions[3].return_type = scalar_type(c4c::TB_INT);
+             module.functions[3].signature_return_type_ref =
+                 lir::LirTypeRef::integer(32);
+           },
+           "target signature disagreement must reject atomically");
+}
+
 }  // namespace
 
 int main() {
@@ -8525,5 +8774,8 @@ int main() {
   test_specialization_metadata_receipt_and_rejections();
   test_accumulated_module_surface_checkpoint();
   test_inline_asm_shape_rejection();
+  test_direct_zero_argument_void_call_receipt();
+  test_direct_zero_argument_void_call_builder_contract();
+  test_direct_zero_argument_void_call_rejections();
   return 0;
 }

@@ -106,6 +106,18 @@ std::string render_semantic_bir(const bir::RawBir& raw_bir) {
       if (!debug_name.empty())
         out << " '" << debug_name << "'";
       out << "\n";
+      const auto instructions = function.instructions(block_id);
+      if (!instructions)
+        throw std::logic_error(
+            "verified RawBir block has unresolvable instruction order");
+      for (const auto instruction_id : instructions.value()) {
+        const auto instruction = function.instruction(instruction_id);
+        if (!instruction)
+          throw std::logic_error(
+              "verified RawBir contains an unresolvable instruction");
+        if (const auto* call = instruction.value().call())
+          out << "    call fn" << call->callee.slot << "\n";
+      }
       const auto terminator = function.terminator(block_id);
       if (!terminator)
         throw std::logic_error("verified RawBir block has no terminator");

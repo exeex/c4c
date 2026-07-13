@@ -1070,6 +1070,45 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
       BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
+                                                         CallSpec spec) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& function_data = function.value().get();
+  if (!function_data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  const auto callee = parent_->data_->functions_.get(parent_->data_->epoch_,
+                                                     spec.callee);
+  if (!callee)
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidFunction);
+  const auto& signature = callee.value().get().signature_;
+  if (signature.return_type.kind != TypeKind::Void ||
+      !signature.parameter_types.empty() || signature.is_variadic)
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::UnsupportedOpcode);
+
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Call;
+  instruction.payload = CallNode{spec.callee};
+  auto inserted =
+      function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted)
+    return Result<BuildResult, BuildError>::failure(
+        storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data ||
+      !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(
+      BuildResult{instruction_id, {}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();
