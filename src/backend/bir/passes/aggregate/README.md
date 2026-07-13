@@ -3,9 +3,9 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P06` is the `S07` module transformation. It consumes the exact committed P05
-output and publishes unique target-independent aggregate semantics without
-recreating a form owned by P01-P05.
+`B6 / P06` is the aggregate-canonicalization module transformation. It consumes
+the exact committed B5 / P05 output and publishes unique target-independent
+aggregate semantics without recreating a form owned by P01-P05.
 
 ## 1. Exact input and canonical form
 
@@ -54,8 +54,8 @@ complete edit set to a private occurrence candidate, derives its mutation
 summary, invalidates all analyses observing affected types, values, calls, or
 bodies, and runs every cumulative P01-P06 postcondition plus verifier-on-commit.
 
-Success atomically publishes one immutable S07 candidate that preserves all
-P01-P05 properties. A true no-op keeps every revision. Stale input/analysis,
+Success atomically publishes one immutable B6 / P06 candidate that preserves
+all P01-P05 properties. A true no-op keeps every revision. Stale input/analysis,
 unowned or unsupported semantics, incomplete cross-declaration repair,
 recreation of an earlier noncanonical form, deterministic resource exhaustion,
 cancellation, merge conflict, or verifier rejection rolls back the complete

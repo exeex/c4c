@@ -3,9 +3,9 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P07` is the `S08` module transformation and the last canonicalizer. It consumes
-the exact committed P06 output and produces the sole candidate admitted by the
-G01 Canonical publication gate.
+`B7 / P07` is the intrinsic-canonicalization module transformation and the last
+canonicalizer. It consumes the exact committed B6 / P06 output and produces the
+sole candidate admitted by the B8 Canonical publication gate.
 
 ## 1. Exact input and final canonical form
 
@@ -58,9 +58,9 @@ mutation summary, invalidates every affected call-graph, memory-effect,
 provenance, publication/value-flow, and dependent result, and runs all
 cumulative P01-P07 properties plus verifier-on-commit.
 
-Success freezes one immutable S08 candidate with its exact full stage stamp.
+Success freezes one immutable B7 / P07 candidate with its exact full stage stamp.
 That unforgeable stamp records P07 as ordinal 7 under the canonical-v1 plan and
-is consumed only by G01; a separately assembled or merely similar candidate is
+is consumed only by B8; a separately assembled or merely similar candidate is
 not P07 output. A true no-op preserves revisions while still establishing the
 P07 property on the same occurrence lineage.
 
@@ -68,4 +68,4 @@ Stale input/analysis, registry inconsistency, unsupported semantics, incomplete
 cross-module repair, recreation of an earlier form, deterministic resource
 exhaustion, cancellation, merge conflict, or verifier rejection rolls back the
 complete occurrence. No partial edit, revision, property, cache entry, frozen
-P07 candidate, or publication capability escapes, and G01 does not run.
+P07 candidate, or publication capability escapes, and B8 does not run.

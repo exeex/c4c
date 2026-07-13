@@ -65,7 +65,7 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | Profile | Required now | Meaning |
 |---|---:|---|
 | `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
-| `Canonical` | later | Raw rules plus the post-pass normal forms promised by the pipeline: legalized types/opcodes, canonical memory/address form, SSA/phi rules, and normalized aggregate/intrinsic forms. |
+| `Canonical` | later | Raw rules plus the post-pass normal forms promised by the pipeline: legalized types/opcodes, canonical memory/address form, SSA/phi rules, normalized aggregate/intrinsic forms, and B3 / P03 entry reachability for every retained block. |
 | `PreparedInput` | later | Canonical rules plus prerequisites required to derive ABI/address/call plans. It still contains no prepared facts. |
 | `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1/D2 lowering, and stage-specific realizability rules. Allocation completeness is not required. |
 | `Allocated` | later | Full graph/Pseudo rules plus the exact stable E3 revision, complete legal abstract assignments, explicit verified spill/reload transitions, fresh target/product bindings, and atomic MIR-ready publication. |
@@ -90,8 +90,9 @@ allocated boundary succeeds.
 
 Raw allowances are explicit:
 
-- blocks may be unreachable and the verifier diagnoses but does not reject them
-  unless an option requests reachability closure;
+- blocks may be unreachable; Raw verification diagnoses them deterministically
+  but never rejects them merely for being unreachable or allows an option to
+  strengthen Raw into the Canonical reachability profile;
 - the CFG may have critical edges, duplicate semantic destinations from distinct
   switch cases, loops, irreducible regions, and blocks in non-RPO storage order;
 - memory-resident variables and repeated loads/stores are valid;
@@ -107,10 +108,10 @@ source construct that cannot be represented losslessly is rejected by the LIR
 importer before publication; an `Unsupported` instruction, string payload, or
 opaque side record is not valid Raw BIR.
 
-### Canonical profile and G01 publication
+### Canonical profile and B8 publication
 
-The `Canonical` profile is the exact cumulative profile of the immutable P07
-output, not a general request to accept any well-formed post-Raw module. G01
+The `Canonical` profile is the exact cumulative profile of the immutable B7 /
+P07 output, not a general request to accept any well-formed post-Raw module. B8
 accepts one private frozen candidate only when its `PipelineStageStamp` proves
 the canonical-v1 occurrence lineage, exact plan/options fingerprints, P07 as
 completed ordinal 7, `PassProperty::IntrinsicsCanonical`, exact
@@ -128,7 +129,9 @@ the following closed post-pass obligations on that one frozen revision:
 2. P02 scalar expressions, comparisons, selects, exceptional-value behavior,
    and helper-eligible semantic operations have their unique portable forms.
 3. P03 terminators and ordered successor slots are the sole CFG edge authority;
-   `EdgeKey` occurrence identity and canonical block/topology policy hold.
+   `EdgeKey` occurrence identity and canonical block/topology policy hold, and
+   every retained block is reachable from the function entry after P03's
+   deterministic unreachable-region removal.
 4. P04 explicit-`Phi` canonical SSA form and exact phi incoming `EdgeKey`
    coverage, complete def-use, dominance, and alias normalization hold.
 5. P05 memory, address/GEP, access, atomic, stack-state, and memory-intrinsic
@@ -149,17 +152,17 @@ or create a parallel assembly graph. The same opaque semantic node that entered
 the pipeline must survive P01-P07 except for typed generic-edge repair required
 by an owning earlier rewrite.
 
-Canonical facts remain target-independent. G01 rejects every stage-forbidden
+Canonical facts remain target-independent. B8 rejects every stage-forbidden
 prepared, calling-placement, allocation, frame, machine-instruction, encoding,
 or MIR fact, as well as a fresh P01-P06 noncanonical form emitted by a later
 pass. A portable feature requirement is semantic metadata, not a support
 decision. Target support and constraint binding occur only after immutable
 `CanonicalBir` publication.
 
-G01 is one fail-closed transaction:
+B8 is one fail-closed transaction:
 
-1. it consumes the private owning P07 candidate capability and freezes its exact
-   stage stamp; no edit or analysis publication may race the gate;
+1. it consumes the private owning B7 / P07 candidate capability and freezes its
+   exact stage stamp; no edit or analysis publication may race the gate;
 2. it runs all cumulative framework postcondition checkers and the complete
    `Canonical` verifier registry against that same frozen candidate;
 3. any diagnostic, revision/stamp change, missing property, cancellation, or
@@ -175,7 +178,7 @@ Diagnostic-only `verify_candidate(Canonical)` and re-checking
 earlier green report can be cached across a P07 edit, and failure cannot roll
 back to an earlier checkpoint and call that snapshot Canonical. Pipeline
 rollback may retain its explicitly permitted last-good checkpoint, but only a
-new exact P07 occurrence followed by a successful G01 transaction can publish
+new exact P07 occurrence followed by a successful B8 transaction can publish
 `CanonicalBir`.
 
 ### Pseudo profile and D3/D4/D5 publication
@@ -311,8 +314,6 @@ enum class VerifyProfile : std::uint8_t {
 struct VerifyOptions {
   std::size_t max_diagnostics = 256;
   bool warnings_as_errors = false;
-  bool reject_unreachable_blocks = false;
-  bool verify_cached_def_use = true;
 };
 
 enum class DiagnosticSeverity : std::uint8_t { Note, Warning, Error };
@@ -582,7 +583,7 @@ values rather than renumbering an existing rule. Messages are presentation only.
 | `0x0100–0x0113` | `ModuleEpochInvalid` through `ActiveEditAtFreeze` | module revision; stale/foreign IDs; exact order/storage membership; every `ReservedInst` resolved exactly once with matching owner/results/types; no active edit at freeze |
 | `0x0200–0x020C` | `DataLayoutInvalid` through `UndefPoisonRoleInvalid` | type graph, recursion, role legality, integer/float/address-space domains, object layout, constants including exact x87 extended-80/IEEE binary128 payloads, `undef`, and `poison` |
 | `0x0300–0x0316` | `SymbolIndexMismatch` through `TopLevelAsmDependencyInvalid` | declarations/definitions, linkage/visibility/section/TLS, aliases/directives, typed top-level-asm dependencies, global state/layout, initializer trees, relocations, label differences, and block addresses |
-| `0x0400–0x0411` | `FunctionShapeInvalid` through `UnreachableBlock` | signatures/attributes/parameters/locals, entry and block shape, one terminator, optional return operand, exact `SuccessorSlot`/`EdgeKey`, switch/indirect/asm-goto edges, reachability warning |
+| `0x0400–0x0411` | `FunctionShapeInvalid` through `UnreachableBlock` | signatures/attributes/parameters/locals, entry and block shape, one terminator, optional return operand, exact `SuccessorSlot`/`EdgeKey`, switch/indirect/asm-goto edges, profile-specific reachability diagnosis |
 | `0x0500–0x0513` | `OpcodeInvalid` through `CrossComponentUse` | opcode/profile/descriptor closure, operand/result arity/kind/type, unique definitions, exact def-use, phi placement and edge-key multiset, same-block order and dominance |
 | `0x0600–0x0608` | `CallCalleeInvalid` through `VarArgInvalid` | direct `SymbolId` or indirect callee, signature/arguments, `CallEffects`, typed operand bundles, optional semantic result/return, tail/noreturn, and variadics |
 | `0x0700–0x070B` | `MemoryAccessInvalid` through `FenceInvalid` | loads/stores/address spaces/alignment, GEP, dynamic allocation and stack state, memcpy/memmove/memset, atomics and fences |
@@ -655,7 +656,7 @@ The ordering prevents semantic checks from trusting corrupt storage:
 7. **Types and feature-specific rules.** Check operands, results, calls, memory,
    atomics, aggregates, intrinsics, and inline assembly.
 8. **Complete def-use.** Recompute definitions and uses from the semantic IR and
-   compare any cached index exactly.
+   compare core's canonical eager value-use store exactly.
 9. **SSA/dominance.** Apply profile-specific use ordering, phi edge, and
    dominance rules.
 10. **Stage boundary.** Reject legacy route data and any prepared/MIR authority.
@@ -858,8 +859,10 @@ struct EdgeKey {
   type when applicable. Raw has no hidden ABI return lane or multivalue return
   carrier (`ReturnOperandInvalid`);
 - `jump`: one local live target;
-- `cond_jump`: local I1 condition and two local live targets (the targets may be
-  equal if the Raw schema deliberately permits this);
+- `cond_jump`: local I1 condition and two local live successor slots; equal
+  true/false targets are legal Raw shape because slot role preserves both edge
+  occurrences, while B3 / P03 folds the redundant conditional into its unique
+  canonical successor form;
 - `switch`: integer selector, unique case constants representable by its type,
   one default, and all local targets;
 - `indirect_jump`: pointer/code-address operand and a nonempty ordered list of
@@ -881,10 +884,13 @@ goto splits the source block at that operation and publishes `asm_goto` as the
 first block's terminator. This avoids pretending that values defined after a
 mid-block exit dominate its target. CFG edges are not stored as authoritative
 side tables (`SuccessorSlotInvalid`, `EdgeKeyInvalid`, `EdgeTargetInvalid`).
-Entry reachability is computed from slot targets. Raw accepts
-unreachable blocks by default but still validates their local contents, IDs,
-types, def-use, and internal dominance as separate roots. A warning identifies
-them deterministically. Canonical policy may later require removal.
+Entry reachability is computed from slot targets. Raw accepts unreachable
+blocks unconditionally but still validates their local contents, IDs, types,
+def-use, and internal dominance as separate roots. `UnreachableBlock` is a
+deterministic Raw note and is not promoted by `warnings_as_errors`. Canonical
+requires every retained block to be entry-reachable because B3 / P03 owns
+deterministic unreachable-region removal; at B8 the same rule is an error and
+publication fails.
 
 ## Instruction schema and complete operand traversal
 
@@ -908,7 +914,8 @@ Exact def-use means:
 - every used `ValueId` resolves locally and has one coherent definition;
 - every instruction result is unique and its declared result type matches the
   stored `ValueDef`;
-- recomputed `(user, operand-role/index)` multisets equal any cached use lists;
+- recomputed `(user, operand-role/index)` multisets equal core's canonical eager
+  `users(ValueId)` state;
 - replacing/removing/cloning instructions cannot leave stale users or duplicate
   definitions;
 - constants, globals, blocks, and local objects use their own typed references,
@@ -1114,8 +1121,8 @@ Non-phi use policy:
 Raw therefore already enforces valid SSA identity/use dominance for values that
 exist. The future `Canonical` profile adds pipeline promises such as required
 mem2reg coverage, absence of designated raw memory pseudo-ops, canonical phi
-placement/order, and possibly reachable-only CFG. Those are not retroactively
-required of Raw.
+placement/order, and B3 / P03 entry reachability for every retained block.
+Those are not retroactively required of Raw.
 
 ## Aggregates, intrinsics, variadics, and inline assembly
 
@@ -1252,7 +1259,7 @@ in debug/CI configurations, and at Canonical/PreparedInput publication.
 Incremental verification is for edit loops:
 
 - value/operand edit: containing instruction schema, both definitions, all old
-  and new users, type/dominance, and cached def-use;
+  and new users, type/dominance, and core def-use;
 - instruction insertion/removal/move: old/new blocks, order membership, all
   results/users, same-block ordering, and dominance dependents;
 - terminator/asm-goto edit: source and old/new successor neighborhoods, complete
@@ -1320,8 +1327,12 @@ schema to copy.
 ## Backend coverage status ledger
 
 `Contracted` means this design has stable rule IDs and a closed validation
-contract; it does not claim implementation. `Source gap` means current LIR
-cannot transport the full contract. `Deferred stage` means the semantic Raw
+contract; it does not claim implementation. An unimplemented rule does not
+become optional: no adapter may advertise the full Raw or Canonical profile
+until it enforces every required rule. `Source gap` means current LIR cannot
+transport the full contract, so the importer rejects that source construct and
+publishes no `RawBir`; it is never permission for a verifier profile to accept
+an opaque substitute or skip a rule. `Deferred stage` means the semantic Raw
 input is verified here but the named decision belongs after BIR.
 
 | Feature family | Status | Stable rules / disposition |
@@ -1379,29 +1390,38 @@ input is verified here but the named decision belongs after BIR.
     and maintain explicit expected failures for features not yet modeled. Never
     weaken a rule merely to accept a legacy side table.
 
-## Unresolved review questions
+## Closed A2 choices and remaining Step 7 questions
 
-1. How are recursive named records completed without mutating already published
-   `TypeId` payloads: importer-only opaque shells or a two-part declaration/body
-   entity?
-2. Is unreachable code accepted indefinitely in Raw, and does Canonical require
-   its removal? The synthetic-root dominance policy should be confirmed.
-3. Are equal true/false conditional targets legal Raw shape or immediately
-   canonicalized by the builder?
-4. Are exception/invoke edges required in the first complete Raw schema, or an
-   explicit producer gap? Tail requests, switch, indirect branch, and asm-goto
-   are already covered in this contract.
-5. Which later constraint-binding API should materialize the already-settled
-   boundary: Raw checks generic SSA edges and opaque payload storage, while the
-   later revision-bound constraint stage alone parses and binds target meaning?
-6. Which single service owns aggregate object layout and long-double storage
-   layout while immutable `TypeId` records retain the verified result?
-7. Will debug provenance be attached by IDs or parallel arrays? Parallel arrays
-   need exact cardinality checks but remain optional.
-8. Should cached def-use be stored in core, or always be an analysis keyed by
-   revision? The latter better preserves one source of truth.
-9. What exact pass promise distinguishes `Canonical` from `PreparedInput` once
-    preparation APIs are designed?
+The verifier consumes these settled core choices; they are not profile options:
+
+- recursive named records reserve one module-owned `TypeNameId` and `TypeId`,
+  define that reserved body's recursive references exactly once before draft
+  freeze, and become immutable at draft finish;
+- equal true/false conditional targets are legal Raw shape as two distinct
+  role-keyed successor occurrences, and B3 / P03 owns their deterministic
+  canonical fold;
+- Raw/Canonical v1 has no local exception edge: `CallEffects::MayUnwind` permits
+  escape from the current function only, while a source call requiring a local
+  unwind destination fails import;
+- core's immutable `SemanticDataLayout` owns byte order, pointer layouts, and
+  floating semantic/storage layouts; resolved aggregate field offsets, size,
+  and alignment are semantic `TypeId` facts checked against that environment,
+  not ABI placement or target-instruction policy;
+- `DebugFileId`, `DebugScopeId`, and `DebugLocId` own the debug graph, while
+  `OriginId` is the sole non-authoritative import/pass provenance link;
+  parallel debug or origin arrays are not semantic authority; and
+- `users(ValueId)` is canonical eager core def-use state maintained by every
+  builder/editor transaction. Verification independently recomputes and
+  compares it; a revision-bound analysis may cache other reference indexes but
+  cannot replace core value def-use.
+
+Only these questions remain open, both explicitly assigned to Plan Step 7:
+
+1. Which C9 constraint-binding API materializes the already-settled boundary in
+   which Raw checks generic SSA edges and opaque payload storage while C9 alone
+   parses and binds target meaning?
+2. What exact pass promise distinguishes `Canonical` from `PreparedInput` once
+   the preparation APIs are fixed?
 
 ## Research anchors inspected
 

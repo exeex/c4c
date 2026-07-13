@@ -3,9 +3,9 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P05` is the `S06` module transformation. It consumes the exact committed P04
-stage and publishes one target-independent memory profile while preserving the
-canonical CFG and SSA profiles.
+`B5 / P05` is the memory-canonicalization module transformation. It consumes
+the exact committed B4 / P04 output and publishes one target-independent memory
+profile while preserving the canonical CFG and SSA profiles.
 
 ## 1. Exact input and output
 
@@ -68,7 +68,7 @@ module edits to one private occurrence candidate, derives the authoritative
 mutation summary, and runs cumulative CFG/SSA/memory postconditions plus
 verifier-on-commit. A true no-op retains every revision.
 
-Success publishes one immutable S06 candidate and its property atomically.
+Success publishes one immutable B5 / P05 candidate and its property atomically.
 Stale input, an unowned form, lossless-representation failure, incomplete use or
 effect repair, deterministic resource exhaustion, cancellation, merge conflict,
 or verifier rejection rolls back the entire occurrence. No partial function,
