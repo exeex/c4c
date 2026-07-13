@@ -1,238 +1,105 @@
 # AGENTS
 
-This repo uses a single-plan lifecycle.
+This repo uses one active-plan lifecycle.
 
-## Core Rules
+## Lifecycle Invariants
 
-- There must be at most one active plan, represented by `plan.md` and optional `todo.md`.
-- Every active `plan.md` and `todo.md` must map to the same source file under `ideas/open/`.
-- Only scan `ideas/open/` for candidate work.
-- Treat `ideas/closed/` as archive unless doing historical review.
-- Treat planning state as layered artifacts with this mutation priority:
-  `todo.md` first, `plan.md` second, `ideas/open/*.md` last.
-- `ideas/open/*.md` is durable source intent and should change rarely.
-  `plan.md` is the executable transcription of that intent. `todo.md` is the
-  execution scratchpad.
-- If new information can live in `todo.md`, do not edit `plan.md` or the
-  source idea. If it can live in `plan.md` without changing source intent, do
-  not edit the source idea.
-- Treat `idea -> plan -> todo` like durable DNA -> execution transcript ->
-  live packet state. Routine progress should mutate `todo.md`, not re-edit the
-  higher layers.
-- `todo.md` execution metadata should keep regex-friendly single-line
-  `Current Step ID:` and `Current Step Title:` fields near the top.
-  Plan-review and baseline reminders should be written into `todo.md` only
-  when the hook-managed limit is hit; do not keep a constantly displayed
-  `Plan Review Counter` line there.
-  The review limit is controlled by local hook-backed state, not by skill text.
-- Treat `plan.md` exhaustion as separate from source-idea completion. A runbook
-  can be blocked, retired, or replaced without the linked idea being complete.
-- If execution discovers a separate initiative, write it into `ideas/open/` and switch lifecycle state instead of silently expanding the current plan.
-
-## Overfit Rejection
-
-- Treat testcase-overfit work as route drift, not progress.
-- `testcase overfit` means a change whose main effect is making a narrow known
-  case pass without repairing the underlying compiler/backend capability the
-  source idea claims to improve.
-- Strong examples:
-  - downgrading a supported-path test to `unsupported` or a weaker contract
-    without explicit user approval
-  - claiming backend/compiler progress mainly through expectation rewrites
-    rather than capability repair
-  - adding testcase-shaped matching or tiny named-case shortcuts instead of a
-    real semantic lowering rule
-  - proving only the target testcase while nearby same-feature cases remain
-    unsupported or unexamined
-- Existing special-case code may be maintained when necessary, but new work
-  must not extend that pattern unless the user explicitly approves a temporary
-  tactical exception.
-- When in doubt, prefer semantic lowering/generalization over testcase-shape
-  matching.
-
-## Role Routing
-
-1. If the delegated message starts with `to_subagent: c4c-executor`, the agent
-   is an executor. Load `c4c-executor`.
-2. If the delegated message starts with `to_subagent: c4c-plan-owner`, the
-   agent is a plan owner. Load `c4c-plan-owner`.
-3. If the delegated message starts with `to_subagent: c4c-reviewer`, the agent
-   is a reviewer. Load `c4c-reviewer`.
-4. Otherwise, the direct user-facing agent is the supervisor. Load
-   `c4c-supervisor`.
-5. Use the exact `to_subagent: <role>` prefix so routing is stable.
+- `plan.md` and `todo.md` either both exist or both do not. When present, both
+  must name the same source under `ideas/open/`.
+- Scan only `ideas/open/` for candidate work. Treat `ideas/draft/` as parked and
+  `ideas/closed/` as archive unless history is explicitly needed.
+- Keep at most one active plan. Treat idea, plan, and todo as durable intent,
+  executable runbook, and live packet state respectively.
+- Apply execution updates in this order: `todo.md`, then `plan.md`, then the
+  source idea. Do not promote information when a lower layer is sufficient.
+- Keep regex-friendly single-line `Current Step ID:` and `Current Step Title:`
+  fields near the top of `todo.md`. Add hook-managed review/baseline reminders
+  only when emitted; do not keep a permanent review counter there.
+- Runbook exhaustion does not prove source-idea completion. A runbook may be
+  retired, replaced, or blocked while its idea stays open.
+- Record a separate initiative under `ideas/open/` instead of silently
+  expanding the current idea.
 
 ## Interactive Authority
 
-- In an interactive run, the supervisor handles read-only diagnosis directly,
-  including git-history inspection, lifecycle/status explanation, scope
-  comparison, and drift triage. The existence of a matching specialist does
-  not require delegation for these read-only questions.
-- A user's explicit statement of source intent or scope is authoritative over
-  existing idea text, `plan.md`, `todo.md`, reviewer reports, and historical
-  agent conclusions. Treat conflicting artifacts as stale or wrong; do not use
-  them to override or reinterpret the user's scope.
-- Agreement on an architecture direction changes only that architectural
-  decision. It does not authorize expanding the implementation scope, absorbing
-  prerequisites or downstream work into the current idea, or rewriting durable
-  source intent. Record a separate initiative when that work is independently
-  required.
-- Delegate mutations to the matching specialist as described below. Do not
-  delegate merely to obtain a second statement of evidence the supervisor can
-  inspect and explain directly.
+- The supervisor answers read-only interactive diagnosis directly, including
+  git history, status, scope comparison, and drift triage. Specialist existence
+  does not require delegation for read-only questions.
+- The user's explicit source intent or scope overrides idea, plan, todo,
+  reviewer, and historical agent artifacts. Treat conflicts as stale artifacts.
+- Agreement on architecture changes only that decision. It does not authorize
+  absorbing prerequisites, downstream implementation, or other scope into the
+  current idea.
+- Delegate lifecycle and implementation mutations to their owners. Do not
+  delegate merely to restate evidence the supervisor can inspect directly.
 
-## Supervisor Authority
+## Role Routing
 
-- Owns orchestration, route choice, and anti-drift decisions.
-- Chooses whether to call `plan-owner`, `executor`, or `reviewer`.
-- Uses `.codex/skills/c4c-divide-and-conquer/` when repeated collisions show
-  the active route should be split into a separate decomposition initiative
-  under `ideas/open/` before more execution.
-- Compares execution against the linked source idea, not only `plan.md`.
-- Uses `todo.md` execution metadata, including `Current Step ID`,
-  `Current Step Title`, and reminder lines when present, when deciding whether a
-  step needs plan review or substep expansion.
-- Checks `git status --short` before delegation and after return.
-- Owns broader validation, canonical regression-log state, and the final
-  commit.
-- Chooses the proving subset and baseline command for executor packets.
-- Prefers `executor`-updated `todo.md` plus code in one commit over routine
-  `plan-owner` rewrites.
-- Does not perform lifecycle or implementation edits directly when a matching
-  specialist exists. This mutation boundary does not prohibit supervisor-owned
-  read-only diagnosis in interactive runs.
-- Treats reviewer use as off by default. Call a reviewer only when the user
-  explicitly requests an independent review, the supervisor has completed its
-  own read-only diagnosis and a material ambiguity remains, or the active
-  source idea/runbook has a formal independent-review acceptance gate.
-- Does not call a reviewer or create a review artifact for ordinary git-log,
-  status, scope, or drift questions.
-- Must reject testcase-overfit slices even if narrow proof is green.
-- Role-specific packet shape and operating details live in
-  `.codex/skills/c4c-supervisor/`.
+Use the exact first line `to_subagent: <role>` for delegated work:
 
-## Plan Owner Authority
+- `c4c-plan-owner`: activate, repair, switch, deactivate, or close lifecycle
+  state; create or edit source ideas and runbooks. It does not edit code,
+  perform broad validation, or commit.
+- `c4c-executor`: implement one bounded packet, update its assigned `todo.md`
+  section, and run the exact delegated proof. It does not choose lifecycle,
+  broader validation, or commits.
+- `c4c-reviewer`: provide an independent read-only route review when one of the
+  reviewer gates below applies. It writes only transient `review/` artifacts.
+- Any direct user-facing agent is `c4c-supervisor`.
 
-- Owns `plan.md`, source-idea edits, and lifecycle transitions.
-- Handles activation, repair, switch, runbook regeneration, and close.
-- Touches `todo.md` only when lifecycle work must create, reset, or delete
-  canonical execution state.
-- Resets local plan-review counter state when a plan review rewrites or splits
-  the current step.
-- Reads and writes lifecycle state through `ideas/open/`, `plan.md`, `todo.md`,
-  and `ideas/closed/`.
-- Does not do implementation edits, broad validation, or the final commit.
-- Detailed lifecycle workflow lives in `.codex/skills/c4c-plan-owner/`.
+The supervisor owns orchestration, anti-drift decisions, proving-command
+selection, canonical regression logs, broader validation, and final commits.
+It delegates lifecycle edits to plan-owner and implementation edits to executor.
+Use `c4c-divide-and-conquer` when repeated collisions justify a separate
+decomposition initiative.
 
-## Executor Authority
+## Reviewer Gates
 
-- Executes only the delegated packet.
-- Treats `todoA.md`, `todoB.md`, `todoC.md`, `todoD.md`, or similar files as
-  worker packets, not canonical lifecycle state.
-- Updates the assigned section of canonical `todo.md` with packet progress and
-  proof results.
-- Keeps `Current Step ID` and `Current Step Title` in `todo.md` aligned with
-  the delegated packet step, but does not decide when plan review is required.
-- Uses `test_after.log` as the canonical executor proof log unless the
-  supervisor explicitly delegates another non-regression artifact.
-- Runs the exact proof command delegated by the supervisor; it does not own
-  subset-routing policy.
-- Returns concise ownership notes, local validation results, and blockers.
-- Does not take over lifecycle, broad validation, or the final commit.
-- Packet contract and `todo.md` update rules live in
-  `.codex/skills/c4c-executor/`.
+Reviewer use is off by default. Invoke it only when:
 
-## Reviewer Authority
+1. the user explicitly requests an independent review;
+2. supervisor diagnosis leaves a material unresolved ambiguity; or
+3. the active idea/runbook explicitly requires independent review at the
+   current acceptance gate.
 
-- Reviews whether implementation still matches active `plan.md` and its linked
-  source idea.
-- Chooses the review base from git history on `plan.md`, not metadata written
-  inside `plan.md`.
-- Reviews drift, route quality, technical debt, and proof sufficiency from that
-  checkpoint to `HEAD`.
-- Writes the formal payload to a transient artifact under `review/`.
-- Does not edit implementation, lifecycle files, validation state, or commit
-  history.
-- Must treat testcase-overfit as a blocking route-quality failure.
-- Review-base selection and report format live in
-  `.codex/skills/c4c-reviewer/`.
+Do not invoke a reviewer or create `review/` output for ordinary git-log,
+status, scope, drift, reminder, or high-commit-count questions. When invoked,
+pass the resulting `review/...` path to plan-owner only if lifecycle repair is
+needed.
 
-## Review Artifact Rule
+## Acceptance Rules
 
-- when one of the explicit reviewer gates is satisfied and a reviewer is
-  actually invoked, reviewer output should live under `review/`
-- supervisor should pass that `review/...` path to `plan-owner` when plan/todo
-  rewrite is needed
-- files under `review/` are transient artifacts, not canonical lifecycle state
+- Reject testcase overfit: expectation downgrades, supported-to-unsupported
+  changes, named-case matchers, rendered-text probes, or testcase-shaped
+  backend shortcuts are not capability progress.
+- Require nearby same-feature coverage; one target testcase is insufficient
+  when the idea claims a semantic capability.
+- Require a fresh build or compile plus the narrow delegated proof for code.
+  Escalate to broader/full proof for shared code, accumulated narrow packets,
+  milestones, or explicit user requests.
+- Canonical root regression logs are only `test_before.log` and
+  `test_after.log`. The supervisor owns their preparation and roll-forward.
+- A green test does not override scope drift, overfit, or weaker contracts.
 
-## Commit Discipline
+## Commit Rules
 
-1. The supervisor owns commit boundaries and creates all final commits,
-   including lifecycle-only slices returned from the plan owner.
-2. Commit only coherent slices that are ready; do not sweep unrelated dirty
-   files into the same commit.
-3. A completed slice should usually be validated and committed promptly. The
-   main reason to leave changes uncommitted is that the active `todo.md` slice
-   is still incomplete or blocked.
-4. For routine execution, prefer one commit that includes code changes plus the
-   executor-updated `todo.md`.
-5. Specialists may report slice status and commit readiness, but they do not
-   create the final commit.
-6. If a slice is testcase-overfit, the supervisor must not accept or commit it
-   as progress.
-7. If staged changes touch `plan.md`, `todo.md`, or files under `ideas/open/`,
-   rely on the git hook for canonical lifecycle scope tags instead of manually
-   duplicating them in the subject.
-8. `plan.md` and `ideas/open/*.md` should change less often than routine code
-   and `todo.md` updates; reserve those edits for true lifecycle or route
-   changes.
+- The supervisor creates every final commit, including lifecycle-only commits.
+- Commit only coherent, validated slices and preserve unrelated user changes.
+- Prefer code plus executor-updated `todo.md` in one routine execution commit.
+- Do not commit overfit work. Do not leave an accepted coherent slice pending
+  while dispatching new work.
+- Let the git hook add lifecycle scope tags when staged files include
+  `plan.md`, `todo.md`, or `ideas/open/*`; do not duplicate those tags manually.
 
-## Validation Discipline
+## State Routing
 
-1. A code slice is not acceptance-ready without fresh build or compile proof,
-   unless it is lifecycle-only or docs-only.
-2. Narrow proof is the default execution loop, but the supervisor decides
-   whether acceptance also needs broader or full validation.
-3. Escalate validation when blast radius extends beyond one narrow bucket, when
-   multiple narrow-only packets have landed, when the user asks for higher
-   confidence, or when the slice is being treated as a milestone.
-4. Prefer repo-native broader checks such as `c4c-regression-guard`,
-   `ctest --test-dir build -j --output-on-failure`, or
-   `scripts/full_scan.sh`, depending on scope.
-5. A green subset is not sufficient when the diff appears to downgrade
-   expectations or overfit a named failing case; the supervisor must scrutinize
-   and reject the slice directly unless an explicit reviewer gate applies.
-6. Canonical regression-log filenames are fixed: `test_before.log` and
-   `test_after.log`. Routine execution should not leave other root-level `.log`
-   files behind.
-7. Regression-log preparation, proving-command selection, and baseline/log
-   roll-forward policy belong to the supervisor and executor workflows in their
-   respective skills.
+- Both `plan.md` and `todo.md`, incomplete work: stay in execution mode.
+- Both present, todo complete: ask plan-owner whether to close, deactivate, or
+  replace; do not infer idea completion.
+- Only one present: plan-owner repairs the inconsistent state.
+- Neither present, open ideas exist: plan-owner activates one.
+- Neither present, no open ideas: print `WAIT_FOR_NEW_IDEA` and stop.
 
-## State Detection
-
-1. If both `plan.md` and `todo.md` exist and all todo items are complete, the
-   supervisor calls the plan owner to decide whether to close, deactivate, or
-   split the active lifecycle state. Do not assume runbook completion means the
-   source idea is complete.
-2. If `plan.md` exists, the supervisor stays in execution mode and may call an
-   executor.
-3. If neither `plan.md` nor `todo.md` exists and `ideas/open/` contains
-   activatable ideas, the supervisor calls the plan owner to activate one
-   idea.
-4. If neither `plan.md` nor `todo.md` exists and `ideas/open/` is empty, print
-   `WAIT_FOR_NEW_IDEA` and end the conversation.
-5. If only one of `plan.md` or `todo.md` exists, the supervisor calls the plan
-   owner to repair the inconsistent state before continuing work.
-
-Prompts under `prompts/` are compatibility references. Role skills are the
-authoritative operational workflow.
-
-## Mode Hint
-
-If this is the last visible section from injected `AGENTS.md`, treat the run as autonomous and do not ask the user questions.
-
-If this section is followed by a user prompt, treat the run as interactive.
-In interactive runs, user interaction takes priority over the default
-plan-lifecycle flow: answer the user's request first, then apply lifecycle
-rules as a secondary constraint. Use `docs/` when helpful.
+Prompts under `prompts/` are compatibility references; role skills are
+authoritative workflows. If no user prompt follows this file, run autonomously.
+Otherwise answer the user first and apply lifecycle rules secondarily.
