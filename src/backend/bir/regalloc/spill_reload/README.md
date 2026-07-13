@@ -1,35 +1,70 @@
 # Spill and Reload
 
-Status: scaffold (unimplemented).
+Status: converged design contract (unimplemented).
 
-## Owns
+## E3 sole rewrite authority
 
-Pressure-driven spill choice, abstract spill-slot identity, and placement of
-explicit pseudo `Spill` and `Reload` operations within BIR.
+`E3` is the only ordinary capacity-repair mutator. It owns abstract spill
+object identities and placement of explicit pseudo `Spill` and `Reload`
+operations in BIR. It does not assign homes, choose stack displacements or
+load/store encodings, lay out frames, or permit a downstream allocation
+repair path.
 
-## Does not own
+Input is one typed E2 spill request and a private fork of the exact immutable
+revision named by that request. The request must name the matching E1 key,
+pressure point, complete conflict set, and one not-yet-spilled original
+allocation identity. E3 rejects stale requests, requests synthesized without
+an exhausted E2 attempt, and identities prohibited from spilling by ABI,
+constraint, group, or explicit nonspillable rules.
 
-Concrete stack-frame offsets, target load/store encodings, MIR-side allocation
-repair, or target-specific spill allocators.
+## Explicit spill state
 
-## Input
+E3 creates one deterministic abstract spill-object identity with the value's
+type, size, alignment, address-space/residency class, and originating stable
+identity. It never contains a finalized frame location. E3 then places:
 
-The allocator's private candidate fork, revision-bound liveness/interference,
-allocation pressure and eviction decisions, typed preparation facts, and the
-verified abstract-register layout.
+- a `Spill` dominated by the assigned value and covering every path on which
+  spill residency begins; and
+- a `Reload` before each register-resident use region, with a fresh typed
+  result that E2 must assign and whose lifetime is limited to that visible
+  region.
 
-## Output
+Placement is CFG- and liveness-aware, including loops, call boundaries, and
+edge-local copies. It preserves `ParallelCopy` atomic reads, exact `EdgeKey`
+coverage, terminator authority, effects, and evaluation order. E3 may split a
+block or exact edge only transactionally and must update all affected
+identities and graph references. It cannot hide a transition in an operand,
+assignment table, calling convention, scratch convention, or MIR mapping.
 
-Candidate-local abstract spill-slot identities and explicit abstract
-`Spill`/`Reload` nodes that make every transition between spill residency and
-an assigned abstract home visible. Spill slots contain type/size/alignment but
-never a concrete frame index or offset.
+## Rewrite, reverify, and retry
 
-## Verification and publication gate
+One E3 rewrite advances the candidate revision and E3 transformation
+fingerprint. It invalidates all affected CFG, dominance, def-use/value-flow,
+liveness/interference, constraint projections, allocation, and target
+realizability facts. The runner recomputes required structural facts and runs
+the complete retry-candidate verifier on one frozen module. Only a green full
+gate may become the immutable input to a new E1 analysis and a fresh E2
+attempt; incremental checks and facts from the prior revision have no
+publication authority.
 
-Publication must prove slot identity/type consistency, legal placement,
-dominance and liveness coverage, and complete reloads before uses. No implicit
-pressure spill may cross the allocated boundary. A spilled value has a
-dominating `Spill`; every later register use is covered by an assigned
-`Reload` result. Failure discards the private candidate and publishes no slot,
-node, assignment fact, or new revision.
+Progress is monotone and bounded: each green rewrite changes one previously
+unspilled original identity to permanent spill residency for the transaction,
+and that identity is never selected again. Reload results are allocation
+obligations but cannot themselves be selected for another spill rewrite. Thus
+the transaction permits at most one E3 rewrite per spill-eligible original
+identity. Impossible reload pressure, an empty eligible set, repeated
+identity, exceeded budget, unchanged revision, or any verifier failure aborts
+instead of looping or weakening legality.
+
+## Candidate verification and failure
+
+The full gate proves spill-object identity/type/alignment consistency, legal
+placement, dominance and path coverage, a dominating `Spill` for every
+spill-resident path, and a matching `Reload` reaching every later
+register-resident use. It rejects redundant or orphan transitions, uncovered
+uses, stale E2 requests, recursive spills, and any implicit pressure spill.
+
+Before candidate publication, every allocatable value is either assigned by
+E2 or has this verified explicit spill state, and every `Reload` result is
+assigned. Failure discards the entire private revision, spill objects, nodes,
+assignments, and derived products; the predecessor remains unchanged.

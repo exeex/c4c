@@ -68,9 +68,10 @@ gate, and every target-aware phase is defined only in the root README.
 - D1 privately forks from Canonical into the closed pseudo schema, D2 completes
   shared ABI-aware call transport, D3 publishes the first verified `PseudoBir`,
   and D4 fully reverifies target realizability before out-of-SSA;
-- shared BIR allocation consumes that later exact pseudo lineage and may
-  publish a distinct immutable allocated revision only after complete
-  assignment/spill verification;
+- E1 analyzes the exact fully reverified D5 revision, E2 alone assigns shared
+  abstract homes, and E3 alone inserts explicit capacity spill/reload state;
+  each E3 rewrite advances and fully reverifies its revision before fresh E1/
+  E2 retry, and only a complete assignment/spill candidate may advance;
 - `PreparedBir` is the later capability over that allocated revision, not a
   synonym for `VerifiedPreparationInput` or preparation facts;
 - `MirReadyBirView` is a read-only view of the same allocated graph.

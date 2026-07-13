@@ -8,8 +8,8 @@ This `C9` stage is the sole constraint interpreter in BIR. It is the only
 owner that parses original source constraint descriptions, types each admitted
 form against `InlineAsmTargetTables` and `VerifiedTargetLayout`, and binds the
 result to an `InlineAsm` instruction's ordinary ordered operands and results.
-No importer, canonical pass, planner, allocator, MIR builder, or target emitter
-duplicates any part of that interpretation.
+No importer, canonical pass, planner, allocation consumer, downstream builder,
+or target emitter duplicates any part of that interpretation.
 
 The initial RV64 vocabulary admits `r`, `=r`, `VR`, `VRM2`, `VRM4`, and
 `VRM8`, including reviewed read/write forms, numeric ties, early-clobbers, and
@@ -44,11 +44,13 @@ bindings. Its key contains the complete Canonical `PipelineStageStamp`, exact
 fingerprint, constraint-interpreter schema fingerprint, and a deterministic
 digest of every consumed original description and ordered identity binding.
 
-Pseudo lowering, liveness, allocation, and boundary verification consume this
-product. They may use the published facts but may not reparse, retype, repair,
-or rebind them. This stage does not classify ABI values, derive target
-capacity, select calls/helpers/address strategies, allocate general values,
-choose concrete registers, or create spill/reload state.
+Pseudo lowering and boundary verification consume this product. E1 incorporates
+its ties, early-clobber exclusions, group requirements, and resolved abstract
+clobber units into revision-bound interference facts; E2 consumes the same
+record as immutable legality data. Neither stage may reparse, retype, repair,
+or rebind it. This stage does not classify ABI values, derive target capacity,
+select calls/helpers/address strategies, allocate general values, choose
+encoded machine names, or create spill/reload state.
 
 ## Transaction, verification, and invalidation
 

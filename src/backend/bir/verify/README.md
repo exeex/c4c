@@ -43,7 +43,8 @@ LIR lowering -> ModuleBuilder -> frozen ModuleDraft --verify_and_publish_raw--> 
 ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
 preparation input gate --verify(PreparedInput)--> accepted input for typed plans
 private D2 candidate --verify-and-publish(Pseudo)--> PseudoBir
-complete D4 transaction --full verify-and-republish(Pseudo)--> PseudoBir
+complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
+private E3 rewrite --full verify(retry candidate)--> immutable E1/E2 retry input
 ```
 
 The arrow from `ModuleDraft` to `RawBir` is an unforgeable publication boundary,
@@ -76,9 +77,12 @@ or downstream consumer.
 There is deliberately no verifier profile named simply `Prepared`.
 `PreparedInput` verifies the immutable semantic input to target preparation;
 prepared plans are different typed products with their own verifiers. Adding
-ABI locations, register allocation, spill/reload state, frame facts, target
-opcodes, helpers, or encodings to BIR and then calling that object “Prepared
-BIR” would blur authority and is forbidden in every BIR profile.
+ABI locations, allocation assignments, spill/reload state, frame facts, target
+operations, helpers, or encodings to BIR and then calling that object “Prepared
+BIR” would blur authority. Such facts are forbidden in Raw, Canonical,
+PreparedInput, and D1-D5 Pseudo profiles; E3 retry candidates admit only their
+explicit abstract spill schema and remain unpublished until the later
+allocated boundary succeeds.
 
 Raw allowances are explicit:
 
@@ -1283,7 +1287,8 @@ input is verified here but the named decision belongs after BIR.
 | opaque inline asm and asm-goto | Bounded non-goto generic SSA transport is current; typed symbol/address-space carriers and asm-goto remain source gaps; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
 | D5 phi/block-argument destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
-| ABI placement, register allocation, spill/reload, frame, target opcode/relocation encoding/emission | Deferred stage and forbidden in BIR | `ForbiddenStageFact`, `ForbiddenCompatibilityPayload` |
+| ABI placement and abstract allocation/spill state | Deferred from semantic profiles; D2 and E1-E3 own explicit later BIR contracts | semantic profiles use `ForbiddenStageFact` and `ForbiddenCompatibilityPayload`; later candidates require their exact stage profile |
+| frame layout, target operation/relocation encoding/emission | Deferred from BIR | never admitted as BIR authority |
 
 ## Proof plan
 
