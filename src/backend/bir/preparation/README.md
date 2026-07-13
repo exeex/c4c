@@ -5,7 +5,8 @@ Status: converged design contract (unimplemented).
 ## Boundary and exact order
 
 `CanonicalBir` means exactly the immutable, target-independent B7 / P07
-revision published by B8. Preparation begins only after C1 validates one
+revision published by B8. Preparation begins only after the [external C1
+target-profile boundary](../../../target_profile/README.md) validates one
 `TargetProfile` and `verify_preparation_input` returns a borrowing
 `VerifiedPreparationInput` over that exact `CanonicalBir`/target pair. The
 capability carries the complete Canonical `PipelineStageStamp`—module epoch,
@@ -65,7 +66,7 @@ Each fact has one producer and declared consumers:
 
 | Product | Sole producer | Immediate consumer | Later consumers |
 |---|---|---|---|
-| `VerifiedPreparationInput` | C1 `verify_preparation_input` gate | target layout (`C2`) | all C3-C9 products as the Canonical/target binding prerequisite |
+| `VerifiedPreparationInput` | [verifier-only binding gate](../verify/README.md) over the [external C1 validated target](../../../target_profile/README.md) | target layout (`C2`) | all C3-C9 products as the Canonical/target binding prerequisite |
 | `VerifiedTargetLayout` | target layout (`C2`) | ABI (`C3`) | all later planners, constraint stage, allocator, boundary verification |
 | `AbiPlan` | ABI (`C3`) | calls (`C4`) | variadic, helpers, call lowering, verification |
 | `CallPlan` | calls (`C4`) | variadic (`C5`) | helpers, call lowering, allocation |

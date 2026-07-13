@@ -18,7 +18,8 @@ authority, implementation status, or authorize broader implementation.
 
 BIR begins as target-independent, unallocated source semantics. `RawBir` and
 `CanonicalBir` contain neither register homes nor spill decisions. After
-Canonical publication, BIR validates a `c4c::TargetProfile`, derives a finite
+Canonical publication, [external C1](../../target_profile/README.md) validates
+one `c4c::TargetProfile`, and BIR derives a finite
 pseudo-physical register layout, lowers the graph to the admitted pseudo-node
 schema, lowers every call through one shared ABI-aware BIR owner, and runs the
 shared BIR liveness, allocation, and explicit
@@ -69,7 +70,7 @@ entries in that same pre-allocation chain.
 | `B6` | `P06 aggregate` | `P05` output | normalized aggregate values, copies, and projections | [aggregate pass](passes/aggregate/README.md) |
 | `B7` | `P07 intrinsics` | `P06` output | canonical target-independent intrinsic forms | [intrinsics pass](passes/intrinsics/README.md) |
 | `B8` | Canonical verification and publication | stamped `P07` output | verified, target-independent, unallocated `CanonicalBir` | verifier `Canonical` profile; canonical orchestration is defined by the [pass framework](passes/README.md) and [pipeline contract](pipeline/README.md) |
-| `C1` | `TargetProfile` selection and validation | `CanonicalBir` plus requested triple/arch/OS/ABI/relocation/float-ABI capabilities | one exact validated target-context key; no BIR mutation | external target-profile authority; BIR consumes the selected profile without adding target facts to Raw or Canonical storage |
+| `C1` | `TargetProfile` selection and validation | `CanonicalBir` plus requested triple/arch/OS/ABI/relocation/float-ABI capabilities | one exact validated target-context key; no BIR mutation | [external target-profile authority](../../target_profile/README.md); BIR consumes the selected profile without adding target facts to Raw or Canonical storage |
 | `C2` | BIR target-layout derivation | validated `TargetProfile` | verified profile-keyed pseudo categories, classes/groups, slots, aliases, reserved units, capacities, ABI eligibility, and concrete-mapping domain | [target layout](target_layout/README.md) |
 | `C3` | Preparation 1: ABI | `CanonicalBir` plus verified target layout | immutable typed parameter/result/byval/sret/classification requirements; no BIR mutation | [ABI plan](preparation/abi/README.md) |
 | `C4` | Preparation 2: calls | `C3` facts | immutable typed call input/output, preservation, clobber, and return requirements; no BIR mutation | [call plan](preparation/calls/README.md) |

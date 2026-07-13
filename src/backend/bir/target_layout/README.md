@@ -5,7 +5,7 @@ Status: converged design contract (unimplemented).
 ## Position and authority
 
 Target-layout derivation is `C2`. It follows validation of one
-[`TargetProfile`](../../../target_profile.hpp) and the non-mutating
+[`TargetProfile` and complete `TargetFingerprint`](../../../target_profile/README.md) and the non-mutating
 prepared-input gate at `C1`, consumes the `VerifiedPreparationInput` produced
 for that exact Canonical/target pair, and precedes every planner. It is the sole
 owner of the target's abstract register vocabulary and finite capacity model.

@@ -3,118 +3,86 @@
 Status: Active
 Source Idea Path: ideas/open/737_bir_phase_c_preparation_document_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Resolve the external C1 Markdown boundary and Canonical input
+Current Step ID: 2
+Current Step Title: Converge C2 target-layout derivation
 
 ## Just Finished
 
-- Audited plan Step 1 read-only. The accepted B8/C1 semantic handoff is
-  unambiguous: C1 receives only the exact verifier-gated, move-only,
-  target-independent, unallocated `CanonicalBir` plus an explicit target
-  request. Raw aliases, reconstructed views/stamps, target facts already in
-  BIR, stale analyses, prepared facts, ABI placement, homes, spills,
-  allocation and MIR state are forbidden.
-- Confirmed C1 must normalize and validate requested triple, architecture, OS,
-  backend ABI, relocation model, floating-point ABI and enabled capabilities,
-  then publish one immutable exact `TargetProfile` plus one complete
-  `TargetFingerprint`/validated target-context key. Selection/validation
-  failure publishes neither key nor `VerifiedPreparationInput` and never
-  mutates Raw or Canonical storage.
-- Confirmed authority separation: the external C1 owner selects, normalizes,
-  validates and fingerprints the target request; the shared verifier alone
-  binds that validated fingerprint to the exact Canonical
-  `PipelineStageStamp` and returns `VerifiedPreparationInput`; C2 alone derives
-  `VerifiedTargetLayout`. C1 owns no layout, preparation, constraint,
-  allocation or analysis result.
-- Found no explicit current Markdown authority for C1. The root C1 owner cell
-  is unlinked prose, C2 links directly to `src/target_profile.hpp`, and the
-  only other target-profile Markdown is historical research or downstream
-  consumer material without current owner metadata. Step 1 therefore remains
-  active pending a coordinated documentation boundary packet.
-- The exact proposed placeholder/owner is
-  `src/target_profile/README.md`, titled external target-profile selection and
-  validation boundary. Required metadata is:
-  `Contract-Status: under-review`,
-  `Implementation-Status: partial-foundation`, `Kind: external-boundary`,
-  `Phase-ID: C1`, exact Canonical-plus-request `Upstream`, validated
-  profile/fingerprint-plus-verifier/C2 `Downstream`, exact `Owner-Path`, and
-  `Last-Reconciled-Commit`.
-- The proposed owner must be core-first (`Purpose`, `Owns`, `Does Not Own`,
-  `Inputs`, `Outputs`, `Adjacent-Stage Contract`) and contain exhaustive input
-  and output matrices. Inputs must separately cover the exact B8 Canonical
-  capability/stamp and requested triple, arch, OS, ABI, relocation, float ABI,
-  capabilities and selection/schema versions. Outputs must cover one immutable
-  validated `TargetProfile`, one exact all-axis `TargetFingerprint`/context
-  key, structured failure, atomic no-output failure and no BIR mutation.
-- Required ownership clauses: C1 alone owns request normalization, cross-field
-  coherence/support validation, defaulting rules and fingerprint formation;
-  it cannot choose a target for the user, accept compatible-looking/partial
-  requests, parse rendered `data_layout`, derive C2 layout, run C3-C9, create
-  `VerifiedPreparationInput`, mutate BIR or use analyses as acceptance
-  authority.
-- Current implementation is only partial foundation. Build-included
-  `src/target_profile.hpp/.cpp` provides the `TargetProfile` value, triple
-  parser/defaults/name helpers and fields for triple, arch, OS, backend ABI,
-  relocation and two coarse float-register capability booleans. It has no
-  `TargetFingerprint`, validated target-context key, complete capability set,
-  explicit all-axis request/coherence validator, Canonical input, or C1/
-  `VerifiedPreparationInput` publication gate. Existing frontend/LIR/legacy
-  consumers are implementation evidence, not the post-Canonical C1 owner.
-- No shared analysis belongs at C1. Publication/value-flow, call graph,
-  provenance, memory effects and other analyses remain at their later declared
-  earliest consumers.
-- Plan-owner accepted the missing-owner audit recorded in `869388429` and
-  authorized exactly one coordinated documentation-only Step-1 boundary
-  packet. Step 1 remains current until that packet is complete and a fresh
-  re-audit accepts every two-sided seam.
+- Completed plan Step 1 under coordinated authorization `bd0a13414`.
+  Created `src/target_profile/README.md` as the sole external C1 request
+  selection, normalization, validation, defaulting/coherence and target-
+  fingerprint owner, then repaired the exact two-sided C1 links in all five
+  authorized shared documents.
+- Added uniform metadata with `under-review`, `partial-foundation`,
+  `external-boundary`, `C1`, exact Canonical-plus-request upstream, exact
+  validated-profile/fingerprint downstream, owner path and authorization
+  reconciliation point. Core-first ownership sections are substantive and all
+  checklist items are resolved.
+- Added an 11-row exhaustive input matrix covering the exact verifier-gated B8
+  `CanonicalBir` capability/stamp plus explicit requested triple,
+  architecture, OS, backend ABI, relocation, floating-point ABI, capabilities,
+  selection version and request/profile/fingerprint schema versions.
+- Added a four-row output matrix for exactly one immutable validated
+  `TargetProfile`, one complete all-axis `TargetFingerprint`/context key,
+  diagnostic replay identity and structured failure. Failure is atomic and
+  publishes no profile, key, binding capability, cache entry or BIR revision;
+  the exact Canonical owner and request remain unchanged.
+- Preserved authority separation. External C1 alone selects/normalizes/
+  validates/defaults the explicit request and fingerprints it, but never
+  chooses a target for the user. The verifier alone inspects and binds the
+  validated target fingerprint to the exact unchanged Canonical stamp and may
+  produce `VerifiedPreparationInput`. C2 alone derives `VerifiedTargetLayout`.
+- Preserved accepted Child-B semantics: only the completely green B8 owner
+  reaches C1, Canonical remains target-independent and unallocated, and no
+  Raw/view/report alias, target fact, ABI placement, home, spill, allocation,
+  MIR state or analysis can become C1 acceptance authority.
+- Corrected the root/index and both sides of every shared seam: normative root
+  C1 owner, pipeline B8 downstream edge, verifier binding authority, target-
+  layout C1 input authority and preparation product producer now link the sole
+  C1 owner without reordering B8 -> C1 -> C2.
+- Kept implementation truth exact. Build-included `target_profile.hpp/.cpp`
+  is only partial foundation: mutable value/enums, triple parser/defaults/name
+  helpers and two coarse float capability booleans. Closed `TargetRequest`,
+  complete capability registry, immutable validated-profile capability,
+  `TargetFingerprint`, structured C1 failure, Canonical-bound entry point and
+  `VerifiedPreparationInput` gate integration remain absent.
+- Re-audited the complete authorized slice: exactly six documentation paths
+  plus canonical `todo.md`; unique owner, metadata, core order, 11/4 matrices,
+  links, authority, atomic failure, implementation truth and Step-2 handoff are
+  green. No code, tests, build, logs, plan, source idea or other file changed.
 
 ## Suggested Next
 
-- Execute the one authorized coordinated Step-1 documentation packet, then
-  re-audit its owner, authority, links, implementation truth and exact diff
-  scope. Advance to C2 only after that re-audit passes.
+- Execute plan Step 2 against `src/backend/bir/target_layout/README.md`: converge
+  C2 metadata/core-first structure, exhaustive input/output and finite-layout
+  matrices, exact profile/schema/options keys, failure atomicity and C3
+  acceptance while preserving C1's sole target-profile authority.
 
 ## Watchouts
 
-- Exact authorized documentation edit set:
-  `src/target_profile/README.md` (new sole external C1 owner),
-  `src/backend/bir/README.md` (link the normative C1 owner cell and preserve
-  exact B8->C1->C2 order),
-  `src/backend/bir/pipeline/README.md` (accepted closed-Child-B downstream edge
-  must link C1 without weakening the Canonical contract),
-  `src/backend/bir/verify/README.md` (link target-selection authority while
-  retaining sole `VerifiedPreparationInput` binding/gate authority),
-  `src/backend/bir/target_layout/README.md` (replace header-as-authority with
-  the C1 owner and consume its exact validated key), and
-  `src/backend/bir/preparation/README.md` (link the C1 producer in the boundary
-  and product table). The packet must repair these six files together because
-  pipeline/verifier are accepted shared seams.
-- The executor may additionally update only `todo.md` for canonical Step-1
-  progress and proof; no other path is writable.
-- Preserve the authority split exactly: C1 selects, normalizes and validates
-  the explicit request and produces `TargetProfile` plus
-  `TargetFingerprint`; the shared verifier alone binds them to the exact
-  Canonical stamp and produces `VerifiedPreparationInput`; C2 alone derives
-  target layout.
-- `docs/target_abi_contract_research/*` is useful historical evidence but must
-  not become the normative C1 owner or receive lifecycle edits.
-- Preserve the accepted semantic-size/alignment/address-space distinction:
-  source-semantic facts may remain in Canonical BIR, but selected target
-  profile/layout/ABI facts cannot.
-- Do not claim current `target_profile_from_triple` is validation or
-  fingerprint publication. It derives a subset from a triple, leaves
-  relocation mutable/defaulted, exposes directly constructible public fields,
-  and is not bound to Canonical revision identity.
-- Do not edit code/tests/build/logs, invent implementation, activate Child D or
-  move shared analyses earlier. Do not mutate BIR, claim implementation, or
-  place any analysis in C1 authority.
+- C2 must consume the exact C1 validated profile/fingerprint and verifier-bound
+  `VerifiedPreparationInput`; it cannot reconstruct target identity from
+  architecture/triple equality or parse Raw/Canonical `data_layout` text.
+- `TargetFingerprint` remains target-context identity. The verifier alone binds
+  it to the exact Canonical `PipelineStageStamp`; C2's published layout must
+  carry both without stealing either authority.
+- C2 owns finite categories/classes/groups/slots/aliases/reserved units,
+  capacity, ABI eligibility and the private concrete-mapping domain. It owns no
+  per-value ABI classification, preparation, constraints, assignment, spill,
+  frame or machine operation.
+- Shared publication/value-flow and other analyses begin at their later
+  declared earliest consumers, not in C1 or C2 target selection/layout
+  authority unless Step 2's source explicitly requires a real consumer.
+- Documentation convergence does not authorize C1/C2 implementation. Do not
+  edit code/tests/build/logs or weaken the partial-foundation/absent truth.
 
 ## Proof
 
-- Documentation/implementation-truth audit only. The delegated scope forbids
-  code, test, build and log edits; no `test_after.log` was created or modified.
-- Exact scope/diff, owner inventory, link evidence, C1 input/output/exclusion,
-  accepted Canonical handoff and implementation/build-truth proof:
+- Documentation-only packet. The delegated scope forbids code, test, build and
+  log edits; no `test_after.log` was created or modified.
+- Exact authorized-scope, unique-owner, metadata/core, matrix, link,
+  B8/C1/C2-order, authority, failure, implementation-truth and Step-2 handoff
+  proof:
 
 ```bash
 python3 - <<'PY'
@@ -122,169 +90,186 @@ from pathlib import Path
 import re
 import subprocess
 
-root_path = Path('src/backend/bir/README.md')
-pipeline_path = Path('src/backend/bir/pipeline/README.md')
-verify_path = Path('src/backend/bir/verify/README.md')
-layout_path = Path('src/backend/bir/target_layout/README.md')
-preparation_path = Path('src/backend/bir/preparation/README.md')
-header_path = Path('src/target_profile.hpp')
-source_path = Path('src/target_profile.cpp')
-cmake_path = Path('CMakeLists.txt')
-proposed_path = Path('src/target_profile/README.md')
-idea_path = Path('ideas/open/737_bir_phase_c_preparation_document_convergence.md')
+owner = Path('src/target_profile/README.md')
+root = Path('src/backend/bir/README.md')
+pipeline = Path('src/backend/bir/pipeline/README.md')
+verifier = Path('src/backend/bir/verify/README.md')
+layout = Path('src/backend/bir/target_layout/README.md')
+preparation = Path('src/backend/bir/preparation/README.md')
+docs = (owner, root, pipeline, verifier, layout, preparation)
+text = {path: path.read_text() for path in docs}
+flat = {path: ' '.join(text[path].split()) for path in docs}
 
-root = root_path.read_text()
-pipeline = pipeline_path.read_text()
-verify = verify_path.read_text()
-layout = layout_path.read_text()
-preparation = preparation_path.read_text()
-header = header_path.read_text()
-source = source_path.read_text()
-cmake = cmake_path.read_text()
-idea = idea_path.read_text()
-
-# One exact accepted Canonical input, explicit request, validated-key output,
-# and no BIR mutation are already coherent across the accepted boundary.
-c1 = next(line for line in root.splitlines() if line.startswith('| `C1` |'))
-assert '`CanonicalBir` plus requested triple/arch/OS/ABI/relocation/float-ABI capabilities' in c1
-assert 'one exact validated target-context key; no BIR mutation' in c1
-assert 'external target-profile authority' in c1
-assert '](' not in c1.split('|')[-2], c1
+# Unique owner metadata and core-first structure.
+metadata = '\n'.join(text[owner].splitlines()[:11])
 for item in (
-    'Downstream: one verifier-gated immutable target-independent unallocated `CanonicalBir`',
-    'immutable `CanonicalBir` | C1 and read-only observers',
-    '`CanonicalBir`. C1 receives only the published immutable result.',
-    'one immutable\ntarget-independent unallocated `CanonicalBir` carrying the verified stamp',
-    'C1 selects target context independently after publication',
+    'Contract-Status: under-review',
+    'Implementation-Status: partial-foundation',
+    'Kind: external-boundary',
+    'Phase-ID: C1',
+    'Upstream: one exact B8 verifier-gated target-independent unallocated `CanonicalBir` plus one explicit `TargetRequest`',
+    'Downstream: one immutable validated `TargetProfile` plus complete `TargetFingerprint` consumed by the C1 verifier binding and C2',
+    'Owner-Path: `src/target_profile/README.md`',
+    'Last-Reconciled-Commit: `bd0a13414`',
 ):
-    assert item in pipeline, item
-for item in (
-    'C1 target selection + Canonical --verify_preparation_input--> VerifiedPreparationInput',
-    'one already-published `CanonicalBir` plus one validated `TargetProfile`',
-    'same owning revision frozen by P07',
-    'stale analysis result',
-    'Canonical facts remain target-independent',
-    'B8 rejects every stage-forbidden\nprepared, calling-placement, allocation, frame',
-    'Raw and Canonical BIR carry no semantic `target_profile`',
-    'Neither decision is imported into Raw or Canonical\nstorage',
-    '`verify_preparation_input` is the only target-bound C1 input gate',
-    'It is non-mutating, publishes no\n   BIR revision or prepared fact',
-):
-    assert item in verify, item
-assert 'VerifiedPreparationInput` | C1 `verify_preparation_input` gate' in preparation
-assert 'It does not create a new BIR revision' in preparation
+    assert item in metadata, item
+core = ('## Purpose', '## Owns', '## Does Not Own', '## Inputs',
+        '## Outputs', '## Adjacent-Stage Contract')
+positions = [text[owner].index(heading) for heading in core]
+assert positions == sorted(positions), positions
+assert '- [ ]' not in text[owner]
 
-# C1's required target axes and exact-key output are explicit in adjacent C2.
-for item in ('architecture, triple/OS, backend ABI, relocation model',
-             'floating-point ABI', 'enabled capabilities',
-             'layout-schema version', 'concrete-mapping-table\nversion'):
-    assert item in layout, item
-assert 'one `TargetFingerprint`' in layout
-assert 'Field-by-field equality' in layout
-assert 'Input is the exact validated `TargetProfile`' in layout
-assert 'Failure publishes no layout or partial table. Inputs remain unchanged' in layout
-
-# No current normative Markdown owner exists. Historical research is evidence,
-# while the root is unlinked and C2 links directly to a header.
-assert not proposed_path.exists()
-markdown_hits = subprocess.check_output(
-    ['rg', '-l', '-i', 'TargetProfile|target profile|target-profile',
-     '--glob', '*.md', '.'], text=True).splitlines()
-assert markdown_hits
-owner_claims = []
-for hit in markdown_hits:
-    if hit == './todo.md':
+claims = []
+for candidate in Path('.').rglob('*.md'):
+    if not candidate.is_file() or candidate == Path('todo.md'):
         continue
-    text = Path(hit).read_text()
-    if ('Owner-Path: `src/target_profile/' in text or
-            'Phase-ID: C1' in '\n'.join(text.splitlines()[:15])):
-        owner_claims.append(hit)
-assert owner_claims == [], owner_claims
-assert '[`TargetProfile`](../../../target_profile.hpp)' in layout
-research = Path('docs/target_abi_contract_research/index.md').read_text()
-assert 'research' in research.lower()
-assert 'src/target_profile.hpp' in Path(
-    'docs/target_abi_contract_research/01_how_target_information_enters_the_pipeline.md'
-).read_text()
+    candidate_text = candidate.read_text(errors='replace')
+    if ('Phase-ID: C1' in '\n'.join(candidate_text.splitlines()[:15]) or
+            'Owner-Path: `src/target_profile/README.md`' in candidate_text):
+        claims.append(str(candidate))
+assert claims == ['src/target_profile/README.md'], claims
 
-# Current code/build truth is a build-included value/parser foundation only.
-for item in ('enum class TargetArch', 'enum class TargetOs',
-             'enum class BackendAbiKind', 'enum class TargetRelocationModel',
-             'struct TargetProfile', 'std::string triple;',
-             'TargetArch arch', 'TargetOs os', 'BackendAbiKind backend_abi',
-             'TargetRelocationModel relocation_model',
-             'bool has_float_arg_registers',
-             'bool has_float_return_registers',
-             'target_profile_from_triple(std::string_view target_triple)'):
+# Exact exhaustive matrices.
+def matrix_rows(start, end):
+    section = text[owner].split(start, 1)[1].split(end, 1)[0]
+    return [line for line in section.splitlines() if line.startswith('|')][2:]
+
+inputs = matrix_rows('### Exact C1 input matrix', '## Outputs')
+outputs = matrix_rows('### Exact C1 output matrix',
+                      '## Adjacent-Stage Contract')
+assert (len(inputs), len(outputs)) == (11, 4)
+for axis in (
+    'Canonical capability', 'Canonical stamp', 'requested triple',
+    'requested architecture', 'requested OS', 'requested backend ABI',
+    'requested relocation model', 'requested floating-point ABI',
+    'requested capabilities', 'selection version', 'schema versions',
+):
+    assert any(axis in row for row in inputs), axis
+for product in (
+    'validated immutable `TargetProfile`', 'complete `TargetFingerprint`',
+    'normalized request record', 'structured `TargetSelectionFailure`',
+):
+    assert any(product in row for row in outputs), product
+for item in (
+    'never chooses a target for the user',
+    'does not inspect, validate, copy or mutate either one',
+    'parsing rendered `data_layout`',
+    'publishes no profile, fingerprint',
+    'No partial profile, key, cache entry, `VerifiedPreparationInput` or BIR revision is published',
+    'Analyses remain later exact-revision dependencies',
+):
+    assert item in flat[owner], item
+
+# Every local link resolves and every authorized shared seam links the owner.
+for path in docs:
+    for link in re.findall(r'\[[^]]+\]\(([^)]+)\)', text[path]):
+        if link.startswith('#') or '://' in link:
+            continue
+        destination = (path.parent / link.split('#', 1)[0]).resolve()
+        assert destination.exists(), (path, link, destination)
+assert '../../target_profile/README.md' in text[root]
+for path in (pipeline, verifier, layout, preparation):
+    assert '../../../target_profile/README.md' in text[path], path
+
+# Exact B8 -> C1 -> C2 order and accepted Canonical semantics remain intact.
+stage_ids = [
+    re.match(r'^\| `([A-F][0-9])`', line).group(1)
+    for line in text[root].splitlines()
+    if re.match(r'^\| `[A-F][0-9]`', line)
+]
+assert stage_ids.index('B8') + 1 == stage_ids.index('C1')
+assert stage_ids.index('C1') + 1 == stage_ids.index('C2')
+for item in (
+    'receives only the published immutable result',
+    'Only the completely green',
+    'target-independent unallocated `CanonicalBir` carrying the verified stamp',
+):
+    assert item in flat[pipeline], item
+
+# External selection, verifier binding and C2 layout authorities are distinct.
+for item in (
+    'external C1 target-profile boundary',
+    'alone selects, normalizes and validates the explicit target request',
+    'it alone binds that validated fingerprint',
+    'only target-bound C1 input gate',
+):
+    assert item in flat[verifier], item
+for item in (
+    "sole owner of the target's abstract register vocabulary",
+    'Input is the exact validated `TargetProfile`',
+    'one `TargetFingerprint`',
+):
+    assert item in flat[layout], item
+assert 'external C1 target-profile boundary' in flat[preparation]
+for item in (
+    '| explicit request normalization, validation, registered support and target fingerprint | external C1 boundary |',
+    '| full Canonical rules and exact Canonical/target binding into `VerifiedPreparationInput` | BIR verifier |',
+    '| finite target register/layout vocabulary and `VerifiedTargetLayout` | C2 target layout |',
+):
+    assert item in text[owner], item
+
+# Current implementation/build truth remains partial foundation with no gate.
+header = Path('src/target_profile.hpp').read_text()
+source = Path('src/target_profile.cpp').read_text()
+cmake = Path('CMakeLists.txt').read_text()
+for item in (
+    'struct TargetProfile', 'TargetRelocationModel relocation_model',
+    'bool has_float_arg_registers', 'bool has_float_return_registers',
+    'target_profile_from_triple(std::string_view target_triple)',
+):
     assert item in header, item
-for item in ('TargetProfile target_profile_from_triple',
-             'profile.triple = std::string(target_triple)',
-             'profile.arch = TargetArch::', 'profile.os = os_from_triple',
-             'profile.backend_abi = backend_abi_from_triple',
-             'profile.has_float_arg_registers =',
-             'profile.has_float_return_registers ='):
-    assert item in source, item
-assert 'profile.relocation_model =' not in source
+assert 'TargetProfile target_profile_from_triple' in source
 assert 'add_library(c4c_target_profile STATIC' in cmake
 assert '"${PROJECT_SOURCE_DIR}/src/target_profile.cpp"' in cmake
-assert 'target_link_libraries(c4c_backend PUBLIC c4c_frontend c4c_codegen c4c_target_profile)' in Path(
-    'src/backend/CMakeLists.txt').read_text()
-code = '\n'.join(path.read_text() for path in Path('src/backend/bir').rglob('*')
-                 if path.suffix in {'.hpp', '.cpp'})
-assert 'class CanonicalBir' in code
+code = '\n'.join(
+    path.read_text()
+    for path in Path('src/backend/bir').rglob('*')
+    if path.is_file() and path.suffix in {'.hpp', '.cpp'}
+)
 for absent in ('struct TargetFingerprint', 'class VerifiedPreparationInput',
                'verify_preparation_input('):
     assert absent not in code, absent
-module_data = Path('src/backend/bir/core/ir.hpp').read_text().split(
-    'struct ModuleData {', 1)[1].split('};', 1)[0]
-for forbidden in ('TargetProfile', 'target_profile', 'BackendAbiKind',
-                  'home', 'spill', 'allocation', 'MIR'):
-    assert forbidden not in module_data, forbidden
+for item in (
+    'Implementation is partial foundation only',
+    'Absent are the closed `TargetRequest`',
+    'no checked-in implementation can produce C1 success',
+):
+    assert item in flat[owner], item
 
-# Exact coordinated seams exist and local links currently resolve.
-seams = (root_path, pipeline_path, verify_path, layout_path, preparation_path)
-for path in seams:
-    text = path.read_text()
-    for link in re.findall(r'\[[^]]+\]\(([^)]+)\)', text):
-        if '://' in link or link.startswith('#'):
-            continue
-        assert (path.parent / link.split('#', 1)[0]).resolve().exists(), (path, link)
-assert 'external target-profile authority' in root
-assert 'C1 receives only the published immutable result' in pipeline
-assert '`verify_preparation_input` is the only target-bound C1 input gate' in verify
-assert '[`TargetProfile`](../../../target_profile.hpp)' in layout
-assert 'C1 `verify_preparation_input` gate' in preparation
+# Exact diff scope: six authorized docs plus canonical todo only.
+expected = {
+    'src/target_profile/README.md',
+    'src/backend/bir/README.md',
+    'src/backend/bir/pipeline/README.md',
+    'src/backend/bir/verify/README.md',
+    'src/backend/bir/target_layout/README.md',
+    'src/backend/bir/preparation/README.md',
+    'todo.md',
+}
+changed = set(subprocess.check_output(
+    ['git', 'status', '--short', '--untracked-files=all'],
+    text=True).splitlines())
+changed_paths = {line[3:] for line in changed}
+assert changed_paths == expected, (changed_paths, expected)
+for path in changed_paths:
+    assert not path.endswith(('.cpp', '.hpp', '.h', '.cc', '.c', '.log'))
+    assert not path.startswith(('tests/', 'build/', 'ideas/'))
+assert 'Current Step ID: 2' in Path('todo.md').read_text()
+assert 'Current Step Title: Converge C2 target-layout derivation' in Path(
+    'todo.md').read_text()
 
-# Shared analyses remain downstream, never C1 selection/acceptance authority.
-for analysis in ('PublicationValueFlow', 'CallGraph', 'Provenance', 'MemoryEffects'):
-    assert analysis not in c1, analysis
-analysis_index = Path('src/backend/bir/analysis/README.md').read_text()
-assert 'CanonicalSemantic' in analysis_index and 'TargetBoundAllocation' in analysis_index
-
-# Step remains active and only canonical todo state changed.
-status = subprocess.check_output(['git', 'status', '--short'], text=True)
-assert status == ' M todo.md\n', status
-changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
-assert changed == ['todo.md'], changed
-assert 'Current Step ID: 1' in Path('todo.md').read_text()
-assert 'Status: Active' in Path('todo.md').read_text()
-assert 'if so, record the exact path/owner/two-sided seam and stop' in Path('plan.md').read_text()
-assert ('A missing real Markdown owner may be created only as a documentation '
-        'placeholder') in ' '.join(idea.split())
-
-print('PASS step=1 status=retained owner=current-missing '
-      'proposed=src/target_profile/README.md seams=5+new '
-      'canonical=exact-verifier-gated-target-independent-unallocated '
-      'request=triple+arch+os+abi+relocation+float-abi+capabilities '
-      'output=validated-profile+exact-target-fingerprint mutation=none '
+print('PASS step=1 owner=unique-c1 metadata=8 core=6 matrices=11/4 '
+      'order=B8-C1-C2 canonical=exact-verifier-gated-target-independent-unallocated '
+      'request=triple+arch+os+abi+relocation+float-abi+capabilities+versions '
+      'output=one-profile+one-fingerprint failure=atomic-no-bir-mutation '
       'authority=external-selection/verifier-binding/c2-layout-separated '
-      'implementation=partial-foundation build=c4c_target_profile '
-      'c1-gate=absent analyses=later-only scope=todo-only links=green')
+      'implementation=partial-foundation gate=absent links=6-green '
+      'scope=6-docs+todo next=2')
 PY
 ```
 
 - Result:
 
 ```text
-PASS step=1 status=retained owner=current-missing proposed=src/target_profile/README.md seams=5+new canonical=exact-verifier-gated-target-independent-unallocated request=triple+arch+os+abi+relocation+float-abi+capabilities output=validated-profile+exact-target-fingerprint mutation=none authority=external-selection/verifier-binding/c2-layout-separated implementation=partial-foundation build=c4c_target_profile c1-gate=absent analyses=later-only scope=todo-only links=green
+PASS step=1 owner=unique-c1 metadata=8 core=6 matrices=11/4 order=B8-C1-C2 canonical=exact-verifier-gated-target-independent-unallocated request=triple+arch+os+abi+relocation+float-abi+capabilities+versions output=one-profile+one-fingerprint failure=atomic-no-bir-mutation authority=external-selection/verifier-binding/c2-layout-separated implementation=partial-foundation gate=absent links=6-green scope=6-docs+todo next=2
 ```

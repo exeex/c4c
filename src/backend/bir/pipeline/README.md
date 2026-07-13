@@ -73,7 +73,7 @@ checkpoint. No stage view, report, stamp or semantic hash is a public capability
 
 | Output/product | Exact consumer | Required binding | Failure / forbidden escape |
 |---|---|---|---|
-| immutable `CanonicalBir` | C1 and read-only observers | same B7 owning revision, full canonical stamp/digest/lineage and B8 verifier token | only successful B8 may create it |
+| immutable `CanonicalBir` | [C1 external target-profile boundary](../../../target_profile/README.md) and read-only observers | same B7 owning revision, full canonical stamp/digest/lineage and B8 verifier token | only successful B8 may create it |
 | final stage stamp | `CanonicalBir` owner and preparation input gate | exact epoch/module revision/function digest, plan/options fingerprints, ordinal 7 and all properties | copied/equal/reconstructed stamp is not capability |
 | structured pipeline failure | caller/diagnostics | stable phase/occurrence/rule/entity/key and deterministic order | no report changes success or grants resume |
 | internal last-good checkpoint | `resume_bir_pipeline` only | complete prior occurrence stamp and owning storage | cannot convert directly to `CanonicalBir` or skip next ordinal |
@@ -88,7 +88,8 @@ change order. Each pass supplies its semantic postcondition. The read-only
 [Canonical verifier](../verify/README.md) consumes the exact frozen B7 candidate
 and returns a private token only after the complete same-revision profile is
 green. The pipeline consumes that token and candidate atomically to create
-`CanonicalBir`. C1 receives only the published immutable result.
+`CanonicalBir`. The [C1 external target-profile boundary](../../../target_profile/README.md)
+receives only the published immutable result.
 
 Authority is intentionally separated:
 
@@ -190,7 +191,8 @@ target-independent unallocated `CanonicalBir` carrying the verified stamp.
 Canonical options cannot include a target triple/profile/layout, calling
 placement, helper route, constraints, homes, spills, frame or MIR state. Source-
 semantic typed sizes, alignments and address spaces remain semantic BIR facts;
-C1 selects target context independently after publication.
+[C1](../../../target_profile/README.md) selects and validates target context
+independently after publication.
 
 ## Implementation State
 

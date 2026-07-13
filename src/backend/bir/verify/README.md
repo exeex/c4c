@@ -66,6 +66,12 @@ including in unit tests: tests that intentionally build malformed storage may
 inspect a candidate/report through a private test fixture but cannot obtain a
 `RawBir` stage token.
 
+The [external C1 target-profile boundary](../../../target_profile/README.md)
+alone selects, normalizes and validates the explicit target request and
+produces the validated `TargetProfile`/`TargetFingerprint`. This verifier does
+not select or default target axes; it alone binds that validated fingerprint to
+the exact unchanged Canonical stamp and may produce `VerifiedPreparationInput`.
+
 | Profile | Required now | Meaning |
 |---|---:|---|
 | `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
@@ -1585,8 +1591,9 @@ Step 7 closes the two preparation-facing choices:
 
 1. `verify_preparation_input` is the only target-bound C1 input gate. It
    rechecks the exact B8 `CanonicalBir`, binds its full `PipelineStageStamp` to
-   one validated `TargetFingerprint`, and proves only the complete typed
-   semantic prerequisites enumerated above. It is non-mutating, publishes no
+   one validated `TargetFingerprint` supplied by the [external C1 selection
+   authority](../../../target_profile/README.md), and proves only the complete
+   typed semantic prerequisites enumerated above. It is non-mutating, publishes no
    BIR revision or prepared fact, and may not stand in for C2-C9.
 2. C9's sole public interpretation API is the all-module `bind_constraints`
    transaction defined by `regalloc/constraints`. It consumes the exact
