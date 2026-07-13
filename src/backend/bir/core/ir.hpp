@@ -80,6 +80,18 @@ struct FunctionSignature {
   bool is_variadic = false;
 };
 
+struct StructField {
+  Type type;
+  StructNameId referenced_name{};
+};
+
+struct StructDeclaration {
+  StructNameId name{};
+  std::vector<StructField> fields;
+  bool is_packed = false;
+  bool is_opaque = false;
+};
+
 inline bool operator==(const FunctionSignature& lhs,
                        const FunctionSignature& rhs) noexcept {
   return lhs.return_type == rhs.return_type &&
@@ -134,12 +146,29 @@ struct FunctionData {
 
 struct ModuleData {
  private:
+  struct LinkNameData {
+    c4c::LinkNameId source_id = c4c::kInvalidLinkName;
+    std::string spelling;
+  };
+  struct StructNameData {
+    c4c::StructNameId source_id = c4c::kInvalidStructName;
+    std::string spelling;
+  };
+
   ModuleEpoch epoch_ = 0;
   ModuleRevision revision_{};
   PipelineStageStamp stage_stamp_{};
   SlotMap<FunctionData, FunctionId, ModuleEpoch> functions_;
   IdOrder<FunctionId> function_order_;
   std::unordered_map<std::string, FunctionId> functions_by_link_name_;
+  std::vector<LinkNameData> link_names_;
+  std::unordered_map<c4c::LinkNameId, LinkNameId> link_names_by_source_id_;
+  std::unordered_map<std::string, LinkNameId> link_names_by_spelling_;
+  std::vector<StructNameData> struct_names_;
+  std::unordered_map<c4c::StructNameId, StructNameId> struct_names_by_source_id_;
+  std::unordered_map<std::string, StructNameId> struct_names_by_spelling_;
+  std::vector<StructDeclaration> struct_decls_;
+  std::unordered_map<StructNameId, StructDeclId> struct_decls_by_name_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;

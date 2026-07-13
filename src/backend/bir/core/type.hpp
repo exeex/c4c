@@ -61,7 +61,7 @@ inline bool operator!=(const StructuredTypeSpecFacts& lhs,
 struct Type {
   TypeKind kind = TypeKind::Void;
   std::uint32_t bit_width = 0;
-  StructNameId struct_name_id = kInvalidStructName;
+  c4c::StructNameId struct_name_id = c4c::kInvalidStructName;
   std::string spelling;
   std::optional<StructuredTypeSpecFacts> structured_spec;
 
@@ -81,7 +81,7 @@ struct Type {
   }
 
   Type(TypeKind type_kind, std::uint32_t width, std::string rendered = {},
-       StructNameId name_id = kInvalidStructName)
+       c4c::StructNameId name_id = c4c::kInvalidStructName)
       : kind(type_kind),
         bit_width(width),
         struct_name_id(name_id),
@@ -137,7 +137,7 @@ inline bool is_well_formed(const Type& type) {
         spec.inner_array_rank != 0 || spec.is_function_pointer)
       return false;
   }
-  const bool no_name = type.struct_name_id == kInvalidStructName;
+  const bool no_name = type.struct_name_id == c4c::kInvalidStructName;
   switch (type.kind) {
     case TypeKind::Void:
       return type.bit_width == 0 && no_name &&

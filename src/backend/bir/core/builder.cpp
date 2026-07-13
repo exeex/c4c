@@ -45,6 +45,84 @@ ModuleBuilder::ModuleBuilder() : data_(std::make_unique<detail::ModuleData>()) {
 
 ModuleBuilder::~ModuleBuilder() = default;
 
+Result<LinkNameId, BuildError> ModuleBuilder::add_link_name(
+    c4c::LinkNameId source_id, std::string spelling) {
+  if (state_ == State::Consumed)
+    return Result<LinkNameId, BuildError>::failure(BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<LinkNameId, BuildError>::failure(BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<LinkNameId, BuildError>::failure(BuildError::EpochExhausted);
+  if (source_id == c4c::kInvalidLinkName ||
+      source_id != data_->link_names_.size() + 1)
+    return Result<LinkNameId, BuildError>::failure(BuildError::InvalidNameId);
+  if (spelling.empty())
+    return Result<LinkNameId, BuildError>::failure(BuildError::EmptyName);
+  if (data_->link_names_by_spelling_.count(spelling) != 0)
+    return Result<LinkNameId, BuildError>::failure(BuildError::DuplicateName);
+  const LinkNameId id{data_->epoch_,
+                      static_cast<SlotIndex>(data_->link_names_.size())};
+  data_->link_names_.push_back({source_id, spelling});
+  data_->link_names_by_source_id_.emplace(source_id, id);
+  data_->link_names_by_spelling_.emplace(std::move(spelling), id);
+  return Result<LinkNameId, BuildError>::success(id);
+}
+
+Result<StructNameId, BuildError> ModuleBuilder::add_struct_name(
+    c4c::StructNameId source_id, std::string spelling) {
+  if (state_ == State::Consumed)
+    return Result<StructNameId, BuildError>::failure(BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<StructNameId, BuildError>::failure(BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<StructNameId, BuildError>::failure(BuildError::EpochExhausted);
+  if (source_id == c4c::kInvalidStructName ||
+      source_id != data_->struct_names_.size() + 1)
+    return Result<StructNameId, BuildError>::failure(BuildError::InvalidNameId);
+  if (spelling.empty())
+    return Result<StructNameId, BuildError>::failure(BuildError::EmptyName);
+  if (data_->struct_names_by_spelling_.count(spelling) != 0)
+    return Result<StructNameId, BuildError>::failure(BuildError::DuplicateName);
+  const StructNameId id{data_->epoch_,
+                        static_cast<SlotIndex>(data_->struct_names_.size())};
+  data_->struct_names_.push_back({source_id, spelling});
+  data_->struct_names_by_source_id_.emplace(source_id, id);
+  data_->struct_names_by_spelling_.emplace(std::move(spelling), id);
+  return Result<StructNameId, BuildError>::success(id);
+}
+
+Result<StructDeclId, BuildError> ModuleBuilder::add_struct_declaration(
+    c4c::StructNameId source_name_id, std::vector<StructField> fields,
+    bool is_packed, bool is_opaque) {
+  if (state_ == State::Consumed)
+    return Result<StructDeclId, BuildError>::failure(BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<StructDeclId, BuildError>::failure(BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<StructDeclId, BuildError>::failure(BuildError::EpochExhausted);
+  const auto name = data_->struct_names_by_source_id_.find(source_name_id);
+  if (name == data_->struct_names_by_source_id_.end())
+    return Result<StructDeclId, BuildError>::failure(BuildError::InvalidStructName);
+  if (data_->struct_decls_by_name_.count(name->second) != 0)
+    return Result<StructDeclId, BuildError>::failure(
+        BuildError::DuplicateStructDeclaration);
+  for (auto& field : fields) {
+    if (field.type.struct_name_id == c4c::kInvalidStructName) continue;
+    const auto referenced = data_->struct_names_by_source_id_.find(
+        field.type.struct_name_id);
+    if (referenced == data_->struct_names_by_source_id_.end())
+      return Result<StructDeclId, BuildError>::failure(
+          BuildError::InvalidStructName);
+    field.referenced_name = referenced->second;
+  }
+  const StructDeclId id{data_->epoch_,
+                        static_cast<SlotIndex>(data_->struct_decls_.size())};
+  data_->struct_decls_.push_back(
+      StructDeclaration{name->second, std::move(fields), is_packed, is_opaque});
+  data_->struct_decls_by_name_.emplace(name->second, id);
+  return Result<StructDeclId, BuildError>::success(id);
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 ModuleBuilder::mutable_function(FunctionId function) {
   if (!data_ || data_->epoch_ == 0)

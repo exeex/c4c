@@ -50,6 +50,82 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
     report(result, VerificationRule::ModuleEpoch, {}, ModuleEntity{},
            "module epoch must be nonzero");
 
+  for (std::size_t index = 0; index < module.link_names_.size(); ++index) {
+    const LinkNameId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& entry = module.link_names_[index];
+    const auto by_source = module.link_names_by_source_id_.find(entry.source_id);
+    const auto by_spelling = module.link_names_by_spelling_.find(entry.spelling);
+    if (!id.valid() || entry.source_id == c4c::kInvalidLinkName ||
+        entry.source_id != index + 1 || entry.spelling.empty() ||
+        by_source == module.link_names_by_source_id_.end() ||
+        by_source->second != id ||
+        by_spelling == module.link_names_by_spelling_.end() ||
+        by_spelling->second != id)
+      report(result, VerificationRule::ModuleNameTable, {}, id,
+             "link-name order, identity, spelling, and indexes must agree");
+  }
+  if (module.link_names_by_source_id_.size() != module.link_names_.size() ||
+      module.link_names_by_spelling_.size() != module.link_names_.size())
+    report(result, VerificationRule::ModuleNameTable, {}, ModuleEntity{},
+           "link-name index sizes must match the ordered table");
+
+  for (std::size_t index = 0; index < module.struct_names_.size(); ++index) {
+    const StructNameId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& entry = module.struct_names_[index];
+    const auto by_source = module.struct_names_by_source_id_.find(entry.source_id);
+    const auto by_spelling = module.struct_names_by_spelling_.find(entry.spelling);
+    if (!id.valid() || entry.source_id == c4c::kInvalidStructName ||
+        entry.source_id != index + 1 || entry.spelling.empty() ||
+        by_source == module.struct_names_by_source_id_.end() ||
+        by_source->second != id ||
+        by_spelling == module.struct_names_by_spelling_.end() ||
+        by_spelling->second != id)
+      report(result, VerificationRule::ModuleNameTable, {}, id,
+             "struct-name order, identity, spelling, and indexes must agree");
+  }
+  if (module.struct_names_by_source_id_.size() != module.struct_names_.size() ||
+      module.struct_names_by_spelling_.size() != module.struct_names_.size())
+    report(result, VerificationRule::ModuleNameTable, {}, ModuleEntity{},
+           "struct-name index sizes must match the ordered table");
+
+  for (std::size_t index = 0; index < module.struct_decls_.size(); ++index) {
+    const StructDeclId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& decl = module.struct_decls_[index];
+    const auto cached = module.struct_decls_by_name_.find(decl.name);
+    if (!decl.name.valid() || decl.name.epoch != module.epoch_ ||
+        decl.name.slot >= module.struct_names_.size() ||
+        cached == module.struct_decls_by_name_.end() || cached->second != id)
+      report(result, VerificationRule::StructDeclaration, {}, id,
+             "struct declaration name and cache must resolve exactly");
+    if (decl.is_opaque && (!decl.fields.empty() || decl.is_packed))
+      report(result, VerificationRule::StructDeclaration, {}, id,
+             "opaque struct declarations cannot carry fields or packed layout");
+    for (const auto& field : decl.fields) {
+      if (!is_well_formed(field.type) || field.type.kind == TypeKind::Void) {
+        report(result, VerificationRule::StructDeclaration, {}, id,
+               "struct field type must be well formed");
+        continue;
+      }
+      if (field.type.struct_name_id != c4c::kInvalidStructName) {
+        const auto named = module.struct_names_by_source_id_.find(
+            field.type.struct_name_id);
+        if (named == module.struct_names_by_source_id_.end() ||
+            field.referenced_name != named->second ||
+            named->second.slot >= module.struct_names_.size() ||
+            module.struct_names_[named->second.slot].spelling !=
+                field.type.spelling)
+          report(result, VerificationRule::StructDeclaration, {}, id,
+                 "named struct field type must resolve with matching spelling");
+      } else if (field.referenced_name.valid()) {
+        report(result, VerificationRule::StructDeclaration, {}, id,
+               "unnamed struct field type cannot carry a named reference");
+      }
+    }
+  }
+  if (module.struct_decls_by_name_.size() != module.struct_decls_.size())
+    report(result, VerificationRule::StructDeclaration, {}, ModuleEntity{},
+           "struct declaration cache size must match source order");
+
   const auto function_counts = counts(module.function_order_.ids_);
   std::unordered_set<FunctionId> live_functions;
   std::unordered_map<std::string, FunctionId> live_names;

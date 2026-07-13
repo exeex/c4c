@@ -701,6 +701,134 @@ void test_verifier_rejects_malformed_raw_type() {
          "Raw publication verifier must reject malformed typed state");
 }
 
+void test_module_name_and_struct_declaration_receipt() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  module.struct_names.attach_text_table(texts.get());
+
+  const c4c::LinkNameId exported = module.link_names.intern("exported");
+  const c4c::LinkNameId helper = module.link_names.intern("helper");
+  const c4c::StructNameId outer = module.struct_names.intern("%struct.Outer");
+  const c4c::StructNameId inner = module.struct_names.intern("%struct.Inner");
+
+  lir::LirStructDecl outer_decl;
+  outer_decl.name_id = outer;
+  outer_decl.is_packed = true;
+  outer_decl.fields = {
+      {lir::LirTypeRef::struct_type("%struct.Inner", inner)},
+      {lir::LirTypeRef("ptr")}};
+  module.record_struct_decl(std::move(outer_decl));
+  lir::LirStructDecl inner_decl;
+  inner_decl.name_id = inner;
+  inner_decl.fields = {{lir::LirTypeRef::integer(32)},
+                       {lir::LirTypeRef::struct_type("%struct.Outer", outer)}};
+  module.record_struct_decl(std::move(inner_decl));
+  module.type_decls = {"deliberately non-authoritative legacy shadow"};
+
+  auto declaration = void_declaration("legacy-fallback-must-not-win");
+  declaration.link_name_id = exported;
+  module.functions.push_back(std::move(declaration));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "structured declarations and semantic name tables should publish");
+  const auto view = imported.value().view();
+  const auto link_names = view.link_names();
+  expect(link_names.size() == 2 &&
+             view.spelling(link_names[0]).value() == "exported" &&
+             view.spelling(link_names[1]).value() == "helper" &&
+             view.source_id(link_names[0]).value() == exported,
+         "link-name receipt must preserve source order, spelling, and source ID");
+  const auto struct_names = view.struct_names();
+  expect(struct_names.size() == 2 &&
+             view.spelling(struct_names[0]).value() == "%struct.Outer" &&
+             view.spelling(struct_names[1]).value() == "%struct.Inner" &&
+             view.source_id(struct_names[1]).value() == inner,
+         "struct-name receipt must preserve typed identity and spelling");
+  const auto declarations = view.struct_declarations();
+  expect(declarations.size() == 2,
+         "struct declarations must remain in deterministic source order");
+  const auto raw_outer = view.struct_declaration(declarations[0]).value();
+  const auto raw_inner = view.struct_declaration(declarations[1]).value();
+  expect(raw_outer.name == struct_names[0] && raw_outer.is_packed &&
+             raw_outer.fields.size() == 2 &&
+             raw_outer.fields[0].type.struct_name_id == inner &&
+             raw_outer.fields[0].referenced_name == struct_names[1] &&
+             raw_inner.name == struct_names[1] &&
+             raw_inner.fields[1].type.struct_name_id == outer &&
+             raw_inner.fields[1].referenced_name == struct_names[0],
+         "shared and forward struct field types must retain structured references");
+  expect(view.function(view.functions().front()).value().link_name() == "exported",
+         "function identity must resolve from the semantic link-name table");
+}
+
+void test_module_name_and_struct_declaration_rejections() {
+  const auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    return module;
+  };
+  const auto rejected = [](lir::LirModule module, const std::string& message) {
+    const auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code ==
+                   bir::ImportErrorCode::UnsupportedTypeDeclarations,
+           message);
+  };
+
+  auto missing_name = make_module();
+  missing_name.struct_decls.push_back(lir::LirStructDecl{});
+  missing_name.struct_decl_index.emplace(c4c::kInvalidStructName, 0);
+  rejected(std::move(missing_name),
+           "invalid declaration IDs must fail transactionally");
+
+  auto duplicate = make_module();
+  const auto duplicate_id = duplicate.struct_names.intern("%struct.Duplicate");
+  duplicate.struct_decls = {{duplicate_id}, {duplicate_id}};
+  duplicate.struct_decl_index.emplace(duplicate_id, 0);
+  rejected(std::move(duplicate),
+           "duplicate/conflicting declarations must fail transactionally");
+
+  auto malformed = make_module();
+  const auto malformed_id = malformed.struct_names.intern("%struct.Malformed");
+  lir::LirStructDecl malformed_decl;
+  malformed_decl.name_id = malformed_id;
+  malformed_decl.fields = {{lir::LirTypeRef("semantic raw field")}};
+  malformed.record_struct_decl(std::move(malformed_decl));
+  rejected(std::move(malformed),
+           "malformed structured field types must fail transactionally");
+
+  auto bad_index = make_module();
+  const auto indexed_id = bad_index.struct_names.intern("%struct.Indexed");
+  bad_index.record_struct_decl(lir::LirStructDecl{indexed_id});
+  bad_index.struct_decl_index[indexed_id] = 1;
+  rejected(std::move(bad_index),
+           "struct declaration cache mismatches must fail transactionally");
+
+  auto bad_name_cache = make_module();
+  bad_name_cache.struct_names.intern("%struct.Cache");
+  bad_name_cache.struct_names.ids_.id_by_key_.clear();
+  rejected(std::move(bad_name_cache),
+           "semantic name-table cache mismatches must fail transactionally");
+
+  bir::ModuleBuilder builder;
+  expect(builder.add_struct_name(1, "%struct.BadRaw").has_value(),
+         "builder should own staged struct-name state");
+  expect(builder.add_struct_declaration(
+                    1, {bir::StructField{bir::Type{bir::TypeKind::Void}}},
+                    false, false)
+             .has_value(),
+         "builder should retain malformed staged declarations for diagnosis");
+  const auto published = std::move(builder).publish();
+  expect(!published.has_value() &&
+             published.error().reason == bir::PublishError::VerificationFailed,
+         "publication verifier must reject malformed staged declarations");
+}
+
 void test_structured_rejection() {
   lir::LirModule module;
   module.globals.push_back(lir::LirGlobal{});
@@ -745,6 +873,8 @@ int main() {
   test_structured_type_spec_signature_receipt();
   test_typed_lir_type_rejections();
   test_verifier_rejects_malformed_raw_type();
+  test_module_name_and_struct_declaration_receipt();
+  test_module_name_and_struct_declaration_rejections();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
   return 0;

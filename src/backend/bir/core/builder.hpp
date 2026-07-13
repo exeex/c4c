@@ -21,6 +21,11 @@ enum class BuildError {
   ExpiredCapability,
   ScopeTokenExhausted,
   EmptyLinkName,
+  InvalidNameId,
+  EmptyName,
+  DuplicateName,
+  InvalidStructName,
+  DuplicateStructDeclaration,
   ConflictingDeclaration,
   DuplicateDefinition,
   InvalidFunction,
@@ -139,6 +144,13 @@ class ModuleBuilder {
   Result<FunctionId, BuildError> create_function(FunctionSignature signature,
                                                   std::string link_name,
                                                   bool is_declaration);
+  Result<LinkNameId, BuildError> add_link_name(c4c::LinkNameId source_id,
+                                               std::string spelling);
+  Result<StructNameId, BuildError> add_struct_name(c4c::StructNameId source_id,
+                                                   std::string spelling);
+  Result<StructDeclId, BuildError> add_struct_declaration(
+      c4c::StructNameId source_name_id, std::vector<StructField> fields,
+      bool is_packed, bool is_opaque);
 
   using FunctionEdit =
       std::function<Result<void, BuildError>(FunctionBuilder&)>;

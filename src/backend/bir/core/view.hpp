@@ -128,6 +128,63 @@ class ModuleView {
   ModuleEpoch epoch() const noexcept { return data_->epoch_; }
   ModuleRevision revision() const noexcept { return data_->revision_; }
   std::vector<FunctionId> functions() const { return data_->function_order_.ids(); }
+  std::vector<LinkNameId> link_names() const {
+    std::vector<LinkNameId> ids;
+    ids.reserve(data_->link_names_.size());
+    for (std::size_t i = 0; i < data_->link_names_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
+  std::vector<StructNameId> struct_names() const {
+    std::vector<StructNameId> ids;
+    ids.reserve(data_->struct_names_.size());
+    for (std::size_t i = 0; i < data_->struct_names_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
+  std::vector<StructDeclId> struct_declarations() const {
+    std::vector<StructDeclId> ids;
+    ids.reserve(data_->struct_decls_.size());
+    for (std::size_t i = 0; i < data_->struct_decls_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
+
+  Result<std::string, ResolveError> spelling(LinkNameId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<std::string, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->link_names_.size())
+      return Result<std::string, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<std::string, ResolveError>::success(data_->link_names_[id.slot].spelling);
+  }
+  Result<std::string, ResolveError> spelling(StructNameId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<std::string, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->struct_names_.size())
+      return Result<std::string, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<std::string, ResolveError>::success(data_->struct_names_[id.slot].spelling);
+  }
+  Result<c4c::LinkNameId, ResolveError> source_id(LinkNameId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<c4c::LinkNameId, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->link_names_.size())
+      return Result<c4c::LinkNameId, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<c4c::LinkNameId, ResolveError>::success(data_->link_names_[id.slot].source_id);
+  }
+  Result<c4c::StructNameId, ResolveError> source_id(StructNameId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<c4c::StructNameId, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->struct_names_.size())
+      return Result<c4c::StructNameId, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<c4c::StructNameId, ResolveError>::success(data_->struct_names_[id.slot].source_id);
+  }
+  Result<StructDeclaration, ResolveError> struct_declaration(StructDeclId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<StructDeclaration, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->struct_decls_.size())
+      return Result<StructDeclaration, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<StructDeclaration, ResolveError>::success(data_->struct_decls_[id.slot]);
+  }
 
   Result<FunctionView, ResolveError> function(FunctionId id) const {
     auto resolved = data_->functions_.get(data_->epoch_, id);

@@ -19,6 +19,27 @@ struct FunctionId {
   constexpr bool valid() const noexcept { return epoch != 0 && generation != 0; }
 };
 
+// Append-only module identities.  Unlike the source LIR's integer name IDs,
+// these carry their owning Raw-BIR epoch and cannot be confused across name
+// domains or modules.
+struct LinkNameId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  constexpr bool valid() const noexcept { return epoch != 0; }
+};
+
+struct StructNameId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  constexpr bool valid() const noexcept { return epoch != 0; }
+};
+
+struct StructDeclId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  constexpr bool valid() const noexcept { return epoch != 0; }
+};
+
 struct BlockId {
   FunctionId owner{};
   SlotIndex slot = 0;
@@ -51,6 +72,18 @@ constexpr bool operator==(FunctionId lhs, FunctionId rhs) noexcept {
          lhs.generation == rhs.generation;
 }
 constexpr bool operator!=(FunctionId lhs, FunctionId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(LinkNameId lhs, LinkNameId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
+}
+constexpr bool operator!=(LinkNameId lhs, LinkNameId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(StructNameId lhs, StructNameId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
+}
+constexpr bool operator!=(StructNameId lhs, StructNameId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(StructDeclId lhs, StructDeclId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
+}
+constexpr bool operator!=(StructDeclId lhs, StructDeclId rhs) noexcept { return !(lhs == rhs); }
 constexpr bool operator==(BlockId lhs, BlockId rhs) noexcept {
   return lhs.owner == rhs.owner && lhs.slot == rhs.slot &&
          lhs.generation == rhs.generation;
@@ -83,6 +116,9 @@ inline std::size_t hash_function_id(FunctionId id) noexcept {
 }  // namespace detail
 
 static_assert(std::is_trivially_copyable_v<FunctionId>);
+static_assert(std::is_trivially_copyable_v<LinkNameId>);
+static_assert(std::is_trivially_copyable_v<StructNameId>);
+static_assert(std::is_trivially_copyable_v<StructDeclId>);
 static_assert(std::is_trivially_copyable_v<BlockId>);
 static_assert(std::is_trivially_copyable_v<InstId>);
 static_assert(std::is_trivially_copyable_v<ValueId>);
@@ -95,6 +131,27 @@ template <>
 struct hash<c4c::backend::bir::FunctionId> {
   size_t operator()(c4c::backend::bir::FunctionId id) const noexcept {
     return c4c::backend::bir::detail::hash_function_id(id);
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::LinkNameId> {
+  size_t operator()(c4c::backend::bir::LinkNameId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch), hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::StructNameId> {
+  size_t operator()(c4c::backend::bir::StructNameId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch), hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::StructDeclId> {
+  size_t operator()(c4c::backend::bir::StructDeclId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch), hash<c4c::backend::bir::SlotIndex>{}(id.slot));
   }
 };
 

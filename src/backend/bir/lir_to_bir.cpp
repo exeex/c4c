@@ -300,11 +300,47 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
       !module.extern_decl_name_map.empty())
     return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
                       "extern-only declaration state requires explicit lowering");
-  if (!module.type_decls.empty() || !module.struct_decls.empty() ||
-      !module.struct_decl_index.empty() ||
-      !module.structured_layout_observations.empty())
+  const auto valid_name_table = [](const auto& table, auto invalid) {
+    if (table.ids_.key_by_id_.size() != table.ids_.id_by_key_.size())
+      return false;
+    for (std::size_t index = 0; index < table.size(); ++index) {
+      const auto id = static_cast<decltype(invalid)>(index + 1);
+      const auto text_id = table.text_id(id);
+      const auto spelling = table.spelling(id);
+      if (id == invalid || text_id == c4c::kInvalidText || spelling.empty() ||
+          table.find(spelling) != id)
+        return false;
+    }
+    return true;
+  };
+  if (!valid_name_table(module.link_names, c4c::kInvalidLinkName) ||
+      !valid_name_table(module.struct_names, c4c::kInvalidStructName))
     return fail<void>(ImportErrorCode::UnsupportedTypeDeclarations, {}, {},
-                      "module type declarations require explicit lowering");
+                      "module semantic name table caches are inconsistent");
+
+  if (module.struct_decl_index.size() != module.struct_decls.size())
+    return fail<void>(ImportErrorCode::UnsupportedTypeDeclarations, {}, {},
+                      "struct declaration index size does not match source order");
+  std::unordered_set<c4c::StructNameId> declared_names;
+  for (std::size_t index = 0; index < module.struct_decls.size(); ++index) {
+    const auto& decl = module.struct_decls[index];
+    const auto cached = module.struct_decl_index.find(decl.name_id);
+    if (decl.name_id == c4c::kInvalidStructName ||
+        module.struct_names.spelling(decl.name_id).empty() ||
+        !declared_names.insert(decl.name_id).second ||
+        cached == module.struct_decl_index.end() || cached->second != index ||
+        (decl.is_opaque && (!decl.fields.empty() || decl.is_packed)))
+      return fail<void>(ImportErrorCode::UnsupportedTypeDeclarations, {}, {},
+                        "struct declaration identity, shape, or index is invalid");
+    for (const auto& field : decl.fields) {
+      const auto type = lower_lir_type(module, field.type);
+      if (!type || type->kind == TypeKind::Void ||
+          (field.type.has_struct_name_id() &&
+           module.find_struct_decl(field.type.struct_name_id()) == nullptr))
+        return fail<void>(ImportErrorCode::UnsupportedTypeDeclarations, {}, {},
+                          "struct declaration contains a malformed or unresolved field type");
+    }
+  }
   if (has_intrinsic_requirements(module))
     return fail<void>(ImportErrorCode::UnsupportedIntrinsicRequirements, {}, {},
                       "module intrinsic requirements are not yet represented");
@@ -483,6 +519,34 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   }
 
   ModuleBuilder builder;
+  for (std::size_t index = 0; index < module.link_names.size(); ++index) {
+    const auto source_id = static_cast<c4c::LinkNameId>(index + 1);
+    auto added = builder.add_link_name(
+        source_id, std::string(module.link_names.spelling(source_id)));
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import link-name table", added.error()));
+  }
+  for (std::size_t index = 0; index < module.struct_names.size(); ++index) {
+    const auto source_id = static_cast<c4c::StructNameId>(index + 1);
+    auto added = builder.add_struct_name(
+        source_id, std::string(module.struct_names.spelling(source_id)));
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import struct-name table", added.error()));
+  }
+  for (const auto& declaration : module.struct_decls) {
+    std::vector<StructField> fields;
+    fields.reserve(declaration.fields.size());
+    for (const auto& field : declaration.fields)
+      fields.push_back(StructField{*lower_lir_type(module, field.type)});
+    auto added = builder.add_struct_declaration(
+        declaration.name_id, std::move(fields), declaration.is_packed,
+        declaration.is_opaque);
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import struct declaration", added.error()));
+  }
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);
     FunctionSignature signature;

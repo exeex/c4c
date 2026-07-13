@@ -8,34 +8,35 @@ Current Step Title: Complete foundational identities, types and module container
 
 ## Just Finished
 
-- Plan Step 2 packet 2A completed: added closed typed Raw receipt for every
-  current `LirTypeKind`, including arbitrary integer widths, floating and VRM
-  widths, exact composite spellings, and `StructNameId` identity.
-- The bounded void-signature receipt now preserves structured `TypeSpec` base,
-  pointer/reference/array/function-pointer shape facts and reconciles them with
-  the optional `LirTypeRef` mirror; inline-asm bindings reuse the same mirror
-  conversion. Builders/views/verifier preserve and check these facts, and
-  malformed staged Raw types cannot publish.
+- Plan Step 2 packet 2B completed: added epoch-owned typed Raw IDs and ordered,
+  immutable module views for the current LIR `link_names`, `struct_names`, and
+  `struct_decls` surfaces, preserving source IDs, spellings, declaration order,
+  packed/opaque facts, and structured field types.
+- ModuleBuilder owns the staged tables, declaration storage, and lookup caches;
+  importer validation and the publication verifier reject malformed names,
+  unresolved fields, duplicate/conflicting declarations, and cache/index drift
+  transactionally. Legacy `type_decls` text is not used as declaration authority.
 
 ## Suggested Next
 
-- Execute Step 2B only: add module type/name tables and stable module IDs for
-  `struct_decls`, `link_names`, and `struct_names`, with deterministic order,
-  immutable views, builder ownership, and cache-parity verification.
+- Execute Step 2C only: add the next bounded foundational constant/value and
+  forward-use identity packet without entering globals, signatures, or CFG.
 
 ## Watchouts
 
 - Step 2A intentionally retains the existing zero-parameter, void-definition
   importer boundary. Non-void `TypeBase` receipt, complete signatures, and CFG
   receipt remain Step 4A and are not claimed by this packet.
-- Named struct mirrors require a resolving, spelling-matching `StructNameId`,
-  while actual named definitions and conflict/cache checks remain Step 2B.
-- Module type declarations are still rejected transactionally; do not parse
-  their rendered text or move Step 2C constants/forward-use work into Step 2B.
+- Raw struct declarations now accept named forward/shared references only when
+  their source `StructNameId` and spelling resolve through the imported table;
+  preserve that reference-domain rule in later value families.
+- `type_decls` remains a compatibility shadow and must not regain semantic
+  authority. Globals, externs, intrinsics, specializations, complete signatures,
+  CFG, and Step 2C constant/forward-use work remain outside packet 2B.
 
 ## Proof
 
-- Passed the supervisor’s final broader matching regression checkpoint:
+- Passed the supervisor-selected exact broader matching regression checkpoint:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|frontend_lir_)'`.
-- The matching baseline and post-change runs both passed 8/8 tests. Canonical
-  logs: `test_before.log` and `test_after.log`.
+- The fresh post-change run passed 8/8 tests. Canonical proof log:
+  `test_after.log`.

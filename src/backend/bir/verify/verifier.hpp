@@ -12,6 +12,8 @@ enum class VerifyProfile { FoundationRaw, TargetIndependentCanonical };
 
 enum class VerificationRule {
   ModuleEpoch,
+  ModuleNameTable,
+  StructDeclaration,
   FunctionStorageAndOrder,
   BlockStorageAndOrder,
   InstructionStorageAndOrder,
@@ -29,7 +31,7 @@ struct LinkNameEntity {
 };
 using VerificationEntity =
     std::variant<ModuleEntity, FunctionId, BlockId, InstId, ValueId,
-                 LinkNameEntity>;
+                 LinkNameId, StructNameId, StructDeclId, LinkNameEntity>;
 
 struct VerificationError {
   VerificationRule rule = VerificationRule::ModuleEpoch;
