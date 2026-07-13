@@ -6,10 +6,17 @@ pieces; target legalization, pseudo-physical register allocation, the complete
 MIR-ready verifier, and downstream lowering are not all implemented yet.
 
 BIR is a staged backend IR family. `RawBir` and `CanonicalBir` preserve source
-semantics and are deliberately unallocated. Once a target supplies its calling
-convention, register capacities, register classes/groups, and inline-assembly
-constraint rules, BIR legalization lowers the canonical body to a closed set of
-pseudo-instruction nodes. BIR register allocation then assigns finite
+semantics and are deliberately unallocated. The target input authority is
+`c4c::TargetProfile` in
+[`src/target_profile.hpp`](../../target_profile.hpp): its triple, `TargetArch`,
+`TargetOs`, `BackendAbiKind`, relocation model, and current ABI capability flags
+identify the applicable target contract. BIR uses that profile to select and
+derive its own pseudo-register-layout descriptor; the target does not inject a
+ready-made register allocator or a bag of physical slots.
+
+Once that BIR-owned layout and the inline-assembly constraint rules are
+available, BIR legalization lowers the canonical body to a closed set of
+pseudo-instruction nodes. The shared BIR register allocator then assigns finite
 pseudo-physical homes and makes spill state explicit. This publishes the clean,
 verified allocated BIR view consumed by MIR; it does not retroactively make
 `CanonicalBir` target-dependent.
@@ -22,7 +29,9 @@ LIR
   -> RawBir verification
   -> target-independent canonical BIR pass pipeline
   -> CanonicalBir verification
-  -> target context, capacity, class/group, and constraint facts
+  -> c4c::TargetProfile selection
+  -> BIR-owned pseudo-register-layout derivation
+  -> target constraint facts
   -> BIR legalization to the admitted pseudo-instruction set
   -> BIR liveness and pseudo-physical register allocation
   -> explicit pseudo Spill/Reload insertion
@@ -40,23 +49,37 @@ movement through spill state is represented by explicit pseudo instructions.
 The verifier rejects unresolved pressure, an illegal class/group assignment,
 an unavailable pseudo slot, or any non-admitted node before MIR construction.
 
-Pseudo-physical registers are finite target-provided slots categorized at
-least as caller-saved, callee-saved, and temporary, with any additional target
-register classes and contiguous/aligned register groups required by the
-instruction contract. BIR owns ordinary liveness, pressure decisions, and
-spill/reload insertion against those capacities. A pseudo home is not a target
-register spelling such as `a0`, `x3`, or `rax`; it is a verified category,
-class/group, and slot assignment that the target calling convention can map.
+The derived pseudo-register-layout descriptor is a BIR fact keyed by the
+selected `TargetProfile`. It owns the finite caller-saved, callee-saved, and
+temporary pools; register classes; aliased and reserved units; group width,
+alignment, and contiguity rules; and ABI eligibility needed by allocation.
+These are derived BIR layout facts, not fields this architecture assumes already
+exist in `TargetProfile`.
+
+RV64, AArch64, and x86 all use the same BIR implementation for liveness,
+allocation, eviction and pressure decisions, spill-slot management, explicit
+`Spill`/`Reload` insertion, and allocated-BIR verification. Their differences
+are selected layout data and rules derived from `TargetProfile`, not separate
+target allocators. A pseudo home is not a target register spelling such as
+`a0`, `x3`, or `rax`; it is a verified category, class/group, and slot
+assignment that the target calling convention can map.
 
 MIR is a downstream consumer of this allocated BIR view. It lowers each pseudo
 instruction to one machine instruction or to an explicitly bounded expansion,
 and maps pseudo-physical homes to concrete RV64, AArch64, or x86 registers
-according to that target's calling convention. MIR does not perform ordinary
+according to the already-derived layout and mapping contract. MIR and the
+target backend cannot replace the shared BIR allocator, perform ordinary
 register allocation, repair liveness, or introduce routine pressure-driven
 spill/reload. Failure to map an already verified pseudo home is a boundary
-verification or lowering error, not permission for MIR to reallocate it. The
+verification or lowering error, not permission to reallocate it. The
 authoritative MIR owner and filesystem location remain to be frozen outside
 this README; this document does not assign MIR ownership to a BIR subdirectory.
+
+Future target-specific optimization is allowed only as a separately reviewed,
+explicit pseudo-BIR pass with declared analysis invalidation and a required
+reverification gate. Such passes are deferred; they may not hide a
+target-specific register manager, replace the shared allocation authority, or
+bypass allocated-BIR verification.
 
 ## Inline assembly at this boundary
 
@@ -112,14 +135,21 @@ user's responsibility.
    unallocated; target facts cannot leak backward into either stage.
 6. Target-aware legalization and allocation must publish a new verified BIR
    stage rather than silently changing the meaning of an earlier stage token.
-7. Register assignment and explicit spill/reload are authoritative allocated
+7. `TargetProfile` is target-input authority; the pseudo-register layout is a
+   derived, profile-keyed BIR fact and is not supplied as target allocator state.
+8. All supported targets share one BIR register-management implementation;
+   target variation is explicit derived layout data and rules.
+9. Register assignment and explicit spill/reload are authoritative allocated
    BIR facts. Concrete target register spellings, frame encoding, and target
    opcodes are not.
-8. MIR may realize verified pseudo homes and pseudo instructions, but may not
+10. MIR may realize verified pseudo homes and pseudo instructions, but may not
    redo normal allocation or silently repair an invalid BIR input.
-9. Opaque inline-assembly text is parsed only by the assembler; structured
+11. Target-specific optimization passes must be explicit, separately reviewed,
+    declare invalidation, and re-enter verification; they cannot become hidden
+    allocation authorities.
+12. Opaque inline-assembly text is parsed only by the assembler; structured
    constraints and explicit clobbers are enforced earlier by BIR allocation.
-10. Each published stage has one authoritative output and one verifier gate.
+13. Each published stage has one authoritative output and one verifier gate.
 
 ## Review state vocabulary
 
