@@ -47,6 +47,11 @@ postcondition is current on the same frozen revision.
 
 Review phase-B owners in this order:
 
+Before item 1, Step 1 may make the single authorized adjacency correction to
+`passes/README.md` described in that step. This is not early pass-framework
+convergence: P01 remains the first normative phase-B owner, and the framework's
+full review remains at B8.
+
 1. B1/P01: `passes/legalize/README.md`.
 2. `analysis/comparison/README.md`, then B2/P02
    `passes/scalar/README.md`.
@@ -121,6 +126,12 @@ two-sided seam and stop until the runbook explicitly authorizes a coordinated
 documentation boundary naming every file. Do not silently reassign authority
 or broaden a pass packet.
 
+Step 1 contains one such closed authorization: before legalize convergence,
+edit only the contradictory **Allowed dependency direction** allowance in
+`passes/README.md`. This early adjacency repair does not authorize its full B8
+review, which remains Step 8, and does not authorize root, core, verifier or
+closed Child-A edits.
+
 ## Non-Goals
 
 - No C/C++ or other code, tests, build files, regression logs, runtime
@@ -163,13 +174,24 @@ Goal: bind phase B to the accepted immutable Raw input and converge the sole
 P01 ownership/disposition contract.
 
 Primary targets: `src/backend/bir/passes/legalize/README.md` and read-only
-baseline evidence in the root, analysis framework, closed Child A and B8
-owners.
+baseline evidence in the root, core, verifier, closed Child A and B8 owners.
+Before editing legalize, this step also authorizes exactly one narrow shared-
+document repair in `src/backend/bir/passes/README.md`.
 
 Actions:
 
 - verify the exact accepted `RawBir` input, current implementation status,
   phase-B owner inventory and P01-P07/B8 order
+- in `passes/README.md` only, replace the contradictory allowance that
+  target-independent BIR may include an already-resolved module data layout;
+  state instead that Raw/Canonical may preserve source-semantic typed sizes,
+  alignments and address spaces owned by their accepted rows, but contain no
+  semantic `target_profile`, rendered `data_layout`, target triple,
+  pointer-width/address-space layout selection or other C1/C2 target context;
+  C1 selects the exact `TargetProfile` and C2 derives target layout
+- keep every other `passes/README.md` clause for its full B8 convergence in
+  Step 8; re-audit the accepted Raw boundary after the narrow edit, and do not
+  edit the root, core, verifier or closed Child A
 - normalize P01 metadata, core-first clauses and exhaustive input/output matrix
 - assign each Raw-only legalize form exactly one P01 disposition and explicit
   failure; B1 may inherit A2 failure but cannot repair the producer
@@ -178,9 +200,11 @@ Actions:
 
 Completion check:
 
-- the B1 owner consumes only the accepted immutable Raw revision, every P01
-  form has one lossless normalize/preserve/reject disposition, failure
-  publishes nothing, and the exact P01 output is accepted by B2
+- the narrow framework clause agrees with the accepted target-independent Raw
+  boundary without changing any other shared owner; the B1 owner consumes only
+  that immutable Raw revision; every P01 form has one lossless
+  normalize/preserve/reject disposition; failure publishes nothing; and the
+  exact P01 output is accepted by B2
 
 ### Step 2 - Converge comparison analysis and B2 P02 scalar
 

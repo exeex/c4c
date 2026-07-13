@@ -17,15 +17,15 @@ Current Step Title: Establish the phase-B baseline and converge B1 P01 legalize
   README, no checked-in P01 implementation or build edge. The existing document
   is design-only and must not claim implementation when Step 1 resumes.
 - Found one material shared-owner contradiction in the read-only pass-framework
-  baseline. Per the delegated blocker rule, no legalize edit was made and Step
-  1 remains active pending an explicitly coordinated documentation repair.
+  baseline. No legalize edit was made. Step 1 remains active, and its corrected
+  runbook now authorizes the exact one-file shared repair before B1 convergence.
 
 ### Exact two-sided coordinated-boundary seam
 
 | Side | Owner and exact clause | Required disposition |
 |---|---|---|
 | Accepted phase-A / B1 input authority | Closed Child A 735 and `core/README.md` make `LirModule::target_profile` and rendered `data_layout` validation/origin/parity-only non-destinations. `verify/README.md` states Raw and Canonical carry no semantic target profile/triple/rendered layout/language-ABI/pointer-width/address-space layout selection or other C1/C2 target context; C1 selects the exact `TargetProfile` and C2 derives layout. The active Child-B runbook therefore requires P01 to consume only that target-independent Raw revision. | Preserve this accepted authority unchanged. B1 may preserve genuinely target-independent typed source facts assigned their own Raw owners, but it cannot receive, inspect, derive or preserve target/layout context as semantic module state. |
-| Conflicting shared framework owner | `src/backend/bir/passes/README.md`, **Allowed dependency direction**, says: “Target-independent BIR semantics may include an already-resolved module data layout where the core schema requires it.” This grants canonical passes semantic module-layout input that accepted A2 explicitly excludes and makes the B1 input boundary ambiguous. | In a separately authorized shared-doc packet, replace this allowance with the accepted distinction: source-semantic typed sizes/alignments/addresses already owned by Raw rows may be preserved, but `target_profile`, rendered `data_layout`, target triple, pointer-width/address-space layout selection and all C1/C2 context are absent from Raw/Canonical; C1/C2 alone select/derive target layout. Do not edit root/core/verifier/closed Child A unless a fresh audit identifies a separate conflict. |
+| Conflicting shared framework owner | `src/backend/bir/passes/README.md`, **Allowed dependency direction**, says: “Target-independent BIR semantics may include an already-resolved module data layout where the core schema requires it.” This grants canonical passes semantic module-layout input that accepted A2 explicitly excludes and makes the B1 input boundary ambiguous. | The corrected Step 1 authorizes only this one-file shared-doc repair: replace the contradictory allowance with the accepted distinction that source-semantic typed sizes/alignments/address spaces already owned by Raw rows may be preserved, but `target_profile`, rendered `data_layout`, target triple, pointer-width/address-space layout selection and all C1/C2 context are absent from Raw/Canonical; C1 selects `TargetProfile` and C2 derives layout. Root/core/verifier/closed Child A remain read-only. |
 
 This is a documentation authority conflict, not permission to add target state
 to B1, weaken A2, change phase order, or edit implementation. After the shared
@@ -34,10 +34,13 @@ framework wording is repaired, rerun the Step-1 baseline and then normalize
 
 ## Suggested Next
 
-- Supervisor should coordinate a narrowly authorized shared-document repair
-  for the exact `passes/README.md` clause above. Then redispatch Step 1 to
-  converge `passes/legalize/README.md` and prove its P01 form dispositions,
-  transaction/invalidation and exact B2 handoff.
+- Execute the corrected Step 1 in this order:
+  1. edit only `src/backend/bir/passes/README.md` to make the exact
+     target-context/source-semantic distinction above;
+  2. re-audit the accepted Raw boundary while keeping root/core/verifier/closed
+     Child A read-only;
+  3. converge `src/backend/bir/passes/legalize/README.md` and prove P01 form
+     dispositions, transaction/invalidation and exact B2 handoff.
 
 ## Watchouts
 
@@ -45,8 +48,9 @@ framework wording is repaired, rerun the Step-1 baseline and then normalize
   ABI/preparation fact into Raw, Canonical or P01.
 - P01's later matrix must distinguish source-semantic object/type attributes
   from C1/C2 target-layout decisions and must label implementation absent.
-- Keep B2, B8, analysis, root, closed Child A, plan and source idea read-only
-  until the supervisor explicitly coordinates any shared-owner repair.
+- The early `passes/README.md` edit is only the narrow adjacency repair needed
+  to unblock B1. Its full B8 convergence remains Step 8. Keep B2, analyses,
+  pipeline, root, core, verifier and closed Child A read-only in Step 1.
 
 ## Proof
 

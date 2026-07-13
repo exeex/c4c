@@ -3,7 +3,7 @@
 Status: Open
 Type: Documentation-only architecture convergence
 Phase Owner: B — target-independent canonicalization
-Predecessor: accepted `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
+Predecessor: accepted `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md`
 Successor: `ideas/open/737_bir_phase_c_preparation_document_convergence.md`
 
 ## Goal
