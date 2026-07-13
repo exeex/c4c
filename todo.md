@@ -1,57 +1,36 @@
 # Current Packet
 
-Status: Complete
+Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 14
-Current Step Title: Record architecture acceptance
+Current Step ID: 1.1
+Current Step Title: Establish executable pipeline identity and transaction foundations
 
 ## Just Finished
 
-- Completed Plan Step 14 by adding exactly one root
-  `Architecture-Acceptance-Checkpoint:` marker for independently reviewed
-  document checkpoint `8a7404a265ab24e230dcf4d001d6d1033e8d9736` and
-  `review/731_final_projection_architecture_review.md`, which reported zero
-  blockers.
-- The marker accepts the documentation architecture only. It explicitly does
-  not claim implementation exists and does not authorize implementation.
-- All todo items are complete and this docs-only runbook is exhausted. Source
-  idea `731_inline_asm_transport_and_regalloc_contract.md` remains open and is
-  not complete; implementation remains gated pending a separate plan-owner
-  implementation runbook.
+- The docs-only architecture runbook completed at commit
+  `edab15ee77b8a0695e43b890c3e4057b1a739f38`; its accepted checkpoint remains
+  the normative implementation contract.
+- Lifecycle replaced that exhausted runbook with a separately scoped idea-731
+  implementation runbook. No implementation or architecture document changed.
 
 ## Suggested Next
 
-- Return lifecycle control to the plan owner to decide whether to deactivate,
-  retire, or replace this exhausted documentation runbook while preserving the
-  open source idea. Any implementation work requires a separate activated
-  runbook and is not authorized by this acceptance checkpoint.
+- Execute Plan Step 1.1 as bounded supervisor-delegated packets, beginning with
+  the exact pipeline stage/revision/product identity and private transaction
+  foundations plus their build integration and focused tests.
 
 ## Watchouts
 
-- The accepted architecture is exactly the independently reviewed document
-  checkpoint. Any substantive architecture change requires renewed proof and
-  review; the marker cannot be carried forward as implementation evidence.
-- Preserve the distinction between runbook exhaustion and source-idea
-  completion. Idea 731 remains in `ideas/open/` until a future implementation
-  lifecycle establishes its own completion evidence.
+- The accepted architecture is fixed input. Stop and request architecture
+  review if code cannot satisfy it; do not change ownership or weaken gates in
+  an implementation packet.
+- Preserve the existing structured inline-asm carrier, target-independent
+  Raw/Canonical storage, strict F1 boundary, and anti-overfit rules.
+- Idea 731 remains open. This runbook authorizes only its ordered implementation
+  scope and does not predetermine source-idea closure.
 
 ## Proof
 
-- Passed `git diff --check`.
-- Exact structure/link checker output:
-  `structure PASS: 44 files, 43 root links exactly once, 31 ordered A1-F3 rows,
-  D2 cardinality 1, 45-doc local-link audit`.
-- Acceptance proof output:
-  `acceptance PASS: exactly one root marker; exact reviewed hash/report and
-  documentation-only implementation gate present; subordinate marker count
-  zero`.
-- Focused negative output:
-  `negative PASS: stale IDs/headings/C5 owner, F1/MIR late repair, separate D5
-  projection, implementation authorization/capability claim, overfit,
-  expectation, and test changes absent`.
-- After this update, `git status --short` contains only
-  `src/backend/bir/README.md` and `todo.md`, plus the four pre-existing untracked
-  review reports.
-- Docs-only packet: no build/test subset applies and no regression log was
-  created or modified.
+- Lifecycle transition only. The first executor packet must record fresh build
+  and supervisor-selected narrow proof.
