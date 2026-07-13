@@ -1,14 +1,103 @@
 # LIR Structured Identity Authority Matrix
 
-Checked against `src/codegen/lir/ir.hpp` at HEAD `cbfb6095f`. This is an
-inventory of the identity-authority seams in the current `LirInst` and
-`LirTerminator` variants. It is evidence for plan Step 2 only: it does not
-propose schema, producer, verifier, or consumer changes.
+Final plan-Step-6 audit checked against `src/codegen/lir/ir.hpp` at HEAD
+`e7a24c93d`. The current inventory remains exactly 38 `LirInst` alternatives
+and 6 `LirTerminator` alternatives. The final tables below are authoritative
+for current implementation status. The detailed Step 2 tables later in this
+file are retained as an explicitly historical pre-implementation baseline.
 
-## Classification and evidence keys
+## Final owned authority audit
 
-Authority classes in the tables are literal descriptions of the current
-carrier:
+`LirOperand` now has one closed authority variant: `monostate`, `LirValueId`,
+`LinkNameId`, or `LirIntegerImmediate`. Its text and kind remain presentation
+and role metadata. `LirGepIndex` is a typed-or-raw carrier, and `LirRet` keeps
+the compatibility field spellings `value_str` and `type_str` while their actual
+types are `optional<LirOperand>` and `LirTypeRef`; there are no parallel raw
+semantic mirrors.
+
+| Owned row | Exact current authority | Actual producer seam | Reachable verifier obligation | Focused proof | Display status | Exact idea-734 receipt row now unblocked |
+|---|---|---|---|---|---|---|
+| CC-STORE-1: `LirStoreOp.val`, `ptr`, `type_str` | `val = LirIntegerImmediate`; `ptr = LinkNameId`; `type_str = LirTypeRef` | `emit_rval_operand` creates the native literal; `emit_lval_operand` captures the selected `GlobalVar`; `emit_set_assign_value` preserves native authority only across representation-preserving coercion | `verify_global_store_authority` requires native integer payload/range and resolves exactly one module-global owner; generic operand-kind parity also applies | `frontend_lir_call_type_ref` covers ordinary/neighboring stores, misleading display, coercion, and malformed alternatives; focused CLI case is `lir_identity_global_store.c` | presentation-only; the verifier never parses `7` or `@name` | direct selected-global scalar store with native integer value; new-BIR still needs its typed `Store` payload, operand/global mapping, builder, verifier, and importer dispatch |
+| CC-LOAD-1: `LirLoadOp.result`, `ptr`, `type_str` | `result = LirValueId`; `ptr = LinkNameId`; `type_str = LirTypeRef` | the global `DeclRef` branch of `emit_rval_operand` selects the global, calls `fresh_value(ctx)`, builds `LirLoadOp`, and returns the same result operand | `verify_global_load_authority` requires direct-global result authority and unique global ownership; `verify_function_value_ownership` rejects invalid/duplicate result IDs | `frontend_lir_call_type_ref` covers ordinary/neighboring loads, misleading display, and malformed ownership; focused CLI case is `global_load.c` | presentation-only; neither `%tN` nor `@name` selects identity | direct selected-global scalar load with one authoritative result; new-BIR still needs typed `Load`, source-ID-to-BIR-value registration, global mapping, builder/verifier, and dispatch |
+| CC-GEP-1: `LirGepOp.result`, `ptr`, `indices`, `element_type`, `inbounds` | result `LirValueId`; base `LinkNameId`; every focused index is `LirTypeRef` plus integer immediate (or current-function SSA in admitted authoritative tests) | the global-array `DeclRef` branch calls `fresh_value`, retains the selected global ID, and constructs two typed native i64-zero indices | `verify_authoritative_gep` requires the complete all-typed shape, unique global owner, integer index types, immediate range or current-function SSA, and owned result | `frontend_lir_call_type_ref` covers ordinary neighboring arrays, SSA index, misleading display, and malformed shapes; backend interface covers authority-first adaptation; focused CLI case is `lir_identity_global_array_address.c` | presentation-only for authoritative form; raw `LirGepIndex` is a separate compatibility form | selected-global array-decay GEP with an all-typed ordered path; new-BIR still needs typed `GetElementPtr`, result/base/index mapping, builder/verifier, and dispatch |
+| CC-RET-1: `LirRet.value_str`, `type_str` | scalar integer return is optional `LirOperand` carrying `LirIntegerImmediate` or current-function `LirValueId`; type is `LirTypeRef`; void has no value | `stmt.cpp` calls `emit_rval_operand`, preserves native authority only on the no-instruction same-representation path, emits structured synthesized zero, and emits valueless void after any void-expression side effect | `verify_terminator` enforces type parity, void/value shape, integer range, and allowed alternatives; `verify_function_value_ownership` resolves SSA returns in the owning function | `frontend_lir_call_type_ref` covers literal/load/synthesized/void/coercion/misleading/malformed returns; backend interface proves the unchanged new-BIR rejection; focused CLI case is `aarch64_return_zero_smoke.c` | presentation-only for authoritative scalar form; unowned raw non-void compatibility remains accepted | scalar integer `ReturnTerm` value receipt (immediate materialization or source SSA lookup); new-BIR already has optional `ReturnTerm.value` but still needs wiring, function-result parity, value materialization/lookup, verifier coverage, and transactional tests |
+
+All four authoritative producer shapes use native facts before rendering. No
+owned verifier, printer, or authority-first adapter reconstructs identity from
+display. LLVM output is only a capability observation; the focused C++ tests
+inspect native payloads and IDs directly.
+
+The receiver-owned prerequisites and exact resume sequence are recorded in
+[`handoff_to_734.md`](handoff_to_734.md).
+
+## Exhaustive current variant comparison
+
+Every alternative below is named individually; there is no catch-all row.
+“Raw compatibility” means the generic `LirOperand` carrier exists but the
+ordinary producer for that row still supplies `monostate`, or the row retains
+an explicit raw string carrier. Those rows are outside idea 741 and are not
+silently claimed as idea-734-ready.
+
+| Current alternative | Current identity disposition |
+|---|---|
+| `LirConstInt` | Native `LirValueId`, `TypeSpec`, and integer payload; producerless legacy contrast, with bounded new-BIR constant receipt already present |
+| `LirConstFloat` | Native `LirValueId`, `TypeSpec`, and floating payload; producerless legacy contrast, with bounded receipt already present |
+| `LirLoad` | Native legacy result/pointer IDs; producerless and outside 741 |
+| `LirStore` | Native legacy pointer/value IDs; producerless and outside 741 |
+| `LirBinary` | Native legacy value IDs plus typed fields; producerless and outside 741 |
+| `LirCast` | Native legacy value IDs plus typed fields; producerless and outside 741 |
+| `LirCmp` | Native legacy value IDs plus predicate; producerless and outside 741 |
+| `LirCall` | Native legacy value IDs, but raw direct name remains; producerless and outside 741 |
+| `LirGep` | Native legacy result/base/index IDs; producerless and outside 741 |
+| `LirSelect` | Native legacy value IDs; producerless and outside 741 |
+| `LirIntrinsic` | Native legacy value IDs, but raw selector name remains; producerless and outside 741 |
+| `LirInlineAsm` | Native legacy value IDs with opaque text payload; producerless and outside 741 |
+| `LirMemcpyOp` | Raw-compatibility operands; semantic flags are native; outside 741 |
+| `LirVaStartOp` | Raw-compatibility pointer operand; outside 741 |
+| `LirVaEndOp` | Raw-compatibility pointer operand; outside 741 |
+| `LirVaCopyOp` | Raw-compatibility pointer operands; outside 741 |
+| `LirStackSaveOp` | Authority-capable result carrier, but ordinary producer remains raw compatibility; outside 741 |
+| `LirStackRestoreOp` | Raw-compatibility pointer operand; outside 741 |
+| `LirAbsOp` | Raw-compatibility value operands with structured type; outside 741 |
+| `LirIndirectBrOp` | Raw-compatibility address and raw target labels; outside 741 |
+| `LirExtractValueOp` | Raw-compatibility value operands with structured type/index; outside 741 |
+| `LirInsertValueOp` | Raw-compatibility value operands with structured types/index; outside 741 |
+| `LirLoadOp` | Hybrid: CC-LOAD-1 direct-global scalar route is authoritative; other pointer/result producer shapes remain raw compatibility |
+| `LirStoreOp` | Hybrid: CC-STORE-1 direct-global integer route is authoritative; other pointer/value producer shapes remain raw compatibility |
+| `LirMemsetOp` | Raw-compatibility operands with native volatility; outside 741 |
+| `LirCastOp` | Raw-compatibility operands with typed cast/type facts; outside 741 |
+| `LirGepOp` | Hybrid: CC-GEP-1 selected-global array decay is complete authoritative form; other GEP producers remain raw compatibility |
+| `LirCallOp` | Direct-call `LinkNameId` and typed signature facts exist, but ordinary result/indirect/argument value identities remain raw compatibility; outside 741 |
+| `LirBinOp` | Raw-compatibility operands with typed opcode/type; outside 741 |
+| `LirCmpOp` | Raw-compatibility operands with typed predicate/type; outside 741 |
+| `LirPhiOp` | Raw-compatibility result and raw incoming value/label pairs; outside 741 |
+| `LirSelectOp` | Raw-compatibility operands with typed result type; outside 741 |
+| `LirInsertElementOp` | Raw-compatibility operands with typed vector/element types; outside 741 |
+| `LirExtractElementOp` | Raw-compatibility operands with typed vector/index types; outside 741 |
+| `LirShuffleVectorOp` | Raw-compatibility operands with typed vector/mask types; outside 741 |
+| `LirVaArgOp` | Raw-compatibility result/pointer with typed result type; outside 741 |
+| `LirAllocaOp` | Raw-compatibility result/count with typed element/alignment facts; outside 741 |
+| `LirInlineAsmOp` | Structured binding/type/role containers and bounded new-BIR receipt exist, but ordinary binding value identities remain raw compatibility; outside 741 |
+| `LirBr` | Raw target label; existing bounded importer resolves it to `BlockId`; outside 741 |
+| `LirCondBr` | Raw condition and target labels; outside 741 |
+| `LirRet` | Hybrid: CC-RET-1 authoritative scalar integer or valueless void; other non-void forms remain raw compatibility |
+| `LirSwitch` | Raw selector/type/labels with native case values; outside 741 |
+| `LirIndirectBr` | Native `LirValueId` address and ordered `LirBlockId` targets; producerless legacy contrast, outside 741 |
+| `LirUnreachable` | Closed fieldless variant; bounded new-BIR receipt already present |
+
+Mechanical comparison of these names with the two variants in `ir.hpp`
+produces 38/38 instruction matches and 6/6 terminator matches. The lower
+tables preserve the more detailed field-level Step 2 evidence but do not
+override this final status.
+
+## Historical Step 2 classification and evidence keys
+
+The remainder of this document records the pre-implementation snapshot checked
+at HEAD `cbfb6095f`. Present-tense wording inside those historical tables is a
+property of that snapshot, not current implementation status.
+
+Authority classes in the historical tables are literal descriptions of the
+Step 2 snapshot carrier:
 
 - `LirValueId`, `LirBlockId`, and `LinkNameId` are stable identities.
 - `native/typed immediate` includes C++ numeric/enumerated fields, `TypeSpec`,

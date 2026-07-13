@@ -3,54 +3,54 @@
 Status: Active
 Source Idea Path: ideas/open/741_lir_structured_operand_and_terminator_identity_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Implement the narrowest generic carrier
+Current Step ID: 6
+Current Step Title: Prove and hand back to idea 734
 
 ## Just Finished
 
-- Plan Step 5 packet 5 implements CC-RET-1 for scalar integer returns.
-- `LirRet` now owns one optional `LirOperand` and one `LirTypeRef`; the legacy
-  field spellings remain only as aggregate-initializer compatibility and no
-  parallel raw semantic mirror exists.
-- Ordinary integer literals, synthesized integer zero, and neighboring scalar
-  global loads populate native immediate or function-local SSA authority.
-  Representation-changing coercions remain raw compatibility; void expression
-  returns emit their side effect and a valueless structured-void terminator.
-- The verifier enforces void/value shape, type parity, supported authority,
-  immediate range, and current-function SSA ownership. The printer preserves
-  presentation after structured verification.
+- Plan Step 6 completes the final structured-identity audit and exact handoff
+  to open idea 734.
+- The matrix mechanically matches all 38 current `LirInst` alternatives and
+  all 6 `LirTerminator` alternatives with no catch-all or omitted variant. Its
+  current-status tables distinguish the four authoritative producer shapes
+  from every raw/monostate compatibility row still outside idea 741.
+- CC-STORE-1, CC-LOAD-1, CC-GEP-1, and CC-RET-1 each record their exact native
+  authority, producer seam, reachable verifier obligation, focused proof, and
+  presentation-only display status.
+- `docs/lir_structured_identity/handoff_to_734.md` names the exact store, load,
+  GEP, and scalar-return receipt subrows now unblocked and the remaining
+  receiver-owned containers, mapping, verifier, importer, and transactionality
+  work. It does not claim importer implementation or idea-734 completion.
 
 ## Suggested Next
 
-- Execute Step 6's final authority-matrix audit and handoff to idea 734. Do not
-  add new-BIR receipt while proving and documenting the resumable boundary.
+- Ask plan-owner for the lifecycle closure/deactivation decision for exhausted
+  idea 741 and, if accepted, reactivate open idea 734 at its blocked Step 4
+  function-body receipt boundary.
 
 ## Watchouts
 
-- Raw `LirRet` construction remains compatible for unowned producer families,
-  but authoritative scalar returns accept only integer immediate or
-  current-function `LirValueId` authority. `LinkNameId`, malformed parity,
-  out-of-range immediates, unknown IDs, and cross-function IDs reject.
-- Equal LLVM value types are the no-instruction early-return path in `coerce`;
-  the producer preserves authority only there. A narrowing-cast test proves
-  emitted coercions do not inherit the pre-coercion authority.
-- New-BIR still receives only void returns. Its structured boundary rejects any
-  value or non-void type as `InvalidVoidReturn` before display interpretation;
-  scalar return receipt remains explicitly out of scope.
+- Runbook exhaustion does not itself close idea 741; lifecycle disposition
+  remains plan-owner/supervisor work.
+- “Unblocked” is deliberately subrow-specific. Other modern instruction and
+  terminator producers still carry raw/monostate compatibility and must not be
+  received by parsing display; they need a separate producer-identity
+  initiative if idea 734 reaches them.
+- Active new-BIR behavior is unchanged: store/load/GEP remain
+  `UnsupportedOrdinaryInstruction`, and scalar return remains
+  `InvalidVoidReturn`. Idea 734 owns all receiving implementation.
 
 ## Proof
 
 - `cmake --build --preset default` passed.
-- `ctest --test-dir build -R '^frontend_lir_call_type_ref$'
-  --output-on-failure` passed 1/1 with literal/load/synthesized/void producer
-  inspection, misleading displays, coercion coverage, raw compatibility, and
-  the complete malformed return matrix.
-- `backend_lir_to_bir_interface` passed 1/1 and proves an authoritative scalar
-  return remains `InvalidVoidReturn` despite misleading presentation.
-- The CLI has no `--dump-lir` option; the frontend test directly inspects LIR
-  native facts. Focused `--codegen llvm` retained `ret i32 7`. All four focused
-  `--dump-bir` probes retained their Step 3 boundaries: store/load/GEP are
-  `UnsupportedOrdinaryInstruction`; scalar return is `InvalidVoidReturn`.
+- `ctest --test-dir build -R
+  '^(frontend_lir_call_type_ref|backend_lir_to_bir_interface)$'
+  --output-on-failure` passed 2/2.
+- The four Step 3 focused `--dump-bir` probes retained exact boundaries:
+  store/load/GEP are `UnsupportedOrdinaryInstruction`; scalar return is
+  `InvalidVoidReturn`. Focused `--codegen llvm` retained the store/load/GEP/ret
+  capability observations, while native authority evidence remains the C++
+  structural tests rather than rendered output.
 - Exact full proof `ctest --test-dir build -j --output-on-failure >
   test_after.log` passed 3033/3033, matching `test_before.log`. `git diff
   --check` passed.

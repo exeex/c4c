@@ -1,10 +1,9 @@
 # Focused LIR Carrier Contract
 
-This document completes plan Step 4 for the four focused probes bound in
-`authority_matrix.md`. It selects one generic authority carrier, defines where
-producers must populate it, separates checks reachable in the LIR verifier from
-later importer checks, and orders the narrow implementation packets for Step 5.
-It is a design contract, not an implementation or a claim of BIR support.
+This document records the plan-Step-4 contract for the four focused probes
+bound in `authority_matrix.md` and its landed Step 5 status at HEAD
+`e7a24c93d`. The carrier and four bounded producer/verifier contracts are now
+implemented. This remains explicitly not a claim of new-BIR receipt.
 
 ## Selected carrier
 
@@ -32,11 +31,14 @@ struct LirOperand {
 };
 ```
 
-`str()` and `display` are presentation only. Semantic equality, ownership, and
+`str()` and stored text are presentation only. Semantic equality, ownership, and
 consumer receipt use `authority`. Integer signedness and width are contextual:
 the immediate payload is paired with the owning operation's `LirTypeRef` (or a
 GEP index fact's `LirTypeRef`). A `monostate` preserves a phased migration path
-for rows outside this document, but every focused field below rejects it.
+outside the focused authoritative producer shapes. Direct-global store/load
+and authoritative GEP shapes reject missing authority. `LirRet` deliberately
+retains raw non-void compatibility for unowned producers while ordinary scalar
+integer producers populate authority.
 
 The authoritative factories set the stored `LirOperandKind` from their role:
 `ssa` sets `SsaValue`, `global` sets `Global`, and `integer` sets `Immediate`.
@@ -44,48 +46,45 @@ They do not call `classify(display)`. Verification compares the authority
 alternative with that stored kind and the operation field role; it never
 classifies or parses display. Legacy compatibility construction may still
 classify its presentation string while carrying `monostate`, but that path is
-not accepted in a migrated focused field.
+not accepted in direct-global store/load or authoritative GEP shapes. Raw
+return compatibility remains outside the authoritative scalar return shape.
 
-`operands.hpp` currently appears in `ir.hpp` before the existing `LirValueId`
-definition, while `LinkNameId` already comes from the shared text-ID table. The
-foundation packet must move—not copy—the single `LirValueId` definition into a
-small shared LIR identity/model header (for example `identity.hpp`) included by
-both `operands.hpp` and `ir.hpp`. `ir.hpp` continues to re-export that same
-type. A nested `uint32_t`, alias mirror, forward-incompatible variant payload,
-or second `LirValueId` definition is forbidden.
+The foundation packet moved—not copied—the single `LirValueId` definition into
+`identity.hpp`, included by both `operands.hpp` and `ir.hpp`. `ir.hpp`
+continues to re-export that same type. No nested integer, alias mirror, or
+second `LirValueId` definition was introduced.
 
 The selected design deliberately has no `result_id`, `ptr_link_name_id`, or
 `immediate_value` mirror beside an operand. Such mirrors would create a second
 source of truth. Compatibility text may remain temporarily only when derived
 from the structured fact and ignored by semantic validation and import.
 
-GEP indices need one additional generic typed fact because the current
-`vector<string>` combines type and value:
+GEP indices use one additional generic typed-or-raw fact because the former
+`vector<string>` combined type and value:
 
 ```cpp
-struct LirGepIndex {
-  LirTypeRef type;
-  LirOperand value;
+class LirGepIndex {
+  // typed(type, value) is authoritative; raw(presentation) is compatibility.
 };
 ```
 
-The focused GEP owns `vector<LirGepIndex> indices`; the printer renders each
-pair. The focused return owns `optional<LirOperand> value` plus
-`LirTypeRef type`; it does not retain semantic `value_str`/`type_str` mirrors.
+The focused GEP owns `vector<LirGepIndex> indices`; the printer renders typed
+facts directly. The focused return fields retain aggregate-initializer names
+`value_str` and `type_str`, but their actual types are
+`optional<LirOperand>` and `LirTypeRef`. They are the only semantic fields, not
+raw mirrors.
 
 ## Producer and allocation evidence
 
-- `StmtEmitter::fresh_tmp` currently increments `FnCtx::tmp_idx` and returns a
+- `StmtEmitter::fresh_tmp` increments `FnCtx::tmp_idx` and returns a
   spelling such as `%t0`. Labels share that counter. It is therefore a display
   allocator, not stable value identity.
-- `LirFunction::alloc_value()` is the existing value-ID convention, but HIR
-  lowering currently constructs its `LirFunction` only after statement/block
-  emission. The foundation packet must construct the eventual function shell
-  before emission and give `FnCtx` access to that exact allocator. Emitted
-  blocks are then moved into the same function. It must not introduce a
-  parallel ID counter.
-- Add one producer helper with the shape `LirOperand fresh_value(FnCtx&)`. It
-  calls the exact current function shell's `alloc_value()` for authority and,
+- `LirFunction::alloc_value()` is the existing value-ID convention. HIR
+  lowering constructs the eventual function shell before statement/block
+  emission and gives `FnCtx` access to that exact allocator; no parallel ID
+  counter exists.
+- `LirOperand fresh_value(FnCtx&)` calls the exact current function shell's
+  `alloc_value()` for authority and,
   separately, `fresh_tmp(ctx)` for display before returning `ssa(display, id)`.
   It never derives an ID from `tmp_idx`. `fresh_lbl` and labels continue to use
   the presentation counter only.
@@ -93,26 +92,25 @@ pair. The focused return owns `optional<LirOperand> value` plus
   useful precedent, but CFG fields are outside these focused contracts.
 - HIR globals already carry `LinkNameId`; `lower_globals` preserves it into
   `LirGlobal`, and the LIR module preserves the link-name table.
-  `select_global_object(DeclRef)` resolves the exact global before current
-  lvalue/rvalue code reduces it to rendered `@name` text. The producer must
-  create `LirOperand::global(display, gv.link_name_id)` at that selection seam.
-- Assignment lowering receives the original HIR `IntLiteral`, then currently
-  reduces it to `std::to_string(value)` before constructing `LirStoreOp`.
-  Native immediate authority must be created while the HIR literal is still
-  available; parsing the returned spelling is forbidden.
-- Global load and array-decay lowering select the exact `GlobalVar` before
-  constructing `LirLoadOp` or `LirGepOp`. They must allocate the result ID from
-  the current `LirFunction`, retain the selected global's `LinkNameId`, and
-  construct each literal GEP index from its native value.
-- Return lowering still has the function return `TypeSpec`, expression
-  `TypeSpec`, and original HIR expression in `stmt.cpp`. Authority is lost when
-  it calls `emit_term_ret` with rendered value/type strings and `core.cpp`
-  builds `LirRet`. The typed return and operand must be built before that call.
+  `select_global_object(DeclRef)` resolves the exact global, and the focused
+  producer creates `LirOperand::global(display, gv.link_name_id)` at that seam.
+- Assignment lowering creates native immediate authority from the original HIR
+  `IntLiteral` while it is still available. Representation-preserving coercion
+  rebuilds authority from that native payload; rendered spelling is never
+  parsed.
+- Global load and array-decay lowering select the exact `GlobalVar`, allocate
+  the result from the current `LirFunction`, retain its `LinkNameId`, and build
+  literal GEP indices from native values.
+- Return lowering uses the function/expression `TypeSpec` plus the
+  `emit_rval_operand` carrier before `emit_term_ret`. Same-representation
+  scalar integers preserve immediate/SSA authority; emitted coercions remain
+  raw compatibility, synthesized integer zero is native, and void returns are
+  valueless.
 
-### Source-time authoritative transport
+### Source-time authoritative transport (landed)
 
-The carrier must survive the current intermediate APIs; attaching an ID only
-at final operation construction would be too late. The foundation introduces
+The carrier survives the intermediate APIs; attaching an ID only at final
+operation construction would have been too late. The foundation introduced
 narrow operand-returning transport beside compatibility spelling access:
 
 - `emit_lval_operand(...) -> LirOperand` carries a selected global from
@@ -221,17 +219,19 @@ Each focused authority-matrix row binds to exactly one row here.
 | Contract part | Requirement |
 |---|---|
 | Focused probe | `tests/backend/case/aarch64_return_zero_smoke.c` |
-| Exact fields | Replacement `LirRet.value` and `LirRet.type` for current `value_str` and `type_str` |
-| Carrier | `value = integer("0", 0)` and `type = LirTypeRef(i32)` |
-| Producer rule | Build the type from the function/expression structured type and the value from the original HIR expression before `emit_term_ret` loses both to strings |
+| Exact fields | `LirRet.value_str` (`optional<LirOperand>`) and `LirRet.type_str` (`LirTypeRef`); spellings are compatibility names, not raw mirrors |
+| Carrier | `value_str = integer("0", 0)` and `type_str = LirTypeRef(i32)` |
+| Producer rule | `emit_rval_operand` retains native immediate/SSA facts; `stmt.cpp` passes a structured operand and type through the structured `emit_term_ret` API, preserving authority only across its no-instruction representation-preserving coercion path |
 | Reachable LIR verification | Enforce void/value shape, valid type authority, immediate/type compatibility, and current-function ownership for SSA-valued returns |
 | Positive proof shape | The first body fact remains `ret i32 0`, with no ordinary instruction required |
 | Nearby positive coverage | A void return and a non-void return of a defined SSA result |
 | Negative coverage | Non-void return without value, void return with value, invalid type, symbol-valued return, unknown/cross-function value ID, and incompatible immediate/type |
 
-The focused store/load/GEP/return fields require authority as soon as their
-packet lands. Other authority-matrix rows may retain `monostate` temporarily;
-that is phased migration, not permission to create per-operation shadow IDs.
+The ordinary focused store/load/GEP/return producer shapes now populate
+authority, and authoritative shapes activate their complete verifier contract.
+Other authority-matrix rows may retain `monostate`; that is phased migration,
+not permission to create per-operation shadow IDs. Raw `LirRet` compatibility
+is similarly outside the authoritative scalar producer shape.
 
 ## Rejection matrix
 
@@ -240,7 +240,7 @@ that is phased migration, not permission to create per-operation shadow IDs.
 | Invalid `LirValueId` on a definition or use | Reject | ID validity is native |
 | Duplicate definition ID in one function | Reject during definition collection | Compare IDs, not `%tN` spellings |
 | Unknown or foreign-function value use | Reject during per-function use resolution | Resolve only in the current function's registry |
-| Focused operand has `monostate` | Reject | Inspect the closed authority variant |
+| Direct-global store/load or authoritative GEP operand has `monostate` | Reject | Inspect the closed authority variant; raw return and other unowned producers remain compatibility |
 | Authority conflicts with operand kind/role | Reject: result/use requires value ID, global pointer requires `LinkNameId`, literal requires integer immediate | Match variant alternative to the field role and `LirOperandKind` |
 | Integer immediate conflicts with contextual type | Reject non-integer/void type and values outside the representable contract chosen by implementation | Inspect native payload and `LirTypeRef` |
 | Invalid or unresolved `LinkNameId` | Reject | Resolve the native ID in the module table |
@@ -277,7 +277,7 @@ or duplicate producer ownership checks as a substitute for the LIR verifier.
 Passing the LIR verifier therefore does not claim that a focused operation is
 supported by the importer.
 
-## Step 5 packet order
+## Completed Step 5 packet order
 
 1. **Generic foundation.** Relocate the one existing `LirValueId` definition
    into the shared LIR identity/model header; add the single operand authority
@@ -298,7 +298,7 @@ supported by the importer.
    global base, and construct native typed indices. Progress beyond the focused
    GEP exposes the next operation; it is not whole-test capability.
 5. **CC-RET-1.** Replace return text authority with the typed optional operand
-   and `LirTypeRef`, populating it before the current string-loss seam. Prove
+   and `LirTypeRef`, populating it before the former string-loss seam. Prove
    immediate, SSA-valued, void, and malformed return shapes.
 
 Packets may be combined only when they remain one coherent, independently
