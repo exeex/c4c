@@ -407,10 +407,20 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         global.linkage_vis.empty() && global.qualifier == "constant " &&
         !global.init_text.empty();
+    const bool coherent_internal_ordinary_definition =
+        !global.is_extern_decl && global.is_internal && !global.is_const &&
+        global.linkage_vis == "internal " && global.qualifier == "global " &&
+        !global.init_text.empty();
+    const bool coherent_internal_constant_definition =
+        !global.is_extern_decl && global.is_internal && global.is_const &&
+        global.linkage_vis == "internal " &&
+        global.qualifier == "constant " && !global.init_text.empty();
     if (!coherent_external && !coherent_ordinary_definition &&
-        !coherent_constant_definition)
+        !coherent_constant_definition &&
+        !coherent_internal_ordinary_definition &&
+        !coherent_internal_constant_definition)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                        "only coherent external declarations and initialized global or constant definitions are admitted");
+                        "only coherent external declarations and initialized external or internal global/constant definitions are admitted");
     if (global.align_bytes < 0 ||
         (global.align_bytes != 0 &&
          (global.align_bytes & (global.align_bytes - 1)) != 0))

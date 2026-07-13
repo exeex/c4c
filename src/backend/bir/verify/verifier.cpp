@@ -295,7 +295,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
     if (!id.valid() || global.source_name.empty() ||
         !is_well_formed(global.object_type) ||
         global.object_type.kind == TypeKind::Void || !type_resolves ||
-        !valid_alignment || global.is_internal ||
+        !valid_alignment ||
         (global.is_extern_declaration == global.initializer.has_value()) ||
         named == module.globals_by_name_.end() || named->second != id)
       report(result, VerificationRule::GlobalObject, {}, id,
