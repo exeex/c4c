@@ -299,6 +299,11 @@ inline bool is_well_formed(const Type& type) {
             .has_value();
       }
       if (type.pointer_facts->pointee_complex_facts) return false;
+      if (type.pointer_facts->pointee_kind == TypeKind::VrmRegister)
+        return type.pointer_facts->pointee_bit_width == 1 ||
+               type.pointer_facts->pointee_bit_width == 2 ||
+               type.pointer_facts->pointee_bit_width == 4 ||
+               type.pointer_facts->pointee_bit_width == 8;
       if (type.pointer_facts->pointee_kind != TypeKind::Floating) return false;
       switch (type.pointer_facts->pointee_bit_width) {
         case 16:
@@ -372,6 +377,15 @@ inline bool is_well_formed(const Type& type) {
             complex_spelling(*type.array_facts->element_complex_facts);
         if (!expected) return false;
         element_spelling = *expected;
+      } else if (type.array_facts->element_kind == TypeKind::VrmRegister) {
+        if (type.array_facts->element_complex_facts ||
+            (type.array_facts->element_bit_width != 1 &&
+             type.array_facts->element_bit_width != 2 &&
+             type.array_facts->element_bit_width != 4 &&
+             type.array_facts->element_bit_width != 8))
+          return false;
+        element_spelling =
+            "c4c.vrm" + std::to_string(type.array_facts->element_bit_width);
       } else if (type.array_facts->element_kind == TypeKind::Floating) {
         if (type.array_facts->element_complex_facts) return false;
         switch (type.array_facts->element_bit_width) {

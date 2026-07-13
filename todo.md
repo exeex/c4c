@@ -8,13 +8,12 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid complex-valued direct, deep-pointer,
-  and fixed multidimensional pointer-element globals through an explicit BIR
-  `Complex` storage kind and typed integer/floating component facts.
-- Exact component width, reconstructed storage spelling, pointer depth,
-  dimensions, and object/initializer facts survive Foundation, Raw BIR, and
-  Canonical BIR; complex long/ulong storage remains `i64` on I686 as required
-  by the producer contract.
+- Plan Step 3 now admits producer-valid VRM-register direct, deep-pointer, and
+  fixed multidimensional pointer-element globals through existing typed
+  `VrmRegister` width authority.
+- Exact VRM width, reconstructed `c4c.vrmN` or opaque-pointer spelling, pointer
+  depth, dimensions, and object/initializer facts survive Foundation, Raw BIR,
+  and Canonical BIR.
 
 ## Suggested Next
 
@@ -23,9 +22,10 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Complex component semantics are typed facts, never inferred from LLVM
-  spelling. Vector, function-pointer, pointer-to-array, reference, aggregate,
-  va-list, unexpected-mirror, and malformed component neighbors remain closed.
+- VRM storage semantics come only from `TypeSpec.base == TB_VRM_REGISTER` plus
+  valid width 1/2/4/8; no LLVM spelling is parsed. Residual VRM metadata and
+  vector, function-pointer, pointer-to-array, reference, aggregate, va-list,
+  unexpected-mirror, and malformed-width neighbors remain closed.
 
 ## Proof
 

@@ -158,6 +158,17 @@ std::optional<Type> lower_constant_type(const LirModule& module,
       type.is_fn_ptr)
     return std::nullopt;
 
+  if (type.base != TB_VRM_REGISTER && type.vrm_width != 0)
+    return std::nullopt;
+  if (type.base == TB_VRM_REGISTER) {
+    if (type.vrm_width != 1 && type.vrm_width != 2 &&
+        type.vrm_width != 4 && type.vrm_width != 8)
+      return std::nullopt;
+    return Type{TypeKind::VrmRegister,
+                static_cast<std::uint32_t>(type.vrm_width),
+                "c4c.vrm" + std::to_string(type.vrm_width)};
+  }
+
   std::optional<Type> complex_component;
   switch (type.base) {
     case TB_COMPLEX_FLOAT:
@@ -322,6 +333,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
                                       const LirGlobal& global) {
   constexpr int kArrayDimensionCapacity =
       sizeof(global.type.array_dims) / sizeof(global.type.array_dims[0]);
+  if (global.type.base != TB_VRM_REGISTER && global.type.vrm_width != 0)
+    return std::nullopt;
   if (!global.type.is_vector &&
       (global.type.vector_lanes != 0 || global.type.vector_bytes != 0))
     return std::nullopt;
@@ -386,7 +399,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     const auto element = lower_constant_type(module, element_spec);
     if (!element || (element->kind != TypeKind::Integer &&
                      element->kind != TypeKind::Floating &&
-                     element->kind != TypeKind::Complex))
+                     element->kind != TypeKind::Complex &&
+                     element->kind != TypeKind::VrmRegister))
       return std::nullopt;
 
     std::string expected =
@@ -418,7 +432,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     const auto pointee = lower_constant_type(module, pointee_spec);
     if (!pointee || (pointee->kind != TypeKind::Integer &&
                      pointee->kind != TypeKind::Floating &&
-                     pointee->kind != TypeKind::Complex))
+                     pointee->kind != TypeKind::Complex &&
+                     pointee->kind != TypeKind::VrmRegister))
       return std::nullopt;
 
     if (global.llvm_type_ref) {
@@ -487,7 +502,10 @@ std::optional<Type> lower_global_type(const LirModule& module,
 
   if (authoritative->kind != TypeKind::Integer &&
       authoritative->kind != TypeKind::Floating &&
-      authoritative->kind != TypeKind::Complex)
+      authoritative->kind != TypeKind::Complex &&
+      authoritative->kind != TypeKind::VrmRegister)
+    return std::nullopt;
+  if (authoritative->kind == TypeKind::VrmRegister && global.llvm_type_ref)
     return std::nullopt;
   if (global.llvm_type != authoritative->spelling) return std::nullopt;
   if (global.llvm_type_ref) {

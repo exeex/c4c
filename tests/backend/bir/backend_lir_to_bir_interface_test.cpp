@@ -903,6 +903,50 @@ void test_verifier_rejects_malformed_raw_type() {
                                         std::move(malformed_complex_array)),
          "Raw publication verifier must reject missing complex array element facts");
 
+  bir::Type invalid_vrm_width{bir::TypeKind::VrmRegister, 3, "c4c.vrm3"};
+  expect(malformed_pointer_facts_reject("invalid_vrm_width",
+                                        std::move(invalid_vrm_width)),
+         "Raw publication verifier must reject unsupported direct VRM widths");
+
+  bir::Type invalid_vrm_spelling{bir::TypeKind::VrmRegister, 4, "c4c.vrm2"};
+  expect(malformed_pointer_facts_reject("invalid_vrm_spelling",
+                                        std::move(invalid_vrm_spelling)),
+         "Raw publication verifier must reject direct VRM spelling conflicts");
+
+  bir::Type invalid_vrm_pointer_width{bir::TypeKind::Pointer};
+  invalid_vrm_pointer_width.pointer_facts =
+      bir::PointerTypeFacts{bir::TypeKind::VrmRegister, 16, 2};
+  expect(malformed_pointer_facts_reject(
+             "invalid_vrm_pointer_width",
+             std::move(invalid_vrm_pointer_width)),
+         "Raw publication verifier must reject unsupported VRM pointer widths");
+
+  bir::Type nested_vrm_pointer_facts{bir::TypeKind::Pointer};
+  nested_vrm_pointer_facts.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::VrmRegister, 4, 2,
+      bir::ComplexTypeFacts{bir::TypeKind::Integer, 4}};
+  expect(malformed_pointer_facts_reject(
+             "nested_vrm_pointer_facts",
+             std::move(nested_vrm_pointer_facts)),
+         "Raw publication verifier must reject complex facts nested in VRM pointers");
+
+  bir::Type invalid_vrm_array_width{bir::TypeKind::Array, 0,
+                                    "[2 x c4c.vrm16]"};
+  invalid_vrm_array_width.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::VrmRegister, 16, 0, {2}};
+  expect(malformed_array_facts_reject("invalid_vrm_array_width",
+                                      std::move(invalid_vrm_array_width)),
+         "Raw publication verifier must reject unsupported VRM array widths");
+
+  bir::Type nested_vrm_array_facts{bir::TypeKind::Array, 0,
+                                   "[2 x c4c.vrm4]"};
+  nested_vrm_array_facts.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::VrmRegister, 4, 0, {2},
+      bir::ComplexTypeFacts{bir::TypeKind::Integer, 4}};
+  expect(malformed_array_facts_reject("nested_vrm_array_facts",
+                                      std::move(nested_vrm_array_facts)),
+         "Raw publication verifier must reject complex facts nested in VRM arrays");
+
   const auto malformed_vector_facts_reject = [](std::string name,
                                                  bir::Type type) {
     bir::ModuleBuilder malformed_builder;
@@ -2247,6 +2291,221 @@ void test_enum_storage_global_receipt_and_rejections() {
         m.globals[0].llvm_type = "<4 x i32>";
       },
       "enum vectors remain outside the direct enum-storage packet");
+}
+
+void test_vrm_register_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto definition_link = module.link_names.intern("vrm4_definition");
+    const auto init_link = module.link_names.intern("vrm_init_function");
+
+    lir::LirGlobal definition;
+    definition.name = "vrm4_definition";
+    definition.link_name_id = definition_link;
+    definition.type = scalar_type(c4c::TB_VRM_REGISTER);
+    definition.type.vrm_width = 4;
+    definition.linkage_vis = "protected ";
+    definition.qualifier = "constant ";
+    definition.llvm_type = "c4c.vrm4";
+    definition.init_text = "c4c.vrm4 zeroinitializer";
+    definition.initializer_function_link_name_ids = {init_link};
+    definition.align_bytes = 4;
+    definition.is_const = true;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "vrm8_extern";
+    declaration.type = scalar_type(c4c::TB_VRM_REGISTER);
+    declaration.type.vrm_width = 8;
+    declaration.linkage_vis = "external hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = "c4c.vrm8";
+    declaration.align_bytes = 8;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+
+    lir::LirGlobal pointer;
+    pointer.name = "deep_vrm_pointer";
+    pointer.type = scalar_type(c4c::TB_VRM_REGISTER);
+    pointer.type.vrm_width = 1;
+    pointer.type.ptr_level = 3;
+    pointer.linkage_vis = "extern_weak protected ";
+    pointer.qualifier = "global ";
+    pointer.llvm_type = "ptr";
+    pointer.llvm_type_ref = lir::LirTypeRef("ptr");
+    pointer.align_bytes = 8;
+    pointer.is_extern_decl = true;
+    module.globals.push_back(std::move(pointer));
+
+    lir::LirGlobal array;
+    array.name = "vrm_pointer_array";
+    array.type = scalar_type(c4c::TB_VRM_REGISTER);
+    array.type.vrm_width = 2;
+    array.type.ptr_level = 2;
+    array.type.array_rank = 2;
+    array.type.array_size = 3;
+    array.type.array_dims[0] = 3;
+    array.type.array_dims[1] = 5;
+    array.linkage_vis = "external hidden ";
+    array.qualifier = "global ";
+    array.llvm_type = "[3 x [5 x ptr]]";
+    array.align_bytes = 8;
+    array.is_extern_decl = true;
+    module.globals.push_back(std::move(array));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-shaped direct, pointer, and array VRM globals must import");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed VRM globals must remain Foundation-verifier reachable");
+  const auto view = raw.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
+         "VRM globals must preserve deterministic source order");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto declaration = view.global_object(ids[1]).value();
+  const auto pointer = view.global_object(ids[2]).value();
+  const auto array = view.global_object(ids[3]).value();
+
+  expect(definition.object_type.kind == bir::TypeKind::VrmRegister &&
+             definition.object_type.bit_width == 4 &&
+             definition.object_type.spelling == "c4c.vrm4" &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             view.spelling(std::get<bir::LinkNameId>(definition.identity))
+                     .value() == "vrm4_definition" &&
+             !definition.is_internal && !definition.is_weak &&
+             definition.is_const && !definition.is_extern_declaration &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 4 && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 "c4c.vrm4 zeroinitializer" &&
+             definition.initializer->function_links.size() == 1 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "vrm_init_function",
+         "direct VRM definitions must retain exact width, spelling, and object and initializer facts");
+  expect(declaration.object_type.kind == bir::TypeKind::VrmRegister &&
+             declaration.object_type.bit_width == 8 &&
+             declaration.object_type.spelling == "c4c.vrm8" &&
+             declaration.is_extern_declaration && !declaration.is_weak &&
+             declaration.visibility == bir::SymbolVisibility::Hidden &&
+             declaration.alignment == 8 && !declaration.initializer,
+         "VRM externs must retain exact width, spelling, linkage, and object facts");
+  expect(pointer.object_type.kind == bir::TypeKind::Pointer &&
+             pointer.object_type.spelling == "ptr" &&
+             pointer.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::VrmRegister, 1, 3}} &&
+             pointer.is_extern_declaration && pointer.is_weak &&
+             pointer.visibility == bir::SymbolVisibility::Protected &&
+             pointer.alignment == 8 && !pointer.initializer,
+         "deep VRM pointers must retain exact base width, pointer depth, and object facts");
+  expect(array.object_type.kind == bir::TypeKind::Array &&
+             array.object_type.spelling == "[3 x [5 x ptr]]" &&
+             array.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::VrmRegister, 2, 2, {3, 5}}} &&
+             array.is_extern_declaration && !array.is_weak &&
+             array.visibility == bir::SymbolVisibility::Hidden &&
+             array.alignment == 8 && !array.initializer,
+         "fixed VRM pointer arrays must retain exact base width, depth, dimensions, and object facts");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  const auto canonical_ids =
+      canonical.has_value() ? canonical.value().view().global_objects()
+                            : std::vector<bir::GlobalObjectId>{};
+  expect(canonical.has_value() && canonical_ids.size() == 4 &&
+             canonical.value().view().global_object(canonical_ids[0])
+                     .value().object_type == definition.object_type &&
+             canonical.value().view().global_object(canonical_ids[1])
+                     .value().object_type == declaration.object_type &&
+             canonical.value().view().global_object(canonical_ids[2])
+                     .value().object_type.pointer_facts ==
+                 pointer.object_type.pointer_facts &&
+             canonical.value().view().global_object(canonical_ids[3])
+                     .value().object_type.array_facts ==
+                 array.object_type.array_facts,
+         "VRM direct, pointer, and array storage must publish exact Canonical BIR facts");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() &&
+               rejected_raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& m) { m.globals[0].type.vrm_width = 0; },
+           "zero direct VRM width must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vrm_width = -1; },
+           "negative direct VRM width must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].type.vrm_width = 3; },
+           "unsupported direct VRM width must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "c4c.vrm2"; },
+           "VRM spelling must exactly corroborate typed width");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("c4c.vrm4");
+      },
+      "producer-shaped direct VRM globals must reject unexpected mirrors");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.base = c4c::TB_INT;
+        m.globals[0].llvm_type = "i32";
+        m.globals[0].llvm_type_ref = lir::LirTypeRef::integer(32);
+      },
+      "residual VRM width must not fall through a corroborated scalar route");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.is_vector = true;
+        m.globals[0].type.vector_lanes = 4;
+        m.globals[0].type.vector_bytes = 4;
+        m.globals[0].llvm_type = "<4 x c4c.vrm4>";
+        m.globals[0].llvm_type_ref.reset();
+      },
+      "VRM vectors remain excluded from the existing scalar vector route");
+  rejected([](lir::LirModule& m) { m.globals[2].type.is_fn_ptr = true; },
+           "VRM function pointers remain outside scalar-pointer storage");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].type.is_ptr_to_array = true;
+        m.globals[2].type.inner_rank = 1;
+      },
+      "VRM pointer-to-array declarators remain unsupported");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
+           "VRM references remain outside global storage receipt");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.base = c4c::TB_STRUCT;
+        m.globals[0].llvm_type = "{ i32 }";
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("{ i32 }");
+      },
+      "residual VRM width must not fall through a corroborated aggregate route");
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_VA_LIST; },
+           "va-list TypeSpec neighbors must remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].llvm_type_ref = lir::LirTypeRef("c4c.vrm1");
+      },
+      "VRM pointers must reject non-pointer mirrors");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].llvm_type_ref = lir::LirTypeRef("[3 x [5 x ptr]]");
+      },
+      "VRM arrays must reject unexpected mirrors");
 }
 
 void test_complex_storage_global_receipt_and_rejections() {
@@ -4413,6 +4672,7 @@ int main() {
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
   test_enum_storage_global_receipt_and_rejections();
+  test_vrm_register_global_receipt_and_rejections();
   test_complex_storage_global_receipt_and_rejections();
   test_scalar_pointer_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
