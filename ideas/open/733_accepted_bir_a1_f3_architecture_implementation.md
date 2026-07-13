@@ -1,0 +1,169 @@
+# Accepted A1-F3 BIR Architecture Implementation
+
+Status: Open
+Type: general BIR compiler architecture implementation
+Architecture Checkpoint: `8a7404a265ab24e230dcf4d001d6d1033e8d9736`
+Architecture Acceptance Commit: `edab15ee77b8a0695e43b890c3e4057b1a739f38`
+Related Feature Consumer:
+`ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+Historical Documentation Umbrella:
+`ideas/open/732_bir_stage_document_convergence_umbrella.md`
+
+## Intent
+
+Implement the independently accepted A1-F3 BIR architecture as the general
+backend pipeline: immutable Raw/Canonical publication, target preparation,
+pseudo formation and legalization, shared allocation and spill retry,
+allocated/MIR-ready publication, strict one-record machine mapping, and
+emission boundaries.
+
+This idea owns the shared compiler infrastructure and ordinary semantic route.
+Feature ideas such as idea 731 consume these capabilities and retain their own
+payload, constraint-form, integration, and end-to-end acceptance obligations.
+
+## Why This Idea Exists
+
+The A1-F3 architecture is materially broader than any one inline-assembly
+feature. It owns canonical passes, analyses, calls and ABI planning, target
+layout, generic pseudo lowering, out-of-SSA, allocation, pressure spill/reload,
+copy resolution, frame actions, MIR-ready publication, and multi-target machine
+mapping. Keeping that work under idea 731 made completion of the general
+compiler indistinguishable from completion of one feature consumer.
+
+The architecture itself was converged and independently accepted before this
+split. This idea changes lifecycle ownership, not the accepted technical route.
+
+## Adopted History And WIP
+
+The following landed commits were originally executed under the mis-scoped
+idea-731 implementation runbook and are adopted as idea-733 progress:
+
+- `fa43f618a` — exact BIR pipeline stage identity
+- `e77652161` — deterministic BIR execution control
+- `8a63a410f` — exact stage stamps on published BIR
+- `e8320d7ef` — private BIR occurrence checkpoints
+
+The current uncommitted Step 1.1e worktree packet is also owned by this idea. It
+adds a private `FunctionAttachmentTransaction`, mutation journal, rollback,
+revision/digest refresh, and checkpoint tests in:
+
+- `src/backend/bir/core/ir.hpp`
+- `src/backend/bir/core/storage.hpp`
+- `src/backend/bir/pipeline/checkpoint_internal.cpp`
+- `src/backend/bir/pipeline/checkpoint_internal.hpp`
+- `tests/backend/bir/backend_bir_checkpoint_test.cpp`
+
+That dirty packet is preserved as unaccepted WIP. The scope-alignment review did
+not accept its proof, and its canonical logs do not establish the current
+worktree state. The supervisor must technically inspect, repair if needed, and
+rerun fresh matching proof before accepting or committing it.
+
+## Architecture Authority
+
+- `src/backend/bir/README.md` owns the exact A1-F3 order.
+- The accepted subordinate BIR Markdown contracts own local inputs, outputs,
+  keys, invalidation, verifier gates, and failure behavior.
+- `src/backend/mir/README.md` owns the strict apply-only F1 boundary.
+- An implementation problem does not authorize a silent architecture change.
+  Contract changes require renewed architecture review.
+
+## In Scope
+
+- stable IDs, revision stamps, immutable capability ownership, deterministic
+  execution control, private transactions, cancellation, rollback, and exact
+  product invalidation
+- typed LIR import and Raw publication foundations required by A1-A2
+- all mandatory B1-B8 canonical passes and their shared analyses/verifiers
+- C1-C9 target binding, layout, preparation, constraint binding, and exact
+  later-revision projection infrastructure
+- D1-D5 generic pseudo lowering, shared call lowering, target legalization,
+  Pseudo verification, out-of-SSA, copy reservation, and copy resolution
+- E1-E4 liveness/interference, shared abstract allocation, explicit spill/reload
+  retry, frame-action materialization, exact final products, and immutable
+  `AllocatedBir`/`PreparedBir`/`MirReadyBirView` publication
+- F1-F3 shared machine-boundary verification, registered one-record mapping,
+  and integration with existing target emission facilities
+- reviewed RV64, AArch64, x86-64, and i686 target data and mapping rules
+- build integration, stage-local tests, cross-stage negative tests, broader
+  regression checkpoints, and truthful implementation-status reconciliation
+
+## Feature Consumer Boundary
+
+Idea 731 depends on this idea for shared target layout, preparation, constraint
+infrastructure, allocation, MIR-ready publication, and late consumer seams.
+Idea 731 continues to own:
+
+- original inline-asm payload and constraint authority across frontend/LIR/BIR
+- ordinary input/result/read-write identities and feature-specific verification
+- the reviewed inline-asm constraint forms, ties, groups, early-clobbers, and
+  clobbers as end-to-end feature behavior
+- inline-asm allocation integration and late operand substitution/parsing
+- the smallest feature-specific end-to-end proof and late invalid-payload
+  failure
+
+General infrastructure may expose and test reusable hooks needed by idea 731,
+but idea 733 completion does not by itself complete idea 731.
+
+## Out Of Scope
+
+- claiming feature-specific idea-731 acceptance merely because shared stages
+  exist
+- restoring or compiling `src/backend/legacy/**`, old prealloc/MIR, removed
+  `c4c-as`, or deleted `src/backend/bir/mir/**`
+- target interpretation or allocation facts in Raw/Canonical BIR
+- target-specific ordinary allocators or MIR/backend pressure repair
+- broad unrelated object/linker/runtime redesign
+- architecture changes hidden inside implementation packets
+- testcase-shaped matching, named-case shortcuts, expectation downgrades, or
+  classification-only changes claimed as compiler capability
+
+## Acceptance Criteria
+
+- Every accepted A1-F3 owner required by the active runbook has executable code
+  or a truthfully bounded external owner, with exact build integration.
+- All authoritative publications are immutable, exact-revision keyed,
+  failure-atomic, and reject stale or mixed products.
+- B1-B8 execute in the accepted order and publish target-independent,
+  unallocated Canonical BIR.
+- C1-C9 publish verified target/layout/preparation/constraint products without
+  mutating Canonical storage or duplicating authority.
+- D1-D5 expose all target-specific expansion, call transport, SSA destruction,
+  and copy requirements before shared allocation.
+- E1-E4 allocate every ordinary identity or fail closed, represent pressure via
+  explicit BIR spill/reload, resolve copies, materialize finite frame actions,
+  and publish one exact immutable MIR-ready revision.
+- F1 consumes only that exact view, maps one BIR node to one registered machine
+  record, and cannot allocate, expand, synthesize hidden frame work, or repair.
+- Supported RV64, AArch64, x86-64, and i686 routes share the same BIR algorithms
+  and differ only through validated target data and mapping rules.
+- The dirty Step 1.1e packet and every later packet have fresh matching build
+  and test proof before acceptance; milestone and final regression gates are
+  green.
+- Implementation-status documentation matches code, an independent final
+  review finds no architecture/scope/overfit blocker, and remaining feature
+  work is assigned to explicit consumer ideas rather than absorbed silently.
+
+## Reviewer Reject Signals
+
+- Reject any packet that changes the A1-F3 order, ownership, verifier interval,
+  exact-current key route, or strict F1 boundary without renewed architecture
+  review.
+- Reject target facts, assignments, concrete registers, frame offsets, or
+  target opcodes stored in Raw/Canonical BIR.
+- Reject a target-specific ordinary allocator, MIR pressure spill/reload,
+  hidden copy scheduling, hidden frame records, one-to-many F1 expansion, or a
+  repair escape returned to BIR.
+- Reject predecessor-key relabeling, copied products, stable-ID equality, or
+  structural equality used as freshness proof.
+- Reject partial publication after cancellation, verification failure, ID or
+  revision exhaustion, allocation failure, or stale/mixed input.
+- Reject accepting the current dirty Step 1.1e work from old logs or todo text
+  without fresh proof over the exact worktree.
+- Reject a named testcase shortcut, supported-to-unsupported downgrade,
+  expectation rewrite, helper rename, or diagnostic reclassification claimed
+  as semantic progress.
+- Reject broad unrelated backend rewrites or feature-specific idea-731 closure
+  claims bundled into general infrastructure work.
+- Reject a new abstraction that retains mutable published state, ambiguous
+  ownership, late allocation repair, or another exact old failure mode behind a
+  new name.

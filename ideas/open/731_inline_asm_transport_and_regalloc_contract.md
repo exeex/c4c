@@ -1,296 +1,113 @@
-# Inline-Assembly Transport And Abstract-BIR Allocation Contract
+# Inline-Assembly Transport And Allocation Integration
 
 Status: Open
-Type: backend semantic transport, target preparation, abstract-register allocation, and late assembly
+Type: inline-assembly feature and accepted-BIR integration
+Depends On:
+`ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md`
+Related Architecture History:
+`ideas/open/732_bir_stage_document_convergence_umbrella.md`
 
 ## Intent
 
-Carry inline-assembly payloads unchanged through the frontend, LIR, and BIR,
-while redesigning the BIR-to-MIR boundary as a verified read-only view over an
-immutable BIR revision. That MIR-ready BIR contains only admitted abstract
-semantic instruction nodes and has already completed normal register
-allocation: every allocatable value has an abstract physical assignment, and
-capacity-driven spill/reload nodes are already present. MIR performs target
-instruction selection and maps those assignments to concrete ABI registers.
+Carry inline-assembly payloads and original constraint authority unchanged
+through frontend, LIR, and BIR; bind reviewed constraints to ordinary SSA
+inputs/results; enforce them through the shared BIR allocation architecture;
+and substitute and parse the payload only at late assembly.
 
-## Why This Idea Exists
+Idea 731 is the feature/integration consumer. It does not own implementation of
+the complete B1-F3 compiler pipeline.
 
-Inline asm requires early structured constraint handling but late instruction
-parsing. The broader backend boundary also needs a single clear allocation
-owner. BIR must have enough target-supplied capacity and ABI-class information
-to make correct allocation and spill decisions before MIR; otherwise each
-target backend would silently become a second allocator and BIR correctness
-could not be verified independently.
+## Lifecycle Scope Split
 
-## Core Contract
+Historical idea-731 edits absorbed general A1-F3 architecture convergence and
+implementation. Formal review found that scope materially separate from the
+original inline-asm feature. The independently accepted architecture and all
+generic landed/WIP implementation history now belong to idea 733.
 
-- Parser/HIR/LIR and pre-allocation BIR preserve the original opaque asm text,
-  original opaque constraint text, ordered clobbers, and side-effect flags.
-  LLVM-compatible spelling is a non-authoritative rendering concern and must
-  not overwrite those original semantic fields. Only the late assembler parses
-  mnemonics, directives, placeholders, `.insn`, or encoding details.
-- `InlineAsm` uses the ordinary instruction value model. Inputs are normal SSA
-  operands/uses, outputs are normal SSA results/definitions, and a read/write
-  operand is represented by an incoming operand plus a distinct produced
-  result. There is no separate `InlineAsmOperand` value system or hidden
-  variable-name binding table. SSA, phi, CFG, liveness, and value ownership use
-  the same rules as every other instruction.
-- Canonical BIR remains target-independent. Target preparation reads it with a
-  selected RV64, AArch64, or x86 context and supplies immutable target
-  vocabulary, layout, capacity, eligibility, alias, and clobber tables.
-  `regalloc/constraints` is the sole owner that parses, types, and binds the
-  original constraint text against those tables and the instruction's ordered
-  operands/results, producing ties, early-clobbers, class/group requirements,
-  and resolved clobber units for allocation.
-- The BIR allocator consumes those verified facts. It transactionally
-  publishes a new immutable BIR revision in which each allocatable value has
-  an abstract physical assignment `(category, class/group, slot)` and normal
-  capacity pressure has already produced abstract `Spill`/`Reload` nodes with
-  abstract spill-slot identities, never concrete frame offsets.
-- `PreparedBir` is a capability/stage token, not a second instruction graph.
-  Its public BIR-to-MIR interface is a read-only `MirReadyBirView` over that
-  exact allocated BIR revision plus revision-bound target, preparation, and
-  allocation facts.
-- The MIR-ready graph admits only a closed, reviewed set of abstract semantic
-  nodes. Examples include `Load`, `Store`, `Add`, `Mul`, `Jump`, `InlineAsm`,
-  `Spill`, and `Reload`; these examples are not the final exhaustive table.
-  Target opcodes, concrete register names/numbers, frame offsets, and encoded
-  instructions are forbidden.
-- `InlineAsm` remains one opaque abstract BIR node. Its payload owns only the
-  original asm text, original constraint text, ordered clobbers, and
-  side-effect flags; its inputs and outputs live exclusively in the containing
-  instruction's ordinary operands/results. During BIR allocation, the
-  constraint text is typed and interpreted against those ordered generic
-  operands/results and reviewed target tables. A tie equates abstract
-  assignments, not SSA identities.
-- MIR construction consumes only verified `MirReadyBirView`, performs target
-  instruction selection, and maps abstract category/class/slot assignments to
-  concrete physical registers under the selected calling convention.
-- A target backend may add spill/reload only as a bounded final
-  legalization/encoding fallback for constraints that could not be expressed
-  at the abstract boundary. It may not handle ordinary pool exhaustion, hide
-  missing BIR spills, weaken assignments, or act as the normal allocator.
-- RV64 target tables plus the shared `regalloc/constraints` interpreter must
-  support the evidence-backed `r`, `=r`, `VR`, `VRM2`, `VRM4`, and `VRM8`
-  forms, including read/write forms, matching ties, early-clobbers, and
-  clobbers. `VRM1` remains unsupported.
-- The target-independent LIR-to-Raw/Canonical-BIR carrier bootstrap is
-  explicitly authorized before the broader boundary review: it may add typed
-  abstract nodes, views, builders, verification, and lossless opaque
-  inline-asm carriage, but Raw/Canonical publication must remain unallocated
-  and target-independent. Register allocation, spill/reload, target budgets,
-  MIR-ready publication, MIR, and late assembly remain unauthorized until the
-  ordered architecture and repaired boundary are jointly reviewed.
-- LIR-to-BIR does not parse `=r`, `r`, `VR`, `VRM2`, or any other constraint
-  into target meaning, and it does not parse asm text or textual LLVM argument
-  rendering. The assembler is the first stage to interpret the asm instruction
-  or template text and substitute allocated registers.
-- Concrete register names written directly into asm text, such as `a0` or
-  `a1`, are not inspected, reserved, or protected by compiler passes; conflicts
-  are the user's responsibility. Explicit constraints and clobbers remain
-  compiler-enforced contracts.
+This idea remains open. It depends on idea 733 for shared target layout,
+preparation, constraint infrastructure, allocation, spill/reload, E4
+publication, strict MIR mapping, and late consumer seams. Completion of idea
+733 is not completion of this feature; idea 731 must still prove its own
+payload, identities, constraint behavior, allocation integration, and late
+parse timing.
 
-## Progress Checkpoint
+## Completed Feature Checkpoints
 
-- Commit `ac2f344f2` completed the bounded LIR-to-BIR bootstrap: verified
-  target-independent Raw/Canonical BIR has an opaque `InlineAsmNode`, and its
-  builder, views, and verifier already support generic SSA operand/result
-  edges.
-- The current `LirInlineAsmOp` still exposes its result and arguments through
-  LLVM-oriented `LirOperand`/`LirTypeRef` plus preformatted `args_str`, and the
-  direct importer intentionally accepts only void/no-argument inline asm. It
-  does not yet import structured LIR input identities or result identities into
-  BIR `ValueId`s.
-- HIR-to-LIR currently produces LLVM-compatible rewritten constraint and
-  argument text as the active LIR fields. Preserving original asm/constraint
-  authority separately from compatibility rendering, then wiring ordinary LIR
-  uses/results into ordinary BIR operands/results, remains incomplete.
-- The next bounded runbook completes only that structured LIR-to-BIR wiring.
-  General instruction-family lowering and the later target preparation,
-  allocation, spill/reload, MIR-ready publication, ABI mapping, and late
-  assembly work remain separate deferred packets under this idea.
-
-## Structured Transport Runbook Deactivation Note (2026-07-13)
-
-The bounded structured inline-asm LIR-to-BIR runbook completed all five of its
-steps and is now retired. Commit `0d55ee766` is the accepted implementation
-checkpoint for structured SSA-edge import, commit `24faa7516` records the
-full-suite proof (`3030/3030` tests passed), and commit `bf3234f45` reconciles
-the three runbook-scoped BIR README surfaces. This retires only the bounded
-transport runbook; it does not complete this broader source idea.
-
-The source idea remains open for its deferred target preparation, abstract
-register allocation, spill/reload, allocated-revision and MIR-ready
-publication, concrete ABI mapping, MIR selection, and late-assembly scope.
-Those stages require a later architecture-accepted runbook rather than silent
-expansion of the completed transport route.
-
-Closure Note Audit preserved from the retired runbook:
-
-- Intentional deferred scope: complete parsed constraint alternatives,
-  symbolic operands, symbol/address-space facts, and asm-goto topology remain
-  target schema beyond the implemented generic non-goto SSA edges.
-- Intentional deferred scope: specialized inline-asm structure, constraint,
-  tie, clobber, and effect verifier rules remain target contract; the current
-  verifier enforces closed opcode/payload shape and generic value integrity.
-- Intentional deferred scope: general LIR opcode/module import remains outside
-  the bounded zero-parameter, void, inline-asm-only importer surface.
-- Intentional deferred scope: target constraint tables, allocation-owned
-  constraint interpretation, register allocation, spill/reload, frame facts,
-  target opcodes, and MIR remain later stage ownership and are not Canonical
-  BIR state.
-- Accidental desynchronization: none remain in the three runbook-scoped README
-  surfaces after reconciliation against the final implementation.
-
-## Architecture Convergence Gate (2026-07-13)
-
-Before any deferred target preparation, pseudo lowering, allocation,
-spill/reload, allocated-view, MIR, or late-assembly implementation begins,
-the BIR architecture documents must converge as one ordered contract.
-
-- `src/backend/bir/README.md` is the BIR overview and the normative ordered
-  index of every stage, pass, verifier gate, analysis/planner dependency, and
-  cross-cutting contract under `src/backend/bir/**/*.md`.
-- Every subordinate BIR Markdown contract must be completed and reviewed in
-  that root-declared order. A subordinate document may own its local behavior,
-  but it cannot silently change stage order, predecessor/successor profiles,
-  authority, or publication boundaries.
-- Review must synchronize each document with both adjacent stages and with the
-  root overview. Scaffolds, duplicate owners, contradictory allocation/MIR
-  responsibilities, and unindexed BIR Markdown files block acceptance.
-- The final documentation step must re-inventory every BIR Markdown file and
-  reconcile `src/backend/bir/README.md` against the completed subordinate
-  contracts. Architecture acceptance must be explicit; completion of a
-  docs-only runbook does not itself authorize implementation or close this
-  broader source idea.
+- `ac2f344f2` established the bounded target-independent Raw/Canonical
+  `InlineAsmNode` carrier.
+- `0d55ee766` completed structured ordinary SSA-edge import.
+- `24faa7516` recorded the structured-transport full-suite proof.
+- `bf3234f45` reconciled the scoped transport documentation.
+- The implemented non-goto path preserves ordinary inputs/results and distinct
+  read/write identities; general LIR opcode import remains unrelated scope.
 
 ## In Scope
 
-- Completing and reviewing the entire `src/backend/bir/**/*.md` architecture
-  in the normative order published by `src/backend/bir/README.md`, with an
-  explicit architecture-accepted checkpoint before implementation planning.
-- Giving current `LirInlineAsmOp` structured ordinary LIR input/result
-  identities, types, and roles sufficient for generic SSA transport, without a
-  special inline-asm value family.
-- Separating original asm/constraint semantic fields from non-authoritative
-  LLVM-compatible rendering fields in HIR-to-LIR and the LLVM LIR printer.
-- Transactionally mapping structured LIR inline-asm inputs/results to generic
-  BIR operands/results, including incoming-use/distinct-produced-result
-  read/write behavior, without parsing textual arguments.
-- Freezing the closed MIR-ready abstract-node admission table and verifier.
-- Defining target register-pool/capacity descriptors for RV64, AArch64, and
-  x86 without placing concrete register identities in BIR nodes.
-- Defining abstract assignments, BIR-owned spill/reload insertion, revision
-  binding, diagnostics, and transactional publication.
-- Faithful inline-asm transport, preparation-owned target constraint tables,
-  allocation-owned typed constraint binding, and allocation of scalar and
-  register-group operands.
-- Defining `PreparedBir`/`MirReadyBirView` as capabilities over the same
-  immutable allocated BIR revision, not a rewritten IR copy.
-- MIR instruction selection, concrete ABI register mapping, bounded final
-  legalization, and late assembly.
+- preserve original asm template/instruction text, original constraint text,
+  ordered clobbers, side-effect flags, and structured source identities
+  independently of LLVM-compatible rendering
+- keep inputs as ordinary SSA uses, outputs as ordinary results, and read/write
+  operands as distinct incoming and produced identities
+- integrate the accepted C7/C9 shared tables/binder with reviewed `r`, `=r`,
+  `VR`, `VRM2`, `VRM4`, and `VRM8` forms; keep `VRM1` unsupported
+- prove ties, register groups, alignment/contiguity, early-clobbers, clobbers,
+  multi-output, and `UseDef` semantics through shared idea-733 allocation
+- preserve opaque payload bytes through `MirReadyBirView` and strict machine
+  mapping
+- substitute allocated operands and parse/encode inline-asm text only at the
+  late assembler seam
+- direct transport, constraint, allocation-integration, late-failure, and
+  smallest end-to-end feature tests
 
 ## Out Of Scope
 
-- Allocation, spill/reload, target-budget, MIR-ready, MIR, or late-assembly
-  implementation while the architecture/checkpoint is unaccepted. The bounded
-  target-independent LIR-to-BIR carrier bootstrap above is the only exception.
-- Compiling or restoring `src/backend/legacy/**`, old prealloc/MIR, removed
-  `c4c-as`, or deleted `src/backend/bir/mir/**` documents.
-- Target interpretation in parser, HIR, LIR, LIR-to-BIR, or Canonical BIR.
-- General LIR-to-BIR lowering for `Add`, `Load`, `Store`, `Call`, `Phi`,
-  globals, stack objects, or unrelated instruction families as part of the
-  structured inline-asm packet.
-- Concrete physical register identifiers or target opcodes in MIR-ready BIR.
-- Using MIR/backend spilling as a second normal allocation path.
-- Parsing inline-asm instructions before late assembly.
-- General GCC/LLVM constraint compatibility beyond reviewed target tables.
-- Resuming idea 730 globals work or broad ABI/object/linker/runtime bring-up.
+- implementing the general A1-F3 pipeline, canonical passes, ordinary ABI/call
+  planning, general pseudo lowering, shared allocator internals, frame system,
+  or all-target machine mapping; those belong to idea 733
+- restoring legacy BIR/prealloc/MIR/`c4c-as` sources
+- parsing asm instruction text before late assembly
+- inferring semantic values from `args_str` or other printer text
+- general GCC/LLVM constraint compatibility beyond reviewed forms
+- unrelated globals, object/linker/runtime, or broad backend bring-up
+- target-specific allocation or MIR pressure repair
 
 ## Acceptance Criteria
 
-- `src/backend/bir/README.md` provides the complete BIR overview and normative
-  stage/pass order, indexes every BIR Markdown contract, and is finally
-  reconciled against all accepted subordinate documents with no unreviewed
-  scaffold, duplicate authority, or undocumented ordering edge.
-- `LirInlineAsmOp` exposes ordinary structured input/result identities and
-  types, while original semantic asm/constraint text is distinct from any
-  LLVM-compatible rendering. No semantic consumer must recover values from
-  `args_str` or other preformatted text.
-- LIR-to-BIR maps inline-asm inputs to ordinary BIR operands and outputs to
-  ordinary BIR results. A read/write case proves an incoming old value and a
-  distinct produced new value that later SSA/phi users can consume.
-- BIR inline-asm payload contains only original opaque asm/constraint text,
-  ordered clobbers, and side-effect flags; allocation interpretation remains
-  deferred to BIR regalloc and asm-text interpretation remains deferred to the
-  assembler.
-- One authoritative contract defines Canonical BIR input, target preparation,
-  BIR allocation, allocated-revision publication, `PreparedBir` capability,
-  and `MirReadyBirView`, with exact revision/target binding and transactional
-  failure behavior.
-- The closed abstract-node table and verifier reject target opcodes, concrete
-  registers, unresolved allocatable values, illegal abstract slots/groups,
-  and missing or inconsistent spill/reload state.
-- Target contexts provide reviewed capacities and eligibility for
-  caller-saved, callee-saved, temp, and inline-asm-required classes/groups.
-- Every allocatable value reaching MIR has a verified abstract category/class/
-  slot assignment. Capacity exhaustion is handled by BIR-owned abstract
-  spill/reload insertion across normal, retry, eviction, and fallback routes.
-- `PreparedBir` owns no duplicate instruction graph. `MirReadyBirView` reads
-  the exact allocated immutable BIR revision to which all typed facts bind.
-- MIR maps abstract assignments to concrete RV64/AArch64/x86 ABI registers and
-  performs instruction selection without rerunning ordinary allocation.
-- Any backend legalization spill/reload is explicitly classified, bounded,
-  tested, and unable to mask an allocation that BIR capacity facts could have
-  resolved.
-- Multi-output and `UseDef` inline asm preserve distinct source/result/
-  destination identities; allocation ties constrain abstract slots without
-  collapsing those identities.
-- Original inline-asm payload and source identities survive unchanged;
-  structured requirements alone drive allocation; invalid payloads fail only
-  at late assembly.
-- Build metadata excludes legacy/prealloc/old-MIR sources and the
-  supervisor-selected regression proof is green.
-- At the final implementation checkpoint,
-  `src/backend/bir/core/README.md`,
-  `src/backend/bir/lir_to_bir/README.md`, and
-  `src/backend/bir/verify/README.md` are reconciled against the implementation.
-  The runbook closure note enumerates every remaining implementation/README
-  mismatch or explicitly says none were found, and distinguishes intentional
-  deferred scope from accidental desynchronization.
+- Original asm and constraint payloads remain authoritative and can be compared
+  unchanged across every pre-assembly feature boundary.
+- LLVM-compatible rendering never overwrites or reconstructs semantic payload,
+  values, roles, or constraints.
+- Ordinary input/result/read-write identities remain distinct through BIR,
+  projection, allocation, and machine mapping; ties constrain homes without
+  merging SSA identities.
+- Reviewed scalar and vector forms, groups, ties, early-clobbers, and clobbers
+  are enforced by structured C9/shared allocation facts, not raw-string scans.
+- Every inline-asm allocatable identity reaching the machine boundary has a
+  legal shared-BIR assignment or explicit supported spill state.
+- The late assembler receives allocated substitutions and is the first stage
+  to parse mnemonics, directives, placeholders, `.insn`, or encoding details.
+- A negative case proves invalid payload survives all earlier stages and fails
+  specifically at late assembly.
+- `VRM1` and unreviewed alternatives fail with stable diagnostics.
+- Feature tests include neighboring same-rule cases and the supervisor-selected
+  broader regression; legacy sources remain excluded.
 
 ## Reviewer Reject Signals
 
-- A new `InlineAsmOperand` value system, binding table, or variable-name lookup
-  duplicates ordinary LIR/BIR SSA operands and results.
-- LIR-to-BIR parses `args_str`, result spelling, constraint text, or asm text to
-  reconstruct semantic values or target allocation meaning.
-- LLVM-compatible asm/constraint/argument rendering overwrites or becomes the
-  authority for original semantic text.
-- A read/write operand reuses one SSA identity for both old use and new
-  definition, or output/result/destination identities are collapsed by a tie.
-- `PreparedBir` or MIR-ready state copies/rebuilds a second instruction graph
-  instead of viewing one immutable allocated BIR revision.
-- MIR-ready BIR contains target opcodes, concrete register names/numbers,
-  encoding details, or nodes outside the closed admission table.
-- Any allocatable value reaches MIR without an abstract assignment, or normal
-  pool exhaustion is deferred to a target backend.
-- Backend spill/reload acts as a general allocator, conceals incorrect BIR
-  capacity accounting, or has no narrow legalization-only invariant.
-- Pool counts, reserved slots, group rules, ties, clobbers, or allocation facts
-  are stored in Canonical BIR or guessed from inline-asm strings downstream.
-- LIR-to-BIR or Canonical BIR normalizes `r`, `VR`, `VRM*`, aliases, clobbers,
-  or target-specific register meaning.
-- Any pre-assembler stage parses inline-asm mnemonics, directives,
-  placeholders, `.insn`, or encoding fields.
-- `VRM1` is accepted, or reviewed class/group tables are widened by guesswork.
-- A named testcase shortcut, expectation downgrade, helper rename, or
-  diagnostic reclassification is claimed as capability progress.
-- Deleted BIR-owned MIR documents or legacy/prealloc sources are restored, or
-  a replacement MIR filesystem owner is invented without a separate explicit
-  architecture decision.
-- Implementation begins before architecture acceptance, or unrelated backend
-  work is mixed into this route.
-- README text claims unimplemented structured wiring, hides known drift, or a
-  closure note labels accidental implementation/documentation mismatch as
-  merely deferred work.
+- Reject any pre-assembler parsing of asm mnemonics, directives, placeholders,
+  `.insn`, or encoding fields.
+- Reject recovering operands/results from `args_str`, printer text, variable
+  names, or a feature-specific value table instead of ordinary SSA identities.
+- Reject collapsing incoming use, produced result, output destination, or
+  multi-output identities because two operands have an allocation tie.
+- Reject a raw-string scan or named spelling branch used as allocator meaning
+  instead of verified shared C9 facts and general class/group rules.
+- Reject accepting `VRM1`, guessing a group width/alignment, weakening an
+  unsupported alternative, or dropping a clobber/early-clobber/tie.
+- Reject a target-specific feature allocator, MIR pressure repair, or revival
+  of legacy/prealloc/old-MIR/`c4c-as` code.
+- Reject claiming idea-731 progress from generic idea-733 infrastructure alone
+  without feature-specific interface and end-to-end proof.
+- Reject testcase-shaped shortcuts, expectation downgrades, helper renames,
+  diagnostic reclassification, or broad unrelated backend changes claimed as
+  inline-asm capability.

@@ -1,24 +1,25 @@
-# Idea 731 Accepted BIR Architecture Implementation Runbook
+# Accepted A1-F3 BIR Architecture Implementation Runbook
 
 Status: Active
-Source Idea: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
+Source Idea: ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md
 Activated from: the architecture accepted at commit
 `edab15ee77b8a0695e43b890c3e4057b1a739f38`, covering independently reviewed
 documentation checkpoint `8a7404a265ab24e230dcf4d001d6d1033e8d9736`
 Supersedes: the completed BIR architecture documentation repair runbook
+and the same implementation route previously mis-scoped under idea 731
 
 ## Purpose
 
-Implement idea 731 against the accepted A1-F3 architecture without reopening
-stage ownership, weakening exact-revision publication, or turning MIR into a
-second allocator.
+Implement the accepted general A1-F3 BIR architecture without reopening stage
+ownership, weakening exact-revision publication, or turning MIR into a second
+allocator. Preserve explicit feature-consumer boundaries such as idea 731.
 
 ## Goal
 
-Deliver an end-to-end, verified path from the existing structured inline-asm
-source carrier through Canonical BIR, target preparation, pseudo lowering,
-shared BIR allocation, immutable MIR-ready publication, strict machine mapping,
-and late assembly for the supported RV64, AArch64, and x86 profiles.
+Deliver the shared end-to-end compiler path from typed LIR through Canonical
+BIR, target preparation, pseudo lowering, shared BIR allocation, immutable
+MIR-ready publication, strict machine mapping, and emission for the supported
+RV64, AArch64, and x86 profiles.
 
 ## Core Rule
 
@@ -35,7 +36,10 @@ change the route in code or weaken a verifier/test expectation.
 
 ## Read First
 
-- `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+- `ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md`
+- `ideas/open/731_inline_asm_transport_and_regalloc_contract.md` as a dependent
+  feature consumer, not the owner of this runbook
+- `review/731_current_scope_alignment_review.md`
 - `src/backend/bir/README.md`
 - the local accepted README for every owner touched by a packet
 - `src/backend/bir/verify/README.md`
@@ -48,20 +52,24 @@ change the route in code or weaken a verifier/test expectation.
 - Architecture acceptance is recorded for documentation checkpoint
   `8a7404a265ab24e230dcf4d001d6d1033e8d9736` and does not itself prove any
   implementation.
-- The structured ordinary SSA input/result transport for non-goto inline asm is
-  already implemented. General LIR opcode/module import remains outside this
-  idea's bounded route.
+- Generic pipeline identity, deterministic execution control, exact published
+  stage stamps, and private occurrence checkpoints landed in `fa43f618a`,
+  `e77652161`, `8a63a410f`, and `e8320d7ef` and are adopted by idea 733.
+- The dirty Step 1.1e function-attachment transaction packet is preserved as
+  unaccepted WIP. It requires supervisor technical inspection and fresh proof
+  before acceptance or commit.
 - Raw/Canonical core, builder, views, the bounded importer, and part of the
   verifier exist. Most B1-F3 owners are deferred, scaffolded, or build-excluded.
 - The exact A1-F3 order, product keys, verifier intervals, failure atomicity,
   finite frame-action schema, and strict F1 boundary are closed decisions.
-- Idea 731 remains open until its implementation acceptance criteria and final
-  regression/document reconciliation are satisfied.
+- Idea 733 owns the general implementation route. Idea 731 remains open for
+  feature-specific payload, constraints, allocation integration, and late
+  parsing acceptance.
 
 ## Scope
 
-- finish the idea-required original inline-asm semantic-field authority without
-  parsing asm or target constraints early
+- complete typed A1-A2 import/Raw-publication foundations required by the
+  accepted general architecture
 - make the accepted BIR pipeline, analyses, verifiers, and immutable capability
   model executable
 - implement target layout, preparation, typed constraint binding/projection,
@@ -69,7 +77,8 @@ change the route in code or weaken a verifier/test expectation.
   allocation, spill/reload, E4 publication, and strict MIR consumption
 - support the reviewed RV64, AArch64, x86-64, and i686 target-profile families
   through shared BIR algorithms and target data/rules
-- integrate opaque inline-asm substitution and parsing only at late assembly
+- provide strict machine/emission extension seams consumed by feature ideas,
+  including idea 731's separately owned late inline-asm integration
 - update local implementation-status documentation only with matching code and
   proof, then reconcile the required final README surfaces
 
@@ -84,6 +93,8 @@ change the route in code or weaken a verifier/test expectation.
 - no target-specific ordinary allocator or MIR/backend pressure-repair path
 - no broad object/linker/runtime redesign beyond wiring the accepted path into
   existing F3 facilities
+- no claim that general infrastructure completion proves idea-731 feature
+  completion
 - no guessed GCC/LLVM constraint compatibility and no `VRM1` acceptance
 - no testcase-shaped matcher, named-case shortcut, supported-to-unsupported
   downgrade, or expectation rewrite claimed as capability progress
@@ -111,10 +122,10 @@ Stable IDs, structural equality, or copied records never establish freshness.
    shared allocator or constraint interpreter.
 4. Keep every packet failure-atomic and revision-key exact before adding the
    next consumer. Never temporarily publish an invalid capability as scaffolding.
-5. Add neighboring same-feature tests for every new supported path. A single
-   named inline-asm testcase is never sufficient proof of a semantic stage.
-6. Preserve original asm/constraint payload and ordinary SSA identities through
-   every stage; typed requirements constrain homes but never collapse values.
+5. Add neighboring same-rule tests for every new supported path. A single
+   named testcase is never sufficient proof of a semantic stage.
+6. Preserve ordinary semantic identities and feature-extension payloads through
+   shared stages; consumer-specific acceptance remains with the owning idea.
 7. Update a local README's implementation status only when the owned code and
    proof justify it. Architecture changes require a reviewer checkpoint first.
 8. Run a broader matching CTest checkpoint after Steps 3, 6, 10, 12, and 14.
@@ -122,8 +133,9 @@ Stable IDs, structural equality, or copied records never establish freshness.
    milestone or the blast radius crosses several buckets.
 9. Before final closure, obtain independent review against the source idea and
    accepted architecture, then run the supervisor-selected full regression.
-10. Keep idea 731 open if this runbook is retired, blocked, or replaced before
-    the durable acceptance criteria are actually proved.
+10. Keep idea 733 open if this runbook is retired, blocked, or replaced before
+    its durable criteria are proved. Do not close dependent idea 731 from this
+    runbook.
 
 ## Ordered Implementation Steps
 
@@ -155,26 +167,25 @@ Completion check:
 - the foundation builds in the normal tree; focused tests prove exact-key and
   failure-atomic behavior; no later stage is falsely reported implemented
 
-### Step 1.2 - Finish source payload authority and A1-A2 supported-path gates
+### Step 1.2 - Complete A1-A2 import and Raw-publication foundations
 
-Goal: complete the idea-required inline-asm semantic carrier and make the
-existing bounded import path a sound input to the new pipeline.
+Goal: make typed LIR import and Raw publication a sound general input to the
+accepted pipeline while preserving existing feature carriers.
 
 Actions:
 
-- keep original asm/constraint text, clobbers, effects, and ordinary structured
-  LIR uses/results authoritative and separate from LLVM-compatible rendering
-- preserve the existing non-goto structured SSA path; do not expand into
-  general LIR import or parse target meaning
-- complete A2 Raw verification/publication rules needed by the admitted
-  carrier and prove malformed payload/value references publish no `RawBir`
-- reconcile the scoped HIR/LIR/BIR tests and local transport documentation
+- implement the accepted typed `ModuleDraft` import and deferred-resolution
+  seams in bounded opcode-family packets
+- preserve existing structured feature carriers without interpreting target
+  meaning or printer text
+- complete A2 Raw verification/publication rules and prove malformed types,
+  identities, CFG references, and payload/value references publish no `RawBir`
+- reconcile importer/core/verifier tests and truthful local status
 
 Completion check:
 
-- original payload survives unchanged, renderings are non-authoritative, and
-  supported structured input/output/read-write cases reach verified Raw BIR
-  with distinct ordinary identities
+- admitted typed LIR constructs reach verified Raw BIR with stable ordinary
+  identities; unresolved or malformed input fails transactionally
 
 ### Step 2 - Implement B1-B4 canonical foundations
 
@@ -238,13 +249,14 @@ Goal: publish the complete target-bound preparation bundle in accepted order.
 
 Actions:
 
-- implement ABI, call, variadic, address, inline-asm-table, and runtime-helper
-  planners as immutable products
+- implement ABI, call, variadic, address, feature-vocabulary-table, and
+  runtime-helper planners as immutable products
 - keep classification/planning separate from graph mutation and allocation
 - enforce exact predecessor fingerprints, single producers, cancellation, and
   all-or-nothing cumulative bundle publication
 - cover ordinary calls, hidden carriers, variadic boundaries, addresses,
-  reviewed inline-asm vocabulary, and helper eligibility without parsing asm
+  registered feature-vocabulary transport, and helper eligibility without
+  parsing feature payloads
 
 Completion check:
 
@@ -258,9 +270,10 @@ across later revisions.
 
 Actions:
 
-- implement `BoundConstraintSet` for `r`, `=r`, `VR`, `VRM2`, `VRM4`, and
-  `VRM8`, including read/write, ties, early-clobbers, and clobbers; reject
-  `VRM1` and guessed spellings
+- implement registry-driven `BoundConstraintSet` roles, classes/groups, ties,
+  early-clobbers, clobbers, and unsupported-spelling diagnostics; idea 731 owns
+  the exact end-to-end `r`, `=r`, `VR`, `VRM2`, `VRM4`, `VRM8`, and `VRM1`
+  feature acceptance
 - implement the sole `ConstraintProjectionTransaction`, replacement/tombstone
   coverage, occurrence fingerprints, invalidation, and rollback
 - test identity preservation without SSA merging and exact stale-key rejection
@@ -284,7 +297,8 @@ Actions:
 - invoke C9 projection after each mutation and implement the allocation-free D3
   `PseudoPublicationGate`
 - test ordinary/runtime-helper calls, hidden sret/byval/variadic carriers,
-  caller clobbers, per-call preservation, inline asm, and rollback
+  caller clobbers, per-call preservation, opaque feature-node carriage, and
+  rollback
 
 Completion check:
 
@@ -398,7 +412,7 @@ Actions:
 
 - implement shared F1 view/key checks and one-record mapping API
 - map abstract homes, frame plan, explicit frame nodes, copies, calls, ordinary
-  pseudos, and inline-asm operands for reviewed RV64 profiles
+  pseudos, and registered opaque feature operands for reviewed RV64 profiles
 - integrate with the current RV64 machine graph without allocation, hidden
   expansion, or pressure/frame repair
 
@@ -414,8 +428,8 @@ Goal: prove that target variation is data/rules over the shared BIR route.
 Actions:
 
 - implement reviewed AArch64, x86-64, and i686 mappings against the same F1 API
-- cover ABI slots, register groups, calls, spills, frame actions, and inline-asm
-  operand substitution without target-specific ordinary allocation
+- cover ABI slots, register groups, calls, spills, frame actions, and registered
+  feature-extension operands without target-specific ordinary allocation
 - add cross-target parity and rejection tests
 
 Completion check:
@@ -423,31 +437,32 @@ Completion check:
 - all supported target families consume the same verified BIR capabilities and
   satisfy the strict apply-only boundary
 
-### Step 14 - Complete F2-F3 verification, late assembly, and integration
+### Step 14 - Complete F2-F3 verification and emission integration
 
-Goal: carry the verified machine graph through late inline-asm parsing and the
-existing emission path.
+Goal: carry the verified machine graph through the accepted machine verifier
+and existing emission path while exposing reviewed late feature seams.
 
 Actions:
 
 - implement/repair machine verification for exact mappings and forbidden late
   allocation/expansion
-- substitute allocated operands and parse original inline-asm text only in the
-  late assembler; preserve invalid-payload late failure behavior
+- expose the late assembler extension seam without moving feature parsing or
+  allocation into shared earlier stages; idea 731 owns inline-asm substitution
+  and invalid-payload feature acceptance
 - connect to existing encoding/object/link facilities without broad subsystem
   redesign
-- cover supported scalar/group constraints, read/write, ties, early-clobbers,
-  clobbers, multi-output identity, spill pressure, calls, and failure cases
+- cover ordinary mapping/emission, spill pressure, calls, frame actions, target
+  failures, and extension-boundary rejection cases
 - run the broader end-to-end milestone regression
 
 Completion check:
 
-- supported programs reach encoded output through A1-F3; invalid assembly fails
-  late; no earlier stage parses asm text or performs late allocation repair
+- supported ordinary programs reach encoded output through A1-F3; no machine
+  stage performs allocation repair or hidden expansion
 
 ### Step 15 - Reconcile implementation, documentation, and final proof
 
-Goal: decide idea 731 completion from exact implementation evidence.
+Goal: decide idea 733 completion from exact general implementation evidence.
 
 Actions:
 
@@ -455,8 +470,8 @@ Actions:
   `core`, `lir_to_bir`, `verify`, root BIR, and MIR boundary documentation
 - enumerate every intentional deferred item and every implementation/README
   mismatch; accidental desynchronization must be repaired, not relabeled
-- independently review the full implementation diff against idea 731, the
-  accepted architecture, authority boundaries, and overfit reject signals
+- independently review the full implementation diff against idea 733, the
+  accepted architecture, dependent-feature boundaries, and overfit signals
 - run the supervisor-selected full build/regression guard and confirm legacy
   sources remain excluded
 - return to the plan owner for the separate source-idea completion decision;
@@ -475,7 +490,7 @@ Completion check:
 3. matching broader CTest/regression-guard checkpoints at the named milestones
 4. cross-target end-to-end tests for RV64, AArch64, x86-64, and i686
 5. exact full regression selected by the supervisor
-6. independent final review against idea 731 and the accepted architecture
+6. independent final review against idea 733 and the accepted architecture
 
 No expectation rewrite, unsupported downgrade, documentation-only claim, or
 single target testcase substitutes for semantic implementation proof.

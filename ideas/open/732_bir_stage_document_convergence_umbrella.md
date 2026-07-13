@@ -1,6 +1,6 @@
 # BIR Stage Documentation Convergence Umbrella
 
-Status: Open
+Status: Open (superseded workflow; acceptance criteria not met)
 Type: Umbrella triage and ordered follow-up idea generator
 Parent: none
 Handoff Directory: none; the durable handoff is this umbrella plus exactly six
@@ -8,6 +8,25 @@ ordered child source ideas under `ideas/open/`
 Related:
 - `src/backend/bir/README.md`
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+- `ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md`
+
+## Lifecycle Reconciliation
+
+This umbrella's prescribed six-child A-through-F workflow was not executed:
+the six required child ideas were never created or accepted in sequence.
+Therefore its durable acceptance and closure-note criteria are not met, and the
+idea is not closed as complete.
+
+The architecture outcome was instead converged through a monolithic docs-only
+runbook and independently accepted at documentation checkpoint
+`8a7404a265ab24e230dcf4d001d6d1033e8d9736`, recorded by commit
+`edab15ee77b8a0695e43b890c3e4057b1a739f38`. General implementation of that
+accepted architecture now belongs to idea 733. Idea 731 remains the dependent
+inline-asm feature/integration consumer.
+
+Treat this file as an unexecuted, superseded workflow record. Do not activate
+its six-child route or use it as implementation authority unless a future
+explicit lifecycle decision chooses to revive and rewrite its unmet process.
 
 ## Goal
 
@@ -43,21 +62,20 @@ before it.
   stage/pass index, verifier-profile summary, analysis dependency index, and
   complete-documentation review order. Its phase definitions and within-phase
   order are the source of truth for child generation.
-- Active source idea
-  `ideas/open/731_inline_asm_transport_and_regalloc_contract.md` records the
-  current architecture direction: target-independent Raw/Canonical BIR,
-  BIR-owned target layout derivation, ordinary operand/result semantics for
-  inline asm, typed constraint binding before allocation, shared BIR
-  liveness/regalloc/spill/reload, and a verified MIR-ready view. Its
-  Architecture Convergence Gate explicitly requires complete documentation
-  convergence before deferred implementation.
+- The accepted root/subordinate documentation records the current architecture
+  direction: target-independent Raw/Canonical BIR, BIR-owned target layout,
+  shared liveness/regalloc/spill/reload, and a verified MIR-ready view. General
+  implementation ownership now lives in idea 733; idea 731 is only the
+  dependent inline-asm feature/integration consumer.
 - Current Markdown status labels and section shapes are not yet a sufficient
   proof of contract completeness. A later child must inspect the actual file,
   its producer, its consumer, and current implementation truth rather than
   accepting a checkbox or heading-only conversion.
 
-The umbrella and its children may cite this evidence but must not edit idea
-731 as part of this route.
+The original umbrella route would have treated its six children as
+documentation-only. The lifecycle reconciliation above supersedes that
+unexecuted routing proposal; it does not retroactively claim the children
+existed or that this umbrella met its acceptance criteria.
 
 ## In Scope
 
