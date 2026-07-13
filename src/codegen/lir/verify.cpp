@@ -366,6 +366,34 @@ bool integer_immediate_representable(long long value, unsigned bit_width) {
   return static_cast<unsigned long long>(value) <= maximum;
 }
 
+void verify_global_pointer_owner(const LirModule& mod,
+                                 const LirOperand& pointer,
+                                 std::string_view field,
+                                 std::string_view operation) {
+  const LinkNameId* link_name_id = pointer.link_name_id();
+  if (!link_name_id) {
+    fail_verify(field, "global " + std::string(operation) +
+                           " pointer requires LinkNameId authority");
+  }
+  if (*link_name_id == kInvalidLinkName ||
+      mod.link_names.spelling(*link_name_id).empty()) {
+    fail_verify(field, "global " + std::string(operation) +
+                           " pointer LinkNameId must resolve in the module");
+  }
+
+  const std::size_t owner_count = static_cast<std::size_t>(std::count_if(
+      mod.globals.begin(), mod.globals.end(), [&](const LirGlobal& global) {
+        return global.link_name_id == *link_name_id;
+      }));
+  if (owner_count != 1) {
+    fail_verify(field, owner_count == 0
+                           ? "global " + std::string(operation) +
+                                 " pointer LinkNameId has no LirGlobal owner"
+                           : "global " + std::string(operation) +
+                                 " pointer LinkNameId has ambiguous LirGlobal ownership");
+  }
+}
+
 void verify_global_store_authority(const LirModule& mod,
                                    const LirStoreOp& op) {
   // CC-STORE-1 owns the direct-global pointer plus native integer-immediate
@@ -375,28 +403,7 @@ void verify_global_store_authority(const LirModule& mod,
                 "store pointer has the wrong authority alternative");
   }
   if (op.ptr.kind() != LirOperandKind::Global) return;
-
-  const LinkNameId* link_name_id = op.ptr.link_name_id();
-  if (!link_name_id) {
-    fail_verify("LirStoreOp.ptr",
-                "global store pointer requires LinkNameId authority");
-  }
-  if (*link_name_id == kInvalidLinkName ||
-      mod.link_names.spelling(*link_name_id).empty()) {
-    fail_verify("LirStoreOp.ptr",
-                "global store pointer LinkNameId must resolve in the module");
-  }
-
-  const std::size_t owner_count = static_cast<std::size_t>(std::count_if(
-      mod.globals.begin(), mod.globals.end(), [&](const LirGlobal& global) {
-        return global.link_name_id == *link_name_id;
-      }));
-  if (owner_count != 1) {
-    fail_verify("LirStoreOp.ptr",
-                owner_count == 0
-                    ? "global store pointer LinkNameId has no LirGlobal owner"
-                    : "global store pointer LinkNameId has ambiguous LirGlobal ownership");
-  }
+  verify_global_pointer_owner(mod, op.ptr, "LirStoreOp.ptr", "store");
 
   if (op.type_str.kind() != LirTypeKind::Integer) return;
   if (op.val.kind() == LirOperandKind::Immediate) {
@@ -418,6 +425,22 @@ void verify_global_store_authority(const LirModule& mod,
   if (op.val.has_authority() && !op.val.value_id()) {
     fail_verify("LirStoreOp.val",
                 "integer store value has the wrong authority alternative");
+  }
+}
+
+void verify_global_load_authority(const LirModule& mod,
+                                  const LirLoadOp& op) {
+  // CC-LOAD-1 owns direct-global pointer and result identity. Local/SSA
+  // pointer loads retain phased monostate compatibility.
+  if (op.ptr.has_authority() && !op.ptr.value_id() && !op.ptr.link_name_id()) {
+    fail_verify("LirLoadOp.ptr",
+                "load pointer has the wrong authority alternative");
+  }
+  if (op.ptr.kind() != LirOperandKind::Global) return;
+  verify_global_pointer_owner(mod, op.ptr, "LirLoadOp.ptr", "load");
+  if (!op.result.value_id()) {
+    fail_verify("LirLoadOp.result",
+                "direct-global load result requires LirValueId authority");
   }
 }
 
@@ -486,6 +509,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_result_operand(op->result, "LirLoadOp.result");
     require_module_type_ref(mod, op->type_str, "LirLoadOp.type_str", true);
     verify_pointer_operand(op->ptr, "LirLoadOp.ptr");
+    verify_global_load_authority(mod, *op);
     return;
   }
   if (const auto* op = std::get_if<LirStoreOp>(&inst)) {

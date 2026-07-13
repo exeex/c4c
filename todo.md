@@ -8,50 +8,48 @@ Current Step Title: Implement the narrowest generic carrier
 
 ## Just Finished
 
-- Plan Step 5 packet 2 implements CC-STORE-1 for ordinary scalar integer stores
-  to selected globals.
-- `AssignableLValue.ptr` now carries `LirOperand`; `emit_lval_operand` attaches
-  the selected global's `LinkNameId` before string loss. `emit_rval_operand`
-  attaches native non-complex HIR `IntLiteral` authority, and the focused
-  set/coerce/store route rebuilds authority from the native payload when the
-  structured source/destination value representations match.
-- Unowned lvalue/rvalue routes use explicit raw monostate compatibility.
-  Load/memset consumers take only `.str()`, so this packet does not populate
-  load/GEP/return authority or claim their rows.
-- The verifier now resolves direct-global store IDs to exactly one `LirGlobal`
-  and validates authoritative integer-immediate representability. Malformed
-  IDs, missing/wrong alternatives, ambiguity, and narrow overflow reject
-  without interpreting display.
+- Plan Step 5 packet 3 implements CC-LOAD-1 for ordinary direct scalar loads
+  from selected globals.
+- `emit_rval_operand` intercepts the exact selected `GlobalVar` before string
+  loss, allocates the load result through `fresh_value` on the current function
+  shell, and attaches the selected global's `LinkNameId` to the load pointer.
+  The same authoritative result operand returns to structured callers.
+- Aggregate, array-adjacent, unary-dereference, assignable read-modify-write,
+  and ABI carrier loads remain explicit raw monostate compatibility. No GEP or
+  return authority is populated by this packet.
+- The verifier shares one display-independent global-owner resolver between
+  store and load. Direct-global loads require a uniquely owned `LinkNameId`
+  pointer and function-owned `LirValueId` result; foundation ownership checks
+  reject invalid or duplicate result IDs.
 
 ## Suggested Next
 
-- Execute Plan Step 5 packet 3, CC-LOAD-1: allocate the focused load result with
-  `fresh_value`, retain selected-global pointer authority through the
-  coordinator, and add its owned verifier and neighboring coverage.
+- Execute Plan Step 5 packet 4, CC-GEP-1: populate only the bounded array-decay
+  GEP result/base/index identities and add its owned verifier coverage.
 
 ## Watchouts
 
-- Integer authority survives set assignment only when structured
-  source/destination LLVM value representations match. Post-coercion text
-  supplies presentation only; changed representations fall back to raw
-  monostate.
-- A valid global ID paired with misleading display denotes the ID-owned global.
-  Only invalid/unresolved, non-global/ownerless, or ambiguously owned IDs
-  reject. Float, special-token, local-pointer, and other unowned store shapes
-  retain phased compatibility.
-- `fresh_value` remains unused by producers. CC-LOAD-1 must use the exact
-  function shell allocator and must not infer result identity from `tmp_idx`.
+- `fresh_value` allocates load identity independently of the shared display and
+  label counter. Numeric IDs remain function-local and may repeat across
+  functions.
+- A valid load pointer ID paired with misleading display denotes the ID-owned
+  global. Invalid, unresolved, function-only, ownerless, and ambiguously owned
+  IDs reject without rendered-name inspection.
+- Global array decay remains in the CC-GEP packet. Its GEP result, base, and
+  indices are still unpopulated; do not infer them from `%tN`, `@name`, or raw
+  index strings. Return authority and new-BIR receipt also remain untouched.
 
 ## Proof
 
 - `cmake --build --preset default` passed.
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$'
-  --output-on-failure` passed 1/1 with normal producer inspection, zero/second
-  global coverage, misleading integer/global displays, and the full malformed
-  store matrix.
-- Focused `--codegen llvm` retained `store i32 7, ptr
-  @lir_identity_scalar`. All four focused `--dump-bir` probes retained their
-  Step 3 importer boundaries: store/load/GEP are
+  --output-on-failure` passed 1/1 with normal producer inspection, two-load and
+  cross-function allocation coverage, misleading displays, and the full
+  malformed load matrix while retaining store coverage.
+- Focused `--codegen llvm` retained `%t0 = load i32, ptr @g_counter`. All four
+  focused `--dump-bir` probes retained their Step 3 importer boundaries:
+  store/load/GEP are
   `UnsupportedOrdinaryInstruction`; scalar return is `InvalidVoidReturn`.
-- Canonical `test_before.log` and fresh `test_after.log` both report 3033/3033
-  passing. `git diff --check` passed.
+- Exact full proof `ctest --test-dir build -j --output-on-failure >
+  test_after.log` passed 3033/3033, matching `test_before.log`. `git diff
+  --check` passed.

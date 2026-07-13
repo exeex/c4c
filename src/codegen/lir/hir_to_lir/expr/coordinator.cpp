@@ -460,6 +460,35 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     return LirOperand::integer(std::to_string(literal->value),
                                literal->value);
   }
+  if (const auto* ref = std::get_if<DeclRef>(&e.payload); ref && ref->global) {
+    const GlobalVar* selected = select_global_object(*ref);
+    if (!selected) selected = mod_.find_global(*ref->global);
+    if (!selected) {
+      throw std::runtime_error("StmtEmitter: global rvalue not found: " +
+                               ref->name);
+    }
+
+    const TypeSpec& selected_ts = selected->type.spec;
+    const bool aggregate_value =
+        selected_ts.ptr_level == 0 &&
+        (selected_ts.base == TB_STRUCT || selected_ts.base == TB_UNION ||
+         selected_ts.base == TB_VA_LIST || is_complex_base(selected_ts.base) ||
+         is_vector_value(selected_ts));
+    if (selected_ts.array_rank == 0 && !aggregate_value) {
+      const std::string type = llvm_value_ty(mod_, selected_ts);
+      if (type != "void") {
+        out_ts = selected_ts;
+        const LirOperand result = fresh_value(ctx);
+        const std::string global_name = emitted_link_name(
+            mod_, selected->link_name_id, selected->name);
+        emit_lir_op(ctx, lir::LirLoadOp{
+                             result, LirTypeRef(type),
+                             LirOperand::global(llvm_global_sym(global_name),
+                                                selected->link_name_id)});
+        return result;
+      }
+    }
+  }
   return LirOperand::raw(emit_rval_expr(ctx, e));
 }
 
@@ -609,7 +638,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     const std::string ty = llvm_value_ty(mod_, gv.type.spec);
     if (ty == "void") return "0";
     const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, llvm_global_sym(global_name)});
+    emit_lir_op(ctx, lir::LirLoadOp{
+                         tmp, ty,
+                         LirOperand::raw(llvm_global_sym(global_name))});
     return tmp;
   }
 

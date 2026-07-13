@@ -719,6 +719,18 @@ c4c::codegen::lir::LirFunction make_store_test_function(
   return function;
 }
 
+c4c::codegen::lir::LirFunction make_load_test_function(
+    c4c::codegen::lir::LirLoadOp load) {
+  namespace lir = c4c::codegen::lir;
+  lir::LirFunction function;
+  function.name = "load_test";
+  function.signature_text = "define void @load_test() {";
+  function.blocks.push_back(lir::LirBlock{});
+  function.blocks.back().label = "entry";
+  function.blocks.back().insts.push_back(std::move(load));
+  return function;
+}
+
 void test_global_store_identity_contract() {
   namespace lir = c4c::codegen::lir;
 
@@ -918,6 +930,206 @@ int main(void) {
                       lir::LirOperand::global("@special_token_compatibility",
                                               special_token_id)}));
   lir::verify_module(special_token_compatibility);
+}
+
+void test_global_load_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int g_counter;
+int g_neighbor;
+
+int read_counter(void) { return g_counter; }
+int read_pair(int choose) {
+  if (choose) return g_counter;
+  return g_neighbor;
+}
+int read_counter_again(void) { return g_counter; }
+)c", "x86_64-linux-gnu");
+
+  const auto loads_in = [](lir::LirFunction& function) {
+    std::vector<lir::LirLoadOp*> loads;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* load = std::get_if<lir::LirLoadOp>(&inst)) {
+          loads.push_back(load);
+        }
+      }
+    }
+    return loads;
+  };
+
+  lir::LirFunction& read_counter = require_function(lowered, "read_counter");
+  const std::vector<lir::LirLoadOp*> counter_loads = loads_in(read_counter);
+  expect_eq(std::to_string(counter_loads.size()), "1",
+            "focused global-load fixture should lower exactly one load");
+  expect_eq(counter_loads[0]->result.str(), "%t0",
+            "focused global load should retain its LLVM result display");
+  expect_eq(counter_loads[0]->type_str.str(), "i32",
+            "focused global load should retain its LLVM type display");
+  expect_eq(counter_loads[0]->ptr.str(), "@g_counter",
+            "focused global load should retain its pointer display");
+  expect_true(counter_loads[0]->result.value_id() &&
+                  counter_loads[0]->result.value_id()->valid(),
+              "focused global load should own a valid function-local result ID");
+  expect_true(counter_loads[0]->ptr.link_name_id() != nullptr,
+              "focused global load should retain selected-global authority");
+  expect_eq(lowered.link_names.spelling(*counter_loads[0]->ptr.link_name_id()),
+            "g_counter",
+            "focused load pointer authority should resolve to g_counter");
+
+  lir::LirFunction& read_pair = require_function(lowered, "read_pair");
+  const std::vector<lir::LirLoadOp*> pair_loads = loads_in(read_pair);
+  expect_eq(std::to_string(pair_loads.size()), "2",
+            "nearby conditional fixture should lower two global loads");
+  expect_true(pair_loads[0]->result.value_id() &&
+                  pair_loads[1]->result.value_id() &&
+                  *pair_loads[0]->result.value_id() !=
+                      *pair_loads[1]->result.value_id(),
+              "interleaved displays must not collapse function-local load IDs");
+  expect_eq(lowered.link_names.spelling(*pair_loads[0]->ptr.link_name_id()),
+            "g_counter",
+            "first nearby load should retain its selected global");
+  expect_eq(lowered.link_names.spelling(*pair_loads[1]->ptr.link_name_id()),
+            "g_neighbor",
+            "second nearby load should retain its distinct selected global");
+
+  lir::LirFunction& read_again =
+      require_function(lowered, "read_counter_again");
+  const std::vector<lir::LirLoadOp*> again_loads = loads_in(read_again);
+  expect_true(again_loads.size() == 1 && again_loads[0]->result.value_id() &&
+                  *again_loads[0]->result.value_id() ==
+                      *counter_loads[0]->result.value_id(),
+              "the same numeric load ID should remain legal in separate functions");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading;
+  const c4c::LinkNameId display_id =
+      add_identity_test_global(misleading, "load_display_target");
+  const c4c::LinkNameId authority_id =
+      add_identity_test_global(misleading, "load_authority_target");
+  misleading.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("@misleading-result", lir::LirValueId{4}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@load_display_target", authority_id)}));
+  lir::verify_module(misleading);
+  const auto& misleading_load = std::get<lir::LirLoadOp>(
+      misleading.functions[0].blocks[0].insts[0]);
+  expect_true(display_id != authority_id && misleading_load.result.value_id() &&
+                  misleading_load.result.value_id()->value == 4 &&
+                  misleading_load.ptr.link_name_id() &&
+                  *misleading_load.ptr.link_name_id() == authority_id,
+              "misleading load displays must not redirect native authority");
+
+  lir::LirModule missing_result;
+  const c4c::LinkNameId missing_result_id =
+      add_identity_test_global(missing_result, "missing_load_result");
+  missing_result.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand("%missing"), lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@missing_load_result", missing_result_id)}));
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject global load without result authority");
+
+  lir::LirModule wrong_result;
+  const c4c::LinkNameId wrong_result_id =
+      add_identity_test_global(wrong_result, "wrong_load_result");
+  wrong_result.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::global("%wrong", wrong_result_id),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@wrong_load_result", wrong_result_id)}));
+  expect_identity_verification_rejected(
+      wrong_result, "verifier should reject wrong global-load result authority");
+
+  lir::LirModule missing_pointer;
+  const c4c::LinkNameId missing_pointer_id =
+      add_identity_test_global(missing_pointer, "missing_load_pointer");
+  (void)missing_pointer_id;
+  missing_pointer.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32), lir::LirOperand("@missing_load_pointer")}));
+  expect_identity_verification_rejected(
+      missing_pointer, "verifier should reject global load without pointer authority");
+
+  lir::LirModule wrong_pointer;
+  wrong_pointer.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::integer("@wrong-load-pointer", 0)}));
+  expect_identity_verification_rejected(
+      wrong_pointer, "verifier should reject wrong global-load pointer authority");
+
+  lir::LirModule invalid_pointer;
+  invalid_pointer.link_name_texts = std::make_shared<c4c::TextTable>();
+  invalid_pointer.link_names.attach_text_table(invalid_pointer.link_name_texts.get());
+  invalid_pointer.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@invalid-load", c4c::kInvalidLinkName)}));
+  expect_identity_verification_rejected(
+      invalid_pointer, "verifier should reject invalid global-load LinkNameId");
+
+  lir::LirModule unresolved_pointer;
+  unresolved_pointer.link_name_texts = std::make_shared<c4c::TextTable>();
+  unresolved_pointer.link_names.attach_text_table(
+      unresolved_pointer.link_name_texts.get());
+  unresolved_pointer.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@unresolved-load", c4c::LinkNameId{99})}));
+  expect_identity_verification_rejected(
+      unresolved_pointer, "verifier should reject unresolved global-load LinkNameId");
+
+  lir::LirModule function_only;
+  function_only.link_name_texts = std::make_shared<c4c::TextTable>();
+  function_only.link_names.attach_text_table(function_only.link_name_texts.get());
+  const c4c::LinkNameId function_id =
+      function_only.link_names.intern("load_function_only");
+  function_only.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@load_function_only", function_id)}));
+  function_only.functions.back().link_name_id = function_id;
+  expect_identity_verification_rejected(
+      function_only, "verifier should reject function-only global-load LinkNameId");
+
+  lir::LirModule ownerless;
+  ownerless.link_name_texts = std::make_shared<c4c::TextTable>();
+  ownerless.link_names.attach_text_table(ownerless.link_name_texts.get());
+  const c4c::LinkNameId ownerless_id =
+      ownerless.link_names.intern("ownerless_load");
+  ownerless.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@ownerless_load", ownerless_id)}));
+  expect_identity_verification_rejected(
+      ownerless, "verifier should reject ownerless global-load LinkNameId");
+
+  lir::LirModule ambiguous;
+  const c4c::LinkNameId ambiguous_id =
+      add_identity_test_global(ambiguous, "ambiguous_load");
+  lir::LirGlobal duplicate_global = ambiguous.globals.front();
+  duplicate_global.name = "ambiguous_load_duplicate";
+  ambiguous.globals.push_back(std::move(duplicate_global));
+  ambiguous.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%load", lir::LirValueId{1}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@ambiguous_load", ambiguous_id)}));
+  expect_identity_verification_rejected(
+      ambiguous, "verifier should reject ambiguous global-load ownership");
+
+  lir::LirModule duplicate_result;
+  const c4c::LinkNameId duplicate_result_id =
+      add_identity_test_global(duplicate_result, "duplicate_load_result");
+  duplicate_result.functions.push_back(make_load_test_function(lir::LirLoadOp{
+      lir::LirOperand::ssa("%first", lir::LirValueId{2}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@duplicate_load_result", duplicate_result_id)}));
+  duplicate_result.functions[0].blocks[0].insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%second", lir::LirValueId{2}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@duplicate_load_result", duplicate_result_id)});
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate global-load result IDs");
 }
 
 }  // namespace
@@ -1295,6 +1507,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_structured_operand_identity_foundation();
   test_global_store_identity_contract();
+  test_global_load_identity_contract();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

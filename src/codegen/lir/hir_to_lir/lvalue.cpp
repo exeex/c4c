@@ -456,7 +456,7 @@ LoadedAssignableValue StmtEmitter::emit_load_assignable_value(FnCtx& ctx,
   loaded.value = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{loaded.value,
                                   llvm_value_ty(mod_, lhs.pointee_ts),
-                                  lhs.ptr.str()});
+                                  LirOperand::raw(lhs.ptr.str())});
   return loaded;
 }
 
@@ -853,7 +853,8 @@ std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string
     const std::string arr_alloca_ty = llvm_alloca_ty(mod_, access_ts);
     if (arr_alloca_ty == "ptr") {
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), ptr});
+      emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"),
+                                      LirOperand::raw(ptr)});
       return tmp;
     }
     const std::string tmp = fresh_tmp(ctx);
@@ -863,7 +864,7 @@ std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string
   const std::string ty = llvm_value_ty(mod_, load_ts);
   if (ty == "void") return "";
   const std::string tmp = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, ptr});
+  emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, LirOperand::raw(ptr)});
   return tmp;
 }
 

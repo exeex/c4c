@@ -146,7 +146,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
       if (load_ts.is_fn_ptr && load_ts.ptr_level == 0) return val;
       const std::string load_ty = llvm_ty(load_ts);
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{tmp, load_ty, val});
+      emit_lir_op(ctx,
+                  lir::LirLoadOp{tmp, load_ty, LirOperand::raw(val)});
       return tmp;
     }
     case UnaryOp::PreInc:

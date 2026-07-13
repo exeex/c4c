@@ -267,7 +267,9 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
             "[" + std::to_string(hfa->elem_count) + " x " + hfa->elem_ty + "]";
         const int align_stack = std::max(8, hfa->aggregate_align);
         const std::string hfa_carrier = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{hfa_carrier, hfa_carrier_ty, obj_ptr});
+        emit_lir_op(ctx, lir::LirLoadOp{
+                             hfa_carrier, hfa_carrier_ty,
+                             LirOperand::raw(obj_ptr)});
         PreparedCallArg out;
         out.args.push_back({.type = hfa_carrier_ty,
                             .operand = hfa_carrier,
