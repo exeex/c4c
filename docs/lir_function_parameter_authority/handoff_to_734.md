@@ -35,7 +35,8 @@ no dedicated declaration/definition fixture in that test.
 |---|---|---|---|---|---|
 | Empty C `()` | Empty ordered logical list | No fixed ABI rows | No parameter mirrors; `signature_has_void_param_list=false`; nonvariadic unless separately declared variadic | Focused pair in `test_definition_logical_parameter_publication` | **Unblocked only for bounded zero-fixed-parameter signature receipt.** It creates no body parameter identity. |
 | Explicit `(void)` | One logical `TB_VOID` sentinel | No fixed ABI rows | No parameter mirrors; `signature_has_void_param_list=true`; `signature_is_variadic=false` | Focused pairs in `test_definition_logical_parameter_publication` and the main void fixture | **Unblocked only for bounded void-list signature-shape receipt.** The sentinel is not a bindable body parameter. |
-| Plain fixed `int`/`uint`/`long`/`ulong`/`long long`/`ulong long`/`float`/`double`, default shape | Ordered HIR-owned `TypeSpec`; no pointer/reference/array/vector/function-pointer/byval shape | Exact same count, order, base, and default shape; every row has `is_byval=false` | Integer mirrors are typed `i32` for `int`/`uint` and `i64` for the long families; floating mirrors are typed `float`/`double`; void-list and variadic flags are false | Focused representative pair covers `int`, `long long`, `float`, `double`; verifier enumeration and shared producer path cover the named unsigned/long partners | **Unblocked for one bounded fixed-signature receipt packet only.** Import exact structured parity; do not parse names/text. Body use stays blocked because display names and raw operands are not parameter identity. |
+| Plain fixed `int`/`uint`/`long long`/`unsigned long long`/`float`/`double`, default shape | Ordered HIR-owned `TypeSpec`; no pointer/reference/array/vector/function-pointer/byval shape | Exact same count, order, base, and default shape; every row has `is_byval=false` | Integer mirrors are typed `i32` for `int`/`uint` and `i64` for `long long`/`unsigned long long`; floating mirrors are typed `float`/`double`; void-list and variadic flags are false | Focused representative pair covers `int`, `long long`, `float`, `double`; verifier enumeration and shared producer path cover the named unsigned partners | **Unblocked for one bounded fixed-signature receipt packet only.** Import exact structured parity; do not parse names/text. Body use stays blocked because display names and raw operands are not parameter identity. |
+| Plain fixed `long`/`unsigned long`, default shape | Ordered HIR-owned `TB_LONG`/`TB_ULONG` `TypeSpec` | Producer and verifier currently require an `i64` ABI row even for I686 | Typed integer mirror is currently `i64`; existing new-BIR target policy instead lowers I686 C `long`/`unsigned long` to `i32` | Shared declaration/definition producer path exposes the policy disagreement; inactive [idea 743](../../ideas/open/743_lir_i686_long_width_policy_convergence.md) owns cross-target convergence | **Blocked.** Do not receive either row until producer/verifier i64 policy and new-BIR I686 i32 policy converge under idea 743. |
 | Pointer | Ordered logical pointee `TypeSpec` plus pointer/declarator shape | Fixed ABI row retains the structured pointer shape for the checked ordinary case | Typed pointer mirror (`ptr` presentation); nonbyval | Focused `int *` pair in `test_definition_logical_parameter_publication` | **Blocked.** Define the explicit pointee/type-mirror receiver contract first; neither `ptr` text nor ABI position can reconstruct it. |
 | Narrow `char`/`schar`/`uchar`/`short`/`ushort` | Ordered logical narrow base and declarator shape | Fixed ABI row retains the structured narrow base in the ordinary case | Integer ABI mirror (`i8` or `i16` presentation); the current handoff proves no structured sign/zero-extension receiver fact | Focused `char` pair; shared producer and verifier exclusion cover the family | **Blocked.** Add structured integer-extension authority and its receiver mapping before receipt. |
 | Direct aggregate | One logical aggregate `TypeSpec` with owned record identity | One direct aggregate ABI row for the checked amd64 `Pair`; `is_byval=false` | Structured aggregate mirror with `StructNameId` | Focused declaration/definition `Pair` assertions in the test main | **Blocked.** Raw BIR needs an aggregate parameter container and exact record/type mapping; do not infer it from `%struct.*` text. |
@@ -66,13 +67,14 @@ no dedicated declaration/definition fixture in that test.
 
 ## Bounded resume point for idea 734
 
-The first authorized receiver packet is fixed signature receipt for the exact
-default-shape nonvariadic plain scalar rows, plus explicit preservation of the
-zero-argument versus void-list signature shape. It must consume the three
-structured tracks and flags transactionally and reject disagreement.
+The first authorized receiver packet is fixed signature receipt for exact
+default-shape nonvariadic `int`, `uint`, `long long`, `unsigned long long`,
+`float`, and `double` rows, plus explicit preservation of the zero-argument
+versus void-list signature shape. It must consume the three structured tracks
+and flags transactionally and reject disagreement.
 
 That packet must not bind function-body operands to parameters. A later packet
 needs native parameter value identity; names, raw operands, rendered signature
-text, and ABI position cannot supply it. Pointer, narrow, aggregate, expanded,
-variadic, function-pointer, and `va_list` rows remain blocked exactly as the
-matrix states.
+text, and ABI position cannot supply it. `long`/`unsigned long`, pointer,
+narrow, aggregate, expanded, variadic, function-pointer, and `va_list` rows
+remain blocked exactly as the matrix states.
