@@ -46,14 +46,19 @@ struct SemanticOwner {
             encoding="utf-8",
         )
 
-    def write_config(self, root: Path, entries: list[dict[str, str]]) -> Path:
+    def write_config(
+        self,
+        root: Path,
+        entries: list[dict[str, str]],
+        roots: list[str] | None = None,
+    ) -> Path:
         config = root / "scripts/string_authority_classifications.json"
         config.parent.mkdir()
         config.write_text(
             json.dumps(
                 {
                     "version": 1,
-                    "roots": ["src/frontend/sema"],
+                    "roots": roots or ["src/frontend/sema"],
                     "classifications": entries,
                 },
                 indent=2,
@@ -136,6 +141,45 @@ struct SemanticOwner {
 
             self.assertEqual(status, 0)
             self.assertIn("passed: 5 classified", output)
+
+    def test_quarantined_backend_legacy_subtree_is_excluded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = root / "src/backend/legacy/archived.hpp"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text(
+                "#include <string>\n#include <unordered_map>\n"
+                "struct Archived {\n"
+                "  std::unordered_map<std::string, int> semantic_by_name;\n"
+                "};\n",
+                encoding="utf-8",
+            )
+            config = self.write_config(root, [], roots=["src/backend"])
+
+            status, output = self.run_guard(root, config)
+
+            self.assertEqual(status, 0)
+            self.assertIn("passed: 0 classified", output)
+
+    def test_active_backend_sibling_of_legacy_remains_scanned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            active = root / "src/backend/active.hpp"
+            active.parent.mkdir(parents=True)
+            active.write_text(
+                "#include <string>\n#include <unordered_map>\n"
+                "struct Active {\n"
+                "  std::unordered_map<std::string, int> semantic_by_name;\n"
+                "};\n",
+                encoding="utf-8",
+            )
+            config = self.write_config(root, [], roots=["src/backend"])
+
+            status, output = self.run_guard(root, config)
+
+            self.assertEqual(status, 1)
+            self.assertIn("src/backend/active.hpp", output)
+            self.assertIn("Active::semantic_by_name", output)
 
 
 if __name__ == "__main__":

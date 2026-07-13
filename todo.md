@@ -8,46 +8,37 @@ Current Step Title: Close active-source string-authority guard debt
 
 ## Just Finished
 
-- Steps 2--4 are complete: the reviewed schema checkpoint, owner/generation
-  identities, private storage and order, facade/views, scoped builders,
-  move-only RawBir publication, and foundation verification landed across
-  `a89624c62` through `07545736f`.
-- Step 5.1 is complete across `2e7d9ecb6` through `d03f45cda`: the active
-  minimal importer publishes verified RawBir, the backend consumer no longer
-  compiles prealloc/MIR, the default build passes, and backend tests are
-  limited to the retained interface graph.
-- The retained LIR-to-BIR interface test is green; unsupported semantic forms
-  still reject explicitly rather than falling back to legacy or disappearing.
+- Step 5.2 is complete: the active string-authority scanner now excludes only
+  quarantined `src/backend/legacy/**`, with self-tests proving that the legacy
+  subtree is skipped while active backend siblings remain scanned.
+- The sole new active-BIR classification is
+  `ModuleData::functions_by_link_name_`: `FunctionId` remains entity identity,
+  the map is only the ABI-spelling uniqueness/declaration-definition merge
+  index, FoundationVerifier proves both directions exactly, and removal waits
+  for an owner-correct interned link identity.
 
 ## Suggested Next
 
-- Execute only Step 5.2: exclude `src/backend/legacy/**` from the active-source
-  string-authority scan and add the exact, evidence-backed ABI-spelling
-  classification for `ModuleData::functions_by_link_name_` required by the
-  accepted schema checkpoint.
-- Prove the guard plus its self-test, the retained LIR-to-BIR interface, and
-  broader CTest before advancing to Step 6.
+- Begin Step 6 packet 1 only: migrate `globals.cpp` and
+  `global_initializers.cpp`, adding the smallest module IDs, values,
+  attributes, builders, and verifier rules needed for that semantic family.
 
 ## Watchouts
 
-- Do not classify individual `src/backend/legacy/**` hits; that tree is
-  reference-only and must be outside active-code scanner scope.
-- Do not broadly exempt active BIR.  The only active BIR guard hit is the
-  checkpoint-approved exact link-name uniqueness/merge index; `FunctionId`,
-  not the string, remains stable entity identity.
-- Do not jump to Step 9 or add a BIR-to-MIR shell before Steps 6--8 expand the
-  supported semantic surface.  There is no new BIR-to-MIR target yet.
-- Historical importer and MIR test sources remain unregistered references and
-  must not be re-added wholesale.
+- Step 6 must migrate globals atomically through the new builders and verifier;
+  scalar and aggregate forms stay on explicit rejection paths until their own
+  ordered packets.
+- Do not restore legacy importer translation units or use archived declarations
+  as active implementation authority.
+- Do not introduce prepared/target authority or jump to the BIR-to-MIR shell.
 
 ## Proof
 
-- Latest completed packet: default configure/build and
-  `backend_lir_to_bir_interface` passed; compile metadata contains no
-  translation unit under `src/backend/legacy`, `src/backend/prealloc`, or
-  `src/backend/mir`.
-- Current prerequisite failure: broader CTest is 3029/3030 because
-  `string_authority_guard` reports archived legacy declarations plus
-  `ModuleData::functions_by_link_name_`.
-- Step 5.2 proof is pending; overwrite this section with its exact commands and
-  results when the packet completes.
+- The supervisor-selected Step 5.2 proof completed green: `cmake --preset
+  default && cmake --build --preset default -j 2 && python3
+  scripts/test_string_authority_guard.py && ctest --test-dir build
+  --output-on-failure -R '^(string_authority_guard|backend_lir_to_bir_interface)$'
+  && ctest --test-dir build -j 2 --output-on-failure`.
+- Guard self-tests passed 5/5, the focused CTest subset passed 2/2, and broader
+  CTest passed 3030/3030.  Canonical proof output is `test_after.log`.
+- `git diff --check` passed.

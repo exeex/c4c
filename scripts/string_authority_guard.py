@@ -36,6 +36,10 @@ SOURCE_SUFFIXES = {
     ".hxx",
 }
 
+# Reference-only backend sources are retained for design archaeology, but they
+# are not part of the active compiler surface guarded by this inventory.
+EXCLUDED_SOURCE_SUBTREES = ("src/backend/legacy",)
+
 CONTAINER_RE = re.compile(
     r"\bstd::(?P<kind>unordered_map|map|unordered_set|set)\s*<(?P<args>.*)>",
     re.DOTALL,
@@ -331,12 +335,24 @@ def scan_file(
 
 
 def iter_source_files(repo_root: Path, roots: Iterable[str]) -> Iterable[Path]:
+    def excluded(path: Path) -> bool:
+        relative = repo_relative(path, repo_root)
+        return any(
+            relative == subtree or relative.startswith(f"{subtree}/")
+            for subtree in EXCLUDED_SOURCE_SUBTREES
+        )
+
     for root_name in roots:
         root = repo_root / root_name
-        if not root.exists():
+        if not root.exists() or excluded(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in {".git", "build", "__pycache__"}]
+            dirnames[:] = [
+                directory
+                for directory in dirnames
+                if directory not in {".git", "build", "__pycache__"}
+                and not excluded(Path(dirpath) / directory)
+            ]
             for filename in filenames:
                 path = Path(dirpath) / filename
                 if path.suffix in SOURCE_SUFFIXES:

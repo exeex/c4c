@@ -2142,6 +2142,17 @@
       "reason": "Current declaration-level string-keyed compatibility surface retained during the structured-authority migration; new uses must be classified exactly or replaced with structured authority.",
       "removal_condition": "Remove when the compatibility path is retired or all callers provide structured authority.",
       "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/frontend/sema/validate.cpp:1244."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::functions_by_link_name_",
+      "pattern": "by-name-member",
+      "owner": "backend-bir",
+      "domain": "module ABI link-name uniqueness and declaration/definition merge index",
+      "category": "abi-spelling",
+      "reason": "FunctionId is the owner- and generation-correct function identity; this string-keyed index only enforces unique ABI spelling and merges compatible declarations with their definition.",
+      "removal_condition": "Remove when functions carry an owner-correct interned link identity that provides uniqueness and declaration/definition merging without a string-keyed mirror.",
+      "evidence": "ModuleBuilder stores FunctionId values and uses this index only to find an existing ABI spelling; FoundationVerifier reconstructs link-name-to-FunctionId state from every live function and enforces exact size plus both index-to-live and live-to-index correspondence."
     }
   ]
 }
