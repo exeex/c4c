@@ -107,6 +107,37 @@ could not be verified independently.
   allocation, spill/reload, MIR-ready publication, ABI mapping, and late
   assembly work remain separate deferred packets under this idea.
 
+## Structured Transport Runbook Deactivation Note (2026-07-13)
+
+The bounded structured inline-asm LIR-to-BIR runbook completed all five of its
+steps and is now retired. Commit `0d55ee766` is the accepted implementation
+checkpoint for structured SSA-edge import, commit `24faa7516` records the
+full-suite proof (`3030/3030` tests passed), and commit `bf3234f45` reconciles
+the three runbook-scoped BIR README surfaces. This retires only the bounded
+transport runbook; it does not complete this broader source idea.
+
+The source idea remains open for its deferred target preparation, abstract
+register allocation, spill/reload, allocated-revision and MIR-ready
+publication, concrete ABI mapping, MIR selection, and late-assembly scope.
+Those stages require a later architecture-accepted runbook rather than silent
+expansion of the completed transport route.
+
+Closure Note Audit preserved from the retired runbook:
+
+- Intentional deferred scope: complete parsed constraint alternatives,
+  symbolic operands, symbol/address-space facts, and asm-goto topology remain
+  target schema beyond the implemented generic non-goto SSA edges.
+- Intentional deferred scope: specialized inline-asm structure, constraint,
+  tie, clobber, and effect verifier rules remain target contract; the current
+  verifier enforces closed opcode/payload shape and generic value integrity.
+- Intentional deferred scope: general LIR opcode/module import remains outside
+  the bounded zero-parameter, void, inline-asm-only importer surface.
+- Intentional deferred scope: target constraint preparation, register
+  allocation, spill/reload, frame facts, target opcodes, and MIR remain later
+  stage ownership and are not BIR state.
+- Accidental desynchronization: none remain in the three runbook-scoped README
+  surfaces after reconciliation against the final implementation.
+
 ## In Scope
 
 - Giving current `LirInlineAsmOp` structured ordinary LIR input/result
