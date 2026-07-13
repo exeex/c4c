@@ -1,40 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/730_post_legacy_bir_shell_bootstrap.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Migrate the import spine and CFG publication
+Current Step ID: 5.2
+Current Step Title: Close active-source string-authority guard debt
 
 # Current Packet
 
 ## Just Finished
 
-- Step 5 collapsed `tests/backend/CMakeLists.txt` to the retained post-legacy
-  interface graph: only `tests/backend/bir` is registered today.
-- Removed every legacy MIR, preallocation, target, runtime, dump, object, and
-  emission test registration from the active CMake graph without deleting the
-  archived test sources.
-- `c4c_backend_tests` now depends only on active targets exported by the BIR
-  interface-test directory.
+- Steps 2--4 are complete: the reviewed schema checkpoint, owner/generation
+  identities, private storage and order, facade/views, scoped builders,
+  move-only RawBir publication, and foundation verification landed across
+  `a89624c62` through `07545736f`.
+- Step 5.1 is complete across `2e7d9ecb6` through `d03f45cda`: the active
+  minimal importer publishes verified RawBir, the backend consumer no longer
+  compiles prealloc/MIR, the default build passes, and backend tests are
+  limited to the retained interface graph.
+- The retained LIR-to-BIR interface test is green; unsupported semantic forms
+  still reject explicitly rather than falling back to legacy or disappearing.
 
 ## Suggested Next
 
-- Add a new BIR-to-MIR interface directory and shell test only after that new
-  interface exists; then register it beside `bir` in the minimal test graph.
+- Execute only Step 5.2: exclude `src/backend/legacy/**` from the active-source
+  string-authority scan and add the exact, evidence-backed ABI-spelling
+  classification for `ModuleData::functions_by_link_name_` required by the
+  accepted schema checkpoint.
+- Prove the guard plus its self-test, the retained LIR-to-BIR interface, and
+  broader CTest before advancing to Step 6.
 
 ## Watchouts
 
-- `tests/backend/mir` and old backend case/source artifacts intentionally remain
-  in the tree as unregistered references; they must not be re-added wholesale.
-- There is no new BIR-to-MIR interface target yet, so the retained regex selects
-  only `backend_lir_to_bir_interface` today.
+- Do not classify individual `src/backend/legacy/**` hits; that tree is
+  reference-only and must be outside active-code scanner scope.
+- Do not broadly exempt active BIR.  The only active BIR guard hit is the
+  checkpoint-approved exact link-name uniqueness/merge index; `FunctionId`,
+  not the string, remains stable entity identity.
+- Do not jump to Step 9 or add a BIR-to-MIR shell before Steps 6--8 expand the
+  supported semantic surface.  There is no new BIR-to-MIR target yet.
+- Historical importer and MIR test sources remain unregistered references and
+  must not be re-added wholesale.
 
 ## Proof
 
-- `cmake --preset default && cmake --build --preset default -j 2 && ctest
-  --test-dir build --output-on-failure -R
-  '^backend_(lir_to_bir|bir_to_mir)'` passed; the retained LIR-to-BIR interface
-  test is green and the full default build succeeds.
-- `git diff --check` passed.
-- `build/compile_commands.json` contains no translation unit under
-  `src/backend/legacy`, `src/backend/prealloc`, or `src/backend/mir`.
-- Complete delegated proof output is preserved in `test_after.log`.
+- Latest completed packet: default configure/build and
+  `backend_lir_to_bir_interface` passed; compile metadata contains no
+  translation unit under `src/backend/legacy`, `src/backend/prealloc`, or
+  `src/backend/mir`.
+- Current prerequisite failure: broader CTest is 3029/3030 because
+  `string_authority_guard` reports archived legacy declarations plus
+  `ModuleData::functions_by_link_name_`.
+- Step 5.2 proof is pending; overwrite this section with its exact commands and
+  results when the packet completes.

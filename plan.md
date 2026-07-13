@@ -41,10 +41,17 @@ published BIR.
 ## Current State
 
 - Step 1 completed at `793eeeb90`.
-- CMake generation succeeds and compile commands contain no legacy path.
-- Default build first fails because `src/backend/backend.hpp` includes missing
-  `bir/bir.hpp`.
-- Obsolete backend BIR/internal test registrations have been removed.
+- Steps 2--4 completed across `a89624c62` through `07545736f`: the bounded
+  schema checkpoint, stable identity/storage/order, read-only facade/views,
+  scoped builders, move-only RawBir publication, and foundation verifier are
+  present.
+- Step 5's bootstrap importer/consumer/test-graph packet completed across
+  `2e7d9ecb6` through `d03f45cda`: a verified minimal LIR-to-RawBir subset is
+  active, legacy prealloc/MIR consumers are quarantined, the default build is
+  green, and only retained interface tests are registered under backend.
+- Broader CTest is 3029/3030.  The remaining `string_authority_guard` failure
+  scans quarantined `src/backend/legacy/**` and also requires an exact bounded
+  classification for the bootstrap link-name uniqueness index.
 
 ## Non-Goals
 
@@ -79,7 +86,9 @@ Evidence:
 - `build/compile_commands.json` contains no `src/backend/legacy/` entry.
 - Default build reaches the missing `bir/bir.hpp` production seam.
 
-## Step 2: Freeze the bounded schema and API checkpoint
+## Step 2: Freeze the bounded schema and API checkpoint — Complete
+
+Completed at: `a89624c62`
 
 Goal: Translate the 715 authority documents into the smallest implementation
 contract that can support ordered LIR import migration.
@@ -105,7 +114,17 @@ Completion check:
   see that the checkpoint is sufficient for migration without implementing the
   full roadmap.
 
-## Step 3: Implement core identity, ownership, order, and facade
+Evidence:
+
+- `docs/backend/pass_ready_bir/07_bootstrap_schema_checkpoint.md` freezes the
+  bounded file/type/API surface and incorporates the independent review
+  repairs before implementation authority was accepted.
+- The checkpoint explicitly keeps the link-name map as a bootstrap uniqueness
+  and merge index, never stable entity identity.
+
+## Step 3: Implement core identity, ownership, order, and facade — Complete
+
+Completed across: `1827457d7`, `4fd588556`, `f5c6a6311`
 
 Goal: Restore the missing production facade with a real minimal core.
 
@@ -125,7 +144,16 @@ Completion check:
 - Default build passes this facade/core seam, stable identity is not positional,
   CFG authority is singular, and compile metadata remains legacy-free.
 
-## Step 4: Implement builders, RawBir publication, and foundation verification
+Evidence:
+
+- Owner/generation-aware IDs, checked slot storage/tombstones, and separate ID
+  order landed without making positions or names semantic identity.
+- `bir.hpp` is a grouped public reading map over bounded nodes and read-only
+  views; mutable storage remains private.
+
+## Step 4: Implement builders, RawBir publication, and foundation verification — Complete
+
+Completed across: `b94c29ab2`, `07545736f`
 
 Goal: Make valid core state constructible and publishable without exposing
 mutable storage.
@@ -148,30 +176,62 @@ Completion check:
 - Builders can publish a verified real RawBir core and invalid foundational
   states fail structurally before publication.
 
-## Step 5: Migrate the import spine and CFG publication
+Evidence:
+
+- Scoped builders enforce mutation authority and gated publication.
+- Foundation verification covers owner/generation/kind resolution,
+  storage/order membership, function shape, terminators, and exact link-name
+  index consistency before move-only RawBir publication.
+
+## Step 5: Migrate the import spine and CFG publication — In Progress
 
 Goal: Establish direct LIR-to-RawBir construction and terminator-derived CFG.
 
 Migration order:
 
-1. `lowering.hpp`, `context.cpp`, `module.cpp`, `types.cpp`
-2. `cfg.cpp`
+1. Bootstrap import/publication seam — Complete
+2. Close active-source string-authority guard debt — Current
 
 Concrete actions:
 
-- Route construction through the new builders and eliminate old BIR API
-  dependencies.
-- Add only types, attributes, instructions, and verification rules required by
-  these files.
-- Make CFG successors derive solely from published terminators.
-- Safely reject all not-yet-migrated semantic forms.
-- Build after the import-spine packet and again after CFG; run direct
-  LIR-to-new-BIR proof for each accepted subset.
+- Keep the completed top-level `lower_lir_to_raw_bir()` path as the active
+  import spine.  It accepts void declarations and ordered void definitions
+  using return, unconditional branch, and unreachable terminators, constructs
+  exclusively through builders, and derives successors only from terminators.
+- Keep parameters, non-void signatures, globals, ordinary instructions, and
+  unsupported terminators on structured rejection paths until their semantic
+  family lands atomically.  Do not reactivate the excluded historical
+  `src/backend/bir/lir_to_bir/` translation units merely to reuse their names.
+- Restore `string_authority_guard` without classifying archived code:
+  explicitly exclude quarantined `src/backend/legacy/**` from that active-code
+  scanner while preserving the rest of `src/backend` coverage.
+- Add one exact classification for
+  `ModuleData::functions_by_link_name_` as the checkpoint-approved ABI/link
+  spelling uniqueness and merge index.  The classification and adjacent code
+  evidence must state that `FunctionId` remains entity identity, the verifier
+  enforces bidirectional exactness, and the map is removable when BIR receives
+  an owner-correct interned link identity.  Do not add a broad scanner
+  exemption for active BIR and do not introduce a new ID family in this guard
+  cleanup packet.
+- Run the guard self-test and guard test, then the retained interface subset and
+  broader CTest.  Advance to Step 6 only when this prerequisite is green.
 
 Completion check:
 
 - The import spine and CFG family publish verified RawBir through the new core,
   with exact safe rejection for the remaining inventory.
+- Default build, retained LIR-to-BIR interface proof, and the broader suite are
+  green without scanning/classifying archived legacy implementation as active
+  authority.
+
+Completed bootstrap evidence:
+
+- `2e7d9ecb6` added the verified minimal importer and explicit rejection
+  boundary.
+- `b9fba968a` routed the backend consumer through that importer and quarantined
+  prealloc/MIR consumers without fake emission success.
+- `de5e0977d`, `b056af5a9`, and `d03f45cda` removed legacy build/test graph
+  reachability and established the retained LIR-to-BIR interface test.
 
 ## Step 6: Migrate globals, scalar, and aggregate families
 
