@@ -1434,16 +1434,167 @@ void test_external_declaration_rejections_and_transactionality() {
          "FoundationVerifier must reject malformed staged external storage");
 }
 
-void test_structured_rejection() {
+void test_global_object_receipt_and_views() {
   lir::LirModule module;
-  module.globals.push_back(lir::LirGlobal{});
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto linked_name = module.link_names.intern("linked_global");
+
+  const auto external_global = [](std::string name, c4c::LinkNameId link,
+                                  c4c::TypeBase base,
+                                  lir::LirTypeRef type, int align,
+                                  bool is_const) {
+    lir::LirGlobal global;
+    global.id = lir::LirGlobalId{0};
+    global.name = std::move(name);
+    global.link_name_id = link;
+    global.type = scalar_type(base);
+    global.is_const = is_const;
+    global.linkage_vis = "external ";
+    global.qualifier = "global ";
+    global.llvm_type = type.str();
+    global.llvm_type_ref = std::move(type);
+    global.align_bytes = align;
+    global.is_extern_decl = true;
+    return global;
+  };
+  module.globals.push_back(external_global(
+      "fallback_global", c4c::kInvalidLinkName, c4c::TB_INT,
+      lir::LirTypeRef::integer(32), 4, false));
+  module.globals.push_back(external_global(
+      "linked_global", linked_name, c4c::TB_DOUBLE,
+      lir::LirTypeRef("double"), 8, true));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
-  expect(!imported.has_value(), "unsupported globals must not produce RawBir");
-  expect(imported.error().code == bir::ImportErrorCode::UnsupportedGlobals,
-         "unsupported globals should return their structured import error code");
-  expect(!imported.error().detail.empty(),
-         "structured import rejection should include diagnostic detail");
+  expect(imported.has_value(),
+         "initializer-free external globals should publish transactionally");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "published global storage must be verifier reachable");
+  const auto view = imported.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+         "Raw-BIR global IDs must follow source vector order, not LirGlobal.id");
+  const auto fallback = view.global_object(ids[0]).value();
+  const auto linked = view.global_object(ids[1]).value();
+  expect(fallback.source_name == "fallback_global" &&
+             fallback.object_type == bir::Type{bir::TypeKind::I32} &&
+             fallback.alignment == 4 && !fallback.is_internal &&
+             !fallback.is_const && fallback.is_extern_declaration &&
+             std::get<bir::FallbackGlobalName>(fallback.identity).name ==
+                 fallback.source_name &&
+             linked.source_name == "linked_global" &&
+             linked.object_type == bir::Type{bir::TypeKind::F64} &&
+             linked.alignment == 8 && linked.is_const &&
+             std::holds_alternative<bir::LinkNameId>(linked.identity),
+         "global views must preserve type, identity, alignment, and semantic flags");
+  expect(view.global_object("fallback_global").value() == ids[0] &&
+             view.global_object(std::get<bir::LinkNameId>(linked.identity))
+                     .value() == ids[1],
+         "global name and link lookups must resolve ordered typed identities");
+}
+
+void test_global_object_rejections_and_transactionality() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto linked = module.link_names.intern("linked_global");
+    lir::LirGlobal global;
+    global.name = "linked_global";
+    global.link_name_id = linked;
+    global.type = scalar_type(c4c::TB_INT);
+    global.linkage_vis = "external ";
+    global.qualifier = "global ";
+    global.llvm_type = "i32";
+    global.llvm_type_ref = lir::LirTypeRef::integer(32);
+    global.align_bytes = 4;
+    global.is_extern_decl = true;
+    module.globals.push_back(global);
+    module.functions.push_back(void_declaration("valid_before_bad_global"));
+    return module;
+  };
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto module = valid_module();
+    mutate(module);
+    auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code == bir::ImportErrorCode::UnsupportedGlobals,
+           message);
+  };
+
+  rejected([](lir::LirModule& m) { m.globals[0].name.clear(); },
+           "empty global names must reject the whole module");
+  rejected([](lir::LirModule& m) { m.globals.push_back(m.globals[0]); },
+           "duplicate global identities must reject the whole module");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].link_name_id = static_cast<c4c::LinkNameId>(999);
+           },
+           "unresolved global link identities must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].name = "wrong_spelling"; },
+           "link spelling mismatches must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type_ref.reset(); },
+           "missing structured global types must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].llvm_type_ref =
+                 lir::LirTypeRef("not-an-integer", lir::LirTypeKind::Integer);
+             m.globals[0].llvm_type = "not-an-integer";
+           },
+           "malformed structured global types must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "i64"; },
+           "rendered type compatibility conflicts must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].type = scalar_type(c4c::TB_LONG); },
+           "source type compatibility conflicts must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].linkage_vis = "weak "; },
+           "linkage compatibility conflicts must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].qualifier = "constant "; },
+           "qualifier compatibility conflicts must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].is_internal = true; },
+           "incoherent external/global flags must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].align_bytes = 3; },
+           "non-power-of-two global alignment must reject transactionally");
+  rejected([](lir::LirModule& m) { m.globals[0].is_extern_decl = false; },
+           "global definitions remain outside this initializer-free packet");
+  rejected([](lir::LirModule& m) { m.globals[0].init_text = "i32 0"; },
+           "text initializers must never be silently dropped or parsed");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].initializer_function_link_name_ids.push_back(
+                 m.globals[0].link_name_id);
+           },
+           "typed initializer reference evidence must never be silently dropped");
+
+  bir::ModuleBuilder builder;
+  expect(builder.add_link_name(1, "linked_global").has_value(),
+         "staged link name should be available to global receipt");
+  expect(builder
+             .add_global_object("", bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, true)
+             .error() == bir::BuildError::EmptyGlobalName,
+         "builder must reject empty global identities");
+  expect(builder
+             .add_global_object("linked_global",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, true,
+                                c4c::kInvalidLinkName)
+             .error() == bir::BuildError::InvalidGlobalLinkName,
+         "builder must reject explicitly invalid link identities");
+  expect(builder
+             .add_global_object("malformed_global",
+                                bir::Type{bir::TypeKind::Void}, 3,
+                                true, false, false)
+             .has_value(),
+         "builder should retain malformed staged global state for verifier diagnosis");
+  expect(builder
+             .add_global_object("malformed_global",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, true)
+             .error() == bir::BuildError::DuplicateGlobalObject,
+         "duplicate staged global receipt must remain append-only");
+  auto published = std::move(builder).publish();
+  expect(!published.has_value() &&
+             published.error().reason == bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject malformed staged global state");
 }
 
 void test_inline_asm_shape_rejection() {
@@ -1486,7 +1637,8 @@ int main() {
   test_string_pool_rejections_and_transactionality();
   test_external_declaration_receipt_and_views();
   test_external_declaration_rejections_and_transactionality();
-  test_structured_rejection();
+  test_global_object_receipt_and_views();
+  test_global_object_rejections_and_transactionality();
   test_inline_asm_shape_rejection();
   return 0;
 }

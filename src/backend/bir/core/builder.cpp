@@ -242,6 +242,61 @@ Result<ExternalDeclId, BuildError> ModuleBuilder::add_external_declaration(
   return Result<ExternalDeclId, BuildError>::success(id);
 }
 
+Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
+    std::string source_name, Type object_type, int alignment,
+    bool is_internal, bool is_const, bool is_extern_declaration,
+    std::optional<c4c::LinkNameId> source_link_name) {
+  if (state_ == State::Consumed)
+    return Result<GlobalObjectId, BuildError>::failure(BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<GlobalObjectId, BuildError>::failure(BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<GlobalObjectId, BuildError>::failure(BuildError::EpochExhausted);
+  if (source_name.empty())
+    return Result<GlobalObjectId, BuildError>::failure(BuildError::EmptyGlobalName);
+  if (data_->globals_by_name_.count(source_name) != 0)
+    return Result<GlobalObjectId, BuildError>::failure(BuildError::DuplicateGlobalObject);
+  if (data_->globals_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<GlobalObjectId, BuildError>::failure(BuildError::StorageExhausted);
+
+  std::variant<LinkNameId, FallbackGlobalName> identity =
+      FallbackGlobalName{source_name};
+  if (source_link_name) {
+    if (*source_link_name == c4c::kInvalidLinkName)
+      return Result<GlobalObjectId, BuildError>::failure(
+          BuildError::InvalidGlobalLinkName);
+    const auto linked = data_->link_names_by_source_id_.find(*source_link_name);
+    if (linked == data_->link_names_by_source_id_.end() ||
+        linked->second.slot >= data_->link_names_.size() ||
+        data_->link_names_[linked->second.slot].spelling != source_name)
+      return Result<GlobalObjectId, BuildError>::failure(
+          BuildError::InvalidGlobalLinkName);
+    if (data_->globals_by_link_name_.count(linked->second) != 0)
+      return Result<GlobalObjectId, BuildError>::failure(
+          BuildError::DuplicateGlobalObject);
+    identity = linked->second;
+  }
+
+  const GlobalObjectId id{data_->epoch_,
+                          static_cast<SlotIndex>(data_->globals_.size())};
+  data_->globals_.push_back(GlobalObject{source_name, std::move(object_type),
+                                         identity, alignment, is_internal,
+                                         is_const, is_extern_declaration});
+  try {
+    data_->globals_by_name_.emplace(source_name, id);
+    if (const auto* link_name = std::get_if<LinkNameId>(&identity))
+      data_->globals_by_link_name_.emplace(*link_name, id);
+  } catch (...) {
+    data_->globals_by_name_.erase(source_name);
+    if (const auto* link_name = std::get_if<LinkNameId>(&identity))
+      data_->globals_by_link_name_.erase(*link_name);
+    data_->globals_.pop_back();
+    throw;
+  }
+  return Result<GlobalObjectId, BuildError>::success(id);
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 ModuleBuilder::mutable_function(FunctionId function) {
   if (!data_ || data_->epoch_ == 0)

@@ -64,6 +64,23 @@ struct ExternalDeclaration {
       FallbackExternalName{};
 };
 
+struct FallbackGlobalName {
+  std::string name;
+};
+
+// Initializer-free external global receipt. Definitions deliberately remain
+// outside this bounded representation until their initializer has a typed,
+// lossless Raw-BIR form.
+struct GlobalObject {
+  std::string source_name;
+  Type object_type;
+  std::variant<LinkNameId, FallbackGlobalName> identity = FallbackGlobalName{};
+  int alignment = 0;
+  bool is_internal = false;
+  bool is_const = false;
+  bool is_extern_declaration = true;
+};
+
 struct ValueDef {
   ValueKind kind = ValueKind::Parameter;
   Type type{};
@@ -220,6 +237,9 @@ struct ModuleData {
   std::vector<ExternalDeclaration> external_decls_;
   std::unordered_map<std::string, ExternalDeclId> external_decls_by_name_;
   std::unordered_map<LinkNameId, ExternalDeclId> external_decls_by_link_name_;
+  std::vector<GlobalObject> globals_;
+  std::unordered_map<std::string, GlobalObjectId> globals_by_name_;
+  std::unordered_map<LinkNameId, GlobalObjectId> globals_by_link_name_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;

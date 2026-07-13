@@ -182,6 +182,13 @@ class ModuleView {
       ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
     return ids;
   }
+  std::vector<GlobalObjectId> global_objects() const {
+    std::vector<GlobalObjectId> ids;
+    ids.reserve(data_->globals_.size());
+    for (std::size_t i = 0; i < data_->globals_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
 
   Result<std::string, ResolveError> spelling(LinkNameId id) const {
     if (id.epoch != data_->epoch_)
@@ -261,6 +268,28 @@ class ModuleView {
       return Result<ExternalDeclId, ResolveError>::failure(
           ResolveError::OutOfRange);
     return Result<ExternalDeclId, ResolveError>::success(found->second);
+  }
+  Result<GlobalObject, ResolveError> global_object(GlobalObjectId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<GlobalObject, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->globals_.size())
+      return Result<GlobalObject, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<GlobalObject, ResolveError>::success(data_->globals_[id.slot]);
+  }
+  Result<GlobalObjectId, ResolveError> global_object(
+      const std::string& source_name) const {
+    const auto found = data_->globals_by_name_.find(source_name);
+    if (found == data_->globals_by_name_.end())
+      return Result<GlobalObjectId, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<GlobalObjectId, ResolveError>::success(found->second);
+  }
+  Result<GlobalObjectId, ResolveError> global_object(LinkNameId link_name) const {
+    if (link_name.epoch != data_->epoch_)
+      return Result<GlobalObjectId, ResolveError>::failure(ResolveError::WrongEpoch);
+    const auto found = data_->globals_by_link_name_.find(link_name);
+    if (found == data_->globals_by_link_name_.end())
+      return Result<GlobalObjectId, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<GlobalObjectId, ResolveError>::success(found->second);
   }
   Result<ExternalDeclId, ResolveError> external_declaration(
       LinkNameId link_name) const {

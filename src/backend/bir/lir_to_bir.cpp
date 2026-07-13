@@ -375,9 +375,43 @@ Result<void, ImportError> validate_inline_asm_shape(
 }
 
 Result<void, ImportError> validate_module_surface(const LirModule& module) {
-  if (!module.globals.empty())
-    return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                      "module globals require a migrated semantic family");
+  std::unordered_set<std::string> global_names;
+  std::unordered_set<c4c::LinkNameId> global_link_ids;
+  global_names.reserve(module.globals.size());
+  global_link_ids.reserve(module.globals.size());
+  for (const auto& global : module.globals) {
+    if (global.name.empty() || !global.llvm_type_ref.has_value() ||
+        !global_names.insert(global.name).second)
+      return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                        "global name and structured type identity must be present and unique");
+    const auto type = lower_lir_type(module, *global.llvm_type_ref);
+    const auto source_type = lower_constant_type(module, global.type);
+    if (!type || type->kind == TypeKind::Void || !source_type ||
+        *source_type != *type || global.llvm_type != global.llvm_type_ref->str())
+      return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                        "global structured type authority is malformed or conflicts with compatibility evidence");
+    if (global.llvm_type_ref->has_struct_name_id() &&
+        module.find_struct_decl(global.llvm_type_ref->struct_name_id()) == nullptr)
+      return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                        "global structured type names an unresolved declaration");
+    if (!global.is_extern_decl || global.is_internal ||
+        global.linkage_vis != "external " || global.qualifier != "global " ||
+        !global.init_text.empty() ||
+        !global.initializer_function_link_name_ids.empty())
+      return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                        "only lossless initializer-free external globals are admitted");
+    if (global.align_bytes < 0 ||
+        (global.align_bytes != 0 &&
+         (global.align_bytes & (global.align_bytes - 1)) != 0))
+      return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                        "global alignment must be zero or a positive power of two");
+    if (global.link_name_id != c4c::kInvalidLinkName) {
+      if (module.link_names.spelling(global.link_name_id) != global.name ||
+          !global_link_ids.insert(global.link_name_id).second)
+        return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                          "link-backed global identity is unresolved, mismatched, or duplicated");
+    }
+  }
   if (module.string_pool.empty()) {
     if (!module.str_pool_map.empty() || module.str_pool_idx != 0)
       return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
@@ -781,6 +815,18 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import external declaration", added.error()));
+  }
+  for (const auto& global : module.globals) {
+    auto added = builder.add_global_object(
+        global.name, *lower_lir_type(module, *global.llvm_type_ref),
+        global.align_bytes, global.is_internal, global.is_const,
+        global.is_extern_decl,
+        global.link_name_id == c4c::kInvalidLinkName
+            ? std::nullopt
+            : std::optional<c4c::LinkNameId>{global.link_name_id});
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import global object", added.error()));
   }
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);

@@ -272,6 +272,82 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              "external link index contains a foreign or conflicting row");
   }
 
+  std::size_t linked_global_count = 0;
+  for (std::size_t index = 0; index < module.globals_.size(); ++index) {
+    const GlobalObjectId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& global = module.globals_[index];
+    const auto named = module.globals_by_name_.find(global.source_name);
+    bool type_resolves = true;
+    if (global.object_type.struct_name_id != c4c::kInvalidStructName) {
+      const auto struct_name = module.struct_names_by_source_id_.find(
+          global.object_type.struct_name_id);
+      type_resolves =
+          struct_name != module.struct_names_by_source_id_.end() &&
+          struct_name->second.slot < module.struct_names_.size() &&
+          module.struct_names_[struct_name->second.slot].spelling ==
+              global.object_type.spelling &&
+          module.struct_decls_by_name_.count(struct_name->second) != 0;
+    }
+    const bool valid_alignment =
+        global.alignment >= 0 &&
+        (global.alignment == 0 ||
+         (global.alignment & (global.alignment - 1)) == 0);
+    if (!id.valid() || global.source_name.empty() ||
+        !is_well_formed(global.object_type) ||
+        global.object_type.kind == TypeKind::Void || !type_resolves ||
+        !valid_alignment || global.is_internal ||
+        !global.is_extern_declaration ||
+        named == module.globals_by_name_.end() || named->second != id)
+      report(result, VerificationRule::GlobalObject, {}, id,
+             "global identity, external shape, type, alignment, and name index must agree");
+
+    if (const auto* link_name = std::get_if<LinkNameId>(&global.identity)) {
+      ++linked_global_count;
+      const auto linked = module.globals_by_link_name_.find(*link_name);
+      if (!link_name->valid() || link_name->epoch != module.epoch_ ||
+          link_name->slot >= module.link_names_.size() ||
+          (link_name->slot < module.link_names_.size() &&
+           module.link_names_[link_name->slot].spelling != global.source_name) ||
+          linked == module.globals_by_link_name_.end() || linked->second != id)
+        report(result, VerificationRule::GlobalObject, {}, id,
+               "link-backed global identity must resolve exactly");
+    } else if (const auto* fallback =
+                   std::get_if<FallbackGlobalName>(&global.identity)) {
+      if (fallback->name.empty() || fallback->name != global.source_name)
+        report(result, VerificationRule::GlobalObject, {}, id,
+               "fallback global identity must retain its exact source name");
+    } else {
+      report(result, VerificationRule::GlobalObject, {}, id,
+             "global identity has no known alternative");
+    }
+  }
+  if (module.globals_by_name_.size() != module.globals_.size())
+    report(result, VerificationRule::GlobalObject, {}, ModuleEntity{},
+           "global name index size must match ordered storage");
+  if (module.globals_by_link_name_.size() != linked_global_count)
+    report(result, VerificationRule::GlobalObject, {}, ModuleEntity{},
+           "global link index size must match link-backed rows");
+  for (const auto& entry : module.globals_by_name_) {
+    if (entry.first.empty() || entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.globals_.size() ||
+        (entry.second.slot < module.globals_.size() &&
+         module.globals_[entry.second.slot].source_name != entry.first))
+      report(result, VerificationRule::GlobalObject, {}, entry.second,
+             "global name index contains a foreign or conflicting row");
+  }
+  for (const auto& entry : module.globals_by_link_name_) {
+    if (!entry.first.valid() || entry.first.epoch != module.epoch_ ||
+        entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.globals_.size() ||
+        (entry.second.slot < module.globals_.size() &&
+         (!std::holds_alternative<LinkNameId>(
+              module.globals_[entry.second.slot].identity) ||
+          std::get<LinkNameId>(module.globals_[entry.second.slot].identity) !=
+              entry.first)))
+      report(result, VerificationRule::GlobalObject, {}, entry.second,
+             "global link index contains a foreign or conflicting row");
+  }
+
   const auto function_counts = counts(module.function_order_.ids_);
   std::unordered_set<FunctionId> live_functions;
   std::unordered_map<std::string, FunctionId> live_names;
