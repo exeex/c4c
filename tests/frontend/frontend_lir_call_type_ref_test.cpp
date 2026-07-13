@@ -1590,6 +1590,188 @@ int *neighbor_address(void) { return lir_identity_array_neighbor; }
   lir::verify_module(raw_compatibility);
 }
 
+void test_direct_scalar_result_call_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_direct_scalar_result_target(void) { return 7; }
+int lir_direct_scalar_result_call_identity(void) {
+  return lir_direct_scalar_result_target();
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& caller =
+      require_function(lowered, "lir_direct_scalar_result_call_identity");
+  std::vector<lir::LirCallOp*> calls;
+  for (auto& block : caller.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst)) calls.push_back(call);
+    }
+  }
+  expect_eq(std::to_string(calls.size()), "1",
+            "scalar-result probe should lower exactly one call");
+  const lir::LirCallOp& call = *calls[0];
+  expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName,
+              "direct scalar call should retain native callee identity");
+  const auto target = std::find_if(
+      lowered.functions.begin(), lowered.functions.end(),
+      [&](const lir::LirFunction& function) {
+        return function.link_name_id == call.direct_callee_link_name_id;
+      });
+  expect_true(target != lowered.functions.end() &&
+                  target->name == "lir_direct_scalar_result_target",
+              "direct callee ID should resolve to the selected function");
+  expect_true(call.return_type.kind() == lir::LirTypeKind::Integer &&
+                  call.return_type.integer_bit_width() == 32,
+              "scalar call should retain native i32 return type");
+  expect_true(call.callee_signature &&
+                  call.callee_signature->return_type_ref &&
+                  call.callee_signature->return_type_ref->kind() ==
+                      lir::LirTypeKind::Integer &&
+                  call.callee_signature->return_type_ref->integer_bit_width() == 32 &&
+                  call.callee_signature->fixed_param_type_refs.empty() &&
+                  call.callee_signature->has_void_param_list &&
+                  !call.callee_signature->is_variadic &&
+                  !call.callee_signature->has_unspecified_params,
+              "direct scalar call should retain its structured callee contract");
+  expect_true(call.result.kind() == lir::LirOperandKind::SsaValue &&
+                  !call.result.has_authority() && !call.result.value_id(),
+              "first bad fact: scalar call result is classified SSA text without a value ID");
+}
+
+void test_direct_void_immediate_arg_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+void lir_direct_void_immediate_arg_target(int value);
+void lir_direct_void_immediate_arg_identity(void) {
+  lir_direct_void_immediate_arg_target(7);
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& caller =
+      require_function(lowered, "lir_direct_void_immediate_arg_identity");
+  std::vector<lir::LirCallOp*> calls;
+  for (auto& block : caller.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst)) calls.push_back(call);
+    }
+  }
+  expect_eq(std::to_string(calls.size()), "1",
+            "immediate-argument probe should lower exactly one call");
+  const lir::LirCallOp& call = *calls[0];
+  expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
+                  call.return_type.kind() == lir::LirTypeKind::Void,
+              "void immediate call should retain native direct-target and return facts");
+  expect_true(call.callee_signature &&
+                  call.callee_signature->fixed_param_type_refs.size() == 1 &&
+                  call.callee_signature->fixed_param_type_refs[0].kind() ==
+                      lir::LirTypeKind::Integer &&
+                  call.callee_signature->fixed_param_type_refs[0].integer_bit_width() == 32 &&
+                  !call.callee_signature->is_variadic &&
+                  !call.callee_signature->has_unspecified_params,
+              "void immediate call should retain one fixed native i32 parameter");
+  expect_true(call.structured_args.size() == 1 &&
+                  call.structured_args[0].type_ref.empty(),
+              "current scalar argument carrier should expose no duplicate type authority");
+  const lir::LirOperand& argument = call.structured_args[0].operand;
+  expect_true(argument.kind() == lir::LirOperandKind::Immediate &&
+                  !argument.has_authority() && !argument.integer_immediate(),
+              "first bad fact: immediate call argument is classified text without payload authority");
+}
+
+void test_direct_void_ssa_arg_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_direct_void_ssa_arg_source;
+void lir_direct_void_ssa_arg_target(int value);
+void lir_direct_void_ssa_arg_identity(void) {
+  lir_direct_void_ssa_arg_target(lir_direct_void_ssa_arg_source);
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& caller =
+      require_function(lowered, "lir_direct_void_ssa_arg_identity");
+  std::vector<lir::LirLoadOp*> loads;
+  std::vector<lir::LirCallOp*> calls;
+  for (auto& block : caller.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst)) calls.push_back(call);
+    }
+  }
+  expect_true(loads.size() == 1 && calls.size() == 1,
+              "SSA-argument probe should lower one selected-global load and one call");
+  expect_true(loads[0]->result.value_id() &&
+                  loads[0]->result.value_id()->valid() &&
+                  loads[0]->ptr.link_name_id() &&
+                  lowered.link_names.spelling(*loads[0]->ptr.link_name_id()) ==
+                      "lir_direct_void_ssa_arg_source",
+              "selected-global load should retain the closed CC-LOAD-1 authority");
+  const lir::LirCallOp& call = *calls[0];
+  expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
+                  call.return_type.kind() == lir::LirTypeKind::Void &&
+                  call.callee_signature &&
+                  call.callee_signature->fixed_param_type_refs.size() == 1 &&
+                  call.callee_signature->fixed_param_type_refs[0].kind() ==
+                      lir::LirTypeKind::Integer &&
+                  call.callee_signature->fixed_param_type_refs[0].integer_bit_width() == 32 &&
+                  call.structured_args.size() == 1 &&
+                  call.structured_args[0].type_ref.empty(),
+              "SSA call should retain native target/signature facts beside its scalar argument carrier");
+  const lir::LirOperand& argument = call.structured_args[0].operand;
+  expect_true(argument.kind() == lir::LirOperandKind::SsaValue &&
+                  !argument.has_authority() && !argument.value_id(),
+              "first bad fact: call carrier loses the selected-global load result ID");
+}
+
+void test_scalar_ordinary_value_chain_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_scalar_ordinary_value_chain_source;
+int lir_scalar_ordinary_value_chain_identity(void) {
+  return (lir_scalar_ordinary_value_chain_source + 1) * 2;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_scalar_ordinary_value_chain_identity");
+  std::vector<lir::LirLoadOp*> loads;
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+        binary_ops.push_back(binary);
+      }
+    }
+  }
+  expect_true(loads.size() == 1 && loads[0]->result.value_id() &&
+                  loads[0]->result.value_id()->valid(),
+              "scalar-chain source load should retain its neighboring native result ID");
+  expect_eq(std::to_string(binary_ops.size()), "2",
+            "scalar-chain probe should lower exactly two binary operations");
+  expect_true(binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  binary_ops[1]->opcode.typed() == lir::LirBinaryOpcode::Mul &&
+                  binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  binary_ops[0]->type_str.integer_bit_width() == 32 &&
+                  binary_ops[1]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  binary_ops[1]->type_str.integer_bit_width() == 32,
+              "scalar chain should retain native opcode and i32 type facts");
+  expect_true(binary_ops[0]->result.kind() == lir::LirOperandKind::SsaValue &&
+                  !binary_ops[0]->result.has_authority() &&
+                  !binary_ops[0]->result.value_id(),
+              "first bad fact: first scalar result is SSA text without a value ID");
+  expect_true(binary_ops[1]->lhs.kind() == lir::LirOperandKind::SsaValue &&
+                  !binary_ops[1]->lhs.has_authority() &&
+                  !binary_ops[1]->lhs.value_id() &&
+                  binary_ops[1]->result.kind() == lir::LirOperandKind::SsaValue &&
+                  !binary_ops[1]->result.has_authority(),
+              "scalar chain loses result/use identity across its second operation");
+}
+
 }  // namespace
 
 int main() {
@@ -1968,6 +2150,10 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_global_load_identity_contract();
   test_return_identity_contract();
   test_global_array_gep_identity_contract();
+  test_direct_scalar_result_call_identity_boundary();
+  test_direct_void_immediate_arg_identity_boundary();
+  test_direct_void_ssa_arg_identity_boundary();
+  test_scalar_ordinary_value_chain_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

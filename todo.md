@@ -4,44 +4,41 @@ Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 2
-Current Step Title: Extract and bind four focused one-contract probes
+Current Step Title: Extract and bind four focused one-contract probes (complete)
 
 ## Just Finished
 
-- Completed Plan Step 1 with a checked current-source authority matrix covering
-  all 38 `LirInst` alternatives exactly once: 12 producerless legacy rows and
-  26 active modern rows, with every field family, producer, carrier,
-  allocation path, verifier state, dependency, probe, and disposition named.
-- Preserved CC-STORE-1, CC-LOAD-1, CC-GEP-1, and CC-RET-1 as closed idea-741
-  regression neighbors and classified their unclaimed neighboring shapes
-  without reopening those contracts.
-- Confirmed all four Step-2 probes have independent production first bad facts;
-  the SSA-call-argument implementation should reuse the common argument
-  carrier introduced by the immediate-argument seam.
+- Completed Plan Step 2 by extracting four minimal cases for the scalar call
+  result, immediate call argument, selected-global-load SSA call argument, and
+  two-operation ordinary scalar result/use chain.
+- Added structural frontend observations for each production boundary. The
+  observations inspect instruction variants, native IDs, opcode/type refs, and
+  monostate authority directly; they do not parse rendered LIR or compare
+  display spelling to establish identity.
+- Bound every probe in the authority matrix to its exact producer/carrier
+  transition, post-publication verifier rejection obligations, and forbidden
+  text fallback. The SSA argument remains explicitly dependent on the common
+  carrier introduced for immediate arguments, not an SSA-only side carrier.
 
 ## Suggested Next
 
-- Execute Plan Step 2: extract and bind the four focused one-contract probes
-  named by the runbook and authority matrix.
+- Execute Plan Step 3: publish direct scalar call result identity.
 
 ## Watchouts
 
-- Keep one primary authority contract per focused probe; do not combine the
-  four first bad facts into a monolithic case.
-- Observe each production boundary and bind its exact carrier transition plus
-  verifier obligations before any producer implementation.
-- The SSA-argument probe must reuse the argument carrier established by the
-  immediate-argument seam; do not create a duplicate SSA-only carrier.
+- Keep each focused probe one-contract as implementation proceeds; do not fold
+  the four distinct first bad facts into a monolithic testcase or patch.
+- Step 3 owns only scalar direct-call result publication and its verifier
+  obligations; call-argument carrier work remains Steps 4-5.
+- The SSA-argument implementation must reuse the argument carrier established
+  by the immediate-argument seam; do not create a duplicate SSA-only carrier.
 - Keep CFG/terminator targets, stack/local/alloca/object ownership, and body
   parameter identity outside Step 2.
 
 ## Proof
 
-- Docs-only packet; no build or test was required and no regression log changed.
-- Mechanical extraction found 38 current source alternatives and 38 unique
-  matrix rows with empty `comm -3`: 12 producerless legacy + 26 active modern.
-- Current-source spot checks confirmed `emit_call_with_result` uses
-  `fresh_tmp`, call args lose authority through `emit_rval_id` and raw-string
-  `OwnedLirTypedCallArg`, representative `LirBinOp` chains use `fresh_tmp`, and
-  the only two `fresh_value` calls remain the idea-741 load/GEP neighbors.
-- `git diff --check` passed for the documentation and packet-state changes.
+- Fresh `cmake --build --preset default` passed after adding the structural
+  observations and four cases.
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log`
+  passed 1/1; canonical proof remains in `test_after.log`.
+- `git diff --check` passed for the complete Step-2 slice.
