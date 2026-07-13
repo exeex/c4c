@@ -93,10 +93,15 @@ the complete problem. After E3 reaches a stable candidate and the final E1/E2
 facts are current, D5's subordinate `CopyResolutionTransaction` schedules
 acyclic, overlapping, and cyclic groups through their already assigned legal
 homes, publishes one new exact revision and fingerprint, and hands that private
-candidate directly to E4. This is a continuation of D5 ownership, not an
+candidate to an in-transaction exact-current closure: constraint projection,
+E1 recomputation, E2 assignment validation without reallocation, E3
+spill-state validation without mutation, and target-realizability
+recomputation, in that order. Only their jointly keyed resolved-revision
+products may reach E4. This is a continuation of D5 ownership, not an
 additional A-F stage. It cannot create a temporary, change allocation, add a
 spill/reload, or defer a bundle to MIR. Failure is atomic and produces no E4
-capability.
+capability; predecessor products stay immutable, and stable IDs or preservation
+records cannot rekey them.
 
 The canonical pass IDs `P01` through `P07` are immutable. Adding a canonical
 pass requires an architecture review and an explicit renumbering decision; a
@@ -114,7 +119,9 @@ liveness, interference, and assignments. The loop ends only when one stable
 candidate has complete homes, including all scratch reservations, and spill
 coverage, or when allocation fails closed. The stable candidate and its exact
 current E1/E2/E3 facts then enter D5 copy resolution; only that resolved output
-may enter E4.
+with newly installed exact-current projected-constraint, E1, E2, E3, and
+target-realizability products may enter E4. E4 rejects every predecessor-keyed
+product.
 
 ## Verifier profiles
 

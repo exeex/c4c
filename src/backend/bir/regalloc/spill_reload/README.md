@@ -92,3 +92,21 @@ is the sole input to D5 copy resolution; E3 cannot run after resolution.
 Failure, including projection failure, discards the entire private revision,
 spill objects, nodes, assignments, projected product, and derived products;
 the predecessor remains unchanged.
+
+Copy resolution itself cannot run E3 mutation, but its revision advance
+invalidates the predecessor spill-state product. Inside the enclosing
+`CopyResolutionTransaction`, after exact-current E1 recomputation and E2
+assignment validation, E3's spill-state owner runs a non-mutating validator
+over the frozen resolved graph. It consumes the resolved `PipelineStageStamp`,
+`CopyResolutionFingerprint`, exact resolved `ProjectedConstraintSet`, exact
+`LivenessInterferenceKey`/`AssignmentKey`, and the immutable predecessor spill
+object/transition inventory.
+It proves that no spill object, `Spill`/`Reload` node, placement, covered use,
+or residency transition changed; that every reload result retains a complete
+legal assignment under current E1/E2 facts; and that copy replacement did not
+introduce an implicit transition. Only then does it install one E3 spill-state
+`SpillStateKey` product keyed to the resolved revision. Stable IDs, an
+unchanged inventory, or
+the D5 preservation record cannot rekey it. The validator cannot add, remove,
+or reposition spill state; failure rolls back the whole resolution closure,
+leaves predecessor products unchanged, and produces no E4 input.

@@ -35,6 +35,17 @@ projection. Every other product is preserved or reprojected by its named owner
 for that revision and carries the complete predecessor fingerprints. Stable
 IDs, structural equality, and copied records do not establish freshness.
 
+Specifically, before E4 begins, the enclosing `CopyResolutionTransaction` has
+already invoked E1 to recompute resolved-graph liveness/interference, E2's
+allocator-owned validator to install the unchanged-but-reproved assignment,
+E3's spill-state validator to install the unchanged-but-reproved spill
+inventory and transitions, and the existing target realizability
+registry/checker to recompute its product. Each is keyed to the same resolved
+`PipelineStageStamp` and `CopyResolutionFingerprint` in dependency order after
+the sole `ConstraintProjectionTransaction`. E4 rejects a predecessor-keyed or
+merely copied `LivenessInterferenceKey`, `AssignmentKey`, `SpillStateKey`,
+`ProjectedConstraintKey`, or `TargetRealizabilityKey` product.
+
 ## Output
 
 An `AllocatedBir`, its same-revision `PreparedBir` capability, and a borrowed

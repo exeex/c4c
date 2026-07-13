@@ -74,6 +74,23 @@ prerequisite, and runs the entire cumulative `Pseudo` verifier plus target
 realizability registry on every function. A mutation followed only by a local
 check is not eligible for D5.
 
+The same existing target realizability registry/checker is the sole owner of
+the exact product recomputed after D5 copy resolution; this is not another D4
+occurrence or a new A-F stage. It runs last in the enclosing
+`CopyResolutionTransaction` product closure and consumes the frozen resolved
+graph, resolved `PipelineStageStamp`, `CopyResolutionFingerprint`, exact
+target/layout/schema and `ProjectedConstraintSet` keys, and the newly staged
+exact-current `LivenessInterferenceKey`, `AssignmentKey`, and `SpillStateKey`.
+It rechecks every surviving node, including each
+resolved `EdgeCopy`, against the registered direct-mapping rule and installs
+one `TargetRealizabilityKey` product keyed to that exact revision. The predecessor D4 or
+E3-retry product is invalid after the rewrite; stable IDs, structural equality,
+and D5's preservation record cannot rekey it. Checker failure aborts the whole
+copy-resolution transaction and publishes no realizability product or E4
+input. Frame-placement completeness and the final one-record closure remain
+the separate downstream contract; this exact-key refresh does not repair or
+weaken them.
+
 ## Forbidden authority and failure
 
 D4 may attach or refine abstract class/group requirements already authorized

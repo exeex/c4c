@@ -8,39 +8,41 @@ Current Step Title: Choose the BIR-owned D5 parallel-copy realization route
 
 ## Just Finished
 
-- Plan Step 13 completed with four blocking architecture desynchronizations in
-  `review/731_full_architecture_review_repeat.md`; the review reset returns the
-  active runbook to the earliest affected repair, Step 9.1.
-- Step 14 and implementation remain forbidden. The source idea stays open and
-  unchanged because the reviewer found route desynchronization, not a conflict
-  with its durable intent.
+- Plan Step 9.1's exact-current product repair is complete: after D5 copy
+  resolution advances the revision, the enclosing
+  `CopyResolutionTransaction` now invokes the sole constraint projection
+  authority, E1 recomputation, E2's non-reallocating assignment validator,
+  E3's non-mutating spill-state validator, and the existing target
+  realizability registry/checker in deterministic dependency order.
+- All five resolved-revision products are staged and installed atomically;
+  predecessor products stay immutable, stable IDs and preservation records
+  cannot rekey them, and any owner failure produces no E4 input.
 
 ## Suggested Next
 
-- Execute Plan Step 9.1, "Choose the BIR-owned D5 parallel-copy realization
-  route," beginning with exact-current E1/E2/E3/realizability product ownership
-  after the copy-resolution revision advance.
+- Execute Plan Step 9.2's frame-aware one-record realizability and verifier-
+  interval repair without reopening the now-closed exact-current product
+  ownership route.
 
 ## Watchouts
 
-- Repair blockers in this exact order:
-  1. Step 9.1: preserve, rekey, or recompute exact-current E1 liveness, E2
-     assignment, E3 spill state, and realizability after D5 copy resolution, or
-     choose an alternative coherent publication route.
-  2. Step 9.2: add a BIR-owned post-allocation/frame-aware realizability closure
-     or schema restriction proving stack, call, spill, reload, and scratch nodes
-     map one record before E4; MIR remains non-repairing.
-  3. Step 9.2: separate the initial-D5 Pseudo publication verifier interval
-     from the assigned E3-retry/D5-resolved private-candidate interval.
-  4. Step 11: exhaustively inventory current legacy paths, including nested
-     `stack_layout`, `regalloc`, and `prepared_printer` families, and correct
-     address ownership from C5 to C6.
+- Step 9.2 still must add a BIR-owned post-allocation/frame-aware realizability
+  closure or schema restriction proving stack, call, spill, reload, and scratch
+  nodes map one record before E4; this packet's exact-key target-product refresh
+  deliberately does not solve that blocker.
+- Step 9.2 must also separate the initial-D5 Pseudo publication verifier
+  interval from the assigned E3-retry/D5-resolved private-candidate interval.
+- Step 11 still must inventory current nested legacy paths and correct address
+  ownership from C5 to C6.
 - After those repairs, repeat Step 12 and obtain a new independent Step 13
   review. Step 14 is forbidden until that review reports zero blockers.
 
 ## Proof
 
-- Lifecycle consistency and the runbook reset must pass `git diff --check` and
-  confirm that `plan.md` and `todo.md` still link the same open source idea.
-- No architecture acceptance proof is claimed; the repeated review artifact is
-  the authoritative blocker payload for this reset.
+- Passed the supervisor-selected documentation proof: `git diff --check`; the
+  required positive `rg` over the nine owned BIR architecture contracts; and
+  the required negative `rg` rejecting preservation-record minting, stable-ID
+  rekeying/freshness, and accepted predecessor-keyed E1/E2/E3/realizability
+  products.
+- No build or test subset applies to this docs-only packet. Per the delegated
+  boundary, regression logs were not created or modified.

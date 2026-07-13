@@ -6,8 +6,10 @@ Status: converged design contract (unimplemented).
 
 `E1` is the sole shared liveness/interference analysis for RV64, AArch64, and
 x86 allocation. It consumes one immutable, fully reverified initial D5
-`PseudoBir` revision, or one fully reverified E3 retry revision, plus the exact
-`VerifiedTargetLayout` and `ProjectedConstraintSet` keyed to that revision. Its key
+`PseudoBir` revision, one fully reverified E3 retry revision, or the frozen
+resolved revision staged inside D5's `CopyResolutionTransaction`, plus the exact
+`VerifiedTargetLayout` and `ProjectedConstraintSet` keyed to that revision. Its
+`LivenessInterferenceKey`
 contains the complete pseudo stage stamp, module epoch and revision, ordered
 function-revision digest, target and layout fingerprints, projected-constraint
 fingerprint, and E1 schema fingerprint. An equal graph, stable value IDs, or a
@@ -66,3 +68,17 @@ insufficient. The final E1 product for the stable post-E3 candidate, together
 with the matching E2 assignment and E3 spill facts, is input to D5's
 subordinate `CopyResolutionTransaction`; an earlier retry product cannot be
 used to resolve copies.
+
+Copy resolution advances the revision and therefore invalidates that final
+predecessor E1 product even though ordinary assignments and stable value IDs
+do not change. Inside the enclosing `CopyResolutionTransaction`, E1 recomputes
+the complete product from the resolved graph after constraint projection,
+using the resolved `PipelineStageStamp`, exact resolved
+`ProjectedConstraintKey`, target/layout keys, and
+`CopyResolutionFingerprint`. It models the emitted `EdgeCopy` sequence and
+every surviving scratch endpoint rather than predecessor `ParallelCopy` and
+reservation-node intervals, and installs one exact-resolved-revision
+`LivenessInterferenceKey`.
+No preservation record or structural equality may rekey the predecessor
+product. Recompute failure aborts the enclosing transaction and installs no E1
+product or E4 input.

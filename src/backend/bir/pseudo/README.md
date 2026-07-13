@@ -77,7 +77,8 @@ function-revision digest. Products keyed only by module revision, target name,
 or semantic equality are stale. Every mutator invokes the subordinate shared
 `ConstraintProjectionTransaction` before verification, and only its
 `ProjectedConstraintSet` keyed to the new stamp is current. A mutation always creates a new exact stamp;
-unchanged entities preserve stable IDs, while new entities receive fresh IDs
+unchanged entities retain their identities, while new entities receive newly
+reserved IDs
 and removed ones become tombstones. Stable IDs never allow a product from the
 parent revision to be reused without an explicit preservation proof.
 
@@ -113,6 +114,16 @@ parent revision to be reused without an explicit preservation proof.
   assigned endpoint, but the allocation-only `CopyScratch` node itself is
   tombstoned. The transaction creates no identity, allocation, spill/reload,
   or MIR work and fails atomically when a legal sequence cannot be proved.
+- That revision advance invalidates predecessor E1, E2, E3 spill-state,
+  projected-constraint, and realizability products. In the same transaction,
+  after the sole `ConstraintProjectionTransaction`, E1 recomputes resolved
+  liveness/interference, E2 validates and installs the unchanged legal
+  assignments without reallocating, E3 validates and installs unchanged
+  explicit spill state without mutation, and the existing target registry
+  recomputes realizability. Each product names the exact resolved
+  `PipelineStageStamp` and `CopyResolutionFingerprint`; stable IDs and the
+  preservation record never rekey products, and any owner failure rolls back
+  the entire candidate before E4.
 - The schema never stores machine-register identities, machine instruction
   encodings, stack displacements, late frame layout, or assembler parse trees.
 

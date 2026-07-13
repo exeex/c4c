@@ -95,6 +95,22 @@ schedule a `ParallelCopy`; its assignment product supplies the already-chosen
 ordinary and scratch homes under which D5 must either emit directly realizable
 `EdgeCopy` nodes or reject the complete candidate.
 
+Because resolution advances the revision, the predecessor assignment product
+is never current for its output. After E1 recomputes exact resolved-graph facts,
+E2's allocator-owned assignment validator consumes those facts, the exact
+resolved `ProjectedConstraintSet`, target/layout keys, the
+`CopyResolutionFingerprint`, and the immutable predecessor assignment table.
+It proves every ordinary value, reload result, resolved-copy role, and used
+scratch endpoint remains assigned; reruns the same class/group/slot, alias,
+tie, early-clobber, call-clobber, and interference legality relation; and
+installs one new E2 `AssignmentKey` product keyed to the resolved
+`PipelineStageStamp` and exact `LivenessInterferenceKey`. This validation does not reallocate,
+coalesce, change a home, evict, or issue a spill request. Stable identities,
+unchanged homes, and the copy preservation record alone cannot rekey the
+predecessor assignment product. Failure aborts the enclosing atomic resolution
+transaction, leaves both predecessor products immutable, and mints no E4
+input.
+
 Any stale key, incomplete assignment, missing spill transition, verifier
 failure, or retry failure discards the entire private candidate and all E1/E2/
 E3 products. No function subset, assignment table, spill identity, new

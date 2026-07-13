@@ -288,15 +288,28 @@ identity, no new spill/reload, and current preserved or reprojected products.
 Before that output is accepted, copy resolution invokes the shared projection
 authority with its replacement and scratch-tombstone map and requires the
 result keyed to the resolved revision.
-Every original simultaneous transfer must map to exactly one proved sequence.
+It then deterministically invokes E1 recomputation, E2's non-reallocating
+assignment validator, E3's non-mutating spill-state validator, and the existing
+target realizability registry/checker. Their outputs must be exact-current for
+the resolved `PipelineStageStamp` and `CopyResolutionFingerprint`, and each
+consumer checks all preceding product keys. Every original simultaneous
+transfer must map to exactly one proved sequence. Stable IDs, unchanged homes
+or spill nodes, preservation records, and structural equality cannot rekey a
+predecessor product.
 
-The gate rejects stale/missing products, an unassigned or aliasing scratch
+The gate rejects stale/missing products, any E1 recomputation, E2 assignment
+validation, E3 spill-state validation, or realizability-check failure, an unassigned or aliasing scratch
 identity, a source clobbered before its final read, a changed home, an illegal
 or non-direct move, an unresolved group, and any partial rewrite. Success
 requires no `ParallelCopy` or `CopyScratch` node and permits only
 single-instruction-realizable `EdgeCopy` nodes before E4. Thus
 `ParallelCopy` is intermediate-only: neither E4 nor MIR may accept, resolve,
 schedule, or repair one.
+
+All product installation remains inside the failure-atomic resolution
+transaction. A failed owner rolls back the resolved revision and every staged
+projected/E1/E2/E3/realizability product, preserves all predecessor products
+unchanged, and cannot mint an E4 input.
 
 Any failure discards the complete D3, D4, or D5 candidate and publishes no function
 subset, stage capability, property, cache entry, or derived product. Public
