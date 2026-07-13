@@ -1,30 +1,103 @@
-# Pseudo Lowering Pass
+# Generic Pseudo Lowering Pass
 
-Status: scaffold (unimplemented).
+Status: converged design contract (unimplemented).
 
-## Owns
+## D1 boundary and exact input
 
-Lowering Canonical BIR semantic nodes into the closed admitted pseudo
-instruction set before allocation, using verified target-layout and typed
-constraint facts where target shape affects the pseudo operation.
+`D1` is the sole generic lowering transaction from semantic `CanonicalBir` to
+the closed pseudo schema. It consumes all of the following from one Step 7
+transaction:
 
-## Does not own
+- the immutable `CanonicalBir` and its complete `PipelineStageStamp`;
+- `VerifiedTargetLayout` with the exact `TargetFingerprint` and layout-schema
+  fingerprint;
+- the atomic `VerifiedPreparationBundle`, including its ordered product
+  fingerprints; and
+- the complete `BoundConstraintSet` keyed to that same Canonical stamp, target,
+  layout, bundle, source-description digest, and operand/result identities.
 
-Register allocation, pseudo-home assignment, spill/reload choice, concrete
-machine opcodes, or assembler parsing.
+Module-revision equality, a compatible-looking target, or equal semantic text
+is insufficient. A missing, mixed, or stale product rejects the transaction
+before mutation. D1 reads Canonical storage; it never writes target facts back
+into that published revision.
 
-## Input
+## Sole lowering ownership
 
-Verified Canonical BIR plus a profile-keyed target layout and verified
-constraint facts.
+D1 converts every admitted Canonical semantic instruction to the corresponding
+generic pseudo family declared by the pseudo schema. It selects reviewed
+helper interfaces from `RuntimeHelperPlan`, address forms from `AddressPlan`,
+and abstract class/group requirements from the verified layout and constraint
+facts. It preserves the original bytes and ordinary value edges of
+`InlineAsm`, and projects each bound constraint onto those same identities.
 
-## Output
+Helper-eligible operations become `GenericCall` nodes, not private helper
+sequences. Ordinary calls and helper calls therefore reach `D2` through the
+same call family. D1 may attach the verified ABI/call requirement handles that
+D2 needs, but it may not create argument moves, outgoing-call stores, hidden
+result transport, caller-clobber effects, or preservation operations.
 
-An immutable BIR revision containing only admitted pseudo nodes and ordinary
-SSA/CFG identities, ready for out-of-SSA processing and allocation.
+D1 does not own shared ABI-aware call lowering (`D2`), target legalization and
+one-to-many expansion (`D4`), out-of-SSA (`D5`), home assignment, pressure
+eviction, spill/reload insertion, machine instruction selection, assembler
+parsing, or late layout. It must not encode an assignment decision in an
+instruction variant, operand, requirement, or side product.
 
-## Verification and publication gate
+## Closed disposition and fail-closed behavior
 
-The pass must publish transactionally and re-run the pseudo-stage verifier.
-Publication rejects unlowered semantic nodes, target opcodes/register
-spellings, malformed pseudo shapes, and stale derived facts.
+Every input instruction has exactly one disposition: preserve `InlineAsm` as
+specified above, lower it to one admitted generic pseudo node, replace it with
+an admitted generic pseudo subgraph, route it to `GenericCall`, or reject it.
+There is no `Unknown`, `Unsupported`, opaque semantic escape node, legacy
+payload, renderer-text fallback, or allocation escape hatch. A one-to-many
+transformation must make every introduced definition, use, effect, and CFG
+edge ordinary BIR state.
+
+Lowering rejects unsupported semantics, unavailable helper interfaces,
+unrepresentable address or type shapes, absent layout capacity, incompatible
+requirements, malformed bound `InlineAsm`, and any operation for which the
+schema has no exact disposition. Failure reports stable source identities and
+publishes no pseudo revision, mapping, property, or reusable partial result.
+
+## Identity, revision, and transaction
+
+D1 forks one private candidate from the exact Canonical revision. An entity
+whose semantic record and ordered ownership are unchanged keeps its stable ID.
+A rewritten instruction keeps its `InstId` only when it is the unique semantic
+continuation with compatible result identities; additional nodes and results
+receive fresh IDs, and removed entities are tombstoned. Unchanged blocks,
+values, symbols, types, origins, and debug references keep their IDs. IDs never
+stand in for freshness.
+
+Any mutation, including an in-place-ID rewrite, advances the appropriate
+function revision and publishes a new complete `PipelineStageStamp`. The
+candidate carries a `PseudoStageKey` containing its exact new stamp, its parent
+Canonical stamp, target fingerprint, layout fingerprint, preparation-bundle
+fingerprint, constraint-set fingerprint, pseudo-schema fingerprint, and D1
+lowering-schema fingerprint. A deterministic replacement map records old-to-
+new/tombstoned identities for diagnostics and derived-fact projection; it is
+not semantic authority.
+
+Lowering, ID repair, def-use rebuild, projected-constraint construction, and
+candidate freeze are one transaction. Cancellation, resource failure,
+diagnostics, incomplete coverage, a revision change, or failure of the D1
+schema check discards the entire candidate and all derived facts. The exact
+immutable D1 candidate alone may enter `D2`; D1 does not mint the public
+`PseudoBir` capability.
+
+## D2 and D3 handoff
+
+`D2` is the one shared ABI-aware BIR call-lowering owner for every supported
+target. It consumes the D1 candidate plus exact `AbiPlan` and `CallPlan`
+handles, rewrites all `GenericCall` nodes to the admitted explicit call
+pseudos, and advances the revision under the same identity rules. D2 alone
+owns argument/result transport, hidden sret/byval/variadic transport, abstract
+ABI-slot requirements, caller-clobber effects, and callee-preservation
+requirements. It uses abstract layout slots and stack-object identities only;
+it performs no general assignment.
+
+Every D1-introduced derived product is invalid after a D2 mutation unless D2
+rebuilds it for the new exact revision and proves preservation. `D3` receives
+only the frozen complete D2 candidate and runs the full `Pseudo` publication
+profile. A successful D3 transaction atomically mints the first immutable
+`PseudoBir`; failure leaves the D1/D2 candidates unpublished and the Canonical
+input unchanged.

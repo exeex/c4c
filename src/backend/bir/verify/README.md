@@ -1,7 +1,7 @@
 # BIR verifier design
 
-Status: Raw and Canonical publication boundaries are closed architecture
-contracts; PreparedInput and wider rules remain target design. The checked-in
+Status: Raw, Canonical, PreparedInput, and Pseudo publication boundaries are
+closed architecture contracts; Allocated rules remain target design. The checked-in
 `verifier.hpp/.cpp` is a partial foundation implementation, not the complete
 contract described here.
 
@@ -42,6 +42,8 @@ LIR lowering -> ModuleBuilder -> frozen ModuleDraft --verify_and_publish_raw--> 
                                       \--verify_candidate(Raw)--> diagnostics only
 ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
 preparation input gate --verify(PreparedInput)--> accepted input for typed plans
+private D2 candidate --verify-and-publish(Pseudo)--> PseudoBir
+complete D4 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 ```
 
 The arrow from `ModuleDraft` to `RawBir` is an unforgeable publication boundary,
@@ -62,9 +64,12 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
 | `Canonical` | later | Raw rules plus the post-pass normal forms promised by the pipeline: legalized types/opcodes, canonical memory/address form, SSA/phi rules, and normalized aggregate/intrinsic forms. |
 | `PreparedInput` | later | Canonical rules plus prerequisites required to derive ABI/address/call plans. It still contains no prepared facts. |
+| `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1/D2 lowering, and stage-specific realizability rules. Allocation completeness is not required. |
 
-The profiles are cumulative. `PreparedInput` cannot weaken `Canonical`, and
-`Canonical` cannot weaken `Raw`. A builder-only object may temporarily violate
+The semantic profiles are cumulative. `PreparedInput` cannot weaken
+`Canonical`, `Canonical` cannot weaken `Raw`, and `Pseudo` retains every
+applicable graph/identity obligation while replacing Canonical instruction
+alternatives with its closed schema. A builder-only object may temporarily violate
 the rules, but it is not a published stage and must not be passed to an analysis
 or downstream consumer.
 
@@ -165,6 +170,55 @@ rollback may retain its explicitly permitted last-good checkpoint, but only a
 new exact P07 occurrence followed by a successful G01 transaction can publish
 `CanonicalBir`.
 
+### Pseudo profile and D3/D4 publication
+
+The `Pseudo` profile accepts only one private frozen candidate carrying a
+complete `PseudoStageKey`. That key must name the exact current
+`PipelineStageStamp`, parent Canonical stamp, `TargetFingerprint`, layout and
+pseudo-schema fingerprints, `VerifiedPreparationBundle` fingerprint,
+`BoundConstraintSet` fingerprint, and the ordered fingerprints of every D1,
+D2, and applicable D4 occurrence. Equal module revisions, equal semantic
+hashes, compatible targets, or copied reports do not establish freshness.
+
+The cumulative Pseudo check rejects:
+
+1. every Canonical semantic leftover, `GenericCall` at D3 or later, unknown or
+   stage-ineligible pseudo alternative, target opcode, concrete register,
+   frame offset, encoded instruction, allocation assignment, and hidden
+   scratch/spill convention;
+2. malformed operands, results, types, effects, terminators, CFG, def-use, SSA,
+   ownership, or descriptor/version combinations;
+3. malformed `InlineAsm`: changed opaque bytes, missing/duplicate/foreign
+   ordinary edges, incomplete ordinal coverage, invalid read/write identity,
+   illegal ties or early-clobbers, unresolved clobbers, mismatched `AsmGoto`
+   slots/effects, or a binding digest/key that is stale for the instruction;
+4. a missing, stale, mixed-transaction, or partially rebuilt layout,
+   preparation, constraint, projected-binding, call-lowering, analysis, or
+   realizability product; and
+5. a partial function publication, changed revision during verification,
+   active editor, incomplete pass lineage, unpublished predecessor, or attempt
+   to reuse a diagnostic-only report as publication authority.
+
+D3 additionally proves that D1 eliminated every Canonical instruction family
+and D2 eliminated every `GenericCall` while preserving the exact plan-derived
+ABI requirements. Unassigned allocatable values are valid; no allocation
+completeness rule runs. D3 atomically mints the first immutable `PseudoBir` only
+after the full module and every function pass.
+
+D4 is an always-on target-realizability transaction even when its required
+rewrite chain is empty. Each mutation invalidates all affected revision-bound
+facts. After all required legalization and enabled reviewed optional entries,
+the runner recomputes invalidated facts and reruns the entire `Pseudo` profile,
+not merely changed-function checks. The post-D4 gate also proves every
+non-`InlineAsm` instruction directly maps to exactly one machine instruction
+without adding a use, definition, temporary, CFG edge, or allocation action.
+`InlineAsm` instead retains the specified one-node-to-one-opaque-record rule.
+
+Any failure discards the complete D3 or D4 candidate and publishes no function
+subset, stage capability, property, cache entry, or derived product. Public
+rechecks and incremental edit verification diagnose only; they cannot mint or
+repair `PseudoBir`.
+
 ## Proposed public API
 
 Names are proposed and may change with the core schema. The API must consume
@@ -175,6 +229,7 @@ enum class VerifyProfile : std::uint8_t {
   Raw,
   Canonical,
   PreparedInput,
+  Pseudo,
 };
 
 struct VerifyOptions {
@@ -338,6 +393,18 @@ enum class VerifyRule : std::uint16_t {
   ProvenanceInvalid = 0x0902,
   ForbiddenStageFact = 0x0903,
   ForbiddenCompatibilityPayload = 0x0904,
+
+  PseudoStageKeyInvalid = 0x0A00,
+  PseudoSchemaInvalid = 0x0A01,
+  PseudoStageLegalityInvalid = 0x0A02,
+  PseudoSemanticLeftover = 0x0A03,
+  PseudoTargetFactInvalid = 0x0A04,
+  PseudoDerivedProductStale = 0x0A05,
+  PseudoInlineAsmBindingInvalid = 0x0A06,
+  PseudoCallLoweringIncomplete = 0x0A07,
+  PseudoForbiddenAllocationFact = 0x0A08,
+  PseudoDirectRealizabilityInvalid = 0x0A09,
+  PseudoPublicationIncomplete = 0x0A0A,
 };
 
 struct ReservationSite {
@@ -441,6 +508,7 @@ values rather than renumbering an existing rule. Messages are presentation only.
 | `0x0700–0x070B` | `MemoryAccessInvalid` through `FenceInvalid` | loads/stores/address spaces/alignment, GEP, dynamic allocation and stack state, memcpy/memmove/memset, atomics and fences |
 | `0x0800–0x080A` | `AggregatePathInvalid` through `InlineAsmEffectInvalid` | aggregates, layouts, vector lanes/masks, intrinsic registry/schema, and opaque inline-asm payload plus ordinary value edges, clobber order, and effects |
 | `0x0900–0x0904` | `DebugReferenceInvalid` through `ForbiddenCompatibilityPayload` | debug/provenance structure and the absence of route/preparation/regalloc/MIR/text-placeholder authority |
+| `0x0A00–0x0A0A` | `PseudoStageKeyInvalid` through `PseudoPublicationIncomplete` | exact pseudo revision/product lineage, closed and stage-legal pseudo schema, absence of semantic/machine/allocation leftovers, complete call and inline-asm binding, D4 direct realizability, and atomic whole-stage publication |
 
 The coverage ledger below maps every feature family to these IDs. A feature
 cannot be called verifier-covered until its negative tests assert the mapped

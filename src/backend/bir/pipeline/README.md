@@ -13,10 +13,10 @@ contracts in the same review.
 The pipeline is a canonicalization boundary, not a target backend hidden under
 a pass-manager name. It accepts one already typed and Raw-verified semantic
 module and publishes one immutable target-independent `CanonicalBir`. Target
-preparation and shared BIR allocation are downstream of this canonicalization
-pipeline: they may publish a new allocated BIR revision with abstract
-assignments and abstract `Spill`/`Reload` nodes, but never write those facts
-into `CanonicalBir`. Concrete registers, frame offsets, target opcodes,
+preparation, generic pseudo and shared call lowering, target pseudo
+legalization, out-of-SSA, and shared BIR allocation are downstream of this
+canonicalization pipeline. Those owners publish new exact pseudo/allocated
+revisions and never write their facts into `CanonicalBir`. Concrete registers, frame offsets, target opcodes,
 instruction selection, prologue/epilogue, and emission remain later MIR/backend
 authority.
 
@@ -65,7 +65,10 @@ gate, and every target-aware phase is defined only in the root README.
   -> inline_asm -> runtime_helpers`; after atomic cumulative-bundle
   publication, `regalloc/constraints` alone interprets and binds source
   constraint descriptions to ordinary operands/results;
-- shared BIR allocation privately forks from the Canonical revision and may
+- D1 privately forks from Canonical into the closed pseudo schema, D2 completes
+  shared ABI-aware call transport, D3 publishes the first verified `PseudoBir`,
+  and D4 fully reverifies target realizability before out-of-SSA;
+- shared BIR allocation consumes that later exact pseudo lineage and may
   publish a distinct immutable allocated revision only after complete
   assignment/spill verification;
 - `PreparedBir` is the later capability over that allocated revision, not a
@@ -129,7 +132,7 @@ later pass, or running an undocumented cleanup pass, is forbidden.
 | `aggregate` | canonical scalar, CFG, SSA and memory profiles; resolved record/array/union/complex types | aggregate values, copies, extracts/inserts, layout-independent aggregate paths and by-value semantic boundaries have unique forms; it preserves memory-canonical GEP/address descriptors and emits no earlier-stage noncanonical operation | target layout decomposition, sret/register classification, stack copy sequence, target lane choice |
 | `intrinsics` | all preceding canonical profiles and structured intrinsic/inline-asm semantic payloads | intrinsic namespaces, signatures, effects, atomics represented as intrinsics, runtime-helper-eligible operations and opaque semantic inline asm satisfy the final Canonical profile; unsupported semantics fail with diagnostics | helper symbol choice, asm constraint realization, clobber registers, target instructions |
 | Canonical publication | successful `P07` candidate with a complete frozen stage stamp | full Canonical verifier passes on that same frozen module revision and ordered function-revision digest, then mints `CanonicalBir` atomically | partial publication or “verified earlier” shortcuts |
-| Prepared-input gate | immutable `CanonicalBir`, explicit `TargetContext`, no canonical edit capability | cumulative `PreparedInput` verification succeeds and returns a borrowing `VerifiedPreparationInput` bound to the complete `PipelineStageStamp` plus target fingerprint; target layout and preparation consume it, then shared allocation may fork a separate allocated revision | writing ABI/address/call/allocation facts into Canonical BIR, calling this gate's result `PreparedBir`, or treating preparation facts as an instruction graph |
+| Prepared-input gate | immutable `CanonicalBir`, explicit `TargetContext`, no canonical edit capability | cumulative `PreparedInput` verification succeeds and returns a borrowing `VerifiedPreparationInput` bound to the complete `PipelineStageStamp` plus target fingerprint; layout/preparation/constraints consume it, then D1 may fork a separate pseudo candidate | writing target/pseudo/allocation facts into Canonical BIR, calling this gate's result `PreparedBir`, or treating preparation facts as an instruction graph |
 
 No pass may loosen its predecessor's postconditions. Every later pass either
 preserves those profiles or fails its transaction.
