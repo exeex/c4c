@@ -8,40 +8,40 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 accumulated module-surface checkpoint now proves that one
-  imported module can preserve an admitted named structured declaration and
-  symbol domain, ordered string data, a link-backed external declaration,
-  fallback and named-aggregate globals, ordered initializer links, and
-  specialization metadata through stable typed Raw BIR views.
-- The same combined module reaches `FoundationVerifier`, publishes Canonical
-  BIR, and two distinct late invalid cross-references (initializer and
-  specialization links) reject with their exact existing typed errors in both
-  routes without publishing a partial result.
+- Plan Step 3 now admits the producer-valid non-extern direct `TB_STRUCT`
+  flexible-member global row when its required `llvm_type_ref` is an unkeyed,
+  well-formed brace-delimited literal Struct exactly matching `llvm_type`.
+- Nearby proof preserves byte-exact typed spelling with invalid
+  `StructNameId`, link-backed identity, linkage/const/visibility/alignment
+  facts, opaque initializer bytes, and ordered initializer links through Raw
+  verification and Canonical publication; literal unions, missing or
+  mismatched mirrors, literal externs, and TypeSpec array/pointer neighbors
+  reject transactionally in both routes.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 flexible-array-member global receipt packet for
-  the actual non-extern direct-struct definition emitted by `lower_global`
-  with literal aggregate `llvm_type` / `llvm_type_ref`; preserve its typed
-  object facts, opaque initializer payload, and ordered initializer links, with
-  neighboring positive/negative Raw and Canonical transactional proof.
+- Execute one bounded Step 3 producer-valid TypeSpec array-global receipt
+  packet. `lower_global` emits ordinary array declarations/definitions through
+  its generic path with structured TypeSpec array facts and rendered LLVM type,
+  while `lower_constant_type` currently rejects every nonzero `array_rank`.
 
 ## Watchouts
 
-- Step 3 is incomplete while this producer-valid literal aggregate global row
-  remains closed; do not treat the accepted accumulated checkpoint as a
-  completion decision.
-- Keep the packet specific to structured producer evidence rather than opening
-  arbitrary literal aggregates: rendered text remains parity or opaque
-  payload, never parsed semantic authority, and other closed global shapes
-  require their own producer evidence before admission.
+- Literal aggregate admission is intentionally limited to initialized,
+  non-extern, direct `TB_STRUCT` rows whose typed unkeyed Struct mirror exactly
+  matches the brace-delimited spelling. Named structs/unions still require a
+  resolvable `StructNameId`; literal unions and all TypeSpec array/pointer
+  aggregate neighbors remain closed.
+- For the suggested array packet, derive authority from TypeSpec and any
+  producer-provided typed evidence; do not parse rendered LLVM type or opaque
+  initializer payload to infer element type, extent, or topology.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers the combined admitted Step 2-3 module
-  surface, verifier reachability, Canonical publication, stable typed
-  cross-references, and Raw/Canonical transactional rejection for two distinct
-  late invalid facts.
+  passing. The selected proof covers typed literal-Struct receipt,
+  `FoundationVerifier` reachability, Canonical publication, exact object-fact
+  preservation, and Raw/Canonical transactional rejection of neighboring
+  unsupported global shapes.

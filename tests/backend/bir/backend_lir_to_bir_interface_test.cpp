@@ -1907,10 +1907,11 @@ void test_named_aggregate_global_receipt_and_rejections() {
       "mismatched aggregate spelling and StructNameId must reject transactionally");
   rejected(
       [](lir::LirModule& m) {
+        m.globals[0].type.base = c4c::TB_UNION;
         m.globals[0].llvm_type = "{ i32, [3 x i8] }";
         m.globals[0].llvm_type_ref = lir::LirTypeRef(m.globals[0].llvm_type);
       },
-      "flexible-member literal aggregate globals must remain closed transactionally");
+      "literal union globals must remain closed transactionally");
   rejected(
       [](lir::LirModule& m) {
         m.globals[0].is_extern_decl = true;
@@ -1933,6 +1934,107 @@ void test_named_aggregate_global_receipt_and_rejections() {
         m.globals[0].llvm_type_ref = lir::LirTypeRef(m.globals[0].llvm_type);
       },
       "array aggregate global shapes must remain closed transactionally");
+}
+
+void test_flexible_member_literal_struct_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+
+    const auto object_link =
+        module.link_names.intern("flexible_member_global");
+    const auto init_a = module.link_names.intern("flexible_init_a");
+    const auto init_b = module.link_names.intern("flexible_init_b");
+
+    lir::LirGlobal global;
+    global.name = "flexible_member_global";
+    global.link_name_id = object_link;
+    global.type = scalar_type(c4c::TB_STRUCT);
+    global.is_const = true;
+    global.linkage_vis = "weak protected ";
+    global.qualifier = "constant ";
+    global.llvm_type = "{ i32, [5 x i8] }";
+    global.llvm_type_ref = lir::LirTypeRef(global.llvm_type);
+    global.init_text = std::string{"opaque\0flexible-payload", 23};
+    global.initializer_function_link_name_ids = {init_b, init_a, init_b};
+    global.align_bytes = 16;
+    module.globals.push_back(std::move(global));
+    return module;
+  };
+
+  auto module = valid_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "producer-shaped flexible-member literal struct globals must import");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "literal struct global storage must be verifier reachable");
+  const auto view = imported.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 1 && ids[0].slot == 0,
+         "literal struct globals must preserve deterministic source order");
+  const auto global = view.global_object(ids[0]).value();
+  expect(global.object_type.kind == bir::TypeKind::Struct &&
+             global.object_type.struct_name_id == c4c::kInvalidStructName &&
+             global.object_type.spelling == "{ i32, [5 x i8] }" &&
+             std::holds_alternative<bir::LinkNameId>(global.identity) &&
+             std::get<bir::LinkNameId>(global.identity).slot == 0 &&
+             !global.is_internal && global.is_weak && global.is_const &&
+             global.visibility == bir::SymbolVisibility::Protected &&
+             global.alignment == 16 && !global.is_extern_declaration &&
+             global.initializer &&
+             global.initializer->opaque_payload ==
+                 std::string{"opaque\0flexible-payload", 23} &&
+             global.initializer->function_links.size() == 3 &&
+             view.spelling(global.initializer->function_links[0]).value() ==
+                 "flexible_init_b" &&
+             view.spelling(global.initializer->function_links[1]).value() ==
+                 "flexible_init_a" &&
+             global.initializer->function_links[2] ==
+                 global.initializer->function_links[0],
+         "literal struct globals must preserve byte-exact typed spelling and all object facts");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value() &&
+             canonical.value().view().global_objects().size() == 1,
+         "producer-shaped literal struct globals must publish Canonical BIR");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() &&
+               raw.error().code == bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_UNION; },
+           "a literal union mirror must remain unsupported");
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type_ref.reset(); },
+           "literal struct globals require their typed mirror");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type = "{ i32, [6 x i8] }";
+      },
+      "literal struct compatibility spelling must match its typed mirror");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].is_extern_decl = true;
+        m.globals[0].linkage_vis = "external protected ";
+        m.globals[0].init_text.clear();
+        m.globals[0].initializer_function_link_name_ids.clear();
+      },
+      "literal aggregate extern declarations must remain unsupported");
+  rejected([](lir::LirModule& m) { m.globals[0].type.array_rank = 1; },
+           "TypeSpec array aggregate globals must remain unsupported");
+  rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = 1; },
+           "pointer-to-aggregate globals must remain unsupported");
 }
 
 void test_global_object_rejections_and_transactionality() {
@@ -2739,6 +2841,7 @@ int main() {
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
   test_named_aggregate_global_receipt_and_rejections();
+  test_flexible_member_literal_struct_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();
   test_specialization_metadata_receipt_and_rejections();
   test_accumulated_module_surface_checkpoint();

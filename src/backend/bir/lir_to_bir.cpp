@@ -269,10 +269,19 @@ std::optional<Type> lower_global_type(const LirModule& module,
     const auto authoritative =
         lower_lir_type(module, *global.llvm_type_ref);
     if (!authoritative || authoritative->kind != TypeKind::Struct ||
-        authoritative->struct_name_id == c4c::kInvalidStructName ||
-        module.find_struct_decl(authoritative->struct_name_id) == nullptr ||
         global.llvm_type_ref->str() != global.llvm_type ||
         !is_well_formed(*authoritative))
+      return std::nullopt;
+
+    if (authoritative->struct_name_id == c4c::kInvalidStructName) {
+      if (global.type.base != TB_STRUCT || authoritative->spelling.size() < 2 ||
+          authoritative->spelling.front() != '{' ||
+          authoritative->spelling.back() != '}')
+        return std::nullopt;
+      return authoritative;
+    }
+
+    if (module.find_struct_decl(authoritative->struct_name_id) == nullptr)
       return std::nullopt;
     return authoritative;
   }
