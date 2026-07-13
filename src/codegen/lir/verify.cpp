@@ -2,6 +2,7 @@
 #include "call_args_ops.hpp"
 #include "../shared/llvm_helpers.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <type_traits>
 #include <unordered_map>
@@ -354,6 +355,72 @@ void verify_optional_count_operand(const LirOperand& operand,
                        true);
 }
 
+bool integer_immediate_representable(long long value, unsigned bit_width) {
+  if (bit_width == 0) return false;
+  if (bit_width >= 64) return true;
+  if (value < 0) {
+    const long long minimum = -(1LL << (bit_width - 1));
+    return value >= minimum;
+  }
+  const unsigned long long maximum = (1ULL << bit_width) - 1ULL;
+  return static_cast<unsigned long long>(value) <= maximum;
+}
+
+void verify_global_store_authority(const LirModule& mod,
+                                   const LirStoreOp& op) {
+  // CC-STORE-1 owns the direct-global pointer plus native integer-immediate
+  // shape. Other pointer/value rows remain phased monostate compatibility.
+  if (op.ptr.has_authority() && !op.ptr.value_id() && !op.ptr.link_name_id()) {
+    fail_verify("LirStoreOp.ptr",
+                "store pointer has the wrong authority alternative");
+  }
+  if (op.ptr.kind() != LirOperandKind::Global) return;
+
+  const LinkNameId* link_name_id = op.ptr.link_name_id();
+  if (!link_name_id) {
+    fail_verify("LirStoreOp.ptr",
+                "global store pointer requires LinkNameId authority");
+  }
+  if (*link_name_id == kInvalidLinkName ||
+      mod.link_names.spelling(*link_name_id).empty()) {
+    fail_verify("LirStoreOp.ptr",
+                "global store pointer LinkNameId must resolve in the module");
+  }
+
+  const std::size_t owner_count = static_cast<std::size_t>(std::count_if(
+      mod.globals.begin(), mod.globals.end(), [&](const LirGlobal& global) {
+        return global.link_name_id == *link_name_id;
+      }));
+  if (owner_count != 1) {
+    fail_verify("LirStoreOp.ptr",
+                owner_count == 0
+                    ? "global store pointer LinkNameId has no LirGlobal owner"
+                    : "global store pointer LinkNameId has ambiguous LirGlobal ownership");
+  }
+
+  if (op.type_str.kind() != LirTypeKind::Integer) return;
+  if (op.val.kind() == LirOperandKind::Immediate) {
+    const LirIntegerImmediate* immediate = op.val.integer_immediate();
+    if (!immediate) {
+      fail_verify("LirStoreOp.val",
+                  "integer immediate store requires native authority");
+    }
+    const std::optional<unsigned> bit_width =
+        op.type_str.integer_bit_width();
+    if (!bit_width.has_value() ||
+        !integer_immediate_representable(immediate->value, *bit_width)) {
+      fail_verify("LirStoreOp.val",
+                  "integer immediate is not representable by the store type");
+    }
+    return;
+  }
+
+  if (op.val.has_authority() && !op.val.value_id()) {
+    fail_verify("LirStoreOp.val",
+                "integer store value has the wrong authority alternative");
+  }
+}
+
 void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     verify_pointer_operand(op->dst, "LirMemcpyOp.dst");
@@ -425,6 +492,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     require_module_type_ref(mod, op->type_str, "LirStoreOp.type_str", true);
     verify_value_operand(op->val, "LirStoreOp.val");
     verify_pointer_operand(op->ptr, "LirStoreOp.ptr");
+    verify_global_store_authority(mod, *op);
     return;
   }
   if (const auto* op = std::get_if<LirCastOp>(&inst)) {

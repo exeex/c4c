@@ -46,6 +46,7 @@ template <typename T>
 TypeSpec resolve_payload_type(FnCtx&, const T&);
 
 // Rvalue expression coordination.
+LirOperand emit_rval_operand(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
 std::string emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
 std::string emit_rval_expr(FnCtx& ctx, const Expr& e);
 

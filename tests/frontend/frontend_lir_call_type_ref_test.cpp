@@ -1,6 +1,7 @@
 #include "arena.hpp"
 #include "call_args_ops.hpp"
 #include "hir_to_lir.hpp"
+#include "hir_to_lir/lowering.hpp"
 #include "ir.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -690,6 +692,234 @@ void test_structured_operand_identity_foundation() {
   lir::verify_module(independent_functions);
 }
 
+c4c::LinkNameId add_identity_test_global(
+    c4c::codegen::lir::LirModule& module, std::string name) {
+  namespace lir = c4c::codegen::lir;
+  if (!module.link_name_texts) {
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+  }
+  const c4c::LinkNameId id = module.link_names.intern(name);
+  lir::LirGlobal global;
+  global.name = std::move(name);
+  global.link_name_id = id;
+  module.globals.push_back(std::move(global));
+  return id;
+}
+
+c4c::codegen::lir::LirFunction make_store_test_function(
+    c4c::codegen::lir::LirStoreOp store) {
+  namespace lir = c4c::codegen::lir;
+  lir::LirFunction function;
+  function.name = "store_test";
+  function.signature_text = "define void @store_test() {";
+  function.blocks.push_back(lir::LirBlock{});
+  function.blocks.back().label = "entry";
+  function.blocks.back().insts.push_back(std::move(store));
+  return function;
+}
+
+void test_global_store_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+
+  const lir::LirOperand misleading_integer =
+      lir::LirOperand::integer("not-the-coerced-presentation", 7);
+  const lir::LirOperand preserved_integer =
+      lir::stmt_emitter_detail::integer_store_operand_after_coercion(
+          misleading_integer, "coerced-presentation", true);
+  expect_eq(preserved_integer.str(), "coerced-presentation",
+            "representation-preserving coercion should use its output as presentation");
+  expect_true(preserved_integer.integer_immediate() &&
+                  preserved_integer.integer_immediate()->value == 7,
+              "misleading source display must not discard native integer authority");
+  const lir::LirOperand changed_integer =
+      lir::stmt_emitter_detail::integer_store_operand_after_coercion(
+          misleading_integer, "converted-presentation", false);
+  expect_true(!changed_integer.has_authority(),
+              "representation-changing coercion should discard integer authority");
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int identity_store_primary;
+int identity_store_neighbor;
+
+int main(void) {
+  identity_store_primary = 7;
+  identity_store_neighbor = 0;
+  return 0;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& main = require_function(lowered, "main");
+  std::vector<lir::LirStoreOp*> stores;
+  for (auto& block : main.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* store = std::get_if<lir::LirStoreOp>(&inst)) {
+        stores.push_back(store);
+      }
+    }
+  }
+  expect_eq(std::to_string(stores.size()), "2",
+            "global-store fixture should lower exactly two stores");
+  expect_eq(stores[0]->type_str.str(), "i32",
+            "focused store should retain i32 display/type");
+  expect_eq(stores[0]->val.str(), "7",
+            "focused store should retain integer display");
+  expect_eq(stores[0]->ptr.str(), "@identity_store_primary",
+            "focused store should retain global display");
+  expect_true(stores[0]->val.integer_immediate() &&
+                  stores[0]->val.integer_immediate()->value == 7,
+              "focused store should retain native integer authority");
+  expect_true(stores[0]->ptr.link_name_id() != nullptr,
+              "focused store should retain global LinkNameId authority");
+  expect_eq(lowered.link_names.spelling(*stores[0]->ptr.link_name_id()),
+            "identity_store_primary",
+            "focused store authority should resolve to selected global");
+  expect_true(stores[1]->val.integer_immediate() &&
+                  stores[1]->val.integer_immediate()->value == 0,
+              "nearby zero store should retain native integer authority");
+  expect_eq(lowered.link_names.spelling(*stores[1]->ptr.link_name_id()),
+            "identity_store_neighbor",
+            "nearby store should retain its independently selected global");
+
+  lir::LirModule misleading;
+  const c4c::LinkNameId first_id =
+      add_identity_test_global(misleading, "display_target");
+  const c4c::LinkNameId second_id =
+      add_identity_test_global(misleading, "authority_target");
+  misleading.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("7", 7),
+      lir::LirOperand::global("@display_target", second_id)}));
+  lir::verify_module(misleading);
+  const auto& misleading_store = std::get<lir::LirStoreOp>(
+      misleading.functions[0].blocks[0].insts[0]);
+  expect_true(first_id != second_id &&
+                  misleading_store.ptr.link_name_id() &&
+                  *misleading_store.ptr.link_name_id() == second_id,
+              "misleading display must not redirect valid global authority");
+
+  lir::LirModule missing_ptr_authority;
+  const c4c::LinkNameId missing_ptr_id =
+      add_identity_test_global(missing_ptr_authority, "missing_ptr");
+  (void)missing_ptr_id;
+  missing_ptr_authority.functions.push_back(make_store_test_function(
+      lir::LirStoreOp{lir::LirTypeRef::integer(32),
+                      lir::LirOperand::integer("7", 7),
+                      lir::LirOperand("@missing_ptr")}));
+  expect_identity_verification_rejected(
+      missing_ptr_authority,
+      "verifier should reject global store pointer without authority");
+
+  lir::LirModule invalid_id;
+  invalid_id.link_name_texts = std::make_shared<c4c::TextTable>();
+  invalid_id.link_names.attach_text_table(invalid_id.link_name_texts.get());
+  invalid_id.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("7", 7),
+      lir::LirOperand::global("@invalid", c4c::kInvalidLinkName)}));
+  expect_identity_verification_rejected(
+      invalid_id, "verifier should reject invalid global LinkNameId");
+
+  lir::LirModule unresolved;
+  unresolved.link_name_texts = std::make_shared<c4c::TextTable>();
+  unresolved.link_names.attach_text_table(unresolved.link_name_texts.get());
+  unresolved.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("7", 7),
+      lir::LirOperand::global("@unresolved", c4c::LinkNameId{99})}));
+  expect_identity_verification_rejected(
+      unresolved, "verifier should reject unresolved global LinkNameId");
+
+  lir::LirModule function_only;
+  function_only.link_name_texts = std::make_shared<c4c::TextTable>();
+  function_only.link_names.attach_text_table(function_only.link_name_texts.get());
+  const c4c::LinkNameId function_id =
+      function_only.link_names.intern("function_only");
+  function_only.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("7", 7),
+      lir::LirOperand::global("@function_only", function_id)}));
+  function_only.functions.back().link_name_id = function_id;
+  expect_identity_verification_rejected(
+      function_only, "verifier should reject function-only LinkNameId");
+
+  lir::LirModule ownerless;
+  ownerless.link_name_texts = std::make_shared<c4c::TextTable>();
+  ownerless.link_names.attach_text_table(ownerless.link_name_texts.get());
+  const c4c::LinkNameId ownerless_id = ownerless.link_names.intern("ownerless");
+  ownerless.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("7", 7),
+      lir::LirOperand::global("@ownerless", ownerless_id)}));
+  expect_identity_verification_rejected(
+      ownerless, "verifier should reject ownerless global LinkNameId");
+
+  lir::LirModule ambiguous;
+  const c4c::LinkNameId ambiguous_id =
+      add_identity_test_global(ambiguous, "ambiguous");
+  lir::LirGlobal duplicate_global = ambiguous.globals.front();
+  duplicate_global.name = "ambiguous_duplicate";
+  ambiguous.globals.push_back(std::move(duplicate_global));
+  ambiguous.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("7", 7),
+      lir::LirOperand::global("@ambiguous", ambiguous_id)}));
+  expect_identity_verification_rejected(
+      ambiguous, "verifier should reject ambiguous global ownership");
+
+  lir::LirModule missing_immediate;
+  const c4c::LinkNameId missing_immediate_id =
+      add_identity_test_global(missing_immediate, "missing_immediate");
+  missing_immediate.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand("7"),
+      lir::LirOperand::global("@missing_immediate", missing_immediate_id)}));
+  expect_identity_verification_rejected(
+      missing_immediate,
+      "verifier should reject integer immediate without authority");
+
+  lir::LirModule wrong_alternative;
+  const c4c::LinkNameId wrong_alternative_id =
+      add_identity_test_global(wrong_alternative, "wrong_alternative");
+  wrong_alternative.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@wrong_value", wrong_alternative_id),
+      lir::LirOperand::global("@wrong_alternative", wrong_alternative_id)}));
+  expect_identity_verification_rejected(
+      wrong_alternative, "verifier should reject wrong store value authority");
+
+  lir::LirModule wrong_pointer_alternative;
+  wrong_pointer_alternative.functions.push_back(make_store_test_function(
+      lir::LirStoreOp{lir::LirTypeRef::integer(32),
+                      lir::LirOperand::integer("7", 7),
+                      lir::LirOperand::integer("@not-a-pointer", 0)}));
+  expect_identity_verification_rejected(
+      wrong_pointer_alternative,
+      "verifier should reject wrong store pointer authority");
+
+  lir::LirModule out_of_range;
+  const c4c::LinkNameId out_of_range_id =
+      add_identity_test_global(out_of_range, "out_of_range");
+  out_of_range.functions.push_back(make_store_test_function(lir::LirStoreOp{
+      lir::LirTypeRef::integer(8), lir::LirOperand::integer("256", 256),
+      lir::LirOperand::global("@out_of_range", out_of_range_id)}));
+  expect_identity_verification_rejected(
+      out_of_range,
+      "verifier should reject immediate outside narrow integer range");
+
+  lir::LirModule noninteger_compatibility;
+  const c4c::LinkNameId noninteger_id =
+      add_identity_test_global(noninteger_compatibility, "float_compatibility");
+  noninteger_compatibility.functions.push_back(make_store_test_function(
+      lir::LirStoreOp{lir::LirTypeRef("double"), lir::LirOperand("1.0"),
+                      lir::LirOperand::global("@float_compatibility",
+                                              noninteger_id)}));
+  lir::verify_module(noninteger_compatibility);
+
+  lir::LirModule special_token_compatibility;
+  const c4c::LinkNameId special_token_id =
+      add_identity_test_global(special_token_compatibility,
+                               "special_token_compatibility");
+  special_token_compatibility.functions.push_back(make_store_test_function(
+      lir::LirStoreOp{lir::LirTypeRef::integer(32), lir::LirOperand("undef"),
+                      lir::LirOperand::global("@special_token_compatibility",
+                                              special_token_id)}));
+  lir::verify_module(special_token_compatibility);
+}
+
 }  // namespace
 
 int main() {
@@ -1064,6 +1294,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_structured_operand_identity_foundation();
+  test_global_store_identity_contract();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

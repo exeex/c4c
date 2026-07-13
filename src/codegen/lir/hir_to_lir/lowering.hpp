@@ -84,7 +84,7 @@ struct MemberFieldAccess {
 };
 
 struct AssignableLValue {
-  std::string ptr;
+  lir::LirOperand ptr;
   TypeSpec pointee_ts{};
   BitfieldAccess bf{};
 
@@ -280,6 +280,9 @@ std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
                                                    const TypeSpec& ts);
 std::string llvm_value_ty(const hir::Module& mod, const TypeSpec& ts);
 std::string llvm_return_ty(const hir::Module& mod, const TypeSpec& ts);
+LirOperand integer_store_operand_after_coercion(const LirOperand& source,
+                                                std::string presentation,
+                                                bool same_representation);
 inline std::string llvm_alloca_ty(const TypeSpec& ts) {
   return c4c::codegen::llvm_helpers::llvm_alloca_ty(ts);
 }
@@ -476,6 +479,8 @@ class StmtEmitter {
 
   // ── Lvalue emission ───────────────────────────────────────────────────────
   std::string emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts);
+  lir::LirOperand emit_lval_operand(FnCtx& ctx, ExprId id,
+                                    TypeSpec& pointee_ts);
   std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts);
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
   TypeSpec resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow);
@@ -486,13 +491,14 @@ class StmtEmitter {
   AssignableLValue emit_assignable_lval(FnCtx& ctx, ExprId id);
   LoadedAssignableValue emit_load_assignable_value(FnCtx& ctx, const AssignableLValue& lhs);
   std::string emit_store_assignable_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                          const std::string& value,
+                                          const lir::LirOperand& value,
                                           const TypeSpec& value_ts,
                                           bool reload_after_store);
   std::string emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
                                            bool increment, bool return_updated_value);
   std::string emit_set_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                    const std::string& rhs, const TypeSpec& rhs_ts);
+                                    const lir::LirOperand& rhs,
+                                    const TypeSpec& rhs_ts);
   std::string emit_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
                                          AssignOp op, const std::string& rhs,
                                          const TypeSpec& rhs_ts);

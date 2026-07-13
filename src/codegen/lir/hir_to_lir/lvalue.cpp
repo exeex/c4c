@@ -6,6 +6,21 @@ namespace c4c::codegen::lir {
 namespace llvm_cc = c4c::codegen::llvm_backend;
 using namespace stmt_emitter_detail;
 
+namespace stmt_emitter_detail {
+
+LirOperand integer_store_operand_after_coercion(const LirOperand& source,
+                                                std::string presentation,
+                                                bool same_representation) {
+  if (same_representation) {
+    if (const LirIntegerImmediate* immediate = source.integer_immediate()) {
+      return LirOperand::integer(std::move(presentation), immediate->value);
+    }
+  }
+  return LirOperand::raw(std::move(presentation));
+}
+
+}  // namespace stmt_emitter_detail
+
 namespace {
 
 StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
@@ -189,8 +204,25 @@ void StmtEmitter::emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
 }
 
 std::string StmtEmitter::emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts) {
+  return emit_lval_operand(ctx, id, pointee_ts).str();
+}
+
+LirOperand StmtEmitter::emit_lval_operand(FnCtx& ctx, ExprId id,
+                                          TypeSpec& pointee_ts) {
   const Expr& e = get_expr(id);
-  return emit_lval_dispatch(ctx, e, pointee_ts);
+  if (const auto* ref = std::get_if<DeclRef>(&e.payload); ref && ref->global) {
+    const GlobalVar* selected = select_global_object(*ref);
+    if (!selected) selected = mod_.find_global(*ref->global);
+    if (!selected) {
+      throw std::runtime_error("StmtEmitter: global lvalue not found: " +
+                               ref->name);
+    }
+    pointee_ts = selected->type.spec;
+    const std::string display = llvm_global_sym(
+        emitted_link_name(mod_, selected->link_name_id, selected->name));
+    return LirOperand::global(display, selected->link_name_id);
+  }
+  return LirOperand::raw(emit_lval_dispatch(ctx, e, pointee_ts));
 }
 
 std::string StmtEmitter::emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts) {
@@ -364,12 +396,12 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
   }
   if (const auto* assign = std::get_if<AssignExpr>(&e.payload)) {
     TypeSpec rhs_ts{};
-    const std::string rhs = emit_rval_id(ctx, assign->rhs, rhs_ts);
+    const LirOperand rhs = emit_rval_operand(ctx, assign->rhs, rhs_ts);
     const AssignableLValue lhs = emit_assignable_lval(ctx, assign->lhs);
     if (assign->op == AssignOp::Set) {
       (void)emit_set_assign_value(ctx, lhs, rhs, rhs_ts);
     } else {
-      (void)emit_compound_assign_value(ctx, lhs, assign->op, rhs, rhs_ts);
+      (void)emit_compound_assign_value(ctx, lhs, assign->op, rhs.str(), rhs_ts);
     }
     pts = lhs.pointee_ts;
     return lhs.ptr;
@@ -407,7 +439,7 @@ AssignableLValue StmtEmitter::emit_assignable_lval(FnCtx& ctx, ExprId id) {
     access.ptr = emit_member_lval(ctx, *m, access.pointee_ts, &access.bf);
     return access;
   }
-  access.ptr = emit_lval(ctx, id, access.pointee_ts);
+  access.ptr = emit_lval_operand(ctx, id, access.pointee_ts);
   return access;
 }
 
@@ -422,17 +454,20 @@ LoadedAssignableValue StmtEmitter::emit_load_assignable_value(FnCtx& ctx,
 
   loaded.value_ts = lhs.pointee_ts;
   loaded.value = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{loaded.value, llvm_value_ty(mod_, lhs.pointee_ts), lhs.ptr});
+  emit_lir_op(ctx, lir::LirLoadOp{loaded.value,
+                                  llvm_value_ty(mod_, lhs.pointee_ts),
+                                  lhs.ptr.str()});
   return loaded;
 }
 
 std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                                     const std::string& value,
+                                                     const LirOperand& value,
                                                      const TypeSpec& value_ts,
                                                      bool reload_after_store) {
   if (lhs.is_bitfield()) {
-    emit_bitfield_store(ctx, lhs.ptr, lhs.bf, value, value_ts);
-    return reload_after_store ? emit_bitfield_load(ctx, lhs.ptr, lhs.bf) : value;
+    emit_bitfield_store(ctx, lhs.ptr.str(), lhs.bf, value.str(), value_ts);
+    return reload_after_store ? emit_bitfield_load(ctx, lhs.ptr.str(), lhs.bf)
+                              : value.str();
   }
   const bool zero_init_aggregate =
       value == "zeroinitializer" &&
@@ -441,12 +476,12 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
         (lhs.pointee_ts.base == TB_STRUCT || lhs.pointee_ts.base == TB_UNION)));
   if (zero_init_aggregate) {
     module_->need_memset = true;
-    emit_lir_op(ctx, lir::LirMemsetOp{lhs.ptr, "0",
+    emit_lir_op(ctx, lir::LirMemsetOp{lhs.ptr.str(), "0",
                                       std::to_string(sizeof_ts(mod_, lhs.pointee_ts)), false});
-    return value;
+    return value.str();
   }
   emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, lhs.pointee_ts), value, lhs.ptr});
-  return value;
+  return value.str();
 }
 
 std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
@@ -483,17 +518,24 @@ std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const Assignab
 }
 
 std::string StmtEmitter::emit_set_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                               const std::string& rhs,
+                                               const LirOperand& rhs,
                                                const TypeSpec& rhs_ts) {
   if (lhs.is_bitfield()) {
     return emit_store_assignable_value(ctx, lhs, rhs, rhs_ts, true);
   }
 
-  std::string coerced_rhs = coerce(ctx, rhs, rhs_ts, lhs.pointee_ts);
+  std::string coerced_rhs = coerce(ctx, rhs.str(), rhs_ts, lhs.pointee_ts);
+  const bool same_representation =
+      llvm_value_ty(mod_, rhs_ts) == llvm_value_ty(mod_, lhs.pointee_ts);
+  LirOperand stored_rhs = integer_store_operand_after_coercion(
+      rhs, coerced_rhs, same_representation);
   const bool is_agg = (lhs.pointee_ts.base == TB_STRUCT || lhs.pointee_ts.base == TB_UNION) &&
                       lhs.pointee_ts.ptr_level == 0 && lhs.pointee_ts.array_rank == 0;
-  if (is_agg && (coerced_rhs == "0" || coerced_rhs.empty())) coerced_rhs = "zeroinitializer";
-  return emit_store_assignable_value(ctx, lhs, coerced_rhs, lhs.pointee_ts, false);
+  if (is_agg && (coerced_rhs == "0" || coerced_rhs.empty())) {
+    stored_rhs = LirOperand::raw("zeroinitializer");
+  }
+  return emit_store_assignable_value(ctx, lhs, stored_rhs,
+                                     lhs.pointee_ts, false);
 }
 
 std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,

@@ -441,7 +441,8 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const T&) {
   return {};
 }
 
-std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts) {
+LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
+                                          TypeSpec& out_ts) {
   const Expr& e = get_expr(id);
   out_ts = e.type.spec;
   if (const auto* b = std::get_if<BinaryExpr>(&e.payload)) {
@@ -454,7 +455,17 @@ std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts) {
   if (out_ts.base == TB_VOID && out_ts.ptr_level == 0 && out_ts.array_rank == 0) {
     out_ts = resolve_expr_type(ctx, id);
   }
-  return emit_rval_expr(ctx, e);
+  if (const auto* literal = std::get_if<IntLiteral>(&e.payload);
+      literal && !is_complex_base(e.type.spec.base)) {
+    return LirOperand::integer(std::to_string(literal->value),
+                               literal->value);
+  }
+  return LirOperand::raw(emit_rval_expr(ctx, e));
+}
+
+std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id,
+                                      TypeSpec& out_ts) {
+  return emit_rval_operand(ctx, id, out_ts).str();
 }
 
 std::string StmtEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e) {
