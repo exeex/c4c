@@ -371,6 +371,62 @@ std::optional<Type> lower_global_type(const LirModule& module,
     return result;
   }
 
+  const bool mixed_pointer_to_array_global =
+      (global.is_extern_decl || !global.init_text.empty()) &&
+      global.type.ptr_level > 0 && !global.type.is_lvalue_ref &&
+      !global.type.is_rvalue_ref && global.type.array_rank >= 2 &&
+      global.type.array_rank <= kArrayDimensionCapacity &&
+      global.type.inner_rank > 0 &&
+      global.type.inner_rank < global.type.array_rank &&
+      global.type.array_size >= 0 && global.type.is_ptr_to_array &&
+      !global.type.is_fn_ptr && !global.type.is_vector &&
+      global.type.array_size_expr == nullptr;
+  if (mixed_pointer_to_array_global) {
+    if (global.llvm_type_ref) return std::nullopt;
+    const int outer_rank = global.type.array_rank - global.type.inner_rank;
+    std::vector<std::int64_t> outer_dimensions;
+    std::vector<std::int64_t> pointee_dimensions;
+    outer_dimensions.reserve(outer_rank);
+    pointee_dimensions.reserve(global.type.inner_rank);
+    for (int i = 0; i < global.type.array_rank; ++i) {
+      if (global.type.array_dims[i] < 0) return std::nullopt;
+      if (i < outer_rank)
+        outer_dimensions.push_back(global.type.array_dims[i]);
+      else
+        pointee_dimensions.push_back(global.type.array_dims[i]);
+    }
+    if (outer_dimensions.front() != global.type.array_size)
+      return std::nullopt;
+
+    TypeSpec element_spec = global.type;
+    element_spec.ptr_level = 0;
+    element_spec.array_rank = 0;
+    element_spec.array_size = -1;
+    for (auto& dimension : element_spec.array_dims) dimension = -1;
+    element_spec.is_ptr_to_array = false;
+    element_spec.inner_rank = 0;
+    const auto element = lower_constant_type(module, element_spec);
+    if (!element || (element->kind != TypeKind::Integer &&
+                     element->kind != TypeKind::Floating &&
+                     element->kind != TypeKind::Complex &&
+                     element->kind != TypeKind::VrmRegister))
+      return std::nullopt;
+
+    std::string expected = "ptr";
+    for (auto dimension = outer_dimensions.rbegin();
+         dimension != outer_dimensions.rend(); ++dimension)
+      expected = "[" + std::to_string(*dimension) + " x " + expected + "]";
+    if (global.llvm_type != expected) return std::nullopt;
+    Type result{TypeKind::Array, 0, expected};
+    result.array_facts = ArrayTypeFacts{
+        element->kind, element->bit_width, global.type.ptr_level,
+        std::move(outer_dimensions), element->complex_facts,
+        PointerArrayTypeFacts{std::move(pointee_dimensions),
+                              global.type.inner_rank}};
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
   const bool fixed_scalar_base_array =
       global.type.ptr_level >= 0 &&
       !global.type.is_lvalue_ref &&

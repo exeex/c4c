@@ -49,17 +49,18 @@ struct ComplexTypeFacts {
   std::uint32_t component_bit_width = 0;
 };
 
+struct PointerArrayTypeFacts {
+  std::vector<std::int64_t> pointee_dimensions;
+  int inner_rank = 0;
+};
+
 struct ArrayTypeFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
   int element_pointer_depth = 0;
   std::vector<std::int64_t> dimensions;
   std::optional<ComplexTypeFacts> element_complex_facts;
-};
-
-struct PointerArrayTypeFacts {
-  std::vector<std::int64_t> pointee_dimensions;
-  int inner_rank = 0;
+  std::optional<PointerArrayTypeFacts> element_pointee_array_facts;
 };
 
 struct PointerTypeFacts {
@@ -132,7 +133,9 @@ inline bool operator==(const ArrayTypeFacts& lhs,
          lhs.element_bit_width == rhs.element_bit_width &&
          lhs.element_pointer_depth == rhs.element_pointer_depth &&
          lhs.dimensions == rhs.dimensions &&
-         lhs.element_complex_facts == rhs.element_complex_facts;
+         lhs.element_complex_facts == rhs.element_complex_facts &&
+         lhs.element_pointee_array_facts ==
+             rhs.element_pointee_array_facts;
 }
 
 inline bool operator!=(const ArrayTypeFacts& lhs,
@@ -389,6 +392,20 @@ inline bool is_well_formed(const Type& type) {
       if (type.array_facts->dimensions.empty()) return false;
       for (const auto dimension : type.array_facts->dimensions)
         if (dimension < 0) return false;
+      if (type.array_facts->element_pointee_array_facts) {
+        const auto& pointee =
+            *type.array_facts->element_pointee_array_facts;
+        if (type.array_facts->element_pointer_depth <= 0 ||
+            pointee.pointee_dimensions.empty() ||
+            pointee.inner_rank !=
+                static_cast<int>(pointee.pointee_dimensions.size()) ||
+            type.array_facts->dimensions.size() +
+                    pointee.pointee_dimensions.size() >
+                8)
+          return false;
+        for (const auto dimension : pointee.pointee_dimensions)
+          if (dimension < 0) return false;
+      }
       std::string element_spelling;
       if (type.array_facts->element_kind == TypeKind::Integer) {
         if (type.array_facts->element_bit_width == 0 ||

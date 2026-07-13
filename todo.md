@@ -8,11 +8,11 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid pure pointer-to-array globals from
-  structured `TypeSpec` authority while retaining opaque `ptr` storage parity.
-- Exact pointer depth, scalar/complex/VRM base facts, ordered nonnegative inner
-  dimensions, `inner_rank`, source order, linkage, and initializer facts survive
-  Foundation, Raw BIR, and Canonical BIR.
+- Plan Step 3 now admits producer-valid mixed outer-array / pointer-to-inner-
+  array globals from structured `TypeSpec` authority.
+- Exact pointer depth, scalar/complex/VRM base facts, rendered outer dimensions,
+  hidden pointee dimensions, `inner_rank`, source order, linkage, and initializer
+  facts survive Foundation, Raw BIR, and Canonical BIR.
 
 ## Suggested Next
 
@@ -21,11 +21,12 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Pointer-to-array receipt is limited to pure outer-rank-zero shapes where all
-  recorded dimensions belong to the pointee (`inner_rank < 0` or exact rank).
-  Mixed outer arrays, arrays of pointers-to-arrays, negative/unsized or computed
-  bounds, mirrors, aggregate/vector/va-list/function-pointer pointees,
-  references, and non-`ptr` storage spelling remain closed.
+- Mixed receipt requires `0 < inner_rank < array_rank`; only the leading outer
+  dimensions appear in array storage spelling around opaque `ptr`, while the
+  trailing pointee dimensions remain structured facts. Pure pointer-to-array
+  and ordinary pointer-element array routes remain separate.
+- Negative/unsized or computed bounds, mirrors, aggregate/vector/va-list/
+  function-pointer pointees, references, and spelling conflicts remain closed.
 
 ## Proof
 
