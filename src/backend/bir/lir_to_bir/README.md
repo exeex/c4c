@@ -68,7 +68,47 @@ may own homes, spills, reloads, frame facts, and target operations, but the
 importer neither creates nor predicts those facts and no later stage writes
 them back into Raw/Canonical storage.
 
-### 1.1 Current `LirModule` inventory
+### 1.1 Confirmed current bounded inline-assembly import
+
+The checked-in importer implements one narrow, transactional carrier slice;
+the broader contracts below remain target design:
+
+- It accepts modules with no globals, string-pool state, extern declarations,
+  type declarations/layout observations, intrinsic requirement flags, or
+  specialization entries. Functions must have no parameters, a non-variadic
+  `void` signature, no stack objects/hoisted allocas, and only
+  `LirInlineAsmOp` ordinary instructions. Direct branch, void return, and
+  unreachable terminators are supported; conditional branch, switch, and
+  indirect branch are rejected.
+- Before constructing BIR, it preflights every function and builds a
+  per-function map from each earlier structured inline-asm result spelling to
+  its lowered type. Only ordinary SSA identities in `ordinary_inputs` and
+  `ordinary_results` enter the BIR value graph. Supported binding types are
+  `i1`, `i8`, `i16`, `i32`, `i64`, `float`, `double`, and opaque `ptr`.
+- Inputs and results must be in strictly increasing original constraint order.
+  Inputs must resolve to an earlier result in the same function and match its
+  type. Results must be new, distinct SSA identities. A read/write position
+  requires a same-typed old-value input and a distinct produced result at the
+  same constraint index; output-only positions cannot share an input.
+- BIR generic instruction operands/results preserve the ordered value edges.
+  The BIR payload copies only `original_asm_text`,
+  `original_constraint_text`, `clobbers`, and `side_effects`.
+  LLVM-rendering compatibility fields (`asm_text`, `constraints`, `args_str`,
+  `result`, and `ret_type`) never create semantic operands, results, types, or
+  payload strings. A text-only result/argument shape is rejected, and
+  structured values require nonempty original semantic constraints.
+- Parsed `insn_r` metadata is rejected because it is not Raw/Canonical BIR
+  authority. Immediates, unresolved/forward/foreign function values,
+  unsupported binding types, duplicate results, malformed roles/order, and
+  incomplete read/write pairs are also rejected.
+
+Validation covers the entire module before builder mutation. Construction then
+uses one `ModuleBuilder`, and only its final successful `publish()` returns a
+`RawBir`; validation, builder, or publication failure returns no partial
+module. This is module transactionality, not a claim of general LIR-to-BIR
+support.
+
+### 1.2 Target `LirModule` inventory
 
 Every current top-level field has this disposition:
 
@@ -581,7 +621,7 @@ rules above make that current instance an explicit source-gap failure.
 | `LirGep`, `LirGepOp` | core `GetElementPtr` | old indices are value IDs; new indices are `"type value"` strings; without structured typed indices the form is a **source gap** and fails | `memory` normalizes an already-typed path after the producer replaces index text |
 | `LirSelect`, `LirSelectOp` | core `Select` | condition and both typed values; no compare fusion | `scalar` |
 | `LirIntrinsic` | core `Intrinsic` only after lossless registry recognition | current form has only name, optional result ID, and argument IDs: result type, semantic ID, effects, immediates, and feature contract are **source gaps** | `intrinsics`; unknown/underspecified names fail |
-| `LirInlineAsm`, `LirInlineAsmOp` | core `InlineAsm` only with a complete structured payload | current forms preserve template/constraints and the new form clobbers/side-effects/`insn_r`, but operands/types/ties/names/goto labels remain absent or buried in `args_str`; missing structure fails import | `legalize` validates already-structured constraints; `preparation/inline_asm` later chooses placement |
+| `LirInlineAsm`, `LirInlineAsmOp` | core `InlineAsm`; the current bounded importer accepts only `LirInlineAsmOp` with ordered structured ordinary inputs/results | current `LirInlineAsmOp` preserves typed SSA bindings, input/output/read-write roles, constraint positions, original template/constraint text, clobbers, and side effects; parsed alternatives, names, symbol/address-space facts, and goto labels remain absent, while `args_str` is never authority | richer constraint validation and asm-goto need later schema work; target placement remains deferred |
 | `LirMemcpyOp`, `LirMemsetOp` | semantic memory intrinsic | operands, byte count/value, volatility, align/address spaces if present | `memory` is the first owner; `intrinsics` may later canonicalize registry identity |
 | `LirVaStartOp`, `LirVaEndOp`, `LirVaCopyOp`, `LirVaArgOp` | semantic variadic operations | va-list address(es), result type, aggregate shape if present | `intrinsics`; variadic preparation later |
 | `LirStackSaveOp`, `LirStackRestoreOp` | semantic dynamic-stack lifetime operations | saved/restored pointer identity and ordering | `memory`; frame realization later |
@@ -765,13 +805,15 @@ assignment, spill/reload, target opcode selection, and encoding belong to
 MIR/later target stages. Unsupported constraints are structured import errors; an
 `unsupported_facts` string bag is not acceptable final authority.
 
-Today's LIR cannot satisfy that full payload for all source forms.
-`LirInlineAsm` has ordered value-ID operands but no operand types/clobbers or
-side-effect bit. `LirInlineAsmOp` has clobbers, side effects, and optional
-`insn_r`, but its arguments are one rendered `args_str`; neither form carries
-parsed alternatives, symbolic operand names, asm-goto blocks, address spaces,
-or complete tied/read-write relationships structurally. Compatibility parsing
-cannot create those facts; this is a producer gap and import fails.
+Today's LIR cannot satisfy that full target payload for all source forms.
+`LirInlineAsm` still lacks operand types, clobbers, and a side-effect bit.
+`LirInlineAsmOp` now carries the bounded slice's typed ordinary SSA bindings,
+roles, constraint positions, clobbers, side effects, and distinct read/write
+input/result identities. It still lacks parsed alternatives, symbolic operand
+names, asm-goto blocks, symbol/address-space facts, and complete target
+constraint objects. The current importer accepts only the bounded non-goto
+shape described in section 1.1 and rejects the remaining gaps; compatibility
+parsing cannot create them.
 
 ## 11. Raw-only forms and ownership
 
@@ -843,7 +885,7 @@ feature is omitted.
 | aggregates, byval/sret, extract/insert, complex returns | extract/insert and byval exist; sret/complex-lane semantics are incomplete | aggregate call metadata and second-return carriers | preserve available aggregate semantics; explicit sret/logical complex multi-result carriers are **source gaps** |
 | atomics and fences | legacy `bir.hpp::AtomicOperation`; no typed current LIR variants | `AtomicLoad/Store/Rmw/Cmpxchg/Fence` | **source gap**: add typed LIR; never weaken to ordinary memory/call |
 | vectors/SIMD/shuffle | vector LIR ops; intrinsic metadata in legacy BIR | `IntrinsicOp`, architecture intrinsic modules | preserve vector type/lane/mask and intrinsic descriptor |
-| inline asm and asm goto | current variants have complementary but incomplete payloads | `Instruction::InlineAsm`, `backend/inline_asm.rs` | **source gap** for structured operands/types/ties/names/goto/address spaces; physical placement is deferred to preparation/MIR |
+| inline asm and asm goto | `LirInlineAsmOp` has bounded typed SSA bindings/roles/constraint positions plus original payload; richer alternatives and goto remain incomplete | `Instruction::InlineAsm`, `backend/inline_asm.rs` | bounded non-goto generic value transport is implemented; parsed alternatives, names, symbols/address spaces, and asm-goto remain a **source gap**; physical placement is deferred |
 | intrinsics, barriers, cache, hints | module need flags plus underspecified named `LirIntrinsic`; legacy `IntrinsicOperation` | `ir/intrinsics.rs`, backend intrinsic modules | **source gap** for semantic intrinsic IDs/effects/signatures; unknown/underspecified input fails |
 | debug/source coordinates | LIR currently has limited coordinates | reference `BasicBlock::source_spans` | preserve when source adds them; no fabricated locations |
 | constructors/destructors, aliases, visibility, sections, symver, top-level asm | not all represented in current `LirModule` | `ir/module.rs` | **source gap**: add structured module metadata; top-level asm additionally needs typed `SymbolId` dependencies and a settled dependency-role schema |
@@ -987,11 +1029,13 @@ bootstrap importer or the quarantined legacy importer.
 ## 17. Current review finding
 
 Already schema-owned in the target design, but not yet implemented by the
-bootstrap C++ core: full types/constants, symbols/globals/initializers, closed
-opcodes/descriptors, call effects/bundles, structured inline asm, stable IDs,
-reservation, and atomic publication. Their implementation absence is planned
-work after design freeze, not evidence that this importer should invent another
-schema or classify them as producer gaps.
+bootstrap C++ core: full types/constants, symbols/globals/initializers, general
+closed opcodes/descriptors, call effects/bundles, complete structured
+inline-asm constraints/asm-goto, reservation, and the target publication API.
+The current core does implement stable bootstrap IDs, one generic
+`Opcode::InlineAsm` value-edge carrier, and foundation-verifier publication.
+The remaining absence is planned work, not evidence that this importer should
+invent another schema or classify target-stage facts as current semantics.
 
 Real current-LIR producer gaps blocking affected backend features:
 
@@ -1007,8 +1051,9 @@ Real current-LIR producer gaps blocking affected backend features:
 - TLS/common/weak/section/visibility/used, aliases,
   constructors/destructors, symver, and top-level asm with typed `SymbolId`
   dependencies;
-- structured inline-asm operands/types/ties/names/symbols/address spaces and
-  asm-goto control edges.
+- parsed inline-asm alternatives, symbolic names, symbols/address spaces, and
+  asm-goto control edges beyond the implemented typed ordinary SSA binding
+  slice.
 
 Unresolved target-schema choices that must be closed before the corresponding
 features are declared design-complete:

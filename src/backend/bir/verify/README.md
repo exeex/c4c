@@ -14,6 +14,25 @@ analyses to use typed IDs, complete operand traversal, exact definitions, and a
 well-formed CFG without defensive fallback. It does not certify target ABI,
 register allocation, frame layout, target opcodes, encodings, or final emission.
 
+## Confirmed current inline-assembly verifier boundary
+
+The checked-in `FoundationVerifier` recognizes the one current opcode,
+`Opcode::InlineAsm`, and requires its closed payload alternative to be
+`InlineAsmNode`. Inline-asm operands must be live values owned by the same
+function. Each result must resolve to a live instruction-result `ValueId` whose
+`InstResultDef` names that exact instruction and ordered result index; the
+reverse value-to-instruction check is also enforced. The generic verifier also
+checks known value types, exact instruction membership in one block, function
+ownership, storage/order integrity, and publication through the builder.
+
+It does not currently parse or semantically validate `asm_text` or
+`constraint_text`, reconstruct roles/ties from them, validate clobber
+interactions, or prove target constraint/register legality. Input/output and
+read/write shape is rejected at the LIR importer boundary before construction;
+core verification then protects the resulting generic value graph. The
+`InlineAsmStructureInvalid` through `InlineAsmEffectInvalid` rules described
+later are target contract, not implemented `VerificationRule` alternatives.
+
 ## Profiles and stage boundary
 
 ```text
@@ -696,7 +715,7 @@ alternatives even when they lower to one BIR opcode.
 | load/store/GEP, hoisted and inline alloca, memcpy/memset, stack save/restore | one semantic memory/object operation with typed address, size, alignment, volatility and address space | `alloca_insts` is merged into semantic entry order; it is never a second instruction list |
 | direct/indirect calls and variadic operations | typed callee identity or callee value, complete function signature, fixed/extra argument boundary and every argument value | `callee_name`, `args_str`, or incomplete extern return-only data cannot supply missing identity/signature; ABI classification is deferred |
 | branch/conditional/return/switch/indirect branch/unreachable | one typed terminator per block | `LirIndirectBrOp` must agree with and be consumed into terminator authority; disagreement or an instruction-only carrier is rejected |
-| inline asm | structured template, operand roles/values/types, constraint tokens, clobbers, symbols, address spaces and goto block IDs; asm-goto import splits the block and creates an `asm_goto` terminator | current `LirInlineAsmOp::args_str` and raw constraint text are insufficient by themselves; reject until a lossless carrier exists |
+| inline asm | current bounded publication uses generic typed value operands/results plus opaque original template/constraint payload, clobbers, and side effects; the target requires richer structured constraint and asm-goto facts | `args_str` and compatibility result/type text are never authority; bounded shape is checked by the importer, while richer alternatives/symbol/address-space/goto forms remain rejected |
 | globals, strings, externs, struct declarations and initializers | typed symbol/type/object identity and recursive initializer/relocation tree | `init_text`, pool names, or initializer name scans are compatibility text, not importer authority; missing typed initializer references are a source gap |
 | atomics | closed load/store/RMW/cmpxchg/fence payload with ordering and result mode | current `LirInst` has no structured atomic alternatives; this is an explicit producer-schema gap, not permission to copy the legacy parallel table |
 | i128/f128, complex/multivalue and runtime-helper-capable operations | preserve full semantic type, exact constant bits, operands and semantic results | target helper choice, split lanes and physical return carriers are deferred to legalization/preparation/MIR |
@@ -1108,7 +1127,7 @@ input is verified here but the named decision belongs after BIR.
 | atomic load/store/RMW/cmpxchg/fence | Contracted Raw schema; current LIR source gap | `AtomicTypeInvalid`–`FenceInvalid`; never a legacy parallel agreement table |
 | aggregates, complex values, vector lanes/masks | Contracted | `AggregatePathInvalid`–`VectorMaskInvalid`; physical return lanes are deferred stage facts |
 | semantic intrinsics, overflow, bit/memory/SIMD/CRC/crypto | Contracted; target support is deferred stage | `IntrinsicIdInvalid`, `IntrinsicSchemaInvalid`; no selected opcode/helper in BIR |
-| structured inline asm and asm-goto | Contracted; current text-only operand transport is a source gap | `InlineAsmStructureInvalid`–`InlineAsmEffectInvalid`, `AsmGotoPairInvalid` |
+| structured inline asm and asm-goto | Target contracted; bounded non-goto generic SSA transport is current, while richer constraint objects and asm-goto remain source gaps | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; `InlineAsmStructureInvalid`–`InlineAsmEffectInvalid` and `AsmGotoPairInvalid` remain target rules |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
 | ABI placement, register allocation, spill/reload, frame, target opcode/relocation encoding/emission | Deferred stage and forbidden in BIR | `ForbiddenStageFact`, `ForbiddenCompatibilityPayload` |
 

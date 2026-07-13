@@ -90,11 +90,34 @@ schema:
 | IDs | `ids.hpp` defines epoch/owner/slot/generation IDs for functions, blocks, instructions, and parameter/instruction-result values. | Preserve the identity model and extend it to types, constants, symbols, globals, locals, and attachments. |
 | Storage | `storage.hpp` has generation-checked `SlotMap`, tombstones, free slots, and independent `IdOrder`. | Preserve observable semantics; hide all mutable storage behind builders/editors. |
 | Types | `type.hpp` has only `Void`, small integers, `F32/F64`, and opaque `Pointer`. | Replace with an interned, layout-capable type graph covering `I128/F128`, arrays, records, vectors, and function types. |
-| Instructions | `ir.hpp` deliberately defines an empty `Opcode`; ordinary append is `UnsupportedInstSpec`. | Define the complete semantic opcode/payload and descriptor registry before enabling construction. |
+| Instructions | `ir.hpp` currently defines only `Opcode::InlineAsm`. Each instruction has generic ordered `ValueId` operands/results plus an `InlineAsmNode`; no general opcode family exists yet. | Extend the closed semantic opcode/payload and descriptor registry without weakening the generic value-edge contract. |
 | Control flow | Four terminators exist and successors are derived from the terminator. | Retain this authority rule and add switch, indirect branch, and asm-goto successor forms. |
 | Views | Current views expose functions, parameters, blocks, values, instruction IDs, terminators, and successors. | Extend to every entity and descriptor while keeping references mutation-scoped. |
 | Construction | `ModuleBuilder::with_function` gives a scoped `FunctionBuilder`; bootstrap `publish()` runs only the foundation verifier. | Retain capability scoping, but replace direct publication with `ModuleDraft -> full Raw verification -> RawBir`; add globals/types/constants and complete errors. |
 | Mutation | No general editor, def-use store, local/global schema, or revision exists in current core. | The APIs below are target APIs, not existing behavior. |
+
+### 2.1 Confirmed current inline-assembly slice
+
+The implemented bootstrap slice deliberately separates value transport from
+opaque source payload:
+
+- `InlineAsmSpec::inputs` is an ordered vector of ordinary function-local
+  `ValueId`s. `result_types` creates an ordered vector of instruction-result
+  `ValueId`s whose `InstResultDef` points back to the instruction and exact
+  result index. `InstView::operands()` and `InstView::results()` expose those
+  same generic edges; there is no parallel inline-asm value-ID table.
+- `InlineAsmNode` stores only the original asm text, original constraint text,
+  clobber spellings, and `side_effects`. The two strings are opaque semantic
+  payload at this layer: core does not parse them into register classes, ties,
+  target opcodes, or allocation facts.
+- `FunctionBuilder::append` rejects foreign or unresolved inputs and `void`
+  results. If result allocation or block-order insertion fails, it erases the
+  instruction and every result created by that append before returning an
+  error.
+
+The complete structured constraint objects, asm-goto topology, target
+constraint preparation, register allocation, spill/reload, and MIR forms
+described later in this document remain target design, not current core state.
 
 ## 3. Ownership graph
 
@@ -1388,10 +1411,11 @@ for these confirmed gaps:
 - `LirInst` has no typed atomic load/store/RMW/compare-exchange/fence family;
   the legacy parallel `Function::atomic_operations` table is evidence of needed
   semantics, not an allowed side-table import route.
-- `LirInlineAsmOp` retains template/constraint text but lacks a complete typed
-  operand-role/tie/symbol/address-space/goto carrier. Raw `InlineAsm` and
-  `AsmGotoTerm` require the structured form above before publication; no opaque
-  inline-asm node may bridge this gap.
+- `LirInlineAsmOp` now carries ordered ordinary SSA inputs/results with types,
+  input/output/read-write roles, and source constraint positions for the
+  bounded non-goto transport slice. It still lacks the target design's parsed
+  alternatives, symbolic names, symbol/address-space facts, and asm-goto
+  carrier; those richer forms must be rejected rather than synthesized.
 - `LirGlobal::init_text` is still compatibility text and its function-ID list
   is not a recursive initializer tree. It cannot authoritatively produce
   sparse object bytes, arbitrary symbol/block relocations, nested aggregates,
@@ -1436,7 +1460,7 @@ losslessly; `open` means a design decision is still unresolved.
 | Atomic load/store/RMW/cmpxchg/fence | `source-gap` | closed core payload exists; current `LirInst` has no typed atomic family |
 | Direct/indirect calls, zero-or-one result, effects, attributes and bundles | `source-gap` | `CallPayload`, `CallEffects`, `CallSiteAttributes`; compatibility calls omit required facts |
 | CFG, exact parallel-edge `EdgeKey` phi authority and single-value return | `schema-owned` | terminator-derived successor-slot multiset; no physical return lanes |
-| Inline asm constraints, operands, clobbers and asm-goto edges | `source-gap` | structured schema exists; current LIR carrier is incomplete and opaque fallback is forbidden |
+| Inline asm constraints, operands, clobbers and asm-goto edges | `bounded-current` plus `source-gap` | current generic SSA inputs/results and original opaque payload transport non-goto asm; parsed alternatives, symbolic names, symbol/address-space facts, and asm-goto remain source gaps |
 | Top-level asm, symbol versions and constructor/destructor priority | `source-gap` | ordered module records exist; current LIR has no complete producer family |
 | Target-independent intrinsic namespace | `open` | descriptor mechanics exist; stable semantic registry boundary is unresolved |
 | Modern asm-goto output-edge value semantics | `open` | paired `InlineAsm`/`AsmGotoTerm` is defined; output value edge model needs review |
