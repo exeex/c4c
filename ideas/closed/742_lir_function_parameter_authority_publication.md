@@ -1,6 +1,6 @@
 # LIR Function Parameter Authority Publication
 
-Status: Open (active)
+Status: Closed (complete)
 Type: structured LIR producer-authority decomposition
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
 
@@ -153,3 +153,27 @@ one-to-one parity from intentional ABI expansion.
 - Reject completion proof limited to one target testcase; require nearby
   zero/void, declaration/definition, misleading-name, scalar-order, and
   classified complex-shape coverage.
+
+## Completion Evidence
+
+- Commit `6b102a522` publishes definition logical parameters through the same
+  structured `populate_lir_function_params` helper used by declarations.
+- Commit `96c7892dd` adds reachable exact-parity verification only for proven
+  default-shape nonvariadic plain fixed scalars, including malformed count,
+  order, type, shape, and typed-mirror rejection.
+- Commit `c2024bf49` proves zero/void distinction, declaration/definition
+  parity, misleading-display independence, and truthful pointer, narrow,
+  aggregate/byval, HFA expansion, and variadic classification.
+- Commit `d80d381a0` records the checked authority matrix and exact bounded
+  receiver handoff in
+  `docs/lir_function_parameter_authority/handoff_to_734.md`.
+- Supervisor acceptance used a fresh default build; focused
+  `frontend_lir_function_signature_type_ref` and
+  `backend_lir_to_bir_interface` proof passed 2/2; production `--dump-bir`
+  probes remained fail-closed at `UnsupportedFunctionParameters`; and the full
+  suite passed 3033/3033 with monotonic delta 0/0 and no new over-30-second
+  tests.
+- Closure proves producer publication, exact plain-shape verification, and
+  classification only. It does not claim new-BIR parameter receipt or body
+  parameter identity. Idea 734 resumes only for zero/void shape plus fixed
+  default-shape nonvariadic plain scalar declaration/definition signatures.

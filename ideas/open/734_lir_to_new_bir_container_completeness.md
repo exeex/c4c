@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (parked on producer authority)
+Status: Open (active)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -28,13 +28,15 @@ prohibition. Idea 734 paused while idea 741 resolved the structured LIR
 identity blocker recorded below, then received the four exact store/load/GEP/
 return rows from that committed handoff. At Step 4.5 it reached a second
 producer-authority boundary: declarations publish structured logical
-parameters through `LirFunction.params`, but definitions omit that publication
-while retaining their structured ABI signature tracks. Idea 742 is now active
-to repair and classify that exact producer seam; idea 734 remains open and must
-resume only from idea 742's accepted handoff. The in-progress phase-C
-documentation child remains open but parked. The already-landed phase-A and
-phase-B documentation acceptances and phase-C C1-C6 slices are preserved as
-historical evidence; they are not current post-implementation acceptance.
+parameters through `LirFunction.params`, but definitions omitted that
+publication while retaining their structured ABI signature tracks. Closed
+idea 742 repaired and classified that producer seam. Idea 734 now resumes only
+at the exact bounded receiver row authorized by
+`docs/lir_function_parameter_authority/handoff_to_734.md`. The in-progress
+phase-C documentation child remains open but parked. The already-landed
+phase-A and phase-B documentation acceptances and phase-C C1-C6 slices are
+preserved as historical evidence; they are not current post-implementation
+acceptance.
 
 After this idea is implemented, accepted and closed, reactivate idea 732 and
 rerun documentation convergence against the landed C++ implementation from
@@ -57,22 +59,20 @@ other handed-off rows remain ordered later packets. All other raw or monostate
 compatibility rows stay fail-closed; the handoff does not prove whole-modern-LIR
 readiness and does not authorize parsing display text or further LIR redesign.
 
-## Current Parameter Authority Blocker
+## Current Parameter Authority Handoff
 
-The first Step 4.5 plain fixed-scalar receiver packet requires exact structured
-parity among `LirFunction.params`, `signature_params`, and
-`signature_param_type_refs`. Production declarations populate all required
-logical facts, but function definitions currently populate only the two ABI
-signature tracks. A focused unused four-scalar definition therefore reaches
-the receiver as `params=0`, `signature_params=4`, and
-`signature_param_type_refs=4`.
+Closed idea 742 established declaration/definition logical publication and an
+exact structured parity contract among `LirFunction.params`,
+`signature_params`, and `signature_param_type_refs` for default-shape
+nonvariadic plain fixed scalars. It also preserved the distinct zero-parameter
+and explicit-void shapes.
 
-Idea 734 must not relax parity or infer logical parameters from display names,
-signature rendering, body text, or ABI position. Active idea 742 owns
-definition-side logical publication from structured HIR facts, the exact
-zero/void and one-to-one scalar contract, classification of complex ABI shapes,
-and the bounded handoff back to this receiver. No idea-734 parameter receipt
-work is authorized until that handoff is accepted.
+The first resumed Step 4.5 packet owns only those zero/void shapes and fixed
+plain scalar declaration/definition signatures. It must not bind body operands
+to parameters. Pointer, narrow, aggregate/byval, HFA/vector/other expansion,
+variadic, function-pointer, and `va_list` rows remain blocked exactly as the
+handoff matrix states. Names, signature rendering, body text, and ABI position
+remain non-authoritative.
 
 ## Why This Exists
 
