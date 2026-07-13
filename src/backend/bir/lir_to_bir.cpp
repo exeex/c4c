@@ -158,6 +158,54 @@ std::optional<Type> lower_constant_type(const LirModule& module,
       type.is_fn_ptr)
     return std::nullopt;
 
+  std::optional<Type> complex_component;
+  switch (type.base) {
+    case TB_COMPLEX_FLOAT:
+      complex_component = Type{TypeKind::Floating, 32, "float"};
+      break;
+    case TB_COMPLEX_DOUBLE:
+      complex_component = Type{TypeKind::Floating, 64, "double"};
+      break;
+    case TB_COMPLEX_LONGDOUBLE:
+      if (module.target_profile.os == c4c::TargetOs::Windows)
+        complex_component = Type{TypeKind::Floating, 64, "double"};
+      else if (module.target_profile.arch == c4c::TargetArch::X86_64 ||
+               module.target_profile.arch == c4c::TargetArch::I686)
+        complex_component = Type{TypeKind::Floating, 80, "x86_fp80"};
+      else
+        complex_component = Type{TypeKind::Floating, 128, "fp128"};
+      break;
+    case TB_COMPLEX_CHAR:
+    case TB_COMPLEX_SCHAR:
+    case TB_COMPLEX_UCHAR:
+      complex_component = Type{TypeKind::Integer, 8, "i8"};
+      break;
+    case TB_COMPLEX_SHORT:
+    case TB_COMPLEX_USHORT:
+      complex_component = Type{TypeKind::Integer, 16, "i16"};
+      break;
+    case TB_COMPLEX_INT:
+    case TB_COMPLEX_UINT:
+      complex_component = Type{TypeKind::Integer, 32, "i32"};
+      break;
+    case TB_COMPLEX_LONG:
+    case TB_COMPLEX_ULONG:
+    case TB_COMPLEX_LONGLONG:
+    case TB_COMPLEX_ULONGLONG:
+      complex_component = Type{TypeKind::Integer, 64, "i64"};
+      break;
+    default: break;
+  }
+  if (complex_component) {
+    Type result{TypeKind::Complex, complex_component->bit_width,
+                "{ " + complex_component->spelling + ", " +
+                    complex_component->spelling + " }"};
+    result.complex_facts = ComplexTypeFacts{complex_component->kind,
+                                            complex_component->bit_width};
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
   TypeBase storage_base = type.base;
   if (storage_base == TB_ENUM) {
     storage_base = type.enum_underlying_base;
@@ -337,7 +385,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     element_spec.ptr_level = 0;
     const auto element = lower_constant_type(module, element_spec);
     if (!element || (element->kind != TypeKind::Integer &&
-                     element->kind != TypeKind::Floating))
+                     element->kind != TypeKind::Floating &&
+                     element->kind != TypeKind::Complex))
       return std::nullopt;
 
     std::string expected =
@@ -347,9 +396,10 @@ std::optional<Type> lower_global_type(const LirModule& module,
       expected = "[" + std::to_string(*dimension) + " x " + expected + "]";
     if (global.llvm_type != expected) return std::nullopt;
     Type result{TypeKind::Array, 0, expected};
-    result.array_facts = ArrayTypeFacts{element->kind, element->bit_width,
-                                       element_pointer_depth,
-                                       std::move(dimensions)};
+    result.array_facts =
+        ArrayTypeFacts{element->kind, element->bit_width,
+                       element_pointer_depth, std::move(dimensions),
+                       element->complex_facts};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }
@@ -367,7 +417,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
     pointee_spec.ptr_level = 0;
     const auto pointee = lower_constant_type(module, pointee_spec);
     if (!pointee || (pointee->kind != TypeKind::Integer &&
-                     pointee->kind != TypeKind::Floating))
+                     pointee->kind != TypeKind::Floating &&
+                     pointee->kind != TypeKind::Complex))
       return std::nullopt;
 
     if (global.llvm_type_ref) {
@@ -379,9 +430,9 @@ std::optional<Type> lower_global_type(const LirModule& module,
     }
 
     Type result{TypeKind::Pointer};
-    result.pointer_facts =
-        PointerTypeFacts{pointee->kind, pointee->bit_width,
-                         global.type.ptr_level};
+    result.pointer_facts = PointerTypeFacts{
+        pointee->kind, pointee->bit_width, global.type.ptr_level,
+        pointee->complex_facts};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }
@@ -435,7 +486,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
   }
 
   if (authoritative->kind != TypeKind::Integer &&
-      authoritative->kind != TypeKind::Floating)
+      authoritative->kind != TypeKind::Floating &&
+      authoritative->kind != TypeKind::Complex)
     return std::nullopt;
   if (global.llvm_type != authoritative->spelling) return std::nullopt;
   if (global.llvm_type_ref) {

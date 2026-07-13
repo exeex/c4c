@@ -22,6 +22,7 @@ enum class TypeKind : std::uint8_t {
   Pointer,
   Integer,
   Floating,
+  Complex,
   Vector,
   VrmRegister,
   Array,
@@ -43,17 +44,24 @@ struct StructuredTypeSpecFacts {
   bool is_function_pointer = false;
 };
 
+struct ComplexTypeFacts {
+  TypeKind component_kind = TypeKind::Void;
+  std::uint32_t component_bit_width = 0;
+};
+
 struct ArrayTypeFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
   int element_pointer_depth = 0;
   std::vector<std::int64_t> dimensions;
+  std::optional<ComplexTypeFacts> element_complex_facts;
 };
 
 struct PointerTypeFacts {
   TypeKind pointee_kind = TypeKind::Void;
   std::uint32_t pointee_bit_width = 0;
   int pointer_depth = 0;
+  std::optional<ComplexTypeFacts> pointee_complex_facts;
 };
 
 struct VectorTypeFacts {
@@ -62,6 +70,17 @@ struct VectorTypeFacts {
   std::int64_t lane_count = 0;
   std::int64_t storage_bytes = 0;
 };
+
+inline bool operator==(const ComplexTypeFacts& lhs,
+                       const ComplexTypeFacts& rhs) noexcept {
+  return lhs.component_kind == rhs.component_kind &&
+         lhs.component_bit_width == rhs.component_bit_width;
+}
+
+inline bool operator!=(const ComplexTypeFacts& lhs,
+                       const ComplexTypeFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
 
 inline bool operator==(const VectorTypeFacts& lhs,
                        const VectorTypeFacts& rhs) noexcept {
@@ -80,7 +99,8 @@ inline bool operator==(const PointerTypeFacts& lhs,
                        const PointerTypeFacts& rhs) noexcept {
   return lhs.pointee_kind == rhs.pointee_kind &&
          lhs.pointee_bit_width == rhs.pointee_bit_width &&
-         lhs.pointer_depth == rhs.pointer_depth;
+         lhs.pointer_depth == rhs.pointer_depth &&
+         lhs.pointee_complex_facts == rhs.pointee_complex_facts;
 }
 
 inline bool operator!=(const PointerTypeFacts& lhs,
@@ -93,7 +113,8 @@ inline bool operator==(const ArrayTypeFacts& lhs,
   return lhs.element_kind == rhs.element_kind &&
          lhs.element_bit_width == rhs.element_bit_width &&
          lhs.element_pointer_depth == rhs.element_pointer_depth &&
-         lhs.dimensions == rhs.dimensions;
+         lhs.dimensions == rhs.dimensions &&
+         lhs.element_complex_facts == rhs.element_complex_facts;
 }
 
 inline bool operator!=(const ArrayTypeFacts& lhs,
@@ -126,6 +147,7 @@ struct Type {
   std::optional<ArrayTypeFacts> array_facts;
   std::optional<PointerTypeFacts> pointer_facts;
   std::optional<VectorTypeFacts> vector_facts;
+  std::optional<ComplexTypeFacts> complex_facts;
 
   Type() = default;
   Type(TypeKind type_kind) : kind(type_kind) {
@@ -154,6 +176,7 @@ inline bool operator==(const Type& lhs, const Type& rhs) noexcept {
   if (lhs.array_facts != rhs.array_facts) return false;
   if (lhs.pointer_facts != rhs.pointer_facts) return false;
   if (lhs.vector_facts != rhs.vector_facts) return false;
+  if (lhs.complex_facts != rhs.complex_facts) return false;
   const auto integer_width = [](const Type& type) -> std::uint32_t {
     switch (type.kind) {
       case TypeKind::I1: return 1;
@@ -196,6 +219,7 @@ inline bool is_well_formed(const Type& type) {
   if (type.kind != TypeKind::Array && type.array_facts) return false;
   if (type.kind != TypeKind::Pointer && type.pointer_facts) return false;
   if (type.kind != TypeKind::Vector && type.vector_facts) return false;
+  if (type.kind != TypeKind::Complex && type.complex_facts) return false;
   if (type.structured_spec) {
     const auto& spec = *type.structured_spec;
     if (type.kind != TypeKind::Void ||
@@ -206,6 +230,28 @@ inline bool is_well_formed(const Type& type) {
       return false;
   }
   const bool no_name = type.struct_name_id == c4c::kInvalidStructName;
+  const auto component_spelling = [](const ComplexTypeFacts& facts)
+      -> std::optional<std::string> {
+    if (facts.component_kind == TypeKind::Integer) {
+      if (facts.component_bit_width == 0) return std::nullopt;
+      return "i" + std::to_string(facts.component_bit_width);
+    }
+    if (facts.component_kind != TypeKind::Floating) return std::nullopt;
+    switch (facts.component_bit_width) {
+      case 16: return "half";
+      case 32: return "float";
+      case 64: return "double";
+      case 80: return "x86_fp80";
+      case 128: return "fp128";
+      default: return std::nullopt;
+    }
+  };
+  const auto complex_spelling = [&](const ComplexTypeFacts& facts)
+      -> std::optional<std::string> {
+    const auto component = component_spelling(facts);
+    if (!component) return std::nullopt;
+    return "{ " + *component + ", " + *component + " }";
+  };
   switch (type.kind) {
     case TypeKind::Void:
       return type.bit_width == 0 && no_name &&
@@ -227,13 +273,32 @@ inline bool is_well_formed(const Type& type) {
               (type.bit_width == 64 && type.spelling == "double") ||
               (type.bit_width == 80 && type.spelling == "x86_fp80") ||
               (type.bit_width == 128 && type.spelling == "fp128"));
+    case TypeKind::Complex: {
+      if (!no_name || !type.complex_facts ||
+          type.bit_width != type.complex_facts->component_bit_width)
+        return false;
+      const auto expected = complex_spelling(*type.complex_facts);
+      return expected && type.spelling == *expected;
+    }
     case TypeKind::Pointer:
       if (type.bit_width != 0 || !no_name || type.spelling != "ptr")
         return false;
       if (!type.pointer_facts) return true;
       if (type.pointer_facts->pointer_depth <= 0) return false;
       if (type.pointer_facts->pointee_kind == TypeKind::Integer)
-        return type.pointer_facts->pointee_bit_width != 0;
+        return type.pointer_facts->pointee_bit_width != 0 &&
+               !type.pointer_facts->pointee_complex_facts;
+      if (type.pointer_facts->pointee_kind == TypeKind::Complex) {
+        if (!type.pointer_facts->pointee_complex_facts ||
+            type.pointer_facts->pointee_bit_width !=
+                type.pointer_facts->pointee_complex_facts
+                    ->component_bit_width)
+          return false;
+        return complex_spelling(
+                   *type.pointer_facts->pointee_complex_facts)
+            .has_value();
+      }
+      if (type.pointer_facts->pointee_complex_facts) return false;
       if (type.pointer_facts->pointee_kind != TypeKind::Floating) return false;
       switch (type.pointer_facts->pointee_bit_width) {
         case 16:
@@ -292,10 +357,23 @@ inline bool is_well_formed(const Type& type) {
         if (dimension <= 0) return false;
       std::string element_spelling;
       if (type.array_facts->element_kind == TypeKind::Integer) {
-        if (type.array_facts->element_bit_width == 0) return false;
+        if (type.array_facts->element_bit_width == 0 ||
+            type.array_facts->element_complex_facts)
+          return false;
         element_spelling =
             "i" + std::to_string(type.array_facts->element_bit_width);
+      } else if (type.array_facts->element_kind == TypeKind::Complex) {
+        if (!type.array_facts->element_complex_facts ||
+            type.array_facts->element_bit_width !=
+                type.array_facts->element_complex_facts
+                    ->component_bit_width)
+          return false;
+        const auto expected =
+            complex_spelling(*type.array_facts->element_complex_facts);
+        if (!expected) return false;
+        element_spelling = *expected;
       } else if (type.array_facts->element_kind == TypeKind::Floating) {
+        if (type.array_facts->element_complex_facts) return false;
         switch (type.array_facts->element_bit_width) {
           case 16: element_spelling = "half"; break;
           case 32: element_spelling = "float"; break;

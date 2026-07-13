@@ -850,6 +850,59 @@ void test_verifier_rejects_malformed_raw_type() {
              std::move(invalid_pointer_storage_width)),
          "Raw publication verifier must reject storage width on typed opaque pointers");
 
+  bir::Type facts_on_noncomplex{bir::TypeKind::Integer, 32, "i32"};
+  facts_on_noncomplex.complex_facts =
+      bir::ComplexTypeFacts{bir::TypeKind::Integer, 32};
+  expect(malformed_pointer_facts_reject("facts_on_noncomplex",
+                                        std::move(facts_on_noncomplex)),
+         "Raw publication verifier must reject complex facts on non-complex types");
+
+  bir::Type missing_complex_facts{bir::TypeKind::Complex, 32,
+                                  "{ i32, i32 }"};
+  expect(malformed_pointer_facts_reject("missing_complex_facts",
+                                        std::move(missing_complex_facts)),
+         "Raw publication verifier must require typed complex component facts");
+
+  bir::Type invalid_complex_kind{bir::TypeKind::Complex, 32,
+                                 "{ i32, i32 }"};
+  invalid_complex_kind.complex_facts =
+      bir::ComplexTypeFacts{bir::TypeKind::Struct, 32};
+  expect(malformed_pointer_facts_reject("invalid_complex_kind",
+                                        std::move(invalid_complex_kind)),
+         "Raw publication verifier must reject non-scalar complex component kinds");
+
+  bir::Type invalid_complex_width{bir::TypeKind::Complex, 24,
+                                  "{ fp24, fp24 }"};
+  invalid_complex_width.complex_facts =
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 24};
+  expect(malformed_pointer_facts_reject("invalid_complex_width",
+                                        std::move(invalid_complex_width)),
+         "Raw publication verifier must reject invalid complex component widths");
+
+  bir::Type complex_spelling_conflict{bir::TypeKind::Complex, 32,
+                                      "{ double, double }"};
+  complex_spelling_conflict.complex_facts =
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 32};
+  expect(malformed_pointer_facts_reject("complex_spelling_conflict",
+                                        std::move(complex_spelling_conflict)),
+         "Raw publication verifier must reject complex spelling conflicts");
+
+  bir::Type malformed_complex_pointer{bir::TypeKind::Pointer};
+  malformed_complex_pointer.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Complex, 64, 2,
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 32}};
+  expect(malformed_pointer_facts_reject("malformed_complex_pointer",
+                                        std::move(malformed_complex_pointer)),
+         "Raw publication verifier must reject mismatched complex pointer facts");
+
+  bir::Type malformed_complex_array{bir::TypeKind::Array, 0,
+                                    "[2 x { i32, i32 }]"};
+  malformed_complex_array.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::Complex, 32, 0, {2}, std::nullopt};
+  expect(malformed_pointer_facts_reject("malformed_complex_array",
+                                        std::move(malformed_complex_array)),
+         "Raw publication verifier must reject missing complex array element facts");
+
   const auto malformed_vector_facts_reject = [](std::string name,
                                                  bir::Type type) {
     bir::ModuleBuilder malformed_builder;
@@ -2194,6 +2247,196 @@ void test_enum_storage_global_receipt_and_rejections() {
         m.globals[0].llvm_type = "<4 x i32>";
       },
       "enum vectors remain outside the direct enum-storage packet");
+}
+
+void test_complex_storage_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.target_profile.arch = c4c::TargetArch::I686;
+    module.target_profile.os = c4c::TargetOs::Linux;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto definition_link =
+        module.link_names.intern("complex_long_double_definition");
+    const auto init_link = module.link_names.intern("complex_init_function");
+
+    lir::LirGlobal definition;
+    definition.name = "complex_long_double_definition";
+    definition.link_name_id = definition_link;
+    definition.type = scalar_type(c4c::TB_COMPLEX_LONGDOUBLE);
+    definition.linkage_vis = "protected ";
+    definition.qualifier = "constant ";
+    definition.llvm_type = "{ x86_fp80, x86_fp80 }";
+    definition.init_text = std::string{
+        "{ x86_fp80, x86_fp80 } zeroinitializer\0complex", 46};
+    definition.initializer_function_link_name_ids = {init_link};
+    definition.align_bytes = 16;
+    definition.is_const = true;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "complex_integer_extern";
+    declaration.type = scalar_type(c4c::TB_COMPLEX_INT);
+    declaration.linkage_vis = "external hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = "{ i32, i32 }";
+    declaration.align_bytes = 8;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+
+    lir::LirGlobal pointer;
+    pointer.name = "deep_complex_integer_pointer";
+    pointer.type = scalar_type(c4c::TB_COMPLEX_ULONG);
+    pointer.type.ptr_level = 3;
+    pointer.linkage_vis = "extern_weak protected ";
+    pointer.qualifier = "global ";
+    pointer.llvm_type = "ptr";
+    pointer.align_bytes = 8;
+    pointer.is_extern_decl = true;
+    module.globals.push_back(std::move(pointer));
+
+    lir::LirGlobal array;
+    array.name = "complex_float_pointer_array";
+    array.type = scalar_type(c4c::TB_COMPLEX_FLOAT);
+    array.type.ptr_level = 2;
+    array.type.array_rank = 2;
+    array.type.array_size = 3;
+    array.type.array_dims[0] = 3;
+    array.type.array_dims[1] = 4;
+    array.linkage_vis = "external hidden ";
+    array.qualifier = "global ";
+    array.llvm_type = "[3 x [4 x ptr]]";
+    array.align_bytes = 8;
+    array.is_extern_decl = true;
+    module.globals.push_back(std::move(array));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-shaped complex globals must import from typed TypeSpec authority");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed complex globals must remain Foundation-verifier reachable");
+  const auto view = raw.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
+         "complex globals must preserve deterministic source order");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto declaration = view.global_object(ids[1]).value();
+  const auto pointer = view.global_object(ids[2]).value();
+  const auto array = view.global_object(ids[3]).value();
+
+  bir::Type expected_definition{bir::TypeKind::Complex, 80,
+                                "{ x86_fp80, x86_fp80 }"};
+  expected_definition.complex_facts =
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 80};
+  bir::Type expected_declaration{bir::TypeKind::Complex, 32,
+                                 "{ i32, i32 }"};
+  expected_declaration.complex_facts =
+      bir::ComplexTypeFacts{bir::TypeKind::Integer, 32};
+  expect(definition.object_type == expected_definition &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             view.spelling(std::get<bir::LinkNameId>(definition.identity))
+                     .value() == "complex_long_double_definition" &&
+             !definition.is_internal && !definition.is_weak &&
+             definition.is_const && !definition.is_extern_declaration &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 16 && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 std::string{
+                     "{ x86_fp80, x86_fp80 } zeroinitializer\0complex", 46} &&
+             definition.initializer->function_links.size() == 1 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "complex_init_function",
+         "floating complex definitions must retain exact component and object authority");
+  expect(declaration.object_type == expected_declaration &&
+             declaration.is_extern_declaration && !declaration.is_weak &&
+             declaration.visibility == bir::SymbolVisibility::Hidden &&
+             declaration.alignment == 8 && !declaration.initializer,
+         "integer complex externs must retain exact component and linkage facts");
+  expect(pointer.object_type.kind == bir::TypeKind::Pointer &&
+             pointer.object_type.spelling == "ptr" &&
+             pointer.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Complex, 64, 3,
+                     bir::ComplexTypeFacts{bir::TypeKind::Integer, 64}}} &&
+             pointer.is_extern_declaration && pointer.is_weak &&
+             pointer.visibility == bir::SymbolVisibility::Protected &&
+             pointer.alignment == 8 && !pointer.initializer,
+         "deep complex pointers must retain typed components and exact depth");
+  expect(array.object_type.kind == bir::TypeKind::Array &&
+             array.object_type.spelling == "[3 x [4 x ptr]]" &&
+             array.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Complex, 32, 2, {3, 4},
+                     bir::ComplexTypeFacts{bir::TypeKind::Floating, 32}}} &&
+             array.is_extern_declaration && !array.is_weak &&
+             array.visibility == bir::SymbolVisibility::Hidden &&
+             array.alignment == 8 && !array.initializer,
+         "fixed complex arrays must retain typed components, dimensions, and pointer depth");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  const auto canonical_ids =
+      canonical.has_value() ? canonical.value().view().global_objects()
+                            : std::vector<bir::GlobalObjectId>{};
+  expect(canonical.has_value() && canonical_ids.size() == 4 &&
+             canonical.value().view().global_object(canonical_ids[0])
+                     .value().object_type == expected_definition &&
+             canonical.value().view().global_object(canonical_ids[1])
+                     .value().object_type == expected_declaration &&
+             canonical.value().view().global_object(canonical_ids[2])
+                     .value().object_type.pointer_facts ==
+                 pointer.object_type.pointer_facts &&
+             canonical.value().view().global_object(canonical_ids[3])
+                     .value().object_type.array_facts ==
+                 array.object_type.array_facts,
+         "complex direct, pointer, and array storage must publish exact Canonical BIR facts");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() &&
+               rejected_raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "{ double, double }"; },
+           "complex storage spelling must exactly match typed components");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef(m.globals[0].llvm_type);
+      },
+      "complex globals must reject unexpected aggregate-shaped mirrors");
+  rejected([](lir::LirModule& m) { m.globals[2].type.is_fn_ptr = true; },
+           "complex function pointers remain outside scalar-pointer storage");
+  rejected([](lir::LirModule& m) { m.globals[2].type.is_ptr_to_array = true; },
+           "complex pointers to arrays remain outside scalar-pointer storage");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
+           "complex references remain outside global storage receipt");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.is_vector = true;
+        m.globals[0].type.vector_lanes = 2;
+        m.globals[0].type.vector_bytes = 32;
+        m.globals[0].llvm_type = "<2 x { x86_fp80, x86_fp80 }>";
+      },
+      "complex vectors remain outside direct scalar-vector receipt");
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
+           "aggregate TypeSpec neighbors must not borrow complex storage authority");
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_VA_LIST; },
+           "va-list TypeSpec neighbors must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[3].type.array_dims[1] = 0; },
+           "malformed complex fixed-array dimensions must roll back transactionally");
 }
 
 void test_scalar_pointer_global_receipt_and_rejections() {
@@ -4170,6 +4413,7 @@ int main() {
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
   test_enum_storage_global_receipt_and_rejections();
+  test_complex_storage_global_receipt_and_rejections();
   test_scalar_pointer_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
   test_direct_vector_global_receipt_and_rejections();

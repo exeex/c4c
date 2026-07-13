@@ -8,27 +8,24 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid enum-backed direct scalar,
-  scalar-pointer, and fixed scalar-base array globals from typed `TypeSpec`
-  authority. Default and explicit integer underlying bases normalize through
-  the existing target-sensitive integer storage path while preserving exact
-  width, spelling, pointer depth, dimensions, and object/initializer facts
-  through Foundation, Raw BIR, and Canonical BIR.
-- Nearby transactional coverage rejects floating, aggregate, recursive enum,
-  complex, and va-list underlying bases plus spelling/mirror conflicts and
-  excluded vector, function-pointer, and array-mirror shapes.
+- Plan Step 3 now admits producer-valid complex-valued direct, deep-pointer,
+  and fixed multidimensional pointer-element globals through an explicit BIR
+  `Complex` storage kind and typed integer/floating component facts.
+- Exact component width, reconstructed storage spelling, pointer depth,
+  dimensions, and object/initializer facts survive Foundation, Raw BIR, and
+  Canonical BIR; complex long/ulong storage remains `i64` on I686 as required
+  by the producer contract.
 
 ## Suggested Next
 
-- Audit the next producer-valid Plan Step 3 globals/objects family, or make the
-  Step 3 checkpoint decision if no additional producer-emitted family remains.
+- Audit the remaining producer-emitted global `TypeSpec` families and make the
+  Step 3 checkpoint decision if no additional coherent family remains.
 
 ## Watchouts
 
-- Enum source identity and signedness intentionally normalize to BIR integer
-  storage facts; no enum `TypeKind` or textual inference was added. Enum
-  vectors, function pointers, invalid underlying families, and existing
-  declarator/mirror exclusions remain closed.
+- Complex component semantics are typed facts, never inferred from LLVM
+  spelling. Vector, function-pointer, pointer-to-array, reference, aggregate,
+  va-list, unexpected-mirror, and malformed component neighbors remain closed.
 
 ## Proof
 
