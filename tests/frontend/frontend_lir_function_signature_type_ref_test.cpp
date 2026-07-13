@@ -440,6 +440,9 @@ int defined_plain(int misleading_i64, long long misleading_i32,
                   float misleading_double, double misleading_float) {
   return 3;
 }
+
+int declared_non_one_to_one(char narrow, int *pointer);
+int defined_non_one_to_one(char narrow, int *pointer) { return 4; }
 )c");
   const c4c::codegen::lir::LirModule module =
       c4c::codegen::lir::lower(hir_module);
@@ -519,6 +522,19 @@ int defined_plain(int misleading_i64, long long misleading_i32,
   expect_plain("declared_plain", true);
   expect_plain("defined_plain", false);
 
+  const auto expect_non_one_to_one_preserved = [&](std::string_view name,
+                                                    bool declaration) {
+    const auto& function = require_function(module, name, declaration);
+    expect_true(function.params.size() == 2 &&
+                    function.params[0].second.base == c4c::TB_CHAR &&
+                    function.params[1].second.base == c4c::TB_INT &&
+                    function.params[1].second.ptr_level == 1,
+                "narrow and pointer parameters should retain their logical shapes");
+    c4c::codegen::lir::verify_module(module);
+  };
+  expect_non_one_to_one_preserved("declared_non_one_to_one", true);
+  expect_non_one_to_one_preserved("defined_non_one_to_one", false);
+
   c4c::codegen::lir::LirModule presentation_drift = module;
   auto& drifted =
       require_mutable_function(presentation_drift, "defined_plain", false);
@@ -535,6 +551,43 @@ int defined_plain(int misleading_i64, long long misleading_i32,
                   drifted.params[2].second.base == c4c::TB_FLOAT &&
                   drifted.params[3].second.base == c4c::TB_DOUBLE,
               "parameter names and signature rendering must remain presentation-only");
+
+  const auto expect_plain_mutation_rejects = [&](auto mutate,
+                                                  const std::string& message) {
+    c4c::codegen::lir::LirModule candidate = module;
+    auto& function =
+        require_mutable_function(candidate, "defined_plain", false);
+    mutate(function);
+    expect_verify_rejects(candidate, message);
+  };
+  expect_plain_mutation_rejects(
+      [](auto& function) { function.params.pop_back(); },
+      "plain fixed scalar verification should reject a missing logical parameter");
+  expect_plain_mutation_rejects(
+      [](auto& function) { function.signature_params.pop_back(); },
+      "plain fixed scalar verification should reject a missing signature parameter");
+  expect_plain_mutation_rejects(
+      [](auto& function) { function.signature_param_type_refs.pop_back(); },
+      "plain fixed scalar verification should reject a missing typed mirror");
+  expect_plain_mutation_rejects(
+      [](auto& function) {
+        std::swap(function.params[0], function.params[1]);
+      },
+      "plain fixed scalar verification should reject reordered logical authority");
+  expect_plain_mutation_rejects(
+      [](auto& function) {
+        function.signature_params[0].type.base = c4c::TB_UINT;
+      },
+      "plain fixed scalar verification should reject a conflicting scalar type");
+  expect_plain_mutation_rejects(
+      [](auto& function) { function.params[0].second.align_bytes = 16; },
+      "plain fixed scalar verification should reject a conflicting logical shape");
+  expect_plain_mutation_rejects(
+      [](auto& function) {
+        function.signature_param_type_refs[0] =
+            c4c::codegen::lir::LirTypeRef::integer(64);
+      },
+      "plain fixed scalar verification should reject a conflicting mirror width");
 }
 
 }  // namespace

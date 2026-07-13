@@ -1399,6 +1399,162 @@ void verify_function_signature_param_type_ref_mirror(
   }
 }
 
+bool plain_fixed_scalar_parameter(const TypeSpec& type) {
+  const bool plain_base = [&] {
+    switch (type.base) {
+      case TB_INT:
+      case TB_UINT:
+      case TB_LONG:
+      case TB_ULONG:
+      case TB_LONGLONG:
+      case TB_ULONGLONG:
+      case TB_FLOAT:
+      case TB_DOUBLE: return true;
+      default: return false;
+    }
+  }();
+  const auto compatibility_array_fact = [](long long value) {
+    return value == -1 || value == 0;
+  };
+  return plain_base && type.enum_underlying_base == TB_VOID &&
+         type.ptr_level == 0 && !type.is_lvalue_ref && !type.is_rvalue_ref &&
+         type.align_bytes == 0 && compatibility_array_fact(type.array_size) &&
+         type.array_rank == 0 &&
+         std::all_of(std::begin(type.array_dims), std::end(type.array_dims),
+                     compatibility_array_fact) &&
+         !type.is_ptr_to_array &&
+         (type.inner_rank == -1 || type.inner_rank == 0) &&
+         !type.is_vector && type.vector_lanes == 0 &&
+         type.vector_bytes == 0 && type.vrm_width == 0 &&
+         type.array_size_expr == nullptr && !type.is_const &&
+         !type.is_volatile && !type.is_fn_ptr && !type.is_packed &&
+         !type.is_noinline && !type.is_always_inline &&
+         type.tag_text_id == kInvalidText &&
+         type.template_param_owner_namespace_context_id == -1 &&
+         type.template_param_owner_text_id == kInvalidText &&
+         type.template_param_index == -1 &&
+         type.template_param_text_id == kInvalidText &&
+         type.record_def == nullptr && type.qualifier_segments == nullptr &&
+         type.qualifier_text_ids == nullptr &&
+         type.n_qualifier_segments == 0 && !type.is_global_qualified &&
+         type.namespace_context_id == -1 && type.tpl_struct_origin == nullptr &&
+         type.tpl_struct_origin_key == c4c::QualifiedNameKey{} &&
+         type.tpl_struct_args.data == nullptr &&
+         type.tpl_struct_args.size == 0 &&
+         type.deferred_member_type_owner_key == c4c::QualifiedNameKey{} &&
+         type.deferred_member_type_name == nullptr &&
+         type.deferred_member_type_text_id == kInvalidText;
+}
+
+bool same_plain_fixed_scalar_type(const TypeSpec& lhs,
+                                  const TypeSpec& rhs) {
+  return lhs.base == rhs.base &&
+         lhs.enum_underlying_base == rhs.enum_underlying_base &&
+         lhs.ptr_level == rhs.ptr_level &&
+         lhs.is_lvalue_ref == rhs.is_lvalue_ref &&
+         lhs.is_rvalue_ref == rhs.is_rvalue_ref &&
+         lhs.align_bytes == rhs.align_bytes &&
+         lhs.array_size == rhs.array_size &&
+         lhs.array_rank == rhs.array_rank &&
+         std::equal(std::begin(lhs.array_dims), std::end(lhs.array_dims),
+                    std::begin(rhs.array_dims)) &&
+         lhs.is_ptr_to_array == rhs.is_ptr_to_array &&
+         lhs.inner_rank == rhs.inner_rank &&
+         lhs.is_vector == rhs.is_vector &&
+         lhs.vector_lanes == rhs.vector_lanes &&
+         lhs.vector_bytes == rhs.vector_bytes &&
+         lhs.vrm_width == rhs.vrm_width &&
+         lhs.array_size_expr == rhs.array_size_expr &&
+         lhs.is_const == rhs.is_const &&
+         lhs.is_volatile == rhs.is_volatile &&
+         lhs.is_fn_ptr == rhs.is_fn_ptr;
+}
+
+bool exact_plain_scalar_mirror(const TypeSpec& type,
+                               const LirTypeRef& mirror) {
+  if (type.base == TB_FLOAT)
+    return mirror.kind() == LirTypeKind::Floating && mirror.str() == "float";
+  if (type.base == TB_DOUBLE)
+    return mirror.kind() == LirTypeKind::Floating && mirror.str() == "double";
+  unsigned expected_width = 64;
+  if (type.base == TB_INT || type.base == TB_UINT)
+    expected_width = 32;
+  return mirror.kind() == LirTypeKind::Integer &&
+         mirror.integer_bit_width() == expected_width &&
+         mirror.str() == "i" + std::to_string(expected_width);
+}
+
+bool abi_expanded_logical_parameter(const TypeSpec& type) {
+  switch (type.base) {
+    case TB_STRUCT:
+    case TB_UNION:
+    case TB_COMPLEX_FLOAT:
+    case TB_COMPLEX_DOUBLE:
+    case TB_COMPLEX_LONGDOUBLE:
+    case TB_COMPLEX_CHAR:
+    case TB_COMPLEX_SCHAR:
+    case TB_COMPLEX_UCHAR:
+    case TB_COMPLEX_SHORT:
+    case TB_COMPLEX_USHORT:
+    case TB_COMPLEX_INT:
+    case TB_COMPLEX_UINT:
+    case TB_COMPLEX_LONG:
+    case TB_COMPLEX_ULONG:
+    case TB_COMPLEX_LONGLONG:
+    case TB_COMPLEX_ULONGLONG: return true;
+    default: return type.is_vector;
+  }
+}
+
+void verify_plain_fixed_scalar_parameter_relationship(const LirFunction& fn) {
+  if (fn.signature_is_variadic || fn.signature_has_void_param_list) return;
+  const bool logical_plain =
+      !fn.params.empty() &&
+      std::all_of(fn.params.begin(), fn.params.end(), [](const auto& param) {
+        return plain_fixed_scalar_parameter(param.second);
+      });
+  const bool signature_plain =
+      !fn.signature_params.empty() &&
+      std::all_of(fn.signature_params.begin(), fn.signature_params.end(),
+                  [](const LirSignatureParam& param) {
+                    return !param.is_byval &&
+                           plain_fixed_scalar_parameter(param.type);
+                  });
+  const bool has_expanded_logical_shape =
+      std::any_of(fn.params.begin(), fn.params.end(), [](const auto& param) {
+        return abi_expanded_logical_parameter(param.second);
+      });
+  const bool enforce = logical_plain ||
+                       (signature_plain && !has_expanded_logical_shape);
+  if (!enforce) return;
+
+  constexpr std::string_view field = "LirFunction.params";
+  if (fn.params.size() != fn.signature_params.size() ||
+      fn.params.size() != fn.signature_param_type_refs.size()) {
+    std::ostringstream detail;
+    detail << "plain fixed scalar function '" << fn.name
+           << "' must have exact logical/signature/mirror counts; got "
+           << fn.params.size() << "/" << fn.signature_params.size() << "/"
+           << fn.signature_param_type_refs.size();
+    fail_verify(field, detail.str());
+  }
+  for (std::size_t index = 0; index < fn.params.size(); ++index) {
+    const auto& logical = fn.params[index].second;
+    const auto& signature = fn.signature_params[index];
+    const auto& mirror = fn.signature_param_type_refs[index];
+    if (!plain_fixed_scalar_parameter(logical) || signature.is_byval ||
+        !plain_fixed_scalar_parameter(signature.type) ||
+        !same_plain_fixed_scalar_type(logical, signature.type) ||
+        !exact_plain_scalar_mirror(signature.type, mirror)) {
+      std::ostringstream detail;
+      detail << "plain fixed scalar parameter " << index << " of function '"
+             << fn.name
+             << "' has conflicting logical, signature, or typed-mirror authority";
+      fail_verify(field, detail.str());
+    }
+  }
+}
+
 void verify_function_signature_structured_param_shape(const LirFunction& fn) {
   if (fn.signature_has_void_param_list) {
     if (!fn.signature_params.empty() || !fn.signature_param_type_refs.empty()) {
@@ -1411,6 +1567,8 @@ void verify_function_signature_structured_param_shape(const LirFunction& fn) {
     }
     return;
   }
+
+  verify_plain_fixed_scalar_parameter_relationship(fn);
 
   if (!fn.signature_params.empty() &&
       fn.signature_param_type_refs.size() != fn.signature_params.size()) {

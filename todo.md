@@ -8,27 +8,31 @@ Current Step Title: Verify exact relations and classify non-one-to-one shapes
 
 ## Just Finished
 
-- Completed Plan Step 1 by invoking the existing
-  `populate_lir_function_params` helper for ordinary definitions before FnCtx
-  and body lowering, matching the declaration shell's structured HIR-owned
-  publication path.
-- Added direct producer coverage for empty and explicit-void parameter lists,
-  plus unused fixed `int`/`long long`/`float`/`double` declaration-definition
-  pairs with exact logical/signature/mirror count, order, and structured shape.
-- Proved parameter names and retained signature rendering remain presentation:
-  their drift does not replace the published TypeSpec and typed-mirror facts.
+- Added reachable LIR verification for the proven fixed nonvariadic plain-
+  scalar relationship: logical parameters, structured ABI signature rows, and
+  typed mirrors must agree exactly in count, order, `TypeSpec`, kind, and width.
+- Added structured mutation coverage for missing logical/signature/mirror
+  rows, reorder, scalar-type conflict, logical-shape conflict, and mirror-width
+  conflict; every malformed module rejects through `verify_module`.
+- Preserved presentation-only names/signature text and explicitly exempted
+  narrow, pointer, byval, aggregate/HFA/vector, complex, function-pointer,
+  va-list, and variadic shapes from forced scalar parity.
 
 ## Suggested Next
 
-- Execute Plan Step 2 as a bounded verifier/classification packet: enforce only
-  the proven plain one-to-one relationships while preserving truthful ABI-
-  expanded distinctions.
+- Finish Plan Step 2 with the bounded authority/disposition classification for
+  every non-one-to-one row, without adding receiver implementation or forcing
+  logical/ABI parity.
 
 ## Watchouts
 
-- `LirFunction.params` is now present on definitions but remains the logical
-  list; it must not be flattened onto byval, HFA, vector, aggregate, narrow,
-  pointer, function-pointer, or variadic ABI signature rows.
+- The scalar verifier intentionally activates when either the logical track is
+  wholly proven plain or the signature track is wholly plain without an ABI-
+  expanded logical carrier; this makes missing tracks reject without pulling
+  aggregate/vector/complex expansion into the scalar contract.
+- `LirFunction.params` remains the logical list and must not be flattened onto
+  byval, HFA, vector, aggregate, narrow, pointer, function-pointer, va-list, or
+  variadic ABI signature rows.
 - Empty C `()` and explicit `(void)` remain distinct: empty has no logical
   parameter, while explicit void retains one logical sentinel and no fixed ABI
   parameter.
@@ -36,7 +40,8 @@ Current Step Title: Verify exact relations and classify non-one-to-one shapes
 
 ## Proof
 
-- Fresh `cmake --build --preset default` completed successfully.
+- Fresh `cmake --build --preset default` completed successfully after the final
+  verifier audit.
 - `ctest --test-dir build -R '^frontend_lir_function_signature_type_ref$'
   --output-on-failure` passed 1/1.
 - `ctest --test-dir build -j --output-on-failure > test_after.log` passed
