@@ -224,6 +224,113 @@ std::optional<Type> lower_signature_type(
   return result;
 }
 
+bool default_parameter_type_metadata(const TypeSpec& type) {
+  const auto compatibility_array_fact = [](long long value) {
+    return value == -1 || value == 0;
+  };
+  return type.enum_underlying_base == TB_VOID && type.ptr_level == 0 &&
+         !type.is_lvalue_ref && !type.is_rvalue_ref && type.align_bytes == 0 &&
+         compatibility_array_fact(type.array_size) && type.array_rank == 0 &&
+         std::all_of(std::begin(type.array_dims), std::end(type.array_dims),
+                     compatibility_array_fact) &&
+         !type.is_ptr_to_array &&
+         (type.inner_rank == -1 || type.inner_rank == 0) && !type.is_vector &&
+         type.vector_lanes == 0 && type.vector_bytes == 0 &&
+         type.vrm_width == 0 && type.array_size_expr == nullptr &&
+         !type.is_const && !type.is_volatile && !type.is_fn_ptr &&
+         !type.is_packed && !type.is_noinline && !type.is_always_inline &&
+         type.tag_text_id == kInvalidText &&
+         type.template_param_owner_namespace_context_id == -1 &&
+         type.template_param_owner_text_id == kInvalidText &&
+         type.template_param_index == -1 &&
+         type.template_param_text_id == kInvalidText &&
+         type.record_def == nullptr && type.qualifier_segments == nullptr &&
+         type.qualifier_text_ids == nullptr &&
+         type.n_qualifier_segments == 0 && !type.is_global_qualified &&
+         type.namespace_context_id == -1 && type.tpl_struct_origin == nullptr &&
+         type.tpl_struct_origin_key == c4c::QualifiedNameKey{} &&
+         type.tpl_struct_args.data == nullptr && type.tpl_struct_args.size == 0 &&
+         type.deferred_member_type_owner_key == c4c::QualifiedNameKey{} &&
+         type.deferred_member_type_name == nullptr &&
+         type.deferred_member_type_text_id == kInvalidText;
+}
+
+bool supported_plain_parameter_base(TypeBase base) {
+  switch (base) {
+    case TB_INT:
+    case TB_UINT:
+    case TB_LONGLONG:
+    case TB_ULONGLONG:
+    case TB_FLOAT:
+    case TB_DOUBLE: return true;
+    default: return false;
+  }
+}
+
+bool same_default_parameter_type(const TypeSpec& lhs, const TypeSpec& rhs) {
+  return lhs.base == rhs.base &&
+         lhs.enum_underlying_base == rhs.enum_underlying_base &&
+         lhs.ptr_level == rhs.ptr_level &&
+         lhs.is_lvalue_ref == rhs.is_lvalue_ref &&
+         lhs.is_rvalue_ref == rhs.is_rvalue_ref &&
+         lhs.align_bytes == rhs.align_bytes &&
+         lhs.array_size == rhs.array_size &&
+         lhs.array_rank == rhs.array_rank &&
+         std::equal(std::begin(lhs.array_dims), std::end(lhs.array_dims),
+                    std::begin(rhs.array_dims)) &&
+         lhs.is_ptr_to_array == rhs.is_ptr_to_array &&
+         lhs.inner_rank == rhs.inner_rank && lhs.is_const == rhs.is_const &&
+         lhs.is_volatile == rhs.is_volatile;
+}
+
+std::optional<std::vector<Type>> lower_function_parameter_types(
+    const LirModule& module, const LirFunction& function) {
+  if (function.signature_is_variadic) return std::nullopt;
+  if (function.signature_has_void_param_list) {
+    if (function.params.size() != 1 ||
+        function.params.front().second.base != TB_VOID ||
+        !default_parameter_type_metadata(function.params.front().second) ||
+        !function.signature_params.empty() ||
+        !function.signature_param_type_refs.empty())
+      return std::nullopt;
+    return std::vector<Type>{};
+  }
+  if (function.params.empty() && function.signature_params.empty() &&
+      function.signature_param_type_refs.empty())
+    return std::vector<Type>{};
+  if (function.params.empty() ||
+      function.params.size() != function.signature_params.size() ||
+      function.params.size() != function.signature_param_type_refs.size())
+    return std::nullopt;
+
+  std::vector<Type> lowered;
+  lowered.reserve(function.params.size());
+  for (std::size_t index = 0; index < function.params.size(); ++index) {
+    const auto& logical = function.params[index].second;
+    const auto& signature = function.signature_params[index];
+    const auto& mirror = function.signature_param_type_refs[index];
+    if (!supported_plain_parameter_base(logical.base) ||
+        !supported_plain_parameter_base(signature.type.base) ||
+        !default_parameter_type_metadata(logical) ||
+        !default_parameter_type_metadata(signature.type) || signature.is_byval ||
+        !same_default_parameter_type(logical, signature.type) ||
+        mirror.has_struct_name_id())
+      return std::nullopt;
+    const auto type = lower_signature_type(module, signature.type, mirror);
+    if (!type) return std::nullopt;
+    if ((type->kind == TypeKind::Integer &&
+         (mirror.kind() != codegen::lir::LirTypeKind::Integer ||
+          !mirror.integer_bit_width() ||
+          *mirror.integer_bit_width() != type->bit_width)) ||
+        (type->kind == TypeKind::Floating &&
+         mirror.kind() != codegen::lir::LirTypeKind::Floating) ||
+        mirror.str() != type->spelling)
+      return std::nullopt;
+    lowered.push_back(*type);
+  }
+  return lowered;
+}
+
 std::optional<Type> lower_constant_type(const LirModule& module,
                                         const TypeSpec& type) {
   if (type.ptr_level != 0 || type.is_lvalue_ref || type.is_rvalue_ref ||
@@ -1342,13 +1449,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (name.empty())
     return fail<void>(ImportErrorCode::EmptyFunctionLinkName, function.name, {},
                       "function has no resolvable link-visible name");
-  if (!function.params.empty() || !function.signature_params.empty() ||
-      !function.signature_param_type_refs.empty())
-    return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
-                      "parameter/signature expansion belongs to Step 4A");
   if (function.signature_is_variadic)
     return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
                       "variadic functions require explicit signature lowering");
+  if (!lower_function_parameter_types(module, function))
+    return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                      "function parameters are outside exact zero, void-list, "
+                      "or target-stable plain scalar receipt");
   const auto signature_return_type =
       lower_signature_type(module, function.return_type,
                            function.signature_return_type_ref);
@@ -1877,6 +1984,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                               function.signature_return_type_ref);
     FunctionSignature signature;
     signature.return_type = imported_return_type;
+    signature.parameter_types =
+        *lower_function_parameter_types(module, function);
     auto created =
         builder.create_function(std::move(signature), name, function.is_declaration);
     if (!created)

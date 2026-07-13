@@ -157,6 +157,51 @@ c4c::TypeSpec scalar_type(c4c::TypeBase base) {
   return type;
 }
 
+lir::LirTypeRef stable_parameter_mirror(c4c::TypeBase base) {
+  switch (base) {
+    case c4c::TB_INT:
+    case c4c::TB_UINT: return lir::LirTypeRef::integer(32);
+    case c4c::TB_LONGLONG:
+    case c4c::TB_ULONGLONG: return lir::LirTypeRef::integer(64);
+    case c4c::TB_FLOAT: return lir::LirTypeRef("float");
+    case c4c::TB_DOUBLE: return lir::LirTypeRef("double");
+    default: return lir::LirTypeRef("unsupported");
+  }
+}
+
+lir::LirFunction stable_parameter_function(
+    std::string name, bool declaration,
+    const std::vector<c4c::TypeBase>& bases) {
+  lir::LirFunction function =
+      declaration ? void_declaration(std::move(name))
+                  : void_definition(std::move(name), {return_block(0, "entry")});
+  function.signature_text = "presentation-only misleading signature";
+  for (std::size_t index = 0; index < bases.size(); ++index) {
+    auto logical = scalar_type(bases[index]);
+    logical.inner_rank = -1;
+    auto signature = logical;
+    function.params.emplace_back(
+        "%logical-display-" + std::to_string(index), logical);
+    function.signature_params.push_back(
+        {"%signature-display-" + std::to_string(index), signature, false});
+    function.signature_param_type_refs.push_back(
+        stable_parameter_mirror(bases[index]));
+  }
+  return function;
+}
+
+lir::LirFunction explicit_void_parameter_function(std::string name,
+                                                   bool declaration) {
+  lir::LirFunction function =
+      declaration ? void_declaration(std::move(name))
+                  : void_definition(std::move(name), {return_block(0, "entry")});
+  auto sentinel = scalar_type(c4c::TB_VOID);
+  sentinel.inner_rank = -1;
+  function.params.emplace_back("%void-display", sentinel);
+  function.signature_has_void_param_list = true;
+  return function;
+}
+
 double double_from_bits(std::uint64_t bits) {
   double value = 0.0;
   static_assert(sizeof(value) == sizeof(bits));
@@ -914,6 +959,256 @@ void test_direct_scalar_signature_rejections_and_transactionality() {
         function.return_type.enum_underlying_base = c4c::TB_FLOAT;
       },
       "enum returns must reject non-integer underlying storage");
+}
+
+void test_plain_parameter_signature_receipt() {
+  lir::LirModule module;
+  module.target_profile.arch = c4c::TargetArch::X86_64;
+  module.target_profile.os = c4c::TargetOs::Linux;
+  module.functions.push_back(void_declaration("empty_params"));
+  module.functions.push_back(
+      void_definition("empty_params", {return_block(0, "entry")}));
+  module.functions.push_back(
+      explicit_void_parameter_function("void_params", true));
+  module.functions.push_back(
+      explicit_void_parameter_function("void_params", false));
+  const std::vector<c4c::TypeBase> bases = {
+      c4c::TB_INT,       c4c::TB_UINT,  c4c::TB_LONGLONG,
+      c4c::TB_ULONGLONG, c4c::TB_FLOAT, c4c::TB_DOUBLE};
+  module.functions.push_back(
+      stable_parameter_function("stable_params", true, bases));
+  module.functions.push_back(
+      stable_parameter_function("stable_params", false, bases));
+
+  const std::vector<bir::Type> expected_types = {
+      {bir::TypeKind::Integer, 32, "i32"},
+      {bir::TypeKind::Integer, 32, "i32"},
+      {bir::TypeKind::Integer, 64, "i64"},
+      {bir::TypeKind::Integer, 64, "i64"},
+      {bir::TypeKind::Floating, 32, "float"},
+      {bir::TypeKind::Floating, 64, "double"},
+  };
+  const auto expect_graph = [&](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto functions = view.functions();
+    expect(functions.size() == 3,
+           layer + " should merge matching declarations and definitions");
+    for (std::size_t index = 0; index < 2; ++index) {
+      const auto function = view.function(functions[index]).value();
+      expect(function.signature().parameter_types.empty() &&
+                 function.parameters().empty() && !function.is_declaration(),
+             layer + " should preserve empty and explicit-void as zero ABI parameters");
+    }
+    const auto function = view.function(functions[2]).value();
+    expect(function.signature().parameter_types == expected_types &&
+               function.parameters().size() == expected_types.size() &&
+               !function.signature().is_variadic && !function.is_declaration(),
+           layer + " should retain exact stable scalar signature order and types");
+    const auto parameters = function.parameters();
+    for (std::size_t ordinal = 0; ordinal < parameters.size(); ++ordinal) {
+      const auto value = function.value(parameters[ordinal]).value();
+      const auto* definition = std::get_if<bir::ParameterDef>(&value.definition);
+      expect(parameters[ordinal].kind == bir::ValueKind::Parameter &&
+                 value.kind == bir::ValueKind::Parameter && definition &&
+                 definition->ordinal == ordinal &&
+                 value.type == expected_types[ordinal],
+             layer + " should use typed ordinal-only ParameterDef storage");
+    }
+  };
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "exact zero, void-list, and stable scalar signatures should publish RawBir");
+  expect_graph(raw.value(), "RawBir");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "foundation verification should reach imported parameter definitions");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the same parameter graph should publish CanonicalBir");
+  expect_graph(canonical.value(), "CanonicalBir");
+}
+
+void test_plain_parameter_signature_rejections_and_transactionality() {
+  const std::vector<c4c::TypeBase> bases = {c4c::TB_INT, c4c::TB_DOUBLE};
+  const auto rejected = [&](auto mutate, bir::ImportErrorCode expected,
+                            const std::string& message,
+                            c4c::TargetArch arch = c4c::TargetArch::X86_64) {
+    lir::LirModule module;
+    module.target_profile.arch = arch;
+    module.target_profile.os = c4c::TargetOs::Linux;
+    module.functions.push_back(void_declaration("accepted_before_parameters"));
+    auto candidate = stable_parameter_function("rejected_parameters", true, bases);
+    mutate(candidate);
+    module.functions.push_back(std::move(candidate));
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() && raw.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() && canonical.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+
+  rejected([](auto& function) { function.params.pop_back(); },
+           bir::ImportErrorCode::UnsupportedFunctionParameters,
+           "missing logical parameter authority must reject transactionally");
+  rejected([](auto& function) { function.signature_params.pop_back(); },
+           bir::ImportErrorCode::UnsupportedFunctionParameters,
+           "missing structured ABI parameter authority must reject transactionally");
+  rejected(
+      [](auto& function) { function.signature_param_type_refs.pop_back(); },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "missing typed mirror authority must reject transactionally");
+  rejected([](auto& function) { std::swap(function.params[0], function.params[1]); },
+           bir::ImportErrorCode::UnsupportedFunctionParameters,
+           "reordered logical authority must reject transactionally");
+  rejected(
+      [](auto& function) { function.signature_params[0].type.base = c4c::TB_UINT; },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "conflicting structured scalar types must reject transactionally");
+  rejected(
+      [](auto& function) {
+        function.signature_param_type_refs[0] =
+            lir::LirTypeRef("i32", lir::LirTypeKind::RawText);
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "raw-text mirrors must reject transactionally");
+  rejected([](auto& function) { function.params[0].second.align_bytes = 16; },
+           bir::ImportErrorCode::UnsupportedFunctionParameters,
+           "alignment residue must reject transactionally");
+  rejected([](auto& function) { function.signature_params[0].type.is_const = true; },
+           bir::ImportErrorCode::UnsupportedFunctionParameters,
+           "cv residue must reject transactionally");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.template_param_owner_namespace_context_id = 7;
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "template metadata residue must reject transactionally");
+  rejected([](auto& function) { function.params[0].second.tag_text_id = 1; },
+           bir::ImportErrorCode::UnsupportedFunctionParameters,
+           "tag metadata residue must reject transactionally");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.deferred_member_type_name = "display-only";
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "deferred metadata residue must reject transactionally");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.ptr_level = 1;
+        function.signature_params[0].type.ptr_level = 1;
+        function.signature_param_type_refs[0] = lir::LirTypeRef("ptr");
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "pointer parameters must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.base = c4c::TB_CHAR;
+        function.signature_params[0].type.base = c4c::TB_CHAR;
+        function.signature_param_type_refs[0] = lir::LirTypeRef::integer(8);
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "narrow parameters must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.base = c4c::TB_LONG;
+        function.signature_params[0].type.base = c4c::TB_LONG;
+        function.signature_param_type_refs[0] = lir::LirTypeRef::integer(64);
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "long parameters must remain blocked pending idea 743");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.base = c4c::TB_ULONG;
+        function.signature_params[0].type.base = c4c::TB_ULONG;
+        function.signature_param_type_refs[0] = lir::LirTypeRef::integer(32);
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "I686 unsigned-long policy conflicts must remain blocked pending idea 743",
+      c4c::TargetArch::I686);
+  rejected(
+      [](auto& function) {
+        function.params[0].second.base = c4c::TB_STRUCT;
+        function.signature_params[0].type.base = c4c::TB_STRUCT;
+        function.signature_params[0].is_byval = true;
+        function.signature_param_type_refs[0] = lir::LirTypeRef("ptr");
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "aggregate byval parameters must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.base = c4c::TB_STRUCT;
+        function.signature_params[0].type.base = c4c::TB_STRUCT;
+        function.signature_param_type_refs[0] =
+            lir::LirTypeRef("%struct.Direct", lir::LirTypeKind::Struct);
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "direct aggregate parameters must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params.resize(1);
+        function.params[0].second.base = c4c::TB_STRUCT;
+        for (auto& signature : function.signature_params)
+          signature.type = scalar_type(c4c::TB_FLOAT);
+        for (auto& mirror : function.signature_param_type_refs)
+          mirror = lir::LirTypeRef("float");
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "one-logical-to-many-ABI HFA parameters must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.is_vector = true;
+        function.params[0].second.vector_lanes = 4;
+        function.params[0].second.vector_bytes = 16;
+        function.signature_params[0].type = function.params[0].second;
+        function.signature_param_type_refs[0] = lir::LirTypeRef("<4 x i32>");
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "vector parameter transformations must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.is_fn_ptr = true;
+        function.signature_params[0].type.is_fn_ptr = true;
+        function.signature_param_type_refs[0] = lir::LirTypeRef("ptr");
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "function-pointer parameters must remain fail-closed");
+  rejected(
+      [](auto& function) {
+        function.params[0].second.base = c4c::TB_VA_LIST;
+        function.signature_params[0].type.base = c4c::TB_VA_LIST;
+        function.signature_param_type_refs[0] = lir::LirTypeRef("ptr");
+      },
+      bir::ImportErrorCode::UnsupportedFunctionParameters,
+      "va-list parameters must remain fail-closed");
+  rejected([](auto& function) { function.signature_is_variadic = true; },
+           bir::ImportErrorCode::UnsupportedVariadicFunction,
+           "variadic fixed prefixes must remain fail-closed");
+
+  const auto rejected_void = [&](auto mutate, const std::string& message) {
+    lir::LirModule module;
+    module.functions.push_back(void_declaration("accepted_before_void"));
+    auto candidate = explicit_void_parameter_function("rejected_void", true);
+    mutate(candidate);
+    module.functions.push_back(std::move(candidate));
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() && raw.error().code ==
+                                   bir::ImportErrorCode::UnsupportedFunctionParameters,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() && canonical.error().code ==
+                                         bir::ImportErrorCode::UnsupportedFunctionParameters,
+           message + " (Canonical rollback)");
+  };
+  rejected_void([](auto& function) { function.params.clear(); },
+                "void-list flag without its logical sentinel must reject");
+  rejected_void(
+      [](auto& function) {
+        function.signature_params.push_back({"%invented", scalar_type(c4c::TB_INT), false});
+        function.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+      },
+      "void-list signatures must reject invented ABI parameters");
 }
 
 void test_typed_lir_type_rejections() {
@@ -7974,6 +8269,8 @@ int main() {
   test_structured_type_spec_signature_receipt();
   test_direct_scalar_signature_receipt();
   test_direct_scalar_signature_rejections_and_transactionality();
+  test_plain_parameter_signature_receipt();
+  test_plain_parameter_signature_rejections_and_transactionality();
   test_typed_lir_type_rejections();
   test_verifier_rejects_malformed_raw_type();
   test_intrinsic_requirements_receipt();
