@@ -297,7 +297,9 @@ std::optional<Type> lower_global_type(const LirModule& module,
   }
 
   const bool scalar_pointer_global =
-      (global.is_extern_decl || allow_pointer) && global.type.ptr_level == 1 &&
+      (global.is_extern_decl || allow_pointer ||
+       (!global.is_const && !global.init_text.empty())) &&
+      global.type.ptr_level == 1 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
       global.type.inner_rank == 0 && !global.type.is_fn_ptr &&

@@ -1916,6 +1916,10 @@ void test_scalar_pointer_global_receipt_and_rejections() {
     module.link_names.attach_text_table(module.link_name_texts.get());
     module.struct_names.attach_text_table(module.link_name_texts.get());
     const auto linked = module.link_names.intern("extern_integer_pointer");
+    const auto ordinary_link =
+        module.link_names.intern("ordinary_integer_pointer");
+    const auto init_a = module.link_names.intern("pointer_init_a");
+    const auto init_b = module.link_names.intern("pointer_init_b");
 
     lir::LirGlobal external;
     external.name = "extern_integer_pointer";
@@ -1939,6 +1943,44 @@ void test_scalar_pointer_global_receipt_and_rejections() {
     weak_external.align_bytes = 16;
     weak_external.is_extern_decl = true;
     module.globals.push_back(std::move(weak_external));
+
+    lir::LirGlobal ordinary;
+    ordinary.name = "ordinary_integer_pointer";
+    ordinary.link_name_id = ordinary_link;
+    ordinary.type = scalar_type(c4c::TB_UINT);
+    ordinary.type.ptr_level = 1;
+    ordinary.linkage_vis.clear();
+    ordinary.qualifier = "global ";
+    ordinary.llvm_type = "ptr";
+    ordinary.align_bytes = 8;
+    ordinary.init_text = std::string{"ptr @ordinary\0tail", 18};
+    ordinary.initializer_function_link_name_ids = {init_b, init_a, init_b};
+    module.globals.push_back(std::move(ordinary));
+
+    lir::LirGlobal internal;
+    internal.name = "internal_float_pointer";
+    internal.type = scalar_type(c4c::TB_DOUBLE);
+    internal.type.ptr_level = 1;
+    internal.is_internal = true;
+    internal.linkage_vis = "internal hidden ";
+    internal.qualifier = "global ";
+    internal.llvm_type = "ptr";
+    internal.align_bytes = 16;
+    internal.init_text = "ptr @internal";
+    internal.initializer_function_link_name_ids = {init_a};
+    module.globals.push_back(std::move(internal));
+
+    lir::LirGlobal weak;
+    weak.name = "weak_integer_pointer";
+    weak.type = scalar_type(c4c::TB_SHORT);
+    weak.type.ptr_level = 1;
+    weak.linkage_vis = "weak protected ";
+    weak.qualifier = "global ";
+    weak.llvm_type = "ptr";
+    weak.align_bytes = 32;
+    weak.init_text = "ptr @weak";
+    weak.initializer_function_link_name_ids = {init_a, init_b};
+    module.globals.push_back(std::move(weak));
     return module;
   };
 
@@ -1950,10 +1992,14 @@ void test_scalar_pointer_global_receipt_and_rejections() {
          "typed scalar-pointer extern declarations must be Foundation reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
-         "typed scalar-pointer declarations must preserve source order");
+  expect(ids.size() == 5 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3 && ids[4].slot == 4,
+         "typed scalar-pointer objects must preserve source order");
   const auto external = view.global_object(ids[0]).value();
   const auto weak_external = view.global_object(ids[1]).value();
+  const auto ordinary = view.global_object(ids[2]).value();
+  const auto internal = view.global_object(ids[3]).value();
+  const auto weak = view.global_object(ids[4]).value();
   expect(external.source_name == "extern_integer_pointer" &&
              external.object_type.kind == bir::TypeKind::Pointer &&
              external.object_type.bit_width == 0 &&
@@ -1982,11 +2028,67 @@ void test_scalar_pointer_global_receipt_and_rejections() {
              weak_external.visibility == bir::SymbolVisibility::Protected &&
              weak_external.alignment == 16 && !weak_external.initializer,
          "weak external scalar pointers must retain typed pointee, linkage, visibility, alignment, and identity");
+  expect(ordinary.object_type.kind == bir::TypeKind::Pointer &&
+             ordinary.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Integer, 32, 1}} &&
+             std::holds_alternative<bir::LinkNameId>(ordinary.identity) &&
+             view.spelling(std::get<bir::LinkNameId>(ordinary.identity))
+                     .value() == "ordinary_integer_pointer" &&
+             !ordinary.is_internal && !ordinary.is_weak &&
+             !ordinary.is_const && !ordinary.is_extern_declaration &&
+             ordinary.visibility == bir::SymbolVisibility::Default &&
+             ordinary.alignment == 8 && ordinary.initializer &&
+             ordinary.initializer->opaque_payload ==
+                 std::string{"ptr @ordinary\0tail", 18} &&
+             ordinary.initializer->function_links.size() == 3 &&
+             view.spelling(ordinary.initializer->function_links[0]).value() ==
+                 "pointer_init_b" &&
+             view.spelling(ordinary.initializer->function_links[1]).value() ==
+                 "pointer_init_a" &&
+             ordinary.initializer->function_links[2] ==
+                 ordinary.initializer->function_links[0],
+         "ordinary scalar-pointer definitions must preserve typed authority, identity, byte-exact payload, and ordered initializer links");
+  expect(internal.object_type.kind == bir::TypeKind::Pointer &&
+             internal.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Floating, 64, 1}} &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 internal.identity) &&
+             std::get<bir::FallbackGlobalName>(internal.identity).name ==
+                 "internal_float_pointer" &&
+             internal.is_internal && !internal.is_weak &&
+             !internal.is_const && !internal.is_extern_declaration &&
+             internal.visibility == bir::SymbolVisibility::Hidden &&
+             internal.alignment == 16 && internal.initializer &&
+             internal.initializer->opaque_payload == "ptr @internal" &&
+             internal.initializer->function_links.size() == 1 &&
+             view.spelling(internal.initializer->function_links[0]).value() ==
+                 "pointer_init_a",
+         "internal scalar-pointer definitions must preserve pointee, linkage, visibility, alignment, and initializer facts");
+  expect(weak.object_type.kind == bir::TypeKind::Pointer &&
+             weak.object_type.pointer_facts ==
+             std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Integer, 16, 1}} &&
+             std::holds_alternative<bir::FallbackGlobalName>(weak.identity) &&
+             std::get<bir::FallbackGlobalName>(weak.identity).name ==
+                 "weak_integer_pointer" &&
+             !weak.is_internal && weak.is_weak && !weak.is_const &&
+             !weak.is_extern_declaration &&
+             weak.visibility == bir::SymbolVisibility::Protected &&
+             weak.alignment == 32 && weak.initializer &&
+             weak.initializer->opaque_payload == "ptr @weak" &&
+             weak.initializer->function_links.size() == 2 &&
+             view.spelling(weak.initializer->function_links[0]).value() ==
+                 "pointer_init_a" &&
+             view.spelling(weak.initializer->function_links[1]).value() ==
+                 "pointer_init_b",
+         "weak scalar-pointer definitions must preserve typed pointee, weak linkage, visibility, and ordered initializer links");
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
   const auto canonical_ids =
       canonical.has_value() ? canonical.value().view().global_objects()
                             : std::vector<bir::GlobalObjectId>{};
-  expect(canonical.has_value() && canonical_ids.size() == 2 &&
+  expect(canonical.has_value() && canonical_ids.size() == 5 &&
              canonical.value()
                      .view()
                      .global_object(canonical_ids[0])
@@ -2000,8 +2102,29 @@ void test_scalar_pointer_global_receipt_and_rejections() {
                      .value()
                      .object_type.pointer_facts ==
                  std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
-                     bir::TypeKind::Floating, 32, 1}},
-         "producer-shaped scalar-pointer extern declarations must publish Canonical BIR");
+                     bir::TypeKind::Floating, 32, 1}} &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[2])
+                     .value()
+                     .object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Integer, 32, 1}} &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[3])
+                     .value()
+                     .object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Floating, 64, 1}} &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[4])
+                     .value()
+                     .object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Integer, 16, 1}},
+         "producer-shaped scalar-pointer declarations and definitions must publish Canonical BIR");
 
   const auto rejected = [&](auto mutate, const std::string& message) {
     auto candidate = valid_module();
@@ -2036,14 +2159,16 @@ void test_scalar_pointer_global_receipt_and_rejections() {
         m.globals[0].llvm_type_ref = lir::LirTypeRef::integer(64);
       },
       "optional scalar-pointer mirrors must corroborate generic ptr evidence");
-  rejected(
-      [](lir::LirModule& m) {
-        auto& global = m.globals[0];
-        global.is_extern_decl = false;
-        global.linkage_vis.clear();
-        global.init_text = "ptr null";
-      },
-      "ordinary nonconst scalar-pointer definitions must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[2].init_text.clear(); },
+           "scalar-pointer definitions require initializer payloads");
+  rejected([](lir::LirModule& m) { m.globals[2].qualifier = "constant "; },
+           "nonconst scalar-pointer definitions reject constant qualifiers");
+  rejected([](lir::LirModule& m) { m.globals[3].is_internal = false; },
+           "internal scalar-pointer linkage must agree with its flag");
+  rejected([](lir::LirModule& m) { m.globals[3].is_const = true; },
+           "internal const-pointer definitions must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[4].is_const = true; },
+           "weak const-pointer definitions must remain closed");
 }
 
 void test_fixed_scalar_base_array_global_receipt_and_rejections() {
@@ -2735,9 +2860,8 @@ void test_global_object_rejections_and_transactionality() {
              m.globals[0].type.ptr_level = 1;
              m.globals[0].llvm_type = "ptr";
              m.globals[0].llvm_type_ref = lir::LirTypeRef("ptr");
-             m.globals[0].init_text = "ptr null";
            },
-           "non-const ordinary pointer definitions must remain unsupported transactionally");
+           "non-const ordinary pointer definitions require initializer payloads transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].is_extern_decl = false;
              m.globals[0].linkage_vis.clear();

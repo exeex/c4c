@@ -8,34 +8,36 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid external and weak-external declarations
-  of exactly one-level pointers to integer/floating scalar bases. Raw pointer
-  facts preserve pointee kind, pointee width, and pointer depth without parsing
-  opaque `ptr` spelling; existing admitted const-pointer definitions now retain
-  the same typed facts.
-- Generic fact-free Raw pointers remain valid for unrelated `LirTypeRef`
-  contracts. Malformed staged pointer facts and unsupported neighboring global
-  shapes reject transactionally, including deeper pointers, aggregate
-  pointees, pointer-to-array/inner-rank and function-pointer forms, parity or
-  mirror conflicts, and ordinary nonconst pointer definitions.
+- Plan Step 3 now admits producer-valid ordinary, internal, and weak nonconst
+  definitions of exactly one-level pointers to integer/floating scalar bases.
+  Raw and Canonical BIR preserve pointee kind/width/depth, source order,
+  identity, linkage, visibility, alignment, byte-exact opaque initializer
+  payloads, and ordered initializer link identities.
+- Existing coherence authority still rejects empty initializers, constant
+  qualifiers on nonconst definitions, internal flag/linkage mismatch, and
+  internal or weak const-pointer neighbors. Deeper pointers, aggregate and
+  function pointees, and rendered/mirror conflicts remain transactional.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 packet admitting producer-valid ordinary nonconst
-  definitions of exactly one-level pointers to integer/floating scalar bases.
-  Preserve typed `PointerTypeFacts` together with the existing authoritative
-  linkage and initializer facts, and prove Raw/Canonical publication plus
-  transactional rejection and rollback. Keep deeper, aggregate-pointee, and
-  function-pointer forms closed; leave intrinsic-requirement parity for the
-  later instruction/intrinsic work that supplies its typed authority.
+- Execute one bounded Step 3 packet admitting producer-valid internal and weak
+  const definitions of exactly one-level pointers to integer/floating scalar
+  bases. Preserve typed `PointerTypeFacts` together with opaque initializer
+  payloads and ordered initializer link identities, enforce the authoritative
+  linkage/visibility/qualifier facts, and prove Raw and Canonical publication
+  plus transactional rejection and rollback. Keep deeper pointers, aggregate
+  pointees, and function pointers closed; do not advance to the accumulated
+  module checkpoint until these producer-valid rows are covered.
 
 ## Watchouts
 
 - Scalar-pointer global authority comes only from a one-level, non-reference,
   non-array/non-vector/non-function-pointer `TypeSpec` whose cleared base lowers
-  to an integer or floating scalar. The branch is gated to extern declarations
-  and the preexisting const-pointer producer row; ordinary nonconst pointer
-  definitions remain closed.
+  to an integer or floating scalar. Pointer definitions require a nonempty
+  initializer payload, and the producer emits qualifier `global ` even when
+  `is_const` is true; existing ordinary, internal, or weak coherence predicates
+  remain authoritative for linkage, visibility, qualifier, and initializer
+  shape.
 - Producer globals omit `llvm_type_ref` for pointer shapes. A manually supplied
   mirror is accepted only as generic `ptr` corroboration and never supplies
   pointee semantics; rendered `llvm_type` is exact parity evidence only.
@@ -45,7 +47,7 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers typed external, weak-external, and const
-  pointer globals, exact object-fact preservation, `FoundationVerifier`
-  reachability, Canonical publication, malformed Raw pointer-fact rejection,
-  and Raw/Canonical rollback for unsupported neighboring shapes.
+  passing. The selected proof covers typed external, weak-external, const, and
+  nonconst ordinary/internal/weak pointer globals, exact object and initializer
+  preservation, `FoundationVerifier` reachability, Canonical publication, and
+  Raw/Canonical rollback for unsupported neighboring shapes.
