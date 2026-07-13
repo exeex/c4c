@@ -8,32 +8,29 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid fixed-size, one-dimensional direct
+- Plan Step 3 now admits producer-valid positive fixed multidimensional direct
   scalar TypeSpec array globals with no `llvm_type_ref`. Raw `TypeKind::Array`
-  carries coherent typed scalar element kind/width plus positive extent, and
-  the importer renders exact `llvm_type` parity from those structured facts
-  without parsing compatibility text.
-- Nearby proof covers an initialized weak constant definition and an extern
-  declaration through Foundation verification and Raw/Canonical publication,
-  including exact object/linkage/visibility/alignment facts, opaque initializer
-  bytes, and ordered links. Invalid extents/dimensions, rank greater than one,
-  pointer/aggregate elements, unexpected mirrors, parity conflicts, and
-  malformed staged Raw array facts reject transactionally.
+  carries scalar element kind/width plus exact outer-to-inner dimensions, and
+  reconstructs nested spelling inside-out without parsing compatibility text.
+- Rank-one definition and extern coverage remains green; a distinct `2 x 3 x
+  7` extern proves ordered facts, object metadata, Foundation reachability, and
+  Raw/Canonical publication. Rank/capacity mismatch, nonpositive inner and
+  outer-size mismatch, unexpected mirrors, nested parity conflicts,
+  pointer/aggregate neighbors, and malformed staged Raw facts reject.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 multidimensional scalar TypeSpec array-global
-  receipt packet, first confirming the producer's outer-to-inner
-  `array_dims`/`array_size` invariants and choosing a non-recursive typed Raw
-  shape extension that keeps rendered LLVM spelling parity-only.
+- Execute one bounded Step 3 producer-valid fixed pointer-element TypeSpec
+  array-global receipt packet, first confirming declarator shape and opaque
+  pointer spelling invariants while retaining absent `llvm_type_ref` for arrays.
 
 ## Watchouts
 
-- Fixed scalar array admission is intentionally limited to rank one, matching
-  positive `array_size == array_dims[0]`, a direct integer/floating element,
-  no vector/pointer/reference/function-pointer/aggregate shape, and absent
-  `llvm_type_ref`. Aggregate-element, pointer-element, unsized, and
-  multidimensional globals remain closed.
+- Fixed scalar array admission requires rank within the eight-dimension
+  producer capacity, every active dimension positive, `array_size ==
+  array_dims[0]`, a direct integer/floating element, and absent
+  `llvm_type_ref`. Aggregate-element, pointer-element, unsized, vector,
+  reference, and function-pointer shapes remain closed.
 - The generic `LirTypeRef` array value path preserves its existing typed
   discriminant plus opaque exact spelling contract without decoding element or
   extent semantics. Global TypeSpec array authority is separate and never
@@ -44,7 +41,7 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers typed fixed scalar array receipt,
-  `FoundationVerifier` reachability, Canonical publication, exact object-fact
-  preservation, Raw type-fact coherence, and Raw/Canonical transactional
-  rejection of neighboring unsupported global shapes.
+  passing. The selected proof covers ordered multidimensional scalar array
+  receipt, `FoundationVerifier` reachability, Canonical publication, exact
+  object-fact preservation, Raw type-fact coherence, and Raw/Canonical
+  transactional rejection of neighboring malformed and unsupported shapes.

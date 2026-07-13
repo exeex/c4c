@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace c4c::backend::bir {
 
@@ -45,14 +46,14 @@ struct StructuredTypeSpecFacts {
 struct ScalarArrayFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
-  std::int64_t extent = 0;
+  std::vector<std::int64_t> dimensions;
 };
 
 inline bool operator==(const ScalarArrayFacts& lhs,
                        const ScalarArrayFacts& rhs) noexcept {
   return lhs.element_kind == rhs.element_kind &&
          lhs.element_bit_width == rhs.element_bit_width &&
-         lhs.extent == rhs.extent;
+         lhs.dimensions == rhs.dimensions;
 }
 
 inline bool operator!=(const ScalarArrayFacts& lhs,
@@ -195,20 +196,20 @@ inline bool is_well_formed(const Type& type) {
     case TypeKind::Vector:
       return type.bit_width == 0 && no_name && type.spelling.size() >= 2 &&
              type.spelling.front() == '<' && type.spelling.back() == '>';
-    case TypeKind::Array:
+    case TypeKind::Array: {
       if (type.bit_width != 0 || !no_name || type.spelling.size() < 2 ||
           type.spelling.front() != '[' || type.spelling.back() != ']')
         return false;
       if (!type.scalar_array) return true;
-      if (type.scalar_array->extent <= 0) return false;
+      if (type.scalar_array->dimensions.empty()) return false;
+      for (const auto dimension : type.scalar_array->dimensions)
+        if (dimension <= 0) return false;
+      std::string element_spelling;
       if (type.scalar_array->element_kind == TypeKind::Integer) {
         if (type.scalar_array->element_bit_width == 0) return false;
-        return type.spelling ==
-               "[" + std::to_string(type.scalar_array->extent) + " x i" +
-                   std::to_string(type.scalar_array->element_bit_width) + "]";
-      }
-      if (type.scalar_array->element_kind == TypeKind::Floating) {
-        std::string element_spelling;
+        element_spelling =
+            "i" + std::to_string(type.scalar_array->element_bit_width);
+      } else if (type.scalar_array->element_kind == TypeKind::Floating) {
         switch (type.scalar_array->element_bit_width) {
           case 16: element_spelling = "half"; break;
           case 32: element_spelling = "float"; break;
@@ -217,11 +218,15 @@ inline bool is_well_formed(const Type& type) {
           case 128: element_spelling = "fp128"; break;
           default: return false;
         }
-        return type.spelling ==
-               "[" + std::to_string(type.scalar_array->extent) + " x " +
-                   element_spelling + "]";
+      } else {
+        return false;
       }
-      return false;
+      for (auto dimension = type.scalar_array->dimensions.rbegin();
+           dimension != type.scalar_array->dimensions.rend(); ++dimension)
+        element_spelling =
+            "[" + std::to_string(*dimension) + " x " + element_spelling + "]";
+      return type.spelling == element_spelling;
+    }
     case TypeKind::Function:
       return type.bit_width == 0 && no_name &&
              type.spelling.find('(') != std::string::npos &&

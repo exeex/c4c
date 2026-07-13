@@ -256,16 +256,26 @@ std::optional<GlobalLinkageFacts> decode_global_linkage(
 std::optional<Type> lower_global_type(const LirModule& module,
                                       const LirGlobal& global,
                                       bool allow_pointer) {
+  constexpr int kArrayDimensionCapacity =
+      sizeof(global.type.array_dims) / sizeof(global.type.array_dims[0]);
   const bool direct_fixed_scalar_array =
       global.type.ptr_level == 0 && !global.type.is_lvalue_ref &&
-      !global.type.is_rvalue_ref && global.type.array_rank == 1 &&
+      !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
+      global.type.array_rank <= kArrayDimensionCapacity &&
       global.type.array_size > 0 &&
-      global.type.array_dims[0] == global.type.array_size &&
       !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
       !global.type.is_fn_ptr && !global.type.is_vector &&
       global.type.array_size_expr == nullptr;
   if (direct_fixed_scalar_array) {
     if (global.llvm_type_ref) return std::nullopt;
+    std::vector<std::int64_t> dimensions;
+    dimensions.reserve(global.type.array_rank);
+    for (int i = 0; i < global.type.array_rank; ++i) {
+      if (global.type.array_dims[i] <= 0) return std::nullopt;
+      dimensions.push_back(global.type.array_dims[i]);
+    }
+    if (dimensions.front() != global.type.array_size) return std::nullopt;
+
     TypeSpec element_spec = global.type;
     element_spec.array_rank = 0;
     element_spec.array_size = -1;
@@ -275,13 +285,14 @@ std::optional<Type> lower_global_type(const LirModule& module,
                      element->kind != TypeKind::Floating))
       return std::nullopt;
 
-    const std::string expected =
-        "[" + std::to_string(global.type.array_size) + " x " +
-        element->spelling + "]";
+    std::string expected = element->spelling;
+    for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend();
+         ++dimension)
+      expected = "[" + std::to_string(*dimension) + " x " + expected + "]";
     if (global.llvm_type != expected) return std::nullopt;
     Type result{TypeKind::Array, 0, expected};
     result.scalar_array = ScalarArrayFacts{
-        element->kind, element->bit_width, global.type.array_size};
+        element->kind, element->bit_width, std::move(dimensions)};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }
