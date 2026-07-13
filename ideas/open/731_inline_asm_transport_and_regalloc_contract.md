@@ -71,6 +71,15 @@ could not be verified independently.
   MIR-ready publication, MIR, and late assembly remain unauthorized until the
   ordered architecture and repaired boundary are jointly reviewed.
 
+## Progress Checkpoint
+
+- Commit `ac2f344f2` completed the bounded LIR-to-BIR bootstrap: verified
+  target-independent Raw/Canonical BIR can carry opaque inline asm with generic
+  SSA operand/result edges and separate source constraint/clobber text.
+- The bootstrap runbook is retired. Target preparation, allocation,
+  spill/reload, MIR-ready publication, concrete ABI mapping, and late assembly
+  remain open under this idea and require a later reviewed runbook.
+
 ## In Scope
 
 - Freezing the closed MIR-ready abstract-node admission table and verifier.
