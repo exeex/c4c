@@ -3,29 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 4.5.2
-Current Step Title: Reassess remaining function, CFG and local-object authority
+Current Step ID: 4.5.3
+Current Step Title: Receive function linkage and elision facts
 
 ## Just Finished
 
-- Completed Plan Step 4.5.1 by receiving exact empty, explicit-void, and
-  default-shape nonvariadic `int`, `uint`, `long long`, `unsigned long long`,
-  `float`, and `double` declaration/definition signatures.
-- Populated existing `FunctionSignature.parameter_types` and builder-created
-  typed `ParameterDef` ordinals without source IDs, name maps, or display
-  interpretation; Raw and Canonical verification accept the resulting graph.
-- Added atomic rejection coverage for missing/reordered/conflicting tracks,
-  raw mirrors, metadata/declarator residue, and every excluded neighboring
-  parameter family, including I686 `long`/`unsigned long` policy conflicts.
+- Completed Plan Step 4.5.2 inventory and selected only native
+  `LirFunction::is_internal` plus `can_elide_if_unreferenced` for the next
+  receiver packet; both are producer-populated and currently dropped by BIR.
+- Confirmed CFG receipt remains blocked by raw branch/switch targets and a
+  producerless indirect-branch ID form despite structured block/entry facts.
+- Confirmed stack/local-object receipt cannot yet unlock a production-success
+  path because allocation/result/ownership bindings remain raw; body parameter
+  uses also remain raw.
 
 ## Suggested Next
 
-- Execute Plan Step 4.5.2 by inventorying the remaining function, CFG,
-  stack/local-object, and lifetime rows and selecting one exact structured
-  receiver packet or recording its producer blocker.
+- Execute Plan Step 4.5.3 by receiving exactly the two structured function
+  linkage/elision booleans through core, builder/view, verifier, importer, and
+  declaration/definition merge proof.
 
 ## Watchouts
 
+- Do not infer either boolean from function names, signature rendering, body
+  presence, source order, or testcase identity; import native LIR facts only.
+- Preserve producer-valid declaration/definition merge behavior and reject
+  contradictory duplicates transactionally; do not silently OR or clear
+  metadata.
+- Keep CFG, block targets/edges, stack slots, allocas, local objects, body
+  parameter binding, and lifetime state outside this packet.
 - Keep `long` and `unsigned long` fail-closed pending inactive idea 743; do not
   change I686 width semantics inside idea 734.
 - Signature `ParameterDef` ordinals are BIR storage order only. Body parameter
@@ -37,12 +43,5 @@ Current Step Title: Reassess remaining function, CFG and local-object authority
 
 ## Proof
 
-- Fresh `cmake --build --preset default` completed successfully.
-- `ctest --test-dir build -R '^backend_lir_to_bir_interface$'
-  --output-on-failure` passed 1/1.
-- `c4cll --dump-bir` published the unused-scalar declaration/definition case;
-  the pointer case rejected at `UnsupportedFunctionParameters`, and
-  `param_slot.c` rejected later at `UnsupportedAllocaInstructions`.
-- `ctest --test-dir build -j --output-on-failure > test_after.log` passed
-  3033/3033. The monotonic guard against `test_before.log` passed with delta
-  `passed=0 failed=0` and no new over-30-second tests.
+- Step 4.5.2 was a read-only authority inventory; no code, test, or regression
+  proof was generated for the runbook transition.

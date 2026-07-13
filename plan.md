@@ -171,6 +171,71 @@ Completion check:
 - the next packet has one exact typed authority/destination/proof contract, or
   a separate producer initiative records the blocker without scope drift
 
+Inventory result (complete):
+
+- `LirFunction::is_internal` and `can_elide_if_unreferenced` are native
+  booleans populated directly from HIR linkage, static, inline, and retained
+  helper facts; LIR dead-internal elimination already consumes the elision fact
+- current Raw-BIR `FunctionData`, builder, and immutable view have no
+  destination for either fact, and the importer silently drops both
+- CFG receipt is blocked despite structured block IDs and entry selection:
+  branch, conditional-branch, and switch successors remain raw labels, while
+  the structured indirect-branch ID form has no production path
+- stack slots retain `LirStackSlotId`, owned `TypeSpec`, alignment, and VLA
+  state, but production allocation, result, and ownership bindings still cross
+  raw `LirOperand`/alloca seams; isolated storage receipt would not unlock a
+  production-success path
+- body parameter uses remain raw and cannot be bound through signature ordinal,
+  display name, or ABI position
+- the next exact receiver seam is only the two structured function booleans;
+  CFG, local/stack objects, and body binding remain blocked
+
+### Step 4.5.3 - Receive function linkage and elision facts
+
+Goal: preserve the exact structured function linkage/elision metadata already
+used by LIR without broadening into CFG, local objects, or body identities.
+
+Primary target:
+
+- Raw-BIR `FunctionData`, function builder/view, reachable verifier, and
+  `src/backend/bir/lir_to_bir.cpp` function import/merge boundary
+
+Actions:
+
+- add exactly `is_internal` and `can_elide_if_unreferenced` to the typed
+  function container and expose immutable view accessors
+- extend builder creation and established duplicate/declaration-definition
+  merge paths so neither fact is silently dropped, guessed, or reconstructed
+- import both native `LirFunction` booleans for declarations and definitions;
+  do not derive them from link names, signature text, function order, body
+  presence, or testcase identity
+- preserve producer-valid declaration/definition merge behavior and require
+  repeated/merged function identities to retain one coherent metadata result;
+  reject contradictory or illegal duplicates rather than silently ORing,
+  clearing, or replacing facts
+- extend reachable Raw and Canonical verification for exact container/view/
+  builder agreement, function ownership, duplicate identity, and merge parity
+- prove whole-module rollback for malformed or conflicting metadata/merge
+  inputs
+- add focused structural coverage for every producer-valid boolean
+  combination, declaration and definition paths, misleading display/link
+  spelling, and neighboring merge conflicts
+- add a production-focused retained referenced internal/static or inline/helper
+  proof where the LIR elimination policy keeps the function; if elimination
+  makes a standalone producer case impossible, use a direct structured LIR
+  probe plus a production neighboring observation without weakening the claim
+- keep function-body parameter binding, CFG/targets, blocks/edges, stack slots,
+  allocas, local objects, lifetime state, and all excluded signature families
+  unchanged and fail-closed
+
+Completion check:
+
+- a fresh build and exact focused proof preserve both native booleans through
+  Raw and Canonical function views for producer-valid declarations,
+  definitions, and merges; malformed/conflicting merges reject atomically; a
+  retained production function demonstrates callable receipt where possible;
+  and no CFG, local-object, or body-identity surface is admitted
+
 ### Step 5 - Complete ordinary instruction semantic families
 
 Goal: give every structured-authority `LirInst` alternative a typed new-BIR
