@@ -8,26 +8,28 @@ Current Step Title: Complete functions, signatures, CFG and local objects
 
 ## Just Finished
 
-- Plan Step 3 is complete: globals, string-pool state, extern declarations and
-  indexes, symbols/link identities, initializer/link topology, specialization
-  metadata, and intrinsic requirement flags have typed receiving and verifier
-  coverage.
-- Real producer probes now clear module/global receipt and first stop at
-  `UnsupportedReturnType function='main'`, the explicit Plan Step 4 boundary.
+- Plan Step 4's first bounded packet now imports producer-valid direct integer,
+  enum-normalized, and floating return signatures through the existing typed
+  `FunctionSignature` return slot.
+- Optional typed mirrors reconcile exactly, producer `inner_rank == -1` and
+  compatibility `0` normalize locally, target-shaped `long`/`long double`
+  carriers survive Raw/Foundation/Canonical publication, and malformed or
+  residual declarator facts reject transactionally.
 
 ## Suggested Next
 
-- Add one bounded Plan Step 4 packet for producer-valid typed function return
-  and signature receipt, centered on the current `UnsupportedReturnType`
-  boundary, with neighboring positive and malformed/parity coverage.
+- Add the next bounded Plan Step 4 ordinary-instruction receipt packet centered
+  on the shared `UnsupportedOrdinaryInstruction function='main' block='entry'`
+  boundary from three real producer probes.
 
 ## Watchouts
 
-- Keep the first Step 4 packet limited to return/signature receipt; parameters,
-  arbitrary block order, CFG edges, stack objects, and hoisted allocas remain
-  later bounded Step 4 families.
-- Preserve typed LIR authority and module-transactional failure; do not infer
-  signatures from names, rendered text, or testcase identity.
+- `riscv64_zero_aggregate_global_storage.c` now reaches `InvalidVoidReturn`;
+  non-void `LirRet` still has only text identity and needs a separately scoped
+  producer-authority decision rather than signature-text parsing.
+- Pointers/references/function pointers, aggregate/vector/complex/VRM/va-list
+  returns, parameters, variadics, stack objects, and hoisted allocas remain
+  closed. Scalar mirrors are optional but exact when present.
 
 ## Proof
 
@@ -35,6 +37,6 @@ Current Step Title: Complete functions, signatures, CFG and local objects
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records all 4/4 backend
   tests passing.
-- Producer probes `global_store.c`, `defined_pointer_global_pointer.c`,
-  `defined_global_array.c`, and `riscv64_zero_aggregate_global_storage.c` all
-  clear module/global receipt and stop at the Step 4 return-type boundary.
+- `global_store.c`, `defined_pointer_global_pointer.c`, and
+  `defined_global_array.c` now stop at `UnsupportedOrdinaryInstruction`;
+  `riscv64_zero_aggregate_global_storage.c` stops at `InvalidVoidReturn`.

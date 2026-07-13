@@ -121,19 +121,85 @@ bool is_integer_type(const Type& type) noexcept {
   }
 }
 
+std::optional<Type> lower_constant_type(const LirModule& module,
+                                        const TypeSpec& type);
+
 std::optional<Type> lower_signature_type(
     const LirModule& module, const TypeSpec& structured,
     const std::optional<codegen::lir::LirTypeRef>& mirror) {
-  if (structured.base != TB_VOID) return std::nullopt;
+  const auto compatibility_array_fact = [](long long value) {
+    return value == -1 || value == 0;
+  };
+  if (structured.ptr_level != 0 || structured.is_lvalue_ref ||
+      structured.is_rvalue_ref || structured.array_rank != 0 ||
+      !compatibility_array_fact(structured.array_size) ||
+      std::any_of(std::begin(structured.array_dims),
+                  std::end(structured.array_dims),
+                  [&](long long dimension) {
+                    return !compatibility_array_fact(dimension);
+                  }) ||
+      structured.is_ptr_to_array ||
+      (structured.inner_rank != -1 && structured.inner_rank != 0) ||
+      structured.is_fn_ptr || structured.is_vector ||
+      structured.vector_lanes != 0 || structured.vector_bytes != 0 ||
+      structured.array_size_expr != nullptr ||
+      (structured.base != TB_ENUM &&
+       structured.enum_underlying_base != TB_VOID))
+    return std::nullopt;
+
+  TypeSpec normalized = structured;
+  normalized.inner_rank = 0;
+
+  if (normalized.base != TB_VOID) {
+    switch (normalized.base) {
+      case TB_BOOL:
+      case TB_CHAR:
+      case TB_UCHAR:
+      case TB_SCHAR:
+      case TB_SHORT:
+      case TB_USHORT:
+      case TB_INT:
+      case TB_UINT:
+      case TB_LONG:
+      case TB_ULONG:
+      case TB_LONGLONG:
+      case TB_ULONGLONG:
+      case TB_INT128:
+      case TB_UINT128:
+      case TB_ENUM:
+      case TB_FLOAT:
+      case TB_DOUBLE:
+      case TB_LONGDOUBLE: break;
+      default: return std::nullopt;
+    }
+    const auto result = lower_constant_type(module, normalized);
+    if (!result || (result->kind != TypeKind::Integer &&
+                    result->kind != TypeKind::Floating) ||
+        !is_well_formed(*result))
+      return std::nullopt;
+    if (mirror) {
+      const auto mirrored = lower_lir_type(module, *mirror);
+      if (!mirrored || mirrored->kind != result->kind ||
+          mirrored->bit_width != result->bit_width ||
+          mirrored->spelling != result->spelling ||
+          !is_well_formed(*mirrored))
+        return std::nullopt;
+    }
+    return result;
+  }
+
+  if (normalized.enum_underlying_base != TB_VOID ||
+      normalized.vrm_width != 0)
+    return std::nullopt;
 
   StructuredTypeSpecFacts facts;
-  facts.pointer_level = structured.ptr_level;
-  facts.is_lvalue_reference = structured.is_lvalue_ref;
-  facts.is_rvalue_reference = structured.is_rvalue_ref;
-  facts.array_rank = structured.array_rank;
-  facts.is_pointer_to_array = structured.is_ptr_to_array;
-  facts.inner_array_rank = structured.inner_rank;
-  facts.is_function_pointer = structured.is_fn_ptr;
+  facts.pointer_level = normalized.ptr_level;
+  facts.is_lvalue_reference = normalized.is_lvalue_ref;
+  facts.is_rvalue_reference = normalized.is_rvalue_ref;
+  facts.array_rank = normalized.array_rank;
+  facts.is_pointer_to_array = normalized.is_ptr_to_array;
+  facts.inner_array_rank = normalized.inner_rank;
+  facts.is_function_pointer = normalized.is_fn_ptr;
 
   Type result{TypeKind::Void, 0, "void"};
   result.structured_spec = facts;
@@ -1273,8 +1339,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (!lower_signature_type(module, function.return_type,
                             function.signature_return_type_ref))
     return fail<void>(ImportErrorCode::UnsupportedReturnType, name, {},
-                      "structured return TypeSpec is malformed, non-void, or "
-                      "conflicts with its optional mirror");
+                      "structured return TypeSpec is malformed, outside direct "
+                      "scalar receipt, or conflicts with its optional mirror");
 
   const bool has_body_state = !function.blocks.empty() ||
                               !function.stack_objects.empty() ||

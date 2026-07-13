@@ -54,6 +54,14 @@ lir::LirBlock return_block(std::uint32_t id, std::string label) {
   return block;
 }
 
+lir::LirBlock unreachable_block(std::uint32_t id, std::string label) {
+  lir::LirBlock block;
+  block.id = lir::LirBlockId{id};
+  block.label = std::move(label);
+  block.terminator = lir::LirUnreachable{};
+  return block;
+}
+
 c4c::TypeSpec scalar_type(c4c::TypeBase base) {
   c4c::TypeSpec type{};
   type.base = base;
@@ -574,9 +582,12 @@ void test_closed_typed_lir_type_receipt() {
 
 void test_structured_type_spec_signature_receipt() {
   lir::LirModule module;
-  module.functions.push_back(void_declaration("mirrored_void"));
+  auto mirrored = void_declaration("mirrored_void");
+  mirrored.return_type.inner_rank = -1;
+  module.functions.push_back(std::move(mirrored));
   auto structured_only = void_declaration("structured_only_void");
   structured_only.signature_return_type_ref.reset();
+  structured_only.return_type.inner_rank = -1;
   module.functions.push_back(std::move(structured_only));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
@@ -596,6 +607,224 @@ void test_structured_type_spec_signature_receipt() {
                !facts.is_function_pointer,
            "valid structured void facts must survive without invented shape");
   }
+}
+
+void test_direct_scalar_signature_receipt() {
+  lir::LirModule module;
+  module.target_profile.arch = c4c::TargetArch::I686;
+  module.target_profile.os = c4c::TargetOs::Linux;
+
+  const auto declaration = [](std::string name, c4c::TypeSpec type,
+                              std::optional<lir::LirTypeRef> mirror) {
+    lir::LirFunction function;
+    function.name = std::move(name);
+    function.is_declaration = true;
+    function.return_type = type;
+    function.signature_return_type_ref = std::move(mirror);
+    return function;
+  };
+
+  auto integer = scalar_type(c4c::TB_INT);
+  integer.inner_rank = -1;
+  module.functions.push_back(declaration(
+      "integer_mirror", integer, lir::LirTypeRef::integer(32)));
+
+  auto floating = scalar_type(c4c::TB_DOUBLE);
+  floating.inner_rank = 0;
+  module.functions.push_back(
+      declaration("floating_without_mirror", floating, std::nullopt));
+
+  auto target_long = scalar_type(c4c::TB_LONG);
+  target_long.inner_rank = -1;
+  module.functions.push_back(declaration(
+      "target_long", target_long, lir::LirTypeRef::integer(32)));
+
+  auto target_long_double = scalar_type(c4c::TB_LONGDOUBLE);
+  target_long_double.inner_rank = -1;
+  module.functions.push_back(declaration(
+      "target_long_double", target_long_double, lir::LirTypeRef("x86_fp80")));
+
+  auto normalized_enum = scalar_type(c4c::TB_ENUM);
+  normalized_enum.enum_underlying_base = c4c::TB_USHORT;
+  normalized_enum.inner_rank = -1;
+  module.functions.push_back(declaration(
+      "normalized_enum", normalized_enum, lir::LirTypeRef::integer(16)));
+
+  lir::LirFunction definition;
+  definition.name = "nonvoid_unreachable";
+  definition.return_type = integer;
+  definition.signature_return_type_ref.reset();
+  definition.blocks.push_back(unreachable_block(0, "entry"));
+  definition.entry = definition.blocks.front().id;
+  module.functions.push_back(std::move(definition));
+
+  const std::vector<bir::Type> expected = {
+      {bir::TypeKind::Integer, 32, "i32"},
+      {bir::TypeKind::Floating, 64, "double"},
+      {bir::TypeKind::Integer, 32, "i32"},
+      {bir::TypeKind::Floating, 80, "x86_fp80"},
+      {bir::TypeKind::Integer, 16, "i16"},
+      {bir::TypeKind::Integer, 32, "i32"},
+  };
+  const auto expect_signatures = [&](const auto& view,
+                                     const std::string& layer) {
+    const auto functions = view.functions();
+    expect(functions.size() == expected.size(),
+           layer + " must retain every scalar signature");
+    for (std::size_t index = 0; index < functions.size(); ++index) {
+      const auto function = view.function(functions[index]);
+      expect(function.has_value() &&
+                 function.value().signature().return_type == expected[index],
+             layer + " must retain exact scalar return kind, width, and spelling");
+    }
+  };
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-valid direct scalar signatures should publish RawBir");
+  expect_signatures(raw.value().view(), "RawBir");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "foundation verification must accept direct scalar signatures");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "producer-valid direct scalar signatures should publish CanonicalBir");
+  expect_signatures(canonical.value().view(), "CanonicalBir");
+
+  lir::LirModule windows;
+  windows.target_profile.arch = c4c::TargetArch::X86_64;
+  windows.target_profile.os = c4c::TargetOs::Windows;
+  windows.functions.push_back(declaration(
+      "windows_long_double", target_long_double, lir::LirTypeRef("double")));
+  const auto windows_raw = bir::lower_lir_to_raw_bir(windows);
+  expect(windows_raw.has_value() &&
+             windows_raw.value()
+                     .view()
+                     .function(windows_raw.value().view().functions().front())
+                     .value()
+                     .signature()
+                     .return_type ==
+                 bir::Type{bir::TypeKind::Floating, 64, "double"},
+         "Windows long double signatures must use the target-shaped double carrier");
+}
+
+void test_direct_scalar_signature_rejections_and_transactionality() {
+  const auto rejected = [](auto mutate, const std::string& message) {
+    lir::LirModule module;
+    auto accepted = void_declaration("accepted_before_failure");
+    accepted.return_type.inner_rank = -1;
+    module.functions.push_back(std::move(accepted));
+
+    lir::LirFunction candidate;
+    candidate.name = "rejected_scalar";
+    candidate.is_declaration = true;
+    candidate.return_type = scalar_type(c4c::TB_INT);
+    candidate.return_type.inner_rank = -1;
+    candidate.signature_return_type_ref = lir::LirTypeRef::integer(32);
+    mutate(candidate);
+    module.functions.push_back(std::move(candidate));
+
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() &&
+               raw.error().code == bir::ImportErrorCode::UnsupportedReturnType,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedReturnType,
+           message + " (Canonical rollback)");
+  };
+
+  rejected(
+      [](lir::LirFunction& function) {
+        function.signature_return_type_ref = lir::LirTypeRef::integer(64);
+      },
+      "conflicting integer mirrors must reject the complete module transactionally");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.signature_return_type_ref = lir::LirTypeRef("float");
+      },
+      "wrong-kind floating mirrors must reject integer structured authority");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.base = c4c::TB_DOUBLE;
+        function.signature_return_type_ref = lir::LirTypeRef("float");
+      },
+      "wrong-width floating mirrors must reject structured floating authority");
+  for (const int invalid_inner_rank : {-2, 1}) {
+    rejected(
+        [invalid_inner_rank](lir::LirFunction& function) {
+          function.return_type.inner_rank = invalid_inner_rank;
+        },
+        "invalid scalar inner-rank residue must remain closed");
+  }
+  rejected(
+      [](lir::LirFunction& function) { function.return_type.ptr_level = 1; },
+      "pointer returns remain outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_lvalue_ref = true;
+      },
+      "lvalue-reference returns remain outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_rvalue_ref = true;
+      },
+      "rvalue-reference returns remain outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.array_rank = 1;
+      },
+      "array returns remain outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_ptr_to_array = true;
+      },
+      "pointer-to-array residue remains outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_fn_ptr = true;
+      },
+      "function-pointer returns remain outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.is_vector = true;
+        function.return_type.vector_lanes = 4;
+        function.return_type.vector_bytes = 16;
+      },
+      "vector returns remain outside direct scalar signature receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.vector_lanes = 4;
+      },
+      "residual vector facts must not be discarded by scalar receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.array_size = 4;
+      },
+      "positive residual array size must not be discarded by scalar receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.array_dims[0] = 4;
+      },
+      "positive residual array dimensions must not be discarded by scalar receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.array_size_expr =
+            reinterpret_cast<c4c::Node*>(1);
+      },
+      "unevaluated array-size residue must not be discarded by scalar receipt");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.enum_underlying_base = c4c::TB_LONG;
+      },
+      "non-enum returns must reject residual enum storage authority");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.base = c4c::TB_ENUM;
+        function.return_type.enum_underlying_base = c4c::TB_FLOAT;
+      },
+      "enum returns must reject non-integer underlying storage");
 }
 
 void test_typed_lir_type_rejections() {
@@ -6263,6 +6492,8 @@ int main() {
   test_lir_inline_asm_structured_value_contract();
   test_closed_typed_lir_type_receipt();
   test_structured_type_spec_signature_receipt();
+  test_direct_scalar_signature_receipt();
+  test_direct_scalar_signature_rejections_and_transactionality();
   test_typed_lir_type_rejections();
   test_verifier_rejects_malformed_raw_type();
   test_intrinsic_requirements_receipt();
