@@ -263,12 +263,14 @@ std::optional<Type> lower_global_type(const LirModule& module,
     return std::nullopt;
 
   if (authoritative->kind == TypeKind::Pointer) {
-    if (!global.llvm_type_ref) return std::nullopt;
-    const auto mirror = lower_lir_type(module, *global.llvm_type_ref);
-    if (!mirror || *mirror != *authoritative ||
-        global.llvm_type != global.llvm_type_ref->str())
-      return std::nullopt;
-    return mirror;
+    if (global.llvm_type != authoritative->spelling) return std::nullopt;
+    if (global.llvm_type_ref) {
+      const auto mirror = lower_lir_type(module, *global.llvm_type_ref);
+      if (!mirror || *mirror != *authoritative ||
+          global.llvm_type_ref->str() != authoritative->spelling)
+        return std::nullopt;
+    }
+    return authoritative;
   }
 
   if (authoritative->kind != TypeKind::Integer &&

@@ -1534,6 +1534,7 @@ void test_global_object_receipt_and_views() {
   const_pointer_initialized.type.ptr_level = 1;
   const_pointer_initialized.linkage_vis = "protected ";
   const_pointer_initialized.is_extern_decl = false;
+  const_pointer_initialized.llvm_type_ref.reset();
   const_pointer_initialized.init_text = std::string{"ptr @target\0tail", 16};
   const_pointer_initialized.initializer_function_link_name_ids = {
       init_fn_a, init_fn_b, init_fn_a};
@@ -1709,6 +1710,18 @@ void test_global_object_receipt_and_views() {
                      std::get<bir::LinkNameId>(const_pointer_definition.identity))
                      .value() == ids[8],
          "global name and link lookups must resolve ordered typed identities");
+
+  module.globals[8].llvm_type_ref = lir::LirTypeRef("ptr");
+  auto corroborated = bir::lower_lir_to_raw_bir(module);
+  expect(corroborated.has_value(),
+         "an agreeing optional pointer mirror should preserve receipt");
+  const auto corroborated_view = corroborated.value().view();
+  const auto corroborated_ids = corroborated_view.global_objects();
+  expect(corroborated_ids.size() == 10 &&
+             corroborated_view.global_object(corroborated_ids[8])
+                     .value()
+                     .object_type == bir::Type{bir::TypeKind::Pointer},
+         "an optional pointer mirror that agrees exactly must remain corroborating evidence");
 }
 
 void test_scalar_global_type_authority_without_mirror() {
@@ -1814,7 +1827,58 @@ void test_global_object_rejections_and_transactionality() {
              m.globals[0].type.ptr_level = 1;
              m.globals[0].llvm_type = "ptr";
            },
-           "mirror-free pointer globals must remain separate and reject transactionally");
+           "mirror-free pointer extern declarations must remain unsupported transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "i8*";
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].is_const = true;
+             m.globals[0].init_text = "ptr null";
+           },
+           "const-pointer structured authority must reject rendered parity conflicts transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "ptr";
+             m.globals[0].llvm_type_ref = lir::LirTypeRef::integer(32);
+             m.globals[0].is_const = true;
+             m.globals[0].init_text = "ptr null";
+           },
+           "const-pointer mirrors must corroborate structured authority transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].type.ptr_level = 2;
+             m.globals[0].llvm_type = "ptr";
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].is_const = true;
+             m.globals[0].init_text = "ptr null";
+           },
+           "multi-level const-pointer definitions must remain unsupported transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].is_internal = true;
+             m.globals[0].linkage_vis = "internal ";
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "ptr";
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].is_const = true;
+             m.globals[0].init_text = "ptr null";
+           },
+           "internal const-pointer definitions must remain unsupported transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis = "weak ";
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "ptr";
+             m.globals[0].llvm_type_ref.reset();
+             m.globals[0].is_const = true;
+             m.globals[0].init_text = "ptr null";
+           },
+           "weak const-pointer definitions must remain unsupported transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].llvm_type_ref.reset();
              m.globals[0].type.array_rank = 1;

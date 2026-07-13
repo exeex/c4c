@@ -8,37 +8,35 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 scalar-global producer-alignment packet now imports actual
-  `lower_global` rows whose optional `llvm_type_ref` is absent, using the exact
-  structured `LirGlobal::type` as target-aware authority for the already
-  supported integer and floating scalar family.
-- A single validated global-type helper enforces non-void well-formed receipt,
-  canonical `llvm_type` parity, and exact agreement from any present structured
-  mirror. Import reuses that result without dereferencing an absent optional.
+- Plan Step 3 const-pointer producer-alignment packet now imports actual
+  ordinary const-pointer `lower_global` definitions whose optional
+  `llvm_type_ref` is absent, using the exact one-level pointer shape in
+  `LirGlobal::type` as semantic authority.
+- Pointer receipt requires exact rendered `ptr` parity and exact agreement from
+  any present structured mirror while preserving typed Pointer identity,
+  visibility, opaque initializer payload, and ordered initializer links.
 
 ## Suggested Next
 
-- Execute one bounded remaining Step 3 global, external-symbol, or initializer
-  completeness packet selected from the runbook, keeping aggregate and
-  flexible-special-type global support separate.
+- Execute one bounded Step 3 aggregate-global receipt packet for an actual
+  producer shape with structured aggregate identity, keeping flexible-member
+  literal globals separate.
 
 ## Watchouts
 
-- Scalar authority is deliberately limited to the existing target-aware
-  `lower_constant_type` domain: plain integer/floating bases with no pointer,
-  reference, array, pointer-to-array, inner-rank, or function-pointer shape.
-- Present `llvm_type_ref` remains mirror evidence and must lower identically;
-  rendered `llvm_type` is parity-only and is never parsed into semantic type.
-- Mirror-free pointers, arrays, named/literal aggregates, flexible-special
-  types, and all linkage, visibility, qualifier, and initializer expansion
-  remain fail-closed and separate.
+- Pointer authority is deliberately limited to exactly one pointer level with
+  no reference, array, pointer-to-array, inner-rank, or function-pointer shape.
+- Only initialized, non-internal, non-weak const-pointer definitions with the
+  producer's `global ` qualifier are admitted; pointer externs, non-const,
+  internal, weak, constant-qualified, and multi-level variants remain closed.
+- Rendered `llvm_type` is exact parity evidence only and is never parsed into
+  semantics; a present `llvm_type_ref` must lower identically.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers mirror-free integer declarations and
-  floating definitions, I686 target-aware `long` width, typed views with
-  visibility/initializer facts intact, strict present-mirror parity, and
-  Raw/Canonical rollback for pointer, array, aggregate, and text conflicts.
+  passing. The selected proof covers producer-shaped mirror-free const-pointer
+  receipt and Raw/Canonical rollback for rendered/mirror conflicts plus
+  pointer extern, qualifier, non-const, internal/weak, and multi-level shapes.
