@@ -3,7 +3,9 @@
 #include "../shared/llvm_helpers.hpp"
 
 #include <sstream>
+#include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace c4c::codegen::lir {
 
@@ -24,6 +26,28 @@ std::string operand_kind_name(LirOperandKind kind) {
     case LirOperandKind::RawText: return "raw-text";
   }
   return "unknown";
+}
+
+void verify_operand_authority_kind(const LirOperand& operand,
+                                   std::string_view field) {
+  if (!operand.has_authority()) return;
+
+  LirOperandKind expected = LirOperandKind::RawText;
+  if (const auto* id = operand.value_id()) {
+    if (!id->valid()) fail_verify(field, "invalid LirValueId authority");
+    expected = LirOperandKind::SsaValue;
+  } else if (operand.link_name_id()) {
+    expected = LirOperandKind::Global;
+  } else if (operand.integer_immediate()) {
+    expected = LirOperandKind::Immediate;
+  } else {
+    fail_verify(field, "unknown operand authority alternative");
+  }
+
+  if (operand.kind() != expected) {
+    fail_verify(field,
+                "authority alternative disagrees with stored operand kind");
+  }
 }
 
 std::size_t count_inline_asm_constraints(std::string_view constraints) {
@@ -665,6 +689,155 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   }
 }
 
+template <typename T, typename = void>
+struct has_lir_operand_result : std::false_type {};
+
+template <typename T>
+struct has_lir_operand_result<
+    T, std::void_t<decltype(std::declval<const T&>().result)>>
+    : std::is_same<std::decay_t<decltype(std::declval<const T&>().result)>,
+                   LirOperand> {};
+
+const LirOperand* modeled_result_operand(const LirInst& inst) {
+  return std::visit(
+      [](const auto& op) -> const LirOperand* {
+        using Op = std::decay_t<decltype(op)>;
+        if constexpr (has_lir_operand_result<Op>::value) {
+          return &op.result;
+        }
+        return nullptr;
+      },
+      inst);
+}
+
+template <typename Visitor>
+void visit_modeled_value_uses(const LirInst& inst, Visitor&& visit) {
+  if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
+    visit(op->dst); visit(op->src); visit(op->size); return;
+  }
+  if (const auto* op = std::get_if<LirMemsetOp>(&inst)) {
+    visit(op->dst); visit(op->byte_val); visit(op->size); return;
+  }
+  if (const auto* op = std::get_if<LirVaStartOp>(&inst)) {
+    visit(op->ap_ptr); return;
+  }
+  if (const auto* op = std::get_if<LirVaEndOp>(&inst)) {
+    visit(op->ap_ptr); return;
+  }
+  if (const auto* op = std::get_if<LirVaCopyOp>(&inst)) {
+    visit(op->dst_ptr); visit(op->src_ptr); return;
+  }
+  if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) {
+    visit(op->saved_ptr); return;
+  }
+  if (const auto* op = std::get_if<LirAbsOp>(&inst)) {
+    visit(op->arg); return;
+  }
+  if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
+    visit(op->addr); return;
+  }
+  if (const auto* op = std::get_if<LirExtractValueOp>(&inst)) {
+    visit(op->agg); return;
+  }
+  if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {
+    visit(op->agg); visit(op->elem); return;
+  }
+  if (const auto* op = std::get_if<LirLoadOp>(&inst)) {
+    visit(op->ptr); return;
+  }
+  if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
+    visit(op->val); visit(op->ptr); return;
+  }
+  if (const auto* op = std::get_if<LirCastOp>(&inst)) {
+    visit(op->operand); return;
+  }
+  if (const auto* op = std::get_if<LirGepOp>(&inst)) {
+    visit(op->ptr); return;
+  }
+  if (const auto* op = std::get_if<LirCallOp>(&inst)) {
+    visit(op->callee);
+    for (const auto& arg : op->structured_args) visit(arg.operand);
+    return;
+  }
+  if (const auto* op = std::get_if<LirBinOp>(&inst)) {
+    visit(op->lhs);
+    if (!op->rhs.empty()) visit(op->rhs);
+    return;
+  }
+  if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
+    visit(op->lhs); visit(op->rhs); return;
+  }
+  if (const auto* op = std::get_if<LirSelectOp>(&inst)) {
+    visit(op->cond); visit(op->true_val); visit(op->false_val); return;
+  }
+  if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
+    visit(op->vec); visit(op->elem); visit(op->index); return;
+  }
+  if (const auto* op = std::get_if<LirExtractElementOp>(&inst)) {
+    visit(op->vec); visit(op->index); return;
+  }
+  if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
+    visit(op->vec1); visit(op->vec2); visit(op->mask); return;
+  }
+  if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
+    visit(op->ap_ptr); return;
+  }
+  if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
+    if (!op->count.empty()) visit(op->count);
+    return;
+  }
+  if (const auto* op = std::get_if<LirInlineAsmOp>(&inst)) {
+    for (const auto& input : op->ordinary_inputs) visit(input.value);
+  }
+}
+
+void verify_function_value_ownership(const LirFunction& function) {
+  std::unordered_set<uint32_t> definitions;
+
+  const auto collect_definition = [&](const LirInst& inst) {
+    const LirOperand* result = modeled_result_operand(inst);
+    if (!result) return;
+    const LirValueId* id = result->value_id();
+    if (!id) return;
+    if (!id->valid()) {
+      fail_verify("LirFunction.value_definitions",
+                  "invalid LirValueId result authority");
+    }
+    if (!definitions.insert(id->value).second) {
+      fail_verify("LirFunction.value_definitions",
+                  "duplicate LirValueId result authority " +
+                      std::to_string(id->value));
+    }
+  };
+
+  for (const auto& inst : function.alloca_insts) collect_definition(inst);
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) collect_definition(inst);
+  }
+
+  const auto verify_use = [&](const LirOperand& operand) {
+    const LirValueId* id = operand.value_id();
+    if (!id) return;
+    if (!id->valid()) {
+      fail_verify("LirFunction.value_uses", "invalid LirValueId use authority");
+    }
+    if (definitions.find(id->value) == definitions.end()) {
+      fail_verify("LirFunction.value_uses",
+                  "unknown current-function LirValueId authority " +
+                      std::to_string(id->value));
+    }
+  };
+
+  for (const auto& inst : function.alloca_insts) {
+    visit_modeled_value_uses(inst, verify_use);
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      visit_modeled_value_uses(inst, verify_use);
+    }
+  }
+}
+
 void verify_terminator(const LirTerminator& terminator) {
   if (const auto* cbr = std::get_if<LirCondBr>(&terminator)) {
     const LirOperand cond(cbr->cond_name);
@@ -1146,9 +1319,10 @@ const std::string& require_operand_kind(
     std::initializer_list<LirOperandKind> allowed_kinds,
     bool allow_empty) {
   if (operand.empty()) {
-    if (allow_empty) return operand.str();
+    if (allow_empty && !operand.has_authority()) return operand.str();
     fail_verify(field, "must not be empty");
   }
+  verify_operand_authority_kind(operand, field);
   if (!operand_kind_allowed(operand.kind(), allowed_kinds)) {
     std::ostringstream detail;
     detail << "expected operand kind mismatch for '" << operand.str()
@@ -1197,6 +1371,7 @@ void verify_module(const LirModule& mod) {
   verify_global_type_ref_shadows(mod);
   verify_function_signature_type_ref_shadows(mod);
   for (const auto& function : mod.functions) {
+    verify_function_value_ownership(function);
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
       for (const auto& inst : block.insts) verify_inst(mod, inst);

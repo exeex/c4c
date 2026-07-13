@@ -141,6 +141,7 @@ void hoist_allocas(FnCtx& ctx, const Module& mod, const Function& fn,
 
 /// Initialize a FnCtx for the given function.
 FnCtx init_fn_ctx(const Module& mod, const Function& fn,
+                  LirFunction& lir_function,
                   const LirModule* lir_module = nullptr);
 
 /// Map a HIR BlockId to its LLVM IR label string.
@@ -379,6 +380,7 @@ class StmtEmitter {
                             const std::string& open_label);
   void emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl);
   std::string fresh_tmp(FnCtx& ctx);
+  lir::LirOperand fresh_value(FnCtx& ctx);
   void record_extern_call_decl(const std::string& name, const std::string& ret_ty,
                                LinkNameId link_name_id = kInvalidLinkName,
                                lir::LirExtAttr return_ext_attr = lir::LirExtAttr::None);

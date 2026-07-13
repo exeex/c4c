@@ -597,6 +597,99 @@ int main(void) {
                   "AArch64 scalar stdarg should preserve structured va_list lowering");
 }
 
+c4c::codegen::lir::LirFunction make_identity_test_function(
+    std::string name, c4c::codegen::lir::LirValueId id) {
+  namespace lir = c4c::codegen::lir;
+  lir::LirFunction function;
+  function.name = std::move(name);
+  function.signature_text = "define void @" + function.name + "() {";
+  function.blocks.push_back(lir::LirBlock{});
+  function.blocks.back().label = "entry";
+  function.blocks.back().insts.push_back(
+      lir::LirStackSaveOp{lir::LirOperand::ssa("@misleading-result", id)});
+  function.blocks.back().insts.push_back(
+      lir::LirStackRestoreOp{lir::LirOperand::ssa("7", id)});
+  return function;
+}
+
+void expect_identity_verification_rejected(
+    const c4c::codegen::lir::LirModule& module,
+    const std::string& message) {
+  try {
+    c4c::codegen::lir::verify_module(module);
+    fail(message);
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+}
+
+void test_structured_operand_identity_foundation() {
+  namespace lir = c4c::codegen::lir;
+
+  const lir::LirOperand ssa =
+      lir::LirOperand::ssa("@not-an-ssa-spelling", lir::LirValueId{4});
+  const lir::LirOperand same_ssa =
+      lir::LirOperand::ssa("different-display", lir::LirValueId{4});
+  const lir::LirOperand global =
+      lir::LirOperand::global("%not-a-global-spelling", c4c::LinkNameId{17});
+  const lir::LirOperand integer = lir::LirOperand::integer("@not-an-integer", 7);
+  const lir::LirOperand compatibility("%legacy-text");
+
+  expect_true(ssa.kind() == lir::LirOperandKind::SsaValue,
+              "SSA factory should set kind without classifying display");
+  expect_true(global.kind() == lir::LirOperandKind::Global,
+              "global factory should set kind without classifying display");
+  expect_true(integer.kind() == lir::LirOperandKind::Immediate,
+              "integer factory should set kind without classifying display");
+  expect_true(ssa.value_id() && ssa.value_id()->value == 4,
+              "SSA factory should preserve native value identity");
+  expect_true(global.link_name_id() && *global.link_name_id() == 17,
+              "global factory should preserve native link-name identity");
+  expect_true(integer.integer_immediate() &&
+                  integer.integer_immediate()->value == 7,
+              "integer factory should preserve native immediate payload");
+  expect_true(ssa.same_authority_as(same_ssa).value_or(false),
+              "semantic equality should use authority rather than display");
+  expect_true(!ssa.same_authority_as(compatibility).has_value(),
+              "semantic equality should be unavailable for compatibility text");
+  expect_true(!compatibility.has_authority(),
+              "existing text construction should remain monostate compatibility");
+
+  lir::LirModule valid;
+  valid.functions.push_back(make_identity_test_function("first", lir::LirValueId{4}));
+  lir::verify_module(valid);
+
+  lir::LirModule invalid_result;
+  invalid_result.functions.push_back(
+      make_identity_test_function("invalid", lir::LirValueId::invalid()));
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid result identity");
+
+  lir::LirModule duplicate;
+  duplicate.functions.push_back(make_identity_test_function("duplicate", lir::LirValueId{5}));
+  duplicate.functions.back().blocks.back().insts.insert(
+      duplicate.functions.back().blocks.back().insts.begin() + 1,
+      lir::LirStackSaveOp{lir::LirOperand::ssa("unrelated-display",
+                                               lir::LirValueId{5})});
+  expect_identity_verification_rejected(
+      duplicate, "verifier should reject duplicate current-function identity");
+
+  lir::LirModule unknown_use;
+  unknown_use.functions.push_back(make_identity_test_function("unknown", lir::LirValueId{6}));
+  auto* restore = std::get_if<lir::LirStackRestoreOp>(
+      &unknown_use.functions.back().blocks.back().insts.back());
+  expect_true(restore != nullptr, "identity fixture should end with stackrestore");
+  restore->saved_ptr = lir::LirOperand::ssa("@misleading-use", lir::LirValueId{9});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown current-function identity");
+
+  lir::LirModule independent_functions;
+  independent_functions.functions.push_back(
+      make_identity_test_function("left", lir::LirValueId{8}));
+  independent_functions.functions.push_back(
+      make_identity_test_function("right", lir::LirValueId{8}));
+  lir::verify_module(independent_functions);
+}
+
 }  // namespace
 
 int main() {
@@ -970,6 +1063,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_direct_variadic_integer_extension_attrs();
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
+  test_structured_operand_identity_foundation();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

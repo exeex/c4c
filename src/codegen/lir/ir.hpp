@@ -37,6 +37,7 @@
 #include <variant>
 #include <vector>
 
+#include "identity.hpp"
 #include "operands.hpp"
 #include "types.hpp"
 #include "call_args.hpp"
@@ -48,13 +49,6 @@
 namespace c4c::codegen::lir {
 
 // ── Value / Block / Slot IDs ─────────────────────────────────────────────────
-
-struct LirValueId {
-  uint32_t value = 0;
-  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
-  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
-  [[nodiscard]] static constexpr LirValueId invalid() { return LirValueId{kInvalid}; }
-};
 
 struct LirBlockId {
   uint32_t value = 0;

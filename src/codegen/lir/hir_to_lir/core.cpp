@@ -1391,6 +1391,14 @@ void StmtEmitter::emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl) {
 
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx) { return "%t" + std::to_string(ctx.tmp_idx++); }
 
+lir::LirOperand StmtEmitter::fresh_value(FnCtx& ctx) {
+  if (!ctx.lir_function) {
+    throw std::logic_error("StmtEmitter: fresh value without function owner");
+  }
+  const lir::LirValueId id = ctx.lir_function->alloc_value();
+  return lir::LirOperand::ssa(fresh_tmp(ctx), id);
+}
+
 void StmtEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty,
                                           LinkNameId link_name_id,
                                           lir::LirExtAttr return_ext_attr) {

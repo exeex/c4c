@@ -1232,11 +1232,13 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
 
 c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
                                 const c4c::hir::Function& fn,
+                                LirFunction& lir_function,
                                 const LirModule* lir_module) {
   using namespace c4c::codegen::llvm_helpers;
 
   c4c::codegen::FnCtx ctx;
   ctx.fn = &fn;
+  ctx.lir_function = &lir_function;
 
   // Set up fn_ptr_sig metadata for parameters and globals.
   for (size_t i = 0; i < fn.params.size(); ++i) {
@@ -1599,10 +1601,25 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
       module.functions.push_back(std::move(lir_fn));
     } else {
-      // Definition — hir_to_lir owns FnCtx setup, alloca hoisting, VLA
-      // stack save, spec entry collection, and LirFunction construction.
+      // Definition — hir_to_lir owns the local LirFunction shell, FnCtx setup,
+      // alloca hoisting, VLA stack save, and spec entry collection.
       // StmtEmitter owns statement / expression emission only.
-      auto ctx = init_fn_ctx(hir_mod, fn, &module);
+      // Keep the shell local through emission so FnCtx can safely allocate
+      // value IDs from its exact owner without module-vector invalidation.
+      LirFunction lir_fn;
+      lir_fn.name = quote_llvm_ident(fn.name);
+      lir_fn.link_name_id = fn.link_name_id;
+      lir_fn.is_internal = fn.linkage.is_static;
+      const bool is_std_impl_helper = fn.name.rfind("std::__", 0) == 0;
+      lir_fn.can_elide_if_unreferenced =
+          fn.linkage.is_static || fn.linkage.is_inline || is_std_impl_helper;
+      lir_fn.is_declaration = false;
+      lir_fn.return_type =
+          lir_owned_type_spec(hir_mod, fn.return_type.spec, &module);
+      lir_fn.signature_text = sig;
+      populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
+
+      auto ctx = init_fn_ctx(hir_mod, fn, lir_fn, &module);
       if (ctx.vla_stack_save_ptr) any_vla = true;
       auto block_order = build_block_order(fn);
 
@@ -1624,20 +1641,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
         }
       }
 
-      // Build LirFunction from accumulated ctx — owned by hir_to_lir.
-      LirFunction lir_fn;
-      lir_fn.name = quote_llvm_ident(fn.name);
-      lir_fn.link_name_id = fn.link_name_id;
-      lir_fn.is_internal = fn.linkage.is_static;
-      const bool is_std_impl_helper =
-          fn.name.rfind("std::__", 0) == 0;
-      lir_fn.can_elide_if_unreferenced =
-          fn.linkage.is_static || fn.linkage.is_inline || is_std_impl_helper;
-      lir_fn.is_declaration = false;
-      lir_fn.return_type =
-          lir_owned_type_spec(hir_mod, fn.return_type.spec, &module);
-      lir_fn.signature_text = sig;
-      populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
+      // Finish the locally owned LirFunction from accumulated context.
       lir_fn.alloca_insts = std::move(ctx.alloca_insts);
       lir_fn.blocks = std::move(ctx.lir_blocks);
 

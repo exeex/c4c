@@ -1,6 +1,6 @@
 #pragma once
 
-// LIR model subheader for typed operand text.
+// LIR model subheader for typed operand presentation and authority.
 //
 // `ir.hpp` re-exports this as part of the public LIR package index. Direct
 // includes are reserved for small model helpers such as `call_args.hpp` that do
@@ -10,6 +10,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
+
+#include "identity.hpp"
 
 namespace c4c::codegen::lir {
 
@@ -21,6 +24,24 @@ enum class LirOperandKind : unsigned char {
   SpecialToken,
   RawText,
 };
+
+struct LirIntegerImmediate {
+  long long value = 0;
+};
+
+[[nodiscard]] constexpr bool operator==(LirIntegerImmediate lhs,
+                                        LirIntegerImmediate rhs) {
+  return lhs.value == rhs.value;
+}
+
+[[nodiscard]] constexpr bool operator!=(LirIntegerImmediate lhs,
+                                        LirIntegerImmediate rhs) {
+  return !(lhs == rhs);
+}
+
+using LirOperandAuthority =
+    std::variant<std::monostate, LirValueId, LinkNameId,
+                 LirIntegerImmediate>;
 
 class LirOperand {
  public:
@@ -35,10 +56,44 @@ class LirOperand {
     return LirOperand(std::move(text), LirOperandKind::RawText);
   }
 
+  [[nodiscard]] static LirOperand ssa(std::string display, LirValueId id) {
+    return LirOperand(std::move(display), LirOperandKind::SsaValue, id);
+  }
+
+  [[nodiscard]] static LirOperand global(std::string display, LinkNameId id) {
+    return LirOperand(std::move(display), LirOperandKind::Global, id);
+  }
+
+  [[nodiscard]] static LirOperand integer(std::string display,
+                                          long long value) {
+    return LirOperand(std::move(display), LirOperandKind::Immediate,
+                      LirIntegerImmediate{value});
+  }
+
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::string& str() { return text_; }
   [[nodiscard]] LirOperandKind kind() const { return kind_; }
   [[nodiscard]] bool empty() const { return text_.empty(); }
+  [[nodiscard]] bool has_authority() const {
+    return !std::holds_alternative<std::monostate>(authority_);
+  }
+  [[nodiscard]] const LirOperandAuthority& authority() const {
+    return authority_;
+  }
+  [[nodiscard]] const LirValueId* value_id() const {
+    return std::get_if<LirValueId>(&authority_);
+  }
+  [[nodiscard]] const LinkNameId* link_name_id() const {
+    return std::get_if<LinkNameId>(&authority_);
+  }
+  [[nodiscard]] const LirIntegerImmediate* integer_immediate() const {
+    return std::get_if<LirIntegerImmediate>(&authority_);
+  }
+  [[nodiscard]] std::optional<bool> same_authority_as(
+      const LirOperand& other) const {
+    if (!has_authority() || !other.has_authority()) return std::nullopt;
+    return authority_ == other.authority_;
+  }
 
   operator std::string&() { return text_; }
   operator const std::string&() const { return text_; }
@@ -111,6 +166,10 @@ class LirOperand {
   }
 
  private:
+  LirOperand(std::string text, LirOperandKind kind,
+             LirOperandAuthority authority)
+      : text_(std::move(text)), kind_(kind), authority_(std::move(authority)) {}
+
   [[nodiscard]] static bool is_special_token(std::string_view text) {
     return text == "null" || text == "undef" || text == "poison" ||
            text == "zeroinitializer" || text == "true" || text == "false";
@@ -156,6 +215,7 @@ class LirOperand {
 
   std::string text_;
   LirOperandKind kind_ = LirOperandKind::RawText;
+  LirOperandAuthority authority_{};
 };
 
 }  // namespace c4c::codegen::lir

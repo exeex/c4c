@@ -24,6 +24,10 @@ struct BlockMeta {
 
 struct FnCtx {
   const c4c::hir::Function* fn = nullptr;
+  // Non-owning pointer to the local function shell that owns this emission.
+  // hir_to_lir keeps the shell local until body emission finishes, then moves
+  // it into the module, so this pointer is never exposed to vector relocation.
+  lir::LirFunction* lir_function = nullptr;
   int tmp_idx = 0;
   bool last_term = false;
   // local_id.value → alloca slot (e.g. "%lv.x")
