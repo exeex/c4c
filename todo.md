@@ -3,104 +3,101 @@
 Status: Active
 Source Idea Path: ideas/open/737_bir_phase_c_preparation_document_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Converge C5 variadic preparation
+Current Step ID: 6
+Current Step Title: Converge C6 address preparation
 
 ## Just Finished
 
-- Completed plan Step 4 by converging
-  `src/backend/bir/preparation/calls/README.md` as the sole C4 immutable
-  per-call requirement-plan owner. Added exact
-  `under-review`/`absent`/`product`/`C4` metadata, exact verifier-bound
-  Canonical/C1 plus C2/C3 and exact-current call-graph upstream, exact C5 and
-  later D2 downstream, owner path and reconciliation point `954166281`.
+- Completed plan Step 5 by converging
+  `src/backend/bir/preparation/variadic/README.md` as the sole C5 immutable
+  variadic requirement-plan owner. Added exact
+  `under-review`/`absent`/`product`/`C5` metadata, exact verifier-bound
+  Canonical/C1 plus C2/C3/C4 upstream, exact C6 and later D2 downstream, owner
+  path and reconciliation point `1468f5a62`.
 - Reordered the contract to substantive core-first `Purpose`, `Owns`,
   `Does Not Own`, `Inputs`, `Outputs` and `Adjacent-Stage Contract` sections.
-  Detailed identity, call-form, transaction, failure, authority and
-  implementation clauses follow the core boundary.
-- Added an eleven-row input matrix for the exact `VerifiedPreparationInput`,
-  B8 Canonical stamp, complete C1 profile/fingerprint, matching C2
-  `VerifiedTargetLayout`, exact C3 `AbiPlan`, call-graph descriptor and handle,
-  call-rule registry, schema/options and deterministic execution control.
-- Bound C4 to a fresh exact-current B8 `CallGraph`: exact epoch/module revision
-  and ordered complete function/body digest, empty dependencies/options,
-  `CanonicalSemantic`, target-layout `None` and preparation empty. An old
-  B6/P07 handle is stale even when checked preservation could publish an equal
-  new-key result; no handle implicitly recomputes or retargets.
+  Detailed identity, form, transaction, failure, authority and implementation
+  clauses follow the core boundary.
+- Added a ten-row input matrix for the exact `VerifiedPreparationInput`, B8
+  Canonical stamp, complete C1 profile/fingerprint, matching C2
+  `VerifiedTargetLayout`, exact C3 `AbiPlan`, exact C4 `CallPlan`, ABI-selected
+  variadic registry, schema/options and deterministic execution control.
 - Added a fourteen-row output matrix. Exactly one immutable module-wide
-  `CallPlan` owns call summaries, typed inputs/outputs, simultaneous-transfer,
-  outgoing-object, hidden-carrier, preservation, clobber, return, tail,
-  variadic-boundary and deferred-helper requirements plus structured failure.
-  Embedded tables are not independent capabilities.
-- Closed nine exact `CallPlanKey` axes: Canonical, C1 target, C2 layout, C3 ABI,
-  exact-current analysis, call-rule registry, schema/options, stable
-  requirement IDs and complete verified-output fingerprint. Empty/zero axes
-  remain present; compatible-looking or separately reconstructed products fail.
-- Exhaustively classified 27 call/operation forms: empty, internal/external
-  direct, proven finite indirect, legal/illegal unknown indirect, zero/single/
-  multi-result, byval, sret, ordinary/optional/required tail, nonvariadic and
-  variadic fixed/extra forms, call-like/non-call intrinsics, helper-eligible
-  semantic operations, inline assembly, malformed input, predecessor
-  disagreement and unsupported forms.
-- Covered typed input/output, preservation/clobber and return requirements
-  explicitly while preserving authority. C4 publishes requirement groups and
-  abstract object needs, but no move sequence, ABI slot, concrete register,
-  stack offset, store/call/result move, save/restore, home, frame state, target
-  opcode or encoding.
-- Kept helper selection out of C4. Helper-eligible Canonical operations receive
-  typed `DeferredHelperCallRequirement` rows with explicit call-graph non-call
-  status; C8 alone selects an interface, D1 alone forms `GenericCall`, and D2
-  alone performs shared ABI-aware transport/lowering.
-- Defined one private inventory/join/classify/verify transaction with total
-  call/helper coverage, stable identity, exact C3 reference, signature/effect
-  agreement, finite-set/fallback/tail legality, all-or-nothing groups and
-  complete-key recheck. Failure publishes no plan, prefix, requirement,
-  fingerprint, cache, C5/helper/D2 fact and mutates no input.
-- Proved adjacent seams read-only: C5 accepts only the complete same-key
-  `CallPlan`; C8 alone selects helpers; D2 consumes exact C3/C4 fingerprints
-  through the cumulative bundle and alone creates call transport nodes. No
-  shared-document repair is needed.
-- Reconciled implementation truth to `absent`. The C4 directory contains only
+  `VariadicPlan` owns function entry, fixed/named and extra/unnamed boundaries,
+  default promotions, abstract register-save/overflow domains, `va_list` state,
+  `va_start`/`va_copy`/`va_arg`/`va_end`, traversal/lifetime and structured
+  failure requirements. Embedded tables are not independent capabilities.
+- Closed nine exact `VariadicPlanKey` axes: Canonical, C1 target, C2 layout, C3
+  ABI, C4 call, variadic registry, schema/options, stable requirement IDs and
+  complete verified-output fingerprint. Empty/zero axes remain present and
+  compatible-looking or reconstructed predecessor products fail.
+- Exhaustively classified 31 forms covering empty/nonvariadic cases, variadic
+  declarations and definitions with zero or fixed named parameters, calls with
+  zero or multiple extras, identity/integer/floating promotions, admitted and
+  rejected aggregate/vector/HFA/HVA forms, absent/present/exhausted save
+  domains, every `va_*` operation, alignment, state merges and invalid lifetime
+  or traversal paths.
+- Bound every extra argument to exact C3 classification/promotion and C4 call-
+  site rows. C5 proves already-present default promotions but inserts no cast,
+  rewrites no operand and never recreates the fixed/extra boundary.
+- Defined abstract register-save-area and overflow-domain semantic
+  requirements from exact C2 eligible classes/capacities and ABI rules. These
+  contain stable regions, alignment, lifetime, access, progression and fallback
+  requirements but no chosen register/slot, concrete save-area object, address,
+  byte/frame offset or placement.
+- Defined typed `va_list` state and deterministic initialization/copy/
+  traversal/end lifetime requirements, including distinct copied-state
+  identities, exhaustion fallback, aggregate/HFA group closure and branch-merge
+  proof. C5 mutates no list object and emits no load/store or instruction.
+- Defined one private inventory/join/derive/traverse/verify transaction with
+  total definition/call/operation coverage, stable identity, exact predecessor
+  agreement, promotions, capacity/fallback, state/lifetime closure and complete-
+  key recheck. Failure publishes no plan, prefix, requirement, fingerprint,
+  cache, C6 or D2 fact and mutates no input.
+- Proved adjacent seams read-only: C6 already accepts the exact ordered C3/C4/
+  C5 fingerprints and cannot place or repair variadic state; D2 later owns ABI
+  transport and semantic-operation pseudos; E4 alone places frame objects and
+  actions. No shared-document repair is needed.
+- Reconciled implementation truth to `absent`. The C5 directory contains only
   its README and has no build edge or checked-in plan/key/requirements,
-  registry, exact-current analysis route, verifier, transaction, cache,
-  C5/C8/D2 consumer path or focused runtime proof. Legacy call-planning and
-  target-private helpers remain migration evidence only.
-- Re-audited exact scope, metadata/order, matrices, call families, exact
-  analysis key/timing, atomic failure/invalidation, C5/C8/D2 boundaries, links
-  and implementation truth. Only the C4 README and canonical `todo.md`
-  changed; no code, tests, build, logs, plan, source idea or shared document
-  changed.
+  registry, planner/verifier transaction, state graph, cache, C6/D2 consumer
+  path or focused runtime proof. Existing LIR import and legacy variadic/HFA
+  helpers remain migration evidence only.
+- Re-audited exact scope, metadata/order, matrices, form families, keys,
+  atomic failure/invalidation, C6/D2 boundaries, links and implementation
+  truth. Only the C5 README and canonical `todo.md` changed; no code, tests,
+  build, logs, plan, source idea or shared document changed.
 
 ## Suggested Next
 
-- Execute plan Step 5 against `src/backend/bir/preparation/variadic/README.md`:
-  converge exact fixed/variadic entry and call forms, promotions, abstract save-
-  area/traversal requirements, predecessor keys, verifier/failure/invalidation
-  and the C6 handoff without frame placement or ABI transport.
+- Execute plan Step 6 against `src/backend/bir/preparation/address/README.md`:
+  converge all address/global/local/relocation forms against exact predecessor
+  and earliest provenance keys, publish immutable semantic materialization
+  requirements, and preserve D4/E4/F1 legalization/placement/application
+  authority.
 
 ## Watchouts
 
-- C5 consumes the complete same-key C3/C4 plans. It must not reconstruct
-  classifications or per-call boundaries, accept compatible-looking products,
-  or silently substitute a new analysis result for predecessor identity.
-- Preserve the fixed/extra boundary and C4 promotion obligations exactly.
-  Variadic entry, zero extras, register/class exhaustion, aggregate/floating
-  variants and unsupported traversal need explicit optional/error forms.
-- C5 may publish abstract save-area objects and traversal requirements but no
-  concrete ABI location, register save sequence, stack/frame offset, `va_list`
-  mutation instruction, call transport, target opcode, home or frame action.
-- C6 is the immediate consumer; D2 later transports from the verified
-  cumulative products. Neither may repair or weaken a C5 plan.
-- C1-C4 and the call-graph contract remain documentation-only without callable
-  success paths; do not infer implementation from legacy variadic/call helpers.
+- C6 consumes the complete same-key C3/C4/C5 products. It must not reconstruct
+  classifications, call boundaries or variadic traversal, accept compatible-
+  looking products, or silently substitute predecessor identity.
+- Request exact-current provenance only at its earliest address consumer and
+  keep the analysis target/preparation-independent; stale handles fail closed.
+- Distinguish semantic base/index/scale/displacement/relocation and dynamic-
+  object requirements from a chosen register, instruction sequence, frame
+  base/offset, helper, scratch, home or machine opcode.
+- C7 is the immediate consumer; D1/D4 later form/legalize pseudos, E4 places
+  frame objects/actions and F1 only maps directly realizable nodes one-to-one.
+- C1-C5 remain documentation-only without callable success paths; do not infer
+  implementation from legacy addressing, decoded-storage or target helpers.
 
 ## Proof
 
 - Documentation-only packet. The delegated scope forbids code, test, build and
   log edits; no canonical regression log was created or modified.
-- Exact two-path scope, metadata/order, matrices, call-family inventory,
-  exact-current analysis key/timing, atomic failure, C5/C8/D2 boundaries,
-  links and implementation-truth proof:
+- Exact two-path scope, metadata/order, matrices, variadic-form inventory,
+  complete key, atomic failure, C6/D2 boundary, links and implementation-truth
+  proof:
 
 ```bash
 python3 - <<'PY'
@@ -108,7 +105,7 @@ from pathlib import Path
 import re
 import subprocess
 
-path = Path('src/backend/bir/preparation/calls/README.md')
+path = Path('src/backend/bir/preparation/variadic/README.md')
 text = path.read_text()
 metadata = '\n'.join(text.splitlines()[:11])
 
@@ -116,11 +113,11 @@ for item in (
     'Contract-Status: under-review',
     'Implementation-Status: absent',
     'Kind: product',
-    'Phase-ID: C4',
-    'Upstream: exact verifier-bound Canonical/C1 input, matching C2 `VerifiedTargetLayout`, exact C3 `AbiPlan`, and exact-current `CallGraph`',
-    'Downstream: one immutable exact-key `CallPlan` consumed first by C5 variadic preparation and later by D2 call lowering',
-    'Owner-Path: `src/backend/bir/preparation/calls/README.md`',
-    'Last-Reconciled-Commit: `954166281`',
+    'Phase-ID: C5',
+    'Upstream: exact verifier-bound Canonical/C1 input, matching C2 `VerifiedTargetLayout`, exact C3 `AbiPlan`, and exact C4 `CallPlan`',
+    'Downstream: one immutable exact-key `VariadicPlan` consumed first by C6 address preparation and later by D2 call lowering',
+    'Owner-Path: `src/backend/bir/preparation/variadic/README.md`',
+    'Last-Reconciled-Commit: `1468f5a62`',
 ):
     assert item in metadata, item
 
@@ -134,25 +131,26 @@ def rows(heading, next_heading):
     body = text.split(heading, 1)[1].split(next_heading, 1)[0]
     return [line for line in body.splitlines() if line.startswith('|')][2:]
 
-assert len(rows('### Exact C4 input matrix', '## Outputs')) == 11
-assert len(rows('### Exact C4 output matrix',
+assert len(rows('### Exact C5 input matrix', '## Outputs')) == 10
+assert len(rows('### Exact C5 output matrix',
                 '## Adjacent-Stage Contract')) == 14
 assert len(rows('## Stable Identity and Exact Product Key',
-                '## Exhaustive Call-Form Matrix')) == 9
-assert len(rows('## Exhaustive Call-Form Matrix',
-                '## Ordered Behavior')) == 27
+                '## Exhaustive Variadic Form Matrix')) == 9
+assert len(rows('## Exhaustive Variadic Form Matrix',
+                '## Ordered Behavior')) == 31
 
 for item in (
     'VerifiedPreparationInput', 'VerifiedTargetLayout', '`AbiPlan`',
-    'AnalysisId::CallGraph', 'CanonicalSemantic',
-    'target-layout key `None`', 'preparation digest',
-    'typed input requirements', 'typed output requirements',
-    'preservation requirements', 'clobber requirements',
-    'return requirements', 'direct internal call',
-    'proven finite-set indirect call',
-    'unknown-indirect call with registered ABI fallback',
-    'variadic call with extras', 'call-like intrinsic retained by P07',
-    'helper-eligible semantic operation', 'DeferredHelperCallRequirement',
+    '`CallPlan`', 'VariadicPlanSchemaFingerprint',
+    'VariadicPlanOptionsFingerprint', 'nonvariadic function',
+    'variadic definition with fixed parameters',
+    'variadic call with extras', 'default-promotion requirements',
+    'narrow integer/bool/enum extra',
+    'floating extra requiring default promotion',
+    'register-save-area semantic requirements',
+    'class capacity exhausted with legal overflow', 'valid `va_start`',
+    'valid `va_copy`', 'scalar integer/pointer `va_arg`',
+    'aggregate/HFA/HVA `va_arg`', 'valid `va_end`',
     'Failure publishes no plan', 'Old handles never retarget',
     'Implementation is absent', 'directory contains only this README',
 ):
@@ -161,28 +159,32 @@ for item in (
 for link in re.findall(r'\[[^]]+\]\(([^)]+)\)', text):
     assert (path.parent / link).resolve().exists(), link
 
-call_graph = Path('src/backend/bir/analysis/call_graph/README.md').read_text()
-for item in ('AnalysisId::CallGraph', 'schema 1', 'Module',
-             'CanonicalSemantic', 'target key `None`',
-             'empty preparation digest', 'old handle never rebinds'):
-    assert item in call_graph, item
-variadic = Path('src/backend/bir/preparation/variadic/README.md').read_text()
-for item in ('VerifiedPreparationInput', 'VerifiedTargetLayout',
-             '`AbiPlan`', '`CallPlan`'):
-    assert item in variadic, item
+abi = Path('src/backend/bir/preparation/abi/README.md').read_text()
+for item in ('`AbiPlanKey`', '`AbiPlanFingerprint`',
+             'variadic boundary requirements'):
+    assert item in abi, item
+calls = Path('src/backend/bir/preparation/calls/README.md').read_text()
+for item in ('`CallPlanKey`', '`CallPlanFingerprint`',
+             'variadic-call boundary'):
+    assert item in calls, item
+address = Path('src/backend/bir/preparation/address/README.md').read_text()
+address_flat = ' '.join(address.split())
+for item in ('variadic products',
+             'exact ordered ABI/call/variadic product fingerprints'):
+    assert item in address_flat, item
 d2 = Path('src/backend/bir/passes/call_lowering/README.md').read_text()
-for item in ('D2 is the sole owner', 'exact `AbiPlan` and `CallPlan`',
-             '`AbiPreserve`', '`AbiArgMove`', '`AbiArgStore`', '`AbiCall`',
-             '`AbiResultMove`', '`AbiRestore`'):
+for item in ('D2 is the sole owner', 'variadic transport'):
     assert item in d2, item
-helpers = Path('src/backend/bir/preparation/runtime_helpers/README.md').read_text()
-assert 'C8 is the sole eligibility owner' in helpers
+verifier = Path('src/backend/bir/verify/README.md').read_text()
+for item in ('`va_start`, scalar/aggregate `va_arg`, `va_copy`,',
+             'Register-save areas, GP/FP offsets,'):
+    assert item in verifier, item
 
 assert [entry.name for entry in path.parent.iterdir()] == ['README.md']
 implementation = subprocess.run(
     ['rg', '-n', '--glob', '*.{cpp,hpp,h,cc,cxx}',
-     'CallPlan|CallRequirementId|CallPlanFingerprint', 'src/backend/bir'],
-    text=True, capture_output=True)
+     'VariadicPlan|VariadicRequirementId|VariadicPlanFingerprint',
+     'src/backend/bir'], text=True, capture_output=True)
 assert implementation.returncode == 1, implementation.stdout
 
 changed = subprocess.check_output(
@@ -190,22 +192,22 @@ changed = subprocess.check_output(
     text=True).splitlines()
 changed_paths = {line[3:] for line in changed}
 assert changed_paths == {
-    'src/backend/bir/preparation/calls/README.md', 'todo.md'
+    'src/backend/bir/preparation/variadic/README.md', 'todo.md'
 }, changed_paths
 assert subprocess.run(['git', 'diff', '--check']).returncode == 0
 todo = Path('todo.md').read_text()
-assert 'Current Step ID: 5' in todo
-assert 'Current Step Title: Converge C5 variadic preparation' in todo
+assert 'Current Step ID: 6' in todo
+assert 'Current Step Title: Converge C6 address preparation' in todo
 
-print('PASS step=4 metadata=8 core=6 matrices=11/14 key=9 forms=27 '
-      'analysis=exact-current-after-B8-target-none failure=atomic '
-      'c5=exact c8=helper-owner d2=transport-owner implementation=absent '
-      'scope=calls+todo next=5')
+print('PASS step=5 metadata=8 core=6 matrices=10/14 key=9 forms=31 '
+      'promotion+entry+save+va_state=closed failure=atomic '
+      'c6=exact d2=transport-owner implementation=absent '
+      'scope=variadic+todo next=6')
 PY
 ```
 
 - Result:
 
 ```text
-PASS step=4 metadata=8 core=6 matrices=11/14 key=9 forms=27 analysis=exact-current-after-B8-target-none failure=atomic c5=exact c8=helper-owner d2=transport-owner implementation=absent scope=calls+todo next=5
+PASS step=5 metadata=8 core=6 matrices=10/14 key=9 forms=31 promotion+entry+save+va_state=closed failure=atomic c6=exact d2=transport-owner implementation=absent scope=variadic+todo next=6
 ```
