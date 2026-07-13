@@ -1,50 +1,28 @@
 #pragma once
 
-#include "bir/bir.hpp"
 #include "bir/lir_to_bir.hpp"
-#include "prealloc/prealloc.hpp"
+#include "target_profile.hpp"
 
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
-
-namespace c4c::codegen::lir {
-struct LirModule;
-}
 
 namespace c4c::backend {
 
-struct BackendModuleInput {
-  explicit BackendModuleInput(const bir::Module& bir_module);
-  explicit BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module);
-  BackendModuleInput(BackendModuleInput&&) noexcept = default;
-  BackendModuleInput& operator=(BackendModuleInput&&) noexcept = default;
-  BackendModuleInput(const BackendModuleInput&) = default;
-  BackendModuleInput& operator=(const BackendModuleInput&) = default;
-  ~BackendModuleInput() = default;
+class BackendModuleInput {
+ public:
+  explicit BackendModuleInput(
+      const c4c::codegen::lir::LirModule& lir_module) noexcept
+      : lir_module_(lir_module) {}
 
-  bool holds_bir_module() const {
-    return std::holds_alternative<bir::Module>(module_);
-  }
-  bool holds_lir_module() const {
-    return std::holds_alternative<std::reference_wrapper<const c4c::codegen::lir::LirModule>>(
-        module_);
-  }
-
-  const bir::Module& bir_module() const {
-    return std::get<bir::Module>(module_);
-  }
-  const c4c::codegen::lir::LirModule& lir_module() const {
-    return std::get<std::reference_wrapper<const c4c::codegen::lir::LirModule>>(module_)
-        .get();
+  const c4c::codegen::lir::LirModule& lir_module() const noexcept {
+    return lir_module_.get();
   }
 
  private:
-  std::variant<bir::Module, std::reference_wrapper<const c4c::codegen::lir::LirModule>>
-      module_;
+  std::reference_wrapper<const c4c::codegen::lir::LirModule> lir_module_;
 };
 
 struct BackendOptions {
@@ -55,22 +33,13 @@ struct BackendOptions {
   std::optional<std::string> route_debug_focus_value;
 };
 
+// Later stages remain named so active command-line callers compile while the
+// new BIR-to-MIR boundary is being designed. They fail explicitly at runtime.
 enum class BackendDumpStage {
-  // Generic backend semantic BIR text owned by the shared backend dump path.
   SemanticBir,
-  // Generic backend prepared BIR text owned by the shared backend dump path.
   PreparedBir,
-  // Target-local MIR route summary owned by the x86 route_debug surface.
   MirSummary,
-  // Target-local MIR route trace owned by the x86 route_debug surface.
   MirTrace,
-};
-
-struct BackendAssembleResult {
-  std::string staged_text;
-  std::string output_path;
-  bool object_emitted = false;
-  std::string error;
 };
 
 struct BackendObjectResult {
@@ -82,77 +51,8 @@ struct BackendObjectResult {
   }
 };
 
-[[nodiscard]] c4c::backend::bir::Module prepare_bir_module_for_target(
-    const c4c::backend::bir::Module& module,
-    const c4c::TargetProfile& target_profile);
-
-// Current public BIR entrypoint. x86 now routes prepared backend data into the
-// target-local prepared-module consumer boundary instead of returning prepared
-// semantic BIR text directly.
-std::string emit_x86_bir_module_entry(const bir::Module& module,
-                                      const c4c::TargetProfile& target_profile);
-
-// Explicit AArch64-owned BIR module-entry handoff for the public assembly
-// printer route. The route consumes semantic BIR through prepared BIR,
-// AArch64 module construction, and selected machine instruction nodes.
-std::string emit_aarch64_bir_module_entry(const bir::Module& module,
-                                          const c4c::TargetProfile& target_profile);
-
-// Explicit RISC-V-owned BIR module-entry handoff for register-destination
-// prepared edge-publication consumers.
-std::string emit_riscv_bir_module_entry(const bir::Module& module,
-                                        const c4c::TargetProfile& target_profile);
-
-// Compatibility wrapper: x86 and AArch64 targets route through target-local
-// entrypoints, while other targets keep the existing generic prepared-BIR text
-// contract.
-std::string emit_target_bir_module(const bir::Module& module,
-                                   const c4c::TargetProfile& target_profile);
-
-// Explicit x86-owned LIR module-entry handoff. This is the target-local front
-// door that consumes semantic lir_to_bir output before x86 codegen.
-std::string emit_x86_lir_module_entry(const c4c::codegen::lir::LirModule& module,
-                                      const c4c::TargetProfile& target_profile);
-
-// Explicit AArch64-owned LIR module-entry handoff for `--codegen asm`.
-std::string emit_aarch64_lir_module_entry(const c4c::codegen::lir::LirModule& module,
-                                          const c4c::TargetProfile& target_profile);
-
-// Explicit RISC-V-owned LIR module-entry handoff for `--codegen asm`.
-std::string emit_riscv_lir_module_entry(const c4c::codegen::lir::LirModule& module,
-                                        const c4c::TargetProfile& target_profile);
-
-// Explicit x86-owned module-entry staging surface. The returned result still
-// preserves the existing bootstrap assemble contract around the x86 handoff.
-BackendAssembleResult stage_x86_lir_module_entry(
-    const c4c::codegen::lir::LirModule& module,
-    const c4c::TargetProfile& target_profile,
-    const std::string& output_path);
-
-// Compatibility wrapper: x86 and AArch64 targets route through target-local
-// entrypoints, while other targets keep the existing generic bootstrap/public
-// emit contract.
-std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
-                                   const c4c::TargetProfile& target_profile);
-
-BackendObjectResult emit_target_bir_module_object(
-    const bir::Module& module,
-    const c4c::TargetProfile& target_profile);
-
-BackendObjectResult emit_target_lir_module_object(
-    const c4c::codegen::lir::LirModule& module,
-    const c4c::TargetProfile& target_profile);
-
 BackendObjectResult emit_module_object(const BackendModuleInput& input,
                                        const BackendOptions& options);
-
-// Compatibility wrapper: x86 targets route through
-// `stage_x86_lir_module_entry(...)`, while non-x86 targets keep the existing
-// generic bootstrap assemble contract.
-BackendAssembleResult assemble_target_lir_module(
-    const c4c::codegen::lir::LirModule& module,
-    const c4c::TargetProfile& target_profile,
-    const std::string& output_path);
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);

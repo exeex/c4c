@@ -8,49 +8,49 @@ Current Step Title: Migrate the import spine and CFG publication
 
 ## Just Finished
 
-- Step 5 first bounded packet added the public `lower_lir_to_raw_bir()` entry,
-  structured import diagnostics, and a real verified `RawBir` path for void
-  declarations plus empty-block definitions using `LirRet`, `LirBr`, and
-  `LirUnreachable`.
-- The importer prevalidates module/function scope, creates blocks in LIR order,
-  keeps label-to-`BlockId` mapping adapter-local, sets terminators through
-  `FunctionBuilder`, and publishes only through foundation verification.
-- Accepted definitions now also require unique `LirBlockId` values and a
-  resolvable `function.entry` equal to the first LIR block, matching the
-  bootstrap BIR's order-defined entry without reordering or reinterpretation.
-- Unmigrated `.cpp` files below `bir/lir_to_bir/` are explicitly quarantined
-  from the active CMake graph while the new top-level importer remains active.
+- Step 5 consumer-seam packet replaced the prealloc-era backend facade with an
+  LIR-reference-only `BackendModuleInput` and retained only the active caller
+  contracts: options, dump-stage names, object result, `emit_module`,
+  `emit_module_object`, and `dump_module`.
+- Every backend operation now imports through `lower_lir_to_raw_bir()` first.
+  Semantic-BIR requests render deterministic function/block order, link names,
+  declaration state, and terminators from read-only `RawBir` views; importer
+  failures preserve structured code/function/block/detail diagnostics.
+- BIR-to-MIR, PreparedBir, MIR summary/trace, and object emission now reject
+  explicitly instead of falling back to LLVM text, empty success, or legacy
+  target codegen.
+- `c4c_backend` now compiles only `backend.cpp` plus the active new-BIR sources;
+  no legacy, prealloc, MIR, or quarantined importer translation unit remains in
+  its compile database entries.
 
 ## Suggested Next
 
-- Continue Step 5 at the consumer seam: replace or remove the stale
-  `prealloc/prealloc.hpp` dependency in `backend.hpp` without restoring legacy
-  prealloc, then route the backend through the new import result.
+- Continue Step 5 by choosing the next bounded semantic importer family needed
+  before a new BIR-to-MIR seam can consume more than the bootstrap CFG slice.
 
 ## Watchouts
 
-- Foundation and the importer deliberately reject every ordinary instruction,
-  parameter, non-void return, conditional/switch/indirect terminator, and
-  module side table until its semantic family lands atomically.
-- Bootstrap BIR has no explicit entry field; non-first LIR entry blocks remain
-  an explicit unsupported import until the schema can carry that distinction.
-- The default build now passes the new importer seam and next fails outside
-  this packet because `src/backend/backend.hpp` includes missing
-  `prealloc/prealloc.hpp`; do not route around it by restoring legacy sources.
+- The full default build now reaches an external quarantined caller:
+  `src/apps/c4c-as.cpp` directly includes
+  `backend/mir/riscv/codegen/object_emission.hpp`, which in turn includes the
+  removed prealloc module header. That app seam is outside this packet; do not
+  restore the old sources to satisfy it.
+- Route-debug focus options remain only for source compatibility and have no
+  effect until a new MIR route exists. Later dump-stage enum values likewise
+  remain compile-time names but deliberately fail at runtime.
 
 ## Proof
 
-- Packet-local C++17 runtime proof passed void declaration, minimal void-return
-  definition, two-block branch order/successors, unreachable, duplicate and
-  missing labels, and explicit rejection of non-void, parameters, variadic,
-  globals, ordinary instructions, and unsupported terminators.
-- Entry/identity repair proof additionally passed an explicit positive entry
-  case and rejected duplicate `LirBlockId`, missing entry, and non-first entry.
-- The CMake object target for `bir/lir_to_bir.cpp` compiled successfully;
-  `git diff --check` and compile-database searches for quarantined importer and
-  legacy sources passed.
-- `cmake --build --preset default -j 2` reached the next external seam and
-  failed because `src/backend/backend.hpp` includes missing
-  `prealloc/prealloc.hpp`.
-- The delegated owned/do-not-touch set excluded logs, so no `test_after.log`
-  was written; temporary proof sources, outputs, and executable were removed.
+- A packet-local C++17 runtime executable linked against `c4c_backend` and
+  passed semantic rendering for declaration, void return, and branch;
+  structured importer error propagation; explicit normal emit failure;
+  unsupported PreparedBir/MIR dumps; and diagnostic-only empty object results.
+- `cmake --build --preset default -j 2 --target c4c_backend` and
+  `cmake --build --preset default -j 2 --target c4cll` passed.
+- `cmake --build --preset default -j 2` reached the next external app seam and
+  failed at the direct RISC-V MIR include in `src/apps/c4c-as.cpp`.
+- `jq` inspection of compile-database `file` entries confirmed no backend
+  legacy, prealloc, MIR, or quarantined importer translation units;
+  `git diff --check` passed. Temporary proof source/binary were removed.
+- The delegated do-not-touch set excludes logs, so this proof did not rewrite
+  `test_after.log`.
