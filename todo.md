@@ -3,33 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 4.5.3
-Current Step Title: Receive function linkage and elision facts
+Current Step ID: 5
+Current Step Title: Complete ordinary instruction semantic families
 
 ## Just Finished
 
-- Completed Plan Step 4.5.2 inventory and selected only native
-  `LirFunction::is_internal` plus `can_elide_if_unreferenced` for the next
-  receiver packet; both are producer-populated and currently dropped by BIR.
-- Confirmed CFG receipt remains blocked by raw branch/switch targets and a
-  producerless indirect-branch ID form despite structured block/entry facts.
-- Confirmed stack/local-object receipt cannot yet unlock a production-success
-  path because allocation/result/ownership bindings remain raw; body parameter
-  uses also remain raw.
+- Completed Plan Step 4.5.3 by preserving native `LirFunction::is_internal`
+  and `can_elide_if_unreferenced` through typed FunctionData, builder creation,
+  immutable Raw/Canonical views, reachable verification, and LIR import.
+- Enforced exactly the producer-valid false/false declaration and definition,
+  false/true helper definition, and true/true static definition combinations;
+  invalid metadata and conflicting merges reject before mutation.
+- Proved a production static literal-return function retained by a structured
+  global function-pointer initializer reaches semantic BIR with its ordinary
+  external neighbor; no global-row blocker remained.
 
 ## Suggested Next
 
-- Execute Plan Step 4.5.3 by receiving exactly the two structured function
-  linkage/elision booleans through core, builder/view, verifier, importer, and
-  declaration/definition merge proof.
+- Begin Plan Step 5 by selecting one bounded ordinary-instruction family with
+  complete typed operand/result authority and an exact builder/view/verifier/
+  importer proof contract.
 
 ## Watchouts
 
-- Do not infer either boolean from function names, signature rendering, body
-  presence, source order, or testcase identity; import native LIR facts only.
-- Preserve producer-valid declaration/definition merge behavior and reject
-  contradictory duplicates transactionally; do not silently OR or clear
-  metadata.
+- Function linkage/elision facts remain native booleans; do not infer them from
+  names, signature rendering, body presence, source order, or testcase
+  identity, and do not OR/overwrite merge conflicts.
 - Keep CFG, block targets/edges, stack slots, allocas, local objects, body
   parameter binding, and lifetime state outside this packet.
 - Keep `long` and `unsigned long` fail-closed pending inactive idea 743; do not
@@ -43,5 +42,14 @@ Current Step Title: Receive function linkage and elision facts
 
 ## Proof
 
-- Step 4.5.2 was a read-only authority inventory; no code, test, or regression
-  proof was generated for the runbook transition.
+- Fresh `cmake --build --preset default` completed successfully.
+- `ctest --test-dir build -R '^backend_lir_to_bir_interface$'
+  --output-on-failure` passed 1/1 with builder, verifier, Raw/Canonical view,
+  misleading-display, merge-conflict, and module-rollback coverage.
+- `c4cll --dump-bir` published the retained static literal-return production
+  function; the neighboring LLVM observation confirmed its structured global
+  function-pointer initializer kept it reachable and was not used as metadata
+  authority.
+- `ctest --test-dir build -j --output-on-failure > test_after.log` passed
+  3033/3033. The monotonic guard against `test_before.log` passed with delta
+  `passed=0 failed=0` and no new over-30-second tests.

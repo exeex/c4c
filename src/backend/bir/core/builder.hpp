@@ -29,6 +29,7 @@ enum class BuildError {
   ConflictingDeclaration,
   DuplicateDefinition,
   InvalidFunction,
+  InvalidFunctionMetadata,
   InvalidParameter,
   DeclarationHasNoBlocks,
   ForeignOwner,
@@ -184,7 +185,8 @@ class ModuleBuilder {
 
   Result<FunctionId, BuildError> create_function(FunctionSignature signature,
                                                   std::string link_name,
-                                                  bool is_declaration);
+                                                  bool is_declaration,
+                                                  FunctionMetadata metadata = {});
   Result<LinkNameId, BuildError> add_link_name(c4c::LinkNameId source_id,
                                                std::string spelling);
   Result<StructNameId, BuildError> add_struct_name(c4c::StructNameId source_id,

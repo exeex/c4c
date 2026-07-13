@@ -20,6 +20,7 @@ enum class VerificationRule {
   GlobalObject,
   SpecializationMetadata,
   FunctionStorageAndOrder,
+  FunctionMetadata,
   BlockStorageAndOrder,
   InstructionStorageAndOrder,
   ParameterDefinition,

@@ -57,6 +57,10 @@ class FunctionView {
   FunctionRevision revision() const noexcept { return data_->revision_; }
   FunctionSignature signature() const { return data_->signature_; }
   bool is_declaration() const noexcept { return data_->is_declaration_; }
+  bool is_internal() const noexcept { return data_->is_internal_; }
+  bool can_elide_if_unreferenced() const noexcept {
+    return data_->can_elide_if_unreferenced_;
+  }
   std::string link_name() const { return data_->link_name_; }
   std::vector<ValueId> parameters() const { return data_->parameters_; }
   std::vector<ValueId> values() const { return data_->value_order_.ids(); }

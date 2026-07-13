@@ -1211,6 +1211,214 @@ void test_plain_parameter_signature_rejections_and_transactionality() {
       "void-list signatures must reject invented ABI parameters");
 }
 
+void test_function_metadata_builder_contract() {
+  bir::ModuleBuilder builder;
+  const bir::FunctionSignature signature{
+      bir::Type{bir::TypeKind::Void}, {}, false};
+  const auto declaration =
+      builder.create_function(signature, "definition_looking_declaration", true);
+  const auto external =
+      builder.create_function(signature, "static_looking_external", false);
+  const auto helper = builder.create_function(
+      signature, "ordinary_looking_helper", false,
+      bir::FunctionMetadata{false, true});
+  const auto internal = builder.create_function(
+      signature, "extern_looking_internal", false,
+      bir::FunctionMetadata{true, true});
+  expect(declaration.has_value() && external.has_value() && helper.has_value() &&
+             internal.has_value(),
+         "every producer-valid function metadata combination should stage");
+  expect(builder
+             .create_function(signature, "invalid_internal", false,
+                              bir::FunctionMetadata{true, false})
+             .error() == bir::BuildError::InvalidFunctionMetadata,
+         "internal/non-elidable metadata must reject at the builder boundary");
+  expect(builder
+             .create_function(signature, "invalid_helper_declaration", true,
+                              bir::FunctionMetadata{false, true})
+             .error() == bir::BuildError::InvalidFunctionMetadata,
+         "declarations cannot carry helper elision metadata");
+  expect(builder
+             .create_function(signature, "invalid_internal_declaration", true,
+                              bir::FunctionMetadata{true, true})
+             .error() == bir::BuildError::InvalidFunctionMetadata,
+         "declarations cannot carry internal metadata");
+
+  const auto merge = builder.create_function(signature, "metadata_merge", true);
+  expect(merge.has_value(), "metadata merge fixture declaration should stage");
+  expect(builder
+             .create_function(signature, "metadata_merge", false,
+                              bir::FunctionMetadata{false, true})
+             .error() == bir::BuildError::ConflictingDeclaration,
+         "metadata conflicts must reject before declaration mutation");
+  const auto coherent_merge =
+      builder.create_function(signature, "metadata_merge", false);
+  expect(coherent_merge.has_value() && coherent_merge.value() == merge.value(),
+         "a coherent merge after rejection should reuse the untouched declaration");
+
+  const auto add_body = [&](bir::FunctionId function_id) {
+    return builder.with_function(
+        function_id, [](bir::FunctionBuilder& function) {
+          const auto block = function.create_block("entry");
+          if (!block)
+            return bir::Result<void, bir::BuildError>::failure(block.error());
+          return function.set_terminator(block.value(), bir::ReturnTerm{});
+        });
+  };
+  expect(add_body(external.value()).has_value() &&
+             add_body(helper.value()).has_value() &&
+             add_body(internal.value()).has_value() &&
+             add_body(coherent_merge.value()).has_value(),
+         "valid metadata definitions should accept ordinary bodies");
+
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value(),
+         "valid metadata and conflict rollback should publish verified RawBir");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "FoundationVerifier should reach valid function metadata");
+  const auto view = raw.value().view();
+  const auto functions = view.functions();
+  expect(functions.size() == 5,
+         "rejected metadata staging must append no partial function");
+  const auto decl_view = view.function(functions[0]).value();
+  const auto external_view = view.function(functions[1]).value();
+  const auto helper_view = view.function(functions[2]).value();
+  const auto internal_view = view.function(functions[3]).value();
+  const auto merge_view = view.function(functions[4]).value();
+  expect(decl_view.is_declaration() && !decl_view.is_internal() &&
+             !decl_view.can_elide_if_unreferenced() &&
+             !external_view.is_declaration() && !external_view.is_internal() &&
+             !external_view.can_elide_if_unreferenced() &&
+             !helper_view.is_internal() &&
+             helper_view.can_elide_if_unreferenced() &&
+             internal_view.is_internal() &&
+             internal_view.can_elide_if_unreferenced() &&
+             !merge_view.is_declaration() && !merge_view.is_internal() &&
+             !merge_view.can_elide_if_unreferenced(),
+         "immutable views must preserve metadata facts independent of names/order");
+}
+
+lir::LirModule function_metadata_module() {
+  lir::LirModule module;
+  auto declaration = void_declaration("definition_looking_declaration");
+  declaration.signature_text = "define internal void @wrong() {";
+  module.functions.push_back(std::move(declaration));
+
+  auto external =
+      void_definition("static_looking_external", {return_block(0, "entry")});
+  external.signature_text = "define internal void @wrong() {";
+  module.functions.push_back(std::move(external));
+
+  auto helper =
+      void_definition("ordinary_looking_helper", {return_block(0, "entry")});
+  helper.can_elide_if_unreferenced = true;
+  helper.signature_text = "define void @wrong() {";
+  module.functions.push_back(std::move(helper));
+
+  auto internal =
+      void_definition("extern_looking_internal", {return_block(0, "entry")});
+  internal.is_internal = true;
+  internal.can_elide_if_unreferenced = true;
+  internal.signature_text = "declare void @wrong()";
+  module.functions.push_back(std::move(internal));
+
+  module.functions.push_back(void_declaration("merged_external"));
+  module.functions.push_back(
+      void_definition("merged_external", {return_block(0, "entry")}));
+  return module;
+}
+
+void test_function_metadata_import_receipt() {
+  const auto expect_graph = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto functions = view.functions();
+    expect(functions.size() == 5,
+           layer + " should preserve source order and coherent merges");
+    const auto declaration = view.function(functions[0]).value();
+    const auto external = view.function(functions[1]).value();
+    const auto helper = view.function(functions[2]).value();
+    const auto internal = view.function(functions[3]).value();
+    const auto merged = view.function(functions[4]).value();
+    expect(declaration.is_declaration() && !declaration.is_internal() &&
+               !declaration.can_elide_if_unreferenced() &&
+               !external.is_declaration() && !external.is_internal() &&
+               !external.can_elide_if_unreferenced() && !helper.is_internal() &&
+               helper.can_elide_if_unreferenced() && internal.is_internal() &&
+               internal.can_elide_if_unreferenced() &&
+               !merged.is_declaration() && !merged.is_internal() &&
+               !merged.can_elide_if_unreferenced(),
+           layer + " must retain native LIR metadata without display inference");
+  };
+
+  const auto module = function_metadata_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-valid linkage/elision metadata should publish RawBir");
+  expect_graph(raw.value(), "RawBir");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "FoundationVerifier must accept imported function metadata");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "producer-valid linkage/elision metadata should publish CanonicalBir");
+  expect_graph(canonical.value(), "CanonicalBir");
+}
+
+void test_function_metadata_import_rejections_and_transactionality() {
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto module = function_metadata_module();
+    auto candidate =
+        void_definition("invalid_metadata", {return_block(0, "entry")});
+    mutate(candidate);
+    module.functions.push_back(std::move(candidate));
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() && raw.error().code ==
+                                   bir::ImportErrorCode::UnsupportedFunctionMetadata,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() && canonical.error().code ==
+                                         bir::ImportErrorCode::UnsupportedFunctionMetadata,
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](auto& function) {
+        function.is_internal = true;
+        function.can_elide_if_unreferenced = false;
+      },
+      "internal/non-elidable LIR metadata must reject transactionally");
+  rejected(
+      [](auto& function) {
+        function.is_declaration = true;
+        function.blocks.clear();
+        function.can_elide_if_unreferenced = true;
+      },
+      "discardable declaration metadata must reject transactionally");
+  rejected(
+      [](auto& function) {
+        function.is_declaration = true;
+        function.blocks.clear();
+        function.is_internal = true;
+        function.can_elide_if_unreferenced = true;
+      },
+      "internal declaration metadata must reject transactionally");
+
+  auto conflicting = function_metadata_module();
+  conflicting.functions.push_back(void_declaration("conflicting_merge"));
+  auto definition =
+      void_definition("conflicting_merge", {return_block(0, "entry")});
+  definition.can_elide_if_unreferenced = true;
+  conflicting.functions.push_back(std::move(definition));
+  const auto raw = bir::lower_lir_to_raw_bir(conflicting);
+  expect(!raw.has_value() && raw.error().code == bir::ImportErrorCode::BuilderFailure &&
+             raw.error().build_error == bir::BuildError::ConflictingDeclaration,
+         "metadata merge conflicts must reject Raw publication before mutation");
+  const auto canonical = bir::lower_lir_to_canonical_bir(conflicting);
+  expect(!canonical.has_value() &&
+             canonical.error().code == bir::ImportErrorCode::BuilderFailure &&
+             canonical.error().build_error ==
+                 bir::BuildError::ConflictingDeclaration,
+         "metadata merge conflicts must reject Canonical publication transactionally");
+}
+
 void test_typed_lir_type_rejections() {
   const auto expect_value_rejected = [](lir::LirTypeRef type,
                                         const std::string& message) {
@@ -8271,6 +8479,9 @@ int main() {
   test_direct_scalar_signature_rejections_and_transactionality();
   test_plain_parameter_signature_receipt();
   test_plain_parameter_signature_rejections_and_transactionality();
+  test_function_metadata_builder_contract();
+  test_function_metadata_import_receipt();
+  test_function_metadata_import_rejections_and_transactionality();
   test_typed_lir_type_rejections();
   test_verifier_rejects_malformed_raw_type();
   test_intrinsic_requirements_receipt();

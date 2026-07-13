@@ -526,6 +526,16 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         report(result, VerificationRule::BoundedAlternative, function_id,
                function_id, "function parameter type is malformed");
 
+    if (function.is_internal_ && !function.can_elide_if_unreferenced_)
+      report(result, VerificationRule::FunctionMetadata, function_id,
+             function_id,
+             "internal function must remain eligible for unreferenced elision");
+    if (function.is_declaration_ &&
+        (function.is_internal_ || function.can_elide_if_unreferenced_))
+      report(result, VerificationRule::FunctionMetadata, function_id,
+             function_id,
+             "declaration cannot carry definition-only linkage/elision metadata");
+
     if (function.link_name_.empty())
       report(result, VerificationRule::LinkNameIndex, function_id, function_id,
              "function link name must be nonempty");

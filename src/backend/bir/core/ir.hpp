@@ -202,6 +202,22 @@ struct FunctionSignature {
   bool is_variadic = false;
 };
 
+struct FunctionMetadata {
+  bool is_internal = false;
+  bool can_elide_if_unreferenced = false;
+};
+
+inline bool operator==(const FunctionMetadata& lhs,
+                       const FunctionMetadata& rhs) noexcept {
+  return lhs.is_internal == rhs.is_internal &&
+         lhs.can_elide_if_unreferenced == rhs.can_elide_if_unreferenced;
+}
+
+inline bool operator!=(const FunctionMetadata& lhs,
+                       const FunctionMetadata& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
 struct StructField {
   Type type;
   StructNameId referenced_name{};
@@ -252,6 +268,8 @@ struct FunctionData {
   FunctionRevision revision_{};
   FunctionSignature signature_;
   bool is_declaration_ = false;
+  bool is_internal_ = false;
+  bool can_elide_if_unreferenced_ = false;
   std::string link_name_;
   SlotMap<BlockData, BlockId, FunctionId> blocks_;
   SlotMap<InstData, InstId, FunctionId> insts_;

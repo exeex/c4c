@@ -412,7 +412,8 @@ ModuleBuilder::mutable_function(FunctionId function) {
 }
 
 Result<FunctionId, BuildError> ModuleBuilder::create_function(
-    FunctionSignature signature, std::string link_name, bool is_declaration) {
+    FunctionSignature signature, std::string link_name, bool is_declaration,
+    FunctionMetadata metadata) {
   if (state_ == State::Consumed)
     return Result<FunctionId, BuildError>::failure(BuildError::AlreadyConsumed);
   if (state_ == State::EditingFunction)
@@ -421,6 +422,11 @@ Result<FunctionId, BuildError> ModuleBuilder::create_function(
     return Result<FunctionId, BuildError>::failure(BuildError::EpochExhausted);
   if (link_name.empty())
     return Result<FunctionId, BuildError>::failure(BuildError::EmptyLinkName);
+  if ((metadata.is_internal && !metadata.can_elide_if_unreferenced) ||
+      (is_declaration &&
+       (metadata.is_internal || metadata.can_elide_if_unreferenced)))
+    return Result<FunctionId, BuildError>::failure(
+        BuildError::InvalidFunctionMetadata);
   if (signature.parameter_types.size() >
       static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
     return Result<FunctionId, BuildError>::failure(BuildError::StorageExhausted);
@@ -431,7 +437,10 @@ Result<FunctionId, BuildError> ModuleBuilder::create_function(
     if (!function)
       return Result<FunctionId, BuildError>::failure(BuildError::InvalidFunction);
     auto& stored = function.value().get();
-    if (stored.signature_ != signature)
+    if (stored.signature_ != signature ||
+        stored.is_internal_ != metadata.is_internal ||
+        stored.can_elide_if_unreferenced_ !=
+            metadata.can_elide_if_unreferenced)
       return Result<FunctionId, BuildError>::failure(
           BuildError::ConflictingDeclaration);
     if (!is_declaration && !stored.is_declaration_)
@@ -444,6 +453,8 @@ Result<FunctionId, BuildError> ModuleBuilder::create_function(
   detail::FunctionData function;
   function.signature_ = std::move(signature);
   function.is_declaration_ = is_declaration;
+  function.is_internal_ = metadata.is_internal;
+  function.can_elide_if_unreferenced_ = metadata.can_elide_if_unreferenced;
   function.link_name_ = link_name;
   auto inserted = data_->functions_.emplace(data_->epoch_, std::move(function));
   if (!inserted)

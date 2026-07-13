@@ -1449,6 +1449,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (name.empty())
     return fail<void>(ImportErrorCode::EmptyFunctionLinkName, function.name, {},
                       "function has no resolvable link-visible name");
+  if ((function.is_internal && !function.can_elide_if_unreferenced) ||
+      (function.is_declaration &&
+       (function.is_internal || function.can_elide_if_unreferenced)))
+    return fail<void>(ImportErrorCode::UnsupportedFunctionMetadata, name, {},
+                      "function linkage/elision metadata violates producer invariants");
   if (function.signature_is_variadic)
     return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
                       "variadic functions require explicit signature lowering");
@@ -1986,8 +1991,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     signature.return_type = imported_return_type;
     signature.parameter_types =
         *lower_function_parameter_types(module, function);
-    auto created =
-        builder.create_function(std::move(signature), name, function.is_declaration);
+    auto created = builder.create_function(
+        std::move(signature), name, function.is_declaration,
+        FunctionMetadata{function.is_internal,
+                         function.can_elide_if_unreferenced});
     if (!created)
       return Result<RawBir, ImportError>::failure(builder_failure(
           name, {}, "create function", created.error()));

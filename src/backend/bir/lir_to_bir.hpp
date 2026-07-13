@@ -22,6 +22,7 @@ enum class ImportErrorCode {
   UnsupportedIntrinsicRequirements,
   UnsupportedSpecializations,
   EmptyFunctionLinkName,
+  UnsupportedFunctionMetadata,
   UnsupportedFunctionParameters,
   UnsupportedVariadicFunction,
   UnsupportedReturnType,
