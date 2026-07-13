@@ -1,13 +1,15 @@
 # Accepted A1-F3 BIR Architecture Implementation
 
-Status: Open
+Status: Draft (parked; not active implementation authority)
 Type: general BIR compiler architecture implementation
 Architecture Checkpoint: `8a7404a265ab24e230dcf4d001d6d1033e8d9736`
 Architecture Acceptance Commit: `edab15ee77b8a0695e43b890c3e4057b1a739f38`
-Related Feature Consumer:
-`ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+Historical Transport Predecessor:
+`ideas/closed/731_inline_asm_transport_and_regalloc_contract.md`
 Historical Documentation Umbrella:
 `ideas/open/732_bir_stage_document_convergence_umbrella.md`
+Deferred Import Prerequisite:
+`ideas/open/734_lir_to_new_bir_container_completeness.md`
 
 ## Intent
 
@@ -18,8 +20,14 @@ allocated/MIR-ready publication, strict one-record machine mapping, and
 emission boundaries.
 
 This idea owns the shared compiler infrastructure and ordinary semantic route.
-Feature ideas such as idea 731 consume these capabilities and retain their own
-payload, constraint-form, integration, and end-to-end acceptance obligations.
+Closed idea 731 proved only the bounded LIR-to-new-BIR structured transport
+seam. It carries no downstream feature, allocation, or late-assembly
+obligations.
+
+This proposal is parked under `ideas/draft/`. Idea 732 must first settle the
+documentation ownership/order/seams, and idea 734 must later complete only the
+target-independent LIR-to-new-BIR container/import boundary. Neither lifecycle
+authorizes this draft's downstream implementation.
 
 ## Why This Idea Exists
 
@@ -43,9 +51,10 @@ idea-731 implementation runbook and are adopted as idea-733 progress:
 - `8a63a410f` — exact stage stamps on published BIR
 - `e8320d7ef` — private BIR occurrence checkpoints
 
-The current uncommitted Step 1.1e worktree packet is also owned by this idea. It
-adds a private `FunctionAttachmentTransaction`, mutation journal, rollback,
-revision/digest refresh, and checkpoint tests in:
+The proposed Step 1.1e packet belongs to this idea but is not present in the
+current worktree. When executed, it is expected to add a private
+`FunctionAttachmentTransaction`, mutation journal, rollback, revision/digest
+refresh, and checkpoint tests in:
 
 - `src/backend/bir/core/ir.hpp`
 - `src/backend/bir/core/storage.hpp`
@@ -53,10 +62,9 @@ revision/digest refresh, and checkpoint tests in:
 - `src/backend/bir/pipeline/checkpoint_internal.hpp`
 - `tests/backend/bir/backend_bir_checkpoint_test.cpp`
 
-That dirty packet is preserved as unaccepted WIP. The scope-alignment review did
-not accept its proof, and its canonical logs do not establish the current
-worktree state. The supervisor must technically inspect, repair if needed, and
-rerun fresh matching proof before accepting or committing it.
+No implementation or proof for that packet is accepted by the lifecycle split.
+The executor must create it as a fresh bounded packet and produce matching
+proof before the supervisor can accept or commit it.
 
 ## Architecture Authority
 
@@ -87,27 +95,21 @@ rerun fresh matching proof before accepting or committing it.
 - build integration, stage-local tests, cross-stage negative tests, broader
   regression checkpoints, and truthful implementation-status reconciliation
 
-## Feature Consumer Boundary
+## Historical Transport Boundary
 
-Idea 731 depends on this idea for shared target layout, preparation, constraint
-infrastructure, allocation, MIR-ready publication, and late consumer seams.
-Idea 731 continues to own:
-
-- original inline-asm payload and constraint authority across frontend/LIR/BIR
-- ordinary input/result/read-write identities and feature-specific verification
-- the reviewed inline-asm constraint forms, ties, groups, early-clobbers, and
-  clobbers as end-to-end feature behavior
-- inline-asm allocation integration and late operand substitution/parsing
-- the smallest feature-specific end-to-end proof and late invalid-payload
-  failure
-
-General infrastructure may expose and test reusable hooks needed by idea 731,
-but idea 733 completion does not by itself complete idea 731.
+Closed idea 731 established the bounded structured LIR-to-new-BIR transport
+carrier and ordinary value-identity seam. Idea 733 may preserve and consume
+that landed interface, but does not inherit an obligation to complete a broader
+idea-731 feature contract. General target preparation, constraint
+infrastructure, allocation, MIR-ready publication, machine mapping, and
+emission belong here when required by this idea's accepted A1-F3 architecture.
+Future feature-specific constraint or late-assembly work requires a separate
+explicit initiative.
 
 ## Out Of Scope
 
-- claiming feature-specific idea-731 acceptance merely because shared stages
-  exist
+- reopening closed idea 731 by treating general infrastructure or downstream
+  feature behavior as unfinished transport work
 - restoring or compiling `src/backend/legacy/**`, old prealloc/MIR, removed
   `c4c-as`, or deleted `src/backend/bir/mir/**`
 - target interpretation or allocation facts in Raw/Canonical BIR
@@ -136,9 +138,8 @@ but idea 733 completion does not by itself complete idea 731.
   record, and cannot allocate, expand, synthesize hidden frame work, or repair.
 - Supported RV64, AArch64, x86-64, and i686 routes share the same BIR algorithms
   and differ only through validated target data and mapping rules.
-- The dirty Step 1.1e packet and every later packet have fresh matching build
-  and test proof before acceptance; milestone and final regression gates are
-  green.
+- Step 1.1e and every later packet have fresh matching build and test proof
+  before acceptance; milestone and final regression gates are green.
 - Implementation-status documentation matches code, an independent final
   review finds no architecture/scope/overfit blocker, and remaining feature
   work is assigned to explicit consumer ideas rather than absorbed silently.
@@ -157,13 +158,13 @@ but idea 733 completion does not by itself complete idea 731.
   structural equality used as freshness proof.
 - Reject partial publication after cancellation, verification failure, ID or
   revision exhaustion, allocation failure, or stale/mixed input.
-- Reject accepting the current dirty Step 1.1e work from old logs or todo text
-  without fresh proof over the exact worktree.
+- Reject accepting Step 1.1e from old logs or todo text without a fresh bounded
+  implementation packet and proof over its exact worktree.
 - Reject a named testcase shortcut, supported-to-unsupported downgrade,
   expectation rewrite, helper rename, or diagnostic reclassification claimed
   as semantic progress.
-- Reject broad unrelated backend rewrites or feature-specific idea-731 closure
-  claims bundled into general infrastructure work.
+- Reject broad unrelated backend rewrites or claims that general
+  infrastructure reopens or extends closed idea 731.
 - Reject a new abstraction that retains mutable published state, ambiguous
   ownership, late allocation repair, or another exact old failure mode behind a
   new name.

@@ -1,496 +1,203 @@
-# Accepted A1-F3 BIR Architecture Implementation Runbook
+# BIR Documentation Ownership And Seam Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md
-Activated from: the architecture accepted at commit
-`edab15ee77b8a0695e43b890c3e4057b1a739f38`, covering independently reviewed
-documentation checkpoint `8a7404a265ab24e230dcf4d001d6d1033e8d9736`
-Supersedes: the completed BIR architecture documentation repair runbook
-and the same implementation route previously mis-scoped under idea 731
+Source Idea: ideas/open/732_bir_stage_document_convergence_umbrella.md
+Activated from: the user-restored docs-only umbrella after ideas 733 was moved
+to draft and idea 734 was recorded as a deferred phase-A implementation
+consumer
 
 ## Purpose
 
-Implement the accepted general A1-F3 BIR architecture without reopening stage
-ownership, weakening exact-revision publication, or turning MIR into a second
-allocator. Preserve explicit feature-consumer boundaries such as idea 731.
+Settle the Markdown ownership, ordering, and producer/consumer seams for the
+complete BIR route before any additional new-BIR implementation is authorized.
 
 ## Goal
 
-Deliver the shared end-to-end compiler path from typed LIR through Canonical
-BIR, target preparation, pseudo lowering, shared BIR allocation, immutable
-MIR-ready publication, strict machine mapping, and emission for the supported
-RV64, AArch64, and x86 profiles.
+Produce an exact ordered documentation-review queue for phases A through F,
+with phase A explicitly proving how the unchanged complete LIR surface maps to
+new Raw-BIR containers and the later idea-734 importer boundary.
 
 ## Core Rule
 
-The accepted architecture is the implementation contract. Raw and Canonical
-BIR remain target-independent and unallocated. All target-specific expansion,
-ordinary allocation, pressure spill/reload, copy resolution, frame-action
-materialization, and one-record realizability proof finish in BIR. F1 applies
-the exact immutable E4 view and cannot allocate, repair, expand, or synthesize
-hidden records.
+This runbook is documentation classification and lifecycle planning only. It
+may inventory Markdown, compare contracts, and create ordered documentation
+child ideas. It must not edit C/C++ implementation, tests, build files, LIR,
+runtime behavior, unsupported expectations, or any downstream implementation
+proposal.
 
-If implementation proves an accepted contract impossible or internally
-incomplete, stop the packet and return to architecture review. Do not silently
-change the route in code or weaken a verifier/test expectation.
+Existing LIR is authoritative and complete. A `source gap` label in current
+BIR documentation is an assumption to audit, not permission to change LIR.
+The sole possible LIR-schema exception is a minimal evidence-required inline-
+asm constraint carrier that records reviewed requirements against ordinary
+operand/result positions and roles. Missing receiving state otherwise belongs
+to new-BIR documentation or the future idea-734 importer wiring.
 
 ## Read First
 
-- `ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md`
-- `ideas/open/731_inline_asm_transport_and_regalloc_contract.md` as a dependent
-  feature consumer, not the owner of this runbook
-- `review/731_current_scope_alignment_review.md`
+- `ideas/open/732_bir_stage_document_convergence_umbrella.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` as a deferred,
+  inactive phase-A implementation consumer
+- `ideas/closed/731_inline_asm_transport_and_regalloc_contract.md` as bounded
+  historical proof only
+- `ideas/draft/733_accepted_bir_a1_f3_architecture_implementation.md` as a
+  parked proposal with no implementation authority
 - `src/backend/bir/README.md`
-- the local accepted README for every owner touched by a packet
-- `src/backend/bir/verify/README.md`
-- `src/backend/mir/README.md`
-- `src/backend/bir/REVIEW_TEMPLATE.md`
+- `src/backend/bir/lir_to_bir/README.md`
 - `src/backend/bir/LEGACY_COVERAGE.md`
-
-## Accepted Starting Point
-
-- Architecture acceptance is recorded for documentation checkpoint
-  `8a7404a265ab24e230dcf4d001d6d1033e8d9736` and does not itself prove any
-  implementation.
-- Generic pipeline identity, deterministic execution control, exact published
-  stage stamps, and private occurrence checkpoints landed in `fa43f618a`,
-  `e77652161`, `8a63a410f`, and `e8320d7ef` and are adopted by idea 733.
-- The dirty Step 1.1e function-attachment transaction packet is preserved as
-  unaccepted WIP. It requires supervisor technical inspection and fresh proof
-  before acceptance or commit.
-- Raw/Canonical core, builder, views, the bounded importer, and part of the
-  verifier exist. Most B1-F3 owners are deferred, scaffolded, or build-excluded.
-- The exact A1-F3 order, product keys, verifier intervals, failure atomicity,
-  finite frame-action schema, and strict F1 boundary are closed decisions.
-- Idea 733 owns the general implementation route. Idea 731 remains open for
-  feature-specific payload, constraints, allocation integration, and late
-  parsing acceptance.
+- `src/backend/bir/REVIEW_TEMPLATE.md`
 
 ## Scope
 
-- complete typed A1-A2 import/Raw-publication foundations required by the
-  accepted general architecture
-- make the accepted BIR pipeline, analyses, verifiers, and immutable capability
-  model executable
-- implement target layout, preparation, typed constraint binding/projection,
-  pseudo formation, shared call lowering, target legalization, out-of-SSA,
-  allocation, spill/reload, E4 publication, and strict MIR consumption
-- support the reviewed RV64, AArch64, x86-64, and i686 target-profile families
-  through shared BIR algorithms and target data/rules
-- provide strict machine/emission extension seams consumed by feature ideas,
-  including idea 731's separately owned late inline-asm integration
-- update local implementation-status documentation only with matching code and
-  proof, then reconcile the required final README surfaces
+- inventory every current BIR Markdown owner and the root-declared phase/order
+- classify each document as stage, pass, analysis, schema, boundary, support,
+  or audit owner
+- identify missing owners, duplicate authority, stale implementation claims,
+  and producer/consumer seams that are asserted rather than demonstrated
+- define input-coverage and output-handoff matrix requirements per phase
+- define phase A against every existing LIR variant and metadata family; keep
+  LIR immutable except for the sole inline-asm constraint-carrier exception
+- create exactly six ordered documentation-only child ideas A through F with
+  strict dependencies and collision-safe IDs
+- link phase A to deferred idea 734 without activating or implementing it
+- prepare the lifecycle handoff to the phase-A child while keeping umbrella
+  idea 732 open until all children and the final cross-phase audit complete
 
 ## Non-Goals
 
-- no general LIR-to-BIR lowering for unrelated instruction families merely to
-  enlarge test coverage
-- no restoration or compilation of `src/backend/legacy/**`, old prealloc/MIR,
-  removed `c4c-as`, or deleted `src/backend/bir/mir/**`
-- no target interpretation in parser, HIR, LIR import, Raw BIR, or Canonical BIR
-- no concrete register names, target opcodes, or frame offsets in BIR nodes
-- no target-specific ordinary allocator or MIR/backend pressure-repair path
-- no broad object/linker/runtime redesign beyond wiring the accepted path into
-  existing F3 facilities
-- no claim that general infrastructure completion proves idea-731 feature
-  completion
-- no guessed GCC/LLVM constraint compatibility and no `VRM1` acceptance
-- no testcase-shaped matcher, named-case shortcut, supported-to-unsupported
-  downgrade, or expectation rewrite claimed as capability progress
+- no C/C++ implementation, test, build, runtime, expectation, unsupported, or
+  allowlist changes
+- no LIR edit outside the evidence-proven minimal inline-asm constraint-carrier
+  exception; no separate inline-asm value subsystem or binding table
+- no idea-734 implementation and no activation of draft idea 733
+- no canonical-pass, target, preparation, constraint, ABI, out-of-SSA,
+  allocation, spill/reload, MIR-ready, MIR, emission, or late-assembly work
+- no stage reorder without a separately identified coordinated documentation
+  boundary packet
+- no heading-only, checkbox-only, formatting-only, or testcase-shaped claim of
+  documentation convergence
 
 ## Working Model
 
-Each step is a milestone and may be split by the supervisor into bounded
-executor packets recorded in `todo.md`. A packet owns only its named stage,
-immediate prerequisites, tests, build integration, and local contract status.
-The supervisor chooses exact proof commands and commit boundaries.
-
-Products are immutable and keyed to the complete accepted revision axes. A
-mutation invalidates all declared successors. Cancellation or validation
-failure publishes no capability, partial graph, cache entry, or mixed product.
-Stable IDs, structural equality, or copied records never establish freshness.
+The umbrella classifies and creates the queue; it does not execute the child
+documentation repairs inside this runbook. Each child must later own only its
+phase's Markdown and must be activated in A-to-F order. Exhausting this runbook
+does not close idea 732: the umbrella remains open until all six children and
+the final audit satisfy its source criteria.
 
 ## Execution Rules
 
-1. Execute the ordered steps below. Do not skip a publication/verifier gate to
-   reach an end-to-end testcase sooner.
-2. Start each code packet with matching before-proof selected by the supervisor;
-   run a fresh build plus the delegated narrow subset after the change.
-3. Use shared semantic/data-driven rules. Target variation belongs in validated
-   tables and registered mappings, not architecture-name branches inside the
-   shared allocator or constraint interpreter.
-4. Keep every packet failure-atomic and revision-key exact before adding the
-   next consumer. Never temporarily publish an invalid capability as scaffolding.
-5. Add neighboring same-rule tests for every new supported path. A single
-   named testcase is never sufficient proof of a semantic stage.
-6. Preserve ordinary semantic identities and feature-extension payloads through
-   shared stages; consumer-specific acceptance remains with the owning idea.
-7. Update a local README's implementation status only when the owned code and
-   proof justify it. Architecture changes require a reviewer checkpoint first.
-8. Run a broader matching CTest checkpoint after Steps 3, 6, 10, 12, and 14.
-   Use the repo regression guard when the supervisor treats a packet as a
-   milestone or the blast radius crosses several buckets.
-9. Before final closure, obtain independent review against the source idea and
-   accepted architecture, then run the supervisor-selected full regression.
-10. Keep idea 733 open if this runbook is retired, blocked, or replaced before
-    its durable criteria are proved. Do not close dependent idea 731 from this
-    runbook.
+1. Use `src/backend/bir/README.md` as the initial order hypothesis, then verify
+   every indexed owner and adjacency rather than accepting headings as proof.
+2. Keep all work documentation-only. Stop if a packet requires code or test
+   behavior changes.
+3. Treat LIR as a complete producer boundary. Correct BIR docs that misclassify
+   existing LIR facts as missing. The only possible schema exception is the
+   minimal inline-asm constraint carrier defined above.
+4. Require each child to enumerate producer variants, stable identities,
+   revision/target keys, optional/error forms, receiving fields, verifier
+   gates, failure behavior, invalidation, and exact downstream acceptance.
+5. Keep idea 734 inactive. Phase A may define its prerequisite contract but
+   cannot implement new-BIR containers or importer wiring.
+6. Keep idea 733 under `ideas/draft/`; do not derive execution packets from it.
+7. Do not close idea 732 when this runbook hands off to Child A. Record the
+   generated queue and deactivate/switch lifecycle state through plan-owner.
 
-## Ordered Implementation Steps
+## Ordered Steps
 
-### Step 1.1 - Establish executable pipeline identity and transaction foundations
+### Step 1 - Revalidate the root Markdown inventory and phase order
 
-Goal: make the accepted stage/revision/product model available to later code
-without implementing target semantics early.
-
-Primary targets:
-
-- BIR core IDs, storage, views, results, and verifier capability types
-- new pipeline/pass/analysis implementation surfaces matching the accepted
-  `pipeline`, `passes`, `analysis/publication`, and `verify` contracts
-- build metadata and focused unit tests
+Goal: establish the complete documentation owner set and the exact proposed
+A-to-F review order without changing implementation.
 
 Actions:
 
-- inventory existing Raw/Canonical bootstrap APIs and reuse their stable-ID and
-  immutable-storage conventions
-- implement exact `PipelineStageStamp`, schema/fingerprint axes, typed stage
-  results, cancellation, deterministic ID reservation, invalidation records,
-  and private transaction/rollback foundations
-- expose no target fact, allocation state, or mutable published graph
-- add build integration and tests for deterministic keys, stale-product
-  rejection, cancellation, rollback, and capability lifetime/ownership
+- enumerate every current `src/backend/bir/**/*.md` owner plus BIR-facing MIR
+  and external boundary documents referenced by the root
+- map each owner to one phase/kind and record missing-index, missing-file,
+  duplicate-authority, stale-status, and adjacency questions
+- compare root order with each producer/consumer declaration and flag every
+  seam that lacks evidence
+- distinguish current implementation truth from accepted architecture text
 
 Completion check:
 
-- the foundation builds in the normal tree; focused tests prove exact-key and
-  failure-atomic behavior; no later stage is falsely reported implemented
+- one review inventory accounts for every relevant Markdown owner exactly once
+  or records an explicit cross-cutting/external classification; unresolved
+  order/ownership questions are concrete enough to assign to a child
 
-### Step 1.2 - Complete A1-A2 import and Raw-publication foundations
+### Step 2 - Define phase A and the deferred idea-734 handoff
 
-Goal: make typed LIR import and Raw publication a sound general input to the
-accepted pipeline while preserving existing feature carriers.
+Goal: make the typed-LIR-to-Raw-BIR documentation boundary exhaustive and
+prevent stale `source gap` language from redirecting work into LIR.
 
 Actions:
 
-- implement the accepted typed `ModuleDraft` import and deferred-resolution
-  seams in bounded opcode-family packets
-- preserve existing structured feature carriers without interpreting target
-  meaning or printer text
-- complete A2 Raw verification/publication rules and prove malformed types,
-  identities, CFG references, and payload/value references publish no `RawBir`
-- reconcile importer/core/verifier tests and truthful local status
+- inventory every existing `LirInst`, `LirTerminator`, and relevant module,
+  function, type, global, value, object, initializer, symbol, and metadata fact
+  as external phase-A inputs
+- require phase-A input and output matrices to name the typed new-BIR receiving
+  container, importer disposition, verifier gate, and failure behavior for
+  every row
+- classify each current gap as missing new-BIR documentation/container,
+  missing importer wiring, stale documentation, or already-proved coverage
+- state explicitly that LIR is complete and immutable and that unsupported
+  diagnostics alone cannot prove receiving completeness
+- document inline-asm inputs/results as ordinary SSA values, reviewed `r`,
+  `=r`, `f`, `VR`, and other evidenced requirements against ordinary positions
+  and roles, and opaque byte-exact asm text; forbid special allocation,
+  projection machinery, and assembler parsing
+- bind deferred idea 734 to the accepted phase-A contract without activating it
 
 Completion check:
 
-- admitted typed LIR constructs reach verified Raw BIR with stable ordinary
-  identities; unresolved or malformed input fails transactionally
+- the phase-A child contract audits every existing LIR fact with no catch-all
+  and gives idea 734 a strict new-BIR-container/importer boundary plus only the
+  evidence-gated inline-asm carrier exception
 
-### Step 2 - Implement B1-B4 canonical foundations
+### Step 3 - Create the ordered A-through-F documentation child queue
 
-Goal: make legalize, scalar, CFG, and SSA canonicalization executable in the
-accepted order.
+Goal: generate exactly six independently reviewable documentation ideas with
+strict predecessor/successor dependencies.
 
 Actions:
 
-- implement the pass runner and mandatory B1-B4 occurrence sequence
-- implement comparison, CFG, dominance, and publication dependencies with
-  exact revision invalidation
-- implement transactional legalize/scalar/CFG/SSA transforms and their verifier
-  postconditions, including explicit Phi SSA and exact `EdgeKey`
-- prove target independence and absence of allocation/preparation facts
+- assign collision-safe IDs and paths to Child A through Child F
+- copy the umbrella's uniform document contract, required review method, and
+  phase-specific owner inventory into each child
+- make B consume accepted A, C consume B, D consume C, E consume D, and F
+  consume E
+- require every child to reject direct implementation, mixed ownership,
+  assertion-only handoffs, and untruthful implementation-status claims
+- keep idea 734 separate from the six docs children and keep idea 733 in draft
 
 Completion check:
 
-- B1-B4 run deterministically on admitted Raw modules, each advances the exact
-  stamp or rolls back, and focused CFG/SSA/value-integrity tests are green
+- exactly six open documentation child ideas exist, each has one phase owner,
+  explicit dependencies, acceptance criteria, closure requirements, and
+  concrete reviewer reject signals
 
-### Step 3 - Implement B5-B8 and Canonical publication
+### Step 4 - Audit the queue and hand off to Child A
 
-Goal: publish one exact target-independent `CanonicalBir` through the complete
-mandatory B1-B8 pipeline.
+Goal: verify that the generated route is executable without authorizing code.
 
 Actions:
 
-- implement memory, aggregate, and intrinsic canonicalizers plus required
-  memory-effect, provenance, and call-graph analyses
-- implement the B8 Canonical verifier/publication gate and cumulative stamp
-- reject unimplemented source shapes explicitly without weakening supported
-  contracts or fabricating target meaning
-- run a broader canonical-pipeline regression checkpoint
+- check the six children against the umbrella inventory, phase order, matrix
+  contract, external-owner rules, and final-audit requirements
+- verify Child A is the only eligible next activation and that ideas 734 and
+  draft 733 remain inactive
+- record durable child IDs/paths and unresolved ownership questions in idea
+  732 at the lowest appropriate lifecycle layer
+- ask plan-owner to deactivate this runbook and activate Child A; do not close
+  idea 732
 
 Completion check:
 
-- every successful supported module traverses B1-B8 in order and publishes one
-  verified Canonical capability; failures leave Raw input unchanged
+- the docs-only queue is internally consistent, Child A is ready for activation,
+  and no implementation or downstream lifecycle has been authorized
 
-### Step 4 - Implement C1-C2 target binding and verified layout
+## Runbook Completion
 
-Goal: derive exact immutable target layouts without mutating Canonical BIR.
-
-Actions:
-
-- implement `TargetProfile` validation and `VerifiedPreparationInput`
-- implement data-driven layouts for reviewed RV64 LP64 variants, AArch64
-  AAPCS64, x86-64 SysV, and i686 SysV
-- verify capacities, aliases, groups, reserved/eligible sets, ABI eligibility,
-  mapping domains, and complete fingerprints
-- reject unknown/inconsistent profiles transactionally
-
-Completion check:
-
-- layout tests cover scalar and group capacities, aliases, reserved units,
-  profile mismatches, and exact Canonical/target binding for every family
-
-### Step 5 - Implement C3-C8 immutable preparation
-
-Goal: publish the complete target-bound preparation bundle in accepted order.
-
-Actions:
-
-- implement ABI, call, variadic, address, feature-vocabulary-table, and
-  runtime-helper planners as immutable products
-- keep classification/planning separate from graph mutation and allocation
-- enforce exact predecessor fingerprints, single producers, cancellation, and
-  all-or-nothing cumulative bundle publication
-- cover ordinary calls, hidden carriers, variadic boundaries, addresses,
-  registered feature-vocabulary transport, and helper eligibility without
-  parsing feature payloads
-
-Completion check:
-
-- C3-C8 success produces one exact `VerifiedPreparationBundle`; stale or mixed
-  products and unsupported requirements fail without partial publication
-
-### Step 6 - Implement C9 binding and shared projection
-
-Goal: interpret reviewed source constraints once and maintain exact bindings
-across later revisions.
-
-Actions:
-
-- implement registry-driven `BoundConstraintSet` roles, classes/groups, ties,
-  early-clobbers, clobbers, and unsupported-spelling diagnostics; idea 731 owns
-  the exact end-to-end `r`, `=r`, `VR`, `VRM2`, `VRM4`, `VRM8`, and `VRM1`
-  feature acceptance
-- implement the sole `ConstraintProjectionTransaction`, replacement/tombstone
-  coverage, occurrence fingerprints, invalidation, and rollback
-- test identity preservation without SSA merging and exact stale-key rejection
-- run a broader preparation/constraint regression checkpoint
-
-Completion check:
-
-- Canonical binding and every tested later projection are complete, immutable,
-  exact-revision keyed, and transactionally rejected on ambiguous lineage
-
-### Step 7 - Implement D1-D3 pseudo formation and shared call lowering
-
-Goal: publish verified Pseudo BIR with all generic and ABI call transport
-explicit before target legalization or allocation.
-
-Actions:
-
-- implement the closed pseudo schema and generic D1 lowering
-- implement shared D2 ABI-aware call lowering from C3/C4 facts for every target
-  profile without concrete register/frame spelling
-- invoke C9 projection after each mutation and implement the allocation-free D3
-  `PseudoPublicationGate`
-- test ordinary/runtime-helper calls, hidden sret/byval/variadic carriers,
-  caller clobbers, per-call preservation, opaque feature-node carriage, and
-  rollback
-
-Completion check:
-
-- D3 publishes only admitted unallocated pseudos with exact projections; every
-  supported call use/definition/fixed requirement is explicit and verifiable
-
-### Step 8 - Implement D4 target pseudo legalization
-
-Goal: make every admitted pre-allocation node directly one-record realizable,
-except the explicitly later D5/E4 families.
-
-Actions:
-
-- implement the registered target legalization/expansion chain for all
-  supported profiles
-- make every introduced value and constraint ordinary BIR state and project the
-  exact resulting revision
-- fully rerun Pseudo verification and fail closed when no direct route exists
-- forbid ABI reclassification, allocation, or hidden MIR expansion
-
-Completion check:
-
-- the D4 gate proves registered direct mappings for the complete supported
-  pseudo set and transactionally rejects unrepresentable nodes
-
-### Step 9 - Implement initial D5 out-of-SSA
-
-Goal: destroy Phi semantics while retaining simultaneous copy requirements for
-allocation.
-
-Actions:
-
-- implement edge-local `ParallelCopy`/`EdgeCopy`, deterministic scratch
-  reservations, critical-edge handling, provenance, and exact projection
-- preserve cycle/overlap semantics and stable identities without scheduling
-  bundles or inventing MIR temporaries
-- implement initial-D5 publication and verifier coverage
-
-Completion check:
-
-- no Phi semantics reach E1; every transfer is edge-complete and cycle-safe;
-  allocation-free initial-D5 verification is green
-
-### Step 10 - Implement E1-E3 shared allocation and spill retry
-
-Goal: assign every allocatable identity or represent pressure with explicit
-verified BIR spill state.
-
-Actions:
-
-- implement exact-revision liveness/interference including ties, clobbers,
-  fixed homes, groups, calls, copies, and non-spillable scratch reservations
-- implement one deterministic shared allocator using layout data for all target
-  profiles, with finite choice/eviction behavior and typed spill requests
-- implement E3 spill slots and directly realizable `Spill`/`Reload` insertion,
-  exact projection, full reverification, and bounded E3-to-E1 retry
-- reject scratch spilling, recursive spill candidates, stale products,
-  non-progress, and ordinary capacity escape to MIR
-- run a broader allocation milestone regression
-
-Completion check:
-
-- stable candidates have complete legal abstract homes and spill coverage;
-  capacity cases either succeed through BIR-owned retry or fail closed
-
-### Step 11 - Implement D5 resolution and E4 materialization closure
-
-Goal: turn the stable assigned candidate into one immutable, directly
-realizable `AllocatedBir` revision.
-
-Actions:
-
-- implement allocation-aware copy resolution with preassigned scratch homes,
-  `CopyResolutionFingerprint`, complete lineage, and no standalone publication
-- implement deterministic E4 frame draft and the finite one-record frame-action
-  family, including callee-save separation and `FrameActionFingerprint`
-- invoke final C9 projection after both mutations, then recompute/validate E1,
-  E2, E3, frame realization, and target realizability in exact order
-- atomically mint `AllocatedBir`, graphless `PreparedBir`, and borrowing
-  `MirReadyBirView`; reject every mixed or predecessor product
-
-Completion check:
-
-- no `ParallelCopy`/`CopyScratch`, implicit frame record, unassigned value, or
-  unrealizable node reaches the view; failure publishes no revision/product
-
-### Step 12 - Implement E4 verification and capability hardening
-
-Goal: make the accepted public/private verifier intervals and ownership rules
-executable and misuse-resistant.
-
-Actions:
-
-- complete `AssignedAllocationCandidateGate` and Allocated/MIR-ready gate
-- prove borrowing/lifetime rules, same-revision graph ownership, exact product
-  keys, one-record mappings, and graphless readiness capability
-- add negative tests for copied graphs, stale/mixed products, hidden frame work,
-  late repair requests, forbidden concrete state, and capability misuse
-- run a broader end-to-E4 regression checkpoint
-
-Completion check:
-
-- only the exact immutable materialized revision can mint a usable
-  `MirReadyBirView`; every forbidden escape is rejected deterministically
-
-### Step 13.1 - Implement strict F1 mapping and RV64 integration
-
-Goal: consume the exact view through an apply-only machine-graph boundary.
-
-Actions:
-
-- implement shared F1 view/key checks and one-record mapping API
-- map abstract homes, frame plan, explicit frame nodes, copies, calls, ordinary
-  pseudos, and registered opaque feature operands for reviewed RV64 profiles
-- integrate with the current RV64 machine graph without allocation, hidden
-  expansion, or pressure/frame repair
-
-Completion check:
-
-- RV64 machine construction succeeds only from the exact view and emits one
-  registered record per BIR node; mapping failures leave no machine graph
-
-### Step 13.2 - Implement AArch64 and x86 F1 mappings
-
-Goal: prove that target variation is data/rules over the shared BIR route.
-
-Actions:
-
-- implement reviewed AArch64, x86-64, and i686 mappings against the same F1 API
-- cover ABI slots, register groups, calls, spills, frame actions, and registered
-  feature-extension operands without target-specific ordinary allocation
-- add cross-target parity and rejection tests
-
-Completion check:
-
-- all supported target families consume the same verified BIR capabilities and
-  satisfy the strict apply-only boundary
-
-### Step 14 - Complete F2-F3 verification and emission integration
-
-Goal: carry the verified machine graph through the accepted machine verifier
-and existing emission path while exposing reviewed late feature seams.
-
-Actions:
-
-- implement/repair machine verification for exact mappings and forbidden late
-  allocation/expansion
-- expose the late assembler extension seam without moving feature parsing or
-  allocation into shared earlier stages; idea 731 owns inline-asm substitution
-  and invalid-payload feature acceptance
-- connect to existing encoding/object/link facilities without broad subsystem
-  redesign
-- cover ordinary mapping/emission, spill pressure, calls, frame actions, target
-  failures, and extension-boundary rejection cases
-- run the broader end-to-end milestone regression
-
-Completion check:
-
-- supported ordinary programs reach encoded output through A1-F3; no machine
-  stage performs allocation repair or hidden expansion
-
-### Step 15 - Reconcile implementation, documentation, and final proof
-
-Goal: decide idea 733 completion from exact general implementation evidence.
-
-Actions:
-
-- reconcile implementation status in every touched local owner and finally
-  `core`, `lir_to_bir`, `verify`, root BIR, and MIR boundary documentation
-- enumerate every intentional deferred item and every implementation/README
-  mismatch; accidental desynchronization must be repaired, not relabeled
-- independently review the full implementation diff against idea 733, the
-  accepted architecture, dependent-feature boundaries, and overfit signals
-- run the supervisor-selected full build/regression guard and confirm legacy
-  sources remain excluded
-- return to the plan owner for the separate source-idea completion decision;
-  do not close solely because this runbook's checklist is exhausted
-
-Completion check:
-
-- independent review has no blocker, full regression is green, documentation
-  matches implementation, and every durable acceptance criterion has explicit
-  evidence or a clearly authorized separate open initiative
-
-## Final Validation Ladder
-
-1. fresh build for every code packet
-2. delegated narrow tests for the owned stage and its immediate boundaries
-3. matching broader CTest/regression-guard checkpoints at the named milestones
-4. cross-target end-to-end tests for RV64, AArch64, x86-64, and i686
-5. exact full regression selected by the supervisor
-6. independent final review against idea 733 and the accepted architecture
-
-No expectation rewrite, unsupported downgrade, documentation-only claim, or
-single target testcase substitutes for semantic implementation proof.
+This runbook is complete when Steps 1-4 produce and validate the ordered
+documentation queue and handoff. Idea 732 itself remains open until all six
+children execute in order and the umbrella-level final Markdown audit passes.

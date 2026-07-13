@@ -1,32 +1,33 @@
 # BIR Stage Documentation Convergence Umbrella
 
-Status: Open (superseded workflow; acceptance criteria not met)
+Status: Open
 Type: Umbrella triage and ordered follow-up idea generator
 Parent: none
 Handoff Directory: none; the durable handoff is this umbrella plus exactly six
 ordered child source ideas under `ideas/open/`
 Related:
 - `src/backend/bir/README.md`
-- `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
-- `ideas/open/733_accepted_bir_a1_f3_architecture_implementation.md`
+- `ideas/closed/731_inline_asm_transport_and_regalloc_contract.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/draft/733_accepted_bir_a1_f3_architecture_implementation.md`
 
 ## Lifecycle Reconciliation
 
-This umbrella's prescribed six-child A-through-F workflow was not executed:
-the six required child ideas were never created or accepted in sequence.
-Therefore its durable acceptance and closure-note criteria are not met, and the
-idea is not closed as complete.
+The user reactivated this docs-only umbrella after moving the general A1-F3
+implementation proposal to `ideas/draft/`. The earlier monolithic documentation
+checkpoint did not execute this umbrella's prescribed six-child A-through-F
+workflow, so the ownership/order/adjacency proof remains incomplete.
 
-The architecture outcome was instead converged through a monolithic docs-only
-runbook and independently accepted at documentation checkpoint
-`8a7404a265ab24e230dcf4d001d6d1033e8d9736`, recorded by commit
-`edab15ee77b8a0695e43b890c3e4057b1a739f38`. General implementation of that
-accepted architecture now belongs to idea 733. Idea 731 remains the dependent
-inline-asm feature/integration consumer.
-
-Treat this file as an unexecuted, superseded workflow record. Do not activate
-its six-child route or use it as implementation authority unless a future
-explicit lifecycle decision chooses to revive and rewrite its unmet process.
+Idea 731 is closed only for its bounded structured inline-asm transport proof.
+Observed production-importer and new-BIR container gaps are recorded in
+deferred idea 734. Existing LIR is authoritative and complete for this route;
+README `source gap` labels are documentation/importer assumptions to audit, not
+permission to change LIR. The sole possible LIR-schema exception is a minimal,
+evidence-required inline-asm constraint carrier that records reviewed
+requirements against ordinary operand/result positions and roles. This
+umbrella must settle Markdown ownership, order, coverage matrices, and phase
+seams before idea 734 can be activated. Draft idea 733 remains parked and
+supplies no implementation authority.
 
 ## Goal
 
@@ -38,7 +39,7 @@ and output seam, and leave no missing, duplicated, or misleading owner before
 any deferred BIR implementation begins.
 
 This umbrella performs classification and planning only. It does not repair a
-BIR document, modify implementation, or activate a runbook.
+BIR document, modify implementation, or activate an implementation runbook.
 
 ## Why This Exists
 
@@ -62,11 +63,16 @@ before it.
   stage/pass index, verifier-profile summary, analysis dependency index, and
   complete-documentation review order. Its phase definitions and within-phase
   order are the source of truth for child generation.
-- The accepted root/subordinate documentation records the current architecture
-  direction: target-independent Raw/Canonical BIR, BIR-owned target layout,
-  shared liveness/regalloc/spill/reload, and a verified MIR-ready view. General
-  implementation ownership now lives in idea 733; idea 731 is only the
-  dependent inline-asm feature/integration consumer.
+- The accepted root/subordinate documentation records an architecture
+  direction, but the phase-by-phase ownership and adjacency proof required by
+  this umbrella has not been executed. Draft idea 733 is not current
+  implementation authority; closed idea 731 proves only one bounded transport
+  path.
+- Idea 734 records a phase-A receiving-boundary gap: production import accepts
+  only a small module/function/instruction/terminator slice and new BIR does not
+  yet expose complete typed containers and wiring for the existing complete LIR
+  surface. README `source gap` rows must be audited as potentially stale
+  assumptions about LIR, not repeated as established LIR defects.
 - Current Markdown status labels and section shapes are not yet a sufficient
   proof of contract completeness. A later child must inspect the actual file,
   its producer, its consumer, and current implementation truth rather than
@@ -102,6 +108,13 @@ existed or that this umbrella met its acceptance criteria.
 - After all six children converge, perform one umbrella-level cross-phase audit
   proving every current `src/backend/bir/**/*.md` file is indexed, formatted,
   adjacent-compatible, and truthful about implementation state.
+- Make phase A explicitly define the handoff to deferred idea 734: inventory
+  every existing LIR variant/metadata fact, name the new Raw-BIR receiving
+  container and importer rule, identify new-BIR-only gaps, and require a
+  complete coverage matrix. LIR files, schemas, and producers are immutable
+  external input except for the sole evidence-gated minimal inline-asm
+  constraint-carrier exception; inline-asm values remain ordinary SSA
+  operands/results and asm text remains opaque and byte-exact.
 
 ## Out Of Scope
 
@@ -109,8 +122,8 @@ existed or that this umbrella met its acceptance criteria.
 - C++ implementation, build wiring, tests, runtime behavior, target backend
   implementation, or any other non-documentation architecture change in this
   umbrella or its six children.
-- Activating, switching, repairing, or closing the current lifecycle merely to
-  create this umbrella or its children.
+- Activating any implementation idea, including draft idea 733 or deferred
+  idea 734, while this documentation workflow is unresolved.
 - Silently changing the normative phase or stage order.
 - Mixing ownership from unrelated phases in one child or treating a child as a
   general backend cleanup route.
@@ -235,6 +248,12 @@ Generate exactly these six child ideas. Their numeric IDs are chosen only when
 they are created, but their phase names, order, scope, and dependencies are
 fixed.
 
+Idea 734 already exists as a deferred implementation follow-up, not as one of
+the six documentation children. Child A must produce the accepted phase-A
+contract that idea 734 will later consume; it must not implement idea 734 or
+change LIR beyond the sole evidence-proven minimal inline-asm constraint-carrier
+exception.
+
 ### Child A — Import and Raw Publication
 
 - Owns the documentation convergence route for phase A from typed LIR import
@@ -243,6 +262,11 @@ fixed.
   verifier, diagnostic, analysis, and boundary contracts.
 - Establishes the complete output contract consumed by phase B.
 - Has no child-phase dependency; it consumes the external typed-LIR contract.
+- Treats existing LIR as complete, corrects stale documentation assumptions,
+  and establishes the exact new-BIR container/import handoff later consumed by
+  idea 734. Its only possible LIR-schema exception is the minimal inline-asm
+  constraint carrier described above; no special inline-asm value model,
+  allocator, projection machinery, or assembler parsing is permitted.
 
 ### Child B — Target-Independent Canonicalization
 
@@ -330,6 +354,9 @@ boundary packet explicitly names both phase owners and the exact shared seam.
 - The final audit records any deliberate external owner referenced from BIR
   docs and verifies its BIR-facing contract without silently absorbing that
   external implementation into a child.
+- Deferred idea 734 is linked as the phase-A implementation consumer, remains
+  inactive throughout this umbrella runbook, and is narrowed to new-BIR
+  container/schema plus importer wiring for the unchanged LIR surface.
 
 ## Closure Note Requirements
 
