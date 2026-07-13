@@ -58,12 +58,12 @@ Edit only these phase-A owners, in this order:
 2. `src/backend/bir/lir_to_bir/memory/README.md`
 3. `src/backend/bir/core/README.md`
 
-Root, verifier, analysis, diagnostics, compatibility, coverage-ledger,
-review-template, and phase-B documents are read-only adjacency evidence. If an
-accepted repair must change a shared or adjacent owner, record the exact seam
-and stop that packet until a coordinated documentation boundary explicitly
-names both owners and the files it authorizes. Do not silently reassign or edit
-shared authority.
+Steps 1-3 edit only those three phase-A owners. Step 4 is the one explicitly
+coordinated documentation-boundary exception and authorizes edits to exactly
+the five shared documents named in that step. All accepted comparison owners,
+other root/verifier/analysis/diagnostic/support documents, phase-B documents,
+and the Child-A source remain read-only. Do not silently reassign or edit any
+other shared authority.
 
 ## Required Matrix Inventory
 
@@ -195,8 +195,9 @@ indexed placeholders; a placeholder must not be called implemented.
   deferred consumer after Child-A acceptance.
 - No activation of Child B, draft idea 733, or any other lifecycle transition
   inside routine execution packets.
-- No shared-owner edit without an explicitly coordinated documentation
-  boundary; record the seam instead of broadening the packet.
+- No shared-owner edit outside the exact five-file coordinated documentation
+  boundary in Step 4; record any additional seam instead of broadening the
+  packet.
 
 ## Execution Rules
 
@@ -222,6 +223,10 @@ indexed placeholders; a placeholder must not be called implemented.
 8. Update routine progress only in `todo.md`. Change this runbook only when its
    route or proof contract genuinely changes; change the source idea only when
    durable intent changes.
+9. Step 4 is a closed five-file documentation exception, not general shared-
+   owner authority. Keep every comparison owner and every unlisted file
+   read-only, and remain at Step 4 until the fresh full shared-row re-audit is
+   clean.
 
 ## Ordered Steps
 
@@ -304,30 +309,87 @@ Completion check:
   semantic duplicate, all identities/orders are stable, and no target or
   allocation state enters Raw BIR
 
-### Step 4 - Audit the shared A2 verifier and cross-cutting boundaries
+### Step 4 - Reconcile and re-audit the coordinated A2 shared-document boundary
 
-Goal: prove the three owned documents agree with shared Draft/Raw,
-analysis/invalidation, diagnostics, compatibility, coverage and review
-contracts without silently reassigning those owners.
+Goal: repair the exact shared wording conflicts discovered by the committed
+read-only audit at `237afcdf`, then prove every Step-4 shared row agrees with
+the accepted phase-A source/receiving contract.
+
+Authorized edit targets, and no others:
+
+1. `src/backend/bir/verify/README.md`
+2. `src/backend/bir/compatibility/README.md`
+3. `src/backend/bir/LEGACY_COVERAGE.md`
+4. `src/backend/bir/passes/legalize/README.md`
+5. `src/backend/bir/README.md`
+
+Accepted comparison owners are read-only:
+
+- `src/backend/bir/lir_to_bir/README.md`
+- `src/backend/bir/lir_to_bir/memory/README.md`
+- `src/backend/bir/core/README.md`
+- `ideas/open/735_bir_phase_a_import_raw_document_convergence.md`
+
+Required semantic resolution:
+
+- state consistently that Raw and Canonical BIR contain no semantic
+  `target_profile`, target triple, rendered `data_layout`, language-ABI mode,
+  pointer-width/address-space layout selection, or other C1/C2 target context
+- retain validation-only origin/parity evidence only as explicitly
+  non-semantic state; it cannot create Raw identity, target facts or layout
+- preserve C1 as the independent exact `TargetProfile` selection authority and
+  C2 as the target-layout derivation authority
+- preserve every current 38/6/18 fact's accepted receiving-side container,
+  wiring or validation-only disposition; desired forms absent from current LIR
+  are outside this intake and do not reopen LIR or authorize a producer/schema
+  change
+- make compatibility and legacy coverage defer to the owning matrix and remain
+  observational/read-only evidence; neither may repair, create or override a
+  semantic fact
+- make B1 legalize describe malformed/missing upstream state only as an
+  inherited A2 publication failure; B1 accepts immutable exact-revision
+  `RawBir` and is never a producer-repair route
+- correct only the root README's stale sentence that idea 731 remains open;
+  its closed-history status is lifecycle truth, not a phase-order, semantic or
+  implementation change
+
+Preserved authority and failure rules:
+
+- `verify_and_publish_raw(ModuleDraft&&)` remains the sole full A2 gate; no
+  builder, diagnostic, compatibility, legacy or B1 bypass is permitted
+- success publishes only the exact frozen verified revision; every failure is
+  atomic and publishes no function subset, partial capability, cache fact or
+  alternate stage token
+- diagnostics/analyses remain read-only exact-revision consumers; compatibility
+  remains quarantined and empty-production; stable IDs and terminators retain
+  their accepted identity/CFG authority
+- no implementation, LIR, test/build/runtime, idea-734, phase-order or other
+  shared-document change is authorized
 
 Actions:
 
-- audit the shared Draft/Raw verifier clauses against every row, exact revision
-  and publication/failure requirement
-- audit analysis cache/revision keys, invalidation and stale-result rejection
-- audit diagnostics as read-only rendering, compatibility as observational
-  quarantine, and coverage/status statements against implementation truth
-- record any necessary shared-owner change as a named coordinated
-  documentation boundary with both owners and the exact seam; do not edit it
-  in an unauthorized packet
+- edit only the five authorized documents to apply the required semantic,
+  authority, failure and lifecycle-status resolution above
+- compare each edit against all four accepted read-only owners and reject any
+  weakening, duplicate authority, producer repair, target-context import or
+  change to the 38/6/18 dispositions
+- after the edits, freshly reread every Step-4 shared row from the committed
+  audit: verifier profiles/publication/validation/type/import/coverage;
+  analysis revision/invalidation; diagnostics; compatibility; legacy coverage;
+  review template; root A1/A2/B1/publication/invalidation/cross-cutting status;
+  and B1 input/authority/failure
+- run link, exact-conflict-removal, preserved-rule, scope and diff checks; do
+  not rely on the pre-edit audit result
 
 Completion check:
 
-- shared evidence accepts the exact A1/A2 contract and no duplicate verifier,
-  semantic owner, cache identity or publication path remains hidden; if a
-  shared-owner change is required, record the concrete coordinated boundary
-  requirement and stop Step 4 until that separately authorized documentation
-  repair is accepted
+- all five authorized documents express the exact resolution and the fresh
+  read-only re-audit finds every Step-4 shared row compatible with the accepted
+  comparison owners; the sole A2 gate, failure atomicity, exact revision,
+  read-only/quarantine rules and B1 immutable Raw input are preserved; only
+  the five authorized documentation files changed in the execution packet; if
+  any conflict remains or a sixth file appears necessary, stay at Step 4 and
+  record the exact unresolved seam without broadening scope
 
 ### Step 5 - Prove phase-B acceptance and the deferred idea-734 boundary
 
