@@ -160,6 +160,14 @@ struct LoadSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct GetElementPtrSpec {
+  GlobalObjectId base{};
+  Type element_type{};
+  bool inbounds = false;
+  std::vector<ValueId> indices;
+  std::uint32_t source_result_id = 0;
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -248,6 +256,8 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, StoreSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, LoadSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block,
+                                         GetElementPtrSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

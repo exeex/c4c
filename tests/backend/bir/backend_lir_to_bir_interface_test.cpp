@@ -2613,6 +2613,489 @@ void test_direct_global_integer_load_rejections() {
            "a later unsupported GEP must roll back all earlier admitted loads");
 }
 
+lir::LirModule selected_global_array_gep_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto i32_link = module.link_names.intern("gep_i32_array");
+  const auto i64_link = module.link_names.intern("gep_i64_array");
+
+  const auto external_array = [](std::string name, c4c::LinkNameId link,
+                                 c4c::TypeBase base, int count,
+                                 std::string llvm_type, int alignment) {
+    lir::LirGlobal global;
+    global.name = std::move(name);
+    global.link_name_id = link;
+    global.type = scalar_type(base);
+    global.type.array_rank = 1;
+    global.type.array_size = count;
+    global.type.array_dims[0] = count;
+    global.linkage_vis = "external ";
+    global.qualifier = "global ";
+    global.llvm_type = std::move(llvm_type);
+    global.align_bytes = alignment;
+    global.is_extern_decl = true;
+    return global;
+  };
+  module.globals.push_back(external_array(
+      "gep_i32_array", i32_link, c4c::TB_INT, 2, "[2 x i32]", 4));
+  module.globals.push_back(external_array(
+      "gep_i64_array", i64_link, c4c::TB_LONGLONG, 3, "[3 x i64]", 8));
+
+  auto block = return_block(0, "entry");
+  block.insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%misleading-gep-result", lir::LirValueId{61}),
+      lir::LirTypeRef("[2 x i32]"),
+      lir::LirOperand::global("@misleading-gep-base", i32_link), true,
+      {lir::LirGepIndex::typed(
+           lir::LirTypeRef::integer(64),
+           lir::LirOperand::integer("displayed-nine", 0)),
+       lir::LirGepIndex::typed(
+           lir::LirTypeRef::integer(64),
+           lir::LirOperand::integer("displayed-zero", 1))}});
+  block.insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%also-misleading-result", lir::LirValueId{62}),
+      lir::LirTypeRef("[3 x i64]"),
+      lir::LirOperand::global("@also-misleading-base", i64_link), false,
+      {lir::LirGepIndex::typed(
+           lir::LirTypeRef::integer(32),
+           lir::LirOperand::integer("displayed-seven", 0)),
+       lir::LirGepIndex::typed(
+           lir::LirTypeRef::integer(64),
+           lir::LirOperand::integer("displayed-one", 2))}});
+  module.functions.push_back(
+      void_definition("selected_global_array_geps", {std::move(block)}));
+  return module;
+}
+
+void test_selected_global_array_gep_receipt() {
+  const auto module = selected_global_array_gep_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "two neighboring authoritative selected-global GEPs should publish Raw BIR");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "typed GEP payloads, ordered indices, and results should be verifier reachable");
+  const auto module_view = imported.value().view();
+  const auto globals = module_view.global_objects();
+  const auto function_id = module_view.functions()[0];
+  const auto function = module_view.function(function_id).value();
+  const auto instructions =
+      function.instructions(function.blocks()[0]).value();
+  expect(globals.size() == 2 && instructions.size() == 2,
+         "selected globals and GEP instructions must preserve source order");
+  const std::vector<std::vector<std::int64_t>> expected_indices = {
+      {0, 1}, {0, 2}};
+  std::vector<bir::ValueId> expected_value_order;
+  for (std::size_t instruction_index = 0;
+       instruction_index < instructions.size(); ++instruction_index) {
+    const auto instruction =
+        function.instruction(instructions[instruction_index]).value();
+    const auto* gep = instruction.get_element_ptr();
+    expect(instruction.opcode() == bir::Opcode::GetElementPtr && gep &&
+               gep->base == globals[instruction_index] &&
+               gep->element_type ==
+                   module_view.global_object(globals[instruction_index])
+                       .value().object_type &&
+               gep->inbounds == (instruction_index == 0) &&
+               instruction.operands().size() == 2 &&
+               instruction.results().size() == 1,
+           "GEP view must expose exact structured global type, flag, ordered uses, and one result");
+    for (std::size_t operand_index = 0;
+         operand_index < instruction.operands().size(); ++operand_index) {
+      const auto index_value =
+          function.value(instruction.operands()[operand_index]).value();
+      expected_value_order.push_back(instruction.operands()[operand_index]);
+      const auto constant = module_view
+                                .constant(std::get<bir::ConstantDef>(
+                                              index_value.definition)
+                                              .constant)
+                                .value();
+      const auto expected_index_type =
+          instruction_index == 1 && operand_index == 0
+              ? bir::Type{bir::TypeKind::Integer, 32, "i32"}
+              : bir::Type{bir::TypeKind::Integer, 64, "i64"};
+      expect(index_value.type == expected_index_type &&
+                 !index_value.source_id &&
+                 std::get<bir::IntegerConstant>(constant.payload).value ==
+                     expected_indices[instruction_index][operand_index],
+             "native immediate GEP indices must become ordered source-less exact constants");
+    }
+    const auto result_id = instruction.results()[0];
+    expected_value_order.push_back(result_id);
+    const auto result = function.value(result_id).value();
+    const auto* definition =
+        std::get_if<bir::InstResultDef>(&result.definition);
+    const std::uint32_t source_id =
+        static_cast<std::uint32_t>(61 + instruction_index);
+    expect(result.type == bir::Type{bir::TypeKind::Pointer} &&
+               result.source_id && result.source_id->value == source_id &&
+               definition && definition->instruction == instructions[instruction_index] &&
+               definition->result_index == 0 &&
+               function.source_value(
+                           bir::SourceValueId{function_id, source_id})
+                       .value() == result_id,
+           "GEP result must be one source-backed pointer InstResultDef");
+  }
+  expect(function.values() == expected_value_order,
+         "GEP index constants and results must preserve source instruction order in the ordinary value registry");
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the admitted selected-global GEP graph should publish Canonical BIR");
+  const auto canonical_view = canonical.value().view();
+  const auto canonical_function_id = canonical_view.functions()[0];
+  const auto canonical_function =
+      canonical_view.function(canonical_function_id).value();
+  expect(canonical_function
+                 .source_value(
+                     bir::SourceValueId{canonical_function_id, 62})
+                 .has_value() &&
+             canonical_function
+                     .instructions(canonical_function.blocks()[0])
+                     .value().size() == 2,
+         "Canonical BIR must preserve neighboring GEP results and source lookup");
+}
+
+void test_selected_global_array_gep_ssa_index_receipt() {
+  auto module = selected_global_array_gep_module();
+  const auto index_link = module.link_names.intern("gep_index_global");
+  lir::LirGlobal index_global;
+  index_global.name = "gep_index_global";
+  index_global.link_name_id = index_link;
+  index_global.type = scalar_type(c4c::TB_LONGLONG);
+  index_global.linkage_vis = "external ";
+  index_global.qualifier = "global ";
+  index_global.llvm_type = "i64";
+  index_global.align_bytes = 8;
+  index_global.is_extern_decl = true;
+  module.globals.push_back(std::move(index_global));
+  auto& instructions = module.functions[0].blocks[0].insts;
+  instructions.insert(
+      instructions.begin(),
+      lir::LirLoadOp{
+          lir::LirOperand::ssa("%misleading-index-load", lir::LirValueId{50}),
+          lir::LirTypeRef::integer(64),
+          lir::LirOperand::global("@misleading-index-global", index_link)});
+  auto& gep = std::get<lir::LirGepOp>(instructions[1]);
+  gep.indices[1] = lir::LirGepIndex::typed(
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::ssa("%wrong-index-display", lir::LirValueId{50}));
+
+  auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "a GEP SSA index should resolve through an earlier Load source identity");
+  const auto module_view = raw.value().view();
+  const auto function_id = module_view.functions()[0];
+  const auto function = module_view.function(function_id).value();
+  const auto ids = function.instructions(function.blocks()[0]).value();
+  const auto load_result = function.instruction(ids[0]).value().results()[0];
+  const auto indexed_gep = function.instruction(ids[1]).value();
+  expect(indexed_gep.get_element_ptr() &&
+             indexed_gep.operands()[1] == load_result &&
+             function.source_value(bir::SourceValueId{function_id, 50})
+                     .value() == load_result,
+         "GEP must reuse the exact prior Load ValueId without display lookup or a parallel index registry");
+}
+
+bir::Type builder_i32_array_type(std::int64_t count) {
+  bir::Type type{bir::TypeKind::Array, 0,
+                 "[" + std::to_string(count) + " x i32]"};
+  type.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 32, 0, {count}};
+  return type;
+}
+
+void test_selected_global_array_gep_builder_contract() {
+  bir::ModuleBuilder builder;
+  const auto array_type = builder_i32_array_type(2);
+  const auto global = builder.add_global_object(
+      "builder_gep_array", array_type, 4, false, false, false, true);
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::Void};
+  const auto function =
+      builder.create_function(signature, "builder_gep", false);
+  const auto foreign_function =
+      builder.create_function(signature, "foreign_gep_owner", true);
+  expect(global.has_value() && function.has_value() &&
+             foreign_function.has_value(),
+         "GEP builder fixture should create its typed owners");
+  bir::InstId gep_id{};
+  bir::ValueId result{};
+  const auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto block = function_builder.create_block("entry");
+        const auto index = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::I64});
+        if (!block || !index)
+          return bir::Result<void, bir::BuildError>::failure(
+              bir::BuildError::StorageExhausted);
+        auto defined = function_builder.define_int_constant(index.value(), 0);
+        if (!defined) return defined;
+        const auto invalid_global = function_builder.append(
+            block.value(),
+            bir::GetElementPtrSpec{
+                bir::GlobalObjectId{999, 0}, array_type, true,
+                {index.value()}, 70});
+        expect(!invalid_global.has_value() &&
+                   invalid_global.error() ==
+                       bir::BuildError::InvalidGlobalObject,
+               "GEP builder must reject a foreign global without staging state");
+        const auto empty = function_builder.append(
+            block.value(),
+            bir::GetElementPtrSpec{global.value(), array_type, true, {}, 70});
+        expect(!empty.has_value() &&
+                   empty.error() == bir::BuildError::UnsupportedOpcode,
+               "GEP builder must reject an empty index sequence");
+        const auto foreign_index = function_builder.append(
+            block.value(),
+            bir::GetElementPtrSpec{
+                global.value(), array_type, true,
+                {bir::ValueId{foreign_function.value(),
+                              bir::ValueKind::Ordinary, 0, 1}},
+                70});
+        expect(!foreign_index.has_value() &&
+                   foreign_index.error() == bir::BuildError::ForeignOwner,
+               "GEP builder must reject a cross-function index ValueId");
+        const auto invalid_source = function_builder.append(
+            block.value(),
+            bir::GetElementPtrSpec{
+                global.value(), array_type, true, {index.value()},
+                std::numeric_limits<std::uint32_t>::max()});
+        expect(!invalid_source.has_value() &&
+                   invalid_source.error() ==
+                       bir::BuildError::InvalidSourceValueId,
+               "GEP builder must reject an invalid result source identity");
+        auto appended = function_builder.append(
+            block.value(),
+            bir::GetElementPtrSpec{global.value(), array_type, true,
+                                   {index.value()}, 70});
+        if (!appended)
+          return bir::Result<void, bir::BuildError>::failure(appended.error());
+        gep_id = appended.value().instruction;
+        result = appended.value().results[0];
+        const auto duplicate = function_builder.append(
+            block.value(),
+            bir::GetElementPtrSpec{global.value(), array_type, true,
+                                   {index.value()}, 70});
+        expect(!duplicate.has_value() &&
+                   duplicate.error() ==
+                       bir::BuildError::DuplicateSourceValue,
+               "GEP builder must reject duplicate result source identities atomically");
+        return function_builder.set_terminator(block.value(),
+                                               bir::ReturnTerm{});
+      });
+  expect(edited.has_value(), "one coherent GEP should remain after rejected appends");
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "a structurally built GEP plus void return should publish Raw BIR");
+  const auto view = raw.value().view().function(function.value()).value();
+  expect(view.instruction(gep_id).value().get_element_ptr() &&
+             view.source_value(bir::SourceValueId{function.value(), 70})
+                     .value() == result,
+         "structural GEP result must remain reachable through its native source identity");
+  expect(bir::canonicalize(std::move(raw).value()).has_value(),
+         "the structural GEP plus void return should publish Canonical BIR");
+
+  bir::ModuleBuilder malformed_builder;
+  const auto malformed_type = builder_i32_array_type(2);
+  const auto malformed_global = malformed_builder.add_global_object(
+      "unresolved_gep_array", malformed_type, 4, false, false, false, true);
+  const auto malformed_function = malformed_builder.create_function(
+      signature, "unresolved_gep", false);
+  expect(malformed_builder
+             .with_function(
+                 malformed_function.value(),
+                 [&](bir::FunctionBuilder& function_builder) {
+                   const auto block = function_builder.create_block("entry");
+                   const auto unresolved = function_builder.reserve_value(
+                       bir::Type{bir::TypeKind::I64});
+                   const auto appended = function_builder.append(
+                       block.value(),
+                       bir::GetElementPtrSpec{
+                           malformed_global.value(), malformed_type, true,
+                           {unresolved.value()}, 71});
+                   if (!appended)
+                     return bir::Result<void, bir::BuildError>::failure(
+                         appended.error());
+                   return function_builder.set_terminator(block.value(),
+                                                          bir::ReturnTerm{});
+                 })
+             .has_value(),
+         "the public builder should stage GEP use before an integer index reservation is defined");
+  const auto malformed = std::move(malformed_builder).publish();
+  expect(!malformed.has_value() &&
+             malformed.error().reason ==
+                 bir::PublishError::VerificationFailed,
+         "FoundationVerifier must prevent an unresolved GEP index graph from publishing Raw BIR");
+}
+
+void test_selected_global_array_gep_rejections() {
+  const auto rejected = [](lir::LirModule candidate,
+                           bir::ImportErrorCode expected,
+                           const std::string& message) {
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() && raw.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical.has_value() && canonical.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+  const auto first_gep = [](lir::LirModule& module) -> lir::LirGepOp& {
+    return std::get<lir::LirGepOp>(module.functions[0].blocks[0].insts[0]);
+  };
+
+  auto raw = selected_global_array_gep_module();
+  auto& raw_gep = first_gep(raw);
+  raw_gep.result = lir::LirOperand("%raw");
+  raw_gep.ptr = lir::LirOperand("@raw");
+  raw_gep.indices = {lir::LirGepIndex::raw("i64 0")};
+  rejected(std::move(raw), bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an ordinary raw GEP producer must remain unsupported");
+
+  auto mixed = selected_global_array_gep_module();
+  first_gep(mixed).indices[1] = lir::LirGepIndex::raw("i64 1");
+  rejected(std::move(mixed),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a mixed raw/authoritative GEP index sequence must reject");
+
+  auto empty = selected_global_array_gep_module();
+  first_gep(empty).indices.clear();
+  rejected(std::move(empty),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an empty authoritative GEP index sequence must reject");
+
+  auto local_base = selected_global_array_gep_module();
+  first_gep(local_base).ptr =
+      lir::LirOperand::ssa("%local", lir::LirValueId{9});
+  rejected(std::move(local_base),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an SSA/local GEP base must remain outside selected-global receipt");
+
+  auto invalid_result = selected_global_array_gep_module();
+  first_gep(invalid_result).result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  rejected(std::move(invalid_result),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an invalid native GEP result identity must reject transactionally");
+
+  auto wrong_result_authority = selected_global_array_gep_module();
+  first_gep(wrong_result_authority).result = lir::LirOperand::global(
+      "%looks-like-result",
+      wrong_result_authority.globals[0].link_name_id);
+  rejected(std::move(wrong_result_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a non-result GEP authority alternative must not use display fallback");
+
+  auto wrong_base_authority = selected_global_array_gep_module();
+  first_gep(wrong_base_authority).ptr =
+      lir::LirOperand::integer("@looks-like-base", 0);
+  rejected(std::move(wrong_base_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a non-global GEP base authority alternative must remain unsupported");
+
+  auto mismatched_array = selected_global_array_gep_module();
+  first_gep(mismatched_array).element_type = lir::LirTypeRef("[3 x i32]");
+  rejected(std::move(mismatched_array),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a distinct well-formed array spelling must reject parity instead of becoming BIR type authority");
+
+  auto noninteger_index = selected_global_array_gep_module();
+  first_gep(noninteger_index).indices[0] = lir::LirGepIndex::typed(
+      lir::LirTypeRef("double"), lir::LirOperand::integer("0", 0));
+  rejected(std::move(noninteger_index),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a noninteger typed GEP index must reject");
+
+  auto wrong_index_authority = selected_global_array_gep_module();
+  first_gep(wrong_index_authority).indices[0] = lir::LirGepIndex::typed(
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::global("0",
+                              wrong_index_authority.globals[0].link_name_id));
+  rejected(std::move(wrong_index_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an unsupported GEP index authority alternative must not use display fallback");
+
+  auto out_of_range = selected_global_array_gep_module();
+  first_gep(out_of_range).indices[0] = lir::LirGepIndex::typed(
+      lir::LirTypeRef::integer(8),
+      lir::LirOperand::integer("displayed-zero", 256));
+  rejected(std::move(out_of_range),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an out-of-range native GEP immediate must reject without truncation");
+
+  auto unknown_index = selected_global_array_gep_module();
+  first_gep(unknown_index).indices[1] = lir::LirGepIndex::typed(
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::ssa("%looks-known", lir::LirValueId{999}));
+  rejected(std::move(unknown_index),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an unknown current-function GEP index identity must reject");
+
+  auto mismatched_ssa = selected_global_array_gep_module();
+  const auto index_link = mismatched_ssa.link_names.intern("mismatch_index");
+  lir::LirGlobal index_global;
+  index_global.name = "mismatch_index";
+  index_global.link_name_id = index_link;
+  index_global.type = scalar_type(c4c::TB_INT);
+  index_global.linkage_vis = "external ";
+  index_global.qualifier = "global ";
+  index_global.llvm_type = "i32";
+  index_global.align_bytes = 4;
+  index_global.is_extern_decl = true;
+  mismatched_ssa.globals.push_back(std::move(index_global));
+  mismatched_ssa.functions[0].blocks[0].insts.insert(
+      mismatched_ssa.functions[0].blocks[0].insts.begin(),
+      lir::LirLoadOp{
+          lir::LirOperand::ssa("%index", lir::LirValueId{50}),
+          lir::LirTypeRef::integer(32),
+          lir::LirOperand::global("@index", index_link)});
+  auto& shifted_gep = std::get<lir::LirGepOp>(
+      mismatched_ssa.functions[0].blocks[0].insts[1]);
+  shifted_gep.indices[1] = lir::LirGepIndex::typed(
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::ssa("%index", lir::LirValueId{50}));
+  rejected(std::move(mismatched_ssa),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an SSA GEP index type mismatch must reject exact source identity reuse");
+
+  auto duplicate_result = selected_global_array_gep_module();
+  std::get<lir::LirGepOp>(
+      duplicate_result.functions[0].blocks[0].insts[1]).result =
+      lir::LirOperand::ssa("%same-id-different-display", lir::LirValueId{61});
+  rejected(std::move(duplicate_result),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "duplicate GEP result identities must reject transactionally");
+
+  auto unresolved = selected_global_array_gep_module();
+  first_gep(unresolved).ptr = lir::LirOperand::global(
+      "@looks-valid", static_cast<c4c::LinkNameId>(999));
+  rejected(std::move(unresolved),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an unresolved native GEP LinkNameId must reject transactionally");
+
+  auto ambiguous = selected_global_array_gep_module();
+  ambiguous.globals[1].link_name_id = ambiguous.globals[0].link_name_id;
+  ambiguous.globals[1].name = ambiguous.globals[0].name;
+  rejected(std::move(ambiguous), bir::ImportErrorCode::UnsupportedGlobals,
+           "ambiguous GEP global ownership must reject before function publication");
+
+  auto later_raw = selected_global_array_gep_module();
+  later_raw.functions[0].blocks[0].insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%later", lir::LirValueId{90}),
+      lir::LirTypeRef::integer(32), lir::LirOperand("@raw")});
+  rejected(std::move(later_raw),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a later raw instruction must roll back all earlier admitted GEP state");
+
+  auto invalid_return = selected_global_array_gep_module();
+  invalid_return.functions[0].blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::integer("misleading", 1),
+      lir::LirTypeRef::integer(32)};
+  rejected(std::move(invalid_return), bir::ImportErrorCode::InvalidVoidReturn,
+           "admitted GEPs must advance diagnosis to the unsupported return boundary");
+}
+
 void test_string_pool_receipt_and_views() {
   std::string embedded("A\0B", 3);
   embedded += "\\22\\5C";
@@ -7199,6 +7682,10 @@ int main() {
   test_direct_global_integer_load_receipt();
   test_direct_global_integer_load_builder_contract();
   test_direct_global_integer_load_rejections();
+  test_selected_global_array_gep_receipt();
+  test_selected_global_array_gep_ssa_index_receipt();
+  test_selected_global_array_gep_builder_contract();
+  test_selected_global_array_gep_rejections();
   test_string_pool_receipt_and_views();
   test_string_pool_rejections_and_transactionality();
   test_external_declaration_receipt_and_views();

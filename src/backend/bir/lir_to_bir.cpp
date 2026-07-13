@@ -24,6 +24,7 @@ using codegen::lir::LirConstInt;
 using codegen::lir::LirExtAttr;
 using codegen::lir::LirExternDecl;
 using codegen::lir::LirFunction;
+using codegen::lir::LirGepOp;
 using codegen::lir::LirGlobal;
 using codegen::lir::LirIndirectBr;
 using codegen::lir::LirInlineAsmOp;
@@ -1499,6 +1500,88 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "duplicate authoritative LirValueId definition");
         continue;
       }
+      if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
+        const auto* result = gep->result.value_id();
+        const auto* base = gep->ptr.link_name_id();
+        if (gep->element_type.kind() !=
+                codegen::lir::LirTypeKind::Array ||
+            gep->result.kind() != codegen::lir::LirOperandKind::SsaValue ||
+            !result || !result->valid() ||
+            gep->ptr.kind() != codegen::lir::LirOperandKind::Global ||
+            !base || *base == c4c::kInvalidLinkName || gep->indices.empty()) {
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "getelementptr requires authoritative result/base identities and nonempty typed array indices");
+        }
+        const LirGlobal* selected = nullptr;
+        for (const auto& global : module.globals) {
+          if (global.link_name_id != *base) continue;
+          if (selected)
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "getelementptr base LinkNameId has ambiguous global ownership");
+          selected = &global;
+        }
+        const auto global_type =
+            selected ? lower_global_type(module, *selected) : std::nullopt;
+        if (!selected || !global_type || global_type->kind != TypeKind::Array ||
+            gep->element_type.str() != global_type->spelling)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "getelementptr element type must exactly identify its selected global array object");
+        for (const auto& index : gep->indices) {
+          if (!index.is_authoritative())
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "getelementptr cannot mix raw and authoritative indices");
+          const auto index_type = lower_lir_type(module, index.type_ref());
+          if (!index_type || !is_integer_type(*index_type) ||
+              index.type_ref().kind() !=
+                  codegen::lir::LirTypeKind::Integer)
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "getelementptr index type must be an exact integer type");
+          const auto& operand = index.value();
+          if (operand.kind() == codegen::lir::LirOperandKind::Immediate) {
+            const auto* immediate = operand.integer_immediate();
+            if (!immediate || !index.type_ref().integer_bit_width() ||
+                !integer_immediate_representable(
+                    immediate->value,
+                    *index.type_ref().integer_bit_width()))
+              return fail<void>(
+                  ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                  block.label,
+                  "getelementptr immediate index lacks exact in-range authority");
+          } else if (operand.kind() ==
+                     codegen::lir::LirOperandKind::SsaValue) {
+            const auto* value_id = operand.value_id();
+            const auto found = value_id
+                                   ? source_values.find(value_id->value)
+                                   : source_values.end();
+            if (!value_id || !value_id->valid() ||
+                found == source_values.end() || found->second != *index_type)
+              return fail<void>(
+                  ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                  block.label,
+                  "getelementptr SSA index must resolve in the current-function source registry with exact type");
+          } else {
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "getelementptr index has an unsupported authority alternative");
+          }
+        }
+        if (!source_values
+                 .emplace(result->value, Type{TypeKind::Pointer})
+                 .second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "duplicate authoritative LirValueId definition");
+        continue;
+      }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
       if (!inline_asm)
         return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -1866,6 +1949,104 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       ImportErrorCode::UnsupportedOrdinaryInstruction, name,
                       block.label,
                       "load result collided in the current-function source registry"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::DuplicateSourceValue);
+                }
+                continue;
+              }
+              if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
+                const auto base =
+                    global_objects.find(*gep->ptr.link_name_id());
+                if (base == global_objects.end()) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated getelementptr base disappeared from the global registry"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::InvalidGlobalObject);
+                }
+                const LirGlobal* selected = nullptr;
+                for (const auto& global : module.globals)
+                  if (global.link_name_id == *gep->ptr.link_name_id()) {
+                    selected = &global;
+                    break;
+                  }
+                if (!selected) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated getelementptr global type disappeared"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::InvalidGlobalObject);
+                }
+                std::vector<ValueId> indices;
+                indices.reserve(gep->indices.size());
+                for (const auto& index : gep->indices) {
+                  const Type type =
+                      *lower_lir_type(module, index.type_ref());
+                  if (const auto* immediate =
+                          index.value().integer_immediate()) {
+                    auto reserved = function_builder.reserve_value(type);
+                    if (!reserved) {
+                      edit_error = builder_failure(
+                          name, block.label,
+                          "reserve getelementptr immediate index",
+                          reserved.error());
+                      return Result<void, BuildError>::failure(
+                          reserved.error());
+                    }
+                    auto defined = function_builder.define_int_constant(
+                        reserved.value(),
+                        static_cast<std::int64_t>(immediate->value));
+                    if (!defined) {
+                      edit_error = builder_failure(
+                          name, block.label,
+                          "define getelementptr immediate index",
+                          defined.error());
+                      return defined;
+                    }
+                    indices.push_back(reserved.value());
+                  } else {
+                    const auto found = source_values.find(
+                        index.value().value_id()->value);
+                    if (found == source_values.end()) {
+                      edit_error = ImportError{
+                          ImportErrorCode::UnsupportedOrdinaryInstruction,
+                          name, block.label,
+                          "validated getelementptr SSA index disappeared from the current-function registry"};
+                      return Result<void, BuildError>::failure(
+                          BuildError::InvalidValue);
+                    }
+                    indices.push_back(found->second);
+                  }
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.label),
+                    GetElementPtrSpec{
+                        base->second, *lower_global_type(module, *selected),
+                        gep->inbounds, std::move(indices),
+                        gep->result.value_id()->value});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append getelementptr",
+                                               appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (appended.value().results.size() != 1) {
+                  edit_error = ImportError{
+                      ImportErrorCode::BuilderFailure, name, block.label,
+                      "getelementptr builder returned an inconsistent result count"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::StorageExhausted);
+                }
+                const auto registered = source_values.emplace(
+                    gep->result.value_id()->value,
+                    appended.value().results[0]);
+                if (!registered.second) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "getelementptr result collided in the current-function source registry"};
                   return Result<void, BuildError>::failure(
                       BuildError::DuplicateSourceValue);
                 }

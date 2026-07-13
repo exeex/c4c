@@ -948,6 +948,117 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(
+    BlockId block, GetElementPtrSpec spec) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& function_data = function.value().get();
+  if (!function_data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  if (spec.source_result_id == std::numeric_limits<std::uint32_t>::max())
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::InvalidSourceValueId);
+  if (function_data.values_by_source_id_.count(spec.source_result_id) != 0)
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::DuplicateSourceValue);
+  if (!spec.base.valid() || spec.base.epoch != parent_->data_->epoch_ ||
+      spec.base.slot >= parent_->data_->globals_.size())
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::InvalidGlobalObject);
+  const auto& global = parent_->data_->globals_[spec.base.slot];
+  if (!is_well_formed(spec.element_type) ||
+      spec.element_type.kind != TypeKind::Array ||
+      global.object_type != spec.element_type)
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::InvalidValueType);
+  if (spec.indices.empty())
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::UnsupportedOpcode);
+  for (const auto index : spec.indices) {
+    if (!same_owner(function_, index))
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::ForeignOwner);
+    const auto value = function_data.values_.get(function_, index);
+    if (!value)
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::InvalidValue);
+    if (!integer_type(value.value().get().type))
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::InvalidValueType);
+  }
+
+  detail::InstData instruction;
+  instruction.opcode = Opcode::GetElementPtr;
+  instruction.payload = GetElementPtrNode{
+      spec.base, spec.element_type, spec.inbounds};
+  instruction.operands = std::move(spec.indices);
+  auto inserted_instruction =
+      function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted_instruction)
+    return Result<BuildResult, BuildError>::failure(
+        storage_error(inserted_instruction.error()));
+  const auto instruction_id = inserted_instruction.value();
+
+  ValueDef value;
+  value.kind = ValueKind::Ordinary;
+  value.type = Type{TypeKind::Pointer};
+  value.source_id = SourceValueId{function_, spec.source_result_id};
+  value.definition = InstResultDef{instruction_id, 0};
+  auto inserted_value =
+      function_data.values_.emplace(function_, std::move(value));
+  if (!inserted_value) {
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(
+        storage_error(inserted_value.error()));
+  }
+  const auto result_id = inserted_value.value();
+  auto stored_instruction =
+      function_data.insts_.get_mut(function_, instruction_id);
+  if (!stored_instruction) {
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  stored_instruction.value().get().results = {result_id};
+
+  if (!function_data.value_order_.append(result_id)) {
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  try {
+    const auto indexed = function_data.values_by_source_id_.emplace(
+        spec.source_result_id, result_id);
+    if (!indexed.second) {
+      function_data.value_order_.erase(result_id);
+      function_data.values_.erase(function_, result_id);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::DuplicateSourceValue);
+    }
+  } catch (...) {
+    function_data.value_order_.erase(result_id);
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    throw;
+  }
+
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data ||
+      !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.values_by_source_id_.erase(spec.source_result_id);
+    function_data.value_order_.erase(result_id);
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(
+      BuildResult{instruction_id, {result_id}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();

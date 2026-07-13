@@ -69,6 +69,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<StoreNode>(instruction.payload);
     case Opcode::Load:
       return std::holds_alternative<LoadNode>(instruction.payload);
+    case Opcode::GetElementPtr:
+      return std::holds_alternative<GetElementPtrNode>(instruction.payload);
   }
   return false;
 }
@@ -644,6 +646,39 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "load must have no operands, one source-backed typed integer result, and one exact global source");
+      }
+      if (const auto* gep =
+              std::get_if<GetElementPtrNode>(&instruction.payload)) {
+        const bool base_resolves =
+            gep->base.valid() && gep->base.epoch == module.epoch_ &&
+            gep->base.slot < module.globals_.size();
+        bool indices_resolve = !instruction.operands.empty();
+        for (const auto index : instruction.operands) {
+          const auto value = function.values_.get(function_id, index);
+          indices_resolve =
+              indices_resolve && index.owner == function_id && value &&
+              integer_type(value.value().get().type);
+        }
+        const ValueDef* result_value = nullptr;
+        if (instruction.results.size() == 1) {
+          const auto resolved =
+              function.values_.get(function_id, instruction.results[0]);
+          if (resolved) result_value = &resolved.value().get();
+        }
+        if (!indices_resolve || instruction.results.size() != 1 ||
+            !base_resolves || !is_well_formed(gep->element_type) ||
+            gep->element_type.kind != TypeKind::Array || !result_value ||
+            (result_value &&
+             result_value->type != Type{TypeKind::Pointer}) ||
+            (result_value &&
+             (!result_value->source_id ||
+              result_value->source_id->owner != function_id)) ||
+            (base_resolves &&
+             module.globals_[gep->base.slot].object_type !=
+                 gep->element_type))
+          report(result, VerificationRule::ValueDefinition, function_id,
+                 inst_id,
+                 "getelementptr must have one exact global array base, nonempty ordered integer indices, and one source-backed pointer result");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {
