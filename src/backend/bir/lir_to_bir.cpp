@@ -335,10 +335,47 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
   if (!module.globals.empty())
     return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                       "module globals require a migrated semantic family");
-  if (!module.string_pool.empty() || !module.str_pool_map.empty() ||
-      module.str_pool_idx != 0)
-    return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
-                      "module string-pool state is not in the bounded slice");
+  if (module.string_pool.empty()) {
+    if (!module.str_pool_map.empty() || module.str_pool_idx != 0)
+      return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
+                        "empty string pool requires an empty cache and zero counter");
+  } else {
+    if (module.str_pool_idx < 0 ||
+        module.string_pool.size() >
+            static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+        static_cast<std::size_t>(module.str_pool_idx) !=
+            module.string_pool.size())
+      return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
+                        "string-pool vector and counter disagree");
+
+    std::unordered_set<std::string> ordered_names;
+    std::unordered_set<std::string> ordinary_names;
+    ordered_names.reserve(module.string_pool.size());
+    ordinary_names.reserve(module.string_pool.size());
+    for (const auto& string_data : module.string_pool) {
+      if (string_data.pool_name.empty() || string_data.byte_length < -1 ||
+          !ordered_names.insert(string_data.pool_name).second)
+        return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
+                          "string-pool rows require unique names and supported lengths");
+      if (string_data.byte_length >= 0)
+        ordinary_names.insert(string_data.pool_name);
+    }
+
+    if (module.str_pool_map.size() != ordinary_names.size())
+      return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
+                        "string-pool cache size must match ordinary rows");
+
+    std::unordered_set<std::string> cached_names;
+    cached_names.reserve(module.str_pool_map.size());
+    for (const auto& cache_entry : module.str_pool_map)
+      if (cache_entry.second.empty() ||
+          !cached_names.insert(cache_entry.second).second)
+        return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
+                          "string-pool cache values must be unique names");
+    if (cached_names != ordinary_names)
+      return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
+                        "cache values must resolve one-to-one to ordinary rows");
+  }
   if (!module.extern_decls.empty() || !module.extern_decl_link_name_map.empty() ||
       !module.extern_decl_name_map.empty())
     return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
@@ -629,6 +666,14 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import struct declaration", added.error()));
+  }
+  for (const auto& string_data : module.string_pool) {
+    auto added = builder.add_string_data(
+        string_data.pool_name, string_data.raw_bytes,
+        static_cast<std::int64_t>(string_data.byte_length));
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import string-pool row", added.error()));
   }
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);

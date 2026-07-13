@@ -1048,6 +1048,144 @@ void test_constant_value_rejections_and_forward_use() {
          "foreign rejection should not poison the surrounding edit");
 }
 
+void test_string_pool_receipt_and_views() {
+  std::string embedded("A\0B", 3);
+  embedded += "\\22\\5C";
+  std::string unusual;
+  unusual.push_back(static_cast<char>(0xff));
+  unusual.push_back('\n');
+  unusual += "opaque\\00tail";
+
+  lir::LirModule module;
+  module.string_pool = {
+      lir::LirStringConst{"@.str0", embedded, 8},
+      lir::LirStringConst{"@.str1", unusual, 3},
+      lir::LirStringConst{"@.str2", "", 1},
+      lir::LirStringConst{"@.str3", "[2 x i32] [i32 1, i32 0]", -1},
+  };
+  module.str_pool_map.emplace(std::string("source\0one", 10), "@.str0");
+  module.str_pool_map.emplace("source-two", "@.str1");
+  module.str_pool_map.emplace("", "@.str2");
+  module.str_pool_idx = 4;
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "ordered string rows with coherent cache evidence should publish");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "published string data should be reachable by FoundationVerifier");
+  const auto view = imported.value().view();
+  const auto ids = view.string_data();
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
+         "string data IDs must preserve vector authority and order");
+  const auto first = view.string_data(ids[0]).value();
+  const auto second = view.string_data(ids[1]).value();
+  const auto third = view.string_data(ids[2]).value();
+  const auto wide = view.string_data(ids[3]).value();
+  expect(first.pool_name == "@.str0" && first.raw_bytes == embedded &&
+             first.byte_length == 8 && second.pool_name == "@.str1" &&
+             second.raw_bytes == unusual && second.byte_length == 3 &&
+             third.pool_name == "@.str2" && third.raw_bytes.empty() &&
+             third.byte_length == 1 && wide.pool_name == "@.str3" &&
+             wide.raw_bytes == "[2 x i32] [i32 1, i32 0]" &&
+             wide.byte_length == -1,
+         "immutable string views must preserve names, opaque bytes, and lengths exactly");
+  expect(view.string_data("@.str1").value() == ids[1],
+         "name lookup must resolve to the ordered typed identity");
+
+  lir::LirModule empty;
+  auto empty_import = bir::lower_lir_to_raw_bir(empty);
+  expect(empty_import.has_value() &&
+             empty_import.value().view().string_data().empty(),
+         "an empty vector/cache with zero counter should publish an empty view");
+}
+
+void test_string_pool_rejections_and_transactionality() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.string_pool = {
+        lir::LirStringConst{"@.str0", "opaque\\00", 4},
+        lir::LirStringConst{"@.str1", "payload", 8},
+    };
+    module.str_pool_map.emplace("source-zero", "@.str0");
+    module.str_pool_map.emplace("source-one", "@.str1");
+    module.str_pool_idx = 2;
+    module.functions.push_back(void_declaration("valid_before_bad_pool"));
+    return module;
+  };
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto module = valid_module();
+    mutate(module);
+    auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code ==
+                   bir::ImportErrorCode::UnsupportedStringPool,
+           message);
+  };
+
+  rejected(
+      [](lir::LirModule& module) { module.string_pool[0].pool_name.clear(); },
+      "empty string names must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.string_pool[1].pool_name = module.string_pool[0].pool_name;
+      },
+      "duplicate ordered string names must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) { module.string_pool[0].byte_length = -2; },
+      "lengths below the evidenced sentinel must reject without parsing payloads");
+  rejected(
+      [](lir::LirModule& module) { module.string_pool[0].byte_length = -1; },
+      "cache entries for cacheless sentinel rows must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) { module.str_pool_map.erase("source-one"); },
+      "missing cache entries must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.str_pool_map.emplace("extra-source", "@.str2");
+      },
+      "extra cache entries must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.str_pool_map["source-one"] = "@.str0";
+      },
+      "conflicting cache values must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.str_pool_map["source-one"] = "@.missing";
+      },
+      "cache values missing from ordered rows must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) { module.str_pool_idx = 1; },
+      "a stale string counter must reject the whole module");
+
+  lir::LirModule malformed_empty;
+  malformed_empty.str_pool_map.emplace("ghost", "@.str0");
+  expect(!bir::lower_lir_to_raw_bir(malformed_empty).has_value(),
+         "an empty pool cannot retain cache state");
+  malformed_empty.str_pool_map.clear();
+  malformed_empty.str_pool_idx = 1;
+  expect(!bir::lower_lir_to_raw_bir(malformed_empty).has_value(),
+         "an empty pool cannot retain a stale counter");
+
+  bir::ModuleBuilder builder;
+  expect(builder.add_string_data("", "payload", 1).error() ==
+             bir::BuildError::EmptyStringDataName,
+         "builder must reject an empty string-data name");
+  expect(builder.add_string_data("@.str0", "opaque", 6).has_value(),
+         "builder should stage a valid ordered string row");
+  expect(builder.add_string_data("@.str0", "other", 5).error() ==
+             bir::BuildError::DuplicateStringDataName,
+         "builder must reject duplicate staged names transactionally");
+  expect(builder.add_string_data("@.str1", "malformed opaque", -2).has_value(),
+         "builder should retain malformed staged length for verifier diagnosis");
+  auto published = std::move(builder).publish();
+  expect(!published.has_value() &&
+             published.error().reason == bir::PublishError::VerificationFailed &&
+             !published.error().verification.errors.empty(),
+         "FoundationVerifier must reject malformed staged string storage");
+}
+
 void test_structured_rejection() {
   lir::LirModule module;
   module.globals.push_back(lir::LirGlobal{});
@@ -1096,6 +1234,8 @@ int main() {
   test_module_name_and_struct_declaration_rejections();
   test_structured_constant_value_receipt();
   test_constant_value_rejections_and_forward_use();
+  test_string_pool_receipt_and_views();
+  test_string_pool_rejections_and_transactionality();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
   return 0;

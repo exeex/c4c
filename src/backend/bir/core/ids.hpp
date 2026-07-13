@@ -47,6 +47,12 @@ struct ConstantId {
   constexpr bool valid() const noexcept { return epoch != 0; }
 };
 
+struct StringDataId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  constexpr bool valid() const noexcept { return epoch != 0; }
+};
+
 struct BlockId {
   FunctionId owner{};
   SlotIndex slot = 0;
@@ -108,6 +114,12 @@ constexpr bool operator==(ConstantId lhs, ConstantId rhs) noexcept {
 constexpr bool operator!=(ConstantId lhs, ConstantId rhs) noexcept {
   return !(lhs == rhs);
 }
+constexpr bool operator==(StringDataId lhs, StringDataId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
+}
+constexpr bool operator!=(StringDataId lhs, StringDataId rhs) noexcept {
+  return !(lhs == rhs);
+}
 constexpr bool operator==(BlockId lhs, BlockId rhs) noexcept {
   return lhs.owner == rhs.owner && lhs.slot == rhs.slot &&
          lhs.generation == rhs.generation;
@@ -150,6 +162,7 @@ static_assert(std::is_trivially_copyable_v<LinkNameId>);
 static_assert(std::is_trivially_copyable_v<StructNameId>);
 static_assert(std::is_trivially_copyable_v<StructDeclId>);
 static_assert(std::is_trivially_copyable_v<ConstantId>);
+static_assert(std::is_trivially_copyable_v<StringDataId>);
 static_assert(std::is_trivially_copyable_v<BlockId>);
 static_assert(std::is_trivially_copyable_v<InstId>);
 static_assert(std::is_trivially_copyable_v<ValueId>);
@@ -190,6 +203,15 @@ struct hash<c4c::backend::bir::StructDeclId> {
 template <>
 struct hash<c4c::backend::bir::ConstantId> {
   size_t operator()(c4c::backend::bir::ConstantId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(
+        hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch),
+        hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::StringDataId> {
+  size_t operator()(c4c::backend::bir::StringDataId id) const noexcept {
     return c4c::backend::bir::detail::hash_combine(
         hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch),
         hash<c4c::backend::bir::SlotIndex>{}(id.slot));

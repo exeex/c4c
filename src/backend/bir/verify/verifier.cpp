@@ -162,6 +162,27 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              "constant payload alternative must match its exact type domain");
   }
 
+  for (std::size_t index = 0; index < module.string_data_.size(); ++index) {
+    const StringDataId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& data = module.string_data_[index];
+    const auto named = module.string_data_by_name_.find(data.pool_name);
+    if (!id.valid() || data.pool_name.empty() || data.byte_length < -1 ||
+        named == module.string_data_by_name_.end() || named->second != id)
+      report(result, VerificationRule::StringDataStorage, {}, id,
+             "string data identity, name, length, and name index must agree");
+  }
+  if (module.string_data_by_name_.size() != module.string_data_.size())
+    report(result, VerificationRule::StringDataStorage, {}, ModuleEntity{},
+           "string data name index size must match ordered storage");
+  for (const auto& entry : module.string_data_by_name_) {
+    if (entry.first.empty() || entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.string_data_.size() ||
+        (entry.second.slot < module.string_data_.size() &&
+         module.string_data_[entry.second.slot].pool_name != entry.first))
+      report(result, VerificationRule::StringDataStorage, {}, entry.second,
+             "string data name index contains a foreign or conflicting row");
+  }
+
   const auto function_counts = counts(module.function_order_.ids_);
   std::unordered_set<FunctionId> live_functions;
   std::unordered_map<std::string, FunctionId> live_names;

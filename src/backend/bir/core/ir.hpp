@@ -44,6 +44,12 @@ struct ConstantDef {
   ConstantId constant{};
 };
 
+struct StringData {
+  std::string pool_name;
+  std::string raw_bytes;
+  std::int64_t byte_length = 0;
+};
+
 struct ValueDef {
   ValueKind kind = ValueKind::Parameter;
   Type type{};
@@ -195,6 +201,8 @@ struct ModuleData {
   std::vector<StructDeclaration> struct_decls_;
   std::unordered_map<StructNameId, StructDeclId> struct_decls_by_name_;
   std::vector<ConstantDefinition> constants_;
+  std::vector<StringData> string_data_;
+  std::unordered_map<std::string, StringDataId> string_data_by_name_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;

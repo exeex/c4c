@@ -168,6 +168,13 @@ class ModuleView {
       ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
     return ids;
   }
+  std::vector<StringDataId> string_data() const {
+    std::vector<StringDataId> ids;
+    ids.reserve(data_->string_data_.size());
+    for (std::size_t i = 0; i < data_->string_data_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
 
   Result<std::string, ResolveError> spelling(LinkNameId id) const {
     if (id.epoch != data_->epoch_)
@@ -213,6 +220,21 @@ class ModuleView {
           ResolveError::OutOfRange);
     return Result<ConstantDefinition, ResolveError>::success(
         data_->constants_[id.slot]);
+  }
+  Result<StringData, ResolveError> string_data(StringDataId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<StringData, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.slot >= data_->string_data_.size())
+      return Result<StringData, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<StringData, ResolveError>::success(data_->string_data_[id.slot]);
+  }
+  Result<StringDataId, ResolveError> string_data(
+      const std::string& pool_name) const {
+    const auto found = data_->string_data_by_name_.find(pool_name);
+    if (found == data_->string_data_by_name_.end())
+      return Result<StringDataId, ResolveError>::failure(
+          ResolveError::OutOfRange);
+    return Result<StringDataId, ResolveError>::success(found->second);
   }
 
   Result<FunctionView, ResolveError> function(FunctionId id) const {

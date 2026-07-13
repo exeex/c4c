@@ -140,6 +140,47 @@ Result<StructDeclId, BuildError> ModuleBuilder::add_struct_declaration(
   return Result<StructDeclId, BuildError>::success(id);
 }
 
+Result<StringDataId, BuildError> ModuleBuilder::add_string_data(
+    std::string pool_name, std::string raw_bytes, std::int64_t byte_length) {
+  if (state_ == State::Consumed)
+    return Result<StringDataId, BuildError>::failure(
+        BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<StringDataId, BuildError>::failure(
+        BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<StringDataId, BuildError>::failure(
+        BuildError::EpochExhausted);
+  if (pool_name.empty())
+    return Result<StringDataId, BuildError>::failure(
+        BuildError::EmptyStringDataName);
+  if (data_->string_data_by_name_.count(pool_name) != 0)
+    return Result<StringDataId, BuildError>::failure(
+        BuildError::DuplicateStringDataName);
+  if (data_->string_data_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<StringDataId, BuildError>::failure(
+        BuildError::StorageExhausted);
+
+  const StringDataId id{
+      data_->epoch_, static_cast<SlotIndex>(data_->string_data_.size())};
+  data_->string_data_.push_back(
+      StringData{pool_name, std::move(raw_bytes), byte_length});
+  try {
+    const auto inserted =
+        data_->string_data_by_name_.emplace(std::move(pool_name), id);
+    if (!inserted.second) {
+      data_->string_data_.pop_back();
+      return Result<StringDataId, BuildError>::failure(
+          BuildError::DuplicateStringDataName);
+    }
+  } catch (...) {
+    data_->string_data_.pop_back();
+    throw;
+  }
+  return Result<StringDataId, BuildError>::success(id);
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 ModuleBuilder::mutable_function(FunctionId function) {
   if (!data_ || data_->epoch_ == 0)

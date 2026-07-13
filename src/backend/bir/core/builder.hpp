@@ -37,6 +37,8 @@ enum class BuildError {
   InvalidValueType,
   InvalidSourceValueId,
   DuplicateSourceValue,
+  EmptyStringDataName,
+  DuplicateStringDataName,
   ValueAlreadyDefined,
   DefinitionTypeMismatch,
   TerminatorAlreadySet,
@@ -157,6 +159,9 @@ class ModuleBuilder {
   Result<StructDeclId, BuildError> add_struct_declaration(
       c4c::StructNameId source_name_id, std::vector<StructField> fields,
       bool is_packed, bool is_opaque);
+  Result<StringDataId, BuildError> add_string_data(std::string pool_name,
+                                                  std::string raw_bytes,
+                                                  std::int64_t byte_length);
 
   using FunctionEdit =
       std::function<Result<void, BuildError>(FunctionBuilder&)>;
