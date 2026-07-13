@@ -20,11 +20,25 @@ template text are first interpreted by the late assembler.
 
 ## Input and ordinary-value binding
 
-Input is one verified cumulative preparation bundle, its exact
-`VerifiedPreparationInput` borrow, verified target layout, immutable target
-tables, each original constraint description and ordered clobber description,
-and the containing instruction's ordinary operand/result ordinals and stable
-identities.
+The only public binding entry point is the all-module transaction:
+
+```cpp
+[[nodiscard]] Result<BoundConstraintSet, ConstraintBindingFailure>
+bind_constraints(const CanonicalBir& canonical,
+                 const TargetProfile& validated_target,
+                 const VerifiedPreparationInput& prepared_input,
+                 const VerifiedTargetLayout& layout,
+                 const VerifiedPreparationBundle& preparation);
+```
+
+All five arguments must name the same complete Canonical `PipelineStageStamp`
+and exact `TargetFingerprint`; `preparation` must contain the exact C3-C8
+fingerprint chain and its C7 `InlineAsmTargetTables`. The API itself traverses
+the Canonical module. For every `InlineAsm` it consumes the original constraint
+descriptions, ordered clobber descriptions, and the containing instruction's
+ordinary operand/result ordinals and stable identities directly from that
+snapshot. A caller-supplied reconstructed description list or parallel value
+graph is not accepted.
 
 Parsing produces a private syntax result; typing resolves admitted spelling,
 role, category/class/group, width, and target eligibility; binding attaches
@@ -54,7 +68,8 @@ encoded machine names, or create spill/reload state.
 
 ## Transaction, verification, and invalidation
 
-All module constraints are parsed, typed, and bound in one private transaction.
+`bind_constraints` parses, types, and binds all module constraints in one
+private transaction.
 Publication rejects unknown or target-ineligible spellings, malformed roles,
 missing operand/result bindings, illegal or cyclic ties, incompatible
 classes/groups, absent capacity, impossible early-clobber combinations,

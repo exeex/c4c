@@ -4,11 +4,11 @@ Status: converged design contract (unimplemented).
 
 ## Contract
 
-Address planning is `C6`. It consumes the exact prepared-input borrow,
-matching target layout, and the published ABI, call, and variadic products. It
-selects a reviewed abstract address-materialization strategy for each
-Canonical address/object/relocation semantic identity while preserving that
-identity and meaning.
+Address planning is `C6`. It consumes the exact `VerifiedPreparationInput`
+borrow, matching `VerifiedTargetLayout`, and the published ABI, call, and
+variadic products. It selects a reviewed abstract address-materialization
+strategy for each Canonical address/object/relocation semantic identity while
+preserving that identity and meaning.
 
 The immutable `AddressPlan` may record base/index eligibility, scale and
 displacement domains, relocation kind requirements, dynamic-stack/object
@@ -31,6 +31,11 @@ All address identities are planned in one transaction. Unsupported relocation
 or object forms, missing provenance required by a strategy, impossible
 width/alignment, incomplete identity coverage, stale analysis, predecessor/key
 mismatch, or diagnostics publish no `AddressPlan`. Inputs remain unchanged.
+
+Any change to the Canonical stage stamp, target fingerprint, layout/address
+schema, an ABI/call/variadic predecessor fingerprint, or a named
+address/object/relocation identity invalidates the complete plan and all C7-C9
+successors.
 
 Legacy coverage: addressing, local/global/static object access, dynamic stack,
 pointer carriers, decoded storage, and target relocation requirements.

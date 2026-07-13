@@ -4,11 +4,11 @@ Status: converged design contract (unimplemented).
 
 ## Contract and ownership boundary
 
-Inline-assembly preparation is `C7`. It consumes the exact prepared-input
-borrow, matching target layout, and the published ABI, call, variadic, and
-address products. It reads no assembly-template bytes. Its sole output is
-immutable target data used by the next planner and by the later register-
-constraint stage.
+Inline-assembly preparation is `C7`. It consumes the exact
+`VerifiedPreparationInput` borrow, matching `VerifiedTargetLayout`, and the
+published ABI, call, variadic, and address products. It reads no
+assembly-template bytes. Its sole output is immutable target data used by the
+next planner and by the later register-constraint stage.
 
 `InlineAsmTargetTables` owns the target-admitted source vocabulary and maps
 each admitted spelling to declarative category/class/group, role, width,
@@ -25,6 +25,11 @@ tie, early-clobber exclusion, or resolved clobber unit. The register-constraint
 stage alone interprets descriptions and attaches meaning to ordinary values.
 Opaque template and original constraint text remain unchanged.
 
+Consequently C7 is tables-only: it cannot parse even an admitted spelling in a
+particular instruction, inspect that instruction's description order, or bind
+a table rule to an operand/result identity. C9 `bind_constraints` is the sole
+interpreter and binder.
+
 ## Binding and consumers
 
 The product key contains the complete Canonical `PipelineStageStamp`, exact
@@ -40,6 +45,12 @@ ambiguous declarative rules, references to absent layout classes/groups,
 inconsistent widths or roles, unresolved abstract clobber vocabulary,
 predecessor/key mismatch, or diagnostics publish no table. Canonical storage,
 opaque texts, and all inputs remain unchanged.
+
+Any change to the Canonical stage stamp, target fingerprint, layout/table
+schema, or ABI/call/variadic/address predecessor fingerprint invalidates the
+complete table and its C8/C9 successors. Changes to a particular original
+constraint description do not change this target-only table, but they do
+invalidate C9's `BoundConstraintSet`.
 
 Legacy coverage: `prealloc/inline_asm.*`, stack-layout inline asm, regalloc
 interaction, and every target emitter's inline-asm path. Legacy routines that

@@ -5,10 +5,10 @@ Status: converged design contract (unimplemented).
 ## Contract
 
 Runtime-helper planning is `C8`, the final preparation dependency. It consumes
-the exact prepared-input borrow, matching target layout, and the published ABI,
-call, variadic, address, and inline-assembly-table products. It selects a
-declared helper interface only for a Canonical semantic operation whose target
-profile explicitly requires that helper route.
+the exact `VerifiedPreparationInput` borrow, matching `VerifiedTargetLayout`,
+and the published ABI, call, variadic, address, and inline-assembly-table
+products. It selects a declared helper interface only for a Canonical semantic
+operation whose target profile explicitly requires that helper route.
 
 C8 is the sole eligibility owner. Its closed table maps admitted canonical
 semantic operation descriptors to eligible helper families and required target
@@ -39,6 +39,11 @@ signature or calling-convention mismatch, helper recursion, ambiguous routes,
 unsupported semantics, stale identities, predecessor/key mismatch, or
 diagnostics publish no `RuntimeHelperPlan` and therefore no cumulative bundle.
 Inputs remain unchanged.
+
+Any change to the Canonical stage stamp, target fingerprint, layout/helper
+schema, an ABI/call/variadic/address/inline-assembly-table predecessor
+fingerprint, or a named helper-eligible operation identity invalidates the
+complete plan, the cumulative bundle, and C9.
 
 Legacy coverage: i128/f128, atomic, and intrinsic helpers; declarations,
 clobbers, returns, and recursion guards. Exact audit anchors include

@@ -32,5 +32,9 @@ ineligible classes, stale IDs, incomplete formals/results, key mismatch, or
 non-deterministic classification. Failure publishes no `AbiPlan`; Canonical
 storage and the layout remain unchanged.
 
+Any change to the Canonical stage stamp, target fingerprint, target-layout or
+ABI schema, or any classified semantic identity invalidates the complete plan
+and all C4-C9 successors.
+
 Legacy coverage: call-return ABI classification, target register profiles,
 formal publications, value locations, special carriers, and aggregate ABI.

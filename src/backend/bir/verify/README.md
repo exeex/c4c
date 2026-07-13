@@ -1,7 +1,7 @@
 # BIR verifier design
 
-Status: Raw, Canonical, PreparedInput, Pseudo, and Allocated publication
-boundaries are closed architecture contracts. The checked-in
+Status: Raw, Canonical, Pseudo, and Allocated publication boundaries plus the
+PreparedInput gate are closed architecture contracts. The checked-in
 `verifier.hpp/.cpp` is a partial foundation implementation, not the complete
 contract described here.
 
@@ -41,7 +41,7 @@ later are target contract, not implemented `VerificationRule` alternatives.
 LIR lowering -> ModuleBuilder -> frozen ModuleDraft --verify_and_publish_raw--> RawBir
                                       \--verify_candidate(Raw)--> diagnostics only
 ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
-preparation input gate --verify(PreparedInput)--> accepted input for typed plans
+C1 target selection + Canonical --verify_preparation_input--> VerifiedPreparationInput
 private D2 candidate --verify-and-publish(Pseudo)--> PseudoBir
 complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 private E3 rewrite --full verify(retry candidate)--> immutable E1/E2 retry input
@@ -65,8 +65,8 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | Profile | Required now | Meaning |
 |---|---:|---|
 | `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
-| `Canonical` | later | Raw rules plus the post-pass normal forms promised by the pipeline: legalized types/opcodes, canonical memory/address form, SSA/phi rules, normalized aggregate/intrinsic forms, and B3 / P03 entry reachability for every retained block. |
-| `PreparedInput` | later | Canonical rules plus prerequisites required to derive ABI/address/call plans. It still contains no prepared facts. |
+| `Canonical` | later | The exact immutable B7 / P07 revision published by B8: Raw rules plus all P01-P07 normal forms, including B3 / P03 reachability. It is target-independent and is not a request to validate an arbitrary post-Raw snapshot. |
+| `PreparedInput` | later | A non-mutating C1 input-gate rule set over one already-published `CanonicalBir` plus one validated `TargetProfile`. It binds their exact stamp/fingerprint and proves complete typed semantic inputs for C2-C9; it is not a BIR publication profile and contains no prepared facts. |
 | `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1/D2 lowering, and stage-specific realizability rules. Allocation completeness is not required. |
 | `Allocated` | later | Full graph/Pseudo rules plus the exact stable E3 revision, complete legal abstract assignments, explicit verified spill/reload transitions, fresh target/product bindings, and atomic MIR-ready publication. |
 
@@ -87,6 +87,17 @@ BIR” would blur authority. Such facts are forbidden in Raw, Canonical,
 PreparedInput, and D1-D5 Pseudo profiles; E3 retry candidates admit only their
 explicit abstract spill schema and remain unpublished until the later
 allocated boundary succeeds.
+
+The exact additional `PreparedInput` promise is closed: the B8 stage capability
+and selected target fingerprint are current and mutually bound, and every
+preparation-facing function/call signature and convention, variadic boundary
+and promotion, address/object/relocation descriptor with required provenance,
+original inline-assembly description with complete ordinary value identities,
+and helper-eligible semantic operation descriptor is present and typed. The
+gate reruns applicable Canonical and forbidden-fact checks, but it neither
+decides target eligibility nor derives layout, ABI, call, variadic, address,
+inline-assembly-table, helper, or constraint facts. Those decisions belong to
+C2-C9 and may reject the input.
 
 Raw allowances are explicit:
 
@@ -530,6 +541,8 @@ struct VerificationReport {
 
 class ModuleDraft;          // move-only unpublished storage
 class CandidateModuleView;  // read-only borrow of one frozen draft revision
+class VerifiedPreparationInput;  // borrowing Canonical/target C1 capability
+class PreparationInputFailure;   // report plus target validation cause
 
 class PublicationFailure {
  public:
@@ -558,6 +571,10 @@ class PublicationFailure {
     VerifyOptions options = {});
 [[nodiscard]] Result<RawBir, PublicationFailure> verify_and_publish_raw(
     ModuleDraft&& draft, VerifyOptions options = {});
+[[nodiscard]] Result<VerifiedPreparationInput, PreparationInputFailure>
+verify_preparation_input(const CanonicalBir& canonical,
+                         const TargetProfile& validated_target,
+                         VerifyOptions options = {});
 [[nodiscard]] VerificationReport verify_function(
     ModuleView module, FunctionId function, VerifyProfile profile,
     VerifyOptions options = {});
@@ -608,6 +625,15 @@ and CI run the same full Raw rule set, but only
 candidate to the public stage type. `verify_candidate`, `verify_function`, and
 `verify_after_edit` cannot issue a module publication proof even when their
 report is green.
+
+`VerifyProfile::PreparedInput` names the cumulative rule set reported by
+`verify_preparation_input`; it is not accepted by the target-less generic
+`verify`, `verify_candidate`, `verify_function`, or `verify_after_edit` entry
+points. Only the dedicated C1 gate can return `VerifiedPreparationInput`, and
+that move-only borrowing capability expires when either the Canonical
+`PipelineStageStamp` or validated target fingerprint changes. Failure returns
+no capability and cannot cache a green Canonical recheck as target-binding
+authority.
 
 The checked-in bootstrap names (`FoundationVerifier`, `VerificationResult`, and
 `VerifyProfile::FoundationRaw`) remain the implementation adapter until this
@@ -1034,9 +1060,9 @@ callee or a link-name fallback (`CallCalleeInvalid`). For both:
 
 Raw verification must reject legacy `CallArgAbiInfo`, `CallResultAbiInfo`, sret
 slot names, result lanes, call move records, chosen source routes, physical
-registers, stack offsets, and helper-name inference. `PreparedInput` may require
-enough semantic aggregate/calling-convention data to compute those facts, but it
-still must not contain the computed facts.
+registers, stack offsets, and helper-name inference. `PreparedInput` requires
+the complete typed aggregate/calling-convention semantic inputs enumerated by
+its closed gate promise, but it still must not contain any computed fact.
 
 ## Memory, addresses, GEP, and atomics
 
@@ -1255,7 +1281,8 @@ behavior, and the full verifier land together.
 ## Incremental verification and mutation contracts
 
 Full verification is required after LIR-to-Raw publication, before/after a pass
-in debug/CI configurations, and at Canonical/PreparedInput publication.
+in debug/CI configurations, at Canonical publication, and at the
+`PreparedInput` gate.
 Incremental verification is for edit loops:
 
 - value/operand edit: containing instruction schema, both definitions, all old
@@ -1390,7 +1417,7 @@ input is verified here but the named decision belongs after BIR.
     and maintain explicit expected failures for features not yet modeled. Never
     weaken a rule merely to accept a legacy side table.
 
-## Closed A2 choices and remaining Step 7 questions
+## Closed A2 and Step 7 choices
 
 The verifier consumes these settled core choices; they are not profile options:
 
@@ -1415,13 +1442,19 @@ The verifier consumes these settled core choices; they are not profile options:
   compares it; a revision-bound analysis may cache other reference indexes but
   cannot replace core value def-use.
 
-Only these questions remain open, both explicitly assigned to Plan Step 7:
+Step 7 closes the two preparation-facing choices:
 
-1. Which C9 constraint-binding API materializes the already-settled boundary in
-   which Raw checks generic SSA edges and opaque payload storage while C9 alone
-   parses and binds target meaning?
-2. What exact pass promise distinguishes `Canonical` from `PreparedInput` once
-   the preparation APIs are fixed?
+1. `verify_preparation_input` is the only target-bound C1 input gate. It
+   rechecks the exact B8 `CanonicalBir`, binds its full `PipelineStageStamp` to
+   one validated `TargetFingerprint`, and proves only the complete typed
+   semantic prerequisites enumerated above. It is non-mutating, publishes no
+   BIR revision or prepared fact, and may not stand in for C2-C9.
+2. C9's sole public interpretation API is the all-module `bind_constraints`
+   transaction defined by `regalloc/constraints`. It consumes the exact
+   Canonical snapshot, validated target, `VerifiedPreparationInput`,
+   `VerifiedTargetLayout`, and C3-C8 `VerifiedPreparationBundle`; reads original
+   descriptions and ordinary identities from that snapshot; and publishes one
+   immutable `BoundConstraintSet` or nothing. C7 remains tables-only.
 
 ## Research anchors inspected
 

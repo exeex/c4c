@@ -5,11 +5,11 @@ Status: converged design contract (unimplemented).
 ## Position and authority
 
 Target-layout derivation is `C2`. It follows validation of one
-[`TargetProfile`](../../../target_profile.hpp) at `C1`, consumes the
-`VerifiedPreparationInput` produced for that same selection, and precedes every
-planner. It is the sole owner of the target's abstract register vocabulary and
-finite capacity model. It does not inspect Canonical instructions or decide
-which value uses a slot.
+[`TargetProfile`](../../../target_profile.hpp) and the non-mutating
+prepared-input gate at `C1`, consumes the `VerifiedPreparationInput` produced
+for that exact Canonical/target pair, and precedes every planner. It is the sole
+owner of the target's abstract register vocabulary and finite capacity model.
+It does not inspect Canonical instructions or decide which value uses a slot.
 
 The selected profile is identified by one `TargetFingerprint` covering the
 architecture, triple/OS, backend ABI, relocation model, floating-point ABI,
@@ -19,9 +19,10 @@ name equality is insufficient.
 
 ## Input and immutable output
 
-Input is a validated `TargetProfile`, its exact `TargetFingerprint`, and a
+Input is the exact validated `TargetProfile`, its `TargetFingerprint`, and a
 borrowing `VerifiedPreparationInput` carrying the complete Canonical
-`PipelineStageStamp`. The transaction derives one immutable
+`PipelineStageStamp` and that same target fingerprint. The transaction derives
+one immutable
 `VerifiedTargetLayout` containing:
 
 - ordered category, class, group, and abstract-slot identifiers;
@@ -68,6 +69,7 @@ profile combinations, duplicate IDs or mappings, overlapping reserved and
 eligible units, asymmetric aliases, inconsistent capacities, impossible group
 rules, empty required classes, ABI-ineligible mappings, or a fingerprint that
 does not cover every selected target axis. A stale Canonical stage stamp or
-target/stamp mismatch also rejects publication. Failure publishes no layout or
-partial table. Inputs remain unchanged; any stamp, target, or layout-schema
-change invalidates the capability.
+target/stamp/`VerifiedPreparationInput` mismatch also rejects publication.
+Failure publishes no layout or partial table. Inputs remain unchanged; any
+Canonical stamp, target fingerprint, target-profile schema, or layout-schema
+change invalidates the capability and every C3-C9 successor.
