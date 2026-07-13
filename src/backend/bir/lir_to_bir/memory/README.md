@@ -2,10 +2,11 @@
 
 Status: reviewed import sub-boundary; implementation remains build-excluded.
 
-This document is reviewed with `lir_to_bir/README.md` at root stage `S00`. It
-does not create another stage between LIR import and Raw verification, and it
-does not authorize the quarantined source files in this directory to enter the
-build.
+This document is reviewed with `lir_to_bir/README.md` as a memory-import
+sub-boundary within root stage `A1`. It does not create another root stage
+between `A1` draft construction and `A2` Draft/Raw verification and
+publication, and it does not authorize the quarantined source files in this
+directory to enter the build.
 
 ## Input and identity
 
@@ -65,11 +66,13 @@ tests exist together. Legacy file presence is not evidence of support.
 
 ## Review disposition
 
-- Predecessor: typed LIR and the parent import inventory at `S00`.
+- Root stage: `A1` LIR import and draft construction.
+- Predecessor: typed LIR and the parent import inventory within `A1`.
 - Output: memory entities inside the parent's single frozen `ModuleDraft`.
-- Publication gate: the sole full Raw gate at `S01`.
-- Successor: `P01 legalize`; the later canonical memory pass normalizes, but
-  cannot repair lossy or malformed import.
+- Publication gate: the sole full Draft/Raw gate at `A2`, which publishes a
+  verified `RawBir` or publishes nothing.
+- Successor: root `B1` / `P01 legalize`; the later canonical memory pass
+  normalizes, but cannot repair lossy or malformed import.
 - Re-entry: forbidden for a published revision; import constructs a new draft.
 - Stable identity: exact BIR IDs and generic SSA edges survive publication;
   importer maps and derived analyses do not.
