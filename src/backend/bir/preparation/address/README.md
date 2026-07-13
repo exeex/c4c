@@ -20,6 +20,13 @@ every required one-to-many target expansion before allocation. F1 may only map
 the resulting directly realizable node one-to-one; it cannot reopen an address
 strategy as late instruction selection or repair.
 
+After D5 resolution, the E4-owned `FrameRealizationTransaction` consumes the
+exact C6 strategy lineage and resolved allocation products to choose exact
+frame-object bases, offsets, and displacements. If a dynamic-frame interaction
+or displacement would require address materialization or more than the one
+already admitted record, it fails atomically before publication; F1 cannot
+choose an alternate address sequence.
+
 ## Binding and consumers
 
 The product key contains the complete Canonical `PipelineStageStamp`, exact

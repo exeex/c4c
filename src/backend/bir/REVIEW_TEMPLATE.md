@@ -19,9 +19,9 @@ failure result, and next consumer for every row:
 | `PseudoBir` -> D4 -> initial D5 | Does D4 perform every required target one-to-many expansion and full reverification, then does initial D5 remove all phi semantics into the bounded intermediate `ParallelCopy`/`EdgeCopy` and `CopyScratch` schema with exact projection? |
 | initial D5 -> E1 | Are liveness, interference, fixed homes, call/inline-asm roles, clobbers, simultaneous-copy semantics, scratch reservations, and pressure derived from the exact fully reverified initial-D5 candidate revision? |
 | E1 -> E2 | Does E2 alone assign legal abstract category/class-or-group/slot homes using the exact E1 and target-pool keys? |
-| E2 -> E3 -> E1 retry | Does E3 alone add explicit abstract spill identities and `Spill`/`Reload`; does every mutation advance and fully reverify the candidate before fresh E1/E2 facts? |
-| stable E3 -> D5 copy resolution -> E4 -> `AllocatedBir` | Does D5 alone transactionally resolve every bundle through already assigned homes and scratch, emit an exact resolved projection without allocation repair, then does E4 freeze that candidate, rerun cumulative graph/Pseudo/D5/allocation checks, reject mixed or stale products, and publish atomically? |
-| `AllocatedBir` -> `PreparedBir` / `MirReadyBirView` -> MIR | Do all capabilities name the same immutable revision, with the readiness object owning no graph and the view only borrowing; does MIR perform same-key concrete mapping and one-to-one selection without ordinary allocation fallback? |
+| E2 -> E3 -> E1 retry | Does E3 alone add explicit abstract spill identities and `Spill`/`Reload`; does every mutation advance and pass the private assigned-candidate gate before fresh E1/E2 facts, without invoking the allocation-free Pseudo publication gate? |
+| stable E3 -> D5 copy resolution -> E4 -> `AllocatedBir` | Does D5 alone resolve every bundle through assigned homes/scratch; do exact-current projection/E1/E2/E3 products feed the E4-owned non-mutating frame transaction; does the final target key bind its exact frame key; and does E4 rerun private assigned-candidate plus Allocated rules atomically? |
+| `AllocatedBir` -> `PreparedBir` / `MirReadyBirView` -> MIR | Do all capabilities name the same immutable revision and exact frame plan; does MIR apply fixed bases/offsets/displacements and one registered mapping per node without choosing placements, expanding, or returning repair to D4? |
 
 For each transition, attach the predecessor fingerprint set and prove the
 consumer rejects a missing, stale, foreign, mixed-target, or cross-revision
@@ -42,6 +42,12 @@ bounded retry. No later stage may be described as repairing malformed input.
   refreshed key, assignment fragment, or alternate graph?
 - Are `PreparedBir` and `MirReadyBirView` capabilities over the exact owning
   `AllocatedBir`, rather than copied or rebuilt instruction storage?
+- Does `FrameRealizationTransaction` cover every spill/reload, outgoing call,
+  static/dynamic frame interaction, displacement, adjustment, implicit frame
+  action, and mapping-rule ID, failing before publication if one record is
+  impossible?
+- Are published D3/D4/initial-D5 `PseudoBir` and private assigned E3/D5
+  candidates checked by distinct gates with opposite allocation-state rules?
 
 ## 3. Legacy disposition review
 

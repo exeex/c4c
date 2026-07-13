@@ -81,15 +81,21 @@ occurrence or a new A-F stage. It runs last in the enclosing
 graph, resolved `PipelineStageStamp`, `CopyResolutionFingerprint`, exact
 target/layout/schema and `ProjectedConstraintSet` keys, and the newly staged
 exact-current `LivenessInterferenceKey`, `AssignmentKey`, and `SpillStateKey`.
+The E4-owned non-mutating `FrameRealizationTransaction` runs immediately
+before this checker, so the checker also consumes its exact-current
+`FrameRealizationKey`.
 It rechecks every surviving node, including each
 resolved `EdgeCopy`, against the registered direct-mapping rule and installs
-one `TargetRealizabilityKey` product keyed to that exact revision. The predecessor D4 or
+one `TargetRealizabilityKey` product keyed to that exact revision and exact
+frame product. The predecessor D4 or
 E3-retry product is invalid after the rewrite; stable IDs, structural equality,
 and D5's preservation record cannot rekey it. Checker failure aborts the whole
 copy-resolution transaction and publishes no realizability product or E4
-input. Frame-placement completeness and the final one-record closure remain
-the separate downstream contract; this exact-key refresh does not repair or
-weaken them.
+input. The frame transaction has already fixed every exact object base, offset,
+displacement, stack adjustment, static/dynamic interaction, and registered
+implicit-action rule. The checker proves each non-`InlineAsm` node directly
+maps under those facts; it cannot select placement, materialize an address,
+expand a node, or return repair to D4.
 
 ## Forbidden authority and failure
 

@@ -44,9 +44,9 @@ ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
 C1 target selection + Canonical --verify_preparation_input--> VerifiedPreparationInput
 private complete D2 call-lowering candidate --verify-and-publish(Pseudo)--> PseudoBir
 complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
-private E3 rewrite --full verify(retry candidate)--> immutable E1/E2 retry input
+private E3 rewrite --AssignedAllocationCandidateGate--> immutable E1/E2 retry input
 stable E3 candidate --D5 copy resolution--> private resolved candidate
-resolved candidate --verify-and-publish(Allocated)--> AllocatedBir + PreparedBir
+resolved candidate --AssignedAllocationCandidateGate + frame/Allocated gate--> AllocatedBir + PreparedBir
                                                      \--> borrowed MirReadyBirView
 ```
 
@@ -68,8 +68,8 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
 | `Canonical` | later | The exact immutable B7 / P07 revision published by B8: Raw rules plus all P01-P07 normal forms, including B3 / P03 reachability. It is target-independent and is not a request to validate an arbitrary post-Raw snapshot. |
 | `PreparedInput` | later | A non-mutating C1 input-gate rule set over one already-published `CanonicalBir` plus one validated `TargetProfile`. It binds their exact stamp/fingerprint and proves complete typed semantic inputs for C2-C9; it is not a BIR publication profile and contains no prepared facts. |
-| `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1 lowering and [D2 call lowering](../passes/call_lowering/README.md), and stage-specific realizability rules. Allocation completeness is not required. |
-| `Allocated` | later | Full graph/Pseudo rules plus the exact post-E3 D5 copy-resolution revision, complete legal abstract assignments, explicit verified spill/reload transitions, no unresolved copy intermediate, fresh target/product bindings, and atomic MIR-ready publication. |
+| `Pseudo` | later | The public `PseudoPublicationGate`: Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1 lowering and [D2 call lowering](../passes/call_lowering/README.md), and stage-specific realizability rules. It publishes D3/D4/initial-D5 `PseudoBir` and rejects assignments and spill state. |
+| `Allocated` | later | The private `AssignedAllocationCandidateGate` retains every applicable graph/Pseudo rule while admitting and requiring exact candidate assignments and explicit spill state; E4 then adds exact frame realization and Allocated rules before atomic MIR-ready publication. |
 
 The semantic profiles are cumulative. `PreparedInput` cannot weaken
 `Canonical`, `Canonical` cannot weaken `Raw`, `Pseudo` retains every applicable
@@ -85,9 +85,11 @@ prepared plans are different typed products with their own verifiers. Adding
 ABI locations, allocation assignments, spill/reload state, frame facts, target
 operations, helpers, or encodings to BIR and then calling that object “Prepared
 BIR” would blur authority. Such facts are forbidden in Raw, Canonical,
-PreparedInput, and D1-D5 Pseudo profiles; E3 retry candidates admit only their
-explicit abstract spill schema and remain unpublished until the later
-allocated boundary succeeds.
+PreparedInput, and `PseudoPublicationGate`. Private E3
+retry and D5-resolved candidates instead pass
+`AssignedAllocationCandidateGate`, which admits and requires their exact
+abstract assignments and spill schema but cannot publish a second `PseudoBir`
+type. They remain private until the Allocated boundary succeeds.
 
 The exact additional `PreparedInput` promise is closed: the B8 stage capability
 and selected target fingerprint are current and mutually bound, and every
@@ -193,9 +195,9 @@ rollback may retain its explicitly permitted last-good checkpoint, but only a
 new exact P07 occurrence followed by a successful B8 transaction can publish
 `CanonicalBir`.
 
-### Pseudo profile and D3/D4/D5 publication
+### Pseudo publication and private assigned-candidate intervals
 
-The `Pseudo` profile accepts only one private frozen candidate carrying a
+The public `PseudoPublicationGate` accepts only one private frozen candidate carrying a
 complete `PseudoStageKey`. That key must name the exact current
 `PipelineStageStamp`, parent Canonical stamp, `TargetFingerprint`, layout and
 pseudo-schema fingerprints, `VerifiedPreparationBundle` fingerprint,
@@ -204,11 +206,11 @@ Canonical `BoundConstraintSet` fingerprint, exact current
 applicable D4/D5 occurrence. Equal module revisions, equal semantic
 hashes, compatible targets, or copied reports do not establish freshness.
 
-The cumulative Pseudo check rejects:
+The cumulative publication check rejects:
 
 1. every Canonical semantic leftover, `GenericCall` at D3 or later, unknown or
    stage-ineligible pseudo alternative, target opcode, concrete register,
-   frame offset, encoded instruction, allocation assignment, and hidden
+   frame offset, encoded instruction, allocation assignment, spill state, and hidden
    scratch/spill convention;
 2. malformed operands, results, types, effects, terminators, CFG, def-use, SSA,
    ownership, or descriptor/version combinations;
@@ -230,6 +232,11 @@ and D2 eliminated every `GenericCall` while preserving the exact plan-derived
 ABI requirements. Unassigned allocatable values are valid; no allocation
 completeness rule runs. D3 atomically mints the first immutable `PseudoBir` only
 after the full module and every function pass.
+
+The same allocation-free gate republishes D4 and initial-D5 `PseudoBir`.
+Initial D5 may contain only its bounded `ParallelCopy`/`CopyScratch`
+intermediates; it still rejects assignments, spill objects, and `Spill` or
+`Reload`. This is the complete published Pseudo interval.
 
 D4 is an always-on target-realizability transaction even when its required
 rewrite chain is empty. Each mutation invalidates all affected revision-bound
@@ -269,6 +276,16 @@ before rerunning the entire module `Pseudo` profile on one frozen candidate.
 Only the green full gate atomically publishes the D5 `PseudoBir` capability
 accepted by E1; incremental verification cannot mint it.
 
+E3 retry candidates and the final stable post-E3 candidate are private and use
+`AssignedAllocationCandidateGate`, not `PseudoPublicationGate`. This private
+gate retains all applicable graph, identity, Pseudo-schema, stage-key,
+transaction, and failure-atomicity rules, but admits and requires exact-current
+E2 assignments and explicit E3 spill objects/`Spill`/`Reload`. Before D5
+resolution it also admits and checks `ParallelCopy` and `CopyScratch`; after
+resolution it forbids both and requires the exact assignment and spill-state
+products to match the new revision. It cannot mint `PseudoBir` or create a new
+A-F stage.
+
 On the final stable post-E3 candidate, and only after the current E1 product
 models every `CopyScratch` interval/interference and E2 has assigned each
 reservation a finite non-spillable non-aliasing home, the subordinate D5
@@ -289,10 +306,15 @@ Before that output is accepted, copy resolution invokes the shared projection
 authority with its replacement and scratch-tombstone map and requires the
 result keyed to the resolved revision.
 It then deterministically invokes E1 recomputation, E2's non-reallocating
-assignment validator, E3's non-mutating spill-state validator, and the existing
-target realizability registry/checker. Their outputs must be exact-current for
+assignment validator, E3's non-mutating spill-state validator, the E4-owned
+non-mutating `FrameRealizationTransaction`, and the existing target
+realizability registry/checker. Their outputs must be exact-current for
 the resolved `PipelineStageStamp` and `CopyResolutionFingerprint`, and each
-consumer checks all preceding product keys. Every original simultaneous
+consumer checks all preceding product keys. The immutable exact-revision
+`FrameRealizationPlan` covers every stack/call/spill/frame access, base,
+offset, displacement, adjustment, static/dynamic-region interaction, and
+registered mapping rule; the final `TargetRealizabilityKey` incorporates its
+`FrameRealizationKey`. Every original simultaneous
 transfer must map to exactly one proved sequence. Stable IDs, unchanged homes
 or spill nodes, preservation records, and structural equality cannot rekey a
 predecessor product.
@@ -308,8 +330,8 @@ schedule, or repair one.
 
 All product installation remains inside the failure-atomic resolution
 transaction. A failed owner rolls back the resolved revision and every staged
-projected/E1/E2/E3/realizability product, preserves all predecessor products
-unchanged, and cannot mint an E4 input.
+projected/E1/E2/E3/frame-realization/target-realizability product, preserves
+all predecessor products unchanged, and cannot mint an E4 input.
 
 Any failure discards the complete D3, D4, or D5 candidate and publishes no function
 subset, stage capability, property, cache entry, or derived product. Public
@@ -323,13 +345,16 @@ the D5 copy-resolution closure from a stable E3 candidate.
 Its stage key names the exact module epoch/revision and ordered function-revision
 digest plus the target, layout, preparation, exact `ProjectedConstraintKey`,
 pseudo-schema, D4/D5,
-liveness, assignment, spill, and copy-resolution fingerprints. Every named
+liveness, assignment, spill, copy-resolution, frame-realization, and final
+target-realizability fingerprints. Every named
 product must be fresh for that same revision and publication transaction; equal
 semantic hashes, copied reports, compatible targets, or predecessor-only keys
 do not establish identity.
 
-Verification is cumulative and fail-closed. It reruns every applicable graph,
-Pseudo schema, direct-realizability, and out-of-SSA rule, then proves that:
+Verification is cumulative and fail-closed. It reruns the private
+`AssignedAllocationCandidateGate` for the resolved interval, then the frame,
+direct-realizability, out-of-SSA, and Allocated rules. It never invokes the
+allocation-free `PseudoPublicationGate` on this candidate. It then proves that:
 
 1. every allocatable definition/result, fixed-home occurrence, copy role,
    call/inline-asm role, and use has exactly one legal abstract assignment or
@@ -345,9 +370,11 @@ Pseudo schema, direct-realizability, and out-of-SSA rule, then proves that:
 4. no `ParallelCopy` or `CopyScratch` node remains, every former group has one
    exact resolution sequence, and each surviving `EdgeCopy` has one legal
    single-instruction target mapping;
-5. every node retains one verified target mapping, and every target/layout,
+5. every node retains one verified target mapping under the exact immutable
+   `FrameRealizationPlan`; every required stack/call/spill/frame access is
+   directly one-record realizable, and every target/layout,
    preparation, constraint, call, inline-asm, liveness, assignment, spill,
-   copy-resolution, and realizability binding is present, unique,
+   copy-resolution, frame-realization, and realizability binding is present, unique,
    revision-matched, and fresh; and
 6. target opcodes, concrete registers, frame offsets, encodings, machine
    instructions, and MIR facts remain absent from BIR.
@@ -363,8 +390,9 @@ owning token. Diagnostic candidate checks and public rechecks cannot mint,
 repair, or refresh any of the three.
 
 MIR consumes only `MirReadyBirView`. It rechecks the exact revision and product
-fingerprints, maps verified abstract homes/objects through the bound target
-layout, and selects one machine record per allocated pseudo node. It cannot
+fingerprints, applies the already verified frame/object placements and target
+mapping, and selects one machine record per allocated pseudo node. It cannot
+choose frame offsets, bases, stack displacements or adjustments; it cannot
 change assignments, introduce an allocatable temporary or capacity
 spill/reload, create scratch, resolve or schedule copies, reinterpret
 constraints, expand instructions or calls, or hide a missing transition.
@@ -375,6 +403,11 @@ requires an upstream schema/legalization change.
 
 Names are proposed and may change with the core schema. The API must consume
 read-only views, not renderer text or legacy structs.
+
+`VerifyProfile::Pseudo` names only `PseudoPublicationGate`. The
+`AssignedAllocationCandidateGate` is an internal candidate verifier that takes
+the exact assignment/spill product keys explicitly; it is not a public profile
+or publication authority.
 
 ```cpp
 enum class VerifyProfile : std::uint8_t {
@@ -1273,9 +1306,11 @@ identity, type, CFG, or call facts.
 
 ## Stage-forbidden facts
 
-Raw, Canonical, PreparedInput, and D1-D5 Pseudo reject allocation facts. The
-Allocated profile admits only assignments and explicit abstract spill state
-that pass its revision-bound rules. Every profile rejects duplicate side-table
+Raw, Canonical, PreparedInput, and the D3/D4/initial-D5
+`PseudoPublicationGate` reject allocation facts. The private
+`AssignedAllocationCandidateGate` admits only exact revision-bound assignments
+and explicit abstract spill state and never publishes `PseudoBir`; Allocated
+adds its frame and publication rules. Every gate rejects duplicate side-table
 authority and MIR/emission facts, including:
 
 - legacy Route1–Route8 producer/publication/comparison/memory/call indices,
@@ -1290,7 +1325,9 @@ authority and MIR/emission facts, including:
   authority; pre-Allocated profiles also reject value homes, spill/reload
   instructions or objects, rematerialization recipes, and coalescing decisions;
 - frame indices resolved to offsets, final stack size/alignment, prologue/
-  epilogue decisions, callee-saved sets, and dynamic-stack realization;
+  epilogue decisions, callee-saved sets, and dynamic-stack realization in the
+  semantic BIR graph or unkeyed side state; the E4-owned immutable private
+  `FrameRealizationPlan` is the sole exact-revision exception;
 - selected instruction encodings, target opcodes, relocation encodings, emitted
   object bytes as a second semantic initializer, or prepared printer records.
 

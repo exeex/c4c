@@ -77,8 +77,8 @@ entries in that same pre-allocation chain.
 | `E1` | Allocation liveness and interference | exact initial D5 or E3-retry revision plus layout/call facts and the exact current `ProjectedConstraintSet` | revision-bound live ranges, simultaneous-copy interference, and pressure facts covering all uses, definitions, fixed homes, clobbers, and non-spillable `CopyScratch` reservations | shared allocation analysis consumed by the [BIR register allocator](regalloc/README.md) |
 | `E2` | Shared pseudo-physical register allocation | exact current `E1` facts, `ProjectedConstraintSet`, and finite target-layout pools | legal abstract `(category, class/group, slot)` homes for ordinary identities and every non-spillable scratch reservation, or an ordinary eviction request; shortage or forbidden alias fails closed | the same shared BIR allocator for RV64, AArch64, and x86 |
 | `E3` | Explicit spill/reload insertion | allocation candidate, exact current projection, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted, directly realizable pseudo `Spill`/`Reload` nodes while preserving `ParallelCopy` and scratch-reservation semantics, with one newly keyed projection per retry | [spill/reload](regalloc/spill_reload/README.md); it cannot spill scratch or resolve bundles, and candidate mutation invalidates allocation facts and retries at `E1` until stable or rejected |
-| `E4` | Allocated/MIR-ready verification and publication | exact private D5-resolved candidate with explicit spill state, `CopyResolutionFingerprint`, exact resolved `ProjectedConstraintSet`, and exact revision-bound target/product keys | owning `AllocatedBir`, a `PreparedBir` readiness capability, and borrowed read-only `MirReadyBirView`, all naming one exact immutable revision; complete assignments, spill/reload transitions, resolved edge copies, product bindings, and direct one-to-one target realizability are rechecked atomically | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
-| `F1` | Strict one-to-one MIR construction | verified `MirReadyBirView` and the exact target mapping | target MIR with pseudo homes mapped to concrete registers and exactly one machine instruction record for each allocated pseudo instruction | external [MIR architecture](../mir/README.md); MIR cannot expand calls or instructions, synthesize argument/result moves, choose ABI locations, introduce allocatable temporaries, allocate registers, or pressure-spill |
+| `E4` | Allocated/MIR-ready verification and publication | exact private D5-resolved candidate with explicit spill state, `CopyResolutionFingerprint`, exact resolved `ProjectedConstraintSet`, and exact revision-bound target/product keys | E4-owned `FrameRealizationTransaction` first publishes an immutable private exact-revision frame/mapping plan and the final target-realizability key incorporates it; then owning `AllocatedBir`, `PreparedBir`, and borrowing `MirReadyBirView` capabilities name that exact immutable revision and every complete assignment, spill transition, resolved copy, frame placement, and one-record mapping | [allocated BIR](allocated/README.md) plus private assigned-candidate and verifier `Allocated` gates |
+| `F1` | Strict one-to-one machine-graph construction | verified `MirReadyBirView`, exact immutable `FrameRealizationPlan`, and exact target mapping | target machine graph with already fixed pseudo homes/frame placements applied and exactly one machine instruction record for each allocated pseudo instruction | external [machine architecture](../mir/README.md); the consumer cannot expand calls/instructions, synthesize argument/result moves, alter fixed ABI/frame/stack placements, introduce allocatable temporaries, allocate registers, or pressure-spill |
 | `F2` | Machine verification | private target-MIR candidate | verified machine instruction graph; allocation repair is forbidden | external MIR/target verifier |
 | `F3` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | target assembler and external [object boundary](../mir/object/README.md) |
 
@@ -95,8 +95,13 @@ acyclic, overlapping, and cyclic groups through their already assigned legal
 homes, publishes one new exact revision and fingerprint, and hands that private
 candidate to an in-transaction exact-current closure: constraint projection,
 E1 recomputation, E2 assignment validation without reallocation, E3
-spill-state validation without mutation, and target-realizability
-recomputation, in that order. Only their jointly keyed resolved-revision
+spill-state validation without mutation, the E4-owned non-mutating
+`FrameRealizationTransaction`, and final target-realizability recomputation, in
+that order. The frame product fixes exact object regions, bases, offsets,
+displacements, adjustments, stack size/alignment, and registered mapping rules
+for spill/reload, outgoing calls, static/dynamic frames, and every other
+frame-dependent access. The final `TargetRealizabilityKey` incorporates its
+exact `FrameRealizationKey`. Only their jointly keyed resolved-revision
 products may reach E4. This is a continuation of D5 ownership, not an
 additional A-F stage. It cannot create a temporary, change allocation, add a
 spill/reload, or defer a bundle to MIR. Failure is atomic and produces no E4
@@ -119,9 +124,9 @@ liveness, interference, and assignments. The loop ends only when one stable
 candidate has complete homes, including all scratch reservations, and spill
 coverage, or when allocation fails closed. The stable candidate and its exact
 current E1/E2/E3 facts then enter D5 copy resolution; only that resolved output
-with newly installed exact-current projected-constraint, E1, E2, E3, and
-target-realizability products may enter E4. E4 rejects every predecessor-keyed
-product.
+with newly installed exact-current projected-constraint, E1, E2, E3,
+frame-realization, and final target-realizability products may enter E4. E4
+rejects every predecessor-keyed product.
 
 ## Verifier profiles
 
@@ -129,8 +134,9 @@ product.
 |---|---|---|
 | `Draft/Raw` | `A2` | The draft is fully typed and structurally valid before `RawBir` publication. Raw forms explicitly admitted for canonicalization are allowed. Register homes, target allocation facts, and spill/reload state are forbidden. |
 | `Canonical` | `B8` | Raw rules plus every `P01`-`P07` normal form. It remains target-independent and unallocated; ABI placement, register homes, and spill/reload state are forbidden. |
-| `Pseudo` | `D3`, in full after the complete `D4` chain, and after initial `D5` | Only the closed pseudo-node schema is admitted, operand/result/terminator shapes are valid, and target/layout keys agree. The post-`D4` profile proves that every node then present except `InlineAsm` is directly realizable as exactly one target machine instruction. Initial D5 may add only bounded intermediate `ParallelCopy` and `CopyScratch` state for allocation-aware resolution. Allocation is not required yet, so unassigned allocatable values are valid. Concrete registers, target opcodes, and frame offsets remain forbidden. |
-| `Allocated/MIR-ready` | `E4` | Every allocatable use/result has a legal pseudo-physical home or an explicit, verified spill/reload transition, the exact D5 copy-resolution product covers every former bundle, no scratch-reservation node or `ParallelCopy` remains, and every surviving node is directly realizable under its exact target mapping. Class/group, alias, reserved-unit, tie, clobber, dominance, capacity, and realizability rules are complete. Unresolved pressure, implicit spills, concrete target registers, unresolved copy intermediates, and non-admitted nodes are rejected. |
+| `Pseudo` publication | `D3`, in full after the complete `D4` chain, and after initial `D5` | `PseudoPublicationGate` admits only the closed pseudo-node schema and rejects assignments and spill state. The post-`D4` interval proves every then-present node except `InlineAsm` directly one-record realizable; initial D5 may add only bounded `ParallelCopy`/`CopyScratch`. Unassigned values remain valid. |
+| Private assigned candidate | `E3` retry and D5-resolved candidates | `AssignedAllocationCandidateGate` retains every cumulative graph/Pseudo schema, revision, and failure rule but admits/requires exact assignments and explicit spill state. It admits `ParallelCopy`/`CopyScratch` only before D5 resolution, publishes no second `PseudoBir` type, and is rerun by E4. |
+| `Allocated/MIR-ready` | `E4` | The private candidate plus exact frame plan proves every stack, call, spill, reload, frame, scratch, and ordinary node has one registered one-record mapping. No unresolved copy intermediate, implicit spill/frame action, pressure deficit, mixed product, or unrepresented expansion is accepted. |
 
 `PreparedInput` may remain an internal cumulative input-checking capability for
 preparation, but it is not a replacement for any published BIR profile and is
@@ -237,10 +243,13 @@ code and proof later establish a stronger status.
    ordinary BIR state covered by those stages. It may legalize call-sequence
    pseudos but cannot redo ABI classification or general call lowering.
 10. MIR consumes only the read-only same-revision `MirReadyBirView`, rechecks
-    its product fingerprints, and maps each allocated pseudo node to exactly
+    its product fingerprints, and applies the exact E4-owned
+    `FrameRealizationPlan` and target rule to map each allocated pseudo node to
+    exactly
     one machine instruction record. It cannot change assignments, expand
     instructions or calls, synthesize argument/result moves, choose ABI
-    locations, introduce allocatable temporaries, redo normal allocation, or
+    locations, frame offsets, stack adjustments/displacements, introduce
+    allocatable temporaries, redo normal allocation, or
     pressure spill/reload; mapping failure publishes no machine graph.
 11. Optional target-specific optimization is an explicit, reviewed,
     invalidation-declaring, fully reverified entry in the same pre-allocation

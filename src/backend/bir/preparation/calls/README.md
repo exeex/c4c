@@ -17,6 +17,13 @@ exact plan key. This planner does not add instructions, select slots, assign
 general values, or create frame offsets. It does not reinterpret any
 inline-assembly payload.
 
+Its outgoing-stack identities include complete size, alignment, lifetime,
+static/dynamic-region interaction, and access requirements. The E4-owned
+`FrameRealizationTransaction` later consumes those exact identities with the
+D2 operations and resolved allocation products, fixes their exact bases,
+offsets, displacements, adjustments, and registered mapping rules, and fails
+before `MirReadyBirView` if any call/frame action is not one-record realizable.
+
 ## Binding and consumers
 
 Every `CallPlan` entry names ordinary Canonical instruction/value identities.

@@ -86,14 +86,22 @@ parent revision to be reused without an explicit preservation proof.
 
 - D1 eliminates all Canonical semantic instruction alternatives and admits
   only the table above; D2 eliminates every `GenericCall` before D3.
-- D3 permits unassigned allocatable values. Requirements, ties, clobbers, and
-  abstract ABI slots constrain later allocation but are not assignments.
+- The published Pseudo interval is D3, D4, and initial D5. Its
+  `PseudoPublicationGate` permits unassigned allocatable values and rejects
+  assignments, spill objects, and `Spill`/`Reload`. Requirements, ties,
+  clobbers, and abstract ABI slots constrain later allocation but are not
+  assignments.
 - D4 eliminates every remaining semantic one-to-many requirement. After its
   full gate, every non-`InlineAsm` node present at D4 is directly realizable as
   one machine instruction without introducing a new allocatable value, use,
   definition, or CFG edge. D5's explicitly bounded copy intermediates are the
   only later exception and must be resolved in BIR before E4.
 - D5 alone adds copy pseudos for out-of-SSA. E3 alone adds `Spill`/`Reload`.
+- E3 retry and D5-resolved candidates are not public `PseudoBir` revisions.
+  Their private `AssignedAllocationCandidateGate` retains the complete graph,
+  Pseudo schema, revision, and transactional rules while admitting and
+  requiring exact-current assignments and explicit spill state. Before copy
+  resolution it admits `ParallelCopy`/`CopyScratch`; afterward it forbids both.
 - D5 copy destinations are explicit assignment roles for stable virtual
   allocation identities, not new SSA definitions. A `ParallelCopy` has
   canonical destination order, unique destinations, typed sources, and atomic
@@ -119,13 +127,17 @@ parent revision to be reused without an explicit preservation proof.
   after the sole `ConstraintProjectionTransaction`, E1 recomputes resolved
   liveness/interference, E2 validates and installs the unchanged legal
   assignments without reallocating, E3 validates and installs unchanged
-  explicit spill state without mutation, and the existing target registry
-  recomputes realizability. Each product names the exact resolved
+  explicit spill state without mutation, the E4-owned
+  `FrameRealizationTransaction` proves exact frame/object placements and all
+  stack/call/spill/frame accesses, and the existing target registry recomputes
+  realizability incorporating that exact `FrameRealizationKey`. Each product names the exact resolved
   `PipelineStageStamp` and `CopyResolutionFingerprint`; stable IDs and the
   preservation record never rekey products, and any owner failure rolls back
   the entire candidate before E4.
 - The schema never stores machine-register identities, machine instruction
   encodings, stack displacements, late frame layout, or assembler parse trees.
+  Exact offsets/displacements may exist only in the E4-owned immutable private
+  `FrameRealizationPlan`, never as graph fields or mutation authority.
 
 Pseudo lowering owns generic semantic disposition. The dedicated D2 shared
 call-lowering contract owns ABI transport. The target chain owns required target legalization and

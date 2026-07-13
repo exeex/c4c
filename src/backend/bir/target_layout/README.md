@@ -56,11 +56,18 @@ preparation consumes the vocabulary to publish admitted source-description
 tables. Constraint interpretation and allocation consume the same verified
 layout later. MIR may use the private mapping domain only after allocated
 publication has verified an abstract assignment.
+The E4-owned `FrameRealizationTransaction` also consumes the exact layout's
+stack alignment, displacement domains, frame-region/base vocabulary, and
+registered mapping-rule IDs to publish one immutable exact-revision
+`FrameRealizationPlan`. F1 only applies that plan; it does not choose offsets,
+bases, or stack adjustments.
 
 This stage owns no Canonical revision, ABI classification of a particular
 value, call plan, variadic plan, address strategy, helper selection, source
 constraint interpretation, liveness, assignment policy, spill decision,
-frame offset, machine opcode, or concrete BIR register identity.
+frame offset, machine opcode, or concrete BIR register identity. Exact frame
+placements are owned only by the later E4 private product, never by this C2
+layout or semantic BIR.
 
 ## Transaction and publication gate
 

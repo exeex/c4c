@@ -35,16 +35,59 @@ projection. Every other product is preserved or reprojected by its named owner
 for that revision and carries the complete predecessor fingerprints. Stable
 IDs, structural equality, and copied records do not establish freshness.
 
-Specifically, before E4 begins, the enclosing `CopyResolutionTransaction` has
+Specifically, before E4 publication, the enclosing
+`CopyResolutionTransaction` has
 already invoked E1 to recompute resolved-graph liveness/interference, E2's
 allocator-owned validator to install the unchanged-but-reproved assignment,
 E3's spill-state validator to install the unchanged-but-reproved spill
-inventory and transitions, and the existing target realizability
-registry/checker to recompute its product. Each is keyed to the same resolved
+inventory and transitions. It then invokes the E4/allocated-owned
+`FrameRealizationTransaction` described below and, last, the existing target
+realizability registry/checker. Each is keyed to the same resolved
 `PipelineStageStamp` and `CopyResolutionFingerprint` in dependency order after
-the sole `ConstraintProjectionTransaction`. E4 rejects a predecessor-keyed or
-merely copied `LivenessInterferenceKey`, `AssignmentKey`, `SpillStateKey`,
-`ProjectedConstraintKey`, or `TargetRealizabilityKey` product.
+the sole `ConstraintProjectionTransaction`. The final
+`TargetRealizabilityKey` incorporates the exact `FrameRealizationKey`. E4
+rejects a predecessor-keyed or merely copied `LivenessInterferenceKey`,
+`AssignmentKey`, `SpillStateKey`, `ProjectedConstraintKey`,
+`FrameRealizationKey`, or `TargetRealizabilityKey` product.
+
+## Frame realization transaction
+
+`FrameRealizationTransaction` is one E4/allocated-owner subordinate invoked
+after the resolved-revision E1/E2/E3 products are staged and before the final
+target-realizability check. It is non-mutating over the exact frozen D5-resolved
+candidate. Its input key names that candidate, the exact current projection,
+liveness, assignment, spill-state, D2 call-plan/call-lowering, C6 address-plan,
+target-layout, preparation, and copy-resolution fingerprints.
+
+It deterministically produces one immutable private `FrameRealizationPlan` and
+`FrameRealizationKey` for the exact revision. The plan assigns exact objects,
+regions, base choices, offsets, displacements, stack size/alignment, stack
+adjustments, and registered mapping-rule IDs for:
+
+- every E3 spill object and `Spill`/`Reload` access;
+- every D2 outgoing-call object/store, call-frame access, hidden carrier, and
+  required incoming/outgoing stack interaction;
+- fixed, static, and dynamic frame regions and their lifetime/alignment
+  interaction; and
+- every call, local frame, scratch-home, or address-materialization operand
+  whose one-record mapping depends on frame placement.
+
+These exact target-bound placement facts are a private publication product,
+not concrete fields added to semantic BIR. The transaction cannot mutate the
+graph, allocate or change a register, add scratch, insert a node, select an
+opcode or encoding, or repair D4/E3. It proves every registered implicit frame
+action is either represented by an admitted one-record node or requires no
+machine record. If any displacement, stack adjustment, dynamic-region
+interaction, call/spill access, address materialization, prologue/epilogue
+action, or object placement would require more than one record or an
+unrepresented operation, the whole enclosing transaction fails atomically
+before `MirReadyBirView` publication.
+
+The existing target-realizability checker then consumes the exact frame plan
+and all Step 9.1 products, proves one registered mapping per non-`InlineAsm`
+node, and installs the final `TargetRealizabilityKey` incorporating
+`FrameRealizationKey`. A frame plan or target product from a predecessor
+revision is never preservable by structural equality.
 
 ## Output
 
@@ -55,13 +98,16 @@ allocator-created `Spill`/`Reload` nodes plus D5-resolved single-move
 verified legal abstract home or is covered by explicit spill residency and a
 dominating assigned reload result. Every remaining non-`InlineAsm` node is
 directly one-to-one realizable. The view exposes only verified typed facts and
-the immutable revision/fingerprint trace needed by MIR mapping and selection.
+the immutable `FrameRealizationPlan`, registered target mapping, and
+revision/fingerprint trace needed by MIR mapping and selection.
 
 ## Verification and publication gate
 
-The transaction reruns all applicable Raw/Canonical graph and Pseudo schema
-rules, the post-D4 direct-realizability rules, and the post-D5 copy/phi-removal
-rules before checking allocation. The final allocation checks prove:
+The transaction reruns the private `AssignedAllocationCandidateGate`: all
+applicable Raw/Canonical graph and Pseudo schema rules plus the post-D5
+copy/phi-removal rules, while admitting and requiring this candidate's exact
+assignments and explicit spill state. It does not invoke the allocation-free
+`PseudoPublicationGate`. The final allocation checks prove:
 
 - every allocatable definition, result, edge-copy role, call/inline-asm role,
   fixed-home occurrence, and ordinary use has an assignment in the admitted
@@ -81,7 +127,8 @@ rules before checking allocation. The final allocation checks prove:
   is one legal single-home transfer, and the resolution record covers every
   former bundle exactly; and
 - every non-`InlineAsm` node still has its verified one-to-one target mapping,
-  and every required target/product binding is present, unique, and fresh.
+  its exact frame-plan mapping facts and registered rule ID, and every required
+  target/product binding is present, unique, and fresh.
 
 Any non-admitted node, missing or illegal assignment, unresolved pressure,
 stale or mixed fingerprint, inconsistent spill object, malformed transition,
@@ -92,10 +139,11 @@ a reusable green report. Candidate/recheck APIs are diagnostic only and cannot
 mint or repair these capabilities.
 
 MIR accepts only `MirReadyBirView`, rechecks its revision and fingerprints,
-maps each verified abstract home through the exact target layout, and selects
-one machine record for each allocated pseudo node. It may choose concrete
-spellings, frame offsets for verified abstract objects, and encodings, but it
-cannot change assignments, add capacity spills/reloads or allocatable
+and applies the exact `FrameRealizationPlan` plus target mapping to select one
+machine record for each allocated pseudo node. It may choose concrete register
+spellings, opcodes, and encodings only within the registered mapping rule, but
+it cannot choose frame objects, offsets, base registers, stack adjustments, or
+displacements. It cannot change assignments, add capacity spills/reloads or allocatable
 temporaries, resolve or schedule copies, expand a node, reinterpret a
 constraint, or conceal a missing BIR transition. An encoding constraint that
 cannot honor the view fails the MIR transaction and requires a separately

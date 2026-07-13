@@ -86,6 +86,15 @@ or creates a target-private call graph. Unsupported target instruction shapes
 remain an explicit D4 legalization obligation only after D2 has completed the
 one shared semantic ABI rewrite.
 
+Every outgoing-call stack object/store, hidden carrier, call-frame access, and
+implicit stack adjustment receives stable abstract identity and complete size,
+alignment, lifetime, and access requirements. After allocation and D5
+resolution, the E4-owned `FrameRealizationTransaction` is the sole owner that
+places those identities at exact bases/offsets/displacements. It must prove
+each admitted D2 operation and implicit call/frame action has a registered
+one-record mapping or fail atomically before `MirReadyBirView`; D2 and F1 cannot
+choose or repair the placement.
+
 ## Stable identity, revision, and output key
 
 D2 forks one private candidate from the exact D1 input. An unchanged entity

@@ -55,7 +55,10 @@ stamp, exact E3 occurrence fingerprint, spill/reload and CFG mutation summary,
 replacement map, and tombstones. It must produce one `ProjectedConstraintSet`
 keyed to the retry revision; stable IDs, structurally equal requirements, or
 copied records cannot preserve freshness. The runner recomputes required structural facts and runs
-the complete retry-candidate verifier on one frozen module. Only a green full
+the private `AssignedAllocationCandidateGate` on one frozen module. That gate
+retains all cumulative graph/Pseudo rules but admits and requires the
+candidate's exact assignments and explicit spill state; it cannot publish a
+second `PseudoBir`. Only a green full
 gate may become the immutable input to a new E1 analysis and a fresh E2
 attempt; incremental checks and facts from the prior revision have no
 publication authority.
@@ -110,3 +113,11 @@ unchanged inventory, or
 the D5 preservation record cannot rekey it. The validator cannot add, remove,
 or reposition spill state; failure rolls back the whole resolution closure,
 leaves predecessor products unchanged, and produces no E4 input.
+
+After that exact resolved spill-state product is staged, the E4-owned
+non-mutating `FrameRealizationTransaction` assigns exact spill-object regions,
+bases, offsets, and displacements and proves every `Spill`/`Reload` is one-record
+realizable under the registered target mapping. E3 never chooses those facts.
+Failure, including a displacement or dynamic-frame interaction requiring
+materialization or more than one record, aborts atomically before
+`MirReadyBirView`; it does not return a repair request to E3.
