@@ -2153,6 +2153,72 @@
       "reason": "FunctionId is the owner- and generation-correct function identity; this string-keyed index only enforces unique ABI spelling and merges compatible declarations with their definition.",
       "removal_condition": "Remove when functions carry an owner-correct interned link identity that provides uniqueness and declaration/definition merging without a string-keyed mirror.",
       "evidence": "ModuleBuilder stores FunctionId values and uses this index only to find an existing ABI spelling; FoundationVerifier reconstructs link-name-to-FunctionId state from every live function and enforces exact size plus both index-to-live and live-to-index correspondence."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::link_names_by_spelling_",
+      "pattern": "string-keyed-container",
+      "owner": "backend-bir",
+      "domain": "Raw-BIR ABI link-name spelling lookup and uniqueness",
+      "category": "abi-spelling",
+      "reason": "The ordered link-name table, typed source LinkNameId-to-BIR LinkNameId map, and BIR LinkNameId are primary; this spelling-keyed map is only a secondary ABI lookup and uniqueness index.",
+      "removal_condition": "Remove if all ABI spelling lookup and uniqueness checks can use typed interned link identities without a string-keyed secondary index.",
+      "evidence": "ModuleBuilder assigns the BIR LinkNameId from ordered storage before inserting this map; FoundationVerifier checks every row against both typed and spelling indexes and requires both index sizes to equal the ordered table."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::struct_names_by_spelling_",
+      "pattern": "string-keyed-container",
+      "owner": "backend-bir",
+      "domain": "Raw-BIR struct-name spelling lookup and uniqueness",
+      "category": "compatibility-bridge",
+      "reason": "The ordered struct-name table, typed source StructNameId-to-BIR StructNameId map, and BIR StructNameId are primary; this spelling-keyed map is only a secondary lookup and uniqueness index.",
+      "removal_condition": "Remove when struct-name spelling lookup and uniqueness no longer require a rendered-string mirror beside typed source and BIR identities.",
+      "evidence": "ModuleBuilder assigns the BIR StructNameId from ordered storage before inserting this map; FoundationVerifier checks every row against both typed and spelling indexes and requires both index sizes to equal the ordered table."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::struct_decls_by_name_",
+      "pattern": "by-name-member",
+      "owner": "backend-bir",
+      "domain": "Raw-BIR typed struct declaration index",
+      "category": "structured-authority",
+      "reason": "Despite its member name, the key is typed BIR StructNameId and the value is StructDeclId; the map is a structured typed index over ordered declarations, not string identity.",
+      "removal_condition": "Remove or rename if typed StructNameId-to-StructDeclId lookup is replaced by another structured index or direct typed ownership relation.",
+      "evidence": "ModuleBuilder resolves the typed source StructNameId to BIR StructNameId before insertion; FoundationVerifier checks every ordered declaration against the typed index and requires exact index-to-order size correspondence."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::string_data_by_name_",
+      "pattern": "by-name-member",
+      "owner": "backend-bir",
+      "domain": "Raw-BIR source string-pool identity lookup and uniqueness",
+      "category": "compatibility-bridge",
+      "reason": "The LIR string-pool name is explicit source identity with no parsed semantic meaning; StringDataId and ordered storage are BIR identity, and this map is their secondary lookup and uniqueness mirror.",
+      "removal_condition": "Remove when source string-pool identity is interned or carried by a typed source ID that provides lookup and uniqueness without a string-keyed mirror.",
+      "evidence": "ModuleBuilder assigns StringDataId from ordered storage before inserting the pool-name map; FoundationVerifier checks every ordered row and every map entry bidirectionally and requires equal sizes."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::external_decls_by_name_",
+      "pattern": "by-name-member",
+      "owner": "backend-bir",
+      "domain": "Raw-BIR external source-name lookup and uniqueness",
+      "category": "compatibility-bridge",
+      "reason": "ExternalDeclId and the LinkNameId/FallbackExternalName identity variant are primary; source_name is explicit fallback identity when unlinked and a secondary lookup and uniqueness mirror when link-backed.",
+      "removal_condition": "Remove when all external lookup and uniqueness use the typed identity variant and no source-name compatibility index is required.",
+      "evidence": "ModuleBuilder assigns ExternalDeclId and constructs the identity variant before indexing; FoundationVerifier checks ordered rows and name entries bidirectionally, validates the identity alternative, and separately verifies the exact link-name index."
+    },
+    {
+      "path": "src/backend/bir/core/ir.hpp",
+      "symbol": "ModuleData::globals_by_name_",
+      "pattern": "by-name-member",
+      "owner": "backend-bir",
+      "domain": "Raw-BIR global source-name lookup and uniqueness",
+      "category": "compatibility-bridge",
+      "reason": "GlobalObjectId and the LinkNameId/FallbackGlobalName identity variant are primary; source_name is explicit fallback identity when unlinked and a secondary lookup and uniqueness mirror when link-backed.",
+      "removal_condition": "Remove when all global lookup and uniqueness use the typed identity variant and no source-name compatibility index is required.",
+      "evidence": "ModuleBuilder assigns GlobalObjectId and constructs the identity variant before indexing; FoundationVerifier checks ordered rows and name entries bidirectionally, validates the identity alternative, and separately verifies the exact link-name index."
     }
   ]
 }

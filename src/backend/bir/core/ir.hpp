@@ -255,19 +255,30 @@ struct ModuleData {
   std::unordered_map<std::string, FunctionId> functions_by_link_name_;
   std::vector<LinkNameData> link_names_;
   std::unordered_map<c4c::LinkNameId, LinkNameId> link_names_by_source_id_;
+  // Ordered rows and typed IDs are primary; this verifier-checked spelling
+  // mirror only enforces ABI lookup and uniqueness.
   std::unordered_map<std::string, LinkNameId> link_names_by_spelling_;
   std::vector<StructNameData> struct_names_;
   std::unordered_map<c4c::StructNameId, StructNameId> struct_names_by_source_id_;
+  // Ordered rows and typed source/BIR IDs are primary; this verifier-checked
+  // spelling mirror only provides lookup and uniqueness.
   std::unordered_map<std::string, StructNameId> struct_names_by_spelling_;
   std::vector<StructDeclaration> struct_decls_;
+  // Structured-authority index: typed StructNameId to ordered StructDeclId.
   std::unordered_map<StructNameId, StructDeclId> struct_decls_by_name_;
   std::vector<ConstantDefinition> constants_;
   std::vector<StringData> string_data_;
+  // The source pool name is explicit source identity, while StringDataId and
+  // order are BIR identity; this verifier-checked map is a secondary index.
   std::unordered_map<std::string, StringDataId> string_data_by_name_;
   std::vector<ExternalDeclaration> external_decls_;
+  // ExternalDeclId and the LinkNameId/fallback identity variant are primary;
+  // source spelling is a verifier-checked secondary lookup/uniqueness index.
   std::unordered_map<std::string, ExternalDeclId> external_decls_by_name_;
   std::unordered_map<LinkNameId, ExternalDeclId> external_decls_by_link_name_;
   std::vector<GlobalObject> globals_;
+  // GlobalObjectId and the LinkNameId/fallback identity variant are primary;
+  // source spelling is a verifier-checked secondary lookup/uniqueness index.
   std::unordered_map<std::string, GlobalObjectId> globals_by_name_;
   std::unordered_map<LinkNameId, GlobalObjectId> globals_by_link_name_;
   std::vector<SpecializationMetadata> specializations_;
