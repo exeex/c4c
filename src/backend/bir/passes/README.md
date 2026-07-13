@@ -6,7 +6,7 @@ This document defines how a BIR pass is identified, scheduled, given authority,
 committed, verified, invalidated, observed, and failed. It deliberately does not
 define the semantic rewrite performed by any one pass. The documents below this
 directory own those local transformations. The root
-[`BIR README`](../README.md) owns their normative `S02`-`S08` order;
+[`BIR README`](../README.md) owns their normative `B1`-`B7` order;
 [`pipeline/README.md`](../pipeline/README.md) expands orchestration within that
 fixed interval.
 
@@ -51,13 +51,13 @@ communicates by leaving mutable side tables attached to BIR.
 - verifier rule semantics; those belong to
   [`verify/README.md`](../verify/README.md);
 - ABI classification, call placement, frame layout, register allocation,
-  spills, target opcodes, emission, or rendering. Root stages `S11`-`S29` use
+  spills, target opcodes, emission, or rendering. Root stages `C2`-`F3` use
   their own reviewed target-aware preparation, pseudo-pass, out-of-SSA,
   allocation, spill/reload, publication, and MIR contracts; they do not gain
   authority by registering as canonical `P01`-`P07` passes here.
 
 This is the target-independent canonical pass framework for root stages
-`S02`-`S09`. A later target-aware phase may reuse implementation-neutral
+`B1`-`B8`. A later target-aware phase may reuse implementation-neutral
 utilities only when its own contract defines the capability, revision,
 transaction, verifier, and publication boundary. It may not receive this
 framework's `PassProperty`, `CanonicalBir` publication authority, analysis

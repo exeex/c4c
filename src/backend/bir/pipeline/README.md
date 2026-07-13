@@ -2,9 +2,9 @@
 
 Status: design contract; implementation has not started.
 
-The root [`BIR README`](../README.md) owns the normative `S00`-`S29` total
+The root [`BIR README`](../README.md) owns the normative `A1`-through-`F3` total
 order. This document is subordinate to that order and expands orchestration
-only for its `S02`-`S09` canonicalization interval. Individual pass documents
+only for its `B1`-`B8` canonicalization interval. Individual pass documents
 own local algorithms, but neither they nor this document may insert a stage,
 change a predecessor, weaken an input profile, or reorder a root row. An order
 change starts in the root contract and must update both affected adjacent
@@ -25,16 +25,16 @@ authority.
 The root rows consumed and produced by this local runner are:
 
 ```text
-S00 LIR import -> private frozen ModuleDraft
-S01 Raw verification/publication -> RawBir
-S02 P01 legalize -> S03 P02 scalar -> S04 P03 cfg -> S05 P04 ssa
-  -> S06 P05 memory -> S07 P06 aggregate -> S08 P07 intrinsics
-S09 Canonical verification/publication -> CanonicalBir
-S10 TargetProfile selection/validation (outside run_bir_pipeline)
+A1 LIR import -> private frozen ModuleDraft
+A2 Raw verification/publication -> RawBir
+B1 P01 legalize -> B2 P02 scalar -> B3 P03 cfg -> B4 P04 ssa
+  -> B5 P05 memory -> B6 P06 aggregate -> B7 P07 intrinsics
+B8 Canonical verification/publication -> CanonicalBir
+C1 TargetProfile selection/validation (outside run_bir_pipeline)
 ```
 
 This excerpt is an anchor, not a second order registry. The complete flow,
-including `S11`-`S29`, the `S25 -> S23` allocation retry edge, every verifier
+including `C2`-`F3`, the `E3 -> E1` allocation retry edge, every verifier
 gate, and every target-aware phase is defined only in the root README.
 
 `ModuleDraft` and `RawBir` are defined by
@@ -67,7 +67,7 @@ gate, and every target-aware phase is defined only in the root README.
   constraint descriptions to ordinary operands/results;
 - D1 privately forks from Canonical into the closed pseudo schema, D2 completes
   shared ABI-aware call transport, D3 publishes the first verified `PseudoBir`,
-  and D4 fully reverifies target realizability before out-of-SSA;
+  and D4 fully reverifies target realizability before D5 out-of-SSA;
 - E1 analyzes the exact fully reverified D5 revision, E2 alone assigns shared
   abstract homes, and E3 alone inserts explicit capacity spill/reload state;
   each E3 rewrite advances and fully reverifies its revision before fresh E1/
@@ -77,9 +77,9 @@ gate, and every target-aware phase is defined only in the root README.
   `VerifiedPreparationInput` or preparation facts;
 - `MirReadyBirView` is a borrowing read-only view of that same revision and
   cannot clone storage, change assignments, or survive its owning token;
-- MIR rechecks the view keys and performs only concrete mapping and one-to-one
-  selection; mapping failure publishes no MIR and cannot trigger allocation
-  repair, capacity spill/reload, or an allocatable temporary.
+- F1 MIR construction rechecks the view keys and performs only concrete mapping
+  and one-to-one selection; mapping failure publishes no MIR and cannot trigger
+  allocation repair, capacity spill/reload, or an allocatable temporary.
 
 There is no `src/backend/bir/mir` stage or namespace. Preparation, layout,
 allocation, and allocated-publication ownership are documented under their
@@ -88,22 +88,22 @@ verified `MirReadyBirView`.
 
 ## 2. Immutable built-in canonical occurrence sequence
 
-Within the root `S02`-`S09` interval, the required canonical occurrence
+Within the root `B1`-`B8` interval, the required canonical occurrence
 sequence is exactly:
 
 ```text
-P01 legalize
-P02 scalar
-P03 cfg
-P04 ssa
-P05 memory
-P06 aggregate
-P07 intrinsics
-G01 canonical publication gate
+B1 P01 legalize
+B2 P02 scalar
+B3 P03 cfg
+B4 P04 ssa
+B5 P05 memory
+B6 P06 aggregate
+B7 P07 intrinsics
+B8 canonical publication gate
 ```
 
-The seven named entries are mandatory in the initial implementation. `G01` is
-an unconditional publication gate, not a pass occurrence. The separately
+The seven named pass entries are mandatory in the initial implementation.
+`B8` is an unconditional publication gate, not a pass occurrence. The separately
 invoked prepared-input gate is not part of `run_bir_pipeline`; it consumes the
 published `CanonicalBir` only when an external preparation caller supplies a
 target context. A profile may select another implementation algorithm only
@@ -153,7 +153,7 @@ normalize or eliminate it. Importer-only forms do not escape `RawBir`.
 |---|---|---|
 | old/new duplicate LIR shapes, reservations and forward-reference shells | importer/publication | unified or resolved before `RawBir`; no canonical pass accepts a compatibility alternative or unresolved reservation |
 | arbitrary-width SSA integers, exact FP payload encoding, raw scalar opcode/predicate/cast aliases, non-`I1` truth uses | `legalize` | converted to typed portable semantic operations/bridges or rejected; exact values remain lossless |
-| original inline-asm template and constraint strings | root stage `S18` | preserved byte-for-byte as opaque payload by `P01`-`P07`; interpreted and bound only at `S18` |
+| original inline-asm template and constraint strings | root stage `C9` | preserved byte-for-byte as opaque payload by `P01`-`P07`; interpreted and bound only at `C9` |
 | portable scalar expression, compare, cast, select and helper-eligible semantic operation shapes | `scalar` | one canonical target-independent scalar descriptor; helper identity remains undecided |
 | raw switch ordering, indirect target sets, unreachable blocks and noncanonical branch/block shape | `cfg` | exact `EdgeKey`-based canonical CFG with no name- or fallthrough-derived authority |
 | resolved but noncanonical phi placement/incoming order, promotable local memory and trivial SSA aliases | `ssa` | chosen SSA form, dominance and exact parallel-edge incoming coverage hold |
@@ -330,7 +330,7 @@ owns pass contexts, sessions, results, preservation declarations,
 occurrence to one registered implementation and supplies its barriers; it does
 not wrap those interfaces in a second type system.
 
-Within `S02`-`S09`, the runner sequences transactions, verification and stage
+Within `B1`-`B8`, the runner sequences transactions, verification and stage
 publication.
 A pass cannot construct a session, commit, mint a stage token, clear a
 diagnostic or retain mutable storage. A false no-change result, undeclared edit

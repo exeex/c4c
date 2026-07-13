@@ -6,7 +6,7 @@ The root [`BIR README`](../README.md) owns the normative stage order and names
 the first consumer of every analysis family. Analyses are dependency facts,
 not additional mutable stages, and this document cannot move a consumer or
 insert a new row into that order. The canonical pass framework requests only
-target-independent facts during `S02`-`S09`; target/layout/preparation and
+target-independent facts during `B1`-`B8`; target/layout/preparation and
 allocation facts first become legal at their root-declared later stages.
 
 An analysis result is an immutable, disposable view of one exact published BIR
@@ -88,7 +88,7 @@ pseudo-physical homes, spill decisions, target opcodes, MIR, renderer output,
 and environment-selected backend features.
 
 `TargetBoundAllocation` is a separate cache domain used no earlier than root
-`S23`. Its descriptors must name the exact post-out-of-SSA BIR revision and the
+`E1`. Its descriptors must name the exact post-out-of-SSA BIR revision and the
 exact target-layout, typed-constraint, call/preparation, and algorithm-schema
 keys they read. A result in this domain cannot be requested through a
 canonical-pass session, preserved backward into `CanonicalBir`, or installed
@@ -232,15 +232,15 @@ analysis README may narrow that point but cannot move it earlier. In
 particular:
 
 - canonical `P01`-`P07` analyses derive only target-independent semantic facts;
-- `S10` target selection and `S11` layout do not retroactively alter or rekey a
+- `C1` target selection and `C2` layout do not retroactively alter or rekey a
   canonical result;
 - preparation facts are immutable side products bound to Canonical revision,
   layout key, and their own schema/revision digest, never fields attached to a
   canonical analysis;
-- allocation liveness/interference at `S23` is freshly computed for the exact
-  post-`S22` revision and exact later facts;
-- an `S25` spill/reload mutation invalidates `S23` facts and follows only the
-  root-declared `S25 -> S23` retry edge. A cached liveness result cannot skip or
+- allocation liveness/interference at `E1` is freshly computed for the exact
+  post-`D5` revision and exact later facts;
+- an `E3` spill/reload mutation invalidates `E1` facts and follows only the
+  root-declared `E3 -> E1` retry edge. A cached liveness result cannot skip or
   reorder that edge;
 - target-aware facts never flow backward into Raw/Canonical passes, their
   caches, or their verifier profiles.
@@ -286,4 +286,4 @@ Expected implementation proof includes wrong-epoch/revision/digest tests,
 dependency-invalidation tests, preservation-audit recomputation, rollback and
 verifier-failure cache isolation, concurrent stale-computation races,
 deterministic dense-index reconstruction, target-domain access rejection, and
-`S25 -> S23` allocation-fact invalidation.
+`E3 -> E1` allocation-fact invalidation.
