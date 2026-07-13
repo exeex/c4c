@@ -49,13 +49,20 @@ Verifier keys refer to `src/codegen/lir/verify.cpp`:
 
 Coverage keys:
 
-- **C-store:** `tests/backend/case/global_store.c` reaches `LirStoreOp`.
-- **C-load:** `tests/backend/case/defined_pointer_global_pointer.c` reaches
-  `LirLoadOp`.
-- **C-array:** `tests/backend/case/defined_global_array.c` first reaches
-  `LirCastOp` and later contains `LirGepOp`.
-- **C-ret:** `tests/backend/case/riscv64_zero_aggregate_global_storage.c`
-  reaches non-void `LirRet`.
+- **C-store:** focused `tests/backend/case/lir_identity_global_store.c` reaches
+  `LirStoreOp` first; `global_store.c` remains integration evidence.
+- **C-load:** focused `tests/backend/case/global_load.c` reaches `LirLoadOp`
+  first; `defined_pointer_global_pointer.c` remains integration evidence.
+- **C-array:** focused
+  `tests/backend/case/lir_identity_global_array_address.c` reaches `LirGepOp`
+  first with no preceding cast; `defined_global_array.c` remains integration
+  evidence whose first instruction is `LirCastOp` and whose GEP is later.
+- **C-array-integration:** `tests/backend/case/defined_global_array.c` reaches
+  `LirCastOp` before its later `LirGepOp`.
+- **C-ret:** focused `tests/backend/case/aarch64_return_zero_smoke.c` reaches
+  non-void `LirRet`; despite its historical filename, the source and x86-64
+  proof are target-neutral. `riscv64_zero_aggregate_global_storage.c` remains
+  integration evidence.
 - **C-call:** `tests/frontend/frontend_lir_call_type_ref_test.cpp` covers
   modern call type/signature mirrors and direct/indirect calls.
 - **C-asm:** `tests/frontend/frontend_hir_tests.cpp` inline-asm cases and
@@ -64,6 +71,18 @@ Coverage keys:
 - **C-const:** `backend_lir_to_bir_interface_test.cpp` constructs legacy
   constants; it is consumer coverage, not an ordinary HIR producer.
 - **C-gap:** gap—Step 3 candidate; no focused identity-seam probe is bound.
+
+## Step 3 focused probe bindings
+
+These are expected failing producer probes. They establish the current first
+fact; they do not claim BIR support.
+
+| Focused probe | Exact primary contract | Current baseline first failure | Integration contrast |
+|---|---|---|---|
+| `lir_identity_global_store.c` | `LirStoreOp.val` must gain native immediate identity for `7`; `LirStoreOp.ptr` must resolve the scalar global through stable symbol identity | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `store i32 7, ptr @lir_identity_scalar` | `global_store.c` stores and then loads the same global; retain it as broader integration evidence |
+| `global_load.c` | `LirLoadOp.result` needs stable result identity and `LirLoadOp.ptr` needs stable global-symbol identity | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `%t0 = load i32, ptr @g_counter` | `defined_pointer_global_pointer.c` adds pointer-global initialization/indexing and remains integration-only |
+| `lir_identity_global_array_address.c` | First `LirGepOp` needs stable result/global-base identity and individually structured immediate indices `i64 0`, `i64 0` | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `%t0 = getelementptr [1 x i32], ptr @lir_identity_array, i64 0, i64 0`, with no preceding cast; later comparison/control is non-primary | `defined_global_array.c` remains cast-first/later-GEP integration evidence |
+| `aarch64_return_zero_smoke.c` | `LirRet` needs typed native immediate identity for scalar `0` and typed `i32` return authority | `InvalidVoidReturn`, `main`, `entry`; LLVM has no ordinary instruction and first body fact is `ret i32 0` | `riscv64_zero_aggregate_global_storage.c` remains aggregate/global integration evidence |
 
 ## `LirInst` alternatives
 
@@ -129,8 +148,8 @@ it “structured” does not make it a stable identity.
 | `LirStoreOp.type_str` | native/typed immediate (`LirTypeRef`) | PM | VT | C-store | Type authority already structured | `keep` |
 | `LirMemsetOp.dst`, `LirMemsetOp.byte_val`, `LirMemsetOp.size` | structured-but-text-only `LirOperand` | PM/PS | VK | C-gap | Pointer and immediate/value uses lack stable authority | `extend existing ID/immediate convention` |
 | `LirMemsetOp.is_volatile` | native/typed immediate (`bool`) | PM/PS | VG | C-gap | Semantic flag already native | `keep` |
-| `LirCastOp.result`, `LirCastOp.operand` | structured-but-text-only `LirOperand` | PE/PM | VK | C-array | Focused definition/native-immediate operand boundary blocks cast receipt | `extend existing ID/immediate convention` |
-| `LirCastOp.kind`, `LirCastOp.from_type`, `LirCastOp.to_type` | native/typed immediate (`LirCastKind`, `LirTypeRef`, `LirTypeRef`) | PE/PM | VT for types; kind is native but not separately checked | C-array | Cast operation/type authority already structured | `keep` |
+| `LirCastOp.result`, `LirCastOp.operand` | structured-but-text-only `LirOperand` | PE/PM | VK | C-array-integration | Integration definition/native-immediate operand boundary blocks cast receipt | `extend existing ID/immediate convention` |
+| `LirCastOp.kind`, `LirCastOp.from_type`, `LirCastOp.to_type` | native/typed immediate (`LirCastKind`, `LirTypeRef`, `LirTypeRef`) | PE/PM | VT for types; kind is native but not separately checked | C-array-integration | Cast operation/type authority already structured | `keep` |
 | `LirGepOp.result`, `LirGepOp.ptr` | structured-but-text-only `LirOperand` | PM/PE | VK | C-array | Focused result/global-or-value base boundary blocks GEP receipt | `extend existing ID/immediate convention` |
 | `LirGepOp.indices` | raw text (`vector<string>` combined type/value fragments) | PM/PE | VG | C-array | Index values/immediates have no individual authority | `extend existing ID/immediate convention` |
 | `LirGepOp.element_type`, `LirGepOp.inbounds` | native/typed immediate (`LirTypeRef`, `bool`) | PM/PE | VT for type; `inbounds` is VG | C-array | Type/flag authority already structured | `keep` |
@@ -208,9 +227,11 @@ producerless legacy path and `verify_terminator` ignores it.
 - Inline-asm ordinary bindings are semantic, but their `value` members remain
   `LirOperand` text identities. Assembly templates, constraints, and clobbers
   are intentionally opaque and are not candidates for value-ID conversion.
-- The four integration cases bind only store, load, cast/later-GEP, and return
-  seams. Every other unbound owned identity row is explicitly marked
-  `C-gap—Step 3 candidate`; no coverage is inferred from mere variant presence.
+- The four focused probes bind only store, load, GEP, and return seams. The
+  original four larger cases remain integration evidence, including the exact
+  cast-first/later-GEP fact for `defined_global_array.c`. Every other unbound
+  owned identity row is explicitly marked `C-gap—Step 3 candidate`; no coverage
+  is inferred from mere variant presence.
 
 ## Checked conclusion
 

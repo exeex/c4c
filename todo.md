@@ -3,41 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/741_lir_structured_operand_and_terminator_identity_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract or confirm focused probes
+Current Step ID: 4
+Current Step Title: Bind probes to owned carrier contracts
 
 ## Just Finished
 
-- Plan Step 2 produced
-  `docs/lir_structured_identity/authority_matrix.md`, exhaustively naming all
-  38 `LirInst` and 6 `LirTerminator` alternatives and every direct/nested
-  operand, result, immediate, symbol, label, and compatibility field.
-- Each row now records current carrier authority, actual producer or explicit
-  producerless legacy status, verifier reach/gap, focused coverage/gap, blocked
-  idea-734 relevance, and an exact disposition. The checked smallest candidate
-  family is the existing `LirValueId`/`LinkNameId`/`LirBlockId`/native-immediate
-  conventions, with display text retained only for presentation/parity.
+- Plan Step 3 now binds four one-contract focused probes: new minimal store and
+  array-address cases plus existing `global_load.c` and historically named but
+  target-neutral `aarch64_return_zero_smoke.c`.
+- Their exact first facts are store, load, GEP-with-two-zero-indices and no
+  preceding cast, and `ret i32 0`; the original larger four cases remain
+  integration evidence. The authority matrix records each baseline and
+  focused-versus-integration contrast without claiming BIR support.
 
 ## Suggested Next
 
-- Execute Plan Step 3: confirm whether the load/store integration cases isolate
-  one identity contract each, bind the array case to its cast-first/later-GEP
-  seams, and extract a minimal scalar non-void return probe if needed.
+- Execute Plan Step 4 by binding each focused probe to one existing typed
+  carrier convention, one producer-population rule, reachable verifier
+  obligations, and exact malformed/missing/conflicting rejection coverage.
 
 ## Watchouts
 
-- The matrix confirms that modern `LirOperand` is still text plus kind, not a
-  stable identity. Compound GEP/PHI/indirect-target/terminator text fields are
-  shallow or unverified, while all legacy instruction stubs are ignored by the
-  verifier and have no ordinary HIR producer.
-- Preserve the cast-first/later-GEP fact for `defined_global_array.c`; do not
-  infer focused coverage for matrix rows marked `C-gap—Step 3 candidate`.
+- The focused array probe uses scalar ternary control so array decay emits GEP
+  first. A pointer-returning helper instead stops at the unrelated closed
+  pointer-signature gate, while direct indexed address syntax inserts a sext;
+  neither should replace the checked focused shape.
+- The comparison after the focused GEP is explicitly non-primary. Preserve
+  `defined_global_array.c` as cast-first/later-GEP integration evidence and do
+  not infer coverage for remaining `C-gap—Step 3 candidate` rows.
 
 ## Proof
 
-- Documentation-only proof: `git diff --check` plus a mechanical comparison of
-  the current variant lists against the matrix. The inventory is 38/38
-  `LirInst` alternatives and 6/6 `LirTerminator` alternatives with no missing
-  direct or nested field names.
-- No build, tests, schema edits, producer edits, verifier edits, consumer edits,
-  or proof-log changes were required for Plan Step 2.
+- Fresh `cmake --build build -j2 --target c4cll` passed. For all four focused
+  probes, `./build/c4cll --dump-bir --target x86_64-linux-gnu <case>` reached
+  the required current family: store/load/GEP are
+  `UnsupportedOrdinaryInstruction`; scalar return is `InvalidVoidReturn`.
+- `--codegen llvm` confirmed the exact first body facts and no preceding cast
+  for the GEP probe. `git diff --check` passed; no root proof log was written.
