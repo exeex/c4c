@@ -8,37 +8,32 @@ Current Step Title: Migrate the import spine and CFG publication
 
 ## Just Finished
 
-- Step 5 active-graph cleanup removed the legacy RISC-V `c4c-as` executable
-  from the root build and removed every direct `c4c-as` consumer registered by
-  backend tests: the assembler parse suite, objdump extraction suite, RV64
-  roundtrip contract, and RV64 c-testsuite roundtrip scan target.
-- The assembler and roundtrip sources remain untouched as legacy reference
-  material; no legacy, prealloc, or MIR source was restored to active
-  compilation.
+- Step 5 replaced all registrations in `tests/backend/bir` with one durable
+  direct `LirModule` to new `RawBir` interface test.
+- The interface test proves void declaration import, void-return lowering,
+  unconditional-branch CFG successor traversal, and structured rejection of
+  an unsupported module-global semantic family.
+- Removed the legacy BIR lowering include plus five obsolete backend-boundary
+  functions and calls from `frontend_hir_tests.cpp`; no unsupported expectation
+  or compiler behavior was weakened.
 
 ## Suggested Next
 
-- Quarantine the remaining prealloc/MIR/RV64 backend test registrations from
-  the active CTest/build graph, retaining only tests for the new LIR-to-BIR and
-  BIR-to-MIR interface boundaries as those interface tests become available.
+- Add the initial new BIR-to-MIR interface shell test, or quarantine remaining
+  backend test registrations that still compile prealloc/MIR/RV64 legacy APIs.
 
 ## Watchouts
 
-- `ctest -N` still enumerates many backend tests whose identities and expected
-  behavior belong to the quarantined prealloc/MIR/RV64 implementation. They do
-  not depend on `c4c-as`, so removing them was outside this packet, but they are
-  the next active-test-graph cleanup boundary.
-- The delegated proof did not include a full default build, so this packet does
-  not claim that no later test-binary compile blocker exists.
+- The delegated target compiles the new interface test but does not rebuild
+  `frontend_hir_tests`; its legacy-function deletion still needs the
+  supervisor's broader build validation before acceptance.
+- Other backend test directories remain outside this packet and may still
+  register tests against quarantined prealloc/MIR/RV64 structures.
 
 ## Proof
 
-- `cmake --preset default` passed.
-- `cmake --build --preset default -j 2 --target c4c_backend c4cll c4c-objdump`
-  passed.
-- `ctest --test-dir build -N` plus generated `CTestTestfile.cmake` inspection
-  confirmed no registered test identity or command depends on `c4c-as` or the
-  removed RV64 roundtrip registrations.
-- `cmake --build --preset default --target help | rg
-  '(^|/)c4c-as($|:)'` produced no match, confirming the target is absent.
+- `cmake --preset default && cmake --build --preset default -j 2 --target
+  backend_lir_to_bir_interface_test && ctest --test-dir build
+  --output-on-failure -R '^backend_lir_to_bir_interface$'` passed.
+- `git diff --check` passed.
 - Complete delegated proof output is preserved in `test_after.log`.
