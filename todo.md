@@ -3,51 +3,53 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Converge canonical passes P01-P02 and scalar analysis
+Current Step ID: 5
+Current Step Title: Converge canonical passes P03-P04 and CFG/SSA analyses
 
 ## Just Finished
 
-- Plan Step 4 is complete. `passes/legalize/README.md` now closes P01 over the
-  exact verified `RawBir` input and `TypesLegal` output checkpoints, gives every
-  admitted Raw form one disposition, and fails atomically for unsupported or
-  ownerless semantics.
-- `passes/scalar/README.md` now closes P02 as the idempotent function pass from
-  `TypesLegal` to `ScalarsCanonical`, including its portable rewrite authority,
-  complete special-operation dispositions, and all-or-nothing failure rules.
-- `analysis/comparison/README.md` now defines one immutable function-scoped,
-  revision-bound canonical analysis with a closed v1 descriptor, stable-ID
-  facts, exact invalidation, stale-handle rejection, and no mutation authority.
-- Both passes preserve inline-assembly template and constraint payload
-  opaquely and exclude post-canonical lowering, placement, allocation, and
-  identity decisions.
-- `pipeline/README.md` now agrees with those contracts: P01/P02 preserve the
-  opaque payload until root stage `S18`, the Raw inventory assigns its first
-  interpretation there, and legacy out-of-SSA maps to root stage `D5` before
-  `E1` allocation liveness.
+- Plan Step 5 is complete. P03 now owns all CFG mutation through one function
+  transaction, with typed terminators and successor slots as the sole stored
+  edge source and `EdgeKey {source BlockId, successor-slot ordinal}` preserving
+  split/merge, switch, indirect, asm-goto, and parallel-edge occurrences.
+- CFG, dominance, and publication/value-flow are closed immutable analyses
+  keyed to exact revisions, with explicit dependencies, stale-handle rejection,
+  exact invalidation, atomic cache publication, and no graph mutation authority.
+- P04 now has closed phi/block-argument construction and repair semantics:
+  incoming values cover the exact live `EdgeKey` multiset, def-use and dominance
+  are repaired and verified transactionally, and any incomplete repair rolls
+  back the entire occurrence.
+- Phi materialization and cycle-safe parallel-copy realization are deferred to
+  root stage `D5` after target legalization and before `E1` allocation
+  liveness; P04 makes no placement, allocation, or target-instruction decision.
+- Minimal pipeline adjacency wording now uses `BlockId`/`EdgeKey` consistently
+  and rejects names or label lookup tables as graph keys.
 
 ## Suggested Next
 
-- Execute Plan Step 5 in its declared order: converge
-  `passes/cfg/README.md` (`P03`), `analysis/cfg/README.md`,
-  `analysis/dominance/README.md`, `passes/ssa/README.md` (`P04`), and
-  `analysis/publication/README.md`, keeping terminators as sole edge authority
-  and deferring out-of-SSA to root stage `D5` before `E1` allocation liveness.
+- Execute Plan Step 6 in its declared order: converge
+  `passes/memory/README.md` (`P05`), `analysis/memory_effects/README.md`,
+  `analysis/provenance/README.md`, `passes/aggregate/README.md` (`P06`),
+  `passes/intrinsics/README.md` (`P07`), `analysis/call_graph/README.md`, then
+  the Canonical profile in `verify/README.md`. Require the exact P07 output to
+  pass Canonical publication, keep all facts target-independent, and preserve
+  inline assembly as one opaque semantic node.
 
 ## Watchouts
 
 - Do not begin implementation before explicit architecture acceptance.
 - Do not let a local pass or analysis document invent ordering outside the root
   README or treat an analysis dependency as a serial stage.
-- Keep CFG analysis immutable and revision-bound; CFG mutation belongs only to
-  P03. Dominance consumes the exact resulting edge revision rather than
-  becoming another stage.
+- P05-P07 must preserve the P03/P04 CFG and SSA profiles or fail; a later
+  canonicalizer may not emit a fresh noncanonical scalar, edge, phi, memory, or
+  aggregate form and then rerun an earlier pass.
+- Do not move D5 work into P04 or a target instruction graph. Preparation and
+  allocation remain outside the canonical P05-P07 interval.
 - Keep idea 731 open when this docs-only runbook is exhausted.
 
 ## Proof
 
-- `git diff --check && ! rg -n 'structured target-independent asm constraint grammar|unresolved .*constraint encoding|external MIR construction/out-of-SSA|preparation owns.*constraint' src/backend/bir/pipeline/README.md && ! rg -n 'legalize.*(parse|normaliz).*(constraint|asm)|constraint.*(parse|normaliz).*legalize|physical register|target opcode|ABI placement' src/backend/bir/passes/legalize/README.md src/backend/bir/passes/scalar/README.md src/backend/bir/analysis/comparison/README.md` — exit 0.
-- `git diff --check && rg -n 'root stage `D5`|before `E1` allocation liveness' src/backend/bir/pipeline/README.md todo.md && ! rg -n 'S23.*out-of-SSA|out-of-SSA.*S23' src/backend/bir/pipeline/README.md todo.md` — exit 0.
+- `git diff --check && ! rg -n 'persistent predecessor|predecessor.*authority|MIR.*out.of.SSA|out.of.SSA.*MIR|label.*identity' src/backend/bir/passes/cfg/README.md src/backend/bir/analysis/cfg/README.md src/backend/bir/analysis/dominance/README.md src/backend/bir/passes/ssa/README.md src/backend/bir/analysis/publication/README.md src/backend/bir/pipeline/README.md && rg -n 'terminator|EdgeKey|revision|invalidat|D5|rollback|publish' src/backend/bir/passes/cfg/README.md src/backend/bir/analysis/cfg/README.md src/backend/bir/analysis/dominance/README.md src/backend/bir/passes/ssa/README.md src/backend/bir/analysis/publication/README.md` — exit 0.
 - The supervisor selected a docs-only structural proof that does not produce a
   test log; no `test_after.log` or other regression log was created or
   modified.
