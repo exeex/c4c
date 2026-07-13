@@ -1,26 +1,27 @@
 Status: Active
-Source Idea Path: ideas/open/714_backend_test_source_reachability_cleanup.md
+Source Idea Path: ideas/open/730_post_legacy_bir_shell_bootstrap.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Inventory assertions and classify the test surface
+Current Step Title: Restore CMake generation without legacy sources
 
 # Current Packet
 
 ## Just Finished
 
-- None; active route reset to the two-interface-only contract policy.
+- Parked idea 714 and activated the post-legacy BIR shell bootstrap route.
 
 ## Suggested Next
 
-- Begin Step 1 by inventorying every backend test and inspecting its direct
-  observable assertions.
+- Remove obsolete backend test targets blocking CMake generation, verify legacy
+  paths stay outside build graphs, then configure and build to capture the next
+  true seam.
 
 ## Watchouts
 
-- Retain only direct LIR-to-BIR or BIR-to-MIR contract tests.
-- Treat current baseline failures as classification inputs, not repair duties.
-- Do not weaken or relabel retained boundary expectations.
+- Never compile or transplant `src/backend/legacy` code.
+- Bootstrap only explicit empty BIR/MIR behavior; do not imply target codegen.
+- Retain tests only for direct LIR-to-new-BIR and new-BIR-to-MIR contracts.
 
 ## Proof
 
-- Not run; lifecycle-only route rewrite.
+- Not run; lifecycle-only plan switch.

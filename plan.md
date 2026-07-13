@@ -1,192 +1,180 @@
-# Backend Test Contract Surface Retirement Runbook
+# Post-Legacy BIR Shell Bootstrap Runbook
 
 Status: Active
-Source Idea: ideas/open/714_backend_test_source_reachability_cleanup.md
+Source Idea: ideas/open/730_post_legacy_bir_shell_bootstrap.md
 
 ## Purpose
 
-Retain only backend tests whose direct observable contract is the stable
-LIR-to-BIR or BIR-to-MIR interface, and retire the remaining backend test and
-support surface.
+Restore a buildable backend around a minimal new BIR shell and two direct
+interface seams, while keeping all legacy BIR/prealloc code reference-only.
 
 ## Goal
 
-Produce an assertion-level classification, enforce the two-interface-only
-policy, remove non-boundary tests in reviewable batches, clean their dedicated
-support, and establish a new baseline from the retained surface.
+Make CMake generation and builds succeed without legacy paths, migrate active
+LIR-to-BIR code to an explicit empty BIR view, add an empty-view BIR-to-MIR
+consumer, and retain only focused tests of those two interfaces.
 
 ## Core Rule
 
-Retain a test only when its direct observable assertions specify LIR-to-BIR or
-BIR-to-MIR.  Build reachability and current pass/fail status are not retention
-criteria.
+Never compile, copy, rename, wrap, or re-export `src/backend/legacy` code.  The
+new shell begins with explicit safe empty behavior and does not claim semantic
+target-codegen support.
 
 ## Read First
 
-- `ideas/open/714_backend_test_source_reachability_cleanup.md`
-- LIR-to-BIR public handoff and its focused tests
-- BIR-to-MIR public handoff and its focused tests
-- backend test targets, registrations, fixtures, helpers, and expectations
-- current baseline evidence as classification input only
+- `ideas/open/730_post_legacy_bir_shell_bootstrap.md`
+- `src/backend/bir/lir_to_bir/`
+- `src/backend/legacy/` as read-only historical reference
+- backend production and test CMake files
+- current MIR-facing backend entry points
 
-## Current Scope
+## Current Targets
 
-- Every backend test source and its direct assertions.
-- Direct stable LIR-to-BIR and BIR-to-MIR boundary tests.
-- All non-boundary backend tests and their dedicated support/build surface.
-- A guard enforcing evidence-backed classification into the two retained
-  interfaces.
-- Final focused validation and supervisor-owned baseline establishment.
+- Obsolete backend test registrations blocking CMake generation.
+- Minimal new BIR schema and published empty view.
+- Active `src/backend/bir/lir_to_bir` migration.
+- Minimal BIR-to-MIR empty-view consumer.
+- Direct LIR-to-new-BIR and new-BIR-to-MIR tests.
+- Dedicated support/build cleanup and final broader validation.
 
 ## Non-Goals
 
-- Do not change backend semantics or redesign the retained interfaces.
-- Do not repair target lowering, emission, object, or runtime behavior solely
-  to preserve a test slated for retirement.
-- Do not weaken, rename, or relabel retained boundary expectations.
-- Do not preserve a test merely because it is reachable, useful, green, or
-  currently failing.
-
-## Working Model
-
-- `retain: LIR-to-BIR` means the test directly observes the stable LIR input to
-  BIR boundary contract.
-- `retain: BIR-to-MIR` means the test directly observes the stable BIR input to
-  MIR boundary contract.
-- `retire` covers every other direct contract, including internal stages and
-  downstream target/runtime behavior.
-- Validator or fail-closed coverage follows the same direct-interface rule; it
-  is not a third retained category.
+- Do not compile or transplant legacy BIR/prealloc.
+- Do not restore non-empty lowering, target emission, objects, or runtime
+  semantics.
+- Do not preserve internal or downstream tests outside the two interfaces.
+- Do not disguise silent data loss as successful code generation.
 
 ## Execution Rules
 
-- Review assertions, not only filenames, targets, or registrations.
-- Record evidence for each retained classification and the dedicated support
-  ownership of each retirement batch.
-- Explicitly retire route, prepared/prealloc, dump, printer, lookup, value-ID,
-  slot-ID, target lowering/emission, object, and runtime tests unless a specific
-  assertion is necessary direct proof of a retained interface.
-- Treat baseline failures as classification evidence, not automatic repair
-  work.
-- Keep deletions reviewable and validate both retained interfaces after each
-  batch that can affect shared support.
-- The supervisor establishes the new baseline only after accepted deletion
-  batches and final retained-surface validation.
+- Configure and build after each seam; let the next failure identify the next
+  necessary minimal contract.
+- Keep new schema and consumer APIs smaller than the legacy surface.
+- Make empty and unsupported behavior explicit and testable.
+- Delete tests from assertion-level classification, including their dedicated
+  support only when no retained interface test uses it.
+- Run focused interface proof after shared changes and broader CTest at the
+  final checkpoint.
 
-## Step 1: Inventory assertions and classify the test surface
+## Step 1: Restore CMake generation without legacy sources
 
-Goal: Classify every backend test by its direct observable contract.
+Goal: Remove obsolete test graph edges so configuration exposes the first real
+production build seam.
 
-Concrete actions:
-
-- Enumerate backend test sources, targets, registrations, fixtures, helpers,
-  expectations, and options or gates.
-- Inspect each test's direct assertions and classify it as `LIR-to-BIR`,
-  `BIR-to-MIR`, or `retire`.
-- Require assertion-level evidence for every retained test.
-- Classify validator, malformed, rejection, and fail-closed cases by the same
-  two-interface rule.
-- Identify dedicated and shared support dependencies for deletion planning.
-- Use existing baseline failures only as evidence about exercised contracts.
-
-Completion check:
-
-- Every backend test has one classification, every retention has direct
-  boundary evidence, and deletion/support batches are explicit.
-
-## Step 2: Add the two-interface classification guard
-
-Goal: Prevent non-boundary backend tests from re-entering the test surface.
+Primary target: backend test CMake registrations.
 
 Concrete actions:
 
-- Implement a machine-checkable inventory or guard for the two retained
-  interface categories.
-- Require an evidence-backed category for every backend test admitted by the
-  guard.
-- Prove that an unclassified or non-boundary representative test is rejected.
-- Avoid filename-shaped allowlists and named-test exceptions.
+- Remove obsolete internal/legacy backend test targets referencing missing or
+  quarantined sources, beginning with `backend_prepare_phi_materialize_test`
+  and `backend_lir_to_bir_notes_test`.
+- Remove only their exclusively dedicated registration/support entries in this
+  packet.
+- Verify no production or test target names `src/backend/legacy/**`.
+- Run fresh CMake generation, then build the default preset immediately.
+- Record the first compiler or linker failure as the next seam.
 
 Completion check:
 
-- The guard accepts the reviewed two-interface inventory and rejects
-  representative non-boundary or unclassified additions.
+- CMake generation succeeds without legacy sources and the first true build
+  seam is captured with a reproducible command and diagnostic.
 
-## Step 3: Retire internal-stage tests in reviewable batches
+## Step 2: Define the minimal new BIR schema and empty view
 
-Goal: Remove tests whose contracts expose refactorable backend internals.
+Goal: Provide the smallest non-legacy BIR representation needed for interface
+bootstrap.
+
+Primary target: new active files under `src/backend/bir/`, outside
+`lir_to_bir/` and `legacy/`.
 
 Concrete actions:
 
-- Delete classified route, prepared/prealloc, internal dump, printer, lookup,
-  value-ID, and slot-ID tests in coherent batches.
-- Include other internal-stage tests whose direct assertions specify neither
-  retained interface.
-- Remove batch-dedicated expectations and support when ownership is exclusive;
-  defer shared-support cleanup to Step 5.
-- Build and run focused LIR-to-BIR and BIR-to-MIR proof after relevant batches.
+- Define explicit empty module/view invariants and a minimal publication API.
+- Add only fields and operations required by the observed build seam and empty
+  interface proof.
+- Fail clearly on unsupported non-empty operations.
+- Build the affected production targets and add focused empty-view proof.
 
 Completion check:
 
-- The classified internal-stage surface is gone without weakening or
-  reclassifying a retained boundary expectation.
+- The new schema/view builds independently of legacy code and its empty and
+  unsupported states are observable and safe.
 
-## Step 4: Retire downstream target and runtime tests in reviewable batches
+## Step 3: Migrate LIR-to-BIR onto the new shell
 
-Goal: Remove tests whose direct contracts are beyond BIR-to-MIR.
+Goal: Keep the active LIR-to-BIR source family while removing its dependency on
+the old representation.
+
+Primary target: `src/backend/bir/lir_to_bir/`.
 
 Concrete actions:
 
-- Delete classified target lowering, target emission, object production, and
-  backend runtime tests in coherent batches.
-- Do not repair current downstream failures merely to keep retiring tests.
-- Preserve a particular assertion only when review proves it is necessary
-  direct LIR-to-BIR or BIR-to-MIR evidence.
-- Run focused proof for both retained interfaces after shared-surface changes.
+- Adapt the retained entry point to publish the new empty BIR view for the
+  explicitly supported bootstrap path.
+- Do not reintroduce legacy builder, route, preallocation, ID, or lookup APIs.
+- Reject unsupported meaningful/non-empty lowering rather than silently
+  discarding it.
+- Add or retain only direct LIR-to-new-BIR boundary tests.
 
 Completion check:
 
-- No downstream target/object/runtime test remains without concrete direct
-  retained-interface evidence.
+- LIR-to-BIR builds against the new shell and focused tests distinguish valid
+  empty publication from safe rejection of unsupported input.
 
-## Step 5: Remove dedicated support and build/test registrations
+## Step 4: Add the minimal BIR-to-MIR empty-view consumer
 
-Goal: Remove infrastructure that exists only for retired tests.
+Goal: Establish the second direct interface without rebuilding downstream
+backend semantics.
 
 Concrete actions:
 
-- Remove unused fixtures, helpers, generated expectations, build targets,
-  CTest registrations, options, and gates.
-- Confirm shared support remains wherever a retained boundary test uses it.
-- Search for stale source, target, registration, expectation, and ownership
-  references.
-- Run clean build and focused boundary-test discovery.
+- Define a minimal consumer entry accepting the new BIR view.
+- Return explicit empty MIR or a clear safe bootstrap outcome for an empty
+  input view.
+- Reject unsupported non-empty use without pretending target codegen works.
+- Add focused direct new-BIR-to-MIR tests.
 
 Completion check:
 
-- No dedicated retired-test support or stale registration remains, and both
-  retained interface suites still build and register as intended.
+- The empty view crosses the BIR-to-MIR seam under focused proof, with no
+  legacy dependency or implied non-empty target support.
 
-## Step 6: Validate retained interfaces and establish the new baseline
+## Step 5: Retire remaining obsolete tests and dedicated support
 
-Goal: Prove the final two-interface surface and hand baseline acceptance to the
-supervisor.
+Goal: Align the backend test graph with the two-interface-only policy.
 
 Concrete actions:
 
-- Run focused LIR-to-BIR and BIR-to-MIR validation with non-empty discovery
-  evidence for both categories.
-- Run the classification guard against the final test inventory.
-- Run the supervisor-selected broader regression check appropriate to shared
-  implementation/build changes.
-- Review deletion batches and confirm retained expectation strength did not
-  change.
-- Have the supervisor establish and record a new accepted baseline from the
-  retained surface.
+- Remove route, prepare/prealloc, dump/printer/lookup/ID, target
+  lowering/emission, object, and runtime backend tests outside direct
+  LIR-to-new-BIR or new-BIR-to-MIR contracts.
+- Remove their exclusively dedicated fixtures, helpers, expectations, targets,
+  options, gates, and registrations.
+- Preserve shared support only when a retained boundary test still uses it.
+- Configure, build, and run both focused interface test groups after each
+  shared-support batch.
 
 Completion check:
 
-- Only direct tests of the two stable interfaces remain, their focused proof
-  and guard are green, deletion/support cleanup is complete, and the new
-  retained-surface baseline is accepted without silently omitting either
-  interface.
+- Only direct tests of the two new interfaces remain and no stale dedicated
+  support or registration references retired tests.
+
+## Step 6: Validate the bootstrap surface broadly
+
+Goal: Prove repository health and the explicit limits of the new shell.
+
+Concrete actions:
+
+- Run clean preset generation and the default build.
+- Run non-empty focused LIR-to-new-BIR and new-BIR-to-MIR test discovery and
+  execution.
+- Run broader CTest with output-on-failure.
+- Confirm build metadata contains no `src/backend/legacy` path.
+- Confirm empty behavior is explicit and unsupported non-empty paths fail
+  safely rather than claiming codegen success.
+
+Completion check:
+
+- Configure, build, focused interface proof, and broader CTest are reviewed;
+  legacy stays reference-only and the bootstrap makes no false semantic-output
+  claim.

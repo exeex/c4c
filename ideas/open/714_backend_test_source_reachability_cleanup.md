@@ -3,6 +3,13 @@
 Status: Open
 Type: backend test contract-surface cleanup
 
+## Lifecycle Note
+
+Parked on 2026-07-13 while idea 730 bootstraps the post-legacy BIR shell and
+restores a buildable direct-interface test surface.  This idea remains open and
+inactive; resume its broader contract-surface retirement only after that
+bootstrap route is accepted.
+
 ## Intent
 
 Reduce the backend test surface to tests whose direct observable contract is
