@@ -16,8 +16,10 @@ Required target legalization may replace one pseudo with an explicit pseudo
 subgraph. Every introduced temporary, definition, use, constraint, clobber,
 effect, stack-object reference, and CFG edit is ordinary BIR state visible to
 out-of-SSA, liveness, and shared regalloc. The chain may legalize call-sequence
-pseudos emitted by D2, but cannot redo ABI classification, choose a different
-call plan, reconstruct a `GenericCall`, or take over general call lowering.
+pseudos emitted by [D2 shared call lowering](../call_lowering/README.md), but
+cannot redo ABI classification, choose a different call plan or ABI rule, add
+hidden transport, reconstruct a `GenericCall`, or take over general call
+lowering.
 
 ## Closed pass registry and optional entries
 

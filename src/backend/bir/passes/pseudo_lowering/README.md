@@ -86,18 +86,10 @@ immutable D1 candidate alone may enter `D2`; D1 does not mint the public
 
 ## D2 and D3 handoff
 
-`D2` is the one shared ABI-aware BIR call-lowering owner for every supported
-target. It consumes the D1 candidate plus exact `AbiPlan` and `CallPlan`
-handles, rewrites all `GenericCall` nodes to the admitted explicit call
-pseudos, and advances the revision under the same identity rules. D2 alone
-owns argument/result transport, hidden sret/byval/variadic transport, abstract
-ABI-slot requirements, caller-clobber effects, and callee-preservation
-requirements. It uses abstract layout slots and stack-object identities only;
-it performs no general assignment.
-
-Every D1-introduced derived product is invalid after a D2 mutation unless D2
-rebuilds it for the new exact revision and proves preservation. `D3` receives
-only the frozen complete D2 candidate and runs the full `Pseudo` publication
-profile. A successful D3 transaction atomically mints the first immutable
-`PseudoBir`; failure leaves the D1/D2 candidates unpublished and the Canonical
-input unchanged.
+The exact immutable D1 candidate alone may enter the dedicated
+[`D2` shared ABI-aware call-lowering contract](../call_lowering/README.md).
+That owner consumes the complete D1 and C3/C4/product keys, eliminates every
+`GenericCall`, advances the revision, and supplies D3 with one frozen complete
+candidate. This section is only the D1 output handoff; the D2 document owns
+admitted operations, ABI-rule selection, revision and identity behavior,
+preservation/invalidation, failure atomicity, and D3/D4 adjacency.

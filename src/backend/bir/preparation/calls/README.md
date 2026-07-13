@@ -11,10 +11,11 @@ ordered inputs and results, parallel moves, outgoing stack objects,
 preservation, abstract caller clobbers, hidden carriers, and return recovery.
 It also records whether tail-call eligibility is proved or rejected.
 
-The plan describes requirements only. Shared ABI-aware BIR call lowering later
-creates explicit pseudo moves, stores, calls, and result moves. This planner
-does not add instructions, select slots, assign general values, or create frame
-offsets. It does not reinterpret any inline-assembly payload.
+The plan describes requirements only. [D2 shared ABI-aware BIR call lowering](../../passes/call_lowering/README.md)
+later creates explicit pseudo moves, stores, calls, and result moves from the
+exact plan key. This planner does not add instructions, select slots, assign
+general values, or create frame offsets. It does not reinterpret any
+inline-assembly payload.
 
 ## Binding and consumers
 
@@ -22,8 +23,9 @@ Every `CallPlan` entry names ordinary Canonical instruction/value identities.
 Its product key contains the complete Canonical `PipelineStageStamp`, exact
 `TargetFingerprint`, layout and call-plan schema fingerprints, and the exact
 `AbiPlan` fingerprint. `VariadicPlan` is the immediate consumer; runtime-helper
-planning, call lowering, liveness/allocation, and verification are later
-consumers.
+planning, D2 call lowering, liveness/allocation, and verification are later
+consumers. D2 must match this complete C4 key and the referenced C3 key; it
+cannot rebuild a call plan from a D1 graph or select a structurally equal plan.
 
 ## Publication
 

@@ -42,7 +42,7 @@ LIR lowering -> ModuleBuilder -> frozen ModuleDraft --verify_and_publish_raw--> 
                                       \--verify_candidate(Raw)--> diagnostics only
 ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
 C1 target selection + Canonical --verify_preparation_input--> VerifiedPreparationInput
-private D2 candidate --verify-and-publish(Pseudo)--> PseudoBir
+private complete D2 call-lowering candidate --verify-and-publish(Pseudo)--> PseudoBir
 complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 private E3 rewrite --full verify(retry candidate)--> immutable E1/E2 retry input
 stable E3 candidate --verify-and-publish(Allocated)--> AllocatedBir + PreparedBir
@@ -67,7 +67,7 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | `Raw` | yes | Structurally complete target-independent BIR. Memory form, legal raw op families, critical edges, unreachable blocks, and absence of phi nodes are allowed. |
 | `Canonical` | later | The exact immutable B7 / P07 revision published by B8: Raw rules plus all P01-P07 normal forms, including B3 / P03 reachability. It is target-independent and is not a request to validate an arbitrary post-Raw snapshot. |
 | `PreparedInput` | later | A non-mutating C1 input-gate rule set over one already-published `CanonicalBir` plus one validated `TargetProfile`. It binds their exact stamp/fingerprint and proves complete typed semantic inputs for C2-C9; it is not a BIR publication profile and contains no prepared facts. |
-| `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1/D2 lowering, and stage-specific realizability rules. Allocation completeness is not required. |
+| `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1 lowering and [D2 call lowering](../passes/call_lowering/README.md), and stage-specific realizability rules. Allocation completeness is not required. |
 | `Allocated` | later | Full graph/Pseudo rules plus the exact stable E3 revision, complete legal abstract assignments, explicit verified spill/reload transitions, fresh target/product bindings, and atomic MIR-ready publication. |
 
 The semantic profiles are cumulative. `PreparedInput` cannot weaken

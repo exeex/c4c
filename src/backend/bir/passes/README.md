@@ -63,6 +63,12 @@ transaction, verifier, and publication boundary. It may not receive this
 framework's `PassProperty`, `CanonicalBir` publication authority, analysis
 cache, or canonical occurrence registry by implication.
 
+The target-aware pass contracts indexed below are separate owners rather than
+canonical `P01`-`P07` registrations: [D1 generic pseudo lowering](pseudo_lowering/README.md),
+[D2 shared ABI-aware call lowering](call_lowering/README.md),
+[D4 target pseudo legalization](target/README.md), and
+[D5 out-of-SSA](out_of_ssa/README.md).
+
 ### 1.3 Allowed dependency direction
 
 Pass framework code and individual canonical passes may depend only on:

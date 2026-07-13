@@ -70,7 +70,7 @@ entries in that same pre-allocation chain.
 | `C8` | Preparation 6: runtime helpers | `C7` facts | complete verified cumulative preparation bundle, including helper interface requirements | [runtime-helper plan](preparation/runtime_helpers/README.md); preparation sequencing and atomic publication belong to [preparation](preparation/README.md) |
 | `C9` | Register-constraint parsing, typing, and binding | cumulative preparation facts, target-layout tables, raw strings such as `r`, `=r`, `VR`, and `VRM2`, and ordinary instruction operands/results | typed class/group requirements, ties, early-clobber exclusions, and abstract clobber units | [register constraints](regalloc/constraints/README.md), the sole BIR owner of this interpretation |
 | `D1` | Generic pseudo lowering | `CanonicalBir`, verified layout, cumulative preparation facts, and typed constraints | a new immutable revision containing only the admitted target-aware, machine-independent pseudo-node schema; helper-eligible semantics are rewritten to generic pseudo calls so ordinary and runtime-helper calls share one downstream call-lowering owner | [pseudo lowering](passes/pseudo_lowering/README.md) against the [pseudo instruction schema](pseudo/README.md) |
-| `D2` | Shared ABI-aware BIR call lowering | generic pseudo BIR plus verified ABI and CallPlan facts selected by `TargetProfile.backend_abi` | explicit pseudo argument moves, argument stores/outgoing-call slots, call nodes, result moves, hidden sret/byval/variadic transport, fixed abstract ABI-slot requirements, caller-saved clobbers, and callee-saved preservation requirements | one shared BIR pass for all supported targets; it uses only abstract pseudo slots and stack objects, cannot spell concrete registers/frame offsets/machine opcodes or perform general register assignment, and currently needs its own subordinate pass contract/placeholder during the ordered README review |
+| `D2` | Shared ABI-aware BIR call lowering | exact private D1 candidate plus matching verified C3 `AbiPlan`, C4 `CallPlan`, cumulative preparation/product keys, and the ABI rule selected by `TargetProfile.backend_abi` | one new private revision with every `GenericCall` replaced by explicit pseudo argument moves, outgoing-call stores, call nodes, result moves, hidden sret/byval/variadic transport, fixed abstract ABI-slot requirements, caller-saved clobbers, and callee-saved preservation requirements | [shared call lowering](passes/call_lowering/README.md), the sole D2 owner for all supported targets; it uses only abstract pseudo slots and stack objects, cannot spell concrete registers/frame offsets/machine opcodes or perform general register assignment |
 | `D3` | Pseudo verification and publication | private `D2` candidate | verified Pseudo BIR; no allocation completeness is required yet | verifier `Pseudo` profile |
 | `D4` | Target-specific pseudo legalization/expansion and full reverification | verified Pseudo BIR | a directly realizable pseudo revision in which every semantic one-to-many target expansion, including required call-sequence legalization, has become explicit pseudo nodes, followed by full Pseudo reverification | [target pseudo-pass extension](passes/target/README.md); it cannot redo ABI classification or general call lowering; separately reviewed optimization entries remain optional |
 | `D5` | Out of SSA | reverified `D4` output | pseudo BIR with phi semantics lowered to directly realizable explicit edge/copy operations; it cannot reintroduce a one-to-many lowering requirement | [out-of-SSA pass](passes/out_of_ssa/README.md) |
@@ -185,11 +185,10 @@ this README itself is the overview entry.
 Review completion means the root order, each adjacent owner contract, verifier
 profiles, and cross-cutting rules agree. It does not mean the scaffold has
 been implemented. In particular, `lir_to_bir/memory`, target layout, pseudo
-schema/lowering, out-of-SSA, target pseudo legalization/expansion, register allocation,
-shared ABI-aware call lowering (which still needs a dedicated subordinate pass
-contract/placeholder), spill/reload, and allocated publication are currently scaffold or
-build-excluded owners unless their own code and proof later establish a
-stronger status.
+schema/lowering, shared ABI-aware call lowering, out-of-SSA, target pseudo
+legalization/expansion, register allocation, spill/reload, and allocated
+publication are currently scaffold or build-excluded owners unless their own
+code and proof later establish a stronger status.
 
 ## Non-negotiable authority rules
 

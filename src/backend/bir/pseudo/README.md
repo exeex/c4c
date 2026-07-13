@@ -25,7 +25,7 @@ extension namespace.
 | `Address`, `Load`, `Store`, `Atomic`, `Fence` | typed target-aware address and memory operations with explicit effects | `D1` | `D1` onward; must be directly realizable after `D4` |
 | `AggregatePiece`, `Vector`, `Intrinsic` | bounded piece/lane/portable-feature operations retained for reviewed legalization | `D1` | `D1` through `D4`; each instance is eliminated or directly realizable after `D4` |
 | `GenericCall` | ordinary or runtime-helper call awaiting the shared ABI transport rewrite | `D1` | private D1 candidate only; forbidden at `D3` publication |
-| `AbiArgMove`, `AbiArgStore`, `AbiCall`, `AbiResultMove`, `AbiPreserve`, `AbiRestore` | explicit shared call transport with abstract ABI-slot and stack-object requirements | `D2` | `D2` onward; must be directly realizable after `D4` |
+| `AbiArgMove`, `AbiArgStore`, `AbiCall`, `AbiResultMove`, `AbiPreserve`, `AbiRestore` | explicit shared call transport with abstract ABI-slot and stack-object requirements | [D2 shared call lowering](../passes/call_lowering/README.md) | `D2` onward; must be directly realizable after `D4` |
 | `InlineAsm` | one opaque template plus ordinary ordered uses/results and the exact projected bound-constraint record | `D1` preserves/binds | `D1` onward; one BIR node maps to one opaque MIR record |
 | `ParallelCopy`, `EdgeCopy` | typed edge-local assignments replacing phi/block-argument transport; `ParallelCopy` reads all sources before simultaneously writing its unique destinations, while `EdgeCopy` is the singleton non-overlapping form | `D5` | `D5` onward; forbidden before out-of-SSA and checked against exact originating `EdgeKey` provenance |
 | `Spill`, `Reload` | explicit capacity-repair transitions using abstract spill-object identity | `E3` | allocation retry candidate onward; forbidden in D-stage publication |
@@ -98,8 +98,8 @@ parent revision to be reused without an explicit preservation proof.
 - The schema never stores machine-register identities, machine instruction
   encodings, stack displacements, late frame layout, or assembler parse trees.
 
-Pseudo lowering owns generic semantic disposition. Shared call lowering owns
-ABI transport. The target chain owns required target legalization and
+Pseudo lowering owns generic semantic disposition. The dedicated D2 shared
+call-lowering contract owns ABI transport. The target chain owns required target legalization and
 expansion. Out-of-SSA and spill/reload own only their listed variants. Shared
 BIR regalloc remains the sole home-assignment and pressure authority; MIR is a
 strict verified mapping consumer.
