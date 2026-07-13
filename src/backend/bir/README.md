@@ -13,9 +13,12 @@ Canonical publication, BIR validates a `c4c::TargetProfile`, derives a finite
 pseudo-physical register layout, lowers the graph to the admitted pseudo-node
 schema, and runs the shared BIR liveness, allocation, and explicit
 spill/reload flow. Only a verified `MirReadyBirView` crosses into MIR. MIR maps
-pseudo homes to concrete target registers and lowers pseudo instructions to
-machine instructions; it does not redo ordinary allocation or repair register
-pressure.
+pseudo homes to concrete target registers and translates each allocated pseudo
+instruction to exactly one machine instruction record; it does not expand
+instructions, introduce allocatable temporaries, redo ordinary allocation, or
+repair register pressure. Any target-specific one-to-many instruction
+expansion belongs to the pre-allocation pseudo-BIR legalization chain so that
+all introduced values participate in normal BIR analysis and allocation.
 
 This file is the normative top-level order. Subordinate documents may refine
 their own input, output, verification, and invalidation contracts, but cannot
@@ -24,9 +27,12 @@ document is not yet converged.
 
 ## Normative stage and pass order
 
-Every always-on row has exactly one predecessor and successor. `S21` is the
-only optional extension point and is skipped unless an explicitly reviewed
-target pseudo pass is enabled. `S25` has one deliberate retry edge to `S23`.
+Every always-on row has exactly one predecessor and successor. `S21` is an
+always-on target-realizability gate whose legalization/expansion chain may be
+empty only when every input pseudo node is already directly realizable as one
+machine instruction. Separately reviewed target-specific optimizations may be
+entries in that same pre-allocation chain. `S25` has one deliberate retry edge
+to `S23`.
 
 | ID | Stage / pass | Consumes | Publishes or guarantees | Owner |
 |---|---|---|---|---|
@@ -51,13 +57,13 @@ target pseudo pass is enabled. `S25` has one deliberate retry edge to `S23`.
 | `S18` | Register-constraint parsing, typing, and binding | cumulative preparation facts, target-layout tables, raw strings such as `r`, `=r`, `VR`, and `VRM2`, and ordinary instruction operands/results | typed class/group requirements, ties, early-clobber exclusions, and abstract clobber units | [register constraints](regalloc/constraints/README.md), the sole BIR owner of this interpretation |
 | `S19` | Pseudo lowering | `CanonicalBir`, verified layout, cumulative preparation facts, and typed constraints | a new immutable revision containing only the admitted target-aware, machine-independent pseudo-node schema | [pseudo lowering](passes/pseudo_lowering/README.md) against the [pseudo instruction schema](pseudo/README.md) |
 | `S20` | Pseudo verification and publication | private `S19` candidate | verified Pseudo BIR; no allocation completeness is required yet | verifier `Pseudo` profile |
-| `S21` | Optional reviewed target pseudo pass | verified Pseudo BIR | a new pseudo revision followed by mandatory Pseudo reverification | [target pseudo-pass extension](passes/target/README.md); absent unless separately specified and reviewed |
-| `S22` | Out of SSA | `S20` output, or reverified `S21` output | pseudo BIR with phi semantics lowered to explicit edge/parallel-copy operations | [out-of-SSA pass](passes/out_of_ssa/README.md) |
+| `S21` | Target-specific pseudo legalization/expansion and full reverification | verified Pseudo BIR | a directly realizable pseudo revision in which every semantic one-to-many target expansion has become explicit pseudo nodes, followed by full Pseudo reverification | [target pseudo-pass extension](passes/target/README.md); required legalization/expansion entries run whenever direct realization is impossible, while separately reviewed optimization entries remain optional |
+| `S22` | Out of SSA | reverified `S21` output | pseudo BIR with phi semantics lowered to directly realizable explicit edge/copy operations; it cannot reintroduce a one-to-many lowering requirement | [out-of-SSA pass](passes/out_of_ssa/README.md) |
 | `S23` | Allocation liveness and interference | exact post-out-of-SSA pseudo revision plus layout/constraint/call facts | revision-bound live ranges, interference, and pressure facts | shared allocation analysis consumed by the [BIR register allocator](regalloc/README.md) |
 | `S24` | Shared pseudo-physical register allocation | `S23` facts and finite target-layout pools | legal abstract `(category, class/group, slot)` homes or explicit eviction requests | the same shared BIR allocator for RV64, AArch64, and x86 |
-| `S25` | Explicit spill/reload insertion | allocation candidate, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted pseudo `Spill`/`Reload` nodes | [spill/reload](regalloc/spill_reload/README.md); candidate mutation invalidates allocation facts and retries at `S23` until stable or rejected |
-| `S26` | Allocated/MIR-ready verification and publication | stable allocation candidate with explicit spill state | `AllocatedBir`/`PreparedBir` capability and borrowed `MirReadyBirView` over the same immutable revision | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
-| `S27` | MIR construction | verified `MirReadyBirView` and the exact target mapping | target MIR: pseudo homes mapped to concrete registers and pseudo nodes lowered 1:1 or by bounded expansion | external [MIR architecture](../mir/README.md) |
+| `S25` | Explicit spill/reload insertion | allocation candidate, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted, directly realizable pseudo `Spill`/`Reload` nodes | [spill/reload](regalloc/spill_reload/README.md); candidate mutation invalidates allocation facts and retries at `S23` until stable or rejected |
+| `S26` | Allocated/MIR-ready verification and publication | stable allocation candidate with explicit spill state | `AllocatedBir`/`PreparedBir` capability and borrowed `MirReadyBirView` over the same immutable revision, with direct one-to-one target realizability rechecked for every node | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
+| `S27` | Strict one-to-one MIR construction | verified `MirReadyBirView` and the exact target mapping | target MIR with pseudo homes mapped to concrete registers and exactly one machine instruction record for each allocated pseudo instruction | external [MIR architecture](../mir/README.md); MIR may copy/translate opcode and fields but cannot expand instructions, introduce allocatable temporaries, allocate registers, or pressure-spill |
 | `S28` | Machine verification | private target-MIR candidate | verified machine instruction graph; no ordinary BIR allocation repair | external MIR/target verifier |
 | `S29` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | target assembler and external [object boundary](../mir/object/README.md) |
 
@@ -82,8 +88,8 @@ prove complete homes and spill coverage, or when allocation fails closed.
 |---|---|---|
 | `Draft/Raw` | `S01` | The draft is fully typed and structurally valid before `RawBir` publication. Raw forms explicitly admitted for canonicalization are allowed. Register homes, target allocation facts, and spill/reload state are forbidden. |
 | `Canonical` | `S09` | Raw rules plus every `P01`-`P07` normal form. It remains target-independent and unallocated; ABI placement, register homes, and spill/reload state are forbidden. |
-| `Pseudo` | `S20`, and again after `S21` | Only the closed pseudo-node schema is admitted, operand/result/terminator shapes are valid, and target/layout keys agree. Allocation is not required yet, so unassigned allocatable values are valid at this boundary. Concrete registers, target opcodes, and frame offsets remain forbidden. |
-| `Allocated/MIR-ready` | `S26` | Every allocatable use/result has a legal pseudo-physical home or an explicit, verified spill/reload transition. Class/group, alias, reserved-unit, tie, clobber, dominance, and capacity rules are complete. Unresolved pressure, implicit spills, concrete target registers, and non-admitted nodes are rejected. |
+| `Pseudo` | `S20`, and in full again after the complete `S21` chain | Only the closed pseudo-node schema is admitted, operand/result/terminator shapes are valid, and target/layout keys agree. The post-`S21` profile additionally proves that every non-`InlineAsm` pseudo node is directly realizable as exactly one target machine instruction. Allocation is not required yet, so unassigned allocatable values are valid at this boundary. Concrete registers, target opcodes, and frame offsets remain forbidden. |
+| `Allocated/MIR-ready` | `S26` | Every allocatable use/result has a legal pseudo-physical home or an explicit, verified spill/reload transition, and every non-`InlineAsm` node is still directly realizable as exactly one target machine instruction. Class/group, alias, reserved-unit, tie, clobber, dominance, capacity, and realizability rules are complete. Unresolved pressure, implicit spills, concrete target registers, and non-admitted nodes are rejected. |
 
 `PreparedInput` may remain an internal cumulative input-checking capability for
 preparation, but it is not a replacement for any published BIR profile and is
@@ -131,6 +137,12 @@ compiler contracts and participate in allocation. Concrete names such as
 reserved; unless the user also expresses them through supported constraints or
 clobbers, collisions are the user's responsibility.
 
+At `S27`, one allocated `InlineAsm` pseudo node becomes exactly one opaque MIR
+inline-asm record with its concrete operand mappings. MIR does not parse or
+expand its text and does not introduce hidden temporaries. The assembler first
+parses that payload at `S29`; this opaque assembler boundary does not weaken
+the strict one-node-to-one-record BIR-to-MIR allocation contract.
+
 ## Complete documentation review order
 
 The stage table and analysis table above are the first part of the review
@@ -152,7 +164,7 @@ this README itself is the overview entry.
 Review completion means the root order, each adjacent owner contract, verifier
 profiles, and cross-cutting rules agree. It does not mean the scaffold has
 been implemented. In particular, `lir_to_bir/memory`, target layout, pseudo
-schema/lowering, out-of-SSA, target pseudo extensions, register allocation,
+schema/lowering, out-of-SSA, target pseudo legalization/expansion, register allocation,
 spill/reload, and allocated publication are currently scaffold or
 build-excluded owners unless their own code and proof later establish a
 stronger status.
@@ -172,9 +184,16 @@ stronger status.
    target variation is data and legality rules.
 7. Pseudo and Allocated stages are new immutable revisions/capabilities, not
    target facts written backward into Canonical storage.
-8. MIR consumes only `MirReadyBirView`, realizes verified pseudo assignments,
-   and cannot redo normal allocation or pressure spill/reload.
-9. Optional target-specific optimization is explicit, reviewed, invalidation-
-   declaring, and reverified; it is never a hidden allocation authority.
-10. Every authoritative stage has one verifier/publication gate, and failure
+8. All target-specific one-to-many expansion occurs in the `S21`
+   pseudo-legalization chain before out-of-SSA, liveness, allocation, and
+   spill/reload, so every introduced use, definition, value, and constraint is
+   ordinary BIR state covered by those stages.
+9. MIR consumes only `MirReadyBirView` and maps each allocated pseudo node to
+   exactly one machine instruction record. It cannot expand instructions,
+   introduce allocatable temporaries, redo normal allocation, or pressure
+   spill/reload.
+10. Optional target-specific optimization is an explicit, reviewed,
+    invalidation-declaring, fully reverified entry in the same pre-allocation
+    `S21` chain; it is never a hidden allocation authority.
+11. Every authoritative stage has one verifier/publication gate, and failure
     publishes nothing.
