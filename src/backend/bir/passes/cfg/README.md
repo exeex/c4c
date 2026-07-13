@@ -18,14 +18,14 @@ revision. Missing or malformed terminators, foreign block references, stale
 capability stamps, or a stored edge side table reject the invocation before
 mutation.
 
-Every successor occurrence has the stable structural key:
+Every successor occurrence uses the exact stable structural key owned by core:
 
 ```text
-EdgeKey = { source BlockId, successor-slot ordinal }
-destination = source terminator.successor[successor-slot ordinal]
+EdgeKey = { source BlockId, SuccessorRole, index }
+destination = source terminator.successor[SuccessorRole, index]
 ```
 
-The slot ordinal is interpreted by the typed terminator schema. Two slots may
+The role/index pair is interpreted by the typed terminator schema. Two slots may
 name the same destination, so switches, indirect branches, asm-goto, and other
 parallel edges remain distinct. `BlockId` identifies a block; `EdgeKey`
 identifies one edge occurrence. Names, rendered text, layout adjacency, and
@@ -38,11 +38,14 @@ successor-slot canonicalization, block split/merge, and registered critical-
 edge preparation required by the canonical CFG profile. It may reorder blocks
 only by the closed semantic block-order rule; block order never adds an edge.
 It preserves inline-assembly text and constraints opaquely while retaining the
-typed asm-goto successor topology.
+typed asm-goto successor topology. Paired asm-goto results are ordinary
+`InlineAsm` definitions available on every successor; P03 never manufactures
+edge-specific availability. `MayUnwind` is an escape effect and contributes no
+local successor; v1 rejects local exception/unwind edges at import.
 
 All edits use a function transaction and a CFG editor. An edit plan describes
 old `EdgeKey`s, replacement terminators and slots, new blocks/IDs, instruction
-moves, and the complete phi or block-argument incoming rewrite. In particular:
+moves, and the complete explicit-`Phi` incoming rewrite. In particular:
 
 - splitting an edge replaces its old key with the two explicit new edges and
   transfers the old incoming value to the new destination-facing key;

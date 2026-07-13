@@ -129,7 +129,7 @@ the following closed post-pass obligations on that one frozen revision:
    and helper-eligible semantic operations have their unique portable forms.
 3. P03 terminators and ordered successor slots are the sole CFG edge authority;
    `EdgeKey` occurrence identity and canonical block/topology policy hold.
-4. P04 canonical SSA form, exact phi/block-argument incoming `EdgeKey`
+4. P04 explicit-`Phi` canonical SSA form and exact phi incoming `EdgeKey`
    coverage, complete def-use, dominance, and alias normalization hold.
 5. P05 memory, address/GEP, access, atomic, stack-state, and memory-intrinsic
    descriptors have their unique semantic forms and preserve P03/P04.
@@ -224,7 +224,7 @@ without adding a use, definition, temporary, CFG edge, or allocation action.
 
 D5 accepts only that exact fully reverified D4 publication. Before D5, the
 profile rejects `ParallelCopy` and `EdgeCopy`; after D5, it requires the D5
-fingerprint, rejects every phi instruction, block argument, incoming map, and
+fingerprint, rejects every phi instruction, incoming map, and
 SSA-only edge use, and checks each copy against the exact terminator-derived
 `EdgeKey` occurrence and its edge-local placement. Copy destinations are the
 stable former join-result allocation identities and are valid only in admitted
@@ -736,7 +736,8 @@ convention. Rules include:
 The verifier contract assumes immutable, module-owned `TypeId` and `ConstantId`
 entities. Constants appear in typed `Operand` alternatives and therefore have
 uses but are not fake `ValueId` definitions; exact value def-use remains limited
-to parameters, block arguments if adopted, and instruction results.
+to parameters and instruction results. Canonical v1 does not admit block
+arguments.
 
 The current `core/type.hpp` scalar enum is only bootstrap coverage and must not
 be read as the final backend feature set.
@@ -1342,7 +1343,7 @@ input is verified here but the named decision belongs after BIR.
 | aggregates, complex values, vector lanes/masks | Contracted | `AggregatePathInvalid`–`VectorMaskInvalid`; physical return lanes are deferred stage facts |
 | semantic intrinsics, overflow, bit/memory/SIMD/CRC/crypto | Contracted; target support is deferred stage | `IntrinsicIdInvalid`, `IntrinsicSchemaInvalid`; no selected opcode/helper in BIR |
 | opaque inline asm and asm-goto | Bounded non-goto generic SSA transport is current; typed symbol/address-space carriers and asm-goto remain source gaps; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
-| D5 phi/block-argument destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
+| D5 phi destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
 | ABI placement and abstract allocation/spill state | Contracted at the later Pseudo/Allocated boundaries; D2 and E1-E3 own production | semantic profiles use `ForbiddenStageFact` and `ForbiddenCompatibilityPayload`; `Allocated` requires exact same-revision product keys, complete assignments, explicit legal `Spill`/`Reload`, and fail-closed E4 publication |
 | frame layout, target operation/relocation encoding/emission | Deferred from BIR | never admitted as BIR authority |

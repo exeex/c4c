@@ -10,6 +10,13 @@ call, variadic, address, and inline-assembly-table products. It selects a
 declared helper interface only for a Canonical semantic operation whose target
 profile explicitly requires that helper route.
 
+C8 is the sole eligibility owner. Its closed table maps admitted canonical
+semantic operation descriptors to eligible helper families and required target
+profile predicates. Absence from that table means ineligible, not an invitation
+for P02, P07, pseudo lowering, or a symbol-name heuristic to select a helper.
+An eligible operation still fails closed unless exactly one declared interface
+satisfies the selected target profile and the checks below.
+
 The immutable `RuntimeHelperPlan` records semantic operation identity, helper
 interface/symbol identity, typed arguments and results, ABI/call requirements,
 abstract clobber requirements, recursion guards, and required generic pseudo-

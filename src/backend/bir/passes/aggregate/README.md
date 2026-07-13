@@ -22,6 +22,13 @@ field/index identity and preserve P05 address/GEP forms. They do not encode a
 storage decomposition or calling-convention realization. The exact output is
 the only input admitted by P07.
 
+This layout-independent typed path is the complete v1 canonical disposition
+for every admitted array, struct, union, complex, multivalue, and by-value
+case. If semantic type plus field/index identity cannot represent a legacy
+case losslessly without physical layout or ABI placement, that case is not an
+alternate canonical form: import or P06 rejects it with the stable unsupported
+diagnostic.
+
 ## 2. Closed P06 authority
 
 P06 owns deterministic normalization of every `aggregate`-owned Raw form in the

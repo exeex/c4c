@@ -15,11 +15,18 @@ fingerprint, and cumulative properties through `AggregatesCanonical`. Every
 P01-P06 postcondition, core def-use, and the configured input verifier must
 accept that same candidate.
 
-Canonical v1 has a closed intrinsic registry. Each entry fixes semantic identity,
-signature, generic operands/results, immediates, portable feature requirements,
-and conservative effects. Runtime-helper-eligible operations retain semantic
-identity only. Unsupported or unrepresentable semantics receive a stable
-fail-closed diagnostic.
+Canonical v1 uses core's closed, build-versioned intrinsic registry. The
+module's `RegistryVersion` interprets every `IntrinsicId`; each entry fixes
+semantic identity, signature, generic operands/results, immediates, portable
+feature requirements, and conservative effects. P07 canonicalizes registered
+aliases only. Unknown IDs, mismatched registry versions, ISA identities, and
+unrepresentable semantics receive a stable fail-closed diagnostic.
+
+Runtime-helper-eligible operations retain semantic identity only; eligibility
+and target-specific route selection belong solely to C8 runtime-helper
+planning. Paired asm-goto results remain ordinary `InlineAsm` definitions
+available on every successor. P07 neither creates edge-specific output
+availability nor accepts it as an alternate payload.
 
 `InlineAsm` remains exactly one ordinary-value opaque semantic node. Its inputs
 and results live only in the generic def-use graph; its original template and

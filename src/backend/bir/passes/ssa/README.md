@@ -14,9 +14,9 @@ revision and `PassProperty::CfgCanonical`. Exact-revision CFG and dominance
 handles are required. The P03 postcondition, core def-use, and configured input
 verifier must accept that same revision.
 
-Canonical v1 uses phi semantics represented by the core's chosen phi or block-
-argument form, never both within one function. Each incoming is keyed by the
-exact `EdgeKey {source BlockId, successor-slot ordinal}` and carries one typed
+Canonical v1 uses explicit `Phi` instructions and has no block-argument
+alternative. Each incoming is keyed by the exact core-owned
+`EdgeKey {source BlockId, SuccessorRole, index}` and carries one typed
 `ValueId`. Its key multiset equals the destination's reachable incoming-edge
 multiset exactly, including parallel edges. Incoming storage is ordered by
 canonical edge order; vector position is not semantic identity.
@@ -24,7 +24,7 @@ canonical edge order; vector position is not semantic identity.
 ## 2. Closed P04 authority
 
 P04 owns deterministic SSA construction for admitted promotable definitions,
-dominance-frontier phi/block-argument placement, renaming, incoming repair,
+dominance-frontier phi placement, renaming, incoming repair,
 trivial-phi elimination, typed atomic RAUW, dead definition cleanup caused by
 its rewrites, and final dominance/def-use verification. Each operation's
 registry disposition says whether it defines ordinary SSA values, carries
@@ -35,7 +35,7 @@ stable IDs, exact incoming keys/values, all replaced uses, origin composition,
 and deletions. Repair rules are complete:
 
 - one definition dominates every ordinary use;
-- phi/block-argument incoming values are checked on their particular incoming
+- phi incoming values are checked on their particular incoming
   edge, not at the destination block entry;
 - a new or remapped edge gets a value only through the SSA construction rule;
   there is no arbitrary duplicate-predecessor choice;

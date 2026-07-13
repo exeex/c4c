@@ -131,9 +131,9 @@ later pass, or running an undocumented cleanup pass, is forbidden.
 | Entry | Accepted input | Required postcondition / next-pass contract | Forbidden authority |
 |---|---|---|---|
 | `legalize` | exact verified `RawBir`; all IDs, types, operands, terminators, call effects, asm payloads, globals and initializers are valid; documented Raw-only semantic forms may remain | every `legalize`-owned Raw form is eliminated or converted to its typed portable handoff; widths, constants, casts, effect descriptors and opcode families satisfy the legal semantic type universe accepted by `scalar`; forms owned by later entries, including opaque inline-asm template and constraint payload, remain lossless and unchanged except for typed reference repair caused by legalize edits | ABI locations, target register width policy disguised as semantic legality, target opcode choice, malformed-import repair |
-| `scalar` | legal semantic types and operations; no unresolved `legalize`-owned Raw scalar, type, constant, or boolean-boundary form; lossless forms owned by `cfg`/`ssa`/`memory`/`aggregate`/`intrinsics` or a root-declared later stage may remain | scalar ops, casts, comparisons, select conditions, integer/floating exceptional behavior, undef/poison policy and helper-eligible semantic operations have unique canonical descriptors; opaque inline-asm template and constraint payloads remain unchanged; output is accepted by CFG mutation and never relies on rendered comparison text | branch fusion, runtime-helper selection, instruction selection, physical flag/register state |
-| `cfg` | canonical scalar conditions and valid terminators as sole edge authority | reachable block set, successor/predecessor edge keys, branch/switch/indirect/asm-goto semantics, block order policy and phi/block-argument edge updates are canonical; all edge edits are atomic; output admits dominance and SSA construction | label spelling as a graph key, prepared branch records, machine fallthrough layout, out-of-SSA copies |
-| `ssa` | canonical CFG with exact parallel-edge identity and complete def-use | each value definition and use obeys the chosen canonical SSA form; phi/block-argument incoming keys cover exact predecessor edges; dominance holds; trivial aliases are normalized; output admits memory analysis and mutation | physical homes, phi move scheduling, spill slots, MIR parallel copies |
+| `scalar` | legal semantic types and operations; no remaining `legalize`-owned Raw scalar, type, constant, or boolean-boundary form; lossless forms owned by `cfg`/`ssa`/`memory`/`aggregate`/`intrinsics` or a root-declared later stage may remain | scalar ops, casts, comparisons, select conditions, integer/floating exceptional behavior, undef/poison policy and helper-eligible semantic operations have unique canonical descriptors; opaque inline-asm template and constraint payloads remain unchanged; output is accepted by CFG mutation and never relies on rendered comparison text | branch fusion, runtime-helper selection, instruction selection, physical flag/register state |
+| `cfg` | canonical scalar conditions and valid terminators as sole edge authority | reachable block set, successor/predecessor `EdgeKey {source BlockId, SuccessorRole, index}` occurrences, branch/switch/indirect/asm-goto semantics, block order policy and explicit-`Phi` edge updates are canonical; all edge edits are atomic; output admits dominance and SSA construction | label spelling as a graph key, prepared branch records, machine fallthrough layout, out-of-SSA copies |
+| `ssa` | canonical CFG with exact parallel-edge identity and complete def-use | every definition and use obeys explicit-`Phi` SSA; phi incoming keys cover the exact predecessor-edge multiset, dominance holds, and trivial aliases are normalized; output admits memory analysis and mutation | block arguments, physical homes, phi move scheduling, spill slots, MIR parallel copies |
 | `memory` | canonical SSA plus typed semantic loads, stores, GEP/ptr-offset, atomics, stack-save/restore and memory-intrinsic descriptors | memory/access/address forms expose target-independent object, offset, alignment, volatility, ordering, scope and effect operands needed for recomputable analyses; output preserves CFG/SSA and admits aggregate descriptor normalization | address modes, frame offsets, alias conclusions stored as truth, ABI by-value placement |
 | `aggregate` | canonical scalar, CFG, SSA and memory profiles; resolved record/array/union/complex types | aggregate values, copies, extracts/inserts, layout-independent aggregate paths and by-value semantic boundaries have unique forms; it preserves memory-canonical GEP/address descriptors and emits no earlier-stage noncanonical operation | target layout decomposition, sret/register classification, stack copy sequence, target lane choice |
 | `intrinsics` | all preceding canonical profiles and structured intrinsic/inline-asm semantic payloads | intrinsic namespaces, signatures, effects, atomics represented as intrinsics, runtime-helper-eligible operations and opaque semantic inline asm satisfy the final Canonical profile; unsupported semantics fail with diagnostics | helper symbol choice, asm constraint realization, clobber registers, target instructions |
@@ -156,7 +156,7 @@ normalize or eliminate it. Importer-only forms do not escape `RawBir`.
 | original inline-asm template and constraint strings | root stage `C9` | preserved byte-for-byte as opaque payload by `P01`-`P07`; interpreted and bound only at `C9` |
 | portable scalar expression, compare, cast, select and helper-eligible semantic operation shapes | `scalar` | one canonical target-independent scalar descriptor; helper identity remains undecided |
 | raw switch ordering, indirect target sets, unreachable blocks and noncanonical branch/block shape | `cfg` | exact `EdgeKey`-based canonical CFG with no name- or fallthrough-derived authority |
-| resolved but noncanonical phi placement/incoming order, promotable local memory and trivial SSA aliases | `ssa` | chosen SSA form, dominance and exact parallel-edge incoming coverage hold |
+| resolved but noncanonical phi placement/incoming order, promotable local memory and trivial SSA aliases | `ssa` | explicit-`Phi` SSA, dominance and exact parallel-edge incoming coverage hold; block arguments are not a v1 alternative |
 | multi-index GEP, semantic address paths, load/store/access forms, atomics, stack-save/restore and memory-intrinsic descriptors | `memory` | one target-independent memory/address/effect representation; no address mode or physical storage decision |
 | aggregate insert/extract/copy/path forms and typed source-level by-value or hidden-result semantics | `aggregate` | one aggregate semantic form; source spellings such as `sret` are not ABI placement authority |
 | semantic/feature intrinsic identity, final intrinsic effects, structured opaque inline-asm semantic payload and top-level asm dependency registry | `intrinsics` | final Canonical registry/signature/effect form or fail-closed unsupported diagnostic; no helper symbol, constraint allocation or target opcode choice |
@@ -406,8 +406,16 @@ primitive exists, parallelism changes latency, never semantics:
    `ModuleRevision`.
 
 Work stealing is permitted internally, but must not influence ID allocation.
-New entity IDs come from deterministic transaction-local reservation ranges or
-from the sorted merge, not a contended global counter.
+The selected reservation algorithm is deterministic plan-first reservation:
+each invocation inventories its complete insertion plan in
+`(FunctionId, entity kind, source entity, registered rule, insertion ordinal)`
+order, computes its typed counts, and receives contiguous transaction-local ID
+ranges in that order before mutation. Parallel function plans are reserved by
+canonical `FunctionId`, not worker completion; the sorted merge preserves those
+assigned IDs and never reallocates from a contended global counter. An
+incomplete inventory or exhausted range fails the whole occurrence rather than
+requesting an order-dependent extension. Stress and single/parallel identity
+tests remain required implementation proof of this chosen algorithm.
 
 `ReproducibilityCheck` runs the same plan with two legal schedules (normally
 one worker and configured parallel workers) and compares canonical semantic
@@ -463,6 +471,14 @@ private occurrence fork is discarded. Later passes do not run.
 move-only stage object is copied into a success or failure. The checkpoint does
 not convert to `CanonicalBir`; only `resume_bir_pipeline(PipelineCheckpoint&&)`
 may consume it after the re-entry checks in Section 13.
+
+Cancellation is sampled only at registered invocation and barrier safe points.
+If observed before an occurrence promotion, that occurrence is discarded and
+the preceding checkpoint is returned as last-good. If observed after an atomic
+pass barrier has completed, that completed barrier is the returned last-good
+checkpoint. In both cases the result is `PipelineFailure::Cancelled`, never
+pipeline success or `CanonicalBir`; resumption starts strictly after the stamp
+carried by the returned checkpoint.
 
 ## 9. Analysis manager contract
 
@@ -747,10 +763,42 @@ the following:
 10. failure injection at every analysis, pass, merge and verifier boundary
     proves rollback and last-good behavior.
 
-## 18. Source gaps and open design choices
+## 18. Closed representation choices and remaining gaps
 
-These are unresolved and must remain visible rather than being guessed by the
-implementation:
+The acceptance-critical representation choices are closed below. This section
+only transcribes each decision and points to its sole local owner; it does not
+create duplicate pipeline authority.
+
+- [`core`](../core/README.md) owns explicit `Phi` as canonical SSA and rejects
+  block arguments as a v1 alternative. It also owns the one shared
+  `EdgeKey {source BlockId, SuccessorRole, index}` schema; CFG, SSA,
+  diagnostics, verification, and audit carry that exact structural identity.
+- [`core`](../core/README.md) owns the closed, build-versioned intrinsic
+  namespace. A module's `RegistryVersion` interprets every `IntrinsicId`; P07
+  only canonicalizes registered aliases, and unknown IDs, mismatched versions,
+  or ISA identities fail closed.
+- [`core`](../core/README.md) owns asm-goto value availability and exception
+  topology. Paired `InlineAsm` results are ordinary definitions available on
+  every successor; edge-specific availability is rejected. `MayUnwind` means
+  escape only, and local invoke/cleanup/landing-pad edges are rejected source
+  gaps rather than hidden CFG.
+- [`aggregate`](../passes/aggregate/README.md) owns the closed disposition of
+  aggregate paths: layout-independent typed field/index paths are sufficient
+  for every admitted v1 case, while a case that cannot preserve semantic type
+  and field/index identity fails closed.
+- [`memory`](../passes/memory/README.md) owns canonical semantic effect operands.
+  Derived whole-module effect-summary reconciliation is analysis-only authority
+  of the revision-bound memory-effects analysis; it is not a P05 mutation or a
+  reason for P05's module barrier.
+- [`runtime_helpers`](../preparation/runtime_helpers/README.md) owns
+  runtime-helper eligibility. Only its closed semantic-operation eligibility
+  table plus the selected target profile may request a helper route; P02/P07
+  retain semantic identity and may not select a helper or symbol.
+- Sections 7 and 8 own the selected deterministic plan-first ID reservation and
+  cancellation/last-good semantics for this runner.
+
+The following are true implementation choices or producer/source gaps and must
+remain visible rather than being guessed:
 
 - Section 3.1 is the frozen first-owner inventory for the Raw forms currently
   admitted by importer Section 11, but the implementation mechanism that
@@ -759,16 +807,6 @@ implementation:
 - each pass still needs an exhaustive postcondition checker and stable
   pass-contract diagnostic codes; these must not be presented as new verifier
   profiles;
-- the chosen canonical SSA representation (phi versus block arguments) must be
-  frozen before `cfg`/`ssa` APIs are implemented;
-- parallel CFG edges need one final `EdgeKey` encoding shared by core, CFG,
-  SSA, diagnostics and audit;
-- aggregate canonicalization must prove whether layout-independent paths alone
-  are sufficient for every array/struct/union/complex and by-value legacy case;
-- intrinsic namespace/versioning, unknown-intrinsic policy, asm-goto outputs,
-  exception/unwind edges and runtime-helper eligibility remain open;
-- module effect-summary reconciliation in `memory` may be analysis-only; if so,
-  its scope can be narrowed in a new reviewed plan version;
 - the core/pass framework must define the opaque owning candidate/checkpoint,
   private stage fork, independent committed invocations on a fork, serial
   occurrence discard, atomic verified fork promotion and atomic function-wave
@@ -776,10 +814,6 @@ implementation:
   implemented; missing primitives fail plan validation before input
   consumption, and serialization remains intentionally unspecified beyond
   process-local ownership;
-- deterministic ID reservation under parallel insertion needs one selected
-  algorithm and stress proof;
-- cancellation semantics must decide whether a completed pass barrier is
-  returned as last-good without ever treating it as success;
 - `VerifiedPreparationInput` is fixed as a short-lived borrow of immutable
   `CanonicalBir` storage; the concrete C++ lifetime encoding remains an
   implementation choice but may not copy the graph or outlive the owning
@@ -788,9 +822,10 @@ implementation:
   canonicalization plan. Adding one requires explicit source intent, ordered
   entries, fixed-point policy, and separate semantic coverage review.
 
-Until those choices are resolved, implementations must fail closed at the
-relevant boundary and must not use legacy text, route tables, target state or
-prepared side data to synthesize missing semantic authority.
+Until those implementation choices and source gaps are resolved,
+implementations must fail closed at the relevant boundary and must not use
+legacy text, route tables, target state or prepared side data to synthesize
+missing semantic authority.
 
 ## 19. Design checks
 

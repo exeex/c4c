@@ -46,6 +46,13 @@ flow, memory-effects, and provenance handles. These are observations, not edit
 capabilities. P05 does not write derived conclusions into core BIR or patch an
 analysis result after mutation.
 
+P05 owns normalization of semantic effect operands only. Reconciliation of a
+derived whole-module effect summary is analysis-only authority of the
+revision-bound memory-effects analysis. It cannot mutate the candidate, become
+a stored P05 postcondition, or independently justify this pass's module scope;
+the module barrier remains necessary for global-object and descriptor
+consistency.
+
 Committed edits invalidate every result observing an affected operand, object,
 address, access, atomic, call effect, definition/use, or body revision, including
 dependent results transitively. Preservation is valid only through the pass
