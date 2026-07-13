@@ -105,9 +105,25 @@ user's responsibility.
 - [`core/`](core/README.md): stable IDs, ownership, generic instruction
   operands/results, and the source-semantic BIR carrier.
 - [`lir_to_bir/`](lir_to_bir/README.md): LIR import into `RawBir`.
+  Its [`memory/`](lir_to_bir/memory/README.md) subtree is an unimplemented,
+  build-excluded migration placeholder rather than active legacy lowering.
+- [`target_layout/`](target_layout/README.md): BIR-owned derivation of the
+  profile-keyed pseudo-register layout; it does not allocate registers.
+- [`pseudo/`](pseudo/README.md): the closed machine-independent pseudo
+  instruction schema.
+- [`allocated/`](allocated/README.md): the verified `AllocatedBir`/MIR-ready
+  capability over the same immutable BIR revision.
+- [`regalloc/`](regalloc/README.md): shared liveness, allocation, constraints,
+  and explicit spill/reload ownership for all supported targets; its
+  [`constraints/`](regalloc/constraints/README.md) and
+  [`spill_reload/`](regalloc/spill_reload/README.md) documents freeze those
+  subordinate boundaries.
 - [`verify/`](verify/README.md): verifier gates for published BIR stages.
 - [`passes/`](passes/README.md): target-independent canonicalization and the
-  target-aware legalization/allocation stages described above.
+  target-aware legalization/allocation stages described above. Unimplemented
+  owners are reserved for [`pseudo_lowering/`](passes/pseudo_lowering/README.md),
+  [`out_of_ssa/`](passes/out_of_ssa/README.md), and deferred reviewed
+  [`target/`](passes/target/README.md) optimizations.
 - [`analysis/`](analysis/README.md): immutable, revision-bound, recomputable
   facts used by passes and allocation.
 - [`preparation/`](preparation/README.md): target context and typed planning
