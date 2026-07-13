@@ -78,8 +78,11 @@ predecessor fingerprint invalidates the affected product and every transitive
 successor. Products from different transactions cannot be spliced together.
 
 `VerifiedPreparationBundle` is not `PreparedBir` and contains no instruction
-graph. `PreparedBir` remains reserved for the later verified allocated
-revision; `MirReadyBirView` borrows that same later revision.
+graph. E4 mints `PreparedBir` only as a readiness capability bound to the exact
+immutable revision owned by `AllocatedBir`; `MirReadyBirView` is a read-only
+borrow of that same revision. Neither contains or copies graph storage, and a
+bundle fingerprint is accepted there only when every predecessor and the
+target/layout key match the frozen allocated candidate.
 
 Legacy coverage includes `prepared_fact_boundary.hpp`,
 `prepared_object_traversal.*`, `prepared_lookups.*`, and `lookup_agreement.*`.

@@ -3,45 +3,44 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 10
-Current Step Title: Converge shared liveness and allocation
+Current Step ID: 11
+Current Step Title: Converge AllocatedBir and MIR-ready publication
 
 ## Just Finished
 
-- Plan Step 10 is complete. E1 publishes immutable liveness/interference facts
-  only for the exact fully reverified D5 or E3-retry revision and remains
-  separate from allocation, eviction, and spill policy.
-- E2 is the sole shared RV64, AArch64, and x86 pseudo-home allocator. Reviewed
-  layout data supplies target differences; one legality relation covers
-  groups, ties, aliases, early-clobbers, calls, copy bundles, eviction, and
-  retry.
-- E3 alone owns abstract spill objects and explicit `Spill`/`Reload` placement.
-  Each rewrite advances and fully reverifies the candidate, invalidates prior
-  E1/E2 state, and retries from fresh facts under a finite monotone budget.
-- The candidate gate fails closed unless every allocatable identity has a
-  legal abstract home or verified explicit spill state and every `Reload`
-  result is assigned. Downstream MIR cannot repair ordinary allocation.
+- Plan Step 11 is complete. E4 freezes one stable E3 candidate and reruns the
+  cumulative graph, Pseudo, direct-realizability, out-of-SSA, assignment, and
+  explicit `Spill`/`Reload` rules in one fail-closed transaction.
+- Every allocatable definition/result, fixed home, copy/call/inline-asm role,
+  use, spill object, reload result, target mapping, and revision-bound product
+  fingerprint must be present, legal, unique, and fresh before publication.
+- Success atomically mints the owning `AllocatedBir`, a `PreparedBir` readiness
+  capability, and borrowing read-only `MirReadyBirView` instances over one
+  exact immutable graph revision. None copies graph storage.
+- MIR is limited to same-key concrete mapping and one-to-one selection. It
+  cannot change assignments, add capacity spill/reload or allocatable
+  temporaries, reinterpret constraints, expand nodes, or repair a failed map.
 
 ## Suggested Next
 
-- Execute Plan Step 11: converge the `AllocatedBir` publication profile and
-  prove `MirReadyBirView` is a read-only view of that same immutable revision.
+- Execute Plan Step 12: converge cross-cutting observation and quarantine
+  contracts so diagnostics, rendering, compatibility, and coverage helpers
+  remain read-only and non-authoritative.
 
 ## Watchouts
 
 - Do not begin implementation before explicit architecture acceptance.
-- Step 11 must define the final allocated verifier rules without weakening the
-  E1/E2/E3 candidate gate or introducing a second instruction graph.
-- Preserve the strict distinction between E3 retry-candidate reverification
-  and final `AllocatedBir` publication; the former cannot mint the latter.
-- Keep final machine naming, frame layout, and instruction encoding downstream
-  while requiring MIR to consume the verified abstract assignments and spill
-  transitions without an ordinary allocation repair escape hatch.
+- Step 12 must not let diagnostics, renderers, compatibility adapters, legacy
+  coverage, caches, or audit views mint stage tokens, override verifier facts,
+  or become alternate semantic/product authority.
+- Preserve the Step 11 rule that only E4 can mint the three same-revision
+  allocated/readiness/view capabilities; observational helpers may borrow but
+  cannot extend lifetime, copy storage, refresh keys, or repair publication.
 - Keep idea 731 open when this docs-only runbook is exhausted.
 
 ## Proof
 
-- `git diff --check && ! rg -n 'concrete register|physical register|frame offset|target opcode|MIR.*allocat|allocator.*MIR|backend.*ordinary.*spill' src/backend/bir/analysis/liveness/README.md src/backend/bir/regalloc/README.md src/backend/bir/regalloc/constraints/README.md src/backend/bir/regalloc/spill_reload/README.md && rg -n 'E1|E2|E3|revision|interference|tie|clobber|group|evict|Spill|Reload|retry|terminat|failure' src/backend/bir/analysis/liveness/README.md src/backend/bir/regalloc/README.md src/backend/bir/regalloc/constraints/README.md src/backend/bir/regalloc/spill_reload/README.md` — exit 0.
+- `git diff --check && ! rg -n 'duplicate instruction graph|second instruction graph|MIR.*ordinary.*allocat|MIR.*repair.*allocat|backend.*ordinary.*spill|copy.*allocated.*graph' src/backend/bir/allocated/README.md src/backend/bir/verify/README.md src/backend/bir/preparation/README.md src/backend/bir/pipeline/README.md src/backend/bir/README.md && rg -n 'AllocatedBir|PreparedBir|MirReadyBirView|same.*revision|read.only|assignment|Spill|Reload|fingerprint|transaction|publish|failure' src/backend/bir/allocated/README.md src/backend/bir/verify/README.md src/backend/bir/preparation/README.md src/backend/bir/pipeline/README.md src/backend/bir/README.md` — exit 0.
 - The supervisor selected a docs-only structural proof that does not produce a
   test log; no `test_after.log` or other regression log was created or
   modified.

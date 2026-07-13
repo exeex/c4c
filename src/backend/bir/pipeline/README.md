@@ -72,9 +72,14 @@ gate, and every target-aware phase is defined only in the root README.
   abstract homes, and E3 alone inserts explicit capacity spill/reload state;
   each E3 rewrite advances and fully reverifies its revision before fresh E1/
   E2 retry, and only a complete assignment/spill candidate may advance;
-- `PreparedBir` is the later capability over that allocated revision, not a
-  synonym for `VerifiedPreparationInput` or preparation facts;
-- `MirReadyBirView` is a read-only view of the same allocated graph.
+- E4 atomically mints the owning `AllocatedBir` and a `PreparedBir` readiness
+  capability over that exact immutable revision, not a synonym for
+  `VerifiedPreparationInput` or preparation facts;
+- `MirReadyBirView` is a borrowing read-only view of that same revision and
+  cannot clone storage, change assignments, or survive its owning token;
+- MIR rechecks the view keys and performs only concrete mapping and one-to-one
+  selection; mapping failure publishes no MIR and cannot trigger allocation
+  repair, capacity spill/reload, or an allocatable temporary.
 
 There is no `src/backend/bir/mir` stage or namespace. Preparation, layout,
 allocation, and allocated-publication ownership are documented under their

@@ -1,7 +1,7 @@
 # BIR verifier design
 
-Status: Raw, Canonical, PreparedInput, and Pseudo publication boundaries are
-closed architecture contracts; Allocated rules remain target design. The checked-in
+Status: Raw, Canonical, PreparedInput, Pseudo, and Allocated publication
+boundaries are closed architecture contracts. The checked-in
 `verifier.hpp/.cpp` is a partial foundation implementation, not the complete
 contract described here.
 
@@ -45,6 +45,8 @@ preparation input gate --verify(PreparedInput)--> accepted input for typed plans
 private D2 candidate --verify-and-publish(Pseudo)--> PseudoBir
 complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 private E3 rewrite --full verify(retry candidate)--> immutable E1/E2 retry input
+stable E3 candidate --verify-and-publish(Allocated)--> AllocatedBir + PreparedBir
+                                                     \--> borrowed MirReadyBirView
 ```
 
 The arrow from `ModuleDraft` to `RawBir` is an unforgeable publication boundary,
@@ -66,13 +68,15 @@ inspect a candidate/report through a private test fixture but cannot obtain a
 | `Canonical` | later | Raw rules plus the post-pass normal forms promised by the pipeline: legalized types/opcodes, canonical memory/address form, SSA/phi rules, and normalized aggregate/intrinsic forms. |
 | `PreparedInput` | later | Canonical rules plus prerequisites required to derive ABI/address/call plans. It still contains no prepared facts. |
 | `Pseudo` | later | Raw/graph safety plus the closed pseudo schema, exact target/product binding, complete D1/D2 lowering, and stage-specific realizability rules. Allocation completeness is not required. |
+| `Allocated` | later | Full graph/Pseudo rules plus the exact stable E3 revision, complete legal abstract assignments, explicit verified spill/reload transitions, fresh target/product bindings, and atomic MIR-ready publication. |
 
 The semantic profiles are cumulative. `PreparedInput` cannot weaken
-`Canonical`, `Canonical` cannot weaken `Raw`, and `Pseudo` retains every
-applicable graph/identity obligation while replacing Canonical instruction
-alternatives with its closed schema. A builder-only object may temporarily violate
-the rules, but it is not a published stage and must not be passed to an analysis
-or downstream consumer.
+`Canonical`, `Canonical` cannot weaken `Raw`, `Pseudo` retains every applicable
+graph/identity obligation while replacing Canonical instruction alternatives
+with its closed schema, and `Allocated` retains the complete applicable Pseudo
+contract while adding final home/spill obligations. A builder-only object may
+temporarily violate the rules, but it is not a published stage and must not be
+passed to an analysis or downstream consumer.
 
 There is deliberately no verifier profile named simply `Prepared`.
 `PreparedInput` verifies the immutable semantic input to target preparation;
@@ -242,6 +246,54 @@ subset, stage capability, property, cache entry, or derived product. Public
 rechecks and incremental edit verification diagnose only; they cannot mint or
 repair `PseudoBir`.
 
+### Allocated profile and E4 publication
+
+The `Allocated` profile accepts only one private frozen stable E3 candidate.
+Its stage key names the exact module epoch/revision and ordered function-revision
+digest plus the target, layout, preparation, constraint, pseudo-schema, D4/D5,
+liveness, assignment, and spill fingerprints. Every named product must be
+fresh for that same revision and publication transaction; equal semantic
+hashes, copied reports, compatible targets, or predecessor-only keys do not
+establish identity.
+
+Verification is cumulative and fail-closed. It reruns every applicable graph,
+Pseudo schema, direct-realizability, and out-of-SSA rule, then proves that:
+
+1. every allocatable definition/result, fixed-home occurrence, copy role,
+   call/inline-asm role, and use has exactly one legal abstract assignment or
+   explicit verified spill residency at that program point;
+2. assignments satisfy class/group/slot eligibility, group width/alignment,
+   ties, early-clobbers, interference, aliases, reserved units, call clobbers,
+   and simultaneous-copy semantics;
+3. each spill object is unique and type/class compatible, each `Spill` consumes
+   an assigned resident value at a legal dominance/liveness point, and each
+   `Reload` produces an assigned value dominating all and only its covered
+   uses; no hidden transition, unassigned reload result, unresolved eviction,
+   or pressure deficit remains;
+4. every node retains one verified target mapping, and every target/layout,
+   preparation, constraint, call, inline-asm, liveness, assignment, spill, and
+   realizability binding is present, unique, revision-matched, and fresh; and
+5. target opcodes, concrete registers, frame offsets, encodings, machine
+   instructions, and MIR facts remain absent from BIR.
+
+E4 freezes the candidate once and performs these checks in one transaction.
+Any diagnostic, active editor, revision/fingerprint change, missing product,
+cancellation, or deterministic resource failure discards the candidate and
+publishes no function subset or capability. Success atomically mints one
+owning `AllocatedBir`, one `PreparedBir` readiness capability bound to that
+same immutable revision, and borrowing read-only `MirReadyBirView` instances.
+Neither readiness capability nor view owns graph storage or can outlive the
+owning token. Diagnostic candidate checks and public rechecks cannot mint,
+repair, or refresh any of the three.
+
+MIR consumes only `MirReadyBirView`. It rechecks the exact revision and product
+fingerprints, maps verified abstract homes/objects through the bound target
+layout, and selects one machine record per allocated pseudo node. It cannot
+change assignments, introduce an allocatable temporary or capacity
+spill/reload, reinterpret constraints, expand instructions or calls, or hide a
+missing transition. Failure to map or encode the verified view fails the MIR
+transaction and requires an upstream schema/legalization change.
+
 ## Proposed public API
 
 Names are proposed and may change with the core schema. The API must consume
@@ -253,6 +305,7 @@ enum class VerifyProfile : std::uint8_t {
   Canonical,
   PreparedInput,
   Pseudo,
+  Allocated,
 };
 
 struct VerifyOptions {
@@ -1123,18 +1176,22 @@ identity, type, CFG, or call facts.
 
 ## Stage-forbidden facts
 
-Raw, Canonical, and PreparedInput reject all allocation facts. Every profile
-rejects duplicate side-table authority and MIR/emission facts, including:
+Raw, Canonical, PreparedInput, and D1-D5 Pseudo reject allocation facts. The
+Allocated profile admits only assignments and explicit abstract spill state
+that pass its revision-bound rules. Every profile rejects duplicate side-table
+authority and MIR/emission facts, including:
 
 - legacy Route1–Route8 producer/publication/comparison/memory/call indices,
   route/view pointers, agreement records, selected proof paths, and lookup
   agreement mirrors;
-- ABI register classes, assigned argument/result registers, call boundary moves,
-  hidden sret storage selection, variadic entry homes, helper selection, or
-  incoming stack offsets;
-- physical/virtual register assignment, spill/reload instructions or slots,
-  live intervals as persistent authority, value homes, rematerialization
-  recipes, and coalescing decisions;
+- concrete ABI registers, hidden side-record argument/result assignments, call
+  boundary moves absent from ordinary Pseudo nodes, hidden sret storage
+  selection, variadic entry homes, helper selection, or concrete incoming
+  stack offsets; Pseudo/Allocated admit only their ordinary abstract fixed-home
+  requirements and exact revision-bound assignments;
+- concrete/virtual machine-register assignment and live intervals as persistent
+  authority; pre-Allocated profiles also reject value homes, spill/reload
+  instructions or objects, rematerialization recipes, and coalescing decisions;
 - frame indices resolved to offsets, final stack size/alignment, prologue/
   epilogue decisions, callee-saved sets, and dynamic-stack realization;
 - selected instruction encodings, target opcodes, relocation encodings, emitted
@@ -1287,7 +1344,7 @@ input is verified here but the named decision belongs after BIR.
 | opaque inline asm and asm-goto | Bounded non-goto generic SSA transport is current; typed symbol/address-space carriers and asm-goto remain source gaps; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
 | D5 phi/block-argument destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
-| ABI placement and abstract allocation/spill state | Deferred from semantic profiles; D2 and E1-E3 own explicit later BIR contracts | semantic profiles use `ForbiddenStageFact` and `ForbiddenCompatibilityPayload`; later candidates require their exact stage profile |
+| ABI placement and abstract allocation/spill state | Contracted at the later Pseudo/Allocated boundaries; D2 and E1-E3 own production | semantic profiles use `ForbiddenStageFact` and `ForbiddenCompatibilityPayload`; `Allocated` requires exact same-revision product keys, complete assignments, explicit legal `Spill`/`Reload`, and fail-closed E4 publication |
 | frame layout, target operation/relocation encoding/emission | Deferred from BIR | never admitted as BIR authority |
 
 ## Proof plan

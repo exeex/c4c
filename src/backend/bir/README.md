@@ -77,9 +77,9 @@ entries in that same pre-allocation chain.
 | `E1` | Allocation liveness and interference | exact post-out-of-SSA pseudo revision plus layout/constraint/call facts | revision-bound live ranges, interference, and pressure facts covering all call-lowering and legalization-introduced uses, definitions, fixed homes, and clobbers | shared allocation analysis consumed by the [BIR register allocator](regalloc/README.md) |
 | `E2` | Shared pseudo-physical register allocation | `E1` facts and finite target-layout pools | legal abstract `(category, class/group, slot)` homes or explicit eviction requests | the same shared BIR allocator for RV64, AArch64, and x86 |
 | `E3` | Explicit spill/reload insertion | allocation candidate, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted, directly realizable pseudo `Spill`/`Reload` nodes | [spill/reload](regalloc/spill_reload/README.md); candidate mutation invalidates allocation facts and retries at `E1` until stable or rejected |
-| `E4` | Allocated/MIR-ready verification and publication | stable allocation candidate with explicit spill state | `AllocatedBir`/`PreparedBir` capability and borrowed `MirReadyBirView` over the same immutable revision, with direct one-to-one target realizability rechecked for every node | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
+| `E4` | Allocated/MIR-ready verification and publication | stable allocation candidate with explicit spill state and exact revision-bound target/product keys | owning `AllocatedBir`, a `PreparedBir` readiness capability, and borrowed read-only `MirReadyBirView`, all naming one exact immutable revision; complete assignments, spill/reload transitions, product bindings, and direct one-to-one target realizability are rechecked atomically | [allocated BIR](allocated/README.md) plus verifier `Allocated` profile |
 | `F1` | Strict one-to-one MIR construction | verified `MirReadyBirView` and the exact target mapping | target MIR with pseudo homes mapped to concrete registers and exactly one machine instruction record for each allocated pseudo instruction | external [MIR architecture](../mir/README.md); MIR cannot expand calls or instructions, synthesize argument/result moves, choose ABI locations, introduce allocatable temporaries, allocate registers, or pressure-spill |
-| `F2` | Machine verification | private target-MIR candidate | verified machine instruction graph; no ordinary BIR allocation repair | external MIR/target verifier |
+| `F2` | Machine verification | private target-MIR candidate | verified machine instruction graph; allocation repair is forbidden | external MIR/target verifier |
 | `F3` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | target assembler and external [object boundary](../mir/object/README.md) |
 
 Every use, definition, fixed-home requirement, and clobber introduced by `D2`
@@ -113,8 +113,9 @@ prove complete homes and spill coverage, or when allocation fails closed.
 
 `PreparedInput` may remain an internal cumulative input-checking capability for
 preparation, but it is not a replacement for any published BIR profile and is
-not `PreparedBir`. The latter name belongs only to the verified allocated
-revision.
+not `PreparedBir`. E4 alone mints the latter as a readiness capability bound to
+the exact immutable revision owned by `AllocatedBir`; `MirReadyBirView` only
+borrows that same revision and its verified assignments and product keys.
 
 ## Analyses are dependencies, not extra stages
 
@@ -214,11 +215,12 @@ stronger status.
    spill/reload, so every introduced use, definition, value, and constraint is
    ordinary BIR state covered by those stages. It may legalize call-sequence
    pseudos but cannot redo ABI classification or general call lowering.
-10. MIR consumes only `MirReadyBirView` and maps each allocated pseudo node to
-   exactly one machine instruction record. It cannot expand instructions,
-   expand calls, synthesize argument/result moves, choose ABI locations,
-   introduce allocatable temporaries, redo normal allocation, or pressure
-   spill/reload.
+10. MIR consumes only the read-only same-revision `MirReadyBirView`, rechecks
+    its product fingerprints, and maps each allocated pseudo node to exactly
+    one machine instruction record. It cannot change assignments, expand
+    instructions or calls, synthesize argument/result moves, choose ABI
+    locations, introduce allocatable temporaries, redo normal allocation, or
+    pressure spill/reload; mapping failure publishes no machine graph.
 11. Optional target-specific optimization is an explicit, reviewed,
     invalidation-declaring, fully reverified entry in the same pre-allocation
     `D4` chain; it is never a hidden allocation authority.
