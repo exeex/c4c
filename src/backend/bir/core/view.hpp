@@ -139,6 +139,9 @@ class ModuleView {
  public:
   ModuleEpoch epoch() const noexcept { return data_->epoch_; }
   ModuleRevision revision() const noexcept { return data_->revision_; }
+  IntrinsicRequirements intrinsic_requirements() const noexcept {
+    return data_->intrinsic_requirements_;
+  }
   std::vector<FunctionId> functions() const { return data_->function_order_.ids(); }
   std::vector<LinkNameId> link_names() const {
     std::vector<LinkNameId> ids;

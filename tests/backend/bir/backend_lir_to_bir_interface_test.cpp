@@ -1238,6 +1238,130 @@ void test_verifier_rejects_malformed_raw_type() {
          "Raw publication verifier must reject visible vector array spelling conflicts");
 }
 
+void test_intrinsic_requirements_receipt() {
+  const auto set_bit = [](lir::LirModule& module,
+                          bir::IntrinsicRequirements& expected, int index) {
+    switch (index) {
+      case 0:
+        module.need_va_start = true;
+        expected.need_va_start = true;
+        break;
+      case 1:
+        module.need_va_end = true;
+        expected.need_va_end = true;
+        break;
+      case 2:
+        module.need_va_copy = true;
+        expected.need_va_copy = true;
+        break;
+      case 3:
+        module.need_memcpy = true;
+        expected.need_memcpy = true;
+        break;
+      case 4:
+        module.need_memset = true;
+        expected.need_memset = true;
+        break;
+      case 5:
+        module.need_stacksave = true;
+        expected.need_stacksave = true;
+        break;
+      case 6:
+        module.need_stackrestore = true;
+        expected.need_stackrestore = true;
+        break;
+      case 7:
+        module.need_abs = true;
+        expected.need_abs = true;
+        break;
+      case 8:
+        module.need_ptrmask = true;
+        expected.need_ptrmask = true;
+        break;
+      case 9:
+        module.prefer_semantic_va_ops = true;
+        expected.prefer_semantic_va_ops = true;
+        break;
+      default: fail("intrinsic requirement test bit is out of range");
+    }
+  };
+
+  {
+    lir::LirModule module;
+    const bir::IntrinsicRequirements none;
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(raw.has_value() &&
+               bir::FoundationVerifier::verify(raw.value()).ok() &&
+               raw.value().view().intrinsic_requirements() == none &&
+               canonical.has_value() &&
+               canonical.value().view().intrinsic_requirements() == none,
+           "all-false intrinsic requirements must survive Raw and Canonical BIR exactly");
+  }
+
+  for (int bit = 0; bit < 10; ++bit) {
+    lir::LirModule module;
+    bir::IntrinsicRequirements expected;
+    set_bit(module, expected, bit);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(raw.has_value() &&
+               bir::FoundationVerifier::verify(raw.value()).ok() &&
+               raw.value().view().intrinsic_requirements() == expected &&
+               canonical.has_value() &&
+               canonical.value().view().intrinsic_requirements() == expected,
+           "each independent LIR intrinsic requirement bit must retain its exact Raw/Canonical position");
+  }
+
+  {
+    lir::LirModule module;
+    module.need_va_copy = true;
+    module.need_memset = true;
+    module.need_stackrestore = true;
+    module.need_ptrmask = true;
+    module.prefer_semantic_va_ops = true;
+    bir::IntrinsicRequirements expected;
+    expected.need_va_copy = true;
+    expected.need_memset = true;
+    expected.need_stackrestore = true;
+    expected.need_ptrmask = true;
+    expected.prefer_semantic_va_ops = true;
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(raw.has_value() &&
+               raw.value().view().intrinsic_requirements() == expected &&
+               canonical.has_value() &&
+               canonical.value().view().intrinsic_requirements() == expected,
+           "independent mixed intrinsic requirements must round-trip without invented implications");
+  }
+
+  bir::ModuleBuilder default_builder;
+  const auto default_raw = std::move(default_builder).publish();
+  expect(default_raw.has_value() &&
+             default_raw.value().view().intrinsic_requirements() ==
+                 bir::IntrinsicRequirements{},
+         "builder default intrinsic requirements must be exactly all false");
+
+  bir::ModuleBuilder assigned_builder;
+  bir::IntrinsicRequirements assigned;
+  assigned.need_memcpy = true;
+  assigned.need_abs = true;
+  expect(assigned_builder.set_intrinsic_requirements(assigned).has_value(),
+         "builder must accept one exact intrinsic requirement assignment");
+  bir::IntrinsicRequirements conflicting;
+  conflicting.need_va_start = true;
+  const auto duplicate =
+      assigned_builder.set_intrinsic_requirements(conflicting);
+  expect(!duplicate.has_value() &&
+             duplicate.error() ==
+                 bir::BuildError::DuplicateIntrinsicRequirements,
+         "builder must reject duplicate or conflicting requirement assignment");
+  const auto assigned_raw = std::move(assigned_builder).publish();
+  expect(assigned_raw.has_value() &&
+             assigned_raw.value().view().intrinsic_requirements() == assigned,
+         "builder view must retain the first exact requirement assignment");
+}
+
 void test_module_name_and_struct_declaration_receipt() {
   lir::LirModule module;
   auto texts = std::make_shared<c4c::TextTable>();
@@ -6141,6 +6265,7 @@ int main() {
   test_structured_type_spec_signature_receipt();
   test_typed_lir_type_rejections();
   test_verifier_rejects_malformed_raw_type();
+  test_intrinsic_requirements_receipt();
   test_module_name_and_struct_declaration_receipt();
   test_module_name_and_struct_declaration_rejections();
   test_structured_constant_value_receipt();

@@ -48,13 +48,6 @@ std::string function_link_name(const LirModule& module,
   return function.name;
 }
 
-bool has_intrinsic_requirements(const LirModule& module) noexcept {
-  return module.need_va_start || module.need_va_end || module.need_va_copy ||
-         module.need_memcpy || module.need_memset || module.need_stacksave ||
-         module.need_stackrestore || module.need_abs || module.need_ptrmask ||
-         module.prefer_semantic_va_ops;
-}
-
 std::optional<Type> lower_lir_type(const LirModule& module,
                                   const codegen::lir::LirTypeRef& type) {
   using codegen::lir::LirTypeKind;
@@ -1244,9 +1237,6 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
       return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
                         "external fallback map contains malformed parity evidence");
   }
-  if (has_intrinsic_requirements(module))
-    return fail<void>(ImportErrorCode::UnsupportedIntrinsicRequirements, {}, {},
-                      "module intrinsic requirements are not yet represented");
   std::unordered_set<c4c::LinkNameId> specialization_link_ids;
   std::unordered_set<std::string> specialization_semantic_keys;
   for (const auto& entry : module.spec_entries) {
@@ -1476,6 +1466,16 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   }
 
   ModuleBuilder builder;
+  auto requirements = builder.set_intrinsic_requirements(
+      IntrinsicRequirements{module.need_va_start, module.need_va_end,
+                            module.need_va_copy, module.need_memcpy,
+                            module.need_memset, module.need_stacksave,
+                            module.need_stackrestore, module.need_abs,
+                            module.need_ptrmask,
+                            module.prefer_semantic_va_ops});
+  if (!requirements)
+    return Result<RawBir, ImportError>::failure(builder_failure(
+        {}, {}, "import intrinsic requirements", requirements.error()));
   for (std::size_t index = 0; index < module.link_names.size(); ++index) {
     const auto source_id = static_cast<c4c::LinkNameId>(index + 1);
     auto added = builder.add_link_name(

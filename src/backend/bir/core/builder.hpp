@@ -50,6 +50,7 @@ enum class BuildError {
   EmptySpecializationField,
   InvalidSpecializationLinkName,
   DuplicateSpecialization,
+  DuplicateIntrinsicRequirements,
   ValueAlreadyDefined,
   DefinitionTypeMismatch,
   TerminatorAlreadySet,
@@ -188,6 +189,8 @@ class ModuleBuilder {
   Result<SpecializationId, BuildError> add_specialization(
       std::string spec_key, std::string template_origin,
       std::string mangled_name, c4c::LinkNameId mangled_link_name_id);
+  Result<void, BuildError> set_intrinsic_requirements(
+      IntrinsicRequirements requirements);
 
   using FunctionEdit =
       std::function<Result<void, BuildError>(FunctionBuilder&)>;
@@ -207,6 +210,7 @@ class ModuleBuilder {
   State state_ = State::Open;
   std::uint64_t active_scope_token_ = 0;
   std::uint64_t next_scope_token_ = 0;
+  bool intrinsic_requirements_assigned_ = false;
 
   friend class FunctionBuilder;
 };

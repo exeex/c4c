@@ -382,6 +382,22 @@ Result<SpecializationId, BuildError> ModuleBuilder::add_specialization(
   return Result<SpecializationId, BuildError>::success(id);
 }
 
+Result<void, BuildError> ModuleBuilder::set_intrinsic_requirements(
+    IntrinsicRequirements requirements) {
+  if (state_ == State::Consumed)
+    return Result<void, BuildError>::failure(BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<void, BuildError>::failure(BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<void, BuildError>::failure(BuildError::EpochExhausted);
+  if (intrinsic_requirements_assigned_)
+    return Result<void, BuildError>::failure(
+        BuildError::DuplicateIntrinsicRequirements);
+  data_->intrinsic_requirements_ = requirements;
+  intrinsic_requirements_assigned_ = true;
+  return Result<void, BuildError>::success();
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 ModuleBuilder::mutable_function(FunctionId function) {
   if (!data_ || data_->epoch_ == 0)

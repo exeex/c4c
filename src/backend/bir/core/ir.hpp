@@ -88,6 +88,37 @@ struct GlobalObject {
   std::optional<GlobalInitializer> initializer;
 };
 
+struct IntrinsicRequirements {
+  bool need_va_start = false;
+  bool need_va_end = false;
+  bool need_va_copy = false;
+  bool need_memcpy = false;
+  bool need_memset = false;
+  bool need_stacksave = false;
+  bool need_stackrestore = false;
+  bool need_abs = false;
+  bool need_ptrmask = false;
+  bool prefer_semantic_va_ops = false;
+};
+
+inline bool operator==(const IntrinsicRequirements& lhs,
+                       const IntrinsicRequirements& rhs) noexcept {
+  return lhs.need_va_start == rhs.need_va_start &&
+         lhs.need_va_end == rhs.need_va_end &&
+         lhs.need_va_copy == rhs.need_va_copy &&
+         lhs.need_memcpy == rhs.need_memcpy &&
+         lhs.need_memset == rhs.need_memset &&
+         lhs.need_stacksave == rhs.need_stacksave &&
+         lhs.need_stackrestore == rhs.need_stackrestore &&
+         lhs.need_abs == rhs.need_abs && lhs.need_ptrmask == rhs.need_ptrmask &&
+         lhs.prefer_semantic_va_ops == rhs.prefer_semantic_va_ops;
+}
+
+inline bool operator!=(const IntrinsicRequirements& lhs,
+                       const IntrinsicRequirements& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
 struct SpecializationMetadata {
   std::string spec_key;
   std::string template_origin;
@@ -287,6 +318,7 @@ struct ModuleData {
       specializations_by_semantic_key_;
   std::unordered_map<LinkNameId, SpecializationId>
       specializations_by_link_name_;
+  IntrinsicRequirements intrinsic_requirements_{};
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;
