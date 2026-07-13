@@ -158,8 +158,31 @@ std::optional<Type> lower_constant_type(const LirModule& module,
       type.is_fn_ptr)
     return std::nullopt;
 
+  TypeBase storage_base = type.base;
+  if (storage_base == TB_ENUM) {
+    storage_base = type.enum_underlying_base;
+    if (storage_base == TB_VOID) storage_base = TB_INT;
+    switch (storage_base) {
+      case TB_BOOL:
+      case TB_CHAR:
+      case TB_UCHAR:
+      case TB_SCHAR:
+      case TB_SHORT:
+      case TB_USHORT:
+      case TB_INT:
+      case TB_UINT:
+      case TB_LONG:
+      case TB_ULONG:
+      case TB_LONGLONG:
+      case TB_ULONGLONG:
+      case TB_INT128:
+      case TB_UINT128: break;
+      default: return std::nullopt;
+    }
+  }
+
   std::uint32_t width = 0;
-  switch (type.base) {
+  switch (storage_base) {
     case TB_BOOL: width = 1; break;
     case TB_CHAR:
     case TB_UCHAR:
@@ -257,6 +280,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
   const bool direct_scalar_vector =
       global.type.is_vector && global.type.vector_lanes > 0 &&
       global.type.vector_bytes > 0 && global.type.vrm_width == 0 &&
+      global.type.base != TB_ENUM &&
       global.type.ptr_level == 0 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&

@@ -8,15 +8,15 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid direct integer and floating vector
-  globals from typed `TypeSpec` authority. Typed BIR preserves exact scalar
-  element kind and width, lane count, producer storage bytes, spelling parity,
-  and existing object/initializer facts through Foundation, Raw BIR, and
-  Canonical BIR.
-- Nearby coverage retains the existing scalar/global families and rejects
-  nonpositive vector facts, spelling and mirror conflicts, excluded declarator
-  shapes and bases, VRM metadata, residual vector facts without `is_vector`,
-  and malformed staged `VectorTypeFacts` transactionally.
+- Plan Step 3 now admits producer-valid enum-backed direct scalar,
+  scalar-pointer, and fixed scalar-base array globals from typed `TypeSpec`
+  authority. Default and explicit integer underlying bases normalize through
+  the existing target-sensitive integer storage path while preserving exact
+  width, spelling, pointer depth, dimensions, and object/initializer facts
+  through Foundation, Raw BIR, and Canonical BIR.
+- Nearby transactional coverage rejects floating, aggregate, recursive enum,
+  complex, and va-list underlying bases plus spelling/mirror conflicts and
+  excluded vector, function-pointer, and array-mirror shapes.
 
 ## Suggested Next
 
@@ -25,10 +25,10 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Direct vector authority is typed; LLVM vector spelling is reconstructed only
-  for exact parity and is never parsed. Unfactored `LirTypeRef` vectors outside
-  globals remain supported, while array, pointer/reference, function-pointer,
-  aggregate, and other excluded vector shapes remain closed.
+- Enum source identity and signedness intentionally normalize to BIR integer
+  storage facts; no enum `TypeKind` or textual inference was added. Enum
+  vectors, function pointers, invalid underlying families, and existing
+  declarator/mirror exclusions remain closed.
 
 ## Proof
 

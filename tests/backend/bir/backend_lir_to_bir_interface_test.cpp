@@ -1976,6 +1976,226 @@ void test_scalar_global_type_authority_without_mirror() {
          "mirror-free scalar global receipt must remain verifier reachable");
 }
 
+void test_enum_storage_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.target_profile.arch = c4c::TargetArch::X86_64;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto definition_link =
+        module.link_names.intern("default_enum_definition");
+    const auto init_link = module.link_names.intern("enum_init_function");
+
+    lir::LirGlobal definition;
+    definition.name = "default_enum_definition";
+    definition.link_name_id = definition_link;
+    definition.type = scalar_type(c4c::TB_ENUM);
+    definition.type.enum_underlying_base = c4c::TB_VOID;
+    definition.linkage_vis = "protected ";
+    definition.qualifier = "global ";
+    definition.llvm_type = "i32";
+    definition.init_text = std::string{"i32 7\0enum", 10};
+    definition.initializer_function_link_name_ids = {init_link};
+    definition.align_bytes = 4;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "explicit_enum_extern";
+    declaration.type = scalar_type(c4c::TB_ENUM);
+    declaration.type.enum_underlying_base = c4c::TB_LONG;
+    declaration.linkage_vis = "external hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = "i64";
+    declaration.align_bytes = 8;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+
+    lir::LirGlobal pointer;
+    pointer.name = "deep_enum_pointer";
+    pointer.type = scalar_type(c4c::TB_ENUM);
+    pointer.type.enum_underlying_base = c4c::TB_UINT128;
+    pointer.type.ptr_level = 3;
+    pointer.linkage_vis = "extern_weak protected ";
+    pointer.qualifier = "global ";
+    pointer.llvm_type = "ptr";
+    pointer.align_bytes = 16;
+    pointer.is_extern_decl = true;
+    module.globals.push_back(std::move(pointer));
+
+    lir::LirGlobal array;
+    array.name = "enum_pointer_element_array";
+    array.type = scalar_type(c4c::TB_ENUM);
+    array.type.enum_underlying_base = c4c::TB_UCHAR;
+    array.type.ptr_level = 2;
+    array.type.array_rank = 2;
+    array.type.array_size = 3;
+    array.type.array_dims[0] = 3;
+    array.type.array_dims[1] = 5;
+    array.linkage_vis = "external hidden ";
+    array.qualifier = "global ";
+    array.llvm_type = "[3 x [5 x ptr]]";
+    array.align_bytes = 8;
+    array.is_extern_decl = true;
+    module.globals.push_back(std::move(array));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(),
+         "producer-shaped enum storage globals must import through typed integer normalization");
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "normalized enum storage globals must be Foundation-verifier reachable");
+  const auto view = raw.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
+         "enum storage globals must preserve deterministic source order");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto declaration = view.global_object(ids[1]).value();
+  const auto pointer = view.global_object(ids[2]).value();
+  const auto array = view.global_object(ids[3]).value();
+  expect(definition.object_type ==
+                 bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             view.spelling(std::get<bir::LinkNameId>(definition.identity))
+                     .value() == "default_enum_definition" &&
+             !definition.is_internal && !definition.is_weak &&
+             !definition.is_const && !definition.is_extern_declaration &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 4 && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 std::string{"i32 7\0enum", 10} &&
+             definition.initializer->function_links.size() == 1 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "enum_init_function",
+         "default-underlying enum definitions must retain normalized i32 storage and all object facts");
+  expect(declaration.object_type ==
+                 bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 declaration.identity) &&
+             declaration.is_extern_declaration && !declaration.is_weak &&
+             declaration.visibility == bir::SymbolVisibility::Hidden &&
+             declaration.alignment == 8 && !declaration.initializer,
+         "target-sized explicit-underlying enum externs must preserve exact integer storage and object facts");
+  expect(pointer.object_type.kind == bir::TypeKind::Pointer &&
+             pointer.object_type.spelling == "ptr" &&
+             pointer.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Integer, 128, 3}} &&
+             pointer.is_extern_declaration && pointer.is_weak &&
+             pointer.visibility == bir::SymbolVisibility::Protected &&
+             pointer.alignment == 16 && !pointer.initializer,
+         "enum pointer globals must retain normalized scalar width, exact depth, and object facts");
+  expect(array.object_type.kind == bir::TypeKind::Array &&
+             array.object_type.spelling == "[3 x [5 x ptr]]" &&
+             array.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Integer, 8, 2, {3, 5}}} &&
+             array.is_extern_declaration && !array.is_weak &&
+             array.visibility == bir::SymbolVisibility::Hidden &&
+             array.alignment == 8 && !array.initializer,
+         "fixed enum arrays must retain normalized element width, pointer depth, dimensions, and object facts");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  const auto canonical_ids =
+      canonical.has_value() ? canonical.value().view().global_objects()
+                            : std::vector<bir::GlobalObjectId>{};
+  expect(canonical.has_value() && canonical_ids.size() == 4 &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[0])
+                     .value()
+                     .object_type ==
+                 bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[1])
+                     .value()
+                     .object_type ==
+                 bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[2])
+                     .value()
+                     .object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Integer, 128, 3}} &&
+             canonical.value()
+                     .view()
+                     .global_object(canonical_ids[3])
+                     .value()
+                     .object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Integer, 8, 2, {3, 5}}},
+         "enum direct, pointer, and fixed-array storage must publish Canonical BIR with exact normalized facts");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() &&
+               rejected_raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.enum_underlying_base = c4c::TB_FLOAT;
+      },
+      "floating enum underlying storage must remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.enum_underlying_base = c4c::TB_STRUCT;
+      },
+      "aggregate enum underlying storage must remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.enum_underlying_base = c4c::TB_ENUM;
+      },
+      "recursive enum underlying storage must remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.enum_underlying_base = c4c::TB_COMPLEX_INT;
+      },
+      "complex enum underlying storage must remain closed");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.enum_underlying_base = c4c::TB_VA_LIST;
+      },
+      "va-list enum underlying storage must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[1].llvm_type = "i32"; },
+           "enum storage spelling must exactly match normalized width");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[1].llvm_type_ref = lir::LirTypeRef::integer(32);
+      },
+      "enum scalar mirrors must corroborate normalized typed storage");
+  rejected([](lir::LirModule& m) { m.globals[2].type.is_fn_ptr = true; },
+           "enum function-pointer shapes remain outside scalar-pointer storage");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].llvm_type_ref = lir::LirTypeRef("[3 x [5 x ptr]]");
+      },
+      "producer-valid fixed enum arrays must not carry an LLVM type mirror");
+  rejected(
+      [](lir::LirModule& m) {
+        auto& type = m.globals[0].type;
+        type.is_vector = true;
+        type.vector_lanes = 4;
+        type.vector_bytes = 16;
+        m.globals[0].llvm_type = "<4 x i32>";
+      },
+      "enum vectors remain outside the direct enum-storage packet");
+}
+
 void test_scalar_pointer_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -3949,6 +4169,7 @@ int main() {
   test_external_declaration_rejections_and_transactionality();
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
+  test_enum_storage_global_receipt_and_rejections();
   test_scalar_pointer_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
   test_direct_vector_global_receipt_and_rejections();
