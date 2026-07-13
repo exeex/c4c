@@ -8,58 +8,59 @@ Current Step Title: Establish executable pipeline identity and transaction found
 
 ## Just Finished
 
-- Completed Plan Step 1.1a: added the compiled target-independent pipeline
-  identity foundation under `src/backend/bir/pipeline/identity.*` and exported
-  it through `bir.hpp`.
-- Added strong `ModuleRevision` and `FunctionRevision` value axes, stable
-  `Fingerprint128`/`FunctionRevisionDigest` values, and `PipelineStageStamp`
-  equality over module epoch, module revision, and ordered function-revision
-  digest.
-- Added deterministic digest construction that preserves the caller-supplied
-  core canonical `(FunctionId, FunctionRevision)` sequence exactly. Zero epoch,
-  invalid/foreign IDs, and duplicate live slots return indexed typed errors
-  without a partial digest or silent sorting/normalization.
-- Added dedicated `backend_bir_pipeline_identity` coverage and CMake
-  integration for deterministic construction, every freshness axis, changed
-  identity/revision, empty input, arbitrary valid order and order sensitivity,
-  invalid/foreign IDs, duplicate-slot rejection, and clean construction after
-  failure.
+- Completed Plan Step 1.1b: added the compiled target-independent
+  `passes/execution_control.*` foundation and exported it through `bir.hpp`.
+- Added `ResourceBudget` with only the accepted deterministic
+  `max_work_units` axis, a read-only copyable `CancellationToken`, and one
+  noncopyable/nonmovable external `CancellationSource` whose request state is
+  safe to observe concurrently and whose tokens safely outlive the source.
+- `checkpoint(work_units)` returns typed `Cancelled` or `ResourceLimit`
+  failures, prevents integer wraparound and partial over-budget charge, makes
+  cancellation/exhaustion sticky, and gives observed cancellation deterministic
+  precedence over resource exhaustion.
+- Zero-unit checkpoints are observation-only: they do not charge work, succeed
+  while a positive budget remains live, and report an existing cancellation or
+  exhaustion. Reaching the exact budget succeeds for that charge and makes all
+  later checkpoints fail.
+- Added dedicated `backend_bir_execution_control` coverage for independent
+  sources, token lifetime, idempotent cancellation, exact-boundary accounting,
+  zero-budget/zero-unit behavior, over-budget and overflow rejection, sticky
+  failure, cancellation precedence, and repeated deterministic sequences.
 
 ## Suggested Next
 
-- Continue Plan Step 1.1 with a separate bounded transaction/cancellation
-  packet: introduce the smallest private stage-candidate/checkpoint state and
-  typed cancellation/failure behavior using these exact identity primitives.
-  Do not widen that packet into pass dispatch, product registries, target facts,
-  or publication-token implementation.
+- Continue Plan Step 1.1 with a separate bounded private-candidate/rollback
+  packet using the completed identity and execution-control primitives. Keep it
+  limited to private owning candidate/checkpoint state and typed discard/
+  rollback behavior; do not widen into pass dispatch, target facts, analysis
+  products, or Canonical publication.
 
 ## Watchouts
 
-- The caller must supply core's explicit canonical module function order. This
-  identity-only helper preserves and hashes that sequence but cannot prove its
-  provenance until future core-revision integration. It rejects duplicate live
-  slots, including different generations of the same slot, rather than sorting.
-- `FunctionRevisionDigest` uses an explicitly byte-ordered, implementation-
-  local stable 128-bit mixer rather than pointer, string, `std::hash`, container
-  iteration, or target identity.
-- This packet implements identity values only. It does not implement or imply
-  mutation, cancellation, rollback, stage publication, pass scheduling,
-  analysis products, pseudo facts, or allocation state.
+- Checkpoint calls sharing one invocation state are serial by contract;
+  external cancellation request/observation is thread-safe. No wall clock,
+  global, environment, randomness, target data, or pointer/string identity
+  participates in a decision.
+- `ResourceBudget{0}` begins exhausted. A zero-unit checkpoint never revives an
+  exhausted or cancelled token. Cancellation requested after exhaustion changes
+  the reported sticky reason to `Cancelled` because cancellation has explicit
+  precedence, but success remains impossible.
+- This slice owns no graph edit, stage transaction, resumable pipeline
+  checkpoint capability, revision, publication, pass dispatch, diagnostic,
+  entity, or other speculative budget axis.
 
 ## Proof
 
 - `cmake --preset default`: configured and generated successfully.
-- `cmake --build --preset default`: built `c4c_backend`,
-  `backend_bir_pipeline_identity_test`, the existing backend interface test,
-  and the default tree successfully; the final confirmation reported
-  `ninja: no work to do`.
+- `cmake --build --preset default`: full default build succeeded; final
+  confirmation reported `ninja: no work to do`.
 - Exact supervisor-selected command:
   `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-  Baseline `test_before.log`: 1/1 passed. Current `test_after.log`: 2/2 passed,
-  including `backend_bir_pipeline_identity`; zero failures.
+  Baseline `test_before.log`: 2/2 passed. Current `test_after.log`: 3/3 passed,
+  including `backend_bir_execution_control`; zero failures.
 - Passed `git diff --check`.
-- Owned files: `src/backend/bir/pipeline/identity.hpp`,
-  `src/backend/bir/pipeline/identity.cpp`, `src/backend/bir/bir.hpp`,
-  `tests/backend/bir/backend_bir_pipeline_identity_test.cpp`,
+- Owned files: `src/backend/bir/passes/execution_control.hpp`,
+  `src/backend/bir/passes/execution_control.cpp`, `src/backend/bir/bir.hpp`,
+  `tests/backend/bir/backend_bir_execution_control_test.cpp`,
   `tests/backend/bir/CMakeLists.txt`, `todo.md`, and canonical
   `test_after.log`.

@@ -35,6 +35,18 @@ struct PipelineStageStamp;
 
 }  // namespace c4c::backend::bir
 
+// Deterministic invocation cancellation and work-unit budget control.
+#include "passes/execution_control.hpp"
+
+namespace c4c::backend::bir {
+
+struct ResourceBudget;
+enum class ExecutionControlFailure : std::uint8_t;
+class CancellationToken;
+class CancellationSource;
+
+}  // namespace c4c::backend::bir
+
 // Semantic schema: types, values, control-flow terminators, and signatures.
 #include "core/type.hpp"
 #include "core/ir.hpp"
