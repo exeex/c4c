@@ -1,4 +1,4 @@
-# Inline-Assembly Opaque Transport And Regalloc Runbook
+# Inline-Assembly Preparation And Regalloc Runbook
 
 Status: Active
 Source Idea: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
@@ -6,233 +6,243 @@ Supersedes: the paused idea-730 globals packet; its WIP remains in `stash@{0}`
 
 ## Purpose
 
-Establish a new-backend inline-assembly route with opaque instruction payload
-transport, structured pre-regalloc constraints, a constrained MIR pseudo,
-allocation enforcement, and parsing only at a new late assembler seam.
+Align inline asm with the ordered replacement backend: target-independent
+transport through Canonical BIR, target-aware constraint resolution in
+preparation, structured MIR/regalloc consumption, and instruction parsing only
+at late assembly.
 
 ## Goal
 
-Carry inline asm unchanged through LIR -> BIR -> MIR while giving regalloc
-enough verified structure to allocate `r`, `=r`, ties/clobbers, and the
-target-confirmed `VR`/`VRM*` register groups correctly.
+Preserve inline asm faithfully while giving regalloc verified target-specific
+requirements for `r`, `=r`, ties/clobbers, and RV64 vector register groups.
 
 ## Core Rule
 
-Instruction text is opaque until late assembly; allocation constraints are
-structured before regalloc.  Never make regalloc parse strings, and never
-restore legacy BIR/prealloc/MIR/`c4c-as` sources to obtain this behavior.
+Canonical BIR carries source semantics, not target interpretation. Only
+`preparation/inline_asm` may normalize constraints and clobbers; only the late
+assembler may parse instruction/template syntax.
 
 ## Read First
 
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
-- `src/codegen/lir/ir.hpp`
-- `src/codegen/lir/verify.cpp`
-- `src/backend/bir/bir.hpp`
-- `src/backend/bir/lir_to_bir.cpp`
-- `docs/rv64_explicit_register_inline_asm/`
-- quarantined inline-asm/prealloc/MIR files only as historical behavior
-  evidence, never as implementation authority
+- `src/backend/bir/README.md`
+- `src/backend/bir/pipeline/README.md`
+- `src/backend/bir/REVIEW_TEMPLATE.md`
+- `src/backend/bir/core/README.md`
+- `src/backend/bir/preparation/README.md`
+- `src/backend/bir/preparation/inline_asm/README.md`
+- `src/backend/bir/mir/README.md`
+- `docs/inline_asm_transport/`
 
 ## Current Targets
 
-- LIR inline-asm carrier and verifier
-- new-BIR semantic schema, builder, view, verifier, and importer
-- a new active MIR inline-asm pseudo and direct BIR-to-MIR boundary
-- a bounded new allocator contract for scalar and vector register groups
-- a new minimal late assembler seam
-- retained boundary and allocator tests only
+- ordered-architecture and checkpoint acceptance
+- structured opaque inline-asm transport into Canonical BIR
+- revision-bound target-aware inline-asm preparation
+- verified preparation-to-MIR handoff and structured regalloc requirements
+- late assembler substitution and first parse
 
 ## Non-Goals
 
-- Do not resume idea 730 globals from `stash@{0}` in this runbook.
-- Do not revive prepared BIR, routes, prealloc, old MIR, or `c4c-as`.
-- Do not implement general constraint syntax beyond the checkpoint table.
-- Do not parse mnemonics, directives, or `.insn` payloads before late assembly.
-- Do not broaden into unrelated ABI, object, linker, or runtime work.
+- Do not implement while architecture/checkpoint acceptance is incomplete.
+- Do not put RV64 normalization, physical interpretation, target-contract
+  provenance, or allocator requirements in canonical BIR.
+- Do not let preparation mutate `CanonicalBir` or communicate through unnamed
+  side tables.
+- Do not parse instructions/templates before late assembly.
+- Do not revive legacy BIR, prealloc, MIR, or `c4c-as`.
+- Do not apply `stash@{0}` or resume idea 730 in this runbook.
 
 ## Working Model
 
-1. LIR carries opaque asm payload, structured operand identity, raw constraint
-   syntax at its designated normalization boundary, and separate clobbers.
-2. LIR-to-BIR normalizes the admitted constraint subset into semantic operand
-   roles and allocation requirements; BIR retains the opaque payload.
-3. BIR-to-MIR creates an inline-asm pseudo with virtual operands and physical
-   class/group constraints; it does not inspect instruction syntax.
-4. Regalloc selects legal scalar registers or aligned contiguous groups while
-   enforcing ties, interference, early-clobbers, and clobbers.
-5. The late assembler substitutes assigned operands and only then parses and
-   encodes the opaque payload.
+1. Parser/HIR/LIR preserve the opaque payload, structured operands, and
+   original constraint/clobber syntax.
+2. LIR-to-BIR constructs target-independent Raw BIR; canonical passes publish
+   verified `CanonicalBir` without normalizing target syntax.
+3. `preparation/inline_asm` reads immutable `CanonicalBir` plus target context
+   and produces a typed immutable plan bound to exact revisions.
+4. Prepared-input verification gates MIR construction; MIR/regalloc consume
+   roles/classes/groups/ties/early-clobbers/clobber units from that plan only.
+5. Late assembly substitutes completed assignments and first parses/encodes
+   the opaque instruction payload.
 
 ## Execution Rules
 
-- Finish Step 1 and review its table/schema before any implementation packet.
-- Freeze exact supported `VR`/`VRM*` widths and alignment rules from current
-  target semantics; stop on ambiguity instead of inventing a table.
-- Add one layer boundary at a time and prove payload equality plus structured
-  fact integrity at that boundary.
-- Reject unsupported constraint alternatives with explicit diagnostics.
-- Require allocator negative tests for illegal ties, overlaps, clobbers, and
-  misaligned/noncontiguous groups; positive named cases alone are insufficient.
-- Keep `src/backend/legacy/**` absent from compile metadata.
-- Use the validation ladder `build -> direct boundary/allocator subset ->
-  broader regression` at milestone steps.
+- Step 1 is a design repair and joint architecture review. No later
+  implementation step is authorized until its completion check passes.
+- Keep Step 1 bounded to the inline-asm checkpoint and its CanonicalBir,
+  preparation, and MIR adjacency. Do not take over review of unrelated
+  scaffold areas; only confirm the architecture-wide acceptance prerequisite.
+- Treat the user-authored `src/backend/bir/**` scaffold as authoritative input; do not
+  modify it in the checkpoint-repair packet.
+- Use the scaffold stage order exactly. Each output must name its verifier gate
+  and revision/staleness behavior.
+- Keep the RV64 preparation table evidence-backed: `r`, `VR`, `VRM2`, `VRM4`,
+  and `VRM8`; reject `VRM1` and unreviewed syntax.
+- Prove payload equality independently from constraint-plan correctness.
+- Require negative proofs for stale/mismatched plans, illegal groups, ties,
+  early-clobbers, clobbers, and unsupported syntax.
+- Keep legacy translation units absent from compile metadata.
 
-## Step 1: Freeze inventory, constraint table, and schema checkpoint
+## Step 1: Repair and jointly accept the architecture checkpoint
 
-Goal: produce the evidence-backed contract that implementation packets follow.
+Goal: reconcile the inline-asm checkpoint with the ordered BIR architecture
+before any implementation is allowed.
 
 Primary targets:
 
-- current source/HIR-to-LIR inline-asm production
-- `LirInlineAsmOp`, its printer, and verifier
-- new-BIR schema/import rejection boundaries
-- current target definitions for GPR/vector classes and register-group rules
-- historical inline-asm/prealloc/MIR behavior only where it provides evidence
+- `docs/inline_asm_transport/`
+- user-authored architecture documents under `src/backend/bir/**`
+- the adjacent canonical-BIR, preparation, and MIR contracts
 
 Concrete actions:
 
-- Trace payload, operands, constraint text, ties, and clobbers from source to
-  current LIR and identify every place that currently parses or rewrites them.
-- Inventory the active HIR-to-LIR LLVM-compatibility rewrites and decide how
-  original source constraint spelling/roles remain distinct from rendered LLVM
-  constraint text; do not silently make the compatibility spelling semantic
-  authority for the new backend.
-- Freeze the designated constraint-normalization owner and distinguish it from
-  late instruction parsing.
-- Publish a closed supported-constraint table covering at least `r`, `=r`,
-  read/write and numeric/matching ties, early-clobber representation, clobber
-  sets, `VR`, and every target-confirmed `VRM*` group.  Record role, class,
-  width, alignment, contiguity, tie behavior, and rejection diagnostics.
-- Determine the exact vector group set from current target semantics.  If
-  source and target evidence disagree, record the ambiguity and stop rather
-  than choosing a spelling-derived answer.
-- Specify the minimal target-independent BIR inline-asm facts, new MIR pseudo,
-  allocator constraint records, and late assembler input/output contract.
-- Record byte-for-byte payload preservation points and prove no earlier pass
-  needs mnemonic or `.insn` interpretation.
-- Write the checkpoint under a new focused `docs/` directory and obtain
-  reviewer acceptance before Step 2.
+- Remove LIR-to-BIR as constraint normalizer and remove target-contract
+  provenance, physical-register interpretation, normalized register classes,
+  and group requirements from canonical BIR schema.
+- Specify target-independent Raw/Canonical BIR inline asm as opaque payload,
+  structured source operands, original constraint/clobber syntax, results,
+  and writebacks only.
+- Specify `preparation/inline_asm` as sole target-aware normalizer consuming
+  immutable `CanonicalBir` plus target context and producing a typed immutable
+  plan bound to exact module/function revision and target-context identity.
+- Place roles, classes, group widths/alignment/contiguity, ties,
+  early-clobbers, memory/CC effects, and physical clobber units in that plan.
+- Re-home all related diagnostics and proof rows to the stage that can decide
+  them; include stale/missing/mismatched-plan rejection before MIR publication.
+- Preserve the evidence-backed RV64 `r`, `VR`, `VRM2`, `VRM4`, `VRM8` table as
+  a preparation contract and keep `VRM1` unsupported.
+- Review the repaired checkpoint together with the preceding CanonicalBir and
+  following MIR contracts using `src/backend/bir/REVIEW_TEMPLATE.md`.
+- Record architecture-wide acceptance as an external prerequisite rather than
+  expanding this packet into review of unrelated scaffold areas.
+- Do not declare implementation authorization until that prerequisite holds
+  and this checkpoint is accepted against the ordered contracts. The earlier
+  checkpoint re-review is superseded by this ownership change.
 
 Completion check:
 
-- A reviewer can derive every admitted class/group rule and diagnostic from
-  cited current evidence, and can identify exactly which layer owns constraint
-  normalization, allocation, substitution, and instruction parsing.
+- The bounded adjacency review accepts one coherent stage order and authority
+  map, every inline-asm plan is revision-bound and verified, and canonical BIR
+  has no target interpretation. Step 2 remains unauthorized until the separate
+  architecture-wide acceptance prerequisite is also confirmed.
 
-## Step 2: Establish structured LIR carrier and new-BIR import
+## Step 2: Establish target-independent transport through Canonical BIR
 
-Goal: publish verified inline-asm semantics without interpreting the asm
-payload.
+Goal: publish source-semantic inline asm without target normalization.
 
 Concrete actions:
 
-- Replace any preformatted operand string that acts as semantic authority with
-  the smallest structured LIR operand carrier required by the checkpoint;
-  preserve externally rendered text only as non-authoritative output.
-- Keep asm payload bytes/text unchanged and keep clobbers structurally separate.
-- Add the checkpoint-approved target-independent BIR inline-asm operation,
-  operand roles, class/group requirements, ties, early-clobbers, and clobbers.
-- Extend builders, read-only views, and verification before importer success.
-- Normalize only the admitted constraint grammar at LIR-to-BIR.  Reject every
-  unmodeled alternative/fact explicitly; do not silently fall back to GPR or
-  width one.
-- Add direct LIR-to-BIR tests for `r`, `=r`, read/write/ties, clobbers,
-  accepted vector groups, unsupported alternatives, and byte-identical opaque
-  payload transport.
+- Introduce the smallest structured parser/HIR/LIR carrier for operand order,
+  values, destinations, results, original constraints, and original clobbers;
+  keep LLVM compatibility rendering separate and non-authoritative.
+- Preserve payload bytes exactly and remove all early mnemonic, placeholder,
+  directive, and `.insn` parsing from the new-backend route.
+- Add Raw/Canonical BIR node, builders, views, verification, results, and
+  writebacks containing only target-independent facts.
+- Add direct transport tests for multi-output, distinct `UseDef` identities,
+  original syntax retention, malformed payload byte equality, and absence of
+  target-normalized fields.
 
 Completion check:
 
-- The direct LIR-to-BIR interface publishes verified structured requirements
-  and unchanged payload for the admitted subset, while unsupported forms fail
-  closed and no instruction syntax is parsed.
+- Published `CanonicalBir` retains exact source facts and payload without
+  target classification or instruction parsing.
 
-## Step 3: Add the new MIR inline-asm pseudo and BIR-to-MIR boundary
+## Step 3: Implement target-aware inline-asm preparation
 
-Goal: translate verified BIR semantics into allocatable machine requirements
-without restoring old MIR or prealloc.
+Goal: turn source constraints into a verified, revision-bound typed plan.
 
 Concrete actions:
 
-- Define the minimal new active MIR ownership/identity needed for an inline-asm
-  pseudo with virtual inputs/outputs, class/group constraints, ties,
-  early-clobbers, clobbers, and opaque payload.
-- Lower the accepted BIR subset directly to that pseudo; preserve operand order
-  and payload exactly.
-- Reject BIR facts the new MIR/allocator contract cannot represent.
-- Add direct BIR-to-MIR tests for scalar roles, ties/clobbers, every admitted
-  vector group, unsupported facts, and byte-identical payload transport.
+- Define target context and plan identities, exact canonical revision binding,
+  staleness checks, immutable APIs, and transactional failure behavior.
+- Normalize the reviewed RV64 scalar/vector roles, groups, ties,
+  early-clobbers, effects, and clobber units only in
+  `preparation/inline_asm`.
+- Reject `VRM1`, alternatives, unsupported classes/aliases, malformed ties,
+  type mismatches, and clobbers with stable preparation-owned diagnostics.
+- Add preparation tests for all admitted forms plus unsupported, stale, and
+  target-mismatch cases; prove `CanonicalBir` remains unchanged.
 
 Completion check:
 
-- Direct BIR-to-MIR proof shows complete structured requirements and unchanged
-  payload in a new active MIR pseudo, with no legacy/prealloc compile entry.
+- A verified plan contains every target-specific fact required downstream,
+  and neither MIR nor regalloc needs source-string interpretation.
 
-## Step 4: Enforce inline-asm requirements in new regalloc
+## Step 4: Construct MIR from verified preparation
 
-Goal: make structured constraints causally determine legal assignments.
+Goal: translate canonical semantics plus the preparation plan into allocatable
+machine requirements.
 
 Concrete actions:
 
-- Implement candidate filtering for register class, reserved registers, group
-  width, alignment, and contiguity from target definitions frozen in Step 1.
-- Enforce input/output/read-write liveness, matching ties, interference,
-  early-clobber non-overlap, and explicit clobber exclusion.
-- Treat group allocation atomically; no partial or noncontiguous vector group
-  may satisfy a `VRM*` requirement.
-- Produce explicit allocation failure diagnostics when no legal assignment
-  exists; never weaken the requirement.
-- Add focused positive and negative allocator invariants for `r`, `=r`, ties,
-  early-clobbers, clobber conflicts, pressure, and every admitted vector group
-  width/alignment.
+- Define minimal MIR ownership/identity for inline-asm pseudos and require the
+  verified matching preparation plan at the construction boundary.
+- Preserve operand/result order, distinct incoming/produced identities, ties,
+  clobbers, and opaque payload while translating plan facts into MIR records.
+- Reject absent, stale, mismatched, or unrepresentable plans before partial MIR
+  publication.
+- Add direct BIR-plus-plan-to-MIR tests, including byte equality and mismatch
+  failures.
 
 Completion check:
 
-- Removing or changing a structured requirement changes allocation outcomes,
-  and illegal overlap/misalignment/noncontiguity cases fail for the general
-  invariant rather than a named testcase check.
+- MIR carries complete structured allocation requirements and opaque payload
+  without legacy/prealloc code or constraint-string parsing.
 
-## Step 5: Add the late assembler parse and substitution seam
+## Step 5: Enforce inline-asm requirements in regalloc
 
-Goal: make this the first and only instruction-syntax interpretation point.
+Goal: make the prepared requirements causally determine legal assignments.
 
 Concrete actions:
 
-- Define a minimal assembler API that accepts the opaque payload plus completed
-  physical operand assignments and returns encoded output or a structured
-  parse/encoding diagnostic.
-- Substitute positional/named operands from assigned registers according to
-  the checkpoint contract, then parse mnemonics/directives/`.insn` payload.
-- Keep constraint normalization and allocation out of the assembler.
-- Prove an invalid mnemonic or `.insn` payload crosses LIR, BIR, MIR, and
-  allocation without interpretation and fails specifically at this seam.
-- Add only the minimal positive encoding proof needed to establish timing.
+- Enforce register class, reserved units, group width/alignment/contiguity,
+  ties, liveness/interference, early-clobbers, and explicit clobber exclusion.
+- Allocate vector groups atomically and use the same requirement-aware filter
+  in normal, eviction, retry, spill, and fallback paths.
+- Fail explicitly when no legal assignment exists; never weaken a requirement.
+- Add positive and negative invariant tests for scalar and every admitted
+  vector group.
 
 Completion check:
 
-- Instrumented or diagnostic evidence identifies late assembly as the first
-  instruction parser, and completed allocation is required before substitution
-  and encoding.
+- Changing a structured requirement changes allocation behavior, and illegal
+  overlaps/groups fail by general invariants rather than testcase spellings.
 
-## Step 6: Prove the bounded end-to-end route
+## Step 6: Add the late assembler seam
 
-Goal: accept the route only when its interfaces and allocation semantics hold
-together.
+Goal: make late assembly the first instruction/template parser.
 
 Concrete actions:
 
-- Run source-backed scalar input/output/read-write cases and target-confirmed
-  vector group cases through the bounded pipeline.
-- Verify payload equality at LIR, BIR, and MIR observation points and correct
-  allocated register substitutions at late assembly.
-- Verify negative unsupported-constraint, tie/clobber conflict, illegal vector
-  group, and late parse/encoding diagnostics.
-- Confirm durable backend tests remain limited to LIR-to-BIR, BIR-to-MIR,
-  allocator invariants, and the minimal late assembler/end-to-end seam.
-- Confirm compile metadata has no legacy/prealloc/old-MIR source and run the
+- Accept opaque payload plus completed physical operand assignments only.
+- Substitute the reviewed placeholder grammar, then parse mnemonics,
+  directives, `.insn`, and encoding details.
+- Keep constraints, virtual registers, and allocation policy out of the API.
+- Prove invalid mnemonic and malformed `.insn` payloads survive every earlier
+  boundary unchanged and fail here.
+
+Completion check:
+
+- Diagnostics and instrumentation identify late assembly as the first parser,
+  and encoding requires completed allocation.
+
+## Step 7: Prove the bounded end-to-end route
+
+Goal: accept the route only when all typed boundaries work together.
+
+Concrete actions:
+
+- Run scalar input/output/read-write and every admitted RV64 vector group
+  through transport, preparation, MIR, allocation, and late assembly.
+- Verify payload equality, preparation-plan revision matching, legal allocated
+  units, substitution, and owner-specific negative diagnostics.
+- Confirm build metadata excludes legacy/prealloc/old-MIR sources and run the
   supervisor-selected broader regression guard.
 
 Completion check:
 
-- The bounded route is green end to end, its negative contracts fail at the
-  correct owners, legacy sources remain quarantined, and reviewer finds no
-  string guessing or testcase overfit.
+- The bounded route is green, failures occur at their sole owners, and review
+  finds no early parsing, canonical target leakage, string-driven regalloc, or
+  testcase overfit.
