@@ -1618,6 +1618,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.is_declaration = false;
       lir_fn.return_type =
           lir_owned_type_spec(hir_mod, fn.return_type.spec, &module);
+      populate_lir_function_params(hir_mod, fn, &module, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
 

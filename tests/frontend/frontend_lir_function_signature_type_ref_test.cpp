@@ -426,6 +426,117 @@ void call_vrm8_fn_ptr(__c4c_builtin_vrm8 input,
                      "bare VRM function pointer parameter boundary should reject");
 }
 
+void test_definition_logical_parameter_publication() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+int declared_zero();
+int defined_zero() { return 1; }
+
+int declared_explicit_void(void);
+int defined_explicit_void(void) { return 2; }
+
+int declared_plain(int misleading_i64, long long misleading_i32,
+                   float misleading_double, double misleading_float);
+int defined_plain(int misleading_i64, long long misleading_i32,
+                  float misleading_double, double misleading_float) {
+  return 3;
+}
+)c");
+  const c4c::codegen::lir::LirModule module =
+      c4c::codegen::lir::lower(hir_module);
+
+  const auto expect_empty = [&](std::string_view name, bool declaration) {
+    const auto& function = require_function(module, name, declaration);
+    expect_true(function.params.empty() && function.signature_params.empty() &&
+                    function.signature_param_type_refs.empty() &&
+                    !function.signature_has_void_param_list,
+                "empty parameter-list declaration/definition should keep all parameter tracks empty");
+  };
+  expect_empty("declared_zero", true);
+  expect_empty("defined_zero", false);
+
+  const auto expect_explicit_void = [&](std::string_view name,
+                                        bool declaration) {
+    const auto& function = require_function(module, name, declaration);
+    expect_true(function.signature_has_void_param_list &&
+                    function.params.size() == 1 &&
+                    function.params[0].second.base == c4c::TB_VOID &&
+                    function.signature_params.empty() &&
+                    function.signature_param_type_refs.empty(),
+                "explicit-void declaration/definition should retain one logical void fact and no emitted fixed parameter");
+  };
+  expect_explicit_void("declared_explicit_void", true);
+  expect_explicit_void("defined_explicit_void", false);
+
+  const std::vector<c4c::TypeBase> expected_bases = {
+      c4c::TB_INT, c4c::TB_LONGLONG, c4c::TB_FLOAT, c4c::TB_DOUBLE};
+  const std::vector<c4c::codegen::lir::LirTypeKind> expected_kinds = {
+      c4c::codegen::lir::LirTypeKind::Integer,
+      c4c::codegen::lir::LirTypeKind::Integer,
+      c4c::codegen::lir::LirTypeKind::Floating,
+      c4c::codegen::lir::LirTypeKind::Floating};
+  const std::vector<std::string> expected_text = {
+      "i32", "i64", "float", "double"};
+  const auto expect_plain = [&](std::string_view name, bool declaration) {
+    const auto& function = require_function(module, name, declaration);
+    expect_true(function.params.size() == expected_bases.size() &&
+                    function.signature_params.size() == expected_bases.size() &&
+                    function.signature_param_type_refs.size() ==
+                        expected_bases.size(),
+                "plain declaration/definition should publish three one-to-one parameter tracks");
+    for (std::size_t index = 0; index < expected_bases.size(); ++index) {
+      const auto& logical = function.params[index].second;
+      const auto& signature = function.signature_params[index].type;
+      const bool exact_plain_shape =
+          logical.base == signature.base &&
+          logical.ptr_level == signature.ptr_level &&
+          logical.is_lvalue_ref == signature.is_lvalue_ref &&
+          logical.is_rvalue_ref == signature.is_rvalue_ref &&
+          logical.array_size == signature.array_size &&
+          logical.array_rank == signature.array_rank &&
+          logical.is_ptr_to_array == signature.is_ptr_to_array &&
+          logical.inner_rank == signature.inner_rank &&
+          logical.is_const == signature.is_const &&
+          logical.is_volatile == signature.is_volatile &&
+          logical.is_vector == signature.is_vector &&
+          logical.vector_lanes == signature.vector_lanes &&
+          logical.vector_bytes == signature.vector_bytes &&
+          logical.is_fn_ptr == signature.is_fn_ptr;
+      expect_true(logical.base == expected_bases[index] &&
+                      signature.base == expected_bases[index] &&
+                      exact_plain_shape && logical.ptr_level == 0 &&
+                      !logical.is_lvalue_ref && !logical.is_rvalue_ref &&
+                      logical.array_rank == 0 && !logical.is_ptr_to_array &&
+                      !logical.is_const && !logical.is_volatile &&
+                      !logical.is_vector && !logical.is_fn_ptr &&
+                      function.signature_param_type_refs[index].kind() ==
+                          expected_kinds[index] &&
+                      function.signature_param_type_refs[index].str() ==
+                          expected_text[index] &&
+                      !function.signature_params[index].is_byval,
+                  "plain logical/signature/type-ref order must come from exact structured HIR facts");
+    }
+  };
+  expect_plain("declared_plain", true);
+  expect_plain("defined_plain", false);
+
+  c4c::codegen::lir::LirModule presentation_drift = module;
+  auto& drifted =
+      require_mutable_function(presentation_drift, "defined_plain", false);
+  for (std::size_t index = 0; index < drifted.params.size(); ++index) {
+    drifted.params[index].first = "%logical-display-" + std::to_string(index);
+    drifted.signature_params[index].name =
+        "%signature-display-" + std::to_string(index);
+  }
+  drifted.signature_text =
+      "define i32 @defined_plain(i8 %wrong, ptr %wrong2) {";
+  c4c::codegen::lir::verify_module(presentation_drift);
+  expect_true(drifted.params[0].second.base == c4c::TB_INT &&
+                  drifted.params[1].second.base == c4c::TB_LONGLONG &&
+                  drifted.params[2].second.base == c4c::TB_FLOAT &&
+                  drifted.params[3].second.base == c4c::TB_DOUBLE,
+              "parameter names and signature rendering must remain presentation-only");
+}
+
 }  // namespace
 
 int main() {
@@ -433,6 +544,7 @@ int main() {
   test_signature_type_ref_preserves_no_owner_compatibility_name_id();
   test_vrm_signature_type_refs_preserve_carrier_identity();
   test_vrm_call_boundaries_reject_non_expanded_carriers();
+  test_definition_logical_parameter_publication();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
