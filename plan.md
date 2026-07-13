@@ -45,13 +45,16 @@ published BIR.
   schema checkpoint, stable identity/storage/order, read-only facade/views,
   scoped builders, move-only RawBir publication, and foundation verifier are
   present.
-- Step 5's bootstrap importer/consumer/test-graph packet completed across
+- Step 5 completed across
   `2e7d9ecb6` through `d03f45cda`: a verified minimal LIR-to-RawBir subset is
   active, legacy prealloc/MIR consumers are quarantined, the default build is
   green, and only retained interface tests are registered under backend.
-- Broader CTest is 3029/3030.  The remaining `string_authority_guard` failure
-  scans quarantined `src/backend/legacy/**` and also requires an exact bounded
-  classification for the bootstrap link-name uniqueness index.
+- `2b6148590` closed the remaining active-source string-authority debt.  The
+  guard excludes only quarantined `src/backend/legacy/**`, the bootstrap
+  link-name uniqueness index has an exact bounded classification, and broader
+  CTest is 3030/3030.
+- Step 6.1 is the current bounded packet: module globals and their
+  global-initializer semantics only.
 
 ## Non-Goals
 
@@ -183,14 +186,16 @@ Evidence:
   storage/order membership, function shape, terminators, and exact link-name
   index consistency before move-only RawBir publication.
 
-## Step 5: Migrate the import spine and CFG publication — In Progress
+## Step 5: Migrate the import spine and CFG publication — Complete
+
+Completed across: `2e7d9ecb6` through `2b6148590`
 
 Goal: Establish direct LIR-to-RawBir construction and terminator-derived CFG.
 
 Migration order:
 
 1. Bootstrap import/publication seam — Complete
-2. Close active-source string-authority guard debt — Current
+2. Close active-source string-authority guard debt — Complete
 
 Concrete actions:
 
@@ -232,21 +237,69 @@ Completed bootstrap evidence:
   prealloc/MIR consumers without fake emission success.
 - `de5e0977d`, `b056af5a9`, and `d03f45cda` removed legacy build/test graph
   reachability and established the retained LIR-to-BIR interface test.
+- `2b6148590` excluded only quarantined legacy sources from the active-code
+  string scanner, classified the link-name uniqueness/merge index without
+  making strings entity identity, and passed the guard self-tests, focused
+  interface tests, and broader CTest 3030/3030.
 
-## Step 6: Migrate globals, scalar, and aggregate families
+## Step 6: Migrate globals, scalar, and aggregate families — In Progress
 
 Goal: Expand supported RawBir semantics through three ordered packets.
 
 Migration order:
 
-1. `globals.cpp`, `global_initializers.cpp`
-2. `scalar.cpp`
-3. `aggregate.cpp`
+1. Step 6.1: globals and global initializers — In Progress
+2. Step 6.2: scalar instructions — Pending
+3. Step 6.3: aggregate instructions — Pending
+
+### Step 6.1: Globals and global initializers — In Progress
+
+Primary behavior inventory:
+
+- `src/backend/bir/lir_to_bir/globals.cpp`
+- `src/backend/bir/lir_to_bir/global_initializers.cpp`
+
+Concrete actions:
+
+- Reimplement only module-level global declaration/definition identity,
+  deterministic global order, attributes, and initializer references/payloads
+  required by the LIR global records.
+- Add the smallest `GlobalId`, owned global storage/order, read-only view,
+  builder operations, and verifier rules needed to publish that family.
+- Treat the retained importer files as behavior inventory only.  Do not compile
+  them unchanged, transplant their legacy BIR representation, or restore a
+  dependency on archived legacy/prealloc/target authority.
+- Keep function-body scalar and aggregate instruction lowering on structured
+  rejection paths.  Constant payload forms needed exclusively by a global
+  initializer do not authorize migration of `scalar.cpp` or `aggregate.cpp`.
+- Reject every initializer form not represented and verified by this packet;
+  no unsupported form may publish success or silently become zero/empty data.
+- Prove global declaration, accepted initializer, and rejected unsupported
+  initializer behavior through the retained LIR-to-new-BIR interface.
+
+Completion check:
+
+- Module globals and the explicitly supported initializer subset publish with
+  stable owner-correct identity and exact storage/order/reference verification.
+- Scalar/aggregate function instructions still reject, compile metadata stays
+  legacy/prealloc/MIR-free, and the selected build/interface proof is green.
+
+### Step 6.2: Scalar instructions — Pending
+
+Primary behavior inventory: `src/backend/bir/lir_to_bir/scalar.cpp`.
+
+Do not begin until Step 6.1 is accepted and committed.
+
+### Step 6.3: Aggregate instructions — Pending
+
+Primary behavior inventory: `src/backend/bir/lir_to_bir/aggregate.cpp`.
+
+Do not begin until Step 6.2 is accepted and committed.
 
 Concrete actions:
 
 - Add only the module IDs, values, opcodes, attributes, and verifier rules
-  required by the current packet.
+  required by the current numbered packet.
 - Construct exclusively through builders and preserve owner/order invariants.
 - Build and run direct LIR-to-new-BIR proof after each numbered packet.
 - Keep later families on explicit safe rejection paths.
