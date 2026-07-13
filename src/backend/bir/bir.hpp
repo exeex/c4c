@@ -61,6 +61,17 @@ struct BuildResult;
 
 }  // namespace c4c::backend::bir
 
+// Verified LIR-to-RawBir import boundary and structured diagnostics.
+#include "lir_to_bir.hpp"
+
+namespace c4c::backend::bir {
+
+struct ImportOptions;
+enum class ImportErrorCode;
+struct ImportError;
+
+}  // namespace c4c::backend::bir
+
 // Foundation verification diagnostics and entry point.
 #include "verify/verifier.hpp"
 

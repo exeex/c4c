@@ -1,5 +1,9 @@
 file(GLOB_RECURSE C4C_BACKEND_BIR_SOURCES CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/bir/*.cpp")
+# The top-level lir_to_bir.cpp is the new importer. Keep the unmigrated
+# translation units quarantined until each semantic family moves to the new IR.
+list(FILTER C4C_BACKEND_BIR_SOURCES EXCLUDE REGEX
+     "/bir/lir_to_bir/.*\\.cpp$")
 file(GLOB_RECURSE C4C_BACKEND_PREALLOC_SOURCES CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/prealloc/*.cpp")
 
