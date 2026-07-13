@@ -1395,7 +1395,9 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
       S(op.ptr);
     } else if constexpr (std::is_same_v<T, LirGepOp>) {
       S(op.ptr);
-      for (const auto& idx : op.indices) S(idx);
+      for (const auto& idx : op.indices) {
+        if (!idx.is_authoritative()) S(idx.presentation());
+      }
     } else if constexpr (std::is_same_v<T, LirCastOp>) {
       S(op.operand);
     } else if constexpr (std::is_same_v<T, LirBinOp>) {

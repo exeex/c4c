@@ -188,6 +188,8 @@ std::optional<bir::CallResultAbiInfo> compute_function_return_abi(
     bool returned_via_sret);
 std::vector<std::string_view> split_top_level_initializer_items(std::string_view text);
 std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text);
+std::optional<ParsedTypedOperand> parse_typed_operand(
+    const c4c::codegen::lir::LirGepIndex& index);
 std::optional<std::int64_t> resolve_index_operand(
     const c4c::codegen::lir::LirOperand& operand,
     const ValueMap& value_aliases);

@@ -469,6 +469,22 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     }
 
     const TypeSpec& selected_ts = selected->type.spec;
+    if (selected_ts.array_rank > 0 && !selected_ts.is_ptr_to_array) {
+      out_ts = selected_ts;
+      const LirOperand result = fresh_value(ctx);
+      const std::string global_name = emitted_link_name(
+          mod_, selected->link_name_id, selected->name);
+      emit_lir_op(ctx, lir::LirGepOp{
+                           result, LirTypeRef(llvm_alloca_ty(mod_, selected_ts)),
+                           LirOperand::global(llvm_global_sym(global_name),
+                                              selected->link_name_id),
+                           false,
+                           {LirGepIndex::typed(LirTypeRef::integer(64),
+                                               LirOperand::integer("0", 0)),
+                            LirGepIndex::typed(LirTypeRef::integer(64),
+                                               LirOperand::integer("0", 0))}});
+      return result;
+    }
     const bool aggregate_value =
         selected_ts.ptr_level == 0 &&
         (selected_ts.base == TB_STRUCT || selected_ts.base == TB_UNION ||

@@ -288,7 +288,18 @@ void render_inst(std::ostringstream& os, const LirInst& inst,
        << ", ptr "
        << require_operand_kind(op->ptr, "LirGepOp.ptr",
                                {LirOperandKind::SsaValue, LirOperandKind::Global});
-    for (const auto& idx : op->indices) os << ", " << idx;
+    for (const auto& idx : op->indices) {
+      os << ", ";
+      if (idx.is_authoritative()) {
+        os << require_type_ref(idx.type_ref(), "LirGepOp.indices.type")
+           << " "
+           << require_operand_kind(
+                  idx.value(), "LirGepOp.indices.value",
+                  {LirOperandKind::SsaValue, LirOperandKind::Immediate});
+      } else {
+        os << idx.presentation();
+      }
+    }
     os << "\n";
   } else if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     os << "  ";

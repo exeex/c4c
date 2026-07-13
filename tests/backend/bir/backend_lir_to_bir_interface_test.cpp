@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/bir/lir_to_bir/index_adapter.hpp"
 #include "src/codegen/lir/ir.hpp"
 
 #include <cstdint>
@@ -26,6 +27,68 @@ namespace {
 
 void expect(bool condition, const std::string& message) {
   if (!condition) fail(message);
+}
+
+void test_structured_gep_index_adapter() {
+  namespace detail = c4c::backend::lir_to_bir_detail;
+
+  const lir::LirGepIndex authoritative_immediate = lir::LirGepIndex::typed(
+      lir::LirTypeRef::integer(64), lir::LirOperand::integer("999", 0));
+  const auto facts =
+      detail::authoritative_gep_index_facts(authoritative_immediate);
+  expect(facts && facts->type_text == "i64" &&
+             facts->operand.integer_immediate() &&
+             facts->operand.integer_immediate()->value == 0,
+         "structured GEP adaptation should preserve native immediate authority");
+  const auto native_value = detail::resolve_index_operand_authority_first(
+      facts->operand,
+      [](std::string_view) -> std::optional<std::int64_t> { return 999; },
+      [](std::string_view) -> std::optional<std::int64_t> {
+        return std::nullopt;
+      });
+  expect(native_value && *native_value == 0,
+         "native GEP immediate must override misleading display");
+
+  const auto raw_parts =
+      detail::parse_raw_typed_operand_parts("i64 5");
+  expect(raw_parts && raw_parts->type_text == "i64" &&
+             raw_parts->value_text == "5",
+         "raw GEP compatibility should retain typed-text splitting");
+  const auto raw_value = detail::resolve_index_operand_authority_first(
+      lir::LirOperand(raw_parts->value_text),
+      [](std::string_view display) -> std::optional<std::int64_t> {
+        return display == "5" ? std::optional<std::int64_t>{5}
+                              : std::nullopt;
+      },
+      [](std::string_view) -> std::optional<std::int64_t> {
+        return std::nullopt;
+      });
+  expect(raw_value && *raw_value == 5,
+         "raw GEP immediate should retain presentation parsing");
+
+  bool authoritative_alias_lookup = false;
+  const auto authoritative_ssa_value =
+      detail::resolve_index_operand_authority_first(
+          lir::LirOperand::ssa("%legacy", lir::LirValueId{7}),
+          [](std::string_view) -> std::optional<std::int64_t> { return 41; },
+          [&](std::string_view) -> std::optional<std::int64_t> {
+            authoritative_alias_lookup = true;
+            return 41;
+          });
+  expect(!authoritative_ssa_value && !authoritative_alias_lookup,
+         "authoritative SSA index must not consult display aliases");
+
+  bool raw_alias_lookup = false;
+  const auto raw_ssa_value = detail::resolve_index_operand_authority_first(
+      lir::LirOperand("%legacy"),
+      [](std::string_view) -> std::optional<std::int64_t> { return 41; },
+      [&](std::string_view display) -> std::optional<std::int64_t> {
+        raw_alias_lookup = true;
+        return display == "%legacy" ? std::optional<std::int64_t>{41}
+                                      : std::nullopt;
+      });
+  expect(raw_ssa_value && *raw_ssa_value == 41 && raw_alias_lookup,
+         "raw SSA index should retain display-keyed compatibility lookup");
 }
 
 lir::LirFunction void_declaration(std::string name) {
@@ -6485,6 +6548,7 @@ void test_inline_asm_shape_rejection() {
 }  // namespace
 
 int main() {
+  test_structured_gep_index_adapter();
   test_supported_import_and_views();
   test_generic_inline_asm_ssa_edges();
   test_structured_lir_import_ssa_chain();

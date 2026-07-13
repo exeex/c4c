@@ -444,6 +444,62 @@ void verify_global_load_authority(const LirModule& mod,
   }
 }
 
+void verify_authoritative_gep(const LirModule& mod, const LirGepOp& op) {
+  const bool authoritative =
+      op.result.has_authority() || op.ptr.has_authority() ||
+      std::any_of(op.indices.begin(), op.indices.end(),
+                  [](const LirGepIndex& index) {
+                    return index.is_authoritative();
+                  });
+  if (!authoritative) return;
+
+  if (!op.result.value_id()) {
+    fail_verify("LirGepOp.result",
+                "authoritative GEP requires LirValueId result authority");
+  }
+  if (op.ptr.kind() != LirOperandKind::Global || !op.ptr.link_name_id()) {
+    fail_verify("LirGepOp.ptr",
+                "authoritative GEP requires global LinkNameId base authority");
+  }
+  verify_global_pointer_owner(mod, op.ptr, "LirGepOp.ptr", "GEP");
+  if (op.indices.empty()) {
+    fail_verify("LirGepOp.indices",
+                "authoritative GEP requires at least one index");
+  }
+
+  for (const LirGepIndex& index : op.indices) {
+    if (!index.is_authoritative()) {
+      fail_verify("LirGepOp.indices",
+                  "authoritative GEP cannot mix raw compatibility indices");
+    }
+    require_module_type_ref(mod, index.type_ref(),
+                            "LirGepOp.indices.type");
+    if (index.type_ref().kind() != LirTypeKind::Integer) {
+      fail_verify("LirGepOp.indices.type",
+                  "authoritative GEP index type must be integer");
+    }
+
+    require_operand_kind(index.value(), "LirGepOp.indices.value",
+                         {LirOperandKind::SsaValue,
+                          LirOperandKind::Immediate});
+    if (const LirIntegerImmediate* immediate =
+            index.value().integer_immediate()) {
+      const std::optional<unsigned> bit_width =
+          index.type_ref().integer_bit_width();
+      if (!bit_width ||
+          !integer_immediate_representable(immediate->value, *bit_width)) {
+        fail_verify("LirGepOp.indices.value",
+                    "integer immediate is not representable by the GEP index type");
+      }
+      continue;
+    }
+    if (!index.value().value_id()) {
+      fail_verify("LirGepOp.indices.value",
+                  "authoritative GEP index requires integer or SSA authority");
+    }
+  }
+}
+
 void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     verify_pointer_operand(op->dst, "LirMemcpyOp.dst");
@@ -530,6 +586,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_result_operand(op->result, "LirGepOp.result");
     require_module_type_ref(mod, op->element_type, "LirGepOp.element_type");
     verify_pointer_operand(op->ptr, "LirGepOp.ptr");
+    verify_authoritative_gep(mod, *op);
     return;
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
@@ -844,7 +901,11 @@ void visit_modeled_value_uses(const LirInst& inst, Visitor&& visit) {
     visit(op->operand); return;
   }
   if (const auto* op = std::get_if<LirGepOp>(&inst)) {
-    visit(op->ptr); return;
+    visit(op->ptr);
+    for (const LirGepIndex& index : op->indices) {
+      if (index.is_authoritative()) visit(index.value());
+    }
+    return;
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     visit(op->callee);

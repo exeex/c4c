@@ -731,6 +731,18 @@ c4c::codegen::lir::LirFunction make_load_test_function(
   return function;
 }
 
+c4c::codegen::lir::LirFunction make_gep_test_function(
+    c4c::codegen::lir::LirGepOp gep) {
+  namespace lir = c4c::codegen::lir;
+  lir::LirFunction function;
+  function.name = "gep_test";
+  function.signature_text = "define void @gep_test() {";
+  function.blocks.push_back(lir::LirBlock{});
+  function.blocks.back().label = "entry";
+  function.blocks.back().insts.push_back(std::move(gep));
+  return function;
+}
+
 void test_global_store_identity_contract() {
   namespace lir = c4c::codegen::lir;
 
@@ -1132,6 +1144,270 @@ int read_counter_again(void) { return g_counter; }
       duplicate_result, "verifier should reject duplicate global-load result IDs");
 }
 
+void test_global_array_gep_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+
+  const auto zero_index = [] {
+    return lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                                   lir::LirOperand::integer("0", 0));
+  };
+  const auto authoritative_gep = [&](c4c::LinkNameId base_id,
+                                     lir::LirOperand result,
+                                     std::vector<lir::LirGepIndex> indices) {
+    return lir::LirGepOp{std::move(result), lir::LirTypeRef("[1 x i32]"),
+                         lir::LirOperand::global("@gep_base", base_id), false,
+                         std::move(indices)};
+  };
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_identity_array[1];
+int lir_identity_array_neighbor[4];
+
+int *array_address(void) { return lir_identity_array; }
+int *neighbor_address(void) { return lir_identity_array_neighbor; }
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& array_address = require_function(lowered, "array_address");
+  lir::LirGepOp* first_gep = nullptr;
+  bool cast_before_gep = false;
+  for (auto& block : array_address.blocks) {
+    for (auto& inst : block.insts) {
+      if (!first_gep && std::holds_alternative<lir::LirCastOp>(inst)) {
+        cast_before_gep = true;
+      }
+      if (!first_gep) first_gep = std::get_if<lir::LirGepOp>(&inst);
+    }
+  }
+  expect_true(first_gep != nullptr,
+              "global-array fixture should lower an ordinary decay GEP");
+  expect_true(!cast_before_gep,
+              "ordinary global-array decay should not insert a preceding cast");
+  expect_eq(first_gep->result.str(), "%t0",
+            "focused array GEP should retain its LLVM result display");
+  expect_eq(first_gep->element_type.str(), "[1 x i32]",
+            "focused array GEP should retain its aggregate type display");
+  expect_eq(first_gep->ptr.str(), "@lir_identity_array",
+            "focused array GEP should retain its global base display");
+  expect_true(first_gep->result.value_id() &&
+                  first_gep->result.value_id()->valid(),
+              "focused array GEP should own a valid function-local result ID");
+  expect_true(first_gep->ptr.link_name_id() &&
+                  lowered.link_names.spelling(*first_gep->ptr.link_name_id()) ==
+                      "lir_identity_array",
+              "focused array GEP should retain selected-global authority");
+  expect_eq(std::to_string(first_gep->indices.size()), "2",
+            "ordinary array decay should carry two structured indices");
+  for (const lir::LirGepIndex& index : first_gep->indices) {
+    expect_true(index.is_authoritative() &&
+                    index.type_ref().kind() == lir::LirTypeKind::Integer &&
+                    index.type_ref().integer_bit_width() == 64 &&
+                    index.value().integer_immediate() &&
+                    index.value().integer_immediate()->value == 0,
+                "array-decay index should carry typed native i64 zero authority");
+  }
+  expect_contains(lir::print_llvm(lowered),
+                  "%t0 = getelementptr [1 x i32], ptr @lir_identity_array, i64 0, i64 0",
+                  "typed GEP printer should preserve exact LLVM presentation");
+
+  lir::LirFunction& neighbor_address =
+      require_function(lowered, "neighbor_address");
+  lir::LirGepOp* neighbor_gep = nullptr;
+  for (auto& block : neighbor_address.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* gep = std::get_if<lir::LirGepOp>(&inst)) neighbor_gep = gep;
+    }
+  }
+  expect_true(neighbor_gep && neighbor_gep->ptr.link_name_id() &&
+                  neighbor_gep->element_type.str() == "[4 x i32]" &&
+                  lowered.link_names.spelling(*neighbor_gep->ptr.link_name_id()) ==
+                      "lir_identity_array_neighbor",
+              "nearby array extent should retain independent structured GEP facts");
+  lir::verify_module(lowered);
+
+  lir::LirModule ssa_index;
+  const c4c::LinkNameId ssa_base_id =
+      add_identity_test_global(ssa_index, "ssa_index_base");
+  lir::LirFunction ssa_function = make_gep_test_function(lir::LirGepOp{
+      lir::LirOperand::ssa("@misleading-result", lir::LirValueId{4}),
+      lir::LirTypeRef("[8 x i32]"),
+      lir::LirOperand::global("%misleading-base", ssa_base_id), false,
+      {lir::LirGepIndex::typed(
+          lir::LirTypeRef::integer(64),
+          lir::LirOperand::ssa("@misleading-index", lir::LirValueId{3}))}});
+  ssa_function.blocks[0].insts.insert(
+      ssa_function.blocks[0].insts.begin(),
+      lir::LirStackSaveOp{
+          lir::LirOperand::ssa("7", lir::LirValueId{3})});
+  ssa_index.functions.push_back(std::move(ssa_function));
+  lir::verify_module(ssa_index);
+
+  lir::LirModule missing_result;
+  const c4c::LinkNameId missing_result_id =
+      add_identity_test_global(missing_result, "missing_gep_result");
+  missing_result.functions.push_back(make_gep_test_function(authoritative_gep(
+      missing_result_id, lir::LirOperand("%missing"),
+      {zero_index(), zero_index()})));
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject authoritative GEP without result ID");
+
+  lir::LirModule invalid_result;
+  const c4c::LinkNameId invalid_result_id =
+      add_identity_test_global(invalid_result, "invalid_gep_result");
+  invalid_result.functions.push_back(make_gep_test_function(authoritative_gep(
+      invalid_result_id,
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid()),
+      {zero_index()})));
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid authoritative GEP result ID");
+
+  lir::LirModule duplicate_result;
+  const c4c::LinkNameId duplicate_id =
+      add_identity_test_global(duplicate_result, "duplicate_gep_result");
+  duplicate_result.functions.push_back(make_gep_test_function(authoritative_gep(
+      duplicate_id, lir::LirOperand::ssa("%first", lir::LirValueId{5}),
+      {zero_index()})));
+  duplicate_result.functions[0].blocks[0].insts.push_back(authoritative_gep(
+      duplicate_id, lir::LirOperand::ssa("%second", lir::LirValueId{5}),
+      {zero_index()}));
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate authoritative GEP result IDs");
+
+  lir::LirModule missing_base;
+  const c4c::LinkNameId missing_base_id =
+      add_identity_test_global(missing_base, "missing_gep_base");
+  (void)missing_base_id;
+  lir::LirGepOp missing_base_gep = authoritative_gep(
+      missing_base_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {zero_index()});
+  missing_base_gep.ptr = lir::LirOperand("@missing_gep_base");
+  missing_base.functions.push_back(
+      make_gep_test_function(std::move(missing_base_gep)));
+  expect_identity_verification_rejected(
+      missing_base, "verifier should reject authoritative GEP without base ID");
+
+  lir::LirModule unresolved_base;
+  unresolved_base.link_name_texts = std::make_shared<c4c::TextTable>();
+  unresolved_base.link_names.attach_text_table(unresolved_base.link_name_texts.get());
+  unresolved_base.functions.push_back(make_gep_test_function(authoritative_gep(
+      c4c::LinkNameId{99}, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {zero_index()})));
+  expect_identity_verification_rejected(
+      unresolved_base, "verifier should reject unresolved authoritative GEP base ID");
+
+  lir::LirModule function_only;
+  function_only.link_name_texts = std::make_shared<c4c::TextTable>();
+  function_only.link_names.attach_text_table(function_only.link_name_texts.get());
+  const c4c::LinkNameId function_id =
+      function_only.link_names.intern("gep_function_only");
+  function_only.functions.push_back(make_gep_test_function(authoritative_gep(
+      function_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {zero_index()})));
+  function_only.functions.back().link_name_id = function_id;
+  expect_identity_verification_rejected(
+      function_only, "verifier should reject function-only authoritative GEP base ID");
+
+  lir::LirModule ownerless;
+  ownerless.link_name_texts = std::make_shared<c4c::TextTable>();
+  ownerless.link_names.attach_text_table(ownerless.link_name_texts.get());
+  const c4c::LinkNameId ownerless_id = ownerless.link_names.intern("ownerless_gep");
+  ownerless.functions.push_back(make_gep_test_function(authoritative_gep(
+      ownerless_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {zero_index()})));
+  expect_identity_verification_rejected(
+      ownerless, "verifier should reject ownerless authoritative GEP base ID");
+
+  lir::LirModule ambiguous;
+  const c4c::LinkNameId ambiguous_id =
+      add_identity_test_global(ambiguous, "ambiguous_gep");
+  lir::LirGlobal duplicate_global = ambiguous.globals.front();
+  duplicate_global.name = "ambiguous_gep_duplicate";
+  ambiguous.globals.push_back(std::move(duplicate_global));
+  ambiguous.functions.push_back(make_gep_test_function(authoritative_gep(
+      ambiguous_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {zero_index()})));
+  expect_identity_verification_rejected(
+      ambiguous, "verifier should reject ambiguous authoritative GEP base ownership");
+
+  lir::LirModule empty_indices;
+  const c4c::LinkNameId empty_id =
+      add_identity_test_global(empty_indices, "empty_gep_indices");
+  empty_indices.functions.push_back(make_gep_test_function(authoritative_gep(
+      empty_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}), {})));
+  expect_identity_verification_rejected(
+      empty_indices, "verifier should reject empty authoritative GEP indices");
+
+  lir::LirModule raw_index;
+  const c4c::LinkNameId raw_id =
+      add_identity_test_global(raw_index, "raw_gep_index");
+  raw_index.functions.push_back(make_gep_test_function(authoritative_gep(
+      raw_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {zero_index(), lir::LirGepIndex::raw("i64 0")})));
+  expect_identity_verification_rejected(
+      raw_index, "verifier should reject raw index inside authoritative GEP");
+
+  lir::LirModule noninteger_index;
+  const c4c::LinkNameId noninteger_id =
+      add_identity_test_global(noninteger_index, "noninteger_gep_index");
+  noninteger_index.functions.push_back(make_gep_test_function(authoritative_gep(
+      noninteger_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {lir::LirGepIndex::typed(lir::LirTypeRef("double"),
+                               lir::LirOperand::integer("0", 0))})));
+  expect_identity_verification_rejected(
+      noninteger_index, "verifier should reject noninteger authoritative GEP index");
+
+  lir::LirModule global_index;
+  const c4c::LinkNameId global_index_id =
+      add_identity_test_global(global_index, "global_gep_index");
+  global_index.functions.push_back(make_gep_test_function(authoritative_gep(
+      global_index_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {lir::LirGepIndex::typed(
+          lir::LirTypeRef::integer(64),
+          lir::LirOperand::global("0", global_index_id))})));
+  expect_identity_verification_rejected(
+      global_index, "verifier should reject global authority as a GEP index");
+
+  lir::LirModule overflow_index;
+  const c4c::LinkNameId overflow_id =
+      add_identity_test_global(overflow_index, "overflow_gep_index");
+  overflow_index.functions.push_back(make_gep_test_function(authoritative_gep(
+      overflow_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {lir::LirGepIndex::typed(lir::LirTypeRef::integer(8),
+                               lir::LirOperand::integer("256", 256))})));
+  expect_identity_verification_rejected(
+      overflow_index, "verifier should reject unrepresentable GEP immediate");
+
+  lir::LirModule unknown_index;
+  const c4c::LinkNameId unknown_id =
+      add_identity_test_global(unknown_index, "unknown_gep_index");
+  unknown_index.functions.push_back(make_gep_test_function(authoritative_gep(
+      unknown_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {lir::LirGepIndex::typed(
+          lir::LirTypeRef::integer(64),
+          lir::LirOperand::ssa("%unknown", lir::LirValueId{9}))})));
+  expect_identity_verification_rejected(
+      unknown_index, "verifier should reject unknown current-function GEP index ID");
+
+  lir::LirModule cross_function;
+  const c4c::LinkNameId cross_id =
+      add_identity_test_global(cross_function, "cross_function_gep_index");
+  cross_function.functions.push_back(
+      make_identity_test_function("index_owner", lir::LirValueId{7}));
+  cross_function.functions.push_back(make_gep_test_function(authoritative_gep(
+      cross_id, lir::LirOperand::ssa("%gep", lir::LirValueId{1}),
+      {lir::LirGepIndex::typed(
+          lir::LirTypeRef::integer(64),
+          lir::LirOperand::ssa("%cross", lir::LirValueId{7}))})));
+  expect_identity_verification_rejected(
+      cross_function, "verifier should reject cross-function GEP index ID");
+
+  lir::LirModule raw_compatibility;
+  raw_compatibility.functions.push_back(make_gep_test_function(lir::LirGepOp{
+      lir::LirOperand("%raw"), lir::LirTypeRef("i8"),
+      lir::LirOperand("%base"), false,
+      {lir::LirGepIndex::raw("i64 0")}}));
+  lir::verify_module(raw_compatibility);
+}
+
 }  // namespace
 
 int main() {
@@ -1508,6 +1784,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_structured_operand_identity_foundation();
   test_global_store_identity_contract();
   test_global_load_identity_contract();
+  test_global_array_gep_identity_contract();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

@@ -262,12 +262,54 @@ struct LirCastOp {
   LirTypeRef to_type;     // LLVM type string of destination
 };
 
+class LirGepIndex {
+ public:
+  LirGepIndex() = default;
+  LirGepIndex(const char* presentation)
+      : LirGepIndex(std::string(presentation)) {}
+  LirGepIndex(std::string presentation)
+      : presentation_(std::move(presentation)) {}
+  LirGepIndex(const LirOperand& presentation)
+      : presentation_(presentation.str()) {}
+
+  [[nodiscard]] static LirGepIndex raw(std::string presentation) {
+    return LirGepIndex(std::move(presentation));
+  }
+
+  [[nodiscard]] static LirGepIndex typed(LirTypeRef type,
+                                         LirOperand value) {
+    return LirGepIndex(std::move(type), std::move(value));
+  }
+
+  [[nodiscard]] bool is_authoritative() const { return authoritative_; }
+  [[nodiscard]] const LirTypeRef& type_ref() const { return type_ref_; }
+  [[nodiscard]] const LirOperand& value() const { return value_; }
+  [[nodiscard]] const std::string& presentation() const {
+    return presentation_;
+  }
+  [[nodiscard]] std::string str() const {
+    if (authoritative_) return type_ref_.str() + " " + value_.str();
+    return presentation_;
+  }
+
+ private:
+  LirGepIndex(LirTypeRef type, LirOperand value)
+      : type_ref_(std::move(type)),
+        value_(std::move(value)),
+        authoritative_(true) {}
+
+  LirTypeRef type_ref_;
+  LirOperand value_;
+  std::string presentation_;
+  bool authoritative_ = false;
+};
+
 struct LirGepOp {
   LirOperand result;          // SSA name for result
   LirTypeRef element_type;    // LLVM type string (e.g. "i8", "[5 x i8]", "%struct.foo")
   LirOperand ptr;             // SSA name of pointer operand
   bool inbounds = false;      // getelementptr inbounds
-  std::vector<std::string> indices;  // each entry is "type value" (e.g. "i32 0", "i64 5")
+  std::vector<LirGepIndex> indices;
 };
 
 struct LirCallSignature {

@@ -1,4 +1,5 @@
 #include "lowering.hpp"
+#include "index_adapter.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -439,34 +440,41 @@ std::vector<std::string_view> split_top_level_initializer_items(std::string_view
 }
 
 std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text) {
-  const auto space = text.find(' ');
-  if (space == std::string_view::npos || space == 0 || space + 1 >= text.size()) {
-    return std::nullopt;
-  }
-  const auto type_text = text.substr(0, space);
+  const auto parts = parse_raw_typed_operand_parts(text);
+  if (!parts) return std::nullopt;
   return ParsedTypedOperand{
-      .type_text = std::string(type_text),
-      .lowered_type = lower_integer_type(type_text),
-      .operand = c4c::codegen::lir::LirOperand(std::string(text.substr(space + 1))),
+      .type_text = parts->type_text,
+      .lowered_type = lower_integer_type(parts->type_text),
+      .operand = c4c::codegen::lir::LirOperand(parts->value_text),
+  };
+}
+
+std::optional<ParsedTypedOperand> parse_typed_operand(
+    const c4c::codegen::lir::LirGepIndex& index) {
+  if (!index.is_authoritative()) {
+    return parse_typed_operand(index.presentation());
+  }
+  const auto facts = authoritative_gep_index_facts(index);
+  if (!facts) return std::nullopt;
+  return ParsedTypedOperand{
+      .type_text = facts->type_text,
+      .lowered_type = lower_integer_type(facts->type_text),
+      .operand = facts->operand,
   };
 }
 
 std::optional<std::int64_t> resolve_index_operand(const c4c::codegen::lir::LirOperand& operand,
                                                   const ValueMap& value_aliases) {
-  if (operand.kind() == c4c::codegen::lir::LirOperandKind::Immediate ||
-      operand.kind() == c4c::codegen::lir::LirOperandKind::SpecialToken) {
-    return parse_i64(operand.str());
-  }
-
-  if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-    return std::nullopt;
-  }
-
-  const auto alias = value_aliases.find(operand.str());
-  if (alias == value_aliases.end() || alias->second.kind != bir::Value::Kind::Immediate) {
-    return std::nullopt;
-  }
-  return alias->second.immediate;
+  return resolve_index_operand_authority_first(
+      operand, parse_i64,
+      [&](std::string_view display) -> std::optional<std::int64_t> {
+        const auto alias = value_aliases.find(std::string(display));
+        if (alias == value_aliases.end() ||
+            alias->second.kind != bir::Value::Kind::Immediate) {
+          return std::nullopt;
+        }
+        return alias->second.immediate;
+      });
 }
 
 AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
