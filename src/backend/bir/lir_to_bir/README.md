@@ -1,1089 +1,346 @@
-# LIR-to-Raw-BIR Import Design
+# LIR-to-Raw-BIR Import Contract
 
-Status: Raw publication boundary reviewed; general import remains target
-design. This is not a statement that the current importer implements the full
-surface below.
+Contract-Status: under-review
+Implementation-Status: partial
+Kind: stage
+Phase-ID: A1
+Upstream: complete current typed `codegen::lir::LirModule`
+Downstream: private `ModuleDraft` submitted to the A2 Draft/Raw publication gate
+Owner-Path: `src/backend/bir/lir_to_bir/README.md`
+Last-Reconciled-Commit: none
 
-The importer is the only stage allowed to translate `codegen::lir::LirModule`
-identity and semantics into new-BIR identity. Its job is lossless semantic
-transport into a verified `RawBir`; it is not the first optimization pass and
-it is not a target-lowering stage.
+## Purpose
 
-## 1. Stage boundary and authority
+This document owns the A1 contract for lossless, deterministic translation of
+the complete current typed LIR surface into one private new-BIR module draft.
+Current LIR is authoritative, complete, correct, and immutable for this route.
+A missing receiving type or importer case is a new-BIR and/or importer gap;
+calling valid input unsupported proves fail-closed behavior, not receipt.
+
+The contract is target-independent. `LirModule::target_profile` and rendered
+`data_layout` are validation/origin/parity context only and have no semantic
+Raw destination. C1 later selects its own exact `TargetProfile`; C2 derives
+layout facts. A1 never parses layout text to create Raw semantics.
+
+## Owns
+
+- closed dispatch for exactly 38 `LirInst` alternatives, six
+  `LirTerminator` alternatives, and the 18 metadata families below;
+- source-to-draft identity maps while the transaction is private, deterministic
+  source/nested order, forward-reference resolution, and duplicate/conflict
+  detection;
+- classification of each LIR field as semantic authority, compatibility
+  mirror, producer index/cache, or validation evidence;
+- creation of typed draft specifications for the single Raw owner named by
+  each row and stable, source-located import failures;
+- consuming private construction into exactly one A2 publication attempt.
+
+Old/new LIR twins remain distinct source rows but converge on one semantic BIR
+owner. A future LIR alternative requires a new individually named row, closed
+visitor handling, and an updated mechanical count before it can be accepted.
+
+## Does Not Own
+
+- LIR schema or producer changes, including any inline-asm carrier exception;
+- Raw storage definitions, full Raw verification, or the authority to mint
+  `RawBir`; those belong to core and the shared A2 verifier;
+- canonicalization, analysis products, target/profile selection, target layout,
+  ABI placement, constraint interpretation, allocation, frame state, MIR,
+  emission, object/link behavior, or assembler parsing;
+- semantic reconstruction from names, pointers, vector position, rendered
+  text, caches, hash iteration, or dense analysis indices;
+- independent publication or implementation authority for build-excluded
+  `lir_to_bir/*.cpp` migration files.
+
+## Inputs
+
+The input is one LIR module that has passed the public LIR structural verifier.
+Structured fields and stable IDs are semantic authority where present.
+Rendered strings are payload only where a row explicitly says so; otherwise
+they are compatibility mirrors that may check parity but cannot create a
+missing type, identity, operand, CFG edge, initializer topology, or effect.
+Producer maps/caches are validation evidence against ordered semantic vectors,
+never a second entity set.
+
+Every optional form is explicit: declaration/definition, direct/indirect call,
+void/non-void result, variadic/void parameter list, static/dynamic allocation,
+ordinary output/read-write inline asm, default/case CFG edges, and absent
+structured mirrors. Missing required facts reject the whole transaction.
+
+## Outputs
+
+A1 has no public partial output. Successful private construction yields one
+move-only `ModuleDraft` with typed stable identities, deterministic orders,
+exact def-use and terminator-owned CFG, no unresolved reservation/fixup, and no
+semantic target or allocation state. A2 alone consumes that exact draft through
+`verify_and_publish_raw(ModuleDraft&&)` and may mint one `RawBir`.
+
+No importer map, diagnostic-only report, partial function/global set, stale
+analysis, fixup table, builder capability, or compatibility side table crosses
+the A1 boundary. Failure destroys unpublished state.
+
+## Adjacent-Stage Contract
+
+Upstream authority is [`ir.hpp`](../../../codegen/lir/ir.hpp) and its public
+model subheaders. The subordinate [memory import document](memory/README.md)
+may refine memory-row validation, but it is not a second dispatcher or
+publication owner. Core receiving ownership is documented by
+[Raw BIR core](../core/README.md), and the sole publication boundary is the
+[A2 verifier](../verify/README.md).
+
+A2 success hands one move-only, fully verified, target-independent,
+unallocated `RawBir` to phase B. The exact B1 consumer clause is
+[`passes/legalize/README.md`](../passes/legalize/README.md): its only input is
+an immutable published `RawBir` view. B1 receives no draft, importer map,
+unsupported valid row, hidden side table, target context, or partial
+capability. The ordered phase-B documentation work remains owned by
+[Child B](../../../../ideas/open/736_bir_phase_b_canonical_document_convergence.md).
+
+The accepted contract may later be implemented by deferred
+[idea 734](../../../../ideas/open/734_lir_to_new_bir_container_completeness.md),
+which remains inactive. This document does not activate it.
+
+## Exhaustive Instruction Input Matrix
+
+Authority classes are `S` semantic, `C` compatibility mirror/payload as named,
+and `V` validation evidence. “Raw verifier” means the full shared A2 gate.
+Every proof cell requires both the positive case and malformed plus neighboring
+coverage; it is an obligation, not a claim that missing implementation exists.
+
+| Alternative | Exact source authority and class | Typed Raw destination and importer rule | Current disposition | Raw verifier rule and stable failure | Positive + malformed/neighbor proof |
+|---|---|---|---|---|---|
+| `LirInst::LirConstInt` | S: `result`, `TypeSpec type`, `long long value` | typed `ConstantId`; bind source result once, emit no fabricated runtime op | container+wiring missing | exact type/value/result; reject unrepresentable value, no truncation/publication | + boundary values; - invalid type/duplicate result; N float constant |
+| `LirInst::LirConstFloat` | S: `result`, `TypeSpec type`, `double value` | typed floating `ConstantId`; bind result once | container+wiring missing | exact value bits/type/result; reject loss or text reconstruction | + finite/edge current values; - invalid type/result; N integer constant |
+| `LirInst::LirLoad` | S: `result`, `type`, `ptr` IDs | shared typed `Load` payload with ordinary use/result edges | container+wiring missing | pointer/value type, ownership, unique result; reject missing/foreign ID | + valid load; - bad pointer/type; N `LirLoadOp` |
+| `LirInst::LirStore` | S: `ptr`, `val` IDs and `type` | shared typed `Store` payload with ordered uses | container+wiring missing | both uses and stored type; reject unresolved/foreign use | + valid store; - mismatch/missing ID; N `LirStoreOp` |
+| `LirInst::LirBinary` | S: result/type/lhs/rhs IDs and current integer `op` | shared typed binary/unary payload; closed current-op mapping only | container+wiring missing | admitted opcode, arity, types, uses; reject unknown opcode | + each admitted op; - invalid op/type; N `LirBinOp` |
+| `LirInst::LirCast` | S: result, `from_type`, `to_type`, operand | shared typed `Cast`; import only a uniquely classified current cast | container+wiring missing | source/destination/result consistency; reject ambiguity without text inference | + valid cast; - invalid pair/use; N `LirCastOp` |
+| `LirInst::LirCmp` | S: result, predicate, lhs/rhs IDs | shared typed `Compare`; preserve current predicate/domain | container+wiring missing | operand compatibility and boolean result; reject invalid predicate | + integer/float-valid forms; - domain mismatch; N `LirCmpOp` |
+| `LirInst::LirCall` | S: result, return type, direct name/indirect pointer, ordered arg IDs | typed `Call` with symbol-or-value callee, signature/result and ordered args | container+wiring missing | coherent callee/signature/result/args; reject name invention or partial graph | + direct/indirect/void/value; - incoherence; N `LirCallOp` |
+| `LirInst::LirGep` | S: result, base type/pointer, ordered index IDs | shared typed `GetElementPtr`; retain exact ordered path | container+wiring missing | base/result/index types and identities; reject invalid path, no folding | + multi-index path; - bad base/index; N `LirGepOp` |
+| `LirInst::LirSelect` | S: result/type, condition and arm IDs | shared typed `Select` | container+wiring missing | boolean condition, equal arm/result types; reject invalid identity | + both arm forms; - condition/type mismatch; N `LirSelectOp` |
+| `LirInst::LirIntrinsic` | S: result ID, name, ordered arg IDs | typed target-independent `Intrinsic` registry payload and ordinary edges | container+wiring missing | recognized current semantic entry, arity/type/result; reject unknown input | + known entries; - unknown/arity mismatch; N module requirement flags |
+| `LirInst::LirInlineAsm` | S payload: result ID, asm/constraint strings, ordered operand IDs | core `InlineAsm` with ordinary edges and opaque exact strings | container+wiring missing | edge/type/order and byte preservation; reject malformed identity, never parse | + embedded bytes/multiple operands; - bad ID; N `LirInlineAsmOp` |
+| `LirInst::LirMemcpyOp` | S: typed dst/src/size operands, volatility | typed semantic `Memcpy`; preserve order/size/volatility | container+wiring missing | operand kinds/types and dynamic size; reject invalid use, no scalarization | + volatile/dynamic forms; - bad kind; N `LirMemsetOp` |
+| `LirInst::LirVaStartOp` | S: typed `ap_ptr` | typed `VaStart` semantic payload | container+wiring missing | pointer use/effect; reject malformed use | + valid pointer; - bad kind/type; N `LirVaEndOp` |
+| `LirInst::LirVaEndOp` | S: typed `ap_ptr` | typed `VaEnd` semantic payload | container+wiring missing | pointer use/effect; reject malformed use | + valid pointer; - bad kind/type; N `LirVaStartOp` |
+| `LirInst::LirVaCopyOp` | S: typed destination/source pointers | typed `VaCopy`; preserve ordered uses | container+wiring missing | pointer types/order/effect; reject invalid input without ABI interpretation | + valid pair; - missing/mistyped use; N `LirVaArgOp` |
+| `LirInst::LirStackSaveOp` | S: typed ordinary result operand | typed `StackSave` and ordinary result | container+wiring missing | one pointer-like result and order; reject invalid definition | + valid result; - duplicate/mistyped result; N restore |
+| `LirInst::LirStackRestoreOp` | S: typed saved-pointer operand | typed `StackRestore` | container+wiring missing | valid owned use and ordering; reject unresolved value | + matching save/restore; - foreign/missing use; N save |
+| `LirInst::LirAbsOp` | S: result/argument operands and integer type ref | typed target-independent `Abs` | container+wiring missing | exact current type and identities; reject malformed input, invent no flags | + current widths; - type/result mismatch; N intrinsic |
+| `LirInst::LirIndirectBrOp` | S: address operand and ordered target-label strings | sole typed `IndirectJumpTerm`; reconcile only last-op/default-unreachable carrier rule | container+wiring missing; a second ordinary BIR op is stale | exact order/unique targets/sentinel; reject hidden edge or unresolved label | + multi-target carrier; - nonlast/bad target; N `LirIndirectBr` |
+| `LirInst::LirExtractValueOp` | S: result/aggregate operands, aggregate type, index | typed `ExtractValue` | container+wiring missing | shape/index/result/IDs; reject out-of-range or invented text semantics | + valid field; - bad index/type; N insert-value |
+| `LirInst::LirInsertValueOp` | S: result/aggregate/element operands, types, index | typed `InsertValue` | container+wiring missing | aggregate/element/index/result consistency; reject mismatch, no leaf expansion | + value/special token; - bad index/type; N extract-value |
+| `LirInst::LirLoadOp` | S: result/pointer operands and `LirTypeRef` | same typed `Load`; structured kind/type drives receipt | container+wiring missing | kind/type/result checks; reject semantic `RawText` | + typed load; - raw/unresolved operand; N `LirLoad` |
+| `LirInst::LirStoreOp` | S: value/pointer operands and `LirTypeRef` | same typed `Store` | container+wiring missing | use/type checks; reject without decoding rendered fragments | + typed store; - raw/mismatched use; N `LirStore` |
+| `LirInst::LirMemsetOp` | S: typed dst/byte/size operands, volatility | typed semantic `Memset` | container+wiring missing | kinds/widths/order/volatility; reject invalid input, no scalarization | + volatile/dynamic forms; - bad byte/size; N memcpy |
+| `LirInst::LirCastOp` | S: result/operand, `LirCastKind`, from/to refs | same typed `Cast`; closed handling of every current cast kind | container+wiring missing | exact kind/type/use/result; reject unknown/incoherent form | + every cast kind; - mismatched kind/type; N legacy cast |
+| `LirInst::LirGepOp` | S: result/pointer, element type, `inbounds`; C: ordered current index strings | same typed `GetElementPtr`; retain current path only under explicit admitted representation | container+wiring missing | base/result/type/inbounds/path; reject inadmissible index, no folding | + in/out-of-bounds flag forms; - malformed path; N legacy GEP |
+| `LirInst::LirCallOp` | S: result/return/callee, direct link ID, optional signature, structured args/type refs/extensions; C: suffix/args strings | same typed `Call`; structured facts win, mirrors parity-only | container+wiring missing | all optional forms coherent; reject missing identity/signature or mirror authority | + direct/indirect/variadic/attrs; - incoherence; N legacy call |
+| `LirInst::LirBinOp` | S: result/lhs/rhs, typed opcode ref and type ref | same typed binary/unary payload | container+wiring missing | closed opcode/arity/type/use rules; reject untyped/unknown ref | + all typed opcodes; - unary/binary mismatch; N legacy binary |
+| `LirInst::LirCmpOp` | S: result/lhs/rhs, float flag, predicate ref, type ref | same typed `Compare` | container+wiring missing | predicate belongs to domain and operand/result types; reject inference | + integer/float predicates; - domain mismatch; N legacy cmp |
+| `LirInst::LirPhiOp` | S current payload: result/type and ordered `(value,label)` pairs | typed `Phi` keyed to exact derived CFG edge identities | container+wiring missing | exactly one typed incoming per edge and multiplicity; reject ambiguity | + loop/parallel-safe case; - missing/extra/ambiguous; N branch/switch |
+| `LirInst::LirSelectOp` | S: result/type/condition/arm operands | same typed `Select` | container+wiring missing | condition/arm/result type and identities; reject raw/unresolved use | + typed select; - type mismatch; N legacy select |
+| `LirInst::LirInsertElementOp` | S: result/vector/element/index operands and types | typed `InsertElement` | container+wiring missing | lane/index/type/result; reject malformed lane/token | + value/poison forms; - invalid index/type; N extract-element |
+| `LirInst::LirExtractElementOp` | S: result/vector/index operands and types | typed `ExtractElement` | container+wiring missing | vector/index/result consistency; reject malformed access | + valid lanes; - bad index/type; N insert-element |
+| `LirInst::LirShuffleVectorOp` | S: result, two vectors, mask operands and type refs | typed `ShuffleVector` | container+wiring missing | input/mask/result shapes; reject mismatch, no target selection | + valid mask; - malformed shape; N vector insert/extract |
+| `LirInst::LirVaArgOp` | S: result/ap-pointer operands and result type | typed `VaArg` | container+wiring missing | use/result/type; reject invalid form, no ABI expansion | + scalar/aggregate current types; - bad pointer/type; N va-copy |
+| `LirInst::LirAllocaOp` | S: result, element type, optional count, alignment | typed semantic local/`Alloca`; preserve static/dynamic form/order | container+wiring missing | type/count/alignment/result; reject invalid form, no frame placement | + static/dynamic/align; - bad count/align; N stack object |
+| `LirInst::LirInlineAsmOp` | S: ordinary bindings(value/type/role/index), original texts, clobbers, effects; V: optional `insn_r`; C: rendering mirrors | core `InlineAsm` ordinary edges/opaque payload plus typed role/index attachment; `insn_r` audit-only | generic edges/payload proved; role/index container+wiring missing | order/roles/indices/types/read-write/bytes; reject interpreted `insn_r` or partial receipt | + input/output/read-write and embedded bytes; - bad role/index/pair; N legacy asm |
+
+## Exhaustive Terminator Input Matrix
+
+| Alternative | Exact source authority and class | Typed Raw destination and importer rule | Current disposition | Raw verifier rule and stable failure | Positive + malformed/neighbor proof |
+|---|---|---|---|---|---|
+| `LirTerminator::LirBr` | S: `target_label` current target carrier | checked-in `JumpTerm(BlockId)`; resolve uniquely | already-proved bounded coverage | one owned target and sole successor; reject missing/duplicate target | + forward/back edge; - unknown label; N conditional branch |
+| `LirTerminator::LirCondBr` | S current payload: condition name and ordered true/false labels | checked-in `CondJumpTerm`; resolve ordinary boolean value and both blocks | importer wiring missing; source-absence prose stale | boolean type, targets, equal/parallel edges; reject invalid facts | + distinct/equal targets; - bad condition/target; N jump |
+| `LirTerminator::LirRet` | S current payload: optional value and type strings | checked-in `ReturnTerm`; resolve zero/one semantic value | void proved; non-void wiring missing | agrees with function result; reject missing/mistyped value, no ABI lanes | + void/value return; - signature mismatch; N unreachable |
+| `LirTerminator::LirSwitch` | S: selector name/type, default, ordered value/label cases | typed `SwitchTerm`; preserve selector, case order and exact targets | container+wiring missing | duplicate/conflict and successor multiplicity; reject invalid case/target | + multi/parallel cases; - duplicate conflict; N conditional branch |
+| `LirTerminator::LirIndirectBr` | S: structured address `LirValueId`, ordered target `LirBlockId`s | typed `IndirectJumpTerm`; reconcile with op carrier only by sentinel rule | container+wiring missing; existing structured form is not a source gap | valid owned address/complete ordered targets; reject invalid target/set | + multi-target; - foreign/missing ID; N indirect-br op |
+| `LirTerminator::LirUnreachable` | S: empty typed alternative | checked-in `UnreachableTerm` | already-proved bounded coverage | exactly one terminator and no successor/fallthrough | + terminal block; - extra/fallthrough state; N return |
+
+## Exhaustive Metadata-Family Input Matrix
+
+| Family key | Exact source authority and class | Typed Raw destination or non-destination and importer rule | Current disposition | Raw verifier rule and stable failure | Positive + malformed/neighbor proof |
+|---|---|---|---|---|---|
+| `module-context` | V: `LirModule::target_profile`, rendered `data_layout` | explicit validation/origin/parity-only non-destination; never create Raw facts | stale if called Raw semantics; parity wiring missing | reject any semantic influence or parsed layout; C1 selects profile, C2 derives layout | + ignored/audited context; - attempted semantic use; N target-independent type fact |
+| `stable-identities` | S: value/block/stack/global/link/struct IDs and invalid sentinels | typed BIR ID families plus non-authoritative origin mapping | block/asm slice partial; complete container+wiring missing | scope/uniqueness/sentinel/forward-ref rules; reject name replacement | + cross-order valid IDs; - duplicate/foreign/invalid; N source order |
+| `operand-kinds` | S: `LirOperand` text+kind for SSA/global/label/immediate/special/raw | closed typed value/constant/symbol/block destination or explicit compatibility/error form | missing outside asm; absent-classification prose stale | every kind imports or fails; `RawText` cannot create identity | + each kind; - misclassified/raw semantic use; N type system |
+| `type-system` | S: `TypeSpec`, `LirTypeRef` kind/width/name ID, opcode/predicate refs, cast kind, struct declarations; C: rendering mirrors | interned type graph, typed discriminants and named aggregate definitions | bounded scalar/pointer partial; complete container+wiring missing | interning/kind/width/recursion/parity; reject invented fields | + recursive/width/opcode forms; - conflict/raw authority; N globals/functions |
+| `functions-signatures` | S: function name/link ID, flags, return/params, variadic/void-list, structured refs; C: `signature_text` | typed function/signature/symbol/ordered parameter values; text parity-only | zero-param void shell partial; remainder container+wiring missing | all optionals and declaration/body coherence; reject text-derived semantics | + decl/def/params/results/variadic; - conflict/body-on-decl; N externs |
+| `blocks-cfg-order` | S: block ID/label/ordered insts/terminator, block vector and explicit entry | typed blocks/order/terminator/entry; label is debug/origin only | shell partial; explicit nonfirst entry/full CFG wiring missing | entry by ID, exact order/target ownership; reject positional policy | + nonfirst-ID/order/edges; - duplicate/bad entry; N values |
+| `values-def-use` | S: result/use IDs, parameters, phi incoming and asm bindings | ordinary typed parameter/constant/instruction-result definitions and exact uses | bounded asm partial; general container+wiring missing | predeclare, uniqueness/type/owner/forward uses; reject hidden value system | + forward/loop uses; - duplicate/foreign/missing; N CFG order |
+| `stack-objects-allocas` | S: stack object ID/name/type/align/VLA and ordered inline/hoisted allocas | typed semantic local objects and `Alloca` operations in source order | container+wiring missing | identity/type/alignment/count/order; reject dropping/frame placement | + static/dynamic/hoisted; - bad ID/count/order; N memory ops |
+| `globals-objects` | S: global/link IDs, type/internal/const/alignment/extern flags; C: linkage/qualifier/type mirrors | typed symbol/global/object/declaration record | container+wiring missing; imagined absent metadata is not input | preserve current flags/identity/order, parity mirrors; reject conflict/invention | + decl/def/internal/const; - duplicate/conflict; N initializer |
+| `initializers` | S: ordered initializer function link IDs; C current payload: `init_text` | typed initializer owner with explicit compatibility-payload classification; never parse topology | container+wiring missing; future-tree prerequisite wording stale for intake | referenced IDs and exact lossless disposition; reject parsed/invented topology | + zero/symbol current forms; - dangling ID/unreceivable payload; N global/string |
+| `strings` | S current payload: ordered pool name/raw bytes/byte length; V: map/counter parity | typed string/data object with exact bytes/spelling classification, length and symbol | container+wiring missing; absent-row prose stale | content/length/name/cache parity and vector order; reject hash-order identity | + empty/embedded/ordered strings; - length/cache conflict; N globals |
+| `externs` | S: ordered extern declarations/info with return type/attr/link ID; V: link/name maps | typed external symbol/declaration/signature; maps parity-only | container+wiring missing; map-as-authority stale | coherent merge by stable ID, map parity; reject declaration conflict | + repeated coherent decl; - type/link conflict; N function decl |
+| `specializations` | S: ordered key/origin/mangled name/link ID | typed specialization/origin record linked to ordinary symbol | container+wiring missing | order/identities/parity; reject dangling symbol or mismatch | + multiple ordered entries; - bad link/mangle parity; N symbols |
+| `intrinsic-requirements` | V: all `need_va_*`, `need_mem*`, `need_stack*`, `need_abs`, `need_ptrmask`, `prefer_semantic_va_ops` | validation-only typed requirement/parity result; never synthesize operations | importer parity wiring missing; second instruction authority stale | cross-check actual ops/declarations; reject inconsistent flag set | + matching flags; - missing/spurious flag; N intrinsic rows |
+| `inline-asm-metadata` | S: bindings/roles/indices/original texts/clobbers/effects; V: `insn_r`; C: render mirrors | ordinary value edges, opaque payload and typed role/index attachment; audit-only `insn_r` | payload/edges proved; role/index container+wiring missing | bytes/order/roles/indices/types/read-write; reject parsing/allocation | + `r`,`=r`,`f`,`VR` evidence by position; - bad pair/index; N asm variants |
+| `producer-indexes-caches` | V: extern/struct/string/intern/name/layout indexes, observations and counters | validation/import report only unless an ordered semantic row names a destination | semantic-input claims stale; parity wiring missing | deterministic comparison to ordered authority; reject pointer/hash/storage identity | + coherent cache; - mismatch/hash-order dependence; N source order |
+| `source-order-origin` | S: all module/function/block/inst and nested argument/case/index/binding orders; C/V: labels/sites | typed deterministic module/function/block orders plus non-authoritative origin/debug | function/block/inst partial; remaining container+wiring missing | preserve every nested order and stable diagnostic site; reject hash leakage | + reordered declarations/nested lists; - nondeterministic/missing site; N identities |
+| `module-publication` | S/V: complete verified LIR module and every row above | one private `ModuleDraft` consumed once by full A2 Raw gate | bounded foundation adapter proved; full draft/gate path missing | exact revision, no active editor/reservation/fixup; any failure publishes nothing | + complete module publication; - one fault per family and rollback; N B1 handoff |
+
+## Ordered Behavior
+
+1. Run LIR verification and inventory all 38/6/18 rows before allocating BIR
+   IDs. Reject unknown/new alternatives until their explicit row lands.
+2. Validate caches/indexes against ordered authorities. They never determine
+   identity or iteration order.
+3. Predeclare typed identities in source order: types, symbols/objects,
+   functions, blocks, parameters/results, and storage objects. Preserve the
+   explicit entry ID and declaration/definition splits.
+4. Reserve definitions/results in source order, define non-phi instructions,
+   resolve terminators and exact successor slots, then resolve phis/forward
+   uses. No canonicalization, folding, scalarization, ABI expansion, or target
+   selection occurs.
+5. Finish only when every reservation, fixup, definition, terminator, and
+   metadata disposition is resolved. Consume the private draft once at A2.
+
+Duplicate old/new operation shapes converge before publication. A Raw module
+cannot contain compatibility alternatives, unresolved reservations, importer
+sentinels, or a generic “unsupported” instruction placeholder.
+
+## Invariants
+
+- Current LIR is complete and immutable for this route. Every valid current
+  fact has one explicit import-or-fail disposition; unsupported receipt is not
+  successful coverage.
+- Stable semantic identity comes only from typed IDs. Names, pointers, vector
+  positions, rendered strings, caches, hash order, and dense indices cannot
+  create or replace identity.
+- Source and every nested order are deterministic. Terminators alone own CFG
+  successors, and every ordinary value uses the common def-use model.
+- Raw remains target-independent and unallocated. Validation/origin/parity
+  context, private importer maps, fixups, and partial capabilities never become
+  published semantics.
+- Every failure is module-transactional and publishes no draft, function
+  subset, cache entry, or stage capability.
+
+The current `LirInlineAsmOp` carrier is sufficient. Ordinary `LirOperand`
+values, exact `LirTypeRef`s, `Input`/`Output`/`ReadWrite` roles,
+`constraint_index`, original constraint text, ordered clobbers, side effects,
+and byte-preservable `original_asm_text` already record reviewed requirements
+such as `r`, `=r`, `f`, and `VR` against ordinary positions and roles.
+
+No LIR edit or exception is justified. The remaining A1/A2 gap is typed Raw
+ownership and importer receipt of role/index facts. Raw does not gain an
+`InlineAsmOperand`, name-binding table, special value-ID system, parsed
+alternative/tie/group authority, allocator, projection, target opcode, or asm
+parser. Optional `insn_r` is audit evidence only. The later assembler alone
+interprets opaque asm bytes.
+
+## Verification and Publication
+
+The shared A2 verifier owns all Raw acceptance. It checks type/ID ownership,
+def-use, instruction descriptors, terminator-only successor authority,
+deterministic entity order, declarations/definitions, globals/initializers,
+optional/error forms, absence of target/allocation state, and exact revision.
+
+The target contract is:
 
 ```text
 verified LirModule
-  -> validate and inventory source surface
-  -> predeclare types, symbols, functions, blocks, and value identities
-  -> import globals and function bodies
-  -> resolve deferred operands and CFG edges
-  -> finish one ModuleDraft
-  -> atomically verify-and-publish that revision as RawBir
+  -> private deterministic import transaction
+  -> complete move-only ModuleDraft
+  -> verify_and_publish_raw(ModuleDraft&&)
+  -> one move-only verified RawBir, or no published state
 ```
 
-Input authority:
-
-- `LirModule` owns source ordering, `LinkNameId`/`StructNameId`, target/data
-  layout selection, globals, string constants, function signatures, bodies,
-  stack objects, and intrinsic requirement metadata.
-- Structured fields are authoritative when present. Rendered type, operand,
-  signature, initializer, or symbol text is a compatibility input only.
-- The importer may diagnose disagreement between structured and rendered
-  mirrors. It must never silently choose the rendered mirror over valid
-  structured identity.
-
-Output authority:
-
-- A successful call returns one move-only, Raw-profile-verified `RawBir`.
-- BIR IDs are the only published identity. LIR IDs and spellings may survive as
-  origin/debug metadata but not as lookup authority.
-- Terminators are the only CFG successor authority. Predecessors, use lists,
-  dominance, liveness, provenance closures, and call graphs are recomputable
-  analyses, not importer-owned side tables.
-- Raw instructions preserve source semantics even when their shape is not yet
-  canonical. The first named canonical pass owns each permitted Raw-only form.
-
-Source-truth rule:
-
-- this contract distinguishes **present structured fact**, **audited
-  compatibility text**, and **producer gap**. A required backend fact seen in
-  legacy BIR or the reference compiler is not thereby present in today's LIR;
-  the importer must not fabricate it;
-- `extern_decl_*_map`, `struct_decl_index`, `str_pool_map`, counters, intern
-  storage, and layout-observation caches are producer indexes/audit state, not
-  additional semantic module members to publish. Their contents must agree with
-  the ordered semantic vectors/tables when validation can compare them;
-- `target_profile` and `data_layout` are interpretation context. They may be
-  copied into module context and used to validate type/object facts, but do not
-  authorize ABI classification or target instruction selection.
-
-The importer must not decide ABI register/stack placement, call moves, frame
-layout, register allocation, spill/reload, instruction selection, target
-opcodes, or instruction encodings. Target/data-layout facts may be preserved
-when they are part of source semantics (for example pointer width, explicit
-alignment, address space, or an already-classified calling convention), but
-they must not be converted into physical placement decisions here.
-
-This prohibition is permanent for Raw/Canonical BIR. Later typed plans or MIR
-may own homes, spills, reloads, frame facts, and target operations, but the
-importer neither creates nor predicts those facts and no later stage writes
-them back into Raw/Canonical storage.
-
-### 1.1 Confirmed current bounded inline-assembly import
-
-The checked-in importer implements one narrow, transactional carrier slice;
-the broader contracts below remain target design:
-
-- It accepts modules with no globals, string-pool state, extern declarations,
-  type declarations/layout observations, intrinsic requirement flags, or
-  specialization entries. Functions must have no parameters, a non-variadic
-  `void` signature, no stack objects/hoisted allocas, and only
-  `LirInlineAsmOp` ordinary instructions. Direct branch, void return, and
-  unreachable terminators are supported; conditional branch, switch, and
-  indirect branch are rejected.
-- Before constructing BIR, it preflights every function and builds a
-  per-function map from each earlier structured inline-asm result spelling to
-  its lowered type. Only ordinary SSA identities in `ordinary_inputs` and
-  `ordinary_results` enter the BIR value graph. Supported binding types are
-  `i1`, `i8`, `i16`, `i32`, `i64`, `float`, `double`, and opaque `ptr`.
-- Inputs and results must be in strictly increasing original constraint order.
-  Inputs must resolve to an earlier result in the same function and match its
-  type. Results must be new, distinct SSA identities. A read/write position
-  requires a same-typed old-value input and a distinct produced result at the
-  same constraint index; output-only positions cannot share an input.
-- BIR generic instruction operands/results preserve the ordered value edges.
-  The BIR payload copies only `original_asm_text`,
-  `original_constraint_text`, `clobbers`, and `side_effects`.
-  LLVM-rendering compatibility fields (`asm_text`, `constraints`, `args_str`,
-  `result`, and `ret_type`) never create semantic operands, results, types, or
-  payload strings. A text-only result/argument shape is rejected, and
-  structured values require nonempty original semantic constraints.
-- Parsed `insn_r` metadata is rejected because it is not Raw/Canonical BIR
-  authority. Immediates, unresolved/forward/foreign function values,
-  unsupported binding types, duplicate results, malformed roles/order, and
-  incomplete read/write pairs are also rejected.
-
-Validation covers the entire module before builder mutation. The checked-in
-bootstrap then uses one `ModuleBuilder`, whose temporary `publish()` adapter
-performs foundation verification and returns no partial module on validation,
-builder, or publication failure. The accepted target boundary replaces that
-adapter with `ModuleBuilder::finish() -> ModuleDraft` followed by the sole
-`verify_and_publish_raw(ModuleDraft&&)` stage transition. No importer path may
-construct `RawBir` directly. This is module transactionality, not a claim of
-general LIR-to-BIR support.
-
-### 1.2 Target `LirModule` inventory
-
-Every current top-level field has this disposition:
-
-| Source field family | Import disposition |
-|---|---|
-| `target_profile`, `data_layout` | copied as module interpretation context; validated, never converted to placement |
-| `link_name_texts`, `link_names`, `struct_names`, `type_tag_storage` | resolve/copy stable identities and required display text; storage addresses never escape |
-| `globals`, `functions`, `string_pool`, `extern_decls` | ordered semantic inputs, predeclared before definitions/initializers |
-| `extern_decl_link_name_map`, `extern_decl_name_map` | producer dedup indexes; parity-check against ordered declarations, never import as a second declaration set |
-| `type_decls`, `struct_decls`, `struct_decl_index` | structured declarations win; text is audited shadow; index is parity-only |
-| `structured_layout_observations` | validation/audit evidence, not type or layout authority |
-| `need_va_*`, `need_mem*`, `need_stack*`, `need_abs`, `need_ptrmask`, `prefer_semantic_va_ops` | consistency-check against actual semantic operations/required declarations; do not synthesize missing instructions from flags |
-| `spec_entries` | preserve ordered specialization/link identity metadata if core gains a typed record; otherwise diagnose unsupported module metadata |
-| `str_pool_map`, `str_pool_idx` | producer cache/counter; parity-check names/content/order, never use hash order for BIR IDs |
-
-Adding a semantic `LirModule` field requires adding a row and import-or-reject
-handling. C++ reflection cannot enforce this automatically, so source review
-and a maintained inventory test accompany the closed instruction visitors.
-
-## 2. Proposed public API
-
-The public surface should replace the empty bootstrap `ImportOptions` without
-re-exporting importer implementation maps:
-
-```cpp
-namespace c4c::backend::bir {
-
-enum class CompatibilityTextCase : std::uint8_t {
-  TypeMirrorParity,
-  OpcodeMirrorParity,
-  LinkNameMirrorParity,
-  DebugNameMirror,
-  Count,
-};
-
-struct CompatibilityWhitelist {
-  std::bitset<static_cast<std::size_t>(CompatibilityTextCase::Count)> enabled;
-  [[nodiscard]] bool permits(CompatibilityTextCase) const;
-  static CompatibilityWhitelist production() { return {}; } // fail closed
-};
-
-enum class DiagnosticLevel : std::uint8_t { Note, Warning, Error };
-
-struct ImportOptions {
-  CompatibilityWhitelist compatibility = CompatibilityWhitelist::production();
-  bool verify_lir = true;
-  bool preserve_origin_metadata = true;
-  bool warnings_are_errors = false;
-};
-
-enum class ImportPhase : std::uint8_t {
-  ValidateInput,
-  PredeclareTypes,
-  PredeclareSymbols,
-  ImportInitializers,
-  PredeclareFunctionBody,
-  ImportInstructions,
-  ResolveFixups,
-  FinishDraft,
-  VerifyAndPublish,
-};
-
-enum class ImportErrorCode : std::uint16_t {
-  MalformedLir,
-  DuplicateIdentity,
-  ConflictingDeclaration,
-  MissingType,
-  TypeMismatch,
-  MissingSymbol,
-  MissingBlock,
-  MissingValue,
-  DuplicateValueDefinition,
-  InvalidForwardReference,
-  InvalidPhiIncoming,
-  InvalidTerminator,
-  InvalidInitializer,
-  UnsupportedSemanticFamily,
-  UnsupportedCompatibilityText,
-  BuilderFailure,
-  VerificationFailure,
-  ResourceExhausted,
-};
-
-struct ImportSite {
-  std::optional<LinkNameId> function;
-  std::optional<codegen::lir::LirBlockId> block;
-  std::optional<std::size_t> instruction_index;
-  std::optional<codegen::lir::LirValueId> value;
-  std::string field;
-};
-
-struct ImportDiagnostic {
-  DiagnosticLevel level = DiagnosticLevel::Error;
-  ImportPhase phase = ImportPhase::ValidateInput;
-  ImportErrorCode code = ImportErrorCode::MalformedLir;
-  ImportSite site;
-  std::string message;
-};
-
-struct ImportReport {
-  std::vector<ImportDiagnostic> diagnostics;
-  std::size_t type_count = 0;
-  std::size_t global_count = 0;
-  std::size_t function_count = 0;
-  std::size_t block_count = 0;
-  std::size_t instruction_count = 0;
-  std::size_t compatibility_use_count_total = 0;
-  std::array<std::size_t,
-             static_cast<std::size_t>(CompatibilityTextCase::Count)>
-      compatibility_use_count{};
-};
-
-struct ImportedRawBir {
-  RawBir module;
-  ImportReport report;
-};
-
-using ImportFailureCause = std::variant<BirError, PublicationFailure>;
-
-struct ImportFailure {
-  ImportReport report;
-  std::optional<ImportFailureCause> cause;
-};
-
-Result<ImportedRawBir, ImportFailure> lower_lir_to_raw_bir(
-    const codegen::lir::LirModule&, ImportOptions = {});
-
-}  // namespace c4c::backend::bir
-```
-
-The whitelist is per case, never a global “allow text” switch:
-
-| Case | Preconditions | Permitted action | Never permitted |
-|---|---|---|---|
-| `TypeMirrorParity` | complete structured `TypeId`/shape already resolved | parse/render only to compare the mirror | create a field, union kind, address space, function component, or layout |
-| `OpcodeMirrorParity` | typed opcode/predicate enum already present | compare canonical spelling | turn an unknown spelling or legacy numeric opcode into semantics |
-| `LinkNameMirrorParity` | valid `LinkNameId`/`SymbolId` already selected | compare copied link spelling | resolve a missing direct callee/global/relocation identity by name |
-| `DebugNameMirror` | structured entity ID/topology already selected | copy a display/debug name | resolve SSA uses, blocks, phi edges, or control-flow targets |
-
-Every permitted use increments both the total and exact-case counter and emits
-an origin-linked note; disagreement is an error. Production enables no cases.
-Migration tooling may enable named cases individually. There is deliberately no
-case for `init_text`, `signature_text`, call `args_str`/callee text, GEP index
-text, phi/terminator labels, inline-asm constraints/arguments, or blockaddress
-text: those strings may not create missing identity, topology, types,
-signatures, operands, effects, or relocations. Inline-asm template bytes are
-source payload, not a compatibility fallback, but still require structured
-operand/control metadata alongside them.
-
-There is deliberately no public API that returns a partially built module.
-Callers may inspect diagnostics on failure, but not incomplete BIR storage.
-The convenience API must not throw for an expected unsupported LIR family.
-`BirError` is core-owned and `PublicationFailure` is verifier-owned; this file
-only references those single definitions and does not redeclare, flatten, or
-translate their rule taxonomies. Builder/finish failure stores `BirError` in
-`cause`; publication failure stores the verifier's unchanged
-`PublicationFailure`, including its complete `VerificationReport` and optional
-preceding `BirError`. Pure source validation failures may have no lower-layer
-cause because `ImportReport` already identifies them precisely.
-
-## 3. Internal API and `ImportContext`
-
-The implementation should be phase-oriented, not one monolithic variant
-visitor. Proposed internal interfaces:
-
-```cpp
-class ImportContext {
- public:
-  static Result<ImportContext, ImportFailure> create(
-      const codegen::lir::LirModule&, ImportOptions);
-
-  Result<void, ImportFailure> validate_source();
-  Result<void, ImportFailure> predeclare_types();
-  Result<void, ImportFailure> predeclare_symbols();
-  Result<void, ImportFailure> import_global_initializers();
-  Result<void, ImportFailure> import_functions();
-  Result<void, ImportFailure> resolve_module_fixups();
-  Result<ImportedRawBir, ImportFailure> publish() &&;
-
-  Result<TypeId, ImportFailure> require_type(
-      const codegen::lir::LirTypeRef&, ImportSite);
-  Result<TypeId, ImportFailure> require_type(
-      const TypeSpec&, ImportSite);
-  Result<SymbolId, ImportFailure> require_symbol(LinkNameId, SymbolKind,
-                                                 ImportSite);
-  Result<FunctionId, ImportFailure> require_function_definition(
-      LinkNameId, ImportSite);
-  Result<GlobalId, ImportFailure> require_global_definition(
-      LinkNameId, ImportSite);
-  void diagnose(ImportDiagnostic);
-
- private:
-  ImportContext(const codegen::lir::LirModule&, ImportOptions,
-                ModuleBuilder&&);
-
-  const codegen::lir::LirModule& source_;
-  ImportOptions options_;
-  ModuleBuilder builder_;
-  ImportReport report_;
-  TypeImportTable types_;
-  SymbolImportTable symbols_;
-  std::vector<ModuleFixup> module_fixups_;
-};
-
-class FunctionImportContext {
- public:
-  FunctionImportContext(ImportContext&, FunctionBuilder&,
-                        const codegen::lir::LirFunction&);
-
-  Result<void, ImportFailure> predeclare_blocks();
-  Result<void, ImportFailure> reserve_instructions_and_values();
-  Result<void, ImportFailure> define_non_phi_instructions();
-  Result<void, ImportFailure> import_terminators();
-  Result<void, ImportFailure> resolve_and_define_phis();
-  Result<void, ImportFailure> resolve_remaining_fixups();
-
-  Result<Operand, ImportFailure> operand(codegen::lir::LirValueId,
-                                         TypeId expected, OperandRole,
-                                         ImportSite);
-  Result<BlockId, ImportFailure> block(codegen::lir::LirBlockId, ImportSite);
-  Result<void, ImportFailure> copy_debug_name(
-      std::string_view, BlockId already_resolved, ImportSite);
-  Result<BuildResult, ImportFailure> append(BlockId, InstSpec, ImportSite);
-};
-```
-
-`ImportContext::create` stores failure from `ModuleBuilder::create` as the
-`BirError` alternative of `ImportFailure::cause`. There is intentionally no option to disable Raw
-verification: tests that need malformed draft state test builders/verifier
-directly and never receive a `RawBir`. Production should keep `verify_lir`
-enabled; disabling that preflight for importer-focused tests does not disable
-the importer's own closed dispatch validation or publication verification.
-
-`FunctionImportContext` exists only inside one
-`ModuleBuilder::with_function` callback. It cannot retain or expose a
-`FunctionBuilder` after that capability expires. Importer-local decoding data
-is not a second builder schema: dispatch ultimately produces the core
-`InstSpec`, whose opcode descriptor must expose every operand/result slot to
-def-use and verification.
-
-Internal tables are typed by source identity:
-
-- `StructNameId -> TypeId` plus a recursion state for opaque/recursive types.
-- `LinkNameId -> SymbolId`; the symbol then owns/refers to its `FunctionId` or
-  `GlobalId` declaration/definition. A direct `CallPayload` uses `SymbolId`, as
-  drafted by core, so an extern declaration never needs a fabricated
-  `FunctionId`. Definition IDs are requested only when importing a body or
-  object definition.
-
-This document deliberately resolves the adjacent core review question in favor
-of `SymbolId` for a direct callee: extern calls have link-visible identity even
-when no body-owning `FunctionId` exists. A function symbol still carries a
-structural function type and may reference its declaration/definition record;
-the importer rejects a non-function `SymbolKind` at the call site.
-- `LirBlockId -> BlockId`; label text may be copied only as `DebugNameMirror`
-  after the ID is already selected and never participates in lookup.
-- `LirValueId -> Operand` for structured-ID alternatives. Ordinary instruction
-  results map to `ValueId`; constant-result stubs map directly to interned
-  `ConstantId`. Global/function references arrive as IDs and become `SymbolId`;
-  local storage arrives as `LirStackSlotId` and becomes `LocalId`-based
-  operations. There is no `string -> Operand` or `string -> BlockId` semantic
-  table. `LirOperand::kind()` is only lexical classification; it cannot resolve
-  an operand.
-- `LirStackSlotId -> LocalId` (`LocalId` is semantic storage, never a frame
-  index or offset).
-- source instruction coordinate -> move-only `ReservedInst` until definition;
-  afterward retain only its `InstId` for diagnostics/origin.
-
-No internal table, raw source pointer, `string_view`, iterator, vector index, or
-builder capability may escape publication. Origin metadata, if enabled, must
-copy stable source coordinates rather than retaining references into LIR.
-
-## 4. Ordered module construction
-
-### Phase 0: source validation and inventory
-
-Run the LIR verifier before allocating BIR IDs. Inventory every module field
-and every `LirInst` alternative. Validation checks table ownership, ID validity,
-unique definitions, function/block structure, structured/text mirror parity,
-terminators, and rejection of initializer syntax represented only as text.
-Unknown variant alternatives are hard errors, not ignored extensions. New C++
-data members cannot be discovered by a runtime visitor, so exhaustiveness is a
-compile-time maintenance obligation: a closed `std::visit` with no generic
-success arm plus an inventory test/static count must fail review/build when
-`LirInst` or `LirTerminator` changes. Producer-only maps/caches are parity
-checked where applicable and otherwise ignored as non-semantic state.
-
-### Phase 1: type predeclaration
-
-Predeclare named struct/union/opaque identities before defining their bodies so
-recursive pointer types can resolve. Then define fields in source declaration
-order and preserve packed/opaque state. Import scalar integers including i1,
-i8/i16/i32/i64/i128, f16/f32/f64/f80/f128 where source can represent them,
-pointers with address space, arrays, vectors, functions, and aggregate types.
-
-`TypeSpec`, `LirTypeRef`, and `StructNameId` must converge on one BIR `TypeId`.
-If structured facts disagree with `type_decls` text, report the disagreement;
-the legacy text must not redefine the structured type. Size/alignment are
-validated against the selected data layout but do not become frame decisions.
-
-Today's `LirTypeRef` structurally classifies kind, integer width, VRM width, and
-optional `StructNameId`, but most compound shape remains rendered text;
-`LirStructDecl` supplies fields/packed/opaque but does not distinguish struct
-from union. Pointer address space and function-type components are likewise not
-structured. Text may check parity only after a complete structured type exists;
-otherwise these are producer gaps, not facts the importer may infer from
-downstream target behavior.
-
-### Phase 2: symbol and storage predeclaration
-
-Predeclare in deterministic source order:
-
-1. string-pool objects;
-2. globals (definitions and extern declarations);
-3. explicit extern function declarations;
-4. function declarations and definitions;
-5. specialization/linkage metadata that affects symbol identity.
-
-Merge repeat declarations only when link identity, kind, type, linkage,
-visibility, TLS/constant state, and calling convention agree. Function and
-global addresses in initializers can then resolve regardless of declaration
-order. Missing link identity is an error. An enabled `LinkNameMirrorParity`
-case may compare spelling only after `LinkNameId`/`SymbolId` selection, and its
-use is counted and diagnosed.
-
-Current module metadata is materially narrower than this target. `LirGlobal`
-has structured internal/const/extern/alignment flags, but linkage/visibility is
-a combined rendered `linkage_vis` string and there are no structured fields for
-thread-local storage, TLS model, common/weak/linkonce, section, visibility,
-`used`, alias targets, constructors/destructors, symbol versions, or top-level
-assembly. The reference `IrModule` has many of these, proving downstream
-backend need but not current LIR availability. They are explicit producer gaps;
-the importer must neither default them from spelling nor silently drop them.
-
-Top-level assembly additionally requires a typed dependency surface. The target
-`TopLevelAsmRecord` must carry, alongside source text/origin, an ordered
-`std::vector<SymbolId> symbol_dependencies` naming every predeclared
-link-visible symbol whose definition/reference affects retention or ordering.
-Scanning assembly text to discover names is forbidden. Current LIR has neither
-a top-level-asm record nor this dependency list, so it is a producer gap; the
-core schema must also settle whether dependency roles (definition versus use)
-need a closed typed discriminant before implementation.
-
-Computed-goto execution is partly present as `LirIndirectBrOp`, but taking a
-label address is emitted today as raw `blockaddress(...)` operand text, including
-inside `init_text`. There is no structured `(FunctionId, BlockId)` source
-carrier. Compatibility text cannot create that identity/topology; full coverage
-requires a typed block-address operand/constant and typed label-difference
-initializer.
-
-`LirStringConst::raw_bytes` is currently populated with LLVM-escaped rendering
-despite its name, plus a byte length; it is not an authoritative byte vector.
-Embedded NUL, wide/UTF-16 element width, and exact terminator policy therefore
-require a structured byte/element producer carrier. The compatibility
-whitelist cannot decode rendered bytes into missing source data.
-
-### Phase 3: global initializers
-
-Import initializers only after all target symbols exist. The semantic model must
-cover:
-
-- zero, undef/poison where legal, integer, floating, pointer, and null values;
-- byte strings including embedded NUL and explicit storage length;
-- arrays, structs, unions, padding bytes, nested aggregates, and repeated zero;
-- symbolic addresses of globals, functions, strings, and label-address forms
-  where the language permits them;
-- addends/GEP projections, pointer-width integer casts, and relocation slots;
-- tentative/common, extern, internal, weak/linkonce-like linkage, const,
-  explicit alignment, TLS, and declaration-without-initializer state.
-
-Relocations are typed `(target identity, addend, width, relocation semantic)`,
-not parsed symbol spellings stored as authority. No text parser exists at this
-boundary; the LIR producer must supply a structured initializer tree.
-Initializer failure rejects the whole module.
-
-This is a required target model, not current-source capability. Current
-`LirGlobal` has `init_text` and only a side vector of referenced function
-`LinkNameId`s; it has no structured initializer tree, relocation slots,
-symbol-plus-addend expression, label difference, padding node, TLS relocation,
-or nested typed aggregate identity. `initializer_function_link_name_ids` can
-validate/resolve function references but cannot reconstruct initializer
-topology. No compatibility case permits parsing `init_text` into missing
-semantics; import fails until the producer supplies the structured tree.
-
-### Phase 4: function skeletons
-
-For every function, create its signature and attributes before importing any
-body. Preserve parameter and result types, variadic/unspecified/void parameter
-distinctions, linkage, calling convention, by-value/sret semantic attributes,
-extension attributes, and declaration/definition state. ABI classification or
-physical locations are deferred to preparation.
-
-Current LIR structurally carries variadicness, void-list state, byval on
-signature parameters, and return extension on call/declaration records. It does
-not provide a general function calling-convention field, sret attribute,
-parameter extension attributes, unspecified-parameter flag on definitions, or
-complete function attributes. Missing facts are producer gaps; text in
-`signature_text` is compatibility-only.
-
-For a definition, create blocks using `LirBlockId` order and record the explicit
-entry ID; never infer entry solely from vector position. Predeclare stack
-objects and hoisted/inline allocas as semantic storage operations with element
-type, count, alignment, volatility/address-taken semantics, and static versus
-dynamic lifetime. Do not assign frame offsets.
-
-Current `LirStackObject` supplies type/alignment/`is_vla`; `LirAllocaOp`
-supplies rendered element type, optional count, and alignment. Neither supplies
-the full volatility/address-taken/lifetime metadata named above. Preserve what
-is present and record the rest as producer gaps rather than guessing from use
-patterns during import.
-
-### Phase 5: value and instruction import
-
-Scan parameters and all result-bearing instructions first. Intern constant
-definitions and reserve one typed `ValueId` for each runtime instruction result;
-reject duplicate source definitions before emission. This makes loop-carried
-phi operands and other permitted forward references independent of source
-visitation order without inventing constant-producing runtime instructions.
-
-Use the core reservation API exactly:
-
-```cpp
-class ReservedInst {
- public:
-  ReservedInst(ReservedInst&&) noexcept;
-  ReservedInst& operator=(ReservedInst&&) noexcept;
-  ReservedInst(const ReservedInst&) = delete;
-  ReservedInst& operator=(const ReservedInst&) = delete;
-  InstId instruction() const;
-  std::span<const ValueId> results() const;
-};
-class FunctionBuilder {
- public:
-  BirResult<ReservedInst> reserve_instruction(
-      BlockId, InstPosition, std::span<const TypeId> result_types);
-  BirResult<BuildResult> define_reserved_instruction(
-      ReservedInst&&, InstSpec);
-  // Other core methods omitted here.
-};
-```
-
-Reservation immediately fixes `InstId`, result `ValueId`s, and instruction
-order. Definition must match the reserved result arity/types exactly. Each
-move-only token is consumed once; any undefined token/reservation blocks
-`finish()` and therefore publication.
-
-Reserve all instructions in source order, define non-phi instructions, import
-terminators, then define reserved phis after exact `EdgeKey` resolution. Each
-defined instruction records exact operand roles and result types. No folding,
-branch-chain following, select-chain recognition, memcpy scalarization,
-aggregate leaf-slot expansion, comparison rewriting, or immediate arithmetic
-evaluation is allowed in this phase: those are canonical pass work.
-
-### Phase 6: fixups and terminators
-
-Import one terminator per block after resolving every target. Preserve switch
-case values and order deterministically, reject duplicate conflicting cases,
-and preserve the complete possible-target set for indirect branches. Compute no
-persistent predecessor/successor cache.
-
-Then derive every terminator `SuccessorSlot` and its exact
-`EdgeKey{source, role, index}`. Resolve phi fixups against the incoming edge-key
-**multiset**, requiring exactly one typed incoming operand for every exact
-`EdgeKey` and no extra key. Predecessor-block cardinality is never the rule: two
-switch cases, asm-goto slots, or other parallel edges from one source block to
-the same destination remain distinct. Today's `LirPhiOp` carries only
-`(value-text, predecessor-label)`; it may map only when structured value/block
-identity exists and that predecessor has exactly one matching successor slot.
-Parallel matches are ambiguous and fail until LIR carries structured
-`(EdgeKey, operand)` phi entries.
-
-### Phase 7: verification and atomic publication
-
-`ImportContext::publish() &&` consumes its `ModuleBuilder` exactly once through
-`finish() &&` to obtain one private `ModuleDraft`, then makes exactly one call:
-
-```cpp
-Result<RawBir, PublicationFailure> published =
-    verify_and_publish_raw(std::move(draft));
-```
-
-That gate freezes, fully Raw-verifies, and consumes the same draft revision
-atomically. Success alone mints the unforgeable move-only `RawBir`; failure
-returns `PublicationFailure` and no usable draft/stage object. Public
-`verify_candidate` is diagnostic-only and is never invoked first to manufacture
-or cache a publication proof. The importer wraps builder/finish failure in
-the `BirError` cause and the gate failure unchanged as the
-`PublicationFailure` cause, while
-retaining source-site diagnostics in `ImportReport`. It never constructs or
-returns an unverified `RawBir`.
-
-## 5. Exhaustive `LirInst` dispatch contract
-
-Every alternative currently listed in `codegen/lir/ir.hpp::LirInst` must have a
-named row. “Legacy” below means an older structured-ID variant, not permission
-to ignore it. A row describes the target mapping; if a current field supplies a
-required operand/type/identity only through `LirOperand`, `LirTypeRef`, or other
-text without an already-complete structured counterpart, the closed whitelist
-rules above make that current instance an explicit source-gap failure.
-
-| LIR alternatives | Raw-BIR semantic form | Required preserved facts | First later owner |
-|---|---|---|---|
-| `LirConstInt`, `LirConstFloat` | intern core `ConstantId` and bind the source result to that `Operand`; emit no runtime instruction | current fields are `long long`/`double`; exact i128 and f80/f128 constants are a **source gap**, not recoverable bits | `legalize` validates representable constants; producer must add arbitrary-width/bit-pattern constants |
-| `LirLoad`, `LirLoadOp` | core `Load` | pointer and value type; volatile, explicit alignment, and address space are **source gaps** in both current forms | `memory` canonicalizes address/effects after producer gaps close |
-| `LirStore`, `LirStoreOp` | core `Store` | pointer and stored value/type; volatile, alignment, and address space are **source gaps** | `memory` |
-| `LirBinary`, `LirBinOp` | core `Binary`/`Unary(FNeg)` | new form must have a typed opcode; old `int op` is a **source gap** and fails because compatibility cannot create opcode semantics; preserve operands and future flags | `scalar` |
-| `LirCast`, `LirCastOp` | core `Cast` | new form has exact cast kind/from/to type; old form has no cast kind and fails when the kind is not uniquely determined | `legalize`, then `scalar` |
-| `LirCmp`, `LirCmpOp` | core `Compare` | new form must have domain/type/full typed predicate; old integer predicate is a **source gap** and fails when those facts are absent | `scalar` |
-| `LirCall`, `LirCallOp` | core `Call` | old form has name/pointer plus untyped value IDs; new form is accepted only with structured direct identity or callee operand, signature, structured args, varargs boundary, and attributes; call text never fills a missing fact | `legalize` validates the already-typed call; ABI `preparation/calls` later |
-| `LirGep`, `LirGepOp` | core `GetElementPtr` | old indices are value IDs; new indices are `"type value"` strings; without structured typed indices the form is a **source gap** and fails | `memory` normalizes an already-typed path after the producer replaces index text |
-| `LirSelect`, `LirSelectOp` | core `Select` | condition and both typed values; no compare fusion | `scalar` |
-| `LirIntrinsic` | core `Intrinsic` only after lossless registry recognition | current form has only name, optional result ID, and argument IDs: result type, semantic ID, effects, immediates, and feature contract are **source gaps** | `intrinsics`; unknown/underspecified names fail |
-| `LirInlineAsm`, `LirInlineAsmOp` | core `InlineAsm`; the current bounded importer accepts only `LirInlineAsmOp` with ordered structured ordinary inputs/results | current `LirInlineAsmOp` preserves typed SSA bindings, input/output/read-write roles, constraint positions, original template/constraint text, clobbers, and side effects; typed symbol/address-space facts and goto labels remain absent, while `args_str` is never authority | asm-goto needs later ordinary CFG schema work; parsed constraint binding is deferred to `regalloc/constraints` |
-| `LirMemcpyOp`, `LirMemsetOp` | semantic memory intrinsic | operands, byte count/value, volatility, align/address spaces if present | `memory` is the first owner; `intrinsics` may later canonicalize registry identity |
-| `LirVaStartOp`, `LirVaEndOp`, `LirVaCopyOp`, `LirVaArgOp` | semantic variadic operations | va-list address(es), result type, aggregate shape if present | `intrinsics`; variadic preparation later |
-| `LirStackSaveOp`, `LirStackRestoreOp` | semantic dynamic-stack lifetime operations | saved/restored pointer identity and ordering | `memory`; frame realization later |
-| `LirAbsOp` | semantic absolute-value intrinsic | integer type, source, result, poison/overflow contract if source adds it | `intrinsics` |
-| `LirIndirectBrOp` | target mapping is core `IndirectJumpTerm`, never an ordinary instruction | current producer emits it last with default `LirUnreachable`, but its address/targets are text-only; this is a **source gap** until structured operand/`BlockId`s exist | with structured fields, importer consumes it, requires it last, reconciles only the documented sentinel, and establishes sole terminator authority; current text form fails |
-| `LirExtractValueOp`, `LirInsertValueOp` | raw aggregate projection/update | aggregate/element types, index path, undef/poison input | `aggregate` |
-| `LirInsertElementOp`, `LirExtractElementOp`, `LirShuffleVectorOp` | raw vector operations | vector/element/index/mask and poison/undef lane semantics must be structured; current text-only missing facts are a **source gap** | `legalize` validates typed shape; structural vector ops remain canonical, target SIMD intrinsics go to `intrinsics` |
-| `LirAllocaOp` | raw dynamic/static alloca | element type, count, alignment, lifetime class | `memory`; never frame layout here |
-
-`LirPhiOp` is handled by the phi predeclaration/fixup path, not ordinary
-instruction dispatch. Its target carrier preserves result type and every
-`(EdgeKey, Operand)` without lowering to moves; the current text/block-pair
-shape is a source gap under the rules above. Hoisted
-`LirFunction::alloca_insts` uses the
-same alloca dispatcher and semantic ordering rules as inline alloca.
-
-The duplicate old/new LIR variants must either map to exactly the same semantic
-builder operation or fail with a diagnostic explaining which required fact is
-absent. Variant shape must not create two BIR instruction families.
-
-The table covers all 38 alternatives in the current `LirInst` declaration.
-That count is an audit tripwire, not an ABI: the implementation's closed visitor
-and its inventory test must be updated together whenever the source variant
-changes.
-
-## 6. Terminators and CFG
-
-| LIR terminator | Raw-BIR form | Import checks |
-|---|---|---|
-| `LirBr` | `JumpTerm` | target resolves uniquely |
-| `LirCondBr` | `CondJumpTerm` | i1/boolean condition; both targets resolve; equal targets remain representable until CFG pass |
-| `LirRet` | `ReturnTerm` | zero/one value agrees with semantic function result; aggregate lanes remain semantic values, not return registers |
-| `LirSwitch` | core `SwitchTerm` | selector type/value, default, all cases and targets preserved |
-| `LirIndirectBr` | core `IndirectJumpTerm` | address plus conservative complete target set |
-| `LirUnreachable` | `UnreachableTerm` | no fallthrough inferred |
-
-The importer does not normalize entry blocks, split critical edges, delete
-unreachable blocks, thread branches, create fallthrough, or lower switch to a
-chain/jump table. Those are CFG or later target decisions.
-
-Most current terminators name targets/conditions/returns with strings;
-`LirIndirectBr` alone uses structured IDs, and the current printer/producer
-instead uses `LirIndirectBrOp`. Text cannot create CFG/value identity, so those
-terminators are producer gaps and fail until structured IDs/operands exist. If
-both structured indirect encodings occur, they must agree
-exactly; an `LirIndirectBrOp` followed by the producer's default
-`LirUnreachable` sentinel is the only documented carrier-to-terminator
-conversion, not two sequential terminators.
-
-## 7. Calls, function pointers, and variadics
-
-Direct calls require `direct_callee_link_name_id`; absence is a source error,
-not permission to resolve raw symbol text. Indirect calls require a structured
-callee operand and preserve its semantic function type; they are never guessed
-from spelling. Both forms preserve result type, return/parameter extension
-attributes, fixed argument count, variadic marker, by-value/sret semantic
-attributes, aggregate type/layout identity, and source argument order.
-
-Those are acceptance requirements, not a claim about every current variant.
-`LirCall` has no structured callee signature or per-argument types;
-`LirCallOp` has optional signature/structured arguments but may contain only
-`callee_type_suffix`, `args_str`, and type-fragment mirrors. An indirect call
-without a structurally recoverable function type, or a variadic call without a
-recoverable fixed/variadic boundary, fails rather than borrowing ABI facts from
-legacy lowering.
-
-Likewise, `LirExternDecl` currently carries only return type/extension and link
-identity, not a complete parameter list or variadic/calling-convention
-signature. Call-site observations may be checked for agreement but cannot
-silently become a canonical declaration when incompatible call sites exist.
-
-### 7.1 Exhaustive call-site field disposition
-
-Every core call field is required input, not a default chosen by import:
-
-| Core field | Current LIR disposition |
-|---|---|
-| direct callee operand | preserve `direct_callee_link_name_id` as `SymbolId`; missing direct identity fails |
-| indirect callee operand | requires a structured typed operand; current text-only `callee` is a producer gap |
-| `CallPayload::callee_type` | preserve a complete structured `callee_signature`; absent/incomplete signature fails |
-| `source_calling_convention: CallingConvention` | no current call-site field: producer gap; never default to `C` |
-| `fixed_argument_count` | derive only from complete structured fixed parameters and check actual arguments; otherwise fail |
-| `parameter_list_kind: ParameterListKind` | map structured `Prototype`/`Variadic`/`Unspecified` state exactly; conflicting or absent state fails |
-| ordinary argument operands/types | preserve ordered structured operand IDs and `TypeId`s; current `LirOperand`/`args_str` values are insufficient |
-| zero-or-one semantic result and type | preserve structured result identity/type; text result spelling cannot define it |
-| `CallSiteAttributes::tail_request: TailRequest` | no current field: producer gap; never default to `None` |
-| `argument_attributes[].extension` | preserve each structured `LirCallArg::ext_attr` when the corresponding structured argument exists |
-| argument `by_value`, `structure_return_pointer`, `by_value_layout` | no complete current call-site fields: producer gap; never infer from rendered types or ABI observations |
-| `return_attributes.extension` | preserve `return_ext_attr` and require agreement with the structured signature/declaration |
-| `CallEffects::return_behavior: ReturnBehavior` | no current `ReturnsOnce`/`ReturnsTwice`/`NeverReturns` field: producer gap; never assume ordinary return or infer `noreturn` from a symbol |
-| `CallEffects::unwind_behavior: UnwindBehavior` | no current `CannotUnwind`/`MayUnwind` field: producer gap; never assume either behavior |
-| `CallEffects::memory_effect: CallMemoryEffect` | no current `None`/`ReadOnly`/`WriteOnly`/`ReadWrite`/`Unknown` field: producer gap; even `Unknown` must be explicit |
-| `CallEffects::convergent` | no current field: producer gap; never default `false` |
-| `CallEffects::cannot_duplicate` | no current field: producer gap; never default `false` |
-| `operand_bundles[].kind: OperandBundleKind` | no current `Deopt`/`Funclet`/`GcTransition`/`Assume` carrier: producer gap |
-| `operand_bundles[].first_bundle_operand: uint32_t` | no current descriptor-visible bundle operand range: producer gap |
-| `operand_bundles[].operand_types: vector<TypeId>` and descriptor `CallBundleOperand` values | no current typed bundle vector/value operands: producer gap; text may not synthesize them |
-
-Presence means preserve and validate exact agreement; absence of any semantically
-required field fails closed. In particular, the importer cannot manufacture
-apparently conservative defaults: return/unwind/memory/duplication facts affect
-CFG, optimization legality, and observable behavior.
-
-The importer must not compute GP/FP register classes, HFA/eightbyte placement,
-shadow space, stack offsets, return registers, hidden-argument locations, or
-call moves. If LIR already carries producer-computed ABI observations, preserve
-them as non-authoritative origin/audit facts or reject contradictions; do not
-publish them as canonical placement.
-
-In particular, `LirCallArg::aarch64_hfa_lane_count`,
-`aarch64_hfa_lane_index`, and `aarch64_stack_align_bytes` must never populate
-canonical call operands, ABI classes, or placement. They may be copied only to
-explicit non-authoritative origin/audit attachments for parity diagnostics.
-
-`va_start`, `va_end`, `va_copy`, and `va_arg` stay explicit. Aggregate `va_arg`
-must preserve the requested aggregate type rather than expanding into target
-save-area loads in the importer.
-
-## 8. Memory, addresses, atomics, and aggregates
-
-Addresses are ordinary typed values plus explicit semantic provenance seeds:
-stack object, global, function, string, label, or unknown pointer. GEP preserves
-the source element type and full index path. The importer may validate a
-constant projection but does not collapse it to named leaf slots, synthesize
-select chains for dynamic arrays, or publish alias/provenance conclusions.
-
-Loads/stores preserve width through type, alignment, volatile, address space,
-and atomic semantics. `memcpy`/`memset` remain operations, including dynamic
-sizes; importer scalarization would lose overlap/volatility/effect semantics.
-
-The current C4C `LirInst` variant has no structured atomic load/store/RMW,
-compare-exchange, or fence alternative even though legacy BIR and the reference
-compiler both require them. Full backend coverage therefore requires upstream
-typed LIR additions such as `LirAtomicLoadOp`, `LirAtomicStoreOp`,
-`LirAtomicRmwOp`, `LirCmpXchgOp`, and `LirFenceOp`. The importer contract for
-those forms is to preserve operation, type/width, pointer/value operands,
-success and failure ordering, weak/strong state, volatility, and result mode.
-Until those variants exist, recognized textual/builtin atomic encodings must
-fail as `UnsupportedSemanticFamily`; silently importing them as ordinary calls
-or non-atomic loads/stores is forbidden.
-
-Aggregate values remain aggregate values. `extractvalue`, `insertvalue`, byval,
-sret, aggregate loads/stores, and initializers retain type identity and field
-paths. Leaf-slot decomposition, byte-storage reinterpretation, HFA lanes, and
-copy expansion are later aggregate/memory/ABI responsibilities.
-
-## 9. Intrinsics
-
-Intrinsic import uses a registry keyed by structured intrinsic ID. A name may
-be retained only as a debug/origin mirror after that ID is selected. Each
-descriptor declares result count and
-types, operand roles/types, memory read/write effects, volatility, required
-feature as a semantic availability constraint, and whether it may trap or has
-side effects. Unknown or signature-mismatched intrinsics fail.
-
-Coverage must include memory operations, stacksave/restore, variadic operations,
-integer abs, pointer masking, scalar FP operations, integer bit operations,
-overflow operations, FP classification, CRC, vector/SIMD operations, barriers,
-cache maintenance, and pause/yield hints. Runtime helper selection for i128/f128
-is not importer work; source operations retain i128/f128 semantics.
-
-## 10. Inline assembly semantic payload
-
-Raw-stage core `InlineAsm` has one lossless carrier model:
-
-- inputs are ordinary ordered instruction operands and outputs are ordinary
-  ordered instruction results with exact BIR `ValueId` definitions;
-- a read/write constraint position maps an incoming source value and a distinct
-  produced result; a later tie constrains assignments, never SSA identity;
-- payload contains only original opaque asm text, original opaque constraint
-  text, ordered clobber spellings, and the side-effect flag;
-- any typed symbol/address-space operands and asm-goto `BlockId` edges, once
-  supported, use ordinary value/terminator carriers rather than a second asm
-  identity graph.
-
-The importer validates the structured LIR binding order and exact source-value
-mapping needed to build those generic edges, but it neither parses the original
-constraint text nor stores parsed alternatives, classes, ties, or fixed-register
-meaning. `args_str`, rewritten LLVM-compatible constraints, result/type text,
-and `insn_r` target metadata are never authority. The later
-`regalloc/constraints` stage is the sole constraint interpreter and binds the
-opaque original text to these exact operand/result orders using revision-bound
-target tables.
-
-Today's `LirInlineAsmOp` supplies the bounded non-goto typed SSA inputs/results,
-roles/constraint positions used for import validation, original payload,
-clobbers, and side effects. It still lacks typed symbol/address-space carriers
-and asm-goto topology. The current importer accepts only section 1.1's bounded
-shape and rejects those remaining gaps; compatibility parsing cannot create
-them.
-
-## 11. Raw-only forms and ownership
-
-| Raw-only form | Why import permits it | Mandatory eliminating/validating owner |
-|---|---|---|
-| arbitrary integer widths and exact FP literals | source precision must survive | `legalize` |
-| old/new duplicate LIR operation shapes | staged LIR migration | importer unifies immediately; no duplicate BIR form escapes |
-| typed non-canonical compare/cast/operator | source enum may require canonical normalization | `legalize` then `scalar`; raw spelling is never semantic authority |
-| phi forward references | cyclic SSA | importer resolves exact `EdgeKey` identities; `ssa` validates canonical phi placement |
-| raw switch and indirect target set | CFG not normalized | `cfg` |
-| multi-index GEP and address-space-rich access | semantic address not canonical | `memory` normalizes the GEP using aggregate layout; it is the single first owner |
-| aggregate insert/extract and byval/sret markers | decomposition is premature | `aggregate` |
-| semantic/feature intrinsic | registry canonicalization pending; name is mirror-only | `intrinsics` |
-| opaque inline-asm payload plus generic value edges | source semantics must survive unchanged | preserved through canonical passes; later `regalloc/constraints` alone parses and binds target meaning |
-
-“Raw-only” never means malformed, untyped, identity-free, or silently lossy.
-
-## 12. Failure and determinism
-
-Import is module-transactional. No successful functions/globals are returned
-when any module member fails. Diagnostics should accumulate independent
-validation failures where safe, then stop before builder mutation when source
-structure is unreliable. After mutation begins, one failure poisons the
-transaction; cleanup destroys all unpublished state.
-
-Determinism requirements:
-
-- assign BIR IDs by declared source order, not hash iteration order;
-- sort only unordered compatibility maps by stable semantic key before use;
-- preserve function block/instruction order and call argument order;
-- define duplicate switch/initializer/symbol behavior explicitly;
-- order diagnostics by phase, module ordinal, function, block, instruction,
-  and field;
-- never expose pointer addresses, hash seeds, or unordered iteration in dumps.
-
-Resource exhaustion and builder/publication failures retain their structured
-causes. Throwing convenience wrappers, if ever added, must wrap this result API
-and must not invent fallback BIR.
-
-Unsupported and exceptional inputs follow the same rule. A known-but-not-yet
-modeled semantic family returns `UnsupportedSemanticFamily` at its exact source
-site; malformed payload returns the more specific structural/type error; an
-unknown variant is never skipped. `noreturn` calls retain their semantic
-attribute and the following `unreachable` terminator. There is currently no
-typed LIR exception, landing-pad, unwind edge, or cleanup-pad family, so the
-importer must reject any compatibility encoding that attempts to smuggle one
-through ordinary branches or calls until a first-class source contract exists.
-
-## 13. Backend semantic coverage ledger
-
-This table is the importer review checklist. “Deferred” means the importer
-preserves a typed semantic carrier and names its owner; it does not mean the
-feature is omitted.
-
-| Semantic family | C4C LIR/import evidence | Reference evidence | Import disposition |
-|---|---|---|---|
-| scalar constants, integer/FP arithmetic, unary, casts, comparisons | `ir.hpp`; `scalar.cpp`, `types.cpp` | `ir/instruction.rs::{BinOp,UnaryOp,Cast,Cmp}` | current host-width constants cannot carry exact i128/f80/f128: **source gap**; typed operations canonicalize later |
-| values, params, copies, select, phi | named params, `LirSelectOp`, `LirPhiOp`; no first-class current `Copy` | `Copy`, `Select`, `Phi`, `ParamRef` | stable IDs and deferred phi fixups; explicit copy/paramref is a **source gap**, never inferred as ABI movement |
-| blocks, branch, conditional, return, switch, indirect branch, unreachable | `LirTerminator`; bootstrap `lir_to_bir.cpp` | `Terminator` enum; `backend/generation.rs` | complete typed terminator import; CFG transforms deferred |
-| types, structs, arrays, vectors, opaque/packed, i128/f80/f128 | `LirTypeRef`, `LirStructDecl`; much compound identity remains text | `common/types.rs`, `ir/lowering/types*.rs` | predeclare recursive identities; union kind/address spaces/function components and exact extended constants remain **source gaps** |
-| globals, strings, linkage, TLS, alignment | `LirGlobal`, `LirStringConst`; no structured TLS/section/visibility suite | `ir/module.rs`, `backend/*/codegen/globals.rs` | predeclare then initialize; TLS/common/weak/section/used metadata are **source gaps** |
-| nested/relocation-aware initializers | current `init_text` plus referenced-function ID side vector; partial importer parser | `ir/lowering/global_init*.rs` | **source gap**: add structured initializer/relocation tree; text cannot supply missing topology/relocations |
-| stack objects, static/dynamic alloca, stack save/restore | `LirStackObject`, `LirAllocaOp`; memory files | `Alloca`, `DynAlloca`, `StackSave`, `StackRestore` | preserve lifetime/alignment; frame deferred |
-| load/store, volatile, address spaces | `LirLoadOp`, `LirStoreOp` lack volatile/alignment/address-space fields | `Load/Store` with `AddressSpace` | **source gap** for access attributes; provenance remains later analysis |
-| GEP/global/function/string/label/block addresses | `LirGepOp` has string indices; label address is raw `blockaddress(...)` text | `GetElementPtr`, `GlobalAddr`, `LabelAddr` | **source gap** for typed index and block-address constants; folding deferred |
-| memcpy/memset/memmove | typed memcpy/memset LIR ops; no memmove variant | `Memcpy`; intrinsic lowering | preserve volatility/dynamic size where present; **source gap** for memmove and access alignment |
-| direct/indirect calls, fn pointers, varargs, effects, bundles | `LirCallOp` has partial signature/args but no complete effects/bundles; `calling.cpp`, `call_abi.cpp` | `Call`, `CallIndirect`, `CallInfo` | **source gap**: require complete structured callee/args/result, every `CallEffects` field, attributes, and typed bundles; placement remains deferred |
-| `va_start/end/copy/arg`, aggregate va_arg | typed LIR ops; `calling.cpp` | `VaStart/End/Copy/Arg/ArgStruct` | preserve explicit semantic operations; target va-list plan deferred |
-| aggregates, byval/sret, extract/insert, complex returns | extract/insert and byval exist; sret/complex-lane semantics are incomplete | aggregate call metadata and second-return carriers | preserve available aggregate semantics; explicit sret/logical complex multi-result carriers are **source gaps** |
-| atomics and fences | legacy `bir.hpp::AtomicOperation`; no typed current LIR variants | `AtomicLoad/Store/Rmw/Cmpxchg/Fence` | **source gap**: add typed LIR; never weaken to ordinary memory/call |
-| vectors/SIMD/shuffle | vector LIR ops; intrinsic metadata in legacy BIR | `IntrinsicOp`, architecture intrinsic modules | preserve vector type/lane/mask and intrinsic descriptor |
-| inline asm and asm goto | `LirInlineAsmOp` has bounded typed SSA bindings/roles/constraint positions plus original payload; richer alternatives and goto remain incomplete | `Instruction::InlineAsm`, `backend/inline_asm.rs` | bounded non-goto generic value transport is implemented; parsed alternatives, names, symbols/address spaces, and asm-goto remain a **source gap**; physical placement is deferred |
-| intrinsics, barriers, cache, hints | module need flags plus underspecified named `LirIntrinsic`; legacy `IntrinsicOperation` | `ir/intrinsics.rs`, backend intrinsic modules | **source gap** for semantic intrinsic IDs/effects/signatures; unknown/underspecified input fails |
-| debug/source coordinates | LIR currently has limited coordinates | reference `BasicBlock::source_spans` | preserve when source adds them; no fabricated locations |
-| constructors/destructors, aliases, visibility, sections, symver, top-level asm | not all represented in current `LirModule` | `ir/module.rs` | **source gap**: add structured module metadata; top-level asm additionally needs typed `SymbolId` dependencies and a settled dependency-role schema |
-| exception/unwind/EH edges | no current LIR family | no complete portable carrier in reviewed reference IR | explicitly unsupported until language/runtime contract adds typed forms |
-
-Full compiler-backend coverage is not proven while a row is marked source gap.
-The importer design closes the boundary by requiring an explicit typed producer
-addition or a hard diagnostic, never by reconstructing semantics downstream.
-
-## 14. Legacy source anchors and lessons
-
-Primary C4C anchors inspected:
-
-- `src/codegen/lir/ir.hpp`, `types.hpp`, and `operands.hpp`: actual producer
-  schema and complete current variant list.
-- `src/backend/legacy/lir_to_bir.hpp` and `lir_to_bir.cpp`: legacy public
-  `BirLoweringOptions`, `BirLoweringResult`,
-  `try_lower_to_bir_with_options`, `analyze_module`, and `lower_module`.
-- `src/backend/legacy/bir.hpp`: legacy types, values, globals, locals, calls,
-  memory addresses, intrinsic/inline-asm/atomic payloads, instructions,
-  terminators, functions, and module schema; concrete anchors include `Value`,
-  `Global`, `MemoryAddress`, `CallInst`, `InlineAsmMetadata`,
-  `IntrinsicOperation`, `AtomicOperation`, `Inst`, `Terminator`, `Function`, and
-  `Module`.
-- `src/backend/legacy/bir_*_view.*`, `bir_route*.cpp`, and `query.*`:
-  downstream queries exposing identity, CFG, comparison, call, publication,
-  return, select, and memory requirements.
-- `src/backend/legacy/prealloc/{legalize,liveness,out_of_ssa,atomics,intrinsics,inline_asm,call_plans,frame_plan,variadic_entry_plans,object_data}.cpp`
-  and `prealloc/regalloc/`, `prealloc/stack_layout/`: downstream evidence used
-  only to identify semantics the importer must preserve, not work it should do.
-
-Current partial-importer anchors inspected:
-
-- public bootstrap `src/backend/bir/lir_to_bir.hpp` and
-  `src/backend/bir/lir_to_bir.cpp`, especially `ImportOptions`, `ImportError`,
-  `validate_module_surface`, `validate_function`, `lower_terminator`, and
-  `lower_lir_to_raw_bir`;
-- this directory's `analysis.cpp`, `context.cpp`, `types.cpp`, `globals.cpp`,
-  `global_initializers.cpp`, `module.cpp`, `cfg.cpp`, `scalar.cpp`,
-  `aggregate.cpp`, `calling.cpp`, `call_abi.cpp`, and `lowering.hpp`;
-- `memory/{addressing,coordinator,intrinsics,local_gep,local_slots,provenance,value_materialization}.cpp`
-  plus `memory_helpers.hpp` and `memory_types.hpp`.
-
-The partial importer symbol anchors used for behavior tracing were
-`BirFunctionLowerer::lower`, `lower_block_phi_insts`, `lower_block_insts`,
-`lower_block_terminator`, `lower_scalar_family_inst`, `lower_call_inst`,
-`lower_runtime_intrinsic_inst`, `lower_memory_gep_inst`,
-`lower_memory_load_inst`, `lower_memory_store_inst`,
-`lower_memory_memcpy_inst`, and `lower_memory_memset_inst`.
-
-The large partial importer demonstrates required edge cases, but it also mixes
-import with ABI classification, CFG pattern following, scalar folding,
-aggregate decomposition, synthesized selects, provenance publication, and
-local-slot materialization. Those behaviors are evidence for later pass
-requirements, not the target importer architecture.
-
-## 15. Reference compiler anchors and adopt/reject decisions
-
-Reviewed reference anchors:
-
-- `ref/claudes-c-compiler/src/ir/instruction.rs`: value/operand model, complete
-  `Instruction` and `Terminator` variants, `CallInfo`, atomics, and inline asm.
-- `ref/claudes-c-compiler/src/ir/module.rs`: module/function/global surface and
-  linkage/constructor/alias/section metadata.
-- `ref/claudes-c-compiler/src/ir/intrinsics.rs` and `ir/ops.rs`: typed
-  intrinsic, arithmetic, comparison, and atomic operation enums.
-- `ref/claudes-c-compiler/src/ir/lowering/README.md`, `func_lowering.rs`,
-  `global_init*.rs`, `expr_calls.rs`, `expr_atomics.rs`, `stmt_asm.rs`, and
-  `stmt_control_flow.rs`: producer-side construction ordering and semantic
-  families.
-- `ref/claudes-c-compiler/src/backend/generation.rs`, `traits.rs`,
-  `liveness.rs`, `regalloc.rs`, `stack_layout/`, and architecture
-  `codegen/{memory,calls,variadic,atomics,intrinsics,inline_asm,globals}.rs`:
-  consumer evidence for facts that must survive import.
-
-Exact reference control points were `Lowerer::lower` and its documented
-prepass/signature/body ordering, `Instruction::dest`/operand visitors,
-`generate_module`, `generate_function`, `generate_instruction`, and
-`generate_terminator`.
-
-Adopt:
-
-- closed instruction/terminator variants with typed operands and stable IDs;
-- shared direct/indirect call semantic metadata;
-- explicit atomic orderings/result modes, variadic ops, label addresses,
-  address spaces, and inline-asm goto/symbol payloads;
-- predeclare-first module construction and relocation-aware initializers;
-- per-instruction source coordinates and complete operand visitors as verifier
-  infrastructure.
-
-Reject or relocate:
-
-- ABI classifications embedded as backend placement authority in imported IR;
-- backend calculation of stack space, GEP folding, register assignment, and
-  target emission as importer responsibilities;
-- phi elimination before the canonical SSA boundary;
-- physical complex-return register carriers as canonical BIR semantics; model
-  logical multi-result/aggregate values and defer ABI realization;
-- string symbol names as semantic identity when stable source IDs exist.
-
-## 16. Review questions
-
-1. Does new BIR need first-class `TypeId`, `SymbolId`, `GlobalId`, `LocalId`, constant,
-   switch, indirect-branch, aggregate, atomic, intrinsic, and inline-asm storage
-   before this importer can be implemented without compatibility side tables?
-2. Which LIR textual fields remain unavoidable, and what producer milestone
-   replaces each with structured identity?
-3. Should source verification always be mandatory in production rather than an
-   `ImportOptions` bit?
-4. How are C symbol namespace collisions between function and object
-   declarations represented and diagnosed?
-5. Are forward references legal only for phi/CFG cycles, or does LIR permit
-   arbitrary value use-before-definition?
-6. Is switch case order semantically observable for diagnostics/dumps, and how
-   are duplicate equal-value cases rejected upstream?
-7. What exact poison/undef/freeze model is required for vectors, aggregates,
-   casts, and global initialization?
-8. Which alignment, volatile, address-space, no-return, tail-call, and calling
-   convention facts are missing from current LIR operations?
-9. Will atomics, module directives, debug spans, asm goto, and complex-return
-   semantics be added to LIR before importer implementation begins?
-10. Which raw intrinsic registry is target-independent, and how are target
-    feature requirements represented without selecting an instruction?
-11. Which typed ordinary value/CFG carriers are still needed for inline-asm
-    symbol/address-space operands and asm-goto, without adding parsed constraint
-    authority to Raw/Canonical BIR?
-12. Which mirror-parity cases may migration tooling temporarily enable, and
-    what producer milestone removes each? No enabled case may survive as
-    semantic authority in Raw BIR.
-13. Can initializer relocation semantics represent TLS models, function
-    addresses, addends, and nested pointer fields without target relocation
-    opcode selection?
-14. What verifier proves that every `LirInst` variant and every module field is
-    either imported or rejected, so future variants cannot be silently skipped?
-
-Acceptance requires resolving these questions together with adjacent core,
-verifier, legalize, CFG, SSA, memory, aggregate, intrinsic, and preparation
-contracts. Implementation completeness must not be claimed from the current
-bootstrap importer or the quarantined legacy importer.
-
-## 17. Current review finding
-
-Already schema-owned in the target design, but not yet implemented by the
-bootstrap C++ core: full types/constants, symbols/globals/initializers, general
-closed opcodes/descriptors, call effects/bundles, typed inline-asm
-symbol/address-space and asm-goto carriers, reservation, and the target
-publication API.
-The current core does implement stable bootstrap IDs, one generic
-`Opcode::InlineAsm` value-edge carrier, and foundation-verifier publication.
-The remaining absence is planned work, not evidence that this importer should
-invent another schema or classify target-stage facts as current semantics.
-
-Real current-LIR producer gaps blocking affected backend features:
-
-- structured arbitrary-width constant bits, compound/function/pointer types,
-  union/address-space facts, instruction operands, terminator targets, exact
-  phi `EdgeKey`s, initializer expressions/relocations, and block
-  addresses/label differences;
-- atomic/fence forms, complete memory attributes, memmove, and semantic
-  intrinsic IDs/descriptors;
-- complete calls: callee/argument/result identities and types, calling
-  convention, parameter-list kind, tail request, argument/return attributes,
-  every `CallEffects` field, and typed operand bundles;
-- TLS/common/weak/section/visibility/used, aliases,
-  constructors/destructors, symver, and top-level asm with typed `SymbolId`
-  dependencies;
-- typed inline-asm symbol/address-space operands and asm-goto control edges
-  beyond the implemented typed ordinary SSA binding slice. Parsed alternatives
-  and symbolic constraint meaning are later constraint-product facts, not an
-  importer source gap.
-
-Unresolved target-schema choices that must be closed before the corresponding
-features are declared design-complete:
-
-- the stable target-independent intrinsic namespace;
-- modern asm-goto output-edge value semantics;
-- exception/unwind/cleanup-pad control edges beyond call unwind effects;
-- the required debug scope/type subset;
-- whether top-level-asm `SymbolId` dependencies need definition/use roles;
-- whether every object layout is producer-resolved or Raw publication needs a
-  separately designed unresolved-layout mechanism.
-
-Non-blocking/settled enough for adjacent review:
-
-- module predeclaration precedes initializer/body import; blocks and result
-  identities precede phi/operand fixup;
-- all 38 current instruction alternatives and all six terminator alternatives
-  have an explicit import-or-fail disposition;
-- direct calls use `SymbolId`, semantic locals use `LocalId`, and importer
-  tables/capabilities never escape publication;
-- instruction/result reservation uses the core `ReservedInst` token, and phi
-  fixup matches the exact incoming `EdgeKey` multiset rather than predecessor
-  blocks;
-- compatibility is production-fail-closed and migration enables only named
-  mirror-parity cases with per-case metrics;
-- ABI/frame/register allocation/call moves/target selection are forbidden at
-  import, with exact later owners identified;
-- failure is module-transactional and the only success transition is the single
-  `verify_and_publish_raw(ModuleDraft&&)` gate.
+Diagnostic-only validation cannot mint or bless a stage token. The current
+checked-in `ModuleBuilder::publish()` foundation adapter is not evidence that
+the full `ModuleDraft -> A2` contract is implemented.
+
+## Failure and Diagnostics
+
+Validation accumulates independent source-located errors only while it is safe
+to do so. Once mutation starts, the first poisoning error destroys the complete
+unpublished transaction. Stable failures distinguish malformed input, missing
+receiving container, missing importer wiring, duplicate/conflicting identity,
+unresolved value/block/symbol/type, builder failure, and A2 publication failure.
+
+Diagnostics order by import phase, module ordinal, function, block,
+instruction, and field. They retain the shared verifier/builder cause without
+flattening it. No exception path returns a partial module, successful function
+subset, draft, map, capability, or cached proof.
+
+## Analysis and Invalidation
+
+A1 publishes no analysis. Predecessors, dominance, liveness, provenance,
+memory effects, call graphs, and publication routes are derived later from a
+published exact revision. Private importer maps die with the transaction and
+cannot be analysis cache keys. Phase B starts with no inherited mutable A1
+analysis state.
+
+## Target and ABI Rules
+
+Raw is target-independent and unallocated. A1 may preserve opaque
+target-authored asm bytes and current requirement tokens without interpreting
+them. It cannot import `target_profile` or `data_layout` as semantic Raw state,
+choose a target, derive layout, classify ABI arguments/results, select register
+classes/opcodes/relocations, assign homes/stack offsets, or prepare MIR.
+
+Genuinely target-independent typed LIR facts remain covered by their own rows;
+their receipt never requires parsing rendered target/layout text.
+
+## Implementation State
+
+The build includes only top-level
+[`lir_to_bir.cpp`](../lir_to_bir.cpp). [`CMakeLists.txt`](../../CMakeLists.txt)
+explicitly excludes every nested `bir/lir_to_bir/*.cpp`; those files and their
+designs do not prove runtime coverage.
+
+The checked-in importer currently proves only a bounded bootstrap:
+
+- it rejects globals, strings, externs, type declarations/layout observations,
+  intrinsic requirement flags, specialization entries, parameters, variadic
+  and non-void functions, stack objects, and hoisted allocas;
+- it admits only `LirInlineAsmOp` ordinary instructions, with generic ordinary
+  input/result edges, original opaque text, clobbers, and side effects;
+- it admits `LirBr`, void `LirRet`, and `LirUnreachable`; it rejects conditional,
+  switch, indirect and non-void return receipt;
+- checked-in core has only `Opcode::InlineAsm`, a small scalar/pointer `Type`
+  set, `JumpTerm`, `CondJumpTerm`, `ReturnTerm`, and `UnreachableTerm`;
+- it publishes through the foundation builder adapter, not the complete
+  private `ModuleDraft -> full A2 Raw gate` route.
+
+Therefore `Implementation-Status: partial` is exact. Unsupported diagnostics
+are useful stable failures but are not positive receiving coverage. Design
+tables above name required owners and rules; they do not claim those containers
+or wiring are checked in.
+
+## Proof Requirements
+
+- mechanically extract `LirInst` and `LirTerminator` alternatives from current
+  `ir.hpp` and require document row order/set equality at exactly 38 and 6;
+- require the exact 18 metadata keys and no duplicated/generic inventory row;
+- require the metadata spine and core-first headings in exact order;
+- resolve every relative Markdown link;
+- inspect build inclusion, top-level importer dispatch, current core schema and
+  shared A2/B1 adjacency without treating design prose as implementation;
+- require neighboring positive and malformed coverage for each row when the
+  deferred implementation consumer executes the contract;
+- reject completion if any valid current row remains unsupported, loses a fact,
+  bypasses the full A2 gate, or lets target/allocation state enter Raw.
+
+## Open Questions
+
+No A1 architecture question authorizes a source-side change. If Step 2, Step 3,
+or the shared-boundary audit finds that memory/core/verifier/phase-B wording
+cannot accept a row exactly, that is a named coordinated documentation seam;
+it must be recorded in `todo.md` and repaired only by an authorized owner.
+
+## Review Checklist
+
+- [x] Metadata spine and core-first ownership/input/output/adjacency order are exact.
+- [x] Mechanical inventory is exactly 38/6/18 in source order with no omitted row.
+- [x] Every row states authority, destination/non-destination, import rule,
+      disposition, A2 rule, stable failure, and positive plus malformed/neighbor proof.
+- [x] LIR remains complete and immutable; no source-gap wording redirects receipt.
+- [x] Inline asm keeps ordinary values and opaque bytes; role/index receipt is the gap.
+- [x] Target/profile/layout, ABI, allocation, MIR and emission remain outside Raw.
+- [x] Build-included bootstrap truth is distinct from build-excluded design.
+- [x] The contract gives one private draft to one full A2 gate; failure publishes nothing.
+- [x] B1 receives only the exact move-only verified `RawBir`.
+- [x] Idea 734 remains deferred and inactive.
