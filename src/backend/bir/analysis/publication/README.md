@@ -62,8 +62,8 @@ Cross-revision preservation requires a registered validator to prove the
 complete fact set unchanged and install a new immutable result under the new
 key; old handles remain stale. No-change reuse requires unchanged revisions.
 
-P04 and later semantic planning may query the exact-revision result but cannot
-delegate mutation, SSA repair, canonical publication, preparation, or
+B4 / P04 and later semantic planning may query the exact-revision result but
+cannot delegate mutation, SSA repair, canonical publication, preparation, or
 allocation decisions to it. A wrong profile, malformed core semantics, stale
 view/dependency, unsupported schema/options, deterministic resource
 exhaustion, or cancellation fails atomically. Failure publishes no partial

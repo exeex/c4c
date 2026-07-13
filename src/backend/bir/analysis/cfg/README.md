@@ -3,9 +3,10 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-CFG analysis is a target-independent function analysis. It derives all edges
-from typed terminators and their ordered successor slots, never mutates BIR,
-and never publishes a second stored graph.
+CFG analysis is a target-independent function analysis available before B3 /
+P03 planning and recomputed from the resulting terminators for B4 / P04 and
+later consumers. It derives all edges from typed terminators and their ordered
+successor slots, never mutates BIR, and never publishes a second stored graph.
 
 ## 1. Exact descriptor and revision key
 

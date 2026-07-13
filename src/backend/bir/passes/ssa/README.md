@@ -3,9 +3,9 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P04` is the `S05` function transformation. It consumes the exact committed
-P03 output and publishes verified canonical SSA without materializing edge
-copies or making allocation decisions.
+`P04` is the `B4` function transformation. It consumes the exact committed B3 /
+P03 output, publishes verified canonical SSA for the B5 / P05 successor, and
+does so without materializing edge copies or making allocation decisions.
 
 ## 1. Exact input and canonical form
 
@@ -70,7 +70,7 @@ The private transaction inventories all dispositions, reserves IDs, applies
 the complete plan, derives its mutation summary, invalidates affected CFG,
 dominance, publication/value-flow, liveness, and SSA analyses, recomputes the
 post-edit checks on the candidate, and passes verifier-on-commit. The pipeline
-publishes the whole function wave once. Success yields one immutable S05
+publishes the whole function wave once. Success yields one immutable B4
 revision with exact edge-key incoming coverage, complete def-use, dominance,
 and no unresolved aliases. A true no-op keeps the revision.
 

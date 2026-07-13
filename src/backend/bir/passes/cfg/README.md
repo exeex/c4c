@@ -3,9 +3,10 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P03` is the `S04` function transformation. It converts the exact committed
-P02 output into one structurally canonical CFG. A block terminator and its
-ordered successor slots are the sole stored source of control-flow edges.
+`P03` is the `B3` function transformation. It converts the exact committed B2 /
+P02 output into one structurally canonical CFG for the B4 / P04 successor. A
+block terminator and its ordered successor slots are the sole stored source of
+control-flow edges.
 Predecessor sets, reachability, traversal order, and dense numbering are
 recomputed analysis facts and are never written into BIR as competing truth.
 
@@ -91,9 +92,9 @@ stable-ID order, reserves deterministic IDs, builds the complete edit plan,
 applies it to the private candidate, derives the authoritative mutation
 summary, and runs CFG plus def-use postconditions and verifier-on-commit.
 
-Success publishes one immutable S04 function revision in which every block has
-one valid terminator, every edge is derivable from a successor slot, every phi
-or block-argument incoming covers the exact live `EdgeKey` multiset, and all
+Success publishes one immutable B3 function revision in which every block has
+one valid terminator, every edge is derivable from a successor slot, every
+explicit `Phi` incoming covers the exact live `EdgeKey` multiset, and all
 split/merge effects are reflected in core def-use. An unchanged invocation
 keeps the revision and proves the no-op condition.
 

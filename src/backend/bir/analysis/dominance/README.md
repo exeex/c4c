@@ -4,7 +4,9 @@ Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
 Dominance is an immutable target-independent function analysis over one exact
-CFG result. It is not a serial pipeline stage and has no mutation authority.
+CFG result, normally consumed by B4 / P04 after B3 / P03 has established the
+applicable CFG. It is not a serial pipeline stage and has no mutation
+authority.
 
 ## 1. Descriptor, dependency, and key
 
@@ -55,6 +57,6 @@ the new key. Existing handles always remain bound to their original revision.
 
 Malformed core def-use/order, a stale view/dependency, wrong profile,
 unsupported schema/options, deterministic resource exhaustion, or cancellation
-fails atomically and publishes no partial result. Consumers such as P04 must
-treat failure as unavailable analysis, never infer dominance from block order,
-names, renderer output, or prior revisions.
+fails atomically and publishes no partial result. Consumers such as B4 / P04
+must treat failure as unavailable analysis, never infer dominance from block
+order, names, renderer output, or prior revisions.
