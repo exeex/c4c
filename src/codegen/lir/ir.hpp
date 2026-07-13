@@ -400,15 +400,41 @@ struct LirInlineAsmInsnRMetadata {
   std::array<std::size_t, 3> operand_indices{};
 };
 
+enum class LirInlineAsmValueRole : std::uint8_t {
+  Input,
+  Output,
+  ReadWrite,
+};
+
+// Constraint-position metadata for an ordinary LIR SSA identity.  This is not
+// a second inline-asm value system: value remains the same LirValueId used by
+// every other instruction, while role and constraint_index describe how that
+// identity participates in this opaque operation.
+struct LirInlineAsmValueBinding {
+  LirValueId value = LirValueId::invalid();
+  LirTypeRef type;
+  LirInlineAsmValueRole role = LirInlineAsmValueRole::Input;
+  std::size_t constraint_index = 0;
+};
+
 struct LirInlineAsmOp {
-  LirOperand result;          // SSA name for result (empty for void asm)
-  LirTypeRef ret_type;        // LLVM return type string (e.g. "void", "i32")
-  std::string asm_text;       // assembly template string
-  std::string constraints;    // constraint string
-  bool side_effects = false;  // sideeffect flag
-  std::string args_str;       // pre-formatted argument string
-  std::vector<std::string> clobbers;
+  // Non-authoritative LLVM compatibility rendering. Semantic consumers must
+  // use original_* and the ordinary_inputs/ordinary_results bindings below.
+  LirOperand result;          // rendered SSA result (empty for void asm)
+  LirTypeRef ret_type;        // rendered LLVM return type
+  std::string asm_text;       // rendered LLVM assembly template
+  std::string constraints;    // rendered LLVM constraint string
+  bool side_effects = false;  // semantic side-effect state; also rendered to LLVM
+  std::string args_str;       // pre-formatted LLVM argument string
+
+  // Semantic inline-asm authority. Text and clobbers remain opaque and
+  // ordered; ordinary SSA identities carry all use/definition ownership.
+  std::vector<std::string> clobbers;  // semantic ordered clobber names
   std::optional<LirInlineAsmInsnRMetadata> insn_r;
+  std::string original_asm_text;
+  std::string original_constraint_text;
+  std::vector<LirInlineAsmValueBinding> ordinary_inputs;
+  std::vector<LirInlineAsmValueBinding> ordinary_results;
 };
 
 using LirInst = std::variant<

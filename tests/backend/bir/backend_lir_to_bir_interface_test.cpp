@@ -6,6 +6,7 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -226,6 +227,103 @@ void test_generic_inline_asm_ssa_edges() {
          "read/write asm must keep incoming use and produced result distinct");
 }
 
+void test_lir_inline_asm_structured_value_contract() {
+  static_assert(std::is_same_v<
+                decltype(lir::LirInlineAsmValueBinding::value),
+                lir::LirValueId>);
+  const auto binding = [](std::uint32_t value, std::string type,
+                          lir::LirInlineAsmValueRole role,
+                          std::size_t constraint_index) {
+    return lir::LirInlineAsmValueBinding{
+        lir::LirValueId{value}, lir::LirTypeRef(std::move(type)), role,
+        constraint_index};
+  };
+  const auto verify_op = [](lir::LirInlineAsmOp op) {
+    lir::LirModule module;
+    auto block = return_block(0, "entry");
+    block.insts.push_back(std::move(op));
+    auto function =
+        void_definition("structured_lir_asm", {std::move(block)});
+    function.signature_text = "define void @structured_lir_asm()";
+    module.functions.push_back(std::move(function));
+    lir::verify_module(module);
+  };
+  const auto expect_rejected = [&](lir::LirInlineAsmOp op,
+                                   const std::string& message) {
+    try {
+      verify_op(std::move(op));
+    } catch (const lir::LirVerifyError&) {
+      return;
+    }
+    fail(message);
+  };
+
+  auto input = void_inline_asm("llvm input rendering", "r");
+  input.original_asm_text = "opaque input %0";
+  input.original_constraint_text = "r";
+  input.ordinary_inputs = {
+      binding(10, "i64", lir::LirInlineAsmValueRole::Input, 0)};
+  verify_op(input);
+  expect(input.original_asm_text == "opaque input %0" &&
+             input.asm_text == "llvm input rendering" &&
+             input.side_effects &&
+             input.clobbers == std::vector<std::string>({"memory", "cc"}),
+         "semantic text, ordered clobbers, and side effects must remain "
+         "distinct from LLVM compatibility rendering");
+
+  auto output = void_inline_asm("llvm output rendering", "=r");
+  output.original_asm_text = "opaque output %0";
+  output.original_constraint_text = "=r";
+  output.ordinary_results = {
+      binding(11, "i64", lir::LirInlineAsmValueRole::Output, 0)};
+  verify_op(output);
+
+  auto read_write = void_inline_asm("llvm read/write rendering", "+r,r");
+  read_write.original_asm_text = "opaque read/write %0, %1";
+  read_write.original_constraint_text = "+r,r";
+  read_write.ordinary_inputs = {
+      binding(20, "i64", lir::LirInlineAsmValueRole::ReadWrite, 0),
+      binding(22, "i64", lir::LirInlineAsmValueRole::Input, 1)};
+  read_write.ordinary_results = {
+      binding(21, "i64", lir::LirInlineAsmValueRole::ReadWrite, 0)};
+  verify_op(read_write);
+  expect(read_write.ordinary_inputs[0].value.value !=
+             read_write.ordinary_results[0].value.value,
+         "read/write LIR asm must use distinct ordinary input/result IDs");
+
+  auto invalid_identity = input;
+  invalid_identity.ordinary_inputs[0].value = lir::LirValueId::invalid();
+  expect_rejected(std::move(invalid_identity),
+                  "invalid ordinary input identity must be rejected");
+
+  auto invalid_type = output;
+  invalid_type.ordinary_results[0].type = lir::LirTypeRef("void");
+  expect_rejected(std::move(invalid_type),
+                  "void structured result type must be rejected");
+
+  auto invalid_role = input;
+  invalid_role.ordinary_inputs[0].role = lir::LirInlineAsmValueRole::Output;
+  expect_rejected(std::move(invalid_role),
+                  "output role in the ordered input list must be rejected");
+
+  auto invalid_order = read_write;
+  invalid_order.ordinary_inputs[0].constraint_index = 1;
+  invalid_order.ordinary_inputs[1].constraint_index = 0;
+  expect_rejected(std::move(invalid_order),
+                  "structured bindings outside constraint order must be rejected");
+
+  auto reused_identity = read_write;
+  reused_identity.ordinary_results[0].value =
+      reused_identity.ordinary_inputs[0].value;
+  expect_rejected(std::move(reused_identity),
+                  "read/write input/result identity reuse must be rejected");
+
+  auto mismatched_read_write_type = read_write;
+  mismatched_read_write_type.ordinary_results[0].type = lir::LirTypeRef("i32");
+  expect_rejected(std::move(mismatched_read_write_type),
+                  "read/write input/result type mismatch must be rejected");
+}
+
 void test_structured_rejection() {
   lir::LirModule module;
   module.globals.push_back(lir::LirGlobal{});
@@ -258,6 +356,7 @@ void test_inline_asm_shape_rejection() {
 int main() {
   test_supported_import_and_views();
   test_generic_inline_asm_ssa_edges();
+  test_lir_inline_asm_structured_value_contract();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
   return 0;

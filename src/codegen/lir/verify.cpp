@@ -35,6 +35,11 @@ std::size_t count_inline_asm_constraints(std::string_view constraints) {
   return count;
 }
 
+bool same_inline_asm_type(const LirTypeRef& lhs, const LirTypeRef& rhs) {
+  return lhs.kind() == rhs.kind() && lhs.str() == rhs.str() &&
+         lhs.struct_name_id() == rhs.struct_name_id();
+}
+
 bool operand_kind_allowed(LirOperandKind kind,
                           std::initializer_list<LirOperandKind> allowed_kinds) {
   for (const auto allowed : allowed_kinds) {
@@ -551,6 +556,99 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     if (!op->result.empty() && op->ret_type == "void") {
       fail_verify("LirInlineAsmOp.ret_type",
                   "void inline asm must not carry a result operand");
+    }
+
+    const std::size_t semantic_constraint_count =
+        count_inline_asm_constraints(op->original_constraint_text);
+    if ((!op->ordinary_inputs.empty() || !op->ordinary_results.empty()) &&
+        semantic_constraint_count == 0) {
+      fail_verify("LirInlineAsmOp.original_constraint_text",
+                  "structured values require original semantic constraints");
+    }
+
+    const auto verify_bindings =
+        [&](const std::vector<LirInlineAsmValueBinding>& bindings,
+            std::string_view field, LirInlineAsmValueRole ordinary_role) {
+          std::optional<std::size_t> previous_constraint;
+          for (std::size_t index = 0; index < bindings.size(); ++index) {
+            const auto& binding = bindings[index];
+            const std::string item_field =
+                std::string(field) + "[" + std::to_string(index) + "]";
+            if (!binding.value.valid()) {
+              fail_verify(item_field + ".value",
+                          "must carry a valid ordinary LirValueId");
+            }
+            require_module_type_ref(mod, binding.type, item_field + ".type");
+            if (binding.role != ordinary_role &&
+                binding.role != LirInlineAsmValueRole::ReadWrite) {
+              fail_verify(item_field + ".role",
+                          "does not match the binding list role");
+            }
+            if (binding.constraint_index >= semantic_constraint_count) {
+              fail_verify(item_field + ".constraint_index",
+                          "is outside the original constraint list");
+            }
+            if (previous_constraint &&
+                binding.constraint_index <= *previous_constraint) {
+              fail_verify(item_field + ".constraint_index",
+                          "bindings must follow strict constraint order");
+            }
+            previous_constraint = binding.constraint_index;
+          }
+        };
+    verify_bindings(op->ordinary_inputs, "LirInlineAsmOp.ordinary_inputs",
+                    LirInlineAsmValueRole::Input);
+    verify_bindings(op->ordinary_results, "LirInlineAsmOp.ordinary_results",
+                    LirInlineAsmValueRole::Output);
+
+    for (std::size_t result_index = 0;
+         result_index < op->ordinary_results.size(); ++result_index) {
+      const auto& result = op->ordinary_results[result_index];
+      for (std::size_t earlier = 0; earlier < result_index; ++earlier) {
+        if (op->ordinary_results[earlier].value.value == result.value.value) {
+          fail_verify("LirInlineAsmOp.ordinary_results",
+                      "result identities must be unique");
+        }
+      }
+
+      const LirInlineAsmValueBinding* matching_input = nullptr;
+      for (const auto& input : op->ordinary_inputs) {
+        if (input.value.value == result.value.value) {
+          fail_verify("LirInlineAsmOp.ordinary_results",
+                      "a produced result must be distinct from every input use");
+        }
+        if (input.constraint_index == result.constraint_index) {
+          matching_input = &input;
+        }
+      }
+
+      if (result.role == LirInlineAsmValueRole::ReadWrite) {
+        if (!matching_input ||
+            matching_input->role != LirInlineAsmValueRole::ReadWrite) {
+          fail_verify("LirInlineAsmOp.ordinary_results",
+                      "a read/write result requires a matching read/write input");
+        }
+        if (!same_inline_asm_type(matching_input->type, result.type)) {
+          fail_verify("LirInlineAsmOp.ordinary_results",
+                      "a read/write input and result must have the same type");
+        }
+      } else if (matching_input) {
+        fail_verify("LirInlineAsmOp.ordinary_results",
+                    "only read/write bindings may share a constraint position");
+      }
+    }
+    for (const auto& input : op->ordinary_inputs) {
+      if (input.role != LirInlineAsmValueRole::ReadWrite) continue;
+      const auto match = std::find_if(
+          op->ordinary_results.begin(), op->ordinary_results.end(),
+          [&](const LirInlineAsmValueBinding& result) {
+            return result.constraint_index == input.constraint_index &&
+                   result.role == LirInlineAsmValueRole::ReadWrite;
+          });
+      if (match == op->ordinary_results.end()) {
+        fail_verify("LirInlineAsmOp.ordinary_inputs",
+                    "a read/write input requires a matching read/write result");
+      }
     }
     if (op->insn_r) {
       const std::size_t operand_count =
