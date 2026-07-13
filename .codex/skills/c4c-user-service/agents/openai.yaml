@@ -1,4 +1,4 @@
 interface:
   display_name: "C4C User Service"
-  short_description: "Handle interactive c4c questions without autonomous execution"
-  default_prompt: "Use $c4c-user-service to answer my current c4c question without advancing the active plan unless I explicitly request execution."
+  short_description: "Discuss c4c requests and shape approved ideas interactively"
+  default_prompt: "Use $c4c-user-service to discuss my request, shape any new work as a draft idea for my approval, and leave execution to scripts/run_agent.sh."

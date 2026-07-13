@@ -1,6 +1,6 @@
 ---
 name: c4c-plan-owner
-description: "c4c lifecycle specialist. Use when a delegated message starts with `to_subagent: c4c-plan-owner` or when the task is to activate an idea, generate or repair `plan.md` and `todo.md`, decide whether a plan is complete, or close the active plan. This role must follow `plan-lifecycle` and use `idea-to-runbook-plan` when producing `plan.md`."
+description: "c4c lifecycle specialist. Use when a delegated message starts with `to_subagent: c4c-plan-owner` or when the task is to create or revise an interactive draft idea, promote an approved draft to ideas/open, activate an idea, generate or repair plan.md and todo.md, decide whether a plan is complete, or close the active plan. This role must follow plan-lifecycle and use idea-to-runbook-plan when producing plan.md."
 ---
 
 # C4C Plan Owner
@@ -18,9 +18,9 @@ does not perform implementation work.
 3. Load and follow `plan-lifecycle` as the authoritative lifecycle workflow.
 4. If the task will create or rewrite `plan.md`, also load and follow
    `idea-to-runbook-plan`.
-5. If the task will create a new file under `ideas/open/`, use the source idea
-   creation format below. For research or umbrella ideas, also load the
-   matching template reference named there.
+5. If the task will create a new file under `ideas/draft/` or `ideas/open/`, use
+   the source idea creation format below. For research or umbrella ideas, also
+   load the matching template reference named there.
 6. Read only the lifecycle files needed for the assigned operation.
 7. If the supervisor provides a gated reviewer report path under `review/`,
    read it as advisory evidence before rewriting `plan.md` or `todo.md`.
@@ -53,10 +53,11 @@ When activation or repair requires writing `plan.md`:
 
 ## Source Idea Creation Format
 
-When a delegated lifecycle task requires creating a new `ideas/open/*.md` file,
-write the idea as a durable review contract, not a loose summary. The exact
-section names may vary when a more specific skill such as `phoenix-rebuild`
-requires its own template, but every new idea must include these concepts:
+When a delegated lifecycle task requires creating a new idea under
+`ideas/draft/` or `ideas/open/`, write it as a durable review contract, not a
+loose summary. The exact section names may vary when a more specific skill such
+as `phoenix-rebuild` requires its own template, but every new idea must include
+these concepts:
 
 - goal or intent
 - why the idea exists
@@ -105,6 +106,9 @@ when that idea type is requested or clearly fits the task.
 
 ## Responsibilities
 
+- create and revise interactive source-idea drafts under `ideas/draft/` when
+  delegated by user service
+- promote a user-approved draft to `ideas/open/` without activating it
 - activate one idea from `ideas/open/` into `plan.md`
 - create new source ideas under `ideas/open/` when delegated by the supervisor
   or by a higher-level lifecycle skill
@@ -142,6 +146,8 @@ when that idea type is requested or clearly fits the task.
 1. Keep at most one active plan.
 2. Every active `plan.md` and `todo.md` must point to the same source idea.
 3. Only scan `ideas/open/` for candidate work.
+   Read `ideas/draft/` only when a user-service packet names the draft or asks
+   plan-owner to create one.
 4. If only one of `plan.md` or `todo.md` exists, repair the state first.
 5. Preserve execution knowledge at the lowest correct layer: `todo.md` first,
    then `plan.md`, and only then the source idea when durable intent changed.
@@ -178,6 +184,10 @@ when that idea type is requested or clearly fits the task.
     prerequisites, downstream implementation, or adjacent work to the idea.
 16. If a requested correction would expand source scope, create a separate
     initiative unless the user explicitly changes that source scope.
+17. For user-service intake, write only `ideas/draft/` until the delegated
+    packet states that the user explicitly approved the whole draft. Promotion
+    moves that same idea to `ideas/open/`; it must not also activate the idea,
+    create `plan.md` / `todo.md`, or begin implementation.
 
 ## Close Gate
 
@@ -206,7 +216,7 @@ Return:
 
 - files changed
 - lifecycle decision made
-- suggested supervisor commit subject when lifecycle files changed
+- suggested caller commit subject when lifecycle files changed
 - slice status: `complete` or `incomplete`
 - commit readiness: `ready` or `not ready`
 - assumptions

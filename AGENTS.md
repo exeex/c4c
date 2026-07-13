@@ -30,9 +30,14 @@ This repo uses one active-plan lifecycle.
 - User service answers read-only interactive diagnosis directly, including git
   history, status, scope comparison, and drift triage. Specialist existence
   does not require delegation for read-only questions.
-- Transfer an extension request to the supervisor workflow only when the user
-  explicitly requests mutation, implementation, lifecycle work, validation,
-  commit creation, or continued autonomous execution.
+- Treat a new implementation or design request as interactive idea intake.
+  User service discusses scope, delegates plan-owner to maintain
+  `ideas/draft/`, and requires explicit approval before promotion to
+  `ideas/open/`.
+- After approval, user service commits only the open idea and directs the user
+  to `./scripts/run_agent.sh`. It does not activate or implement the idea.
+- Transfer to supervisor inside the extension only when the user explicitly
+  rejects the idea/run-agent workflow and asks to execute there immediately.
 - The user's explicit source intent or scope overrides idea, plan, todo,
   reviewer, and historical agent artifacts. Treat conflicts as stale artifacts.
 - Agreement on architecture changes only that decision. It does not authorize
@@ -45,18 +50,21 @@ This repo uses one active-plan lifecycle.
 
 Use the exact first line `to_subagent: <role>` for delegated work:
 
-- `c4c-plan-owner`: activate, repair, switch, deactivate, or close lifecycle
-  state; create or edit source ideas and runbooks. It does not edit code,
-  perform broad validation, or commit.
+- `c4c-plan-owner`: create or revise draft ideas, promote user-approved drafts,
+  activate, repair, switch, deactivate, or close lifecycle state, and edit
+  source ideas and runbooks. It does not edit code, perform broad validation,
+  or commit.
 - `c4c-executor`: implement one bounded packet, update its assigned `todo.md`
   section, and run the exact delegated proof. It does not choose lifecycle,
   broader validation, or commits.
 - `c4c-reviewer`: provide an independent read-only route review when one of the
   reviewer gates below applies. It writes only transient `review/` artifacts.
 - `c4c-user-service`: default Codex extension role for interactive questions.
-  It does not autonomously execute lifecycle state.
+  It shapes new requirements into user-approved open ideas, then stops before
+  activation or implementation.
 - `c4c-supervisor`: scripted `run_agent.sh` role and the execution workflow for
-  an explicit mutation request transferred by user service.
+  a user request that explicitly rejects idea intake and asks the extension to
+  execute immediately.
 
 The supervisor owns orchestration, anti-drift decisions, proving-command
 selection, canonical regression logs, broader validation, and final commits.
@@ -95,6 +103,8 @@ needed.
 ## Commit Rules
 
 - The supervisor creates every final commit, including lifecycle-only commits.
+- Exception: user service may commit one plan-owner-produced, explicitly
+  user-approved idea-intake slice without activating it.
 - Commit only coherent, validated slices and preserve unrelated user changes.
 - Prefer code plus executor-updated `todo.md` in one routine execution commit.
 - Do not commit overfit work. Do not leave an accepted coherent slice pending

@@ -1,6 +1,6 @@
 ---
 name: c4c-supervisor
-description: Scripted and execution c4c orchestrator. Use when `scripts/run_agent.sh` supplies `C4C_RUN_MODE=scripted`, or when c4c-user-service transfers an explicit mutation, implementation, lifecycle, validation, commit, or autonomous-execution request. Do not use as the default Codex extension conversation role. Reviewer use is off by default.
+description: Scripted and execution c4c orchestrator. Use when scripts/run_agent.sh supplies C4C_RUN_MODE=scripted, or when a user explicitly rejects the user-service idea/run-agent workflow and requests immediate execution inside the Codex extension. Do not use for ordinary extension conversation or interactive idea shaping. Reviewer use is off by default.
 ---
 
 # C4C Supervisor
@@ -10,8 +10,8 @@ Stay lightweight: inspect, decide, delegate mutations, validate, and commit.
 ## Start
 
 1. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
-2. Confirm either the scripted marker is present or user service transferred an
-   explicit execution request.
+2. Confirm either the scripted marker is present or the user explicitly
+   rejected idea intake and requested immediate extension execution.
 3. Run `git status --short`.
 4. Inspect `plan.md`, `todo.md`, and `ideas/open/`; if active, read the linked
    source idea. Use `scripts/plan_review_state.py show` only when mirrored todo
@@ -97,7 +97,9 @@ processes, then use `scripts/plan_review_state.py accept-baseline` or
 
 ## Commit
 
-- The supervisor alone commits. Prefer code plus the matching `todo.md` update.
+- Except for a user-service commit containing only an explicitly approved idea
+  intake, the supervisor alone commits. Prefer code plus the matching `todo.md`
+  update.
 - Stage only the coherent slice; never sweep unrelated changes.
 - Let hooks supply lifecycle scope tags for plan/todo/open-idea changes.
 - Use a subject that states the concrete slice action.

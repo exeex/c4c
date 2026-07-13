@@ -1,6 +1,6 @@
 ---
 name: plan-lifecycle
-description: Manage the c4c planning lifecycle across ideas/draft/*.md, ideas/open/*.md, ideas/closed/*.md, plan.md, and todo.md. Use when activating a plan from an open idea, executing an active plan, deactivating or switching plans, or closing a completed idea.
+description: Manage the c4c planning lifecycle across ideas/draft/*.md, ideas/open/*.md, ideas/closed/*.md, plan.md, and todo.md. Use when interactively drafting and approving a source idea, activating a plan from an open idea, executing an active plan, deactivating or switching plans, or closing a completed idea.
 ---
 
 # Plan Lifecycle
@@ -17,6 +17,7 @@ The repo has five planning locations:
 
 Think of them as layered artifacts:
 
+- `ideas/draft/*.md` is interactive requirement shaping, not executable work
 - `ideas/open/*.md` is durable source intent
 - `plan.md` is the active transcription of that intent into execution order
 - `todo.md` is the mutable execution-state scratchpad
@@ -25,10 +26,11 @@ Think of them as layered artifacts:
 
 The standard workflow is:
 
-1. human discussion produces or updates one `ideas/open/*.md`
-2. one idea is activated into [`plan.md`](/workspaces/c4c/plan.md)
-3. the agent implements from [`plan.md`](/workspaces/c4c/plan.md) and tracks progress in [`todo.md`](/workspaces/c4c/todo.md)
-4. when the source idea itself is complete, close both the active runbook and
+1. user-service discussion shapes one `ideas/draft/*.md` through plan-owner
+2. explicit user approval promotes that draft to `ideas/open/*.md`
+3. a later scripted run activates one open idea into [`plan.md`](/workspaces/c4c/plan.md)
+4. the agent implements from [`plan.md`](/workspaces/c4c/plan.md) and tracks progress in [`todo.md`](/workspaces/c4c/todo.md)
+5. when the source idea itself is complete, close both the active runbook and
    the linked idea
 
 The active runbook can be exhausted, blocked, or retired without the linked
@@ -123,7 +125,7 @@ lines when a review or baseline limit has actually been hit. The review limit
 itself should be taken from local script-managed state rather than hard-coded
 in skill text.
 
-### `ideas/open/*.md` and `ideas/closed/*.md`
+### `ideas/draft/*.md`, `ideas/open/*.md`, and `ideas/closed/*.md`
 
 When touched as part of lifecycle work, path already carries most status:
 
@@ -136,6 +138,25 @@ When touched as part of lifecycle work, path already carries most status:
 Do not force one exact header layout inside idea files, but completion notes and leftover issues should be discoverable.
 
 ## Operations
+
+### Draft Idea Interactively
+
+Use when user service is shaping a new requirement.
+
+1. Create or revise one idea under `ideas/draft/` through plan-owner.
+2. Preserve explicit goal, scope, non-goals, acceptance evidence, and open
+   choices; do not invent downstream work.
+3. Keep revising the draft while user approval is incomplete.
+4. Do not create `plan.md`, `todo.md`, implementation, or proof artifacts.
+
+### Promote Approved Draft
+
+Use only after user service states that the user approved the whole draft.
+
+1. Move the approved idea from `ideas/draft/` to `ideas/open/` without changing
+   its agreed scope.
+2. Do not activate it or create `plan.md` / `todo.md` in the same operation.
+3. Leave execution for a later `./scripts/run_agent.sh` run.
 
 ### Activate Plan
 
@@ -247,3 +268,5 @@ Before finishing any lifecycle operation, check:
 - Can it tell whether the current plan is active, parked, or closed?
 - If switched, was knowledge preserved back into the old idea?
 - Did you avoid promoting `todo.md` or `plan.md` churn into the source idea?
+- For interactive intake, did the user approve the whole draft before it moved
+  to `ideas/open/`?

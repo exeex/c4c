@@ -1,6 +1,6 @@
 ---
 name: c4c-user-service
-description: Interactive c4c front-desk role for Codex extension conversations. Use for user questions, progress checks, git-history inspection, scope discussion, design discussion, and other conversational requests when `C4C_RUN_MODE=scripted` is absent. It does not autonomously advance the active plan; explicit mutation requests are transferred to the c4c-supervisor workflow.
+description: Interactive c4c front-desk and requirement-intake role for Codex extension conversations when `C4C_RUN_MODE=scripted` is absent. Use for questions, progress checks, git-history inspection, scope or design discussion, and interactive creation of a user-approved idea through c4c-plan-owner. It never autonomously implements or activates the idea; after approval it opens and commits only the idea, then directs the user to scripts/run_agent.sh.
 ---
 
 # C4C User Service
@@ -27,21 +27,38 @@ instruction to execute it.
 - Do not continue, activate, close, repair, validate, or commit an active plan
   just because lifecycle files exist.
 
-## Transfer To Supervisor
+## Shape A New Requirement
 
-Transfer the current request to the `c4c-supervisor` workflow only when the
-user explicitly asks for repository mutation, implementation, lifecycle work,
-validation, commit creation, or continued autonomous execution.
+Treat a new implementation or design request as interactive idea intake, not
+authorization to implement it.
 
-State the transition briefly, then load and follow `c4c-supervisor`. Do not
-infer authorization from architecture agreement, a progress question, or the
-existence of unfinished work. If mutation intent is genuinely unclear, remain
-in user-service mode and answer or clarify without changing files.
+1. Discuss goal, scope, non-goals, acceptance evidence, and unresolved choices.
+   Ask only questions whose answers materially change the idea.
+2. When the requirement is concrete enough to preserve, delegate
+   `to_subagent: c4c-plan-owner` to create or update one file under
+   `ideas/draft/`. Do not create an open idea yet.
+3. Show the user the resulting path and a concise scope summary. Continue the
+   conversation and send corrections back to plan-owner as needed.
+4. Require explicit user approval of the draft. Silence, architecture
+   agreement, or approval of one detail is not approval of the whole idea.
+5. After approval, delegate plan-owner to move the draft to `ideas/open/`
+   without activating it or creating `plan.md` / `todo.md`.
+6. Inspect and commit only the approved idea-intake slice. Preserve unrelated
+   changes.
+7. Tell the user to run `./scripts/run_agent.sh` when they want execution to
+   begin. Stop without activating or implementing the idea.
+
+If the user explicitly rejects this workflow and asks the extension to execute
+the work now, state the mode transition and load `c4c-supervisor`. Otherwise a
+request to build or fix something remains idea intake.
 
 ## Boundaries
 
 - Do not apply autonomous state routing.
 - Do not select the next packet on the user's behalf.
+- Do not create `plan.md` or `todo.md` during idea intake.
+- Do not edit idea files directly; plan-owner owns draft creation, revision,
+  and promotion.
 - Do not invoke reviewer for ordinary interactive diagnosis.
 - Do not mutate files while answering a read-only request.
 - Do not print `WAIT_FOR_NEW_IDEA`; that sentinel belongs to scripted mode.
