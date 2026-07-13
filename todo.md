@@ -8,49 +8,37 @@ Current Step Title: Migrate the import spine and CFG publication
 
 ## Just Finished
 
-- Step 5 consumer-seam packet replaced the prealloc-era backend facade with an
-  LIR-reference-only `BackendModuleInput` and retained only the active caller
-  contracts: options, dump-stage names, object result, `emit_module`,
-  `emit_module_object`, and `dump_module`.
-- Every backend operation now imports through `lower_lir_to_raw_bir()` first.
-  Semantic-BIR requests render deterministic function/block order, link names,
-  declaration state, and terminators from read-only `RawBir` views; importer
-  failures preserve structured code/function/block/detail diagnostics.
-- BIR-to-MIR, PreparedBir, MIR summary/trace, and object emission now reject
-  explicitly instead of falling back to LLVM text, empty success, or legacy
-  target codegen.
-- `c4c_backend` now compiles only `backend.cpp` plus the active new-BIR sources;
-  no legacy, prealloc, MIR, or quarantined importer translation unit remains in
-  its compile database entries.
+- Step 5 active-graph cleanup removed the legacy RISC-V `c4c-as` executable
+  from the root build and removed every direct `c4c-as` consumer registered by
+  backend tests: the assembler parse suite, objdump extraction suite, RV64
+  roundtrip contract, and RV64 c-testsuite roundtrip scan target.
+- The assembler and roundtrip sources remain untouched as legacy reference
+  material; no legacy, prealloc, or MIR source was restored to active
+  compilation.
 
 ## Suggested Next
 
-- Continue Step 5 by choosing the next bounded semantic importer family needed
-  before a new BIR-to-MIR seam can consume more than the bootstrap CFG slice.
+- Quarantine the remaining prealloc/MIR/RV64 backend test registrations from
+  the active CTest/build graph, retaining only tests for the new LIR-to-BIR and
+  BIR-to-MIR interface boundaries as those interface tests become available.
 
 ## Watchouts
 
-- The full default build now reaches an external quarantined caller:
-  `src/apps/c4c-as.cpp` directly includes
-  `backend/mir/riscv/codegen/object_emission.hpp`, which in turn includes the
-  removed prealloc module header. That app seam is outside this packet; do not
-  restore the old sources to satisfy it.
-- Route-debug focus options remain only for source compatibility and have no
-  effect until a new MIR route exists. Later dump-stage enum values likewise
-  remain compile-time names but deliberately fail at runtime.
+- `ctest -N` still enumerates many backend tests whose identities and expected
+  behavior belong to the quarantined prealloc/MIR/RV64 implementation. They do
+  not depend on `c4c-as`, so removing them was outside this packet, but they are
+  the next active-test-graph cleanup boundary.
+- The delegated proof did not include a full default build, so this packet does
+  not claim that no later test-binary compile blocker exists.
 
 ## Proof
 
-- A packet-local C++17 runtime executable linked against `c4c_backend` and
-  passed semantic rendering for declaration, void return, and branch;
-  structured importer error propagation; explicit normal emit failure;
-  unsupported PreparedBir/MIR dumps; and diagnostic-only empty object results.
-- `cmake --build --preset default -j 2 --target c4c_backend` and
-  `cmake --build --preset default -j 2 --target c4cll` passed.
-- `cmake --build --preset default -j 2` reached the next external app seam and
-  failed at the direct RISC-V MIR include in `src/apps/c4c-as.cpp`.
-- `jq` inspection of compile-database `file` entries confirmed no backend
-  legacy, prealloc, MIR, or quarantined importer translation units;
-  `git diff --check` passed. Temporary proof source/binary were removed.
-- The delegated do-not-touch set excludes logs, so this proof did not rewrite
-  `test_after.log`.
+- `cmake --preset default` passed.
+- `cmake --build --preset default -j 2 --target c4c_backend c4cll c4c-objdump`
+  passed.
+- `ctest --test-dir build -N` plus generated `CTestTestfile.cmake` inspection
+  confirmed no registered test identity or command depends on `c4c-as` or the
+  removed RV64 roundtrip registrations.
+- `cmake --build --preset default --target help | rg
+  '(^|/)c4c-as($|:)'` produced no match, confirming the target is absent.
+- Complete delegated proof output is preserved in `test_after.log`.

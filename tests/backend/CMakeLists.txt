@@ -407,69 +407,6 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object inline_asm vrm insn_d cli
 )
 
-add_test(
-  NAME backend_c4c_as_parse_suite
-  COMMAND "${CMAKE_COMMAND}"
-          -DC4C_AS=$<TARGET_FILE:c4c-as>
-          -DC4CLL=$<TARGET_FILE:c4cll>
-          -DSOURCE_CASE=${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c
-          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/c4c_as_suite
-          -DCASE_TIMEOUT_SEC=10
-          -P "${BACKEND_TEST_CMAKE_ROOT}/run_c4c_as_parse_suite.cmake"
-)
-c4c_set_backend_test_labels(
-  backend_c4c_as_parse_suite
-  riscv64 asm cli c4c_as parser
-)
-
-add_test(
-  NAME backend_c4c_objdump_extract_suite
-  COMMAND "${CMAKE_COMMAND}"
-          -DC4C_OBJDUMP=$<TARGET_FILE:c4c-objdump>
-          -DC4C_AS=$<TARGET_FILE:c4c-as>
-          -DC4CLL=$<TARGET_FILE:c4cll>
-          -DSOURCE_CASE=${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c
-          -DAARCH64_SOURCE_CASE=${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c
-          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/c4c_objdump_suite
-          -DCASE_TIMEOUT_SEC=10
-          -P "${BACKEND_TEST_CMAKE_ROOT}/run_c4c_objdump_extract_suite.cmake"
-)
-c4c_set_backend_test_labels(
-  backend_c4c_objdump_extract_suite
-  riscv64 objdump cli c4c_objdump extractor
-)
-
-add_test(
-  NAME backend_rv64_roundtrip_contract
-  COMMAND "${CMAKE_COMMAND}"
-          -DC4C_AS=$<TARGET_FILE:c4c-as>
-          -DC4C_OBJDUMP=$<TARGET_FILE:c4c-objdump>
-          -DCORPUS=${BACKEND_TEST_ROOT}/rv64/rv64i_ev64_roundtrip_corpus.s
-          -DCONTRACT=${BACKEND_TEST_ROOT}/rv64/rv64i_ev64_roundtrip_contract.md
-          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/rv64_roundtrip_contract
-          -DCASE_TIMEOUT_SEC=10
-          -P "${BACKEND_TEST_CMAKE_ROOT}/run_rv64_roundtrip_contract.cmake"
-)
-c4c_set_backend_test_labels(
-  backend_rv64_roundtrip_contract
-  riscv64 rv64 asm objdump cli c4c_as c4c_objdump roundtrip contract
-)
-
-add_custom_target(rv64_c_testsuite_asm_roundtrip_scan
-  COMMAND "${CMAKE_COMMAND}"
-          -DC4CLL=$<TARGET_FILE:c4cll>
-          -DC4C_AS=$<TARGET_FILE:c4c-as>
-          -DC4C_OBJDUMP=$<TARGET_FILE:c4c-objdump>
-          -DROOT=${PROJECT_SOURCE_DIR}
-          -DC_TESTSUITE_ROOT=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite
-          -DALLOWLIST=${BACKEND_TEST_ROOT}/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt
-          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/rv64_c_testsuite_asm_roundtrip_scan
-          -DCASE_TIMEOUT_SEC=10
-          -P "${BACKEND_TEST_CMAKE_ROOT}/run_rv64_c_testsuite_asm_roundtrip_scan.cmake"
-  DEPENDS c4cll c4c-as c4c-objdump
-  VERBATIM
-)
-
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_vrm_insn_d_source_asm
   SRC "${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c"
