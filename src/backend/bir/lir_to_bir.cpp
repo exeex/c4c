@@ -23,6 +23,7 @@ using codegen::lir::LirConstInt;
 using codegen::lir::LirExtAttr;
 using codegen::lir::LirExternDecl;
 using codegen::lir::LirFunction;
+using codegen::lir::LirGlobal;
 using codegen::lir::LirIndirectBr;
 using codegen::lir::LirInlineAsmOp;
 using codegen::lir::LirInlineAsmValueBinding;
@@ -210,6 +211,48 @@ std::optional<ReturnExtension> lower_return_extension(
   return std::nullopt;
 }
 
+struct GlobalLinkageFacts {
+  bool is_weak = false;
+  SymbolVisibility visibility = SymbolVisibility::Default;
+};
+
+std::optional<GlobalLinkageFacts> decode_global_linkage(
+    const LirGlobal& global) {
+  std::string_view expected_prefix;
+  bool is_weak = false;
+  if (global.is_extern_decl) {
+    if (global.is_internal) return std::nullopt;
+    if (global.linkage_vis.rfind("extern_weak ", 0) == 0) {
+      expected_prefix = "extern_weak ";
+      is_weak = true;
+    } else {
+      expected_prefix = "external ";
+    }
+  } else if (global.is_internal) {
+    expected_prefix = "internal ";
+  } else if (global.linkage_vis.rfind("weak ", 0) == 0) {
+    expected_prefix = "weak ";
+    is_weak = true;
+  }
+
+  if (global.linkage_vis.size() < expected_prefix.size() ||
+      global.linkage_vis.compare(0, expected_prefix.size(), expected_prefix) !=
+          0)
+    return std::nullopt;
+  const std::string_view suffix(global.linkage_vis.data() + expected_prefix.size(),
+                                global.linkage_vis.size() - expected_prefix.size());
+  SymbolVisibility visibility;
+  if (suffix.empty())
+    visibility = SymbolVisibility::Default;
+  else if (suffix == "hidden ")
+    visibility = SymbolVisibility::Hidden;
+  else if (suffix == "protected ")
+    visibility = SymbolVisibility::Protected;
+  else
+    return std::nullopt;
+  return GlobalLinkageFacts{is_weak, visibility};
+}
+
 bool same_lir_type(const codegen::lir::LirTypeRef& lhs,
                    const codegen::lir::LirTypeRef& rhs) {
   return lhs.kind() == rhs.kind() && lhs.str() == rhs.str() &&
@@ -395,9 +438,13 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global_names.insert(global.name).second)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global name and structured type identity must be present and unique");
+    const auto linkage = decode_global_linkage(global);
+    if (!linkage)
+      return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                        "global linkage and visibility spelling is malformed or contradicts its independent flags");
     const bool const_pointer_producer_row =
         !global.is_extern_decl && !global.is_internal && global.is_const &&
-        global.linkage_vis.empty() && global.qualifier == "global " &&
+        !linkage->is_weak && global.qualifier == "global " &&
         !global.init_text.empty();
     const auto type = lower_lir_type(module, *global.llvm_type_ref);
     const auto source_type = lower_global_compatibility_type(
@@ -412,40 +459,40 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
                         "global structured type names an unresolved declaration");
     const bool coherent_external =
         global.is_extern_decl && !global.is_internal &&
-        global.linkage_vis == "external " && global.qualifier == "global " &&
+        !linkage->is_weak && global.qualifier == "global " &&
         global.init_text.empty() &&
         global.initializer_function_link_name_ids.empty();
     const bool coherent_weak_external =
         global.is_extern_decl && !global.is_internal &&
-        global.linkage_vis == "extern_weak " &&
+        linkage->is_weak &&
         global.qualifier == "global " && global.init_text.empty() &&
         global.initializer_function_link_name_ids.empty();
     const bool coherent_ordinary_definition =
         !global.is_extern_decl && !global.is_internal && !global.is_const &&
-        global.linkage_vis.empty() && global.qualifier == "global " &&
+        !linkage->is_weak && global.qualifier == "global " &&
         !global.init_text.empty();
     const bool coherent_constant_definition =
         !global.is_extern_decl && !global.is_internal && global.is_const &&
-        global.linkage_vis.empty() && global.qualifier == "constant " &&
+        !linkage->is_weak && global.qualifier == "constant " &&
         type->kind != TypeKind::Pointer && !global.init_text.empty();
     const bool coherent_const_pointer_definition =
         const_pointer_producer_row && type->kind == TypeKind::Pointer;
     const bool coherent_internal_ordinary_definition =
         !global.is_extern_decl && global.is_internal && !global.is_const &&
-        global.linkage_vis == "internal " && global.qualifier == "global " &&
+        !linkage->is_weak && global.qualifier == "global " &&
         !global.init_text.empty();
     const bool coherent_internal_constant_definition =
         !global.is_extern_decl && global.is_internal && global.is_const &&
-        global.linkage_vis == "internal " &&
-        global.qualifier == "constant " && type->kind != TypeKind::Pointer &&
+        !linkage->is_weak && global.qualifier == "constant " &&
+        type->kind != TypeKind::Pointer &&
         !global.init_text.empty();
     const bool coherent_weak_ordinary_definition =
         !global.is_extern_decl && !global.is_internal && !global.is_const &&
-        global.linkage_vis == "weak " && global.qualifier == "global " &&
+        linkage->is_weak && global.qualifier == "global " &&
         !global.init_text.empty();
     const bool coherent_weak_constant_definition =
         !global.is_extern_decl && !global.is_internal && global.is_const &&
-        global.linkage_vis == "weak " && global.qualifier == "constant " &&
+        linkage->is_weak && global.qualifier == "constant " &&
         type->kind != TypeKind::Pointer && !global.init_text.empty();
     if (!coherent_external && !coherent_weak_external &&
         !coherent_ordinary_definition &&
@@ -895,11 +942,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           {}, {}, "import external declaration", added.error()));
   }
   for (const auto& global : module.globals) {
+    const auto linkage = decode_global_linkage(global);
     auto added = builder.add_global_object(
         global.name, *lower_lir_type(module, *global.llvm_type_ref),
         global.align_bytes, global.is_internal,
-        global.linkage_vis == "weak " ||
-            global.linkage_vis == "extern_weak ",
+        linkage->is_weak,
         global.is_const, global.is_extern_decl,
         global.link_name_id == c4c::kInvalidLinkName
             ? std::nullopt
@@ -907,7 +954,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
         global.is_extern_decl
             ? std::nullopt
             : std::optional<std::string>{global.init_text},
-        global.initializer_function_link_name_ids);
+        global.initializer_function_link_name_ids,
+        linkage->visibility);
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import global object", added.error()));

@@ -1467,13 +1467,14 @@ void test_global_object_receipt_and_views() {
   module.globals.push_back(external_global(
       "fallback_global", c4c::kInvalidLinkName, c4c::TB_INT,
       lir::LirTypeRef::integer(32), 4, false));
+  module.globals.back().linkage_vis = "external hidden ";
   module.globals.push_back(external_global(
       "linked_global", linked_name, c4c::TB_DOUBLE,
       lir::LirTypeRef("double"), 8, true));
   auto initialized = external_global(
       "initialized_global", c4c::kInvalidLinkName, c4c::TB_INT,
       lir::LirTypeRef::integer(32), 4, false);
-  initialized.linkage_vis.clear();
+  initialized.linkage_vis = "protected ";
   initialized.is_extern_decl = false;
   initialized.init_text = std::string{"i32 7\n\0tail", 11};
   initialized.initializer_function_link_name_ids = {
@@ -1493,7 +1494,7 @@ void test_global_object_receipt_and_views() {
       "internal_initialized_global", c4c::kInvalidLinkName, c4c::TB_INT,
       lir::LirTypeRef::integer(32), 4, false);
   internal_initialized.is_internal = true;
-  internal_initialized.linkage_vis = "internal ";
+  internal_initialized.linkage_vis = "internal hidden ";
   internal_initialized.is_extern_decl = false;
   internal_initialized.init_text = "i32 19";
   internal_initialized.initializer_function_link_name_ids = {init_fn_b};
@@ -1531,7 +1532,7 @@ void test_global_object_receipt_and_views() {
       "const_pointer_global", pointer_linked_name, c4c::TB_INT,
       lir::LirTypeRef("ptr"), 8, true);
   const_pointer_initialized.type.ptr_level = 1;
-  const_pointer_initialized.linkage_vis.clear();
+  const_pointer_initialized.linkage_vis = "protected ";
   const_pointer_initialized.is_extern_decl = false;
   const_pointer_initialized.init_text = std::string{"ptr @target\0tail", 16};
   const_pointer_initialized.initializer_function_link_name_ids = {
@@ -1540,7 +1541,7 @@ void test_global_object_receipt_and_views() {
   auto weak_external = external_global(
       "weak_external_global", c4c::kInvalidLinkName, c4c::TB_INT,
       lir::LirTypeRef::integer(32), 4, false);
-  weak_external.linkage_vis = "extern_weak ";
+  weak_external.linkage_vis = "extern_weak protected ";
   module.globals.push_back(std::move(weak_external));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
@@ -1569,16 +1570,19 @@ void test_global_object_receipt_and_views() {
              fallback.object_type == bir::Type{bir::TypeKind::I32} &&
              fallback.alignment == 4 && !fallback.is_internal &&
              !fallback.is_weak && !fallback.is_const &&
+             fallback.visibility == bir::SymbolVisibility::Hidden &&
              fallback.is_extern_declaration &&
              std::get<bir::FallbackGlobalName>(fallback.identity).name ==
                  fallback.source_name &&
              linked.source_name == "linked_global" &&
              linked.object_type == bir::Type{bir::TypeKind::F64} &&
              linked.alignment == 8 && linked.is_const &&
+             linked.visibility == bir::SymbolVisibility::Default &&
              std::holds_alternative<bir::LinkNameId>(linked.identity) &&
              !fallback.initializer && !linked.initializer &&
              !definition.is_extern_declaration && definition.initializer &&
              !definition.is_weak &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
              definition.initializer->opaque_payload ==
                  std::string{"i32 7\n\0tail", 11} &&
              constant_definition.object_type ==
@@ -1605,6 +1609,7 @@ void test_global_object_receipt_and_views() {
   expect(internal_definition.object_type == bir::Type{bir::TypeKind::I32} &&
              internal_definition.is_internal && !internal_definition.is_weak &&
              !internal_definition.is_const &&
+             internal_definition.visibility == bir::SymbolVisibility::Hidden &&
              !internal_definition.is_extern_declaration &&
              internal_definition.initializer &&
              internal_definition.initializer->opaque_payload == "i32 19" &&
@@ -1665,6 +1670,8 @@ void test_global_object_receipt_and_views() {
              !const_pointer_definition.is_internal &&
              !const_pointer_definition.is_weak &&
              const_pointer_definition.is_const &&
+             const_pointer_definition.visibility ==
+                 bir::SymbolVisibility::Protected &&
              !const_pointer_definition.is_extern_declaration &&
              std::holds_alternative<bir::LinkNameId>(
                  const_pointer_definition.identity) &&
@@ -1686,6 +1693,8 @@ void test_global_object_receipt_and_views() {
                  bir::Type{bir::TypeKind::I32} &&
              !weak_external_declaration.is_internal &&
              weak_external_declaration.is_weak &&
+             weak_external_declaration.visibility ==
+                 bir::SymbolVisibility::Protected &&
              !weak_external_declaration.is_const &&
              weak_external_declaration.is_extern_declaration &&
              !weak_external_declaration.initializer,
@@ -1730,6 +1739,11 @@ void test_global_object_rejections_and_transactionality() {
     expect(!imported.has_value() &&
                imported.error().code == bir::ImportErrorCode::UnsupportedGlobals,
            message);
+    auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (canonical rollback)");
   };
 
   rejected([](lir::LirModule& m) { m.globals[0].name.clear(); },
@@ -1774,10 +1788,22 @@ void test_global_object_rejections_and_transactionality() {
            "extern-weak declarations with initializers must reject transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].is_extern_decl = false;
-             m.globals[0].linkage_vis = "weak hidden ";
+             m.globals[0].linkage_vis = "weak hidden hidden ";
              m.globals[0].init_text = "i32 0";
            },
-           "visibility-decorated weak definitions must reject transactionally");
+           "duplicated visibility spellings must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].linkage_vis = "external concealed ";
+           },
+           "unknown visibility spellings must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].linkage_vis = "external hidden protected ";
+           },
+           "multiple visibility spellings must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].linkage_vis = "internal protected ";
+           },
+           "visibility cannot conceal linkage contradictions with independent flags");
   rejected([](lir::LirModule& m) { m.globals[0].qualifier = "constant "; },
            "qualifier compatibility conflicts must reject transactionally");
   rejected([](lir::LirModule& m) {
@@ -1976,6 +2002,20 @@ void test_global_object_rejections_and_transactionality() {
              weak_extern_view.is_extern_declaration &&
              !weak_extern_view.is_internal && !weak_extern_view.initializer,
          "typed weak external views must preserve both linkage facts without an initializer");
+
+  bir::ModuleBuilder invalid_visibility_builder;
+  expect(invalid_visibility_builder
+             .add_global_object(
+                 "invalid_visibility", bir::Type{bir::TypeKind::I32}, 4,
+                 false, false, false, true, std::nullopt, std::nullopt, {},
+                 static_cast<bir::SymbolVisibility>(99))
+             .has_value(),
+         "builder should stage closed-enum visibility errors for verifier diagnosis");
+  auto invalid_visibility = std::move(invalid_visibility_builder).publish();
+  expect(!invalid_visibility.has_value() &&
+             invalid_visibility.error().reason ==
+                 bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject unknown typed visibility alternatives");
 
   bir::ModuleBuilder no_partial_builder;
   expect(no_partial_builder.add_link_name(1, "init_target").has_value(),

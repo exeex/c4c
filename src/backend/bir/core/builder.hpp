@@ -183,7 +183,8 @@ class ModuleBuilder {
       bool is_extern_declaration,
       std::optional<c4c::LinkNameId> source_link_name = std::nullopt,
       std::optional<std::string> initializer_payload = std::nullopt,
-      std::vector<c4c::LinkNameId> initializer_function_links = {});
+      std::vector<c4c::LinkNameId> initializer_function_links = {},
+      SymbolVisibility visibility = SymbolVisibility::Default);
   Result<SpecializationId, BuildError> add_specialization(
       std::string spec_key, std::string template_origin,
       std::string mangled_name, c4c::LinkNameId mangled_link_name_id);

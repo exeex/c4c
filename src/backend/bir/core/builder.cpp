@@ -248,7 +248,8 @@ Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
     bool is_extern_declaration,
     std::optional<c4c::LinkNameId> source_link_name,
     std::optional<std::string> initializer_payload,
-    std::vector<c4c::LinkNameId> initializer_function_links) {
+    std::vector<c4c::LinkNameId> initializer_function_links,
+    SymbolVisibility visibility) {
   if (state_ == State::Consumed)
     return Result<GlobalObjectId, BuildError>::failure(BuildError::AlreadyConsumed);
   if (state_ == State::EditingFunction)
@@ -309,6 +310,7 @@ Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
                                          identity, alignment, is_internal,
                                          is_weak, is_const,
                                          is_extern_declaration,
+                                         visibility,
                                          std::move(initializer)});
   try {
     data_->globals_by_name_.emplace(source_name, id);

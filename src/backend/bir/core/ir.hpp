@@ -73,6 +73,8 @@ struct GlobalInitializer {
   std::vector<LinkNameId> function_links;
 };
 
+enum class SymbolVisibility : std::uint8_t { Default, Hidden, Protected };
+
 struct GlobalObject {
   std::string source_name;
   Type object_type;
@@ -82,6 +84,7 @@ struct GlobalObject {
   bool is_weak = false;
   bool is_const = false;
   bool is_extern_declaration = true;
+  SymbolVisibility visibility = SymbolVisibility::Default;
   std::optional<GlobalInitializer> initializer;
 };
 
