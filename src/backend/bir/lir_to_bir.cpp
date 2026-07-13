@@ -420,6 +420,31 @@ std::optional<Type> lower_global_type(const LirModule& module,
                         storage_bytes},
         "<" + std::to_string(lane_count) + " x " + element->spelling + ">"};
   };
+  const auto lower_function_return_facts = [&](TypeSpec return_spec)
+      -> std::optional<FunctionPointerTypeFacts> {
+    return_spec.ptr_level = 0;
+    return_spec.is_lvalue_ref = false;
+    return_spec.is_rvalue_ref = false;
+    return_spec.array_rank = 0;
+    return_spec.array_size = -1;
+    for (auto& dimension : return_spec.array_dims) dimension = -1;
+    return_spec.is_ptr_to_array = false;
+    return_spec.inner_rank = 0;
+    return_spec.is_fn_ptr = false;
+    return_spec.array_size_expr = nullptr;
+    if (return_spec.base == TB_VOID) {
+      if (return_spec.enum_underlying_base != TB_VOID ||
+          return_spec.vrm_width != 0 || return_spec.is_vector ||
+          return_spec.vector_lanes != 0 || return_spec.vector_bytes != 0)
+        return std::nullopt;
+      return FunctionPointerTypeFacts{TypeKind::Void, 0};
+    }
+    const auto result = lower_constant_type(module, return_spec);
+    if (!result || (result->kind != TypeKind::Integer &&
+                    result->kind != TypeKind::Floating))
+      return std::nullopt;
+    return FunctionPointerTypeFacts{result->kind, result->bit_width};
+  };
   const bool direct_scalar_vector =
       global.type.is_vector && global.type.vector_lanes > 0 &&
       global.type.vector_bytes > 0 && global.type.vrm_width == 0 &&
@@ -483,6 +508,61 @@ std::optional<Type> lower_global_type(const LirModule& module,
       return std::nullopt;
     Type result{TypeKind::Vector, 0, vector->second};
     result.vector_facts = vector->first;
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
+  const bool fixed_function_pointer_array =
+      global.type.is_fn_ptr && global.type.ptr_level > 0 &&
+      !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
+      global.type.array_rank >= 1 &&
+      global.type.array_rank <= kArrayDimensionCapacity &&
+      global.type.array_size >= 0 && !global.type.is_ptr_to_array &&
+      (global.type.inner_rank == -1 || global.type.inner_rank == 0) &&
+      !global.type.is_vector &&
+      global.type.array_size_expr == nullptr;
+  if (fixed_function_pointer_array) {
+    if (global.llvm_type_ref) return std::nullopt;
+    const auto return_facts = lower_function_return_facts(global.type);
+    if (!return_facts) return std::nullopt;
+    std::vector<std::int64_t> dimensions;
+    dimensions.reserve(global.type.array_rank);
+    for (int i = 0; i < global.type.array_rank; ++i) {
+      if (global.type.array_dims[i] < 0) return std::nullopt;
+      dimensions.push_back(global.type.array_dims[i]);
+    }
+    if (dimensions.front() != global.type.array_size) return std::nullopt;
+    std::string expected = "ptr";
+    for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend();
+         ++dimension)
+      expected = "[" + std::to_string(*dimension) + " x " + expected + "]";
+    if (global.llvm_type != expected) return std::nullopt;
+    Type result{TypeKind::Array, 0, expected};
+    result.array_facts = ArrayTypeFacts{
+        TypeKind::Function, 0, global.type.ptr_level, std::move(dimensions),
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+        *return_facts};
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
+  const bool direct_function_pointer =
+      (global.is_extern_decl || !global.init_text.empty()) &&
+      global.type.is_fn_ptr && global.type.ptr_level > 0 &&
+      !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
+      global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
+      (global.type.inner_rank == -1 || global.type.inner_rank == 0) &&
+      !global.type.is_vector &&
+      global.type.array_size_expr == nullptr;
+  if (direct_function_pointer) {
+    if (global.llvm_type != "ptr" || global.llvm_type_ref)
+      return std::nullopt;
+    const auto return_facts = lower_function_return_facts(global.type);
+    if (!return_facts) return std::nullopt;
+    Type result{TypeKind::Pointer};
+    result.pointer_facts = PointerTypeFacts{
+        TypeKind::Function, 0, global.type.ptr_level, std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, *return_facts};
     if (!is_well_formed(result)) return std::nullopt;
     return result;
   }

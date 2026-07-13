@@ -2506,8 +2506,6 @@ void test_enum_storage_global_receipt_and_rejections() {
         m.globals[1].llvm_type_ref = lir::LirTypeRef::integer(32);
       },
       "enum scalar mirrors must corroborate normalized typed storage");
-  rejected([](lir::LirModule& m) { m.globals[2].type.is_fn_ptr = true; },
-           "enum function-pointer shapes remain outside scalar-pointer storage");
   rejected(
       [](lir::LirModule& m) {
         m.globals[3].llvm_type_ref = lir::LirTypeRef("[3 x [5 x ptr]]");
@@ -3266,8 +3264,6 @@ void test_scalar_pointer_global_receipt_and_rejections() {
         m.globals[0].type.inner_rank = 1;
       },
       "pointer-to-array and inner-rank extern shapes must remain closed");
-  rejected([](lir::LirModule& m) { m.globals[0].type.is_fn_ptr = true; },
-           "function-pointer extern shapes must remain closed");
   rejected([](lir::LirModule& m) { m.globals[0].llvm_type = "i64*"; },
            "scalar-pointer rendered spelling is parity-only and must be ptr");
   rejected(
@@ -3297,8 +3293,6 @@ void test_scalar_pointer_global_receipt_and_rejections() {
            "negative internal const-pointer depth must remain closed");
   rejected([](lir::LirModule& m) { m.globals[6].type.base = c4c::TB_STRUCT; },
            "weak const-pointer aggregate pointees must remain closed");
-  rejected([](lir::LirModule& m) { m.globals[5].type.is_fn_ptr = true; },
-           "internal const function-pointer shapes must remain closed");
   rejected(
       [](lir::LirModule& m) {
         m.globals[5].llvm_type_ref = lir::LirTypeRef::integer(32);
@@ -3934,9 +3928,6 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
       [](lir::LirModule& m) { m.globals[3].type.inner_rank = 1; },
       "inner array rank without pointer-to-array authority must remain unsupported");
   rejected(
-      [](lir::LirModule& m) { m.globals[3].type.is_fn_ptr = true; },
-      "function-pointer element arrays must remain unsupported");
-  rejected(
       [](lir::LirModule& m) {
         m.globals[3].llvm_type_ref = lir::LirTypeRef("[4 x [0 x ptr]]");
       },
@@ -4295,6 +4286,240 @@ void test_direct_vector_global_receipt_and_rejections() {
         m.globals[4].llvm_type = "[2 x [0 x <2 x i16>]]";
       },
       "arrays of vector pointers must retain opaque ptr spelling");
+}
+
+void test_function_pointer_global_receipt_and_rejections() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto definition_link =
+        module.link_names.intern("integer_function_pointer");
+    const auto initializer_target = module.link_names.intern("inc");
+
+    lir::LirGlobal definition;
+    definition.name = "integer_function_pointer";
+    definition.link_name_id = definition_link;
+    definition.type = scalar_type(c4c::TB_INT);
+    definition.type.is_fn_ptr = true;
+    definition.type.ptr_level = 1;
+    definition.type.inner_rank = -1;
+    definition.linkage_vis = "protected ";
+    definition.qualifier = "global ";
+    definition.llvm_type = "ptr";
+    definition.init_text = "ptr @inc";
+    definition.initializer_function_link_name_ids = {initializer_target};
+    definition.align_bytes = 8;
+    module.globals.push_back(std::move(definition));
+
+    lir::LirGlobal declaration;
+    declaration.name = "deep_float_function_pointer";
+    declaration.type = scalar_type(c4c::TB_DOUBLE);
+    declaration.type.is_fn_ptr = true;
+    declaration.type.ptr_level = 2;
+    declaration.type.inner_rank = -1;
+    declaration.linkage_vis = "extern_weak hidden ";
+    declaration.qualifier = "global ";
+    declaration.llvm_type = "ptr";
+    declaration.align_bytes = 16;
+    declaration.is_extern_decl = true;
+    module.globals.push_back(std::move(declaration));
+
+    lir::LirGlobal array;
+    array.name = "void_function_pointer_array";
+    array.type = scalar_type(c4c::TB_VOID);
+    array.type.is_fn_ptr = true;
+    array.type.ptr_level = 1;
+    array.type.inner_rank = -1;
+    array.type.array_rank = 2;
+    array.type.array_size = 3;
+    array.type.array_dims[0] = 3;
+    array.type.array_dims[1] = 2;
+    array.linkage_vis = "external protected ";
+    array.qualifier = "global ";
+    array.llvm_type = "[3 x [2 x ptr]]";
+    array.align_bytes = 8;
+    array.is_extern_decl = true;
+    module.globals.push_back(std::move(array));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "producer-shaped ordinary function-pointer globals must reach verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto ids = view.global_objects();
+  expect(ids.size() == 3,
+         "function-pointer definition, extern, and array must preserve order");
+  const auto definition = view.global_object(ids[0]).value();
+  const auto declaration = view.global_object(ids[1]).value();
+  const auto array = view.global_object(ids[2]).value();
+  const auto integer_return = bir::FunctionPointerTypeFacts{
+      bir::TypeKind::Integer, 32};
+  const auto floating_return = bir::FunctionPointerTypeFacts{
+      bir::TypeKind::Floating, 64};
+  const auto void_return = bir::FunctionPointerTypeFacts{
+      bir::TypeKind::Void, 0};
+  expect(definition.object_type.kind == bir::TypeKind::Pointer &&
+             definition.object_type.spelling == "ptr" &&
+             definition.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Function, 0, 1, std::nullopt,
+                     std::nullopt, std::nullopt, std::nullopt,
+                     integer_return}} &&
+             std::holds_alternative<bir::LinkNameId>(definition.identity) &&
+             !definition.is_weak && !definition.is_const &&
+             !definition.is_internal && !definition.is_extern_declaration &&
+             definition.visibility == bir::SymbolVisibility::Protected &&
+             definition.alignment == 8 && definition.initializer &&
+             definition.initializer->opaque_payload == "ptr @inc" &&
+             definition.initializer->function_links.size() == 1 &&
+             view.spelling(definition.initializer->function_links[0]).value() ==
+                 "inc",
+         "function-pointer definitions must preserve return, declarator, object, and semantic initializer facts");
+  expect(declaration.object_type.pointer_facts ==
+                 std::optional<bir::PointerTypeFacts>{bir::PointerTypeFacts{
+                     bir::TypeKind::Function, 0, 2, std::nullopt,
+                     std::nullopt, std::nullopt, std::nullopt,
+                     floating_return}} &&
+             declaration.is_extern_declaration && declaration.is_weak &&
+             !declaration.is_internal && !declaration.is_const &&
+             declaration.visibility == bir::SymbolVisibility::Hidden &&
+             declaration.alignment == 16 && !declaration.initializer,
+         "deeper function-pointer externs must preserve return width, exact depth, and object facts");
+  expect(array.object_type.kind == bir::TypeKind::Array &&
+             array.object_type.spelling == "[3 x [2 x ptr]]" &&
+             array.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Function, 0, 1, {3, 2}, std::nullopt,
+                     std::nullopt, std::nullopt, std::nullopt,
+                     void_return}} &&
+             array.is_extern_declaration && !array.is_weak &&
+             array.visibility == bir::SymbolVisibility::Protected &&
+             array.alignment == 8 && !array.initializer,
+         "fixed function-pointer arrays must preserve opaque elements, return kind, and dimensions");
+
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  const auto canonical_ids =
+      canonical.has_value() ? canonical.value().view().global_objects()
+                            : std::vector<bir::GlobalObjectId>{};
+  expect(canonical.has_value() && canonical_ids.size() == 3 &&
+             canonical.value().view().global_object(canonical_ids[0])
+                     .value().object_type.pointer_facts ==
+                 definition.object_type.pointer_facts &&
+             canonical.value().view().global_object(canonical_ids[1])
+                     .value().object_type.pointer_facts ==
+                 declaration.object_type.pointer_facts &&
+             canonical.value().view().global_object(canonical_ids[2])
+                     .value().object_type.array_facts ==
+                 array.object_type.array_facts,
+         "function-pointer global facts must survive Canonical BIR publication");
+
+  const auto verifier_rejects = [](std::string name, bir::Type type) {
+    bir::ModuleBuilder builder;
+    if (!builder.add_global_object(std::move(name), std::move(type), 8, false,
+                                   false, false, true)
+             .has_value())
+      return false;
+    const auto result = std::move(builder).publish();
+    return !result.has_value() &&
+           result.error().reason == bir::PublishError::VerificationFailed;
+  };
+  bir::Type missing_function_facts{bir::TypeKind::Pointer};
+  missing_function_facts.pointer_facts =
+      bir::PointerTypeFacts{bir::TypeKind::Function, 0, 1};
+  expect(verifier_rejects("missing_function_facts",
+                          std::move(missing_function_facts)),
+         "verifier must reject function pointers without return facts");
+  bir::Type data_pointer_masquerade{bir::TypeKind::Pointer};
+  data_pointer_masquerade.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Integer, 32, 1, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt, integer_return};
+  expect(verifier_rejects("data_pointer_masquerade",
+                          std::move(data_pointer_masquerade)),
+         "verifier must reject data pointers carrying function-pointer facts");
+  bir::Type incompatible_function_facts{bir::TypeKind::Pointer};
+  incompatible_function_facts.pointer_facts = bir::PointerTypeFacts{
+      bir::TypeKind::Function, 0, 1,
+      bir::ComplexTypeFacts{bir::TypeKind::Floating, 32}, std::nullopt,
+      std::nullopt, std::nullopt, integer_return};
+  expect(verifier_rejects("incompatible_function_facts",
+                          std::move(incompatible_function_facts)),
+         "verifier must reject incompatible data and function-pointer facts");
+  bir::Type missing_array_function_facts{bir::TypeKind::Array, 0,
+                                         "[2 x ptr]"};
+  missing_array_function_facts.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Function, 0, 1, {2}};
+  expect(verifier_rejects("missing_array_function_facts",
+                          std::move(missing_array_function_facts)),
+         "verifier must reject function-pointer arrays without return facts");
+  bir::Type zero_array_function_depth{bir::TypeKind::Array, 0, "[2 x ptr]"};
+  zero_array_function_depth.array_facts = bir::ArrayTypeFacts{
+      bir::TypeKind::Function, 0, 0, {2}, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt, integer_return};
+  expect(verifier_rejects("zero_array_function_depth",
+                          std::move(zero_array_function_depth)),
+         "verifier must reject function-pointer arrays without declarator depth");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() &&
+               rejected_raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Raw rollback)");
+    const auto rejected_canonical =
+        bir::lower_lir_to_canonical_bir(candidate);
+    expect(!rejected_canonical.has_value() &&
+               rejected_canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedGlobals,
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].llvm_type_ref = lir::LirTypeRef("ptr");
+      },
+      "function-pointer globals reject unexpected mirrors");
+  rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = 0; },
+           "bare function object shapes remain closed for global storage");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_lvalue_ref = true; },
+           "function-pointer reference shapes remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.is_ptr_to_array = true; },
+           "split pointer-to-array function shapes remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = 1; },
+           "function-pointer globals reject residual positive inner rank");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.is_vector = true;
+        m.globals[0].type.vector_lanes = 2;
+        m.globals[0].type.vector_bytes = 16;
+      },
+      "function-pointer vector conflicts remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
+           "aggregate-return function pointers remain closed without exact identity");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[0].type.base = c4c::TB_COMPLEX_INT;
+      },
+      "complex-return function pointers remain outside ordinary return facts");
+  rejected([](lir::LirModule& m) { m.globals[2].type.array_dims[1] = -1; },
+           "function-pointer arrays reject negative dimensions");
+  rejected([](lir::LirModule& m) { m.globals[2].type.array_size = 4; },
+           "function-pointer arrays require matching front dimensions");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].llvm_type_ref = lir::LirTypeRef("[3 x [2 x ptr]]");
+      },
+      "function-pointer arrays reject unexpected mirrors");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[2].type.array_size_expr =
+            reinterpret_cast<c4c::Node*>(static_cast<std::uintptr_t>(1));
+      },
+      "computed function-pointer array bounds remain closed");
 }
 
 void test_va_list_global_receipt_and_rejections() {
@@ -5890,6 +6115,7 @@ int main() {
   test_mixed_pointer_array_global_receipt_and_rejections();
   test_fixed_scalar_base_array_global_receipt_and_rejections();
   test_direct_vector_global_receipt_and_rejections();
+  test_function_pointer_global_receipt_and_rejections();
   test_va_list_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();
   test_flexible_member_literal_struct_global_receipt_and_rejections();

@@ -69,6 +69,11 @@ struct VaListTypeFacts {
   c4c::StructNameId struct_name_id = c4c::kInvalidStructName;
 };
 
+struct FunctionPointerTypeFacts {
+  TypeKind return_kind = TypeKind::Void;
+  std::uint32_t return_bit_width = 0;
+};
+
 struct ArrayTypeFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
@@ -78,6 +83,7 @@ struct ArrayTypeFacts {
   std::optional<PointerArrayTypeFacts> element_pointee_array_facts;
   std::optional<VectorTypeFacts> element_vector_facts;
   std::optional<VaListTypeFacts> element_va_list_facts;
+  std::optional<FunctionPointerTypeFacts> element_function_pointer_facts;
 };
 
 struct PointerTypeFacts {
@@ -88,7 +94,19 @@ struct PointerTypeFacts {
   std::optional<PointerArrayTypeFacts> pointee_array_facts;
   std::optional<VectorTypeFacts> pointee_vector_facts;
   std::optional<VaListTypeFacts> pointee_va_list_facts;
+  std::optional<FunctionPointerTypeFacts> pointee_function_pointer_facts;
 };
+
+inline bool operator==(const FunctionPointerTypeFacts& lhs,
+                       const FunctionPointerTypeFacts& rhs) noexcept {
+  return lhs.return_kind == rhs.return_kind &&
+         lhs.return_bit_width == rhs.return_bit_width;
+}
+
+inline bool operator!=(const FunctionPointerTypeFacts& lhs,
+                       const FunctionPointerTypeFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
 
 inline bool operator==(const VaListTypeFacts& lhs,
                        const VaListTypeFacts& rhs) noexcept {
@@ -146,7 +164,9 @@ inline bool operator==(const PointerTypeFacts& lhs,
          lhs.pointee_complex_facts == rhs.pointee_complex_facts &&
          lhs.pointee_array_facts == rhs.pointee_array_facts &&
          lhs.pointee_vector_facts == rhs.pointee_vector_facts &&
-         lhs.pointee_va_list_facts == rhs.pointee_va_list_facts;
+         lhs.pointee_va_list_facts == rhs.pointee_va_list_facts &&
+         lhs.pointee_function_pointer_facts ==
+             rhs.pointee_function_pointer_facts;
 }
 
 inline bool operator!=(const PointerTypeFacts& lhs,
@@ -164,7 +184,9 @@ inline bool operator==(const ArrayTypeFacts& lhs,
          lhs.element_pointee_array_facts ==
              rhs.element_pointee_array_facts &&
          lhs.element_vector_facts == rhs.element_vector_facts &&
-         lhs.element_va_list_facts == rhs.element_va_list_facts;
+         lhs.element_va_list_facts == rhs.element_va_list_facts &&
+         lhs.element_function_pointer_facts ==
+             rhs.element_function_pointer_facts;
 }
 
 inline bool operator!=(const ArrayTypeFacts& lhs,
@@ -327,6 +349,17 @@ inline bool is_well_formed(const Type& type) {
       return std::nullopt;
     return "%struct.__va_list_tag_";
   };
+  const auto function_return_is_well_formed =
+      [](const FunctionPointerTypeFacts& facts) {
+        if (facts.return_kind == TypeKind::Void)
+          return facts.return_bit_width == 0;
+        if (facts.return_kind == TypeKind::Integer)
+          return facts.return_bit_width != 0;
+        if (facts.return_kind != TypeKind::Floating) return false;
+        return facts.return_bit_width == 16 || facts.return_bit_width == 32 ||
+               facts.return_bit_width == 64 || facts.return_bit_width == 80 ||
+               facts.return_bit_width == 128;
+      };
   switch (type.kind) {
     case TypeKind::Void:
       return type.bit_width == 0 && no_name &&
@@ -366,6 +399,17 @@ inline bool is_well_formed(const Type& type) {
         return false;
       if (!type.pointer_facts) return true;
       if (type.pointer_facts->pointer_depth <= 0) return false;
+      if (type.pointer_facts->pointee_kind == TypeKind::Function) {
+        return type.pointer_facts->pointee_bit_width == 0 &&
+               type.pointer_facts->pointee_function_pointer_facts &&
+               !type.pointer_facts->pointee_complex_facts &&
+               !type.pointer_facts->pointee_array_facts &&
+               !type.pointer_facts->pointee_vector_facts &&
+               !type.pointer_facts->pointee_va_list_facts &&
+               function_return_is_well_formed(
+                   *type.pointer_facts->pointee_function_pointer_facts);
+      }
+      if (type.pointer_facts->pointee_function_pointer_facts) return false;
       if (type.pointer_facts->pointee_kind == TypeKind::VaList) {
         return type.pointer_facts->pointee_bit_width == 0 &&
                type.pointer_facts->pointee_va_list_facts &&
@@ -451,6 +495,25 @@ inline bool is_well_formed(const Type& type) {
       if (type.array_facts->dimensions.empty()) return false;
       for (const auto dimension : type.array_facts->dimensions)
         if (dimension < 0) return false;
+      if (type.array_facts->element_kind == TypeKind::Function) {
+        if (type.array_facts->element_bit_width != 0 ||
+            type.array_facts->element_pointer_depth <= 0 ||
+            !type.array_facts->element_function_pointer_facts ||
+            type.array_facts->element_complex_facts ||
+            type.array_facts->element_pointee_array_facts ||
+            type.array_facts->element_vector_facts ||
+            type.array_facts->element_va_list_facts ||
+            !function_return_is_well_formed(
+                *type.array_facts->element_function_pointer_facts))
+          return false;
+        std::string spelling = "ptr";
+        for (auto dimension = type.array_facts->dimensions.rbegin();
+             dimension != type.array_facts->dimensions.rend(); ++dimension)
+          spelling = "[" + std::to_string(*dimension) + " x " + spelling +
+                     "]";
+        return type.spelling == spelling;
+      }
+      if (type.array_facts->element_function_pointer_facts) return false;
       if (type.array_facts->element_kind == TypeKind::VaList) {
         if (type.array_facts->element_bit_width != 0 ||
             type.array_facts->element_pointer_depth < 0 ||

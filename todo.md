@@ -8,12 +8,12 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid `TB_VA_LIST` globals through direct,
-  ordinary pointer, and ordinary fixed-array routes.
-- Target-shaped pointer-object versus `%struct.__va_list_tag_` storage, exact
-  size/alignment, structured declaration identity, pointer depth, dimensions,
-  object/linkage/visibility/alignment, and initializer facts survive Foundation,
-  Raw BIR, and Canonical BIR.
+- Plan Step 3 now admits producer-valid ordinary function-pointer globals and
+  fixed arrays of function pointers from structured `TypeSpec` authority.
+- Return base kind/width, function-pointer identity, exact declarator depth,
+  array dimensions, opaque storage, object/linkage/visibility/alignment, and
+  semantic initializer function links survive Foundation, Raw BIR, and
+  Canonical BIR.
 
 ## Suggested Next
 
@@ -22,13 +22,14 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Watchouts
 
-- Va-list pointee/element facts carry the target storage form and require the
-  canonical structured declaration identity and exact unpacked/nonopaque
-  producer layout on struct-backed targets; Foundation cross-resolves direct
-  and nested identities, and no rendered spelling is parsed for authority.
-- Split pointer-to-array shapes, references, function pointers, direct mirrors,
-  residual enum/vector/VRM facts, and negative/unsized/computed bounds remain
-  closed.
+- Function-pointer facts intentionally retain only the return base and
+  declarator depth available on `LirGlobal`; no absent `FnPtrSig` is invented
+  and no rendered signature spelling is parsed.
+- Producer probes use `ptr_level` as the effective depth (1 for `T (*)()`, 2
+  for `T (**)()`) and `inner_rank == -1` as the ordinary no-split sentinel.
+- Aggregate/complex/signature-dependent return identity, bare function-object
+  globals, references, split pointer-to-array shapes, vectors, mirrors, and
+  negative/unsized/computed bounds remain closed.
 
 ## Proof
 
