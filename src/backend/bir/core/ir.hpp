@@ -48,6 +48,12 @@ class CanonicalBir;
 class ModuleBuilder;
 class FunctionBuilder;
 class FoundationVerifier;
+class PipelineCheckpoint;
+class PrivateOccurrenceCandidate;
+
+namespace pipeline_internal {
+struct ForkAccess;
+}
 
 struct JumpTerm {
   BlockId target{};
@@ -141,6 +147,9 @@ struct ModuleData {
   friend class ::c4c::backend::bir::FoundationVerifier;
   friend class ::c4c::backend::bir::RawBir;
   friend class ::c4c::backend::bir::CanonicalBir;
+  friend class ::c4c::backend::bir::PipelineCheckpoint;
+  friend class ::c4c::backend::bir::PrivateOccurrenceCandidate;
+  friend struct ::c4c::backend::bir::pipeline_internal::ForkAccess;
 };
 
 }  // namespace detail

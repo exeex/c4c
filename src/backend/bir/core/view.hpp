@@ -145,6 +145,8 @@ class ModuleView {
   friend class RawBir;
   friend class CanonicalBir;
   friend class ModuleBuilder;
+  friend class PipelineCheckpoint;
+  friend class PrivateOccurrenceCandidate;
 };
 
 }  // namespace c4c::backend::bir

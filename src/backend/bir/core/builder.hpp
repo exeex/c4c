@@ -51,6 +51,11 @@ struct PublishFailure {
 };
 
 class ModuleBuilder;
+class PipelineCheckpoint;
+
+namespace pipeline_internal {
+struct CheckpointAccess;
+}
 
 namespace detail {
 class RawStateToken {
@@ -79,6 +84,7 @@ class RawBir {
 
   friend class ModuleBuilder;
   friend Result<CanonicalBir, VerificationResult> canonicalize(RawBir&&);
+  friend struct pipeline_internal::CheckpointAccess;
 };
 
 class CanonicalBir {
