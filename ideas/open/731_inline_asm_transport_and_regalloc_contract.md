@@ -36,10 +36,12 @@ could not be verified independently.
   variable-name binding table. SSA, phi, CFG, liveness, and value ownership use
   the same rules as every other instruction.
 - Canonical BIR remains target-independent. Target preparation reads it with a
-  selected RV64, AArch64, or x86 context and supplies immutable typed facts:
-  abstract register categories/classes, caller-saved/callee-saved/temp pool
-  capacities, reserved slots, group width/alignment/contiguity, ties,
-  early-clobbers, and resolved clobber units.
+  selected RV64, AArch64, or x86 context and supplies immutable target
+  vocabulary, layout, capacity, eligibility, alias, and clobber tables.
+  `regalloc/constraints` is the sole owner that parses, types, and binds the
+  original constraint text against those tables and the instruction's ordered
+  operands/results, producing ties, early-clobbers, class/group requirements,
+  and resolved clobber units for allocation.
 - The BIR allocator consumes those verified facts. It transactionally
   publishes a new immutable BIR revision in which each allocatable value has
   an abstract physical assignment `(category, class/group, slot)` and normal
@@ -68,9 +70,10 @@ could not be verified independently.
   legalization/encoding fallback for constraints that could not be expressed
   at the abstract boundary. It may not handle ordinary pool exhaustion, hide
   missing BIR spills, weaken assignments, or act as the normal allocator.
-- RV64 preparation must support the evidence-backed `r`, `=r`, `VR`, `VRM2`,
-  `VRM4`, and `VRM8` forms, including read/write forms, matching ties,
-  early-clobbers, and clobbers. `VRM1` remains unsupported.
+- RV64 target tables plus the shared `regalloc/constraints` interpreter must
+  support the evidence-backed `r`, `=r`, `VR`, `VRM2`, `VRM4`, and `VRM8`
+  forms, including read/write forms, matching ties, early-clobbers, and
+  clobbers. `VRM1` remains unsupported.
 - The target-independent LIR-to-Raw/Canonical-BIR carrier bootstrap is
   explicitly authorized before the broader boundary review: it may add typed
   abstract nodes, views, builders, verification, and lossless opaque
@@ -132,14 +135,40 @@ Closure Note Audit preserved from the retired runbook:
   verifier enforces closed opcode/payload shape and generic value integrity.
 - Intentional deferred scope: general LIR opcode/module import remains outside
   the bounded zero-parameter, void, inline-asm-only importer surface.
-- Intentional deferred scope: target constraint preparation, register
-  allocation, spill/reload, frame facts, target opcodes, and MIR remain later
-  stage ownership and are not BIR state.
+- Intentional deferred scope: target constraint tables, allocation-owned
+  constraint interpretation, register allocation, spill/reload, frame facts,
+  target opcodes, and MIR remain later stage ownership and are not Canonical
+  BIR state.
 - Accidental desynchronization: none remain in the three runbook-scoped README
   surfaces after reconciliation against the final implementation.
 
+## Architecture Convergence Gate (2026-07-13)
+
+Before any deferred target preparation, pseudo lowering, allocation,
+spill/reload, allocated-view, MIR, or late-assembly implementation begins,
+the BIR architecture documents must converge as one ordered contract.
+
+- `src/backend/bir/README.md` is the BIR overview and the normative ordered
+  index of every stage, pass, verifier gate, analysis/planner dependency, and
+  cross-cutting contract under `src/backend/bir/**/*.md`.
+- Every subordinate BIR Markdown contract must be completed and reviewed in
+  that root-declared order. A subordinate document may own its local behavior,
+  but it cannot silently change stage order, predecessor/successor profiles,
+  authority, or publication boundaries.
+- Review must synchronize each document with both adjacent stages and with the
+  root overview. Scaffolds, duplicate owners, contradictory allocation/MIR
+  responsibilities, and unindexed BIR Markdown files block acceptance.
+- The final documentation step must re-inventory every BIR Markdown file and
+  reconcile `src/backend/bir/README.md` against the completed subordinate
+  contracts. Architecture acceptance must be explicit; completion of a
+  docs-only runbook does not itself authorize implementation or close this
+  broader source idea.
+
 ## In Scope
 
+- Completing and reviewing the entire `src/backend/bir/**/*.md` architecture
+  in the normative order published by `src/backend/bir/README.md`, with an
+  explicit architecture-accepted checkpoint before implementation planning.
 - Giving current `LirInlineAsmOp` structured ordinary LIR input/result
   identities, types, and roles sufficient for generic SSA transport, without a
   special inline-asm value family.
@@ -153,8 +182,9 @@ Closure Note Audit preserved from the retired runbook:
   x86 without placing concrete register identities in BIR nodes.
 - Defining abstract assignments, BIR-owned spill/reload insertion, revision
   binding, diagnostics, and transactional publication.
-- Faithful inline-asm transport, target-aware constraint planning, and
-  allocation of scalar and register-group operands.
+- Faithful inline-asm transport, preparation-owned target constraint tables,
+  allocation-owned typed constraint binding, and allocation of scalar and
+  register-group operands.
 - Defining `PreparedBir`/`MirReadyBirView` as capabilities over the same
   immutable allocated BIR revision, not a rewritten IR copy.
 - MIR instruction selection, concrete ABI register mapping, bounded final
@@ -179,6 +209,10 @@ Closure Note Audit preserved from the retired runbook:
 
 ## Acceptance Criteria
 
+- `src/backend/bir/README.md` provides the complete BIR overview and normative
+  stage/pass order, indexes every BIR Markdown contract, and is finally
+  reconciled against all accepted subordinate documents with no unreviewed
+  scaffold, duplicate authority, or undocumented ordering edge.
 - `LirInlineAsmOp` exposes ordinary structured input/result identities and
   types, while original semantic asm/constraint text is distinct from any
   LLVM-compatible rendering. No semantic consumer must recover values from
