@@ -1,170 +1,186 @@
-# BIR Architecture Documentation Convergence Runbook
+# BIR Architecture Documentation Repair Runbook
 
 Status: Active
 Source Idea: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
-Activated from: the completed structured-transport runbook checkpoint
+Supersedes: the documentation-convergence acceptance tail rejected by
+`review/731_full_architecture_review.md`
 
 ## Purpose
 
-Converge the complete BIR architecture as an ordered set of reviewed Markdown
-contracts before any deferred implementation begins.
+Repair the cross-document BIR architecture contradictions found by the full
+Step 13 review, then repeat root reconciliation and independent review before
+architecture acceptance.
 
 ## Goal
 
-Make `src/backend/bir/README.md` the authoritative overview and normative
-ordered index for every BIR stage/pass and every Markdown contract beneath
-`src/backend/bir/`, then complete and review those contracts in that order.
+Make the root A-F registry and every subordinate BIR Markdown contract agree
+on stage order, revision/profile ownership, copy realizability, constraint
+projection, and legacy disposition without authorizing implementation.
 
 ## Core Rule
 
-This runbook is docs-only. Do not implement target preparation, pseudo
-lowering, allocation, spill/reload, allocated publication, MIR, or assembly.
-Architecture acceptance is a distinct final gate; green documentation checks
-or an exhausted runbook do not authorize implementation and do not close idea
-731.
+This runbook is docs-only. All target-specific expansion, parallel-copy
+realization, abstract-home allocation, and ordinary pressure spill/reload must
+finish in BIR before E4 publication. MIR and target backends may map verified
+homes and select/encode instructions, but may not allocate, introduce
+allocatable temporaries, spill/reload as repair, or weaken an E4 failure.
+
+Implementation remains blocked, Step 14 remains forbidden, and idea 731 stays
+open until every repair step is complete and a new independent full review has
+no blocking finding.
 
 ## Read First
 
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+- `review/731_full_architecture_review.md`
 - `src/backend/bir/README.md`
-- `src/backend/bir/pipeline/README.md`
 - `src/backend/bir/REVIEW_TEMPLATE.md`
 - `src/backend/bir/LEGACY_COVERAGE.md`
 
+## Accepted Checkpoint
+
+- The root inventory currently accounts for all 43 BIR Markdown files: one
+  root overview and 42 distinct subordinate paths.
+- Raw and Canonical BIR remain target-independent and unallocated.
+- C7 owns inline-asm target vocabulary/context tables; C9 alone parses, types,
+  and binds original constraint text.
+- `PreparedBir` is graphless and `MirReadyBirView` borrows the exact immutable
+  E4 `AllocatedBir` revision.
+- Diagnostics remain read-only and compatibility remains a non-authoritative
+  quarantine.
+- The strict no-late-allocation-repair decision is accepted and must not be
+  reopened as a shortcut around D5 or E4.
+
+These facts are checkpoints, not architecture acceptance. Any repair that
+changes an adjacent contract must recheck both sides and the root registry.
+
 ## Scope
 
-- all Markdown files matched by `src/backend/bir/**/*.md`, including root-level
-  Markdown files
-- stage inputs, outputs, invariants, verifier gates, failure behavior,
-  revision/target binding, analysis invalidation, and adjacent-stage ownership
-- one root-declared total order for stage/pass review
-- exact placement of analyses, preparation facts, pseudo lowering, out-of-SSA,
-  allocation, spill/reload, and publication gates
-- explicit reconciliation of inline-asm constraint ownership and opaque-text
-  handling with the shared BIR allocator
+- stale `S00`-`S29` and `G01` identifiers on the affected A-E surfaces
+- unresolved core, pipeline, verifier-profile, and preparation/C9 boundary
+  choices that currently contradict closed/converged claims
+- a complete indexed subordinate D2 call-lowering contract
+- a realizable BIR-owned path from D5 parallel-copy semantics to strict E4
+  publication and one-to-one MIR consumption
+- one explicit constraint-product lineage and re-projection owner for every
+  mutating pseudo/allocated revision
+- legacy/core ownership and disposition mismatches
+- final root reconciliation, structural proof, and independent full review
 
 ## Non-Goals
 
-- no C++ implementation or build-system changes
-- no test expectation or fixture changes
-- no legacy/prealloc/old-MIR restoration
-- no implementation runbook hidden inside this documentation runbook
-- no claim that a scaffold is accepted merely because it has an owner path
-- no target-specific allocator or normal pressure spill path outside BIR
+- no C++ implementation, tests, fixtures, build metadata, or regression logs
+- no target preparation, pseudo lowering, allocation, MIR, or assembly work
+- no restoration of legacy/prealloc/old-MIR sources or documents
+- no weakening of the strict E4/MIR boundary
+- no named-case shortcut, expectation downgrade, or classification-only claim
+  of capability progress
+- no edit to the durable source idea unless a later review proves its intent is
+  itself inconsistent; this reset does not establish such a conflict
 
 ## Working Model
 
-The root README owns the overview and normative total order. Subordinate
-documents own local contracts only. `pipeline/README.md` expands orchestration
-within that root order but cannot supersede it. Analyses are reviewed at the
-first stage that requires their facts; planners are ordered dependencies, not
-mutating IR stages. Reusing a document at multiple verifier gates does not
-create duplicate ownership: the document must define each profile explicitly.
+The root README is the sole normative registry. Local documents define their
+stage contracts but cannot invent predecessor/successor IDs or reorder the
+root. The repair order starts at the first affected Step 2 surface and moves
+forward so later profiles consume already-repaired names and products.
 
-The intended top-level flow to freeze is:
+For constraint lineage, keep the immutable Canonical C9 binding distinct from
+revision-specific projected bindings. Every mutating stage must either publish
+the projection/preservation proof for its exact output revision through one
+named shared projection authority or fail transactionally. Stable IDs alone
+never prove freshness.
 
-```text
-LIR import -> Raw verification
--> target-independent canonical pass pipeline -> Canonical verification
--> TargetProfile/layout derivation -> target preparation context/tables
--> regalloc constraint typing/binding
--> pseudo lowering/schema verification -> optional reviewed target pass gate
--> out-of-SSA -> liveness/allocation/spill-reload loop
--> AllocatedBir verification/publication -> MirReadyBirView -> MIR
-```
-
-Step 1 must publish the complete detailed order in the root README. Later
-steps may refine local details but may not silently reorder the flow; any
-necessary order change must update the root and both adjacent contracts in the
-same coherent docs packet.
+For D5, preserve simultaneous parallel-copy semantics only until a named
+BIR-owned, allocation-aware resolution point. Before E4, cycles, overlap,
+scratch requirements, and any required spill state must be represented by
+directly realizable verified BIR nodes and abstract homes. MIR cannot expand a
+bundle or invent a temporary.
 
 ## Execution Rules
 
-1. Execute steps in numeric order. Do not skip ahead because a later document
-   already looks more complete.
-2. At each step, inventory the named files and compare them with their immediate
-   predecessor and successor contracts.
-3. Replace `scaffold`/`under-review` claims only when inputs, outputs,
-   invariants, failure behavior, ownership, and legacy coverage are concrete.
-4. Keep Raw and Canonical BIR target-independent and unallocated.
-5. Keep inline-asm operands/results in the ordinary SSA value model; BIR
-   constraint logic interprets structured constraints, while asm text stays
-   opaque until the assembler.
-6. Keep pseudo-home allocation and ordinary pressure spill/reload in shared
-   BIR. MIR may map verified homes and lower admitted pseudo instructions, but
-   cannot become a second allocator.
-7. Use `src/backend/bir/REVIEW_TEMPLATE.md` at every step and update
-   `src/backend/bir/LEGACY_COVERAGE.md` whenever an ownership decision changes
-   or exposes an unmapped legacy family.
-8. For each docs packet, run `git diff --check`, Markdown-link/path checks, and
-   focused `rg` checks for stale or duplicate authority language. Code build
-   proof is not required for docs-only changes unless the packet changes
-   generated/build metadata (which this runbook forbids).
-9. Record progress and proof in `todo.md`; do not rewrite this plan for routine
-   completion of one step.
-10. Implementation remains blocked until Step 14 records explicit architecture
-    acceptance after independent review. Any rejected or unresolved contract
-    keeps the gate closed.
+1. Execute steps and numbered substeps in order. Do not begin a later repair
+   because its local wording appears easier.
+2. Treat each substep as one bounded documentation packet. Compare all edited
+   contracts with their immediate predecessor, successor, and root entry.
+3. Replace stale identifiers mechanically only after checking the semantic
+   predecessor, output profile, retry edge, and verifier gate represented by
+   each occurrence.
+4. Resolve architecture questions by choosing and documenting one contract.
+   Do not relabel unresolved boundary/profile choices as deferred
+   implementation.
+5. Keep the Step 7 review order exactly:
+   `target_layout -> preparation -> abi -> calls -> variadic -> address ->
+   inline_asm -> runtime_helpers -> regalloc/constraints`.
+6. A new D2 document must be added to the root inventory and all adjacent
+   indexes in the same packet; inventory exactness is recalculated rather than
+   preserving the old count by assumption.
+7. Keep C9 as the sole original-constraint parser/binder and name exactly one
+   projection mechanism plus the per-revision stage responsible for invoking
+   it and publishing its output.
+8. Do not solve D5 by moving out-of-SSA, allocation, scratch creation, or
+   capacity spill/reload into MIR/backend. E4 must reject unresolved pressure
+   and unrealizable nodes.
+9. Use `src/backend/bir/REVIEW_TEMPLATE.md` for each packet and update
+   `src/backend/bir/LEGACY_COVERAGE.md` when an owner/disposition changes.
+10. For each packet, run `git diff --check`, link/path checks, and focused `rg`
+    searches selected by the supervisor. Docs-only packets need no code build.
+11. Record routine packet progress and exact proof in `todo.md`; do not rewrite
+    this plan after every packet.
+12. A blocker in Steps 2-12 returns execution to the earliest affected step.
+    A blocker in Step 13 forbids Step 14 and requires another plan-owner reset
+    or focused repair before the full review is repeated.
 
-## Ordered Steps
+## Ordered Repair Steps
 
-### Step 1 - Establish the root overview and normative total order
+### Step 2.1 - Repair the A1 import order identifiers
 
-Goal: make `src/backend/bir/README.md` sufficient for a new agent to understand
-the entire BIR architecture and the exact order in which every contract is
-reviewed.
+Goal: make the earliest affected import sub-boundary use the root A-F registry.
 
 Primary target:
 
-- `src/backend/bir/README.md`
+- `src/backend/bir/lir_to_bir/memory/README.md`
 
 Actions:
 
-- publish the complete stage/pass flow, including every verifier gate and the
-  allocation retry edge
-- index every Markdown file under `src/backend/bir/` exactly once as either a
-  stage/pass contract, an analysis/planner dependency reviewed at a named
-  point, or a cross-cutting audit contract
-- distinguish normative stage order from local orchestration detail and from
-  non-serial analysis facts
-- state the unimplemented/scaffold reality without weakening the target
-  architecture
-- freeze the ordered checklist consumed by Steps 2-13
+- replace stale `S00`/`S01` references with the exact A1/A2 predecessor,
+  publication, and verifier vocabulary from the root
+- cross-check `lir_to_bir/README.md`, `core/README.md`, and the Raw verifier
+  profile without expanding the importer contract
 
 Completion check:
 
-- a fresh `rg --files src/backend/bir -g '*.md'` inventory has no unindexed or
-  ambiguously placed file
-- the root order includes predecessor, output profile, and verifier boundary
-  for every mutating stage/pass
+- no removed registry identifier remains on the A1 import surfaces, and the
+  memory sub-boundary agrees with Raw publication and failure atomicity
 
-### Step 2 - Converge import, core ownership, and Raw publication
+### Step 2.2 - Close core architecture choices and repair its BIR disposition
 
-Goal: freeze the lossless LIR-to-Raw-BIR boundary and the immutable Raw carrier.
+Goal: make A2 core a closed carrier contract without contradicting later BIR
+allocation ownership.
 
-Review in this order:
+Primary target:
 
-1. `src/backend/bir/core/README.md`
-2. `src/backend/bir/lir_to_bir/README.md`
-3. `src/backend/bir/lir_to_bir/memory/README.md`
-4. the Raw profile in `src/backend/bir/verify/README.md`
+- `src/backend/bir/core/README.md`
 
 Actions:
 
-- define identity, ownership, transactionality, generic operands/results, and
-  opaque inline-asm transport
-- separate implemented bootstrap facts from future general LIR import
-- make Raw verification the only publication gate into canonicalization
+- choose or explicitly assign the intrinsic, asm-goto, debug, unwind, SSA, and
+  edge schema contracts required by adjacent accepted profiles
+- distinguish intentionally unimplemented source carriers from unresolved
+  architecture; only the former may remain deferred
+- narrow the legacy disposition so interval/home/spill/reload state is absent
+  from Raw/Canonical core storage but owned by later E1-E3 BIR contracts, not
+  MIR/backend
 
 Completion check:
 
-- importer, core, and Raw verifier agree on the same graph, identity model,
-  failure behavior, and unallocated target-independent profile
+- no acceptance-critical core schema is both marked open and consumed by a
+  closed adjacent profile; later BIR allocation ownership is stated correctly
 
-### Step 3 - Converge pipeline/pass/analysis infrastructure
+### Step 3.1 - Propagate the A-F registry through infrastructure
 
-Goal: freeze orchestration and revision-bound derived-fact rules before local
-canonical passes are reviewed.
+Goal: remove the obsolete registry from shared orchestration and framework
+contracts without changing stage order.
 
 Review in this order:
 
@@ -174,73 +190,99 @@ Review in this order:
 
 Actions:
 
-- align pipeline authority beneath the root total order
-- separate the target-independent canonical pass framework from later
-  target-aware pseudo/allocated phases
-- freeze transactional stage publication, stable-ID preservation, analysis
-  invalidation, and verifier-on-commit behavior
+- map every stale `S00`-`S29`/`G01` predecessor, successor, retry, and verifier
+  reference to the exact root A-F stage/profile
+- preserve the root as sole order authority and keep analyses revision-bound
+  and non-mutating
 
 Completion check:
 
-- infrastructure documents cannot reorder stages, leak target facts backward,
-  or publish stale analysis results
+- focused stale-ID search is empty on all three files, and every replacement
+  retains the correct semantic edge rather than merely changing a label
 
-### Step 4 - Converge canonical passes P01-P02 and scalar analysis
+### Step 3.2 - Resolve pipeline-wide representation choices
 
-Goal: freeze the first two canonical transformations.
+Goal: close the architecture choices currently left open by the pipeline.
+
+Primary target:
+
+- `src/backend/bir/pipeline/README.md`
+
+Actions:
+
+- choose one canonical SSA representation and shared `EdgeKey` encoding
+- freeze intrinsic namespace, asm-goto result/topology treatment, exception
+  edges, and runtime-helper eligibility ownership at the appropriate adjacent
+  contracts
+- synchronize affected local owner documents in the same packet; do not let
+  pipeline become a duplicate semantic owner
+
+Completion check:
+
+- the pipeline has no unresolved acceptance-critical choice and every chosen
+  rule points to exactly one local owner
+
+### Step 4 - Repair B1-B2 canonical pass identifiers
+
+Goal: align the first canonical pass pair and comparison dependency with the
+root registry.
 
 Review in this order:
 
-1. `src/backend/bir/passes/legalize/README.md` (P01)
-2. `src/backend/bir/passes/scalar/README.md` (P02)
+1. `src/backend/bir/passes/legalize/README.md`
+2. `src/backend/bir/passes/scalar/README.md`
 3. `src/backend/bir/analysis/comparison/README.md`
 
 Completion check:
 
-- legalize and scalar have closed input/output profiles, reject unsupported
-  semantics explicitly, and do not perform target lowering or allocation
+- no stale S-stage identifier remains and B1/B2 retain target-independent,
+  transactional Raw-to-Canonical semantics
 
-### Step 5 - Converge canonical passes P03-P04 and CFG/SSA analyses
+### Step 5 - Repair B3-B4 canonical pass identifiers
 
-Goal: freeze structural CFG and SSA ownership, including block decomposition.
+Goal: align CFG/SSA passes and their analysis/publication dependencies with the
+root registry.
 
 Review in this order:
 
-1. `src/backend/bir/passes/cfg/README.md` (P03)
+1. `src/backend/bir/passes/cfg/README.md`
 2. `src/backend/bir/analysis/cfg/README.md`
 3. `src/backend/bir/analysis/dominance/README.md`
-4. `src/backend/bir/passes/ssa/README.md` (P04)
+4. `src/backend/bir/passes/ssa/README.md`
 5. `src/backend/bir/analysis/publication/README.md`
 
 Completion check:
 
-- terminators are the sole persistent edge authority; split/merge and phi or
-  block-argument repair are representable; out-of-SSA is explicitly deferred
-  to its later BIR stage rather than MIR
+- no stale S-stage identifier remains; terminator, edge, SSA, and publication
+  rules agree with the choices closed in Step 3.2
 
-### Step 6 - Converge canonical passes P05-P07 and semantic analyses
+### Step 6 - Repair B5-B8 identifiers and Canonical publication
 
-Goal: finish the target-independent CanonicalBir transformation sequence.
+Goal: finish A-F propagation through the remaining canonical passes and the
+Canonical verifier boundary.
 
 Review in this order:
 
-1. `src/backend/bir/passes/memory/README.md` (P05)
-2. `src/backend/bir/analysis/memory_effects/README.md`
-3. `src/backend/bir/analysis/provenance/README.md`
-4. `src/backend/bir/passes/aggregate/README.md` (P06)
-5. `src/backend/bir/passes/intrinsics/README.md` (P07)
-6. `src/backend/bir/analysis/call_graph/README.md`
-7. the Canonical profile in `src/backend/bir/verify/README.md`
+1. `src/backend/bir/passes/memory/README.md`
+2. `src/backend/bir/passes/aggregate/README.md`
+3. `src/backend/bir/passes/intrinsics/README.md`
+4. the Raw/Canonical profiles in `src/backend/bir/verify/README.md`
+
+Actions:
+
+- remove stale `S06`-`S08`/`G01` language and bind each pass to B5-B8
+- make Raw/Canonical reachability and publication meanings exact
+- keep unimplemented source coverage distinct from closed verifier semantics
 
 Completion check:
 
-- CanonicalBir verification accepts the exact P07 output, all semantic facts
-  remain target-independent, and inline asm remains one opaque semantic node
+- no obsolete registry identifier remains on canonical pass or verifier
+  surfaces; the Canonical gate accepts exactly the B7 output under B8
 
-### Step 7 - Converge target layout and ordered preparation dependencies
+### Step 7 - Close target-preparation and verifier-profile boundaries
 
-Goal: freeze the target-aware facts that may be derived from verified
-CanonicalBir plus `TargetProfile`, without mutating CanonicalBir.
+Goal: resolve the remaining target-preparation/C9 profile choices in the
+normative review order.
 
 Review in this order:
 
@@ -250,152 +292,201 @@ Review in this order:
 4. `src/backend/bir/preparation/calls/README.md`
 5. `src/backend/bir/preparation/variadic/README.md`
 6. `src/backend/bir/preparation/address/README.md`
-7. `src/backend/bir/preparation/runtime_helpers/README.md`
-8. `src/backend/bir/preparation/inline_asm/README.md`
+7. `src/backend/bir/preparation/inline_asm/README.md`
+8. `src/backend/bir/preparation/runtime_helpers/README.md`
 9. `src/backend/bir/regalloc/constraints/README.md`
+10. the preparation-facing profiles in `src/backend/bir/verify/README.md`
 
 Actions:
 
-- define explicit planner dependency order and revision/profile binding
-- assign target vocabulary and eligibility-table ownership to preparation and
-  actual parsing/typing/binding of `=r`, `r`, `VR`, `VRM2`, ties, and clobbers
-  to BIR allocation constraints
-- forbid duplicate constraint owners and MIR allocation facts
+- define one exact C9 binding API and its Canonical revision/target key
+- choose and use one meaning for `Canonical` versus `PreparedInput`
+- ensure each preparation fact has one producer, consumer, invalidation rule,
+  and revision/target binding
+- retain C7 table ownership and C9 original-constraint interpretation
 
 Completion check:
 
-- every preparation fact has one producer, one consumer contract, and exact
-  revision/target binding; no planner writes allocation into CanonicalBir
+- no unresolved preparation/C9/profile question remains, and the review order
+  matches the root execution dependency order with inline asm before helpers
 
-### Step 8 - Converge pseudo lowering, schema, and pseudo verification
+### Step 8 - Add and index the complete D2 subordinate contract
 
-Goal: freeze the new immutable pseudo-BIR revision admitted to allocation.
+Goal: give shared ABI-aware call lowering a full local contract rather than a
+root-only owner or abbreviated D1 handoff.
 
-Review in this order:
+Primary targets:
 
-1. `src/backend/bir/passes/pseudo_lowering/README.md`
-2. `src/backend/bir/pseudo/README.md`
-3. the pseudo profile in `src/backend/bir/verify/README.md`
-4. `src/backend/bir/passes/target/README.md`
+- `src/backend/bir/passes/call_lowering/README.md` as the dedicated D2 owner
+- `src/backend/bir/README.md`
+- `src/backend/bir/passes/pseudo_lowering/README.md`
+- adjacent C4, D1, D3, and D4 contracts
 
 Actions:
 
-- define the closed admitted pseudo instruction table and explicit lowering
-  failure behavior
-- preserve IDs for unchanged entities while publishing a new revision
-- place optional target-specific pseudo passes behind explicit invalidation and
-  reverification gates; keep them deferred and unable to hide allocation
+- define D2 admitted operations, exact input/output revision and product keys,
+  ABI-rule selection, preservation/invalidation, failure atomicity, legacy
+  disposition, and D1/D3/D4 adjacency
+- index the new document exactly once in the root and local pass inventory
+- remove any claim that the abbreviated D1 handoff is the complete D2 owner
 
 Completion check:
 
-- the pseudo verifier rejects semantic leftovers, target opcodes, concrete
-  registers, and malformed inline-asm structure before allocation
+- D2 has one indexed subordinate owner and no required contract is root-only;
+  the recalculated Markdown inventory and links are exact
 
-### Step 9 - Converge out-of-SSA
+### Step 9.1 - Choose the BIR-owned D5 parallel-copy realization route
 
-Goal: freeze BIR-owned phi/block-argument destruction before allocation.
+Goal: make cyclic and overlapping D5 copies realizable without weakening the
+strict E4/MIR contract.
 
-Review in this order:
+Primary targets:
 
-1. `src/backend/bir/passes/out_of_ssa/README.md`
-2. the affected CFG, SSA, and pseudo verifier profiles
+- `src/backend/bir/passes/out_of_ssa/README.md`
+- `src/backend/bir/pseudo/README.md`
+- the D5 profile in `src/backend/bir/verify/README.md`
+- the root D5-to-E4 flow
+
+Actions:
+
+- name the BIR-owned allocation-aware resolution point and its exact position
+  before E4
+- define how cycles, overlap, scratch homes, and failure are handled
+- define whether `ParallelCopy` is an intermediate-only node and the exact
+  verifier gate at which it must be absent
+- preserve stable identities and transactional publication without claiming
+  simultaneous multi-copy is one machine instruction
 
 Completion check:
 
-- edge copies/parallel copies, critical-edge handling, stable identity, and
-  reverification are explicit; MIR owns none of normal out-of-SSA
+- every admitted D5 copy shape has a documented route to directly realizable
+  BIR nodes before E4, or fails transactionally before publication
 
-### Step 10 - Converge shared liveness and allocation
+### Step 9.2 - Reconcile allocation and strict downstream realization
 
-Goal: freeze one target-shared BIR allocation authority.
+Goal: synchronize the chosen D5 route with liveness, allocation, spill/reload,
+E4, and MIR consumption.
 
 Review in this order:
 
 1. `src/backend/bir/analysis/liveness/README.md`
 2. `src/backend/bir/regalloc/README.md`
-3. cross-check the already accepted
-   `src/backend/bir/regalloc/constraints/README.md` consumption profile
-4. `src/backend/bir/regalloc/spill_reload/README.md`
-
-Actions:
-
-- distinguish reusable revision-bound liveness facts from allocator policy
-- define interference, groups, ties, clobbers, call boundaries, eviction,
-  finite pseudo-home assignment, spill-slot identity, and explicit
-  Spill/Reload placement
-- document the liveness/allocation/spill rewrite/reverification retry loop and
-  its termination/failure conditions
+3. `src/backend/bir/regalloc/spill_reload/README.md`
+4. `src/backend/bir/allocated/README.md`
+5. the E1-E4 profiles in `src/backend/bir/verify/README.md`
+6. root F1-F3 boundary language
 
 Completion check:
 
-- RV64, AArch64, and x86 differ only through reviewed layout data/rules; every
-  allocatable value is assigned or represented by verified explicit spill
-  state before publication
+- all required scratch/copy/spill state is allocated and verified before E4;
+  every non-`InlineAsm` node consumed by MIR is directly realizable under the
+  chosen strict mapping, and MIR/backend has no repair escape hatch
 
-### Step 11 - Converge AllocatedBir and MIR-ready publication
+### Step 10 - Freeze per-revision constraint projection ownership
 
-Goal: freeze the final BIR stage token and its clean read-only downstream view.
+Goal: define one unambiguous constraint lineage across every mutating revision.
 
 Review in this order:
 
-1. `src/backend/bir/allocated/README.md`
-2. the Allocated profile in `src/backend/bir/verify/README.md`
-3. the `PreparedBir`/`MirReadyBirView` boundary references in preparation,
-   pipeline, and root documents
-
-Completion check:
-
-- `AllocatedBir` and `MirReadyBirView` refer to the same immutable revision;
-  all homes/spill state and target bindings verify; no duplicate instruction
-  graph or ordinary MIR allocation escape hatch remains
-
-### Step 12 - Converge cross-cutting observation and quarantine contracts
-
-Goal: ensure non-stage helpers cannot become hidden semantic authorities.
-
-Review in this order:
-
-1. `src/backend/bir/diagnostics/README.md`
-2. `src/backend/bir/compatibility/README.md`
-3. `src/backend/bir/LEGACY_COVERAGE.md`
-4. `src/backend/bir/REVIEW_TEMPLATE.md`
-
-Completion check:
-
-- diagnostics are read-only; compatibility is quarantined from decisions;
-  every retained legacy capability has an accepted owner or an explicit
-  disposition; the review template tests the complete new boundary
-
-### Step 13 - Perform full cross-document architecture review
-
-Goal: prove the subordinate documents form one coherent architecture.
+1. C9 `regalloc/constraints`
+2. D1 pseudo lowering
+3. D2 call lowering
+4. D4 target legalization
+5. D5 out-of-SSA and its chosen copy-resolution point
+6. E3 spill/reload mutation
+7. E1/E2/E4 consumer and verifier profiles
 
 Actions:
 
-- inventory every `src/backend/bir/**/*.md` file and compare it with the Step 1
-  index
-- audit all adjacent stage input/output profiles and all repeated verifier
-  profiles
-- search for stale claims that allocation, out-of-SSA, physical intervals, or
-  ordinary spilling belong to MIR
-- search for duplicate inline-asm constraint ownership, target facts in
-  Raw/Canonical BIR, concrete target registers/opcodes in pseudo BIR, copied
-  PreparedBir graphs, and undocumented pass-order authority
-- classify every mismatch as resolved, intentional deferred scope, or blocking
-  architecture desynchronization; deferred labels cannot conceal conflicting
-  contracts
-- obtain an independent architecture review against idea 731
+- distinguish the immutable Canonical `BoundConstraintSet` from the projected
+  binding product for each later revision
+- name one shared projection/preservation authority and, for each mutator,
+  the stage responsible for invoking it and publishing the exact output key
+- define required fingerprints, invalidation, recomputation, failure
+  atomicity, and consumer checks at each revision
+- reject stable-ID equality as freshness proof
 
 Completion check:
 
-- review reports no blocking authority/order/profile contradiction and every
-  Markdown file is accounted for; unresolved findings return execution to the
-  earliest affected step
+- every D1/D2/D4/D5/copy-resolution/E3 output has exactly one fresh projected
+  product or an explicit proof that no product applies; E1/E2/E4 never consume
+  a Canonical-keyed product as though it were keyed to a later revision
 
-### Step 14 - Reconcile the root overview and record architecture acceptance
+### Step 11 - Reconcile legacy and core dispositions
 
-Goal: make the final root README describe the accepted subordinate contracts,
-not the initial plan for them.
+Goal: give every retained legacy capability one real owner and remove wrong or
+absent authority names.
+
+Primary targets:
+
+- `src/backend/bir/LEGACY_COVERAGE.md`
+- the legacy map in `src/backend/bir/core/README.md`
+- affected root analysis/allocation registry entries
+
+Actions:
+
+- replace the absent `analysis/alias` owner with the actual accepted owner or
+  explicitly reject/defer the capability; do not invent an unindexed alias
+  contract merely to satisfy the ledger
+- verify the core interval/home/spill/reload wording matches E1-E3 BIR
+  ownership and strict MIR non-ownership
+- recheck every `Accepted` row for exactly one present, indexed owner
+
+Completion check:
+
+- no ledger owner is absent or ambiguous, and no core/legacy disposition sends
+  ordinary allocation or pressure repair outside BIR
+
+### Step 12 - Reconcile the root and run the complete documentation proof
+
+Goal: make the root overview describe the repaired subordinate architecture
+before independent review.
+
+Actions:
+
+- regenerate the complete Markdown inventory, including the D2 document
+- reconcile every root link, A-F position, adjacent profile, analysis/planner
+  dependency, verifier gate, projection product, copy-resolution edge, retry
+  edge, and implementation-status statement
+- run `git diff --check`, local Markdown link/path validation, and focused
+  searches for stale IDs, duplicate authority, unresolved acceptance choices,
+  copied graphs, late allocation repair, absent legacy owners, and revision-key
+  ambiguity
+- do not record architecture acceptance in this step
+
+Completion check:
+
+- structural proof is green and the root is a self-contained exact normative
+  index of the repaired architecture, with no acceptance marker
+
+### Step 13 - Repeat the independent full architecture review
+
+Goal: obtain an independent judgment on the complete repaired documentation.
+
+Actions:
+
+- review every `src/backend/bir/**/*.md` file against the root index,
+  `REVIEW_TEMPLATE.md`, this runbook, and idea 731
+- audit all adjacent profiles, open questions, A-F identifiers, D2 ownership,
+  D5 realizability, projection keys, and legacy dispositions
+- explicitly re-judge the strict no-late-allocation-repair rule and verify it
+  has not been used to conceal an unrealizable post-D5 node
+- classify every finding as resolved, intentionally deferred implementation,
+  or blocking architecture desynchronization
+
+Completion check:
+
+- an independent reviewer reports no blocking architecture, authority, order,
+  profile, revision-key, realizability, or legacy-disposition finding
+
+If the review finds any blocker, Step 14 is forbidden. Return to the earliest
+affected repair step, update the runbook if the route itself must change, and
+repeat Steps 12-13 after repair.
+
+### Step 14 - Record architecture acceptance
+
+Goal: record acceptance only for the exact independently reviewed document
+state.
 
 Primary target:
 
@@ -403,29 +494,31 @@ Primary target:
 
 Actions:
 
-- regenerate the Markdown inventory and reconcile every link, stage/pass
-  position, analysis/planner dependency, verifier gate, retry edge, and status
-  against the final subordinate contracts
-- state any intentional deferred implementation scope separately from
-  documentation completeness
-- record explicit architecture acceptance only if Step 13 has no blocker and
-  every subordinate contract required by the index is accepted
-- leave idea 731 open and require a later plan-owner decision for a separate
-  implementation runbook
+- confirm the Step 13 review covers the current document revisions and has no
+  blocker
+- add only the explicit architecture-accepted checkpoint; do not make a new
+  architecture choice or substantive subordinate/root correction here
+- leave idea 731 open and implementation gated pending a separate plan-owner
+  decision and implementation runbook
 
 Completion check:
 
-- the root README is a self-contained overview and exact normative index of the
-  accepted architecture; inventory and cross-reference checks are green; an
-  independent reviewer accepts the docs-only architecture checkpoint
+- the acceptance marker identifies the independently reviewed architecture
+  checkpoint, the root inventory remains exact, and no implementation is
+  authorized by this docs-only runbook
 
 ## Final Documentation Proof
 
 - `git diff --check`
-- exact Markdown inventory reconciliation against the root index
+- exact Markdown inventory and root-index reconciliation
 - local Markdown link/path validation
-- focused stale-authority searches described in Steps 7, 9, 10, 11, and 13
-- independent review against
-  `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
+- no stale `S00`-`S29` or `G01` authority language on repaired surfaces
+- no unresolved acceptance-critical core/pipeline/verifier question
+- exactly one indexed D2 subordinate owner
+- a verified BIR-owned D5 copy-realization route before E4
+- exact per-revision constraint projection ownership through E4
+- no absent/wrong legacy owner and no MIR/backend allocation-repair route
+- independent full architecture review against idea 731
 
-No code build or test result may substitute for this architecture review.
+No code build, test result, or narrow structural check substitutes for the
+independent architecture review.
