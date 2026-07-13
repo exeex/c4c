@@ -8,33 +8,36 @@ Current Step Title: Freeze the bounded schema and API checkpoint
 
 ## Just Finished
 
-- Step 1 completed at `793eeeb90`: removed obsolete prepared-BIR, prealloc,
-  route, semantic-BIR, and `backend_lir_to_bir_notes` target/registration
-  blocks from `tests/backend/bir/CMakeLists.txt`.
-- CMake configuration and generation now succeed without any
-  `src/backend/legacy/` entry in `build/compile_commands.json`.
-- The default build reaches the first production seam:
-  `src/backend/backend.hpp` includes missing `bir/bir.hpp`.
+- Step 2's first independent review blocked Step 3 and recorded three high,
+  two medium, and one low schema/API finding in
+  `review/730_step2_schema_checkpoint_review.md`.
+- The checkpoint is now repaired: it defines repo-local C++17 `Result` and
+  checked borrowed lookup representation, removes bootstrap block arguments and
+  block insertion, freezes scoped builder capability/publication lifetime, and
+  defines non-empty unique link-name merge/index/verifier semantics.
+- Declaration order, verifier numbering, import mapping, packet boundaries, and
+  deferred-feature prose were updated consistently with those repairs.
 
 ## Suggested Next
 
-- Execute Step 2: derive and review the bounded core file/type/API checkpoint
-  from the 715 contract and blueprint before implementing `bir.hpp` or broad
-  core infrastructure.
+- Re-run an independent Step 2 review against the repaired checkpoint and the
+  prior findings. Do not authorize Step 3A until that review is non-blocking.
 
 ## Watchouts
 
-- `bir.hpp` must be a facade over a real core, not a legacy copy or empty fake.
-- Preserve owner/generation IDs, separate storage/order, builder-only mutation,
-  RawBir publication, and terminator-only CFG authority.
-- Do not implement the full P0--P13 roadmap without a concrete migration need.
-- Not-yet-migrated LIR forms must reject safely; never fall back to legacy or
-  silently disappear.
+- Step 3 remains review-blocked despite the repairs; the checkpoint is pending
+  re-review, not accepted implementation authority yet.
+- Phi/block arguments and switch block insertion now have no bootstrap API.
+- `ModuleBuilder` is non-copyable/non-movable, permits one synchronous scoped
+  function edit, and cannot publish while a mutable capability is active.
+- Full symbol storage remains deferred; the bounded link-name index is only the
+  import-spine uniqueness/merge mechanism and never stable entity identity.
 
 ## Proof
 
-- `cmake --build --preset default -j 2` — CMake generation succeeded, then
-  compile stopped at missing `bir/bir.hpp` in `src/backend/backend.hpp` (also
-  reached through `src/codegen/llvm/llvm_codegen.cpp`).
-- `rg -n '/src/backend/legacy/' build/compile_commands.json` — no matches.
-- No new proof run; this update changes lifecycle intent and runbook only.
+- `git diff --check` — passed after repair.
+- Focused forbidden-surface scan for `Expected`, `BlockArgument`,
+  `add_block_argument`, and `create_block_before` — no matches.
+- Checked proposed source/include paths: none is under `src/backend/legacy/`;
+  occurrences of that path are prohibition statements only — passed.
+- Documentation-only repair; no build/test run and no log rewrite.
