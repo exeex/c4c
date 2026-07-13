@@ -1,32 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Populate semantics and compatibility rendering in HIR-to-LIR
+Current Step ID: 3
+Current Step Title: Import structured values into generic BIR SSA edges
 
 # Current Packet
 
 ## Just Finished
 
-- Corrected Plan Step 2 read/write memory lowering to evaluate each output
-  lvalue once, reuse its cached pointer for compatibility rendering, and load
-  the structured old value from that pointer while keeping a distinct new
-  semantic result.
+- Completed Plan Step 3: structured LIR inline-asm inputs/results now map
+  transactionally through a per-function ordinary BIR value map, including
+  chained and read/write edges, while only original semantic payload fields
+  enter `InlineAsmNode`.
 
 ## Suggested Next
 
-- Execute Plan Step 3 by transactionally mapping structured LIR operands and
-  results into generic BIR SSA edges without consulting compatibility text.
+- Execute Plan Step 4, “Prove the completed structured transport,” using the
+  supervisor-selected focused or broader proof without claiming general
+  LIR-to-BIR support.
 
 ## Watchouts
 
-- Keep non-scalar output addresses cached across output, tied-input, and
-  semantic-old-value construction; calling `emit_lval` or `emit_rval_id` again
-  can duplicate side effects in member/index/call-based lvalues.
-- Multi-output/memory compatibility lowering still prints through pointer
-  arguments, while semantic results use distinct ordinary SSA names. Step 3
-  must consume `ordinary_inputs`/`ordinary_results`, never `args_str`,
-  `result`, or `ret_type`, as semantic authority.
+- Step 4 proves only the bounded producer/printer/importer transport route; it
+  does not authorize MIR-ready admission, target preparation, register
+  allocation, spill/reload, or MIR architecture work.
+- Preserve `original_asm_text` and `original_constraint_text` as the only BIR
+  payload authority, and preserve rejection of textual `args_str` fallback
+  while interpreting proof failures.
 - The existing unrelated dirty README changes remain outside this slice.
 
 ## Proof

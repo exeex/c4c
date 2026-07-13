@@ -55,6 +55,8 @@ lir::LirInlineAsmOp void_inline_asm(std::string asm_text,
                                     std::string constraints) {
   lir::LirInlineAsmOp op;
   op.ret_type = lir::LirTypeRef("void");
+  op.original_asm_text = asm_text;
+  op.original_constraint_text = constraints;
   op.asm_text = std::move(asm_text);
   op.constraints = std::move(constraints);
   op.side_effects = true;
@@ -82,7 +84,10 @@ void test_supported_import_and_views() {
   constraint_bytes.push_back('\0');
   constraint_bytes += "tail";
   auto asm_block = return_block(0, "entry");
-  asm_block.insts.push_back(void_inline_asm(asm_bytes, constraint_bytes));
+  auto opaque_asm = void_inline_asm(asm_bytes, constraint_bytes);
+  opaque_asm.asm_text = "llvm compatibility template";
+  opaque_asm.constraints = "~{compatibility-only}";
+  asm_block.insts.push_back(std::move(opaque_asm));
   module.functions.push_back(
       void_definition("inline_asm", {std::move(asm_block)}));
 
@@ -227,6 +232,168 @@ void test_generic_inline_asm_ssa_edges() {
          "read/write asm must keep incoming use and produced result distinct");
 }
 
+void test_structured_lir_import_ssa_chain() {
+  const auto binding = [](std::string value, std::string type,
+                          lir::LirInlineAsmValueRole role,
+                          std::size_t constraint_index) {
+    return lir::LirInlineAsmValueBinding{
+        lir::LirOperand(std::move(value)), lir::LirTypeRef(std::move(type)),
+        role, constraint_index};
+  };
+
+  std::string semantic_asm = "semantic read/write";
+  semantic_asm.push_back('\0');
+  semantic_asm += "opaque tail";
+  std::string semantic_constraints = "+r";
+  semantic_constraints.push_back('\0');
+  semantic_constraints += "opaque tail";
+
+  auto producer = void_inline_asm("semantic producer", "=r");
+  producer.asm_text = "llvm producer";
+  producer.constraints = "=compat";
+  producer.args_str = "compatibility producer args";
+  producer.ordinary_results = {
+      binding("%seed", "i64", lir::LirInlineAsmValueRole::Output, 0)};
+
+  auto read_write = void_inline_asm(semantic_asm, semantic_constraints);
+  read_write.asm_text = "llvm read/write";
+  read_write.constraints = "+compat";
+  read_write.args_str = "compatibility read/write args";
+  read_write.clobbers = {"cc", "memory", "x7"};
+  read_write.ordinary_inputs = {
+      binding("%seed", "i64", lir::LirInlineAsmValueRole::ReadWrite, 0)};
+  read_write.ordinary_results = {
+      binding("%next", "i64", lir::LirInlineAsmValueRole::ReadWrite, 0)};
+
+  auto consumer = void_inline_asm("semantic consumer", "r");
+  consumer.asm_text = "llvm consumer";
+  consumer.constraints = "compat";
+  consumer.args_str = "compatibility consumer args";
+  consumer.ordinary_inputs = {
+      binding("%next", "i64", lir::LirInlineAsmValueRole::Input, 0)};
+
+  lir::LirModule module;
+  auto block = return_block(0, "entry");
+  block.insts = {std::move(producer), std::move(read_write),
+                 std::move(consumer)};
+  module.functions.push_back(
+      void_definition("structured_chain", {std::move(block)}));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "structured LIR inline-asm chain should publish RawBir");
+  const auto module_view = imported.value().view();
+  const auto function_ids = module_view.functions();
+  expect(function_ids.size() == 1,
+         "structured chain should preserve one function identity");
+  auto function = module_view.function(function_ids[0]);
+  expect(function.has_value(), "structured chain function should resolve");
+  const auto blocks = function.value().blocks();
+  auto instructions = function.value().instructions(blocks[0]);
+  expect(instructions.has_value() && instructions.value().size() == 3,
+         "structured chain should preserve stable instruction order");
+
+  auto first = function.value().instruction(instructions.value()[0]);
+  auto second = function.value().instruction(instructions.value()[1]);
+  auto third = function.value().instruction(instructions.value()[2]);
+  expect(first.has_value() && second.has_value() && third.has_value() &&
+             first.value().results().size() == 1 &&
+             second.value().operands() == first.value().results() &&
+             second.value().results().size() == 1 &&
+             third.value().operands() == second.value().results(),
+         "ordinary result map should connect producer, read/write, and consumer");
+  expect(second.value().operands()[0] != second.value().results()[0],
+         "read/write import must retain distinct old and new SSA identities");
+  const auto* payload =
+      std::get_if<bir::InlineAsmNode>(&second.value().payload());
+  expect(payload && payload->asm_text == semantic_asm &&
+             payload->constraint_text == semantic_constraints &&
+             payload->clobbers ==
+                 std::vector<std::string>({"cc", "memory", "x7"}) &&
+             payload->side_effects,
+         "BIR payload must preserve only original semantic authority");
+  auto result = function.value().value(second.value().results()[0]);
+  expect(result.has_value() && result.value().type == bir::Type{bir::TypeKind::I64},
+         "structured result type should survive through the stable value view");
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the same structured chain should publish CanonicalBir transactionally");
+}
+
+void test_structured_lir_import_rejections() {
+  const auto binding = [](std::string value, std::string type,
+                          lir::LirInlineAsmValueRole role,
+                          std::size_t constraint_index) {
+    return lir::LirInlineAsmValueBinding{
+        lir::LirOperand(std::move(value)), lir::LirTypeRef(std::move(type)),
+        role, constraint_index};
+  };
+  const auto expect_rejected = [](lir::LirModule module,
+                                  const std::string& message) {
+    auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() &&
+               raw.error().code == bir::ImportErrorCode::UnsupportedInlineAsmShape,
+           message + " (RawBir)");
+    auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedInlineAsmShape,
+           message + " (CanonicalBir)");
+  };
+  const auto one_function_module = [](std::string name,
+                                      std::vector<lir::LirInst> instructions) {
+    lir::LirModule module;
+    auto block = return_block(0, "entry");
+    block.insts = std::move(instructions);
+    module.functions.push_back(
+        void_definition(std::move(name), {std::move(block)}));
+    return module;
+  };
+
+  auto missing = void_inline_asm("missing", "r");
+  missing.ordinary_inputs = {
+      binding("%missing", "i64", lir::LirInlineAsmValueRole::Input, 0)};
+  expect_rejected(one_function_module("missing", {missing}),
+                  "missing structured input must fail without publication");
+
+  auto first = void_inline_asm("first", "=r");
+  first.ordinary_results = {
+      binding("%dup", "i64", lir::LirInlineAsmValueRole::Output, 0)};
+  auto duplicate = void_inline_asm("duplicate", "=r");
+  duplicate.ordinary_results = {
+      binding("%dup", "i64", lir::LirInlineAsmValueRole::Output, 0)};
+  expect_rejected(one_function_module("duplicate", {first, duplicate}),
+                  "duplicate structured result must fail without publication");
+
+  auto mistyped = void_inline_asm("mistyped", "r");
+  mistyped.ordinary_inputs = {
+      binding("%dup", "i32", lir::LirInlineAsmValueRole::Input, 0)};
+  expect_rejected(one_function_module("mistyped", {first, mistyped}),
+                  "mistyped structured input must fail without publication");
+
+  auto inconsistent = void_inline_asm("inconsistent", "+r");
+  inconsistent.ordinary_inputs = {
+      binding("%dup", "i64", lir::LirInlineAsmValueRole::ReadWrite, 0)};
+  expect_rejected(one_function_module("inconsistent", {first, inconsistent}),
+                  "unpaired read/write input must fail without publication");
+
+  lir::LirModule foreign;
+  auto foreign_def = return_block(0, "entry");
+  foreign_def.insts = {first};
+  foreign.functions.push_back(
+      void_definition("foreign_def", {std::move(foreign_def)}));
+  auto foreign_use = return_block(0, "entry");
+  auto use = void_inline_asm("foreign use", "r");
+  use.ordinary_inputs = {
+      binding("%dup", "i64", lir::LirInlineAsmValueRole::Input, 0)};
+  foreign_use.insts = {std::move(use)};
+  foreign.functions.push_back(
+      void_definition("foreign_use", {std::move(foreign_use)}));
+  expect_rejected(std::move(foreign),
+                  "foreign-function identity must fail without publication");
+}
+
 void test_lir_inline_asm_structured_value_contract() {
   static_assert(std::is_same_v<
                 decltype(lir::LirInlineAsmValueBinding::value),
@@ -349,6 +516,11 @@ void test_inline_asm_shape_rejection() {
          "unstructured inline-asm arguments must publish no RawBir");
   expect(imported.error().code == bir::ImportErrorCode::UnsupportedInlineAsmShape,
          "unstructured argument rejection should remain structured");
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(!canonical.has_value() &&
+             canonical.error().code ==
+                 bir::ImportErrorCode::UnsupportedInlineAsmShape,
+         "textual-only inline asm must publish no partial CanonicalBir");
 }
 
 }  // namespace
@@ -356,6 +528,8 @@ void test_inline_asm_shape_rejection() {
 int main() {
   test_supported_import_and_views();
   test_generic_inline_asm_ssa_edges();
+  test_structured_lir_import_ssa_chain();
+  test_structured_lir_import_rejections();
   test_lir_inline_asm_structured_value_contract();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
