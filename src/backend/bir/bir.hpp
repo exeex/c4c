@@ -22,6 +22,19 @@ struct ValueId;
 
 }  // namespace c4c::backend::bir
 
+// Exact whole-stage pipeline revision and fingerprint identities.
+#include "pipeline/identity.hpp"
+
+namespace c4c::backend::bir {
+
+struct ModuleRevision;
+struct FunctionRevision;
+struct Fingerprint128;
+struct FunctionRevisionDigest;
+struct PipelineStageStamp;
+
+}  // namespace c4c::backend::bir
+
 // Semantic schema: types, values, control-flow terminators, and signatures.
 #include "core/type.hpp"
 #include "core/ir.hpp"

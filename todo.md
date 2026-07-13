@@ -8,29 +8,58 @@ Current Step Title: Establish executable pipeline identity and transaction found
 
 ## Just Finished
 
-- The docs-only architecture runbook completed at commit
-  `edab15ee77b8a0695e43b890c3e4057b1a739f38`; its accepted checkpoint remains
-  the normative implementation contract.
-- Lifecycle replaced that exhausted runbook with a separately scoped idea-731
-  implementation runbook. No implementation or architecture document changed.
+- Completed Plan Step 1.1a: added the compiled target-independent pipeline
+  identity foundation under `src/backend/bir/pipeline/identity.*` and exported
+  it through `bir.hpp`.
+- Added strong `ModuleRevision` and `FunctionRevision` value axes, stable
+  `Fingerprint128`/`FunctionRevisionDigest` values, and `PipelineStageStamp`
+  equality over module epoch, module revision, and ordered function-revision
+  digest.
+- Added deterministic digest construction that preserves the caller-supplied
+  core canonical `(FunctionId, FunctionRevision)` sequence exactly. Zero epoch,
+  invalid/foreign IDs, and duplicate live slots return indexed typed errors
+  without a partial digest or silent sorting/normalization.
+- Added dedicated `backend_bir_pipeline_identity` coverage and CMake
+  integration for deterministic construction, every freshness axis, changed
+  identity/revision, empty input, arbitrary valid order and order sensitivity,
+  invalid/foreign IDs, duplicate-slot rejection, and clean construction after
+  failure.
 
 ## Suggested Next
 
-- Execute Plan Step 1.1 as bounded supervisor-delegated packets, beginning with
-  the exact pipeline stage/revision/product identity and private transaction
-  foundations plus their build integration and focused tests.
+- Continue Plan Step 1.1 with a separate bounded transaction/cancellation
+  packet: introduce the smallest private stage-candidate/checkpoint state and
+  typed cancellation/failure behavior using these exact identity primitives.
+  Do not widen that packet into pass dispatch, product registries, target facts,
+  or publication-token implementation.
 
 ## Watchouts
 
-- The accepted architecture is fixed input. Stop and request architecture
-  review if code cannot satisfy it; do not change ownership or weaken gates in
-  an implementation packet.
-- Preserve the existing structured inline-asm carrier, target-independent
-  Raw/Canonical storage, strict F1 boundary, and anti-overfit rules.
-- Idea 731 remains open. This runbook authorizes only its ordered implementation
-  scope and does not predetermine source-idea closure.
+- The caller must supply core's explicit canonical module function order. This
+  identity-only helper preserves and hashes that sequence but cannot prove its
+  provenance until future core-revision integration. It rejects duplicate live
+  slots, including different generations of the same slot, rather than sorting.
+- `FunctionRevisionDigest` uses an explicitly byte-ordered, implementation-
+  local stable 128-bit mixer rather than pointer, string, `std::hash`, container
+  iteration, or target identity.
+- This packet implements identity values only. It does not implement or imply
+  mutation, cancellation, rollback, stage publication, pass scheduling,
+  analysis products, pseudo facts, or allocation state.
 
 ## Proof
 
-- Lifecycle transition only. The first executor packet must record fresh build
-  and supervisor-selected narrow proof.
+- `cmake --preset default`: configured and generated successfully.
+- `cmake --build --preset default`: built `c4c_backend`,
+  `backend_bir_pipeline_identity_test`, the existing backend interface test,
+  and the default tree successfully; the final confirmation reported
+  `ninja: no work to do`.
+- Exact supervisor-selected command:
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  Baseline `test_before.log`: 1/1 passed. Current `test_after.log`: 2/2 passed,
+  including `backend_bir_pipeline_identity`; zero failures.
+- Passed `git diff --check`.
+- Owned files: `src/backend/bir/pipeline/identity.hpp`,
+  `src/backend/bir/pipeline/identity.cpp`, `src/backend/bir/bir.hpp`,
+  `tests/backend/bir/backend_bir_pipeline_identity_test.cpp`,
+  `tests/backend/bir/CMakeLists.txt`, `todo.md`, and canonical
+  `test_after.log`.
