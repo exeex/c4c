@@ -79,6 +79,7 @@ struct GlobalObject {
   std::variant<LinkNameId, FallbackGlobalName> identity = FallbackGlobalName{};
   int alignment = 0;
   bool is_internal = false;
+  bool is_weak = false;
   bool is_const = false;
   bool is_extern_declaration = true;
   std::optional<GlobalInitializer> initializer;

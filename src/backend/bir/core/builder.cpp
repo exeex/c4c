@@ -244,7 +244,8 @@ Result<ExternalDeclId, BuildError> ModuleBuilder::add_external_declaration(
 
 Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
     std::string source_name, Type object_type, int alignment,
-    bool is_internal, bool is_const, bool is_extern_declaration,
+    bool is_internal, bool is_weak, bool is_const,
+    bool is_extern_declaration,
     std::optional<c4c::LinkNameId> source_link_name,
     std::optional<std::string> initializer_payload,
     std::vector<c4c::LinkNameId> initializer_function_links) {
@@ -306,7 +307,8 @@ Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
                           static_cast<SlotIndex>(data_->globals_.size())};
   data_->globals_.push_back(GlobalObject{source_name, std::move(object_type),
                                          identity, alignment, is_internal,
-                                         is_const, is_extern_declaration,
+                                         is_weak, is_const,
+                                         is_extern_declaration,
                                          std::move(initializer)});
   try {
     data_->globals_by_name_.emplace(source_name, id);

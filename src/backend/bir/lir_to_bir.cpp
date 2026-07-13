@@ -415,12 +415,22 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global.is_extern_decl && global.is_internal && global.is_const &&
         global.linkage_vis == "internal " &&
         global.qualifier == "constant " && !global.init_text.empty();
+    const bool coherent_weak_ordinary_definition =
+        !global.is_extern_decl && !global.is_internal && !global.is_const &&
+        global.linkage_vis == "weak " && global.qualifier == "global " &&
+        !global.init_text.empty();
+    const bool coherent_weak_constant_definition =
+        !global.is_extern_decl && !global.is_internal && global.is_const &&
+        global.linkage_vis == "weak " && global.qualifier == "constant " &&
+        !global.init_text.empty();
     if (!coherent_external && !coherent_ordinary_definition &&
         !coherent_constant_definition &&
         !coherent_internal_ordinary_definition &&
-        !coherent_internal_constant_definition)
+        !coherent_internal_constant_definition &&
+        !coherent_weak_ordinary_definition &&
+        !coherent_weak_constant_definition)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                        "only coherent external declarations and initialized external or internal global/constant definitions are admitted");
+                        "only coherent external declarations and initialized ordinary, internal, or weak global/constant definitions are admitted");
     if (global.align_bytes < 0 ||
         (global.align_bytes != 0 &&
          (global.align_bytes & (global.align_bytes - 1)) != 0))
@@ -847,8 +857,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   for (const auto& global : module.globals) {
     auto added = builder.add_global_object(
         global.name, *lower_lir_type(module, *global.llvm_type_ref),
-        global.align_bytes, global.is_internal, global.is_const,
-        global.is_extern_decl,
+        global.align_bytes, global.is_internal,
+        global.linkage_vis == "weak ", global.is_const, global.is_extern_decl,
         global.link_name_id == c4c::kInvalidLinkName
             ? std::nullopt
             : std::optional<c4c::LinkNameId>{global.link_name_id},

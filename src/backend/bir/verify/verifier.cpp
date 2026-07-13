@@ -295,11 +295,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
     if (!id.valid() || global.source_name.empty() ||
         !is_well_formed(global.object_type) ||
         global.object_type.kind == TypeKind::Void || !type_resolves ||
-        !valid_alignment ||
+        !valid_alignment || (global.is_weak && global.is_internal) ||
+        (global.is_weak && global.is_extern_declaration) ||
         (global.is_extern_declaration == global.initializer.has_value()) ||
         named == module.globals_by_name_.end() || named->second != id)
       report(result, VerificationRule::GlobalObject, {}, id,
-             "global identity, definition/extern initializer shape, type, alignment, and name index must agree");
+             "global identity, linkage classification, definition/extern initializer shape, type, alignment, and name index must agree");
 
     if (global.initializer) {
       if (global.initializer->opaque_payload.empty())

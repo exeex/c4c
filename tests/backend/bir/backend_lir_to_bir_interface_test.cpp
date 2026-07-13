@@ -1440,6 +1440,7 @@ void test_global_object_receipt_and_views() {
   module.link_names.attach_text_table(module.link_name_texts.get());
   module.struct_names.attach_text_table(module.link_name_texts.get());
   const auto linked_name = module.link_names.intern("linked_global");
+  const auto weak_linked_name = module.link_names.intern("weak_constant_global");
   const auto init_fn_a = module.link_names.intern("init_fn_a");
   const auto init_fn_b = module.link_names.intern("init_fn_b");
 
@@ -1506,6 +1507,24 @@ void test_global_object_receipt_and_views() {
   internal_constant_initialized.initializer_function_link_name_ids = {
       init_fn_b, init_fn_a};
   module.globals.push_back(std::move(internal_constant_initialized));
+  auto weak_initialized = external_global(
+      "weak_initialized_global", c4c::kInvalidLinkName, c4c::TB_INT,
+      lir::LirTypeRef::integer(32), 4, false);
+  weak_initialized.linkage_vis = "weak ";
+  weak_initialized.is_extern_decl = false;
+  weak_initialized.init_text = "i32 23";
+  weak_initialized.initializer_function_link_name_ids = {init_fn_a};
+  module.globals.push_back(std::move(weak_initialized));
+  auto weak_constant_initialized = external_global(
+      "weak_constant_global", weak_linked_name, c4c::TB_DOUBLE,
+      lir::LirTypeRef("double"), 8, true);
+  weak_constant_initialized.linkage_vis = "weak ";
+  weak_constant_initialized.qualifier = "constant ";
+  weak_constant_initialized.is_extern_decl = false;
+  weak_constant_initialized.init_text = "double 3.5";
+  weak_constant_initialized.initializer_function_link_name_ids = {
+      init_fn_b, init_fn_a};
+  module.globals.push_back(std::move(weak_constant_initialized));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
   expect(imported.has_value(),
@@ -1514,9 +1533,9 @@ void test_global_object_receipt_and_views() {
          "published global storage must be verifier reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 6 && ids[0].slot == 0 && ids[1].slot == 1 &&
+  expect(ids.size() == 8 && ids[0].slot == 0 && ids[1].slot == 1 &&
              ids[2].slot == 2 && ids[3].slot == 3 && ids[4].slot == 4 &&
-             ids[5].slot == 5,
+             ids[5].slot == 5 && ids[6].slot == 6 && ids[7].slot == 7,
          "Raw-BIR global IDs must follow source vector order, not LirGlobal.id");
   const auto fallback = view.global_object(ids[0]).value();
   const auto linked = view.global_object(ids[1]).value();
@@ -1524,10 +1543,13 @@ void test_global_object_receipt_and_views() {
   const auto constant_definition = view.global_object(ids[3]).value();
   const auto internal_definition = view.global_object(ids[4]).value();
   const auto internal_constant_definition = view.global_object(ids[5]).value();
+  const auto weak_definition = view.global_object(ids[6]).value();
+  const auto weak_constant_definition = view.global_object(ids[7]).value();
   expect(fallback.source_name == "fallback_global" &&
              fallback.object_type == bir::Type{bir::TypeKind::I32} &&
              fallback.alignment == 4 && !fallback.is_internal &&
-             !fallback.is_const && fallback.is_extern_declaration &&
+             !fallback.is_weak && !fallback.is_const &&
+             fallback.is_extern_declaration &&
              std::get<bir::FallbackGlobalName>(fallback.identity).name ==
                  fallback.source_name &&
              linked.source_name == "linked_global" &&
@@ -1536,6 +1558,7 @@ void test_global_object_receipt_and_views() {
              std::holds_alternative<bir::LinkNameId>(linked.identity) &&
              !fallback.initializer && !linked.initializer &&
              !definition.is_extern_declaration && definition.initializer &&
+             !definition.is_weak &&
              definition.initializer->opaque_payload ==
                  std::string{"i32 7\n\0tail", 11} &&
              constant_definition.object_type ==
@@ -1560,7 +1583,8 @@ void test_global_object_receipt_and_views() {
                  "init_fn_b",
          "constant initializer links must preserve ordered structured references");
   expect(internal_definition.object_type == bir::Type{bir::TypeKind::I32} &&
-             internal_definition.is_internal && !internal_definition.is_const &&
+             internal_definition.is_internal && !internal_definition.is_weak &&
+             !internal_definition.is_const &&
              !internal_definition.is_extern_declaration &&
              internal_definition.initializer &&
              internal_definition.initializer->opaque_payload == "i32 19" &&
@@ -1572,6 +1596,7 @@ void test_global_object_receipt_and_views() {
   expect(internal_constant_definition.object_type ==
                  bir::Type{bir::TypeKind::F64} &&
              internal_constant_definition.is_internal &&
+             !internal_constant_definition.is_weak &&
              internal_constant_definition.is_const &&
              !internal_constant_definition.is_extern_declaration &&
              internal_constant_definition.initializer &&
@@ -1586,9 +1611,41 @@ void test_global_object_receipt_and_views() {
                                ->function_links[1])
                      .value() == "init_fn_a",
          "internal constant definitions must preserve typed flags, payloads, and ordered initializer links");
+  expect(weak_definition.object_type == bir::Type{bir::TypeKind::I32} &&
+             !weak_definition.is_internal && weak_definition.is_weak &&
+             !weak_definition.is_const &&
+             !weak_definition.is_extern_declaration &&
+             weak_definition.initializer &&
+             weak_definition.initializer->opaque_payload == "i32 23" &&
+             weak_definition.initializer->function_links.size() == 1 &&
+             view.spelling(weak_definition.initializer->function_links[0])
+                     .value() == "init_fn_a",
+         "weak ordinary definitions must preserve typed linkage, type, payload, and initializer links");
+  expect(weak_constant_definition.object_type ==
+                 bir::Type{bir::TypeKind::F64} &&
+             !weak_constant_definition.is_internal &&
+             weak_constant_definition.is_weak &&
+             weak_constant_definition.is_const &&
+             !weak_constant_definition.is_extern_declaration &&
+             std::holds_alternative<bir::LinkNameId>(
+                 weak_constant_definition.identity) &&
+             weak_constant_definition.initializer &&
+             weak_constant_definition.initializer->opaque_payload ==
+                 "double 3.5" &&
+             weak_constant_definition.initializer->function_links.size() == 2 &&
+             view.spelling(
+                     weak_constant_definition.initializer->function_links[0])
+                     .value() == "init_fn_b" &&
+             view.spelling(
+                     weak_constant_definition.initializer->function_links[1])
+                     .value() == "init_fn_a",
+         "weak constant definitions must preserve typed linkage, identity, type, payload, and ordered initializer links");
   expect(view.global_object("fallback_global").value() == ids[0] &&
              view.global_object(std::get<bir::LinkNameId>(linked.identity))
-                     .value() == ids[1],
+                     .value() == ids[1] &&
+             view.global_object(
+                     std::get<bir::LinkNameId>(weak_constant_definition.identity))
+                     .value() == ids[7],
          "global name and link lookups must resolve ordered typed identities");
 }
 
@@ -1646,6 +1703,16 @@ void test_global_object_rejections_and_transactionality() {
            "source type compatibility conflicts must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].linkage_vis = "weak "; },
            "linkage compatibility conflicts must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].linkage_vis = "extern_weak ";
+           },
+           "extern-weak declarations must remain unsupported transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis = "weak hidden ";
+             m.globals[0].init_text = "i32 0";
+           },
+           "visibility-decorated weak definitions must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].qualifier = "constant "; },
            "qualifier compatibility conflicts must reject transactionally");
   rejected([](lir::LirModule& m) {
@@ -1726,20 +1793,20 @@ void test_global_object_rejections_and_transactionality() {
          "staged link name should be available to global receipt");
   expect(builder
              .add_global_object("", bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, true)
+                                false, false, false, true)
              .error() == bir::BuildError::EmptyGlobalName,
          "builder must reject empty global identities");
   expect(builder
              .add_global_object("linked_global",
                                 bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, true,
+                                false, false, false, true,
                                 c4c::kInvalidLinkName)
              .error() == bir::BuildError::InvalidGlobalLinkName,
          "builder must reject explicitly invalid link identities");
   expect(builder
              .add_global_object("bad_initializer_link",
                                 bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, false, std::nullopt,
+                                false, false, false, false, std::nullopt,
                                 std::string{"i32 0"},
                                 {static_cast<c4c::LinkNameId>(999)})
              .error() == bir::BuildError::InvalidGlobalInitializerLinkName,
@@ -1747,7 +1814,7 @@ void test_global_object_rejections_and_transactionality() {
   expect(builder
              .add_global_object("bad_invalid_initializer_link",
                                 bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, false, std::nullopt,
+                                false, false, false, false, std::nullopt,
                                 std::string{"i32 0"},
                                 {c4c::kInvalidLinkName})
              .error() == bir::BuildError::InvalidGlobalInitializerLinkName,
@@ -1755,13 +1822,13 @@ void test_global_object_rejections_and_transactionality() {
   expect(builder
              .add_global_object("malformed_global",
                                 bir::Type{bir::TypeKind::Void}, 3,
-                                true, false, false)
+                                true, false, false, false)
              .has_value(),
          "builder should retain malformed staged global state for verifier diagnosis");
   expect(builder
              .add_global_object("malformed_global",
                                 bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, true)
+                                false, false, false, true)
              .error() == bir::BuildError::DuplicateGlobalObject,
          "duplicate staged global receipt must remain append-only");
   auto published = std::move(builder).publish();
@@ -1773,7 +1840,7 @@ void test_global_object_rejections_and_transactionality() {
   expect(coherence_builder
              .add_global_object("extern_with_initializer",
                                 bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, true, std::nullopt,
+                                false, false, false, true, std::nullopt,
                                 std::string{"i32 0"})
              .has_value(),
          "builder should stage initializer coherence errors for verifier diagnosis");
@@ -1782,13 +1849,51 @@ void test_global_object_rejections_and_transactionality() {
              incoherent.error().reason == bir::PublishError::VerificationFailed,
          "FoundationVerifier must reject extern globals carrying initializers");
 
+  bir::ModuleBuilder coherent_weak_builder;
+  expect(coherent_weak_builder
+             .add_global_object("coherent_weak_definition",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, true, false, false, std::nullopt,
+                                std::string{"i32 0"})
+             .has_value(),
+         "builder should stage coherent typed weak definitions");
+  expect(std::move(coherent_weak_builder).publish().has_value(),
+         "FoundationVerifier should publish coherent typed weak definitions");
+
+  bir::ModuleBuilder weak_internal_builder;
+  expect(weak_internal_builder
+             .add_global_object("weak_internal_definition",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                true, true, false, false, std::nullopt,
+                                std::string{"i32 0"})
+             .has_value(),
+         "builder should stage weak/internal coherence errors for verifier diagnosis");
+  auto weak_internal = std::move(weak_internal_builder).publish();
+  expect(!weak_internal.has_value() &&
+             weak_internal.error().reason ==
+                 bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject globals typed as both weak and internal");
+
+  bir::ModuleBuilder weak_extern_builder;
+  expect(weak_extern_builder
+             .add_global_object("weak_extern_declaration",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, true, false, true)
+             .has_value(),
+         "builder should stage weak/extern coherence errors for verifier diagnosis");
+  auto weak_extern = std::move(weak_extern_builder).publish();
+  expect(!weak_extern.has_value() &&
+             weak_extern.error().reason ==
+                 bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject globals typed as both weak and extern");
+
   bir::ModuleBuilder no_partial_builder;
   expect(no_partial_builder.add_link_name(1, "init_target").has_value(),
          "initializer target should enter the sole link-name table");
   expect(no_partial_builder
              .add_global_object("rejected_definition",
                                 bir::Type{bir::TypeKind::I32}, 4,
-                                false, false, false, std::nullopt,
+                                false, false, false, false, std::nullopt,
                                 std::string{"i32 0"},
                                 {static_cast<c4c::LinkNameId>(99)})
              .error() == bir::BuildError::InvalidGlobalInitializerLinkName,
@@ -1796,7 +1901,7 @@ void test_global_object_rejections_and_transactionality() {
   const auto first_after_rejection =
       no_partial_builder.add_global_object(
           "accepted_definition", bir::Type{bir::TypeKind::I32}, 4,
-          false, false, false, std::nullopt, std::string{"i32 0"}, {1});
+          false, false, false, false, std::nullopt, std::string{"i32 0"}, {1});
   expect(first_after_rejection.has_value() &&
              first_after_rejection.value().slot == 0,
          "failed initializer resolution must not append a partial global row");
