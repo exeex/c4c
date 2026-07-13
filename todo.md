@@ -3,53 +3,52 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Converge canonical passes P03-P04 and CFG/SSA analyses
+Current Step ID: 6
+Current Step Title: Converge canonical passes P05-P07 and semantic analyses
 
 ## Just Finished
 
-- Plan Step 5 is complete. P03 now owns all CFG mutation through one function
-  transaction, with typed terminators and successor slots as the sole stored
-  edge source and `EdgeKey {source BlockId, successor-slot ordinal}` preserving
-  split/merge, switch, indirect, asm-goto, and parallel-edge occurrences.
-- CFG, dominance, and publication/value-flow are closed immutable analyses
-  keyed to exact revisions, with explicit dependencies, stale-handle rejection,
-  exact invalidation, atomic cache publication, and no graph mutation authority.
-- P04 now has closed phi/block-argument construction and repair semantics:
-  incoming values cover the exact live `EdgeKey` multiset, def-use and dominance
-  are repaired and verified transactionally, and any incomplete repair rolls
-  back the entire occurrence.
-- Phi materialization and cycle-safe parallel-copy realization are deferred to
-  root stage `D5` after target legalization and before `E1` allocation
-  liveness; P04 makes no placement, allocation, or target-instruction decision.
-- Minimal pipeline adjacency wording now uses `BlockId`/`EdgeKey` consistently
-  and rejects names or label lookup tables as graph keys.
+- Plan Step 6 is complete. P05-P07 now consume exact predecessor revisions in
+  the fixed order, preserve every cumulative earlier property or fail, and use
+  one private whole-module occurrence transaction with complete rollback.
+- P05 closes target-independent memory/address/effect representation, P06
+  closes layout-independent aggregate semantics without recreating earlier
+  forms, and P07 freezes the sole final intrinsic candidate admitted by G01.
+- Memory-effects, provenance, and call-graph results are immutable analyses with
+  explicit schema/dependency keys, exact module/function revision binding,
+  deterministic output, stale-handle rejection, invalidation, and atomic cache
+  publication.
+- Canonical verification now accepts only the exact frozen P07 lineage and full
+  stage stamp at G01, checks the cumulative P01-P07 profile on that revision,
+  and atomically publishes `CanonicalBir` or publishes nothing.
+- All Step 6 facts remain target-independent. `InlineAsm` remains one ordinary-
+  value opaque semantic node; its texts are preserved and never interpreted or
+  rewritten in P05-P07, semantic analyses, or Canonical verification.
 
 ## Suggested Next
 
-- Execute Plan Step 6 in its declared order: converge
-  `passes/memory/README.md` (`P05`), `analysis/memory_effects/README.md`,
-  `analysis/provenance/README.md`, `passes/aggregate/README.md` (`P06`),
-  `passes/intrinsics/README.md` (`P07`), `analysis/call_graph/README.md`, then
-  the Canonical profile in `verify/README.md`. Require the exact P07 output to
-  pass Canonical publication, keep all facts target-independent, and preserve
-  inline assembly as one opaque semantic node.
+- Execute Plan Step 7 in its declared order: converge target layout,
+  preparation, ABI, calls, variadics, address, runtime helpers, inline-assembly
+  preparation, and allocation-constraint ownership. Bind every derived product
+  to immutable `CanonicalBir` plus one exact target fingerprint without writing
+  prepared or allocation facts back into Canonical BIR.
 
 ## Watchouts
 
 - Do not begin implementation before explicit architecture acceptance.
-- Do not let a local pass or analysis document invent ordering outside the root
-  README or treat an analysis dependency as a serial stage.
-- P05-P07 must preserve the P03/P04 CFG and SSA profiles or fail; a later
-  canonicalizer may not emit a fresh noncanonical scalar, edge, phi, memory, or
-  aggregate form and then rerun an earlier pass.
-- Do not move D5 work into P04 or a target instruction graph. Preparation and
-  allocation remain outside the canonical P05-P07 interval.
+- Keep Step 7 products external, immutable, and keyed to the complete Canonical
+  stage stamp plus target fingerprint; a module revision alone is insufficient.
+- Preserve the single owner split: preparation may classify and plan, while the
+  allocation-constraints stage alone interprets and binds target constraint
+  meaning. Neither may replace the ordinary BIR value graph.
+- Do not let preparation select allocation homes or mutate Canonical BIR, and
+  do not let allocation constraints become a duplicate target-layout, ABI,
+  call-plan, or inline-assembly semantic owner.
 - Keep idea 731 open when this docs-only runbook is exhausted.
 
 ## Proof
 
-- `git diff --check && ! rg -n 'persistent predecessor|predecessor.*authority|MIR.*out.of.SSA|out.of.SSA.*MIR|label.*identity' src/backend/bir/passes/cfg/README.md src/backend/bir/analysis/cfg/README.md src/backend/bir/analysis/dominance/README.md src/backend/bir/passes/ssa/README.md src/backend/bir/analysis/publication/README.md src/backend/bir/pipeline/README.md && rg -n 'terminator|EdgeKey|revision|invalidat|D5|rollback|publish' src/backend/bir/passes/cfg/README.md src/backend/bir/analysis/cfg/README.md src/backend/bir/analysis/dominance/README.md src/backend/bir/passes/ssa/README.md src/backend/bir/analysis/publication/README.md` — exit 0.
+- `git diff --check && ! rg -n 'target opcode|physical register|ABI (location|placement)|frame offset|parse.*(asm|constraint)|constraint.*parse' src/backend/bir/passes/memory/README.md src/backend/bir/analysis/memory_effects/README.md src/backend/bir/analysis/provenance/README.md src/backend/bir/passes/aggregate/README.md src/backend/bir/passes/intrinsics/README.md src/backend/bir/analysis/call_graph/README.md && rg -n 'CanonicalBir|Canonical.*profile|P07|revision|rollback|opaque|InlineAsm' src/backend/bir/passes/memory/README.md src/backend/bir/passes/aggregate/README.md src/backend/bir/passes/intrinsics/README.md src/backend/bir/verify/README.md` — exit 0.
 - The supervisor selected a docs-only structural proof that does not produce a
   test log; no `test_after.log` or other regression log was created or
   modified.

@@ -1,8 +1,9 @@
 # BIR verifier design
 
-Status: Raw publication boundary reviewed; later profiles and wider rules
-remain target design. The checked-in `verifier.hpp/.cpp` is a partial
-foundation implementation, not the complete contract described here.
+Status: Raw and Canonical publication boundaries are closed architecture
+contracts; PreparedInput and wider rules remain target design. The checked-in
+`verifier.hpp/.cpp` is a partial foundation implementation, not the complete
+contract described here.
 
 This directory owns structural and semantic validation of published BIR. The
 first implementation target is **RawBir**: the result of LIR lowering and the
@@ -92,6 +93,77 @@ closed, typed alternative and an explicit later legalizer/fallback owner. A
 source construct that cannot be represented losslessly is rejected by the LIR
 importer before publication; an `Unsupported` instruction, string payload, or
 opaque side record is not valid Raw BIR.
+
+### Canonical profile and G01 publication
+
+The `Canonical` profile is the exact cumulative profile of the immutable P07
+output, not a general request to accept any well-formed post-Raw module. G01
+accepts one private frozen candidate only when its `PipelineStageStamp` proves
+the canonical-v1 occurrence lineage, exact plan/options fingerprints, P07 as
+completed ordinal 7, `PassProperty::IntrinsicsCanonical`, exact
+`ModuleEpoch`/`ModuleRevision`, and the ordered digest of every
+`(FunctionId, FunctionRevision)`. The candidate presented to verification must
+be the same owning revision frozen by P07. A reconstructed view, a stamp copied
+from another candidate, a stale analysis result, or a module that merely has an
+equal semantic hash is not eligible for publication.
+
+The full Canonical check is cumulative. It runs the complete Raw registry plus
+the following closed post-pass obligations on that one frozen revision:
+
+1. P01 legal semantic types, constants, casts, predicates, truth uses, and
+   portable opcode families hold; no `legalize`-owned Raw form remains.
+2. P02 scalar expressions, comparisons, selects, exceptional-value behavior,
+   and helper-eligible semantic operations have their unique portable forms.
+3. P03 terminators and ordered successor slots are the sole CFG edge authority;
+   `EdgeKey` occurrence identity and canonical block/topology policy hold.
+4. P04 canonical SSA form, exact phi/block-argument incoming `EdgeKey`
+   coverage, complete def-use, dominance, and alias normalization hold.
+5. P05 memory, address/GEP, access, atomic, stack-state, and memory-intrinsic
+   descriptors have their unique semantic forms and preserve P03/P04.
+6. P06 aggregate values, copies, paths, complex/multivalue operations, and
+   by-value boundaries have unique layout-independent forms and preserve every
+   earlier profile.
+7. P07 intrinsic registry identity, signatures, immediates, portable feature
+   requirements, and effects are closed, and every admitted operation is
+   represented or has already failed the P07 transaction.
+
+`InlineAsm` remains one ordinary instruction in the generic value graph for
+Canonical verification. Its ordinary inputs/results, original opaque template
+and constraint payload, ordered clobber spellings, and declared semantic
+effects must satisfy the closed descriptor. Canonical verification does not
+parse or rewrite either text, infer roles or ties, validate machine vocabulary,
+or create a parallel assembly graph. The same opaque semantic node that entered
+the pipeline must survive P01-P07 except for typed generic-edge repair required
+by an owning earlier rewrite.
+
+Canonical facts remain target-independent. G01 rejects every stage-forbidden
+prepared, calling-placement, allocation, frame, machine-instruction, encoding,
+or MIR fact, as well as a fresh P01-P06 noncanonical form emitted by a later
+pass. A portable feature requirement is semantic metadata, not a support
+decision. Target support and constraint binding occur only after immutable
+`CanonicalBir` publication.
+
+G01 is one fail-closed transaction:
+
+1. it consumes the private owning P07 candidate capability and freezes its exact
+   stage stamp; no edit or analysis publication may race the gate;
+2. it runs all cumulative framework postcondition checkers and the complete
+   `Canonical` verifier registry against that same frozen candidate;
+3. any diagnostic, revision/stamp change, missing property, cancellation, or
+   deterministic resource failure discards the candidate and returns one
+   structured publication failure. It publishes no function subset,
+   `CanonicalBir`, property, cache entry, or reusable capability;
+4. only a completely green result atomically consumes the candidate and the
+   verifier-private token to mint exactly one immutable `CanonicalBir` carrying
+   the verified stamp.
+
+Diagnostic-only `verify_candidate(Canonical)` and re-checking
+`verify(ModuleView, Canonical)` never mint or repair a stage capability. No
+earlier green report can be cached across a P07 edit, and failure cannot roll
+back to an earlier checkpoint and call that snapshot Canonical. Pipeline
+rollback may retain its explicitly permitted last-good checkpoint, but only a
+new exact P07 occurrence followed by a successful G01 transaction can publish
+`CanonicalBir`.
 
 ## Proposed public API
 
