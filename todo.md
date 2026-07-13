@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract and bind four focused one-contract probes (complete)
+Current Step ID: 3
+Current Step Title: Publish direct scalar call result identity
 
 ## Just Finished
 
@@ -26,14 +26,14 @@ Current Step Title: Extract and bind four focused one-contract probes (complete)
 
 ## Watchouts
 
-- Keep each focused probe one-contract as implementation proceeds; do not fold
-  the four distinct first bad facts into a monolithic testcase or patch.
-- Step 3 owns only scalar direct-call result publication and its verifier
-  obligations; call-argument carrier work remains Steps 4-5.
-- The SSA-argument implementation must reuse the argument carrier established
-  by the immediate-argument seam; do not create a duplicate SSA-only carrier.
-- Keep CFG/terminator targets, stack/local/alloca/object ownership, and body
-  parameter identity outside Step 2.
+- Allocate the result through the current function's `LirValueId` authority
+  before rendering.
+- Preserve the same `LirOperand` into downstream scalar expression and return
+  use; do not stop authority publication at the call node.
+- Void call results must remain empty and carry no result authority.
+- Keep call arguments, indirect calls, ABI work, CFG/terminator targets,
+  stack/local/object ownership, and body-parameter identity outside Step 3.
+- Do not add a text-to-ID map or recover result identity from display spelling.
 
 ## Proof
 
