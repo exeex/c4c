@@ -12,6 +12,10 @@
 
 namespace c4c::backend::bir {
 
+class ModuleBuilder;
+class FunctionBuilder;
+class FoundationVerifier;
+
 enum class ResolveError {
   WrongEpoch,
   WrongOwner,
@@ -21,6 +25,8 @@ enum class ResolveError {
   WrongKind,
 };
 
+namespace detail {
+
 enum class StorageError { InvalidOwner, InvalidId, SlotIndexExhausted };
 enum class OrderError { Duplicate, Unknown };
 
@@ -29,8 +35,6 @@ struct Slot {
   Generation generation = 1;
   std::optional<T> value;
 };
-
-namespace detail {
 
 template <class Id, class Owner>
 struct IdAccess;
@@ -108,13 +112,24 @@ struct IdAccess<ValueId, FunctionId> {
   static bool kind_matches(ValueId id, const T& value) { return id.kind == value.kind; }
 };
 
-}  // namespace detail
-
 template <class T, class Id, class Owner>
 class SlotMap {
  public:
+  Result<std::reference_wrapper<const T>, ResolveError> get(const Owner& owner,
+                                                             Id id) const {
+    auto checked = resolve_slot(owner, id);
+    if (!checked)
+      return Result<std::reference_wrapper<const T>, ResolveError>::failure(
+          checked.error());
+    return Result<std::reference_wrapper<const T>, ResolveError>::success(
+        std::cref(*checked.value().get().value));
+  }
+
+  bool contains(const Owner& owner, Id id) const { return get(owner, id).has_value(); }
+
+ private:
   Result<Id, StorageError> emplace(const Owner& owner, T value) {
-    if (!detail::IdAccess<Id, Owner>::owner_valid(owner))
+    if (!IdAccess<Id, Owner>::owner_valid(owner))
       return Result<Id, StorageError>::failure(StorageError::InvalidOwner);
 
     SlotIndex index;
@@ -124,7 +139,7 @@ class SlotMap {
       auto& slot = slots_[index];
       slot.value.emplace(std::move(value));
       return Result<Id, StorageError>::success(
-          detail::IdAccess<Id, Owner>::make(owner, index, slot.generation, *slot.value));
+          IdAccess<Id, Owner>::make(owner, index, slot.generation, *slot.value));
     }
 
     if (slots_.size() > std::numeric_limits<SlotIndex>::max())
@@ -132,17 +147,7 @@ class SlotMap {
     index = static_cast<SlotIndex>(slots_.size());
     slots_.push_back(Slot<T>{1, std::optional<T>(std::move(value))});
     return Result<Id, StorageError>::success(
-        detail::IdAccess<Id, Owner>::make(owner, index, 1, *slots_.back().value));
-  }
-
-  Result<std::reference_wrapper<const T>, ResolveError> get(const Owner& owner,
-                                                             Id id) const {
-    auto checked = resolve_slot(owner, id);
-    if (!checked)
-      return Result<std::reference_wrapper<const T>, ResolveError>::failure(
-          checked.error());
-    return Result<std::reference_wrapper<const T>, ResolveError>::success(
-        std::cref(*checked.value().get().value));
+        IdAccess<Id, Owner>::make(owner, index, 1, *slots_.back().value));
   }
 
   Result<std::reference_wrapper<T>, ResolveError> get_mut(const Owner& owner, Id id) {
@@ -162,20 +167,16 @@ class SlotMap {
     slot.value.reset();
     if (slot.generation != std::numeric_limits<Generation>::max()) {
       ++slot.generation;
-      free_.push_back(detail::IdAccess<Id, Owner>::slot(id));
+      free_.push_back(IdAccess<Id, Owner>::slot(id));
     }
     return Result<void, StorageError>::success();
   }
-
-  bool contains(const Owner& owner, Id id) const { return get(owner, id).has_value(); }
-
- private:
   Result<std::reference_wrapper<Slot<T>>, ResolveError> resolve_slot(const Owner& owner,
                                                                      Id id) {
-    if (!detail::IdAccess<Id, Owner>::owner_matches(owner, id))
+    if (!IdAccess<Id, Owner>::owner_matches(owner, id))
       return Result<std::reference_wrapper<Slot<T>>, ResolveError>::failure(
-          detail::IdAccess<Id, Owner>::check_owner(owner, id));
-    const auto index = detail::IdAccess<Id, Owner>::slot(id);
+          IdAccess<Id, Owner>::check_owner(owner, id));
+    const auto index = IdAccess<Id, Owner>::slot(id);
     if (static_cast<std::size_t>(index) >= slots_.size())
       return Result<std::reference_wrapper<Slot<T>>, ResolveError>::failure(
           ResolveError::OutOfRange);
@@ -183,10 +184,10 @@ class SlotMap {
     if (!slot.value)
       return Result<std::reference_wrapper<Slot<T>>, ResolveError>::failure(
           ResolveError::Tombstone);
-    if (slot.generation != detail::IdAccess<Id, Owner>::generation(id))
+    if (slot.generation != IdAccess<Id, Owner>::generation(id))
       return Result<std::reference_wrapper<Slot<T>>, ResolveError>::failure(
           ResolveError::StaleGeneration);
-    if (!detail::IdAccess<Id, Owner>::kind_matches(id, *slot.value))
+    if (!IdAccess<Id, Owner>::kind_matches(id, *slot.value))
       return Result<std::reference_wrapper<Slot<T>>, ResolveError>::failure(
           ResolveError::WrongKind);
     return Result<std::reference_wrapper<Slot<T>>, ResolveError>::success(std::ref(slot));
@@ -194,10 +195,10 @@ class SlotMap {
 
   Result<std::reference_wrapper<const Slot<T>>, ResolveError> resolve_slot(
       const Owner& owner, Id id) const {
-    if (!detail::IdAccess<Id, Owner>::owner_matches(owner, id))
+    if (!IdAccess<Id, Owner>::owner_matches(owner, id))
       return Result<std::reference_wrapper<const Slot<T>>, ResolveError>::failure(
-          detail::IdAccess<Id, Owner>::check_owner(owner, id));
-    const auto index = detail::IdAccess<Id, Owner>::slot(id);
+          IdAccess<Id, Owner>::check_owner(owner, id));
+    const auto index = IdAccess<Id, Owner>::slot(id);
     if (static_cast<std::size_t>(index) >= slots_.size())
       return Result<std::reference_wrapper<const Slot<T>>, ResolveError>::failure(
           ResolveError::OutOfRange);
@@ -205,10 +206,10 @@ class SlotMap {
     if (!slot.value)
       return Result<std::reference_wrapper<const Slot<T>>, ResolveError>::failure(
           ResolveError::Tombstone);
-    if (slot.generation != detail::IdAccess<Id, Owner>::generation(id))
+    if (slot.generation != IdAccess<Id, Owner>::generation(id))
       return Result<std::reference_wrapper<const Slot<T>>, ResolveError>::failure(
           ResolveError::StaleGeneration);
-    if (!detail::IdAccess<Id, Owner>::kind_matches(id, *slot.value))
+    if (!IdAccess<Id, Owner>::kind_matches(id, *slot.value))
       return Result<std::reference_wrapper<const Slot<T>>, ResolveError>::failure(
           ResolveError::WrongKind);
     return Result<std::reference_wrapper<const Slot<T>>, ResolveError>::success(
@@ -217,6 +218,10 @@ class SlotMap {
 
   std::vector<Slot<T>> slots_;
   std::vector<SlotIndex> free_;
+
+  friend class ::c4c::backend::bir::ModuleBuilder;
+  friend class ::c4c::backend::bir::FunctionBuilder;
+  friend class ::c4c::backend::bir::FoundationVerifier;
 };
 
 template <class Id>
@@ -241,6 +246,12 @@ class IdOrder {
   }
 
   std::vector<Id> ids_;
+
+  friend class ::c4c::backend::bir::ModuleBuilder;
+  friend class ::c4c::backend::bir::FunctionBuilder;
+  friend class ::c4c::backend::bir::FoundationVerifier;
 };
+
+}  // namespace detail
 
 }  // namespace c4c::backend::bir
