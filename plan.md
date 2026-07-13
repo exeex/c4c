@@ -1,445 +1,246 @@
-# BIR Phase C Preparation Documentation Convergence Runbook
+# LIR-To-New-BIR Container And Import Completeness Runbook
 
 Status: Active
-Source Idea: ideas/open/737_bir_phase_c_preparation_document_convergence.md
-Activated from: accepted and closed Child B 736
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Activated from: user-directed interruption of phase-C documentation convergence
 
 ## Purpose
 
-Converge the external target-profile boundary, BIR target-layout derivation,
-six immutable preparation products, cumulative preparation publication and
-register-constraint binding without mutating the accepted `CanonicalBir`.
+Implement the target-independent new Raw-BIR typed storage and the complete
+LIR-to-new-BIR import boundary so every semantic fact already carried by the
+existing typed LIR can be received, verified and published without loss.
 
 ## Goal
 
-Review phase C in exact `C1 -> C2 -> C3 -> C4 -> C5 -> C6 -> C7 -> C8 ->
-C9` order and prove one exact target/profile/revision-keyed immutable bundle
-accepted by D1.
+Replace the current bounded importer with an exhaustive, explicit and
+module-transactional path from the unchanged typed LIR surface into verified
+new Raw BIR. New Raw-BIR schema is the destination authority; typed LIR is the
+input authority. Quarantined legacy-BIR structures are evidence and
+disposition history only and must not be revived as the new schema.
 
 ## Core Rule
 
-Phase C consumes only the exact verified, target-independent, unallocated
-`CanonicalBir` accepted by closed Child B. C1 independently selects and
-validates one exact `TargetProfile`; C2 derives BIR target-layout facts. Neither
-Raw nor Canonical storage receives target/profile/layout semantics, and no
-phase-C planner mutates either input revision.
+Every current typed LIR fact must have one typed new Raw-BIR destination, one
+explicit importer disposition and one reachable verifier rule. Valid current
+LIR may not remain behind an unsupported fallback. Import either publishes one
+complete verified module or publishes nothing.
 
-Every product is immutable and keyed to the exact Canonical revision, target
-fingerprint, planner/schema/options and dependency products. Mismatch,
-staleness, planner failure or verifier failure publishes no partial product,
-mixed bundle or readiness capability.
+This runbook owns C++ containers, builders, views, verifier, importer, build
+wiring, focused tests and nearby same-feature coverage. It does not own
+canonicalization, target preparation, allocation, MIR or emission. LIR remains
+unchanged except for the source idea's sole evidence-gated minimal inline-asm
+constraint-carrier exception.
 
 ## Read First
 
-- `ideas/open/737_bir_phase_c_preparation_document_convergence.md`
-- `ideas/closed/736_bir_phase_b_canonical_document_convergence.md` as the
-  accepted predecessor contract
-- `ideas/open/738_bir_phase_d_pseudo_document_convergence.md` only as the
-  downstream acceptance contract
-- `src/backend/bir/README.md`
-- `src/backend/bir/target_layout/README.md`
-- `src/backend/bir/preparation/abi/README.md`
-- `src/backend/bir/preparation/calls/README.md`
-- `src/backend/bir/preparation/variadic/README.md`
-- `src/backend/bir/preparation/address/README.md`
-- `src/backend/bir/preparation/inline_asm/README.md`
-- `src/backend/bir/preparation/runtime_helpers/README.md`
-- `src/backend/bir/preparation/README.md`
-- `src/backend/bir/regalloc/constraints/README.md`
-- applicable exact-current call-graph, provenance,
-  publication/value-flow, analysis-framework, verifier and diagnostics clauses
-
-## Exact Review Order And Targets
-
-1. C1: audit the external `TargetProfile` selection/validation authority and
-   classify whether an explicit Markdown boundary/placeholder is required.
-2. C2: `target_layout/README.md`.
-3. C3: `preparation/abi/README.md`.
-4. C4: `preparation/calls/README.md`.
-5. C5: `preparation/variadic/README.md`.
-6. C6: `preparation/address/README.md`.
-7. C7: `preparation/inline_asm/README.md`.
-8. C8: `preparation/runtime_helpers/README.md`, then
-   `preparation/README.md` as C8 sequencing and atomic cumulative-publication
-   support. It may be read earlier as context, but its owned review point is
-   after the six leaf products.
-9. C9: `regalloc/constraints/README.md`.
-10. Final shared-boundary and D1 adjacency audit.
-
-Request accepted shared analyses immediately before their earliest actual
-consumer: publication/value-flow for ABI/result requirements, call-graph facts
-for calls/helpers, and provenance for address preparation. They remain
-immutable exact-revision dependencies and do not become phase-C stages or
-product/publication owners.
-
-## Uniform Document And Matrix Contract
-
-Every owned document must carry `Contract-Status`, `Implementation-Status`,
-`Kind`, `Phase-ID` or `Applies-To`, `Upstream`, `Downstream`, `Owner-Path`, and
-`Last-Reconciled-Commit`. Stage/planner/boundary owners use the core-first order
-`Purpose`, `Owns`, `Does Not Own`, `Inputs`, `Outputs`, and
-`Adjacent-Stage Contract`, followed by applicable behavior, invariants,
-verification/publication, failure/diagnostics, analysis/invalidation,
-target/ABI rules, implementation state, proof, open questions and checklist.
-
-Each document needs exhaustive input and output matrices naming the exact
-Canonical/profile/product/revision keys, producer and consumer clauses, stable
-IDs, validation and optional/error forms, publication/verifier gate, failure,
-invalidation and checked implementation truth. A heading, status, scaffold,
-unsupported diagnostic or design sketch is not implementation evidence.
-
-## Target And Product Boundaries
-
-- `target_profile` and rendered `data_layout` from source intake remain
-  validation/origin/parity-only context with no semantic Raw/Canonical
-  destination. C1 selects the exact profile from requested triple, arch, OS,
-  ABI, relocation, float ABI and capabilities; C2 derives layout rather than
-  importing allocator state or parsing Raw/Canonical layout text.
-- C2 publishes verified finite pseudo categories, classes/groups, slots,
-  aliases, reserved units, capacities, ABI eligibility and concrete-mapping
-  domain keyed to the exact profile.
-- C3-C8 publish immutable ABI, call, variadic, address, inline-asm vocabulary
-  and runtime-helper products. C8 plus `preparation/README.md` atomically
-  publishes one complete cumulative verified bundle.
-- C7 supplies target constraint vocabulary/context/eligibility only. It does
-  not parse or bind constraints. C9 alone parses, types and binds constraint
-  descriptions to ordinary operands/results and publishes Canonical-keyed
-  `BoundConstraintSet`.
-- C9's subordinate `ConstraintProjectionTransaction` is the sole later-
-  revision projection authority. It emits exact-revision
-  `ProjectedConstraintSet` products only inside their enclosing later mutator;
-  projection is not another phase-C stage.
-- D1 receives accepted `CanonicalBir`, verified target layout, cumulative
-  preparation products and typed constraints with exact matching keys. No
-  target fact is written backward into Canonical storage.
-
-## Implementation Truth And Shared Boundaries
-
-Check every implementation status against checked-in storage, build inclusion,
-callable planner/pipeline, verifier reachability and proof. Truthfully mark
-absent, partial and scaffolded owners; documentation acceptance cannot claim
-target preparation exists.
-
-C1 is external authority, not a license to invent BIR implementation. The
-accepted missing-owner audit in `869388429` authorizes only the coordinated
-documentation boundary named in Step 1. Other shared root/verifier/analysis/
-diagnostic or adjacent D1 edits still require a separate exact two-sided
-coordinated boundary in this runbook; do not silently reassign them.
-
-## Non-Goals
-
-- No C/C++ or other code, tests, build files, regression logs, runtime
-  behavior, expectations, unsupported markers or allowlist changes.
-- No mutation of Raw/Canonical, target facts written into them, or parsing of
-  rendered `data_layout` to manufacture semantics.
-- No user target choice, C1 implementation invention, canonicalization, D1
-  pseudo lowering, ABI call transport, allocation, spill/reload, frame, MIR,
-  object, link or emission work.
-- No C7 constraint parsing, duplicate constraint/projection authority, mixed-
-  key product or partial cumulative publication.
-- No activation of Child D, idea 734 or any lifecycle transition inside
-  routine execution packets.
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- existing typed LIR declarations and their producers as source authority
+- current new-BIR core/schema, builders, views, verifier and importer owners
+- `src/backend/bir/lir_to_bir/README.md` and
+  `src/backend/bir/LEGACY_COVERAGE.md` as coverage/disposition evidence
+- `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md` as
+  pre-implementation historical contract evidence, not a substitute for code
 
 ## Execution Rules
 
-1. Follow the exact order. Do not review `preparation/README.md` as an owned
-   convergence target before the six C3-C8 leaf products.
-2. Resolve owner, inputs, outputs and adjacent acceptance before API,
-   algorithm or data-layout detail. Create no implementation while documenting
-   a missing owner/placeholder.
-3. Bind every product to exact Canonical/profile/planner/dependency keys;
-   reject stale, mixed or predecessor-keyed products atomically.
-4. Request shared analyses at their earliest real consumer and preserve their
-   read-only, exact-revision, invalidation/stale-result rules.
-5. Keep C7 vocabulary separate from C9 interpretation/binding and C9
-   projection separate from enclosing later semantic stages.
-6. Reject assertion-only handoffs, status-only changes, unchecked
-   implementation claims, expectation weakening, helper renames,
-   classification-only progress, rendered-output probes, named-case matchers,
-   allowlists and testcase-shaped shortcuts.
-7. Update routine progress in `todo.md`; change this runbook only for a real
-   route/proof correction and the source only for durable intent.
+1. Inventory actual typed LIR declarations and every new-BIR/import/verifier
+   owner before changing schema. Resolve each row as already covered, missing
+   typed destination, missing importer wiring or stale documentation.
+2. Use stable typed identities and structured fields. Never reconstruct
+   semantics from rendered text, names, vector position or legacy layout.
+3. Extend new Raw-BIR storage, builders, immutable views, verifier and importer
+   together in coherent semantic families. Do not add storage without a
+   producer, verifier and focused proof.
+4. Preserve ordinary SSA/value, type, block/edge, object, symbol, initializer,
+   effect and source-order identity. Inline assembly uses ordinary operands and
+   results and keeps assembly text opaque and byte-exact.
+5. Keep import module-transactional. A rejected row, invalid reference,
+   duplicate identity, malformed CFG or verifier failure publishes no partial
+   graph, capability, fixup table or mixed state.
+6. Reject legacy-schema resurrection, string fixups, catch-all success,
+   testcase-shaped dispatch, expectation weakening and unsupported downgrade.
+7. Every code packet requires a fresh build or compile plus the supervisor's
+   exact narrow proof and nearby same-feature coverage. Use accumulated broader
+   checkpoints after shared schema/importer slices and at the final gate.
+8. Update routine execution state in `todo.md`. Change this runbook or source
+   only for a real route, scope or proof correction. Canonical root regression
+   logs remain supervisor-owned.
 
 ## Ordered Steps
 
-### Step 1 - Resolve the external C1 Markdown boundary and Canonical input
+### Step 1 - Establish the exhaustive coverage ledger and schema/import boundary
 
-Goal: establish the exact external target-profile selection authority and bind
-it to the accepted Canonical input without inventing implementation.
-
-Authorized writable set for one coordinated documentation-only packet:
-
-- create `src/target_profile/README.md` as the sole external C1 target-request
-  selection, normalization and validation owner
-- repair only the required two-sided authority and links in
-  `src/backend/bir/README.md`
-- repair only the accepted B8/C1 downstream authority and links in
-  `src/backend/bir/pipeline/README.md`
-- repair only the C1/verifier binding authority and links in
-  `src/backend/bir/verify/README.md`
-- repair only the C1/C2 input authority and links in
-  `src/backend/bir/target_layout/README.md`
-- repair only the C1 producer authority and links in
-  `src/backend/bir/preparation/README.md`
-
-These six paths are the complete documentation edit set. The executor may
-additionally update only `todo.md` for canonical Step-1 progress and proof; no
-other path is writable. The shared pipeline and verifier documents are
-accepted boundaries, so all six documentation paths must be changed and
-re-audited as one coherent slice.
+Goal: derive the implementation packet map from actual typed LIR and establish
+the exact new Raw-BIR destination and import/verifier owner for every family.
 
 Actions:
 
-- create the external C1 owner with truthful partial-foundation implementation
-  status, core-first ownership clauses and exhaustive input/output matrices for
-  requested triple, arch, OS, ABI, relocation, float ABI, capabilities and
-  selection/schema versions
-- make C1 alone select, normalize and validate the explicit request, then
-  publish one immutable `TargetProfile` plus one complete
-  `TargetFingerprint`; C1 cannot choose a target for the user
-- preserve the shared verifier as the sole authority that binds the validated
-  profile/fingerprint to the exact Canonical `PipelineStageStamp` and produces
-  `VerifiedPreparationInput`
-- preserve C2 as the sole target-layout derivation authority; C1 cannot parse
-  rendered `data_layout`, derive layout or run C3-C9
-- prove C1 consumes only the accepted exact `CanonicalBir` plus the explicit
-  request, mutates no BIR and publishes nothing on validation failure
-- place publication/value-flow, call-graph or other accepted analyses only at
-  their later earliest consumers, not in C1 authority
-- after the coordinated edits, re-audit all six paths for exact ownership,
-  two-sided links, input/output matrices, implementation truth, failure
-  atomicity and diff scope; keep Step 1 current until this re-audit passes
+- enumerate every `LirInst` and `LirTerminator` alternative plus module,
+  function, parameter/result, block/edge, value/type, global/string/extern,
+  symbol/link, initializer, specialization, stack-object/alloca,
+  intrinsic-requirement and other metadata fields
+- inspect current new-BIR storage/builders/views/verifier/importer and classify
+  every row as covered, destination-missing, wiring-missing or stale-doc
+- use legacy-BIR coverage only to ensure no historical semantic family is
+  accidentally omitted; do not copy or compile quarantined structs as schema
+- define stable identity, ownership, optional/error form, source ordering,
+  destination field, builder operation, view exposure, verifier obligation,
+  importer rule and positive/negative proof for every row
+- identify dependency order and bounded family packets without implementing a
+  later backend phase or changing typed LIR
 
 Completion check:
 
-- all six authorized paths form one coherent boundary: C1 alone produces the
-  validated profile/fingerprint, verifier alone produces exact-Canonical-bound
-  `VerifiedPreparationInput`, and C2 alone derives layout; no implementation
-  claim, BIR mutation, C1 analysis ownership, documentation edit outside the
-  six-path set or noncanonical `todo.md` edit exists. Advance to Step 2 only
-  after the post-packet re-audit proves this check.
+- one checked, exhaustive implementation ledger has no catch-all row and gives
+  every current typed LIR fact an exact typed Raw-BIR/import/verifier/proof
+  disposition; the first coherent C++ family packet is unambiguous
 
-### Step 2 - Converge C2 target-layout derivation
+### Step 2 - Complete foundational identities, types and module containers
 
-Goal: derive and verify one finite exact-profile-keyed BIR target layout.
-
-Primary target: `src/backend/bir/target_layout/README.md`.
+Goal: make new Raw BIR hold the stable module-level identities and structured
+type/value foundations needed by all later family imports.
 
 Actions:
 
-- normalize metadata, core-first clauses and exhaustive input/output matrices
-- enumerate all pseudo categories/classes/groups/slots/aliases/reserved units,
-  capacities, ABI eligibility and concrete-mapping-domain facts
-- define exact profile/schema/options keys, verifier, failure atomicity and C3
-  consumer clauses
-- reject imported allocator state, Raw/Canonical layout text and mutation of
-  the accepted Canonical revision
+- implement the required typed storage, IDs, builders and immutable views for
+  the foundational type/value/module families identified by Step 1
+- add verifier rules for ownership, uniqueness, reference domain, ordering and
+  malformed/duplicate cases
+- wire the corresponding importer rows without string or positional recovery
+- add neighboring positive and negative coverage
 
 Completion check:
 
-- C2 publishes one verified immutable layout tied to exactly C1's profile key,
-  every table has one authority, failure publishes nothing, and C3 accepts it
+- the family compiles in a fresh build, its exact delegated narrow proof is
+  green, and malformed foundational state cannot publish
 
-### Step 3 - Converge C3 ABI preparation
+### Step 3 - Complete globals, strings, externs, symbols and initializers
 
-Goal: publish immutable typed parameter/result/byval/sret classification
-requirements without performing call transport.
-
-Primary target: `preparation/abi/README.md`; request publication/value-flow
-facts at this earliest ABI/result consumer.
+Goal: losslessly receive all module object and declaration semantics, including
+initializer topology and link/symbol identity.
 
 Actions:
 
-- converge exact Canonical/profile/layout/analysis inputs and output matrices
-- distinguish ABI classification requirements from concrete locations,
-  lowering, homes and frame state
-- define immutable product key, verifier, failure, invalidation and C4 handoff
+- implement the required containers/builders/views for globals, string-pool
+  state, extern declarations/indexes, symbols/linkage and typed initializers
+- import every actual LIR variant explicitly and verify cross-references,
+  topology, ordering, uniqueness and optional/error forms
+- add nearby positive/negative proof for each meaningful variant
 
 Completion check:
 
-- one exact-key `AbiPlan` captures requirements only, publishes atomically and
-  is accepted by C4 without mutation or concrete placement
+- fresh build and narrow proof pass; an accumulated module-level checkpoint
+  proves Steps 2-3 together and no module family remains generically unsupported
 
-### Step 4 - Converge C4 call preparation
+### Step 4 - Complete functions, signatures, CFG and local objects
 
-Goal: publish immutable typed call input/output, preservation, clobber and
-return requirements without lowering calls.
-
-Primary target: `preparation/calls/README.md`; request call-graph facts at this
-earliest call/helper consumer.
+Goal: receive complete function structure rather than the current restricted
+zero-parameter, void-return, first-entry-block subset.
 
 Actions:
 
-- bind every call form to exact Canonical/C1/C2/C3 and analysis keys
-- separate planning requirements from D2's sole ABI-aware call-lowering
-  authority
-- define optional/error forms, verifier, failure, invalidation and C5 handoff
+- implement typed parameter/result/signature, block/edge, stack-object,
+  hoisted-alloca and function metadata storage plus builders/views
+- import arbitrary valid block order and preserve entry identity, CFG edge
+  identity, source ordering and local object ownership
+- verify references, signatures, CFG shape, local lifetimes/ownership and all
+  malformed or duplicate cases covered by the source surface
 
 Completion check:
 
-- one exact-key `CallPlan` covers every call form without transport or target
-  opcode work and is accepted by C5
+- fresh build and exact narrow proof pass with neighboring function/CFG/object
+  variants; failure remains module-transactional
 
-### Step 5 - Converge C5 variadic preparation
+### Step 5 - Complete ordinary instruction semantic families
 
-Goal: publish typed variadic entry, save-area, promotion and traversal
-requirements without frame or ABI transport implementation.
-
-Primary target: `preparation/variadic/README.md`.
+Goal: give every current ordinary `LirInst` alternative a typed new-BIR node,
+ordinary operand/result wiring and verifier coverage.
 
 Actions:
 
-- enumerate fixed/variadic forms, promotions, save-area and traversal facts
-- bind output to exact cumulative predecessor keys and define verifier/failure
-- prove C6 accepts the immutable product without hidden layout or mutation
+- implement coherent instruction-family packets in dependency order rather
+  than a named-test switch
+- preserve opcode, typed operands/results, effects, object/symbol references,
+  metadata and source order directly from typed LIR
+- extend builder/view/verifier/importer and nearby positive/negative tests for
+  each family; no valid alternative may fall through unsupported
 
 Completion check:
 
-- all variadic variants have one typed requirement disposition and one exact-
-  key immutable product reaches C6 atomically
+- every current instruction variant is explicitly dispatched, fresh build and
+  family proofs pass, and an accumulated Steps 2-5 checkpoint is green
 
-### Step 6 - Converge C6 address preparation
+### Step 6 - Complete terminators and structured inline-assembly transport
 
-Goal: publish typed address-materialization and relocation requirements without
-target instruction selection or concrete frame placement.
-
-Primary target: `preparation/address/README.md`; request provenance at this
-earliest address consumer.
-
-The current C6 packet established that the shared Provenance contract promises
-later exact-revision address queries but normatively admits only B4. Before
-completing the already-owned address contract, one narrow coordinated
-documentation-only repair is authorized in
-`src/backend/bir/analysis/provenance/README.md`.
-
-The complete documentation edit set for this repair is exactly:
-
-- `src/backend/bir/analysis/provenance/README.md`, then
-- `src/backend/bir/preparation/address/README.md`.
-
-The executor may additionally update only `todo.md` for canonical Step-6
-progress and proof; no other path, analysis owner, code, build, test or log is
-writable.
+Goal: complete CFG terminator receipt and preserve inline-assembly semantics
+without creating a parallel value or target-interpretation system.
 
 Actions:
 
-- repair the Provenance input/stage contract to admit verified Canonical/B8 or
-  an exact-later semantic request only with exact-current same-revision CFG,
-  Dominance, PublicationValueFlow and MemoryEffects dependency closure
-- retain B5 as the earliest mutation consumer and preserve canonical empty
-  options, target key `None`, empty preparation, complete-key stale rejection,
-  `Known`/`Absent`/`Unknown` results and absent implementation truth
-- do not add analysis implementation or edit any other analysis/shared owner
-- bind every address/global/local/relocation form to exact predecessor and
-  fresh exact-B8 provenance keys; never reuse a B4 handle or silently refresh
-  dependencies beneath an old request
-- separate semantic requirements from D4 legalization, E4 frame placement and
-  F1 one-to-one application
-- define verifier, failure, invalidation and C7 handoff
-- rerun the complete C6 seam proof after both documentation edits; remove the
-  blocker and advance only when exact scope, dependency freshness and all
-  address/consumer checks are green
+- implement and import return forms, conditional/unconditional branches,
+  switch, indirect branch, unreachable and every other actual terminator
+- verify targets, edge arguments/results, successor identity and malformed CFG
+  atomically
+- preserve byte-exact opaque assembly text, ordinary operand/result identities
+  and evidenced constraint requirements against their ordinary positions and
+  roles; use the source idea's LIR-carrier exception only if current typed
+  fields are concretely proven insufficient
 
 Completion check:
 
-- the narrow Provenance seam admits exact-current B8/later-semantic requests
-  without weakening its B4 consumer, target/preparation exclusions, statuses
-  or implementation truth; one immutable exact-key address product then covers
-  every form, stale provenance fails, and C7 accepts the result. Keep Step 6
-  current unless the post-repair seam proof is green.
+- all current terminators and inline-assembly variants have neighboring
+  positive/negative proof, fresh build and narrow proof pass, and no parsing,
+  allocation or target preparation has entered Raw BIR
 
-### Step 7 - Converge C7 inline-assembly target vocabulary
+### Step 7 - Integrate the complete dispatcher, verifier and build boundary
 
-Goal: publish only target constraint vocabulary, eligibility/context and
-clobber tables while preserving opaque assembly and ordinary values.
-
-Primary target: `preparation/inline_asm/README.md`.
+Goal: prove all semantic-family slices form one production importer and one
+reachable Raw-BIR verification/publication boundary.
 
 Actions:
 
-- enumerate vocabulary/context/eligibility/clobber inputs and exact outputs
-- keep asm bytes opaque and ordinary operands/results unchanged
-- forbid constraint parsing/binding, placeholder interpretation, allocation,
-  projections and concrete register reservation
-- define exact keys, verifier/failure and C8 handoff
+- remove obsolete bounded-surface rejections only where typed receiving,
+  dispatch and verifier coverage now exists
+- integrate all migrated importer translation units exactly once in the build
+  and eliminate duplicate or quarantined legacy authority
+- prove deterministic diagnostics, reference resolution and whole-module
+  rollback across failures occurring early, mid-module and at final verify
+- reconcile the coverage ledger and implementation-status documentation with
+  the callable production path
 
 Completion check:
 
-- C7 publishes only immutable target tables, no constraint meaning is attached
-  to operands, and C8 accepts the exact product
+- a fresh build plus accumulated broader proof passes across module, function,
+  instruction and terminator families; no valid current-LIR row is unsupported
+  and no failure exposes partial state
 
-### Step 8 - Converge C8 helpers and cumulative preparation publication
+### Step 8 - Prove lossless completeness and transactional publication
 
-Goal: finish the six preparation products and atomically publish one verified
-cumulative bundle.
-
-Primary targets in order: `preparation/runtime_helpers/README.md`, then
-`preparation/README.md`.
+Goal: close 734 only on exhaustive structured coverage and end-to-end atomicity,
+not on a sample testcase or documentation assertion.
 
 Actions:
 
-- converge helper eligibility/interface requirements against exact call/ABI
-  and call-graph keys without lowering helpers
-- review `preparation/README.md` only after C3-C8 leaves, preserving exact leaf
-  order, dependency/product keys and transactional cumulative publication
-- prove any leaf/key/verifier failure publishes no partial bundle or readiness
-  capability
+- re-enumerate the actual typed LIR variants and metadata fields against the
+  final checked ledger, destinations, dispatcher, verifier and tests
+- prove representative round-trip/structural parity for every meaningful
+  variant without using rendering as semantic authority
+- run the supervisor-selected fresh build, focused suite and broader/full
+  regression gate appropriate to the shared schema/importer changes
+- audit diff scope, fail-closed diagnostics, no partial publication, no legacy
+  schema revival, no forbidden downstream work and no weakened expectations
 
 Completion check:
 
-- C8 and sequencing support publish one complete verified cumulative bundle
-  tied to exact Canonical/profile/layout/leaf keys and accepted by C9
+- every acceptance criterion in idea 734 is evidenced by callable code and
+  tests, the final exhaustive ledger has no missing or unsupported valid row,
+  and the supervisor can close 734 as one validated implementation initiative
 
-### Step 9 - Converge C9 constraint binding and projection authority
+## Runbook Completion And Handoff
 
-Goal: bind target constraint descriptions to ordinary values exactly once and
-define the sole later-revision projection authority.
-
-Primary target: `src/backend/bir/regalloc/constraints/README.md`.
-
-Actions:
-
-- converge exact cumulative inputs, parser/type/binding rows, optional/error
-  forms and Canonical-keyed `BoundConstraintSet` output
-- keep C9 as the sole interpreter; no C7, pass, allocator or MIR duplicate
-  parses or binds constraints
-- define `ConstraintProjectionTransaction` keys, enclosing-transaction
-  atomicity, invalidation and D1 projection/consumer clauses
-
-Completion check:
-
-- one immutable Canonical-keyed bound set and one sole exact-revision
-  projection protocol are documented; failure publishes no partial/mixed-key
-  product; D1 accepts the complete C bundle
-
-### Step 10 - Prove D1 acceptance and Child-C completion
-
-Goal: close all phase-C shared seams and prove the immutable preparation/
-constraint handoff without authorizing pseudo implementation.
-
-Actions:
-
-- finalize exhaustive phase-C input/output and cross-document adjacency
-  matrices
-- audit shared analyses, root/verifier/diagnostics and D1 clauses against exact
-  profile/revision/product keys; request a coordinated documentation boundary
-  for any necessary shared-owner edit
-- prove D1 accepts only accepted `CanonicalBir`, verified layout, cumulative
-  preparation bundle and typed constraints with matching keys
-- run documentation structure, order, link, matrix, implementation-truth,
-  invalidation, failure and diff-scope checks
-- request plan-owner completion judgment; do not activate Child D directly
-
-Completion check:
-
-- C1-C9 ownership/order is exact, every product is immutable/current and
-  failure-atomic, all shared and C/D adjacency checks pass, implementation
-  truth is explicit, and the D1 handoff authorizes documentation lifecycle only
-
-## Runbook Completion
-
-Runbook exhaustion does not itself close Child C. After Step 10, plan-owner
-must decide from source acceptance criteria and supervisor-owned documentation
-proof whether Child C is complete, needs a bounded coordinated repair, or
-remains open. Umbrella idea 732 stays open through Children C-F and its final
-cross-phase audit.
+Completing Step 8 makes idea 734 eligible for closure; it does not resume Child
+C. After 734 is accepted and closed, lifecycle returns to idea 732 and reruns
+documentation convergence from phase A, then B, then C and onward against the
+landed implementation. The earlier phase-A/B acceptance and phase-C C1-C6
+slices remain historical evidence, but none may be treated as the current
+post-734 acceptance gate without re-execution and revalidation.

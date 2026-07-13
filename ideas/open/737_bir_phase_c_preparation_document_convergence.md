@@ -1,10 +1,25 @@
 # BIR Phase C Preparation Document Convergence
 
-Status: Open
+Status: Open (parked; pre-734 work incomplete)
 Type: Documentation-only architecture convergence
 Phase Owner: C — target facts and immutable preparation
-Predecessor: accepted `ideas/closed/736_bir_phase_b_canonical_document_convergence.md`
+Historical Predecessor: pre-734 acceptance in
+`ideas/closed/736_bir_phase_b_canonical_document_convergence.md`; a post-734
+phase-B revalidation is required before this child restarts
 Successor: `ideas/open/738_bir_phase_d_pseudo_document_convergence.md`
+
+## Lifecycle Disposition
+
+The user's current sequencing interrupts this child without accepting or
+closing it. C1-C6 and the prepared Step-7 route remain durable pre-734
+historical evidence, not current completion. Idea 734 is active first to
+implement the complete new Raw-BIR containers, verifier and LIR importer.
+
+After 734 closes, reactivate umbrella idea 732 and rerun documentation
+convergence from phase A, then phase B, then phase C. Do not reactivate this
+child directly at old Step 7. Its earlier edits may be reused as evidence, but
+every phase-C contract and adjacency must be re-executed/revalidated against
+the post-734 phase-A and phase-B results before phase C can advance.
 
 ## Goal
 

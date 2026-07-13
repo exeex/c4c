@@ -1,6 +1,6 @@
 # BIR Stage Documentation Convergence Umbrella
 
-Status: Open
+Status: Open (parked pending idea 734)
 Type: Umbrella triage and ordered follow-up idea generator
 Parent: none
 Handoff Directory: none; the durable handoff is this umbrella plus exactly six
@@ -19,15 +19,27 @@ checkpoint did not execute this umbrella's prescribed six-child A-through-F
 workflow, so the ownership/order/adjacency proof remains incomplete.
 
 Idea 731 is closed only for its bounded structured inline-asm transport proof.
-Observed production-importer and new-BIR container gaps are recorded in
-deferred idea 734. Existing LIR is authoritative and complete for this route;
+Observed production-importer and new-BIR container gaps are recorded in idea
+734. Existing LIR is authoritative and complete for this route;
 README `source gap` labels are documentation/importer assumptions to audit, not
 permission to change LIR. The sole possible LIR-schema exception is a minimal,
 evidence-required inline-asm constraint carrier that records reviewed
-requirements against ordinary operand/result positions and roles. This
-umbrella must settle Markdown ownership, order, coverage matrices, and phase
-seams before idea 734 can be activated. Draft idea 733 remains parked and
+requirements against ordinary operand/result positions and roles. The former
+requirement that this umbrella settle all phases before idea 734
+could activate is superseded by the user's explicit source intent. Idea 734 is
+now the active C++ implementation initiative. This umbrella and its children
+remain open but parked until 734 closes. Draft idea 733 remains parked and
 supplies no implementation authority.
+
+### Post-734 Restart Authority
+
+After idea 734 is implemented, accepted and closed, reactivate this umbrella
+and rerun documentation convergence from phase A, then B, then C and onward
+against the landed implementation. Do not resume directly at Child C or its
+old Step 7 checkpoint. Preserve the already-landed phase-A/B documentation
+acceptances and phase-C C1-C6 slices as historical evidence, but re-execute and
+revalidate those phase contracts before they can serve as current post-734
+acceptance gates.
 
 ## Goal
 
@@ -35,8 +47,9 @@ Classify and converge the complete BIR documentation architecture by generating
 exactly six documentation-only child source ideas, one for each normative root
 phase `A` through `F`. The child ideas must review and edit Markdown contracts
 strictly in the order declared by `src/backend/bir/README.md`, prove every input
-and output seam, and leave no missing, duplicated, or misleading owner before
-any deferred BIR implementation begins.
+and output seam, and leave no missing, duplicated, or misleading owner. On the
+post-734 rerun they must reconcile those contracts with the landed new Raw-BIR
+container/import implementation.
 
 This umbrella performs classification and planning only. It does not repair a
 BIR document, modify implementation, or activate an implementation runbook.
@@ -108,11 +121,11 @@ existed or that this umbrella met its acceptance criteria.
 - After all six children converge, perform one umbrella-level cross-phase audit
   proving every current `src/backend/bir/**/*.md` file is indexed, formatted,
   adjacent-compatible, and truthful about implementation state.
-- Make phase A explicitly define the handoff to deferred idea 734: inventory
-  every existing LIR variant/metadata fact, name the new Raw-BIR receiving
-  container and importer rule, identify new-BIR-only gaps, and require a
-  complete coverage matrix. LIR files, schemas, and producers are immutable
-  external input except for the sole evidence-gated minimal inline-asm
+- On the post-734 rerun, make phase A revalidate the implemented 734 handoff:
+  inventory every existing LIR variant/metadata fact, name the new Raw-BIR
+  receiving container and importer rule, identify new-BIR-only gaps, and
+  require a complete coverage matrix. LIR files, schemas, and producers are
+  immutable external input except for the sole evidence-gated minimal inline-asm
   constraint-carrier exception; inline-asm values remain ordinary SSA
   operands/results and asm text remains opaque and byte-exact.
 
@@ -122,15 +135,16 @@ existed or that this umbrella met its acceptance criteria.
 - C++ implementation, build wiring, tests, runtime behavior, target backend
   implementation, or any other non-documentation architecture change in this
   umbrella or its six children.
-- Activating any implementation idea, including draft idea 733 or deferred
-  idea 734, while this documentation workflow is unresolved.
+- Activating draft idea 733 or another downstream implementation idea while
+  this documentation workflow is unresolved. Idea 734 is the explicit
+  sequencing exception and active prerequisite to the restarted workflow.
 - Silently changing the normative phase or stage order.
 - Mixing ownership from unrelated phases in one child or treating a child as a
   general backend cleanup route.
 - Expectation rewrites, unsupported-marker changes, allowlist changes,
   testcase-shaped shortcuts, or weaker proof contracts presented as progress.
-- Starting deferred BIR implementation before all six phase reviews and the
-  final cross-phase audit are accepted.
+- Starting implementation outside idea 734 before the restarted six-phase
+  reviews and final cross-phase audit are accepted.
 
 ## Uniform Document Contract
 
@@ -226,8 +240,9 @@ revision when they conceal an unresolved core seam.
 
 ## Priority Model
 
-1. Follow the normative root order exactly: finish and accept phase `A` before
-   phase `B`, then `C`, `D`, `E`, and `F`.
+1. After 734 closes and this route restarts, follow the normative root order
+   exactly: finish and accept phase `A` before phase `B`, then `C`, `D`, `E`,
+   and `F`.
 2. Within a phase, follow the root README's stage/pass order. Review a
    dependency analysis immediately before its earliest normative consumer when
    the root classifies it as on-demand rather than a linear stage.
@@ -248,11 +263,12 @@ Generate exactly these six child ideas. Their numeric IDs are chosen only when
 they are created, but their phase names, order, scope, and dependencies are
 fixed.
 
-Idea 734 already exists as a deferred implementation follow-up, not as one of
-the six documentation children. Child A must produce the accepted phase-A
-contract that idea 734 will later consume; it must not implement idea 734 or
-change LIR beyond the sole evidence-proven minimal inline-asm constraint-carrier
-exception.
+Idea 734 is the active implementation prerequisite, not one of the six
+documentation children. The earlier Child-A contract is historical input to
+734. After 734 closes, Child A must be re-executed first and reconcile the
+landed implementation before Child B may run; it must not implement additional
+734 scope or change LIR beyond the sole evidence-proven minimal inline-asm
+constraint-carrier exception.
 
 ### Child A — Import and Raw Publication
 
@@ -263,7 +279,7 @@ exception.
 - Establishes the complete output contract consumed by phase B.
 - Has no child-phase dependency; it consumes the external typed-LIR contract.
 - Treats existing LIR as complete, corrects stale documentation assumptions,
-  and establishes the exact new-BIR container/import handoff later consumed by
+  and revalidates the landed new-BIR container/import handoff implemented by
   idea 734. Its only possible LIR-schema exception is the minimal inline-asm
   constraint carrier described above; no special inline-asm value model,
   allocator, projection machinery, or assembler parsing is permitted.
@@ -341,10 +357,12 @@ sequence:
 5. Child E: `ideas/open/739_bir_phase_e_allocation_document_convergence.md`
 6. Child F: `ideas/open/740_bir_phase_f_mir_boundary_document_convergence.md`
 
-Acceptance is strictly `A -> B -> C -> D -> E -> F`. Children A and B are
-accepted and closed by proofs `2ec50b3e` and `769f0d012`; Child C is now the
-sole active/next child. Idea 734 remains a deferred inactive implementation
-consumer, and draft idea 733 remains parked with no implementation authority.
+The eventual acceptance order remains strictly `A -> B -> C -> D -> E -> F`,
+but it restarts only after 734 closes. Children A and B were accepted by proofs
+`2ec50b3e` and `769f0d012`, and Child C landed C1-C6 work; all are preserved as
+pre-734 historical evidence and require post-734 re-execution/revalidation.
+Idea 734 is now active, Child C is parked rather than complete, and draft idea
+733 remains parked with no implementation authority.
 The C1 external Markdown boundary question belongs to Child C; the F2 verifier and F3
 assembler/object/link Markdown-authority or placeholder questions belong to
 Child F.
@@ -362,9 +380,9 @@ Child A completed the three-owner and coordinated shared-boundary
 documentation route in `10d70b872`, `060a32c78`, `e759322a`, `237afcdf`,
 `ba1dcab8`, `65a20c2d`, and final proof `2ec50b3e`. Its exact
 `ModuleDraft -> A2 -> RawBir -> B1` handoff is accepted without claiming
-missing implementation complete, changing LIR, or activating idea 734. Child B
-was the only authorized successor at that checkpoint. This umbrella remains
-open through Children C-F and the final cross-phase audit.
+missing implementation complete or changing LIR. Child B was the authorized
+successor under the then-current sequence. This checkpoint remains historical
+evidence and must be revalidated after 734 before a new Child-B acceptance.
 
 ### Child-B Acceptance Checkpoint
 
@@ -374,8 +392,9 @@ framework/pipeline/Canonical-verifier boundary in `c7bb43d3e`, `ce3dacf3f`,
 `938c7b43e`, `7b01fd0eb`, and final proof `769f0d012`. Its exact verified
 `CanonicalBir -> C1` handoff is accepted without claiming absent/partial
 implementation complete or authorizing target-aware work. Child C is the only
-authorized successor. Idea 734 stays deferred, and this umbrella remains open
-through Children C-F and the final cross-phase audit.
+authorized successor under the then-current sequence. Idea 734 now supersedes
+that sequence; this checkpoint remains historical evidence and must be
+revalidated after 734 before Child C restarts.
 
 ## Acceptance Criteria
 
@@ -397,15 +416,16 @@ through Children C-F and the final cross-phase audit.
   exactly once where appropriate, format-conformant, uniquely owned,
   adjacent-compatible, revision/target-safe, failure-atomic, invalidation-
   complete, and truthful about actual implementation state.
-- No C++ implementation begins until that final audit is accepted. The
-  umbrella and children make no implementation, test-expectation, unsupported,
-  allowlist, or runtime behavior changes.
+- The umbrella and children make no implementation, test-expectation,
+  unsupported, allowlist, or runtime behavior changes. Idea 734 is the explicit
+  preceding C++ implementation initiative; no other implementation begins
+  until the restarted final audit is accepted.
 - The final audit records any deliberate external owner referenced from BIR
   docs and verifies its BIR-facing contract without silently absorbing that
   external implementation into a child.
-- Deferred idea 734 is linked as the phase-A implementation consumer, remains
-  inactive throughout this umbrella runbook, and is narrowed to new-BIR
-  container/schema plus importer wiring for the unchanged LIR surface.
+- Idea 734 is linked as the new-BIR container/schema plus importer
+  implementation prerequisite for the unchanged LIR surface. It must close
+  before this umbrella restarts from phase A.
 
 ## Closure Note Requirements
 
@@ -459,6 +479,7 @@ The closure note must record:
 - Reject helper renames, classification-only changes, formatting churn, or a
   new abstraction name that preserves the same missing ownership/input/output
   failure while being claimed as convergence.
-- Reject beginning child B through F before its predecessor contract is
-  accepted, or beginning any deferred BIR implementation before all six
-  children and the final cross-phase audit converge.
+- Reject resuming Child C directly after 734, beginning Child B through F
+  before its post-734 predecessor contract is accepted, or beginning any
+  implementation outside 734 before all restarted children and the final
+  cross-phase audit converge.
