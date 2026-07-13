@@ -386,6 +386,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
                                       const LirGlobal& global) {
   constexpr int kArrayDimensionCapacity =
       sizeof(global.type.array_dims) / sizeof(global.type.array_dims[0]);
+  const bool ordinary_no_split =
+      global.type.inner_rank == -1 || global.type.inner_rank == 0;
   if (global.type.base != TB_VRM_REGISTER && global.type.vrm_width != 0)
     return std::nullopt;
   if (!global.type.is_vector &&
@@ -452,7 +454,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       global.type.ptr_level == 0 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
-      global.type.inner_rank == 0 && !global.type.is_fn_ptr &&
+      ordinary_no_split && !global.type.is_fn_ptr &&
       global.type.array_size_expr == nullptr;
   if (global.type.is_vector) {
     if (global.llvm_type_ref) return std::nullopt;
@@ -463,7 +465,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
         (global.is_extern_decl || !global.init_text.empty()) &&
         global.type.ptr_level > 0 && !global.type.is_lvalue_ref &&
         !global.type.is_rvalue_ref && global.type.array_rank == 0 &&
-        !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
+        !global.type.is_ptr_to_array && ordinary_no_split &&
         !global.type.is_fn_ptr && global.type.array_size_expr == nullptr;
     if (pointer_to_vector) {
       if (global.llvm_type != "ptr") return std::nullopt;
@@ -480,7 +482,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
         !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
         global.type.array_rank <= kArrayDimensionCapacity &&
         global.type.array_size >= 0 && !global.type.is_ptr_to_array &&
-        global.type.inner_rank == 0 && !global.type.is_fn_ptr &&
+        ordinary_no_split && !global.type.is_fn_ptr &&
         global.type.array_size_expr == nullptr;
     if (fixed_vector_array) {
       std::vector<std::int64_t> dimensions;
@@ -518,7 +520,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       global.type.array_rank >= 1 &&
       global.type.array_rank <= kArrayDimensionCapacity &&
       global.type.array_size >= 0 && !global.type.is_ptr_to_array &&
-      (global.type.inner_rank == -1 || global.type.inner_rank == 0) &&
+      ordinary_no_split &&
       !global.type.is_vector &&
       global.type.array_size_expr == nullptr;
   if (fixed_function_pointer_array) {
@@ -551,7 +553,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       global.type.is_fn_ptr && global.type.ptr_level > 0 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
-      (global.type.inner_rank == -1 || global.type.inner_rank == 0) &&
+      ordinary_no_split &&
       !global.type.is_vector &&
       global.type.array_size_expr == nullptr;
   if (direct_function_pointer) {
@@ -629,7 +631,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
       global.type.array_rank <= kArrayDimensionCapacity &&
       global.type.array_size >= 0 &&
-      !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
+      !global.type.is_ptr_to_array && ordinary_no_split &&
       !global.type.is_fn_ptr && !global.type.is_vector &&
       global.type.array_size_expr == nullptr;
   if (fixed_scalar_base_array) {
@@ -648,6 +650,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
     for (auto& dimension : element_spec.array_dims) dimension = -1;
     const int element_pointer_depth = element_spec.ptr_level;
     element_spec.ptr_level = 0;
+    element_spec.inner_rank = 0;
     const auto element = lower_constant_type(module, element_spec);
     if (!element || (element->kind != TypeKind::Integer &&
                      element->kind != TypeKind::Floating &&
@@ -678,7 +681,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       !global.type.is_rvalue_ref && global.type.array_rank >= 1 &&
       global.type.array_rank <= kArrayDimensionCapacity &&
       global.type.array_size >= 0 && global.type.is_ptr_to_array &&
-      (global.type.inner_rank < 0 ||
+      (global.type.inner_rank == -1 ||
        global.type.inner_rank == global.type.array_rank) &&
       !global.type.is_fn_ptr && !global.type.is_vector &&
       global.type.array_size_expr == nullptr;
@@ -723,12 +726,13 @@ std::optional<Type> lower_global_type(const LirModule& module,
       global.type.ptr_level > 0 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
-      global.type.inner_rank == 0 && !global.type.is_fn_ptr &&
+      ordinary_no_split && !global.type.is_fn_ptr &&
       !global.type.is_vector && global.type.array_size_expr == nullptr;
   if (scalar_pointer_global) {
     if (global.llvm_type != "ptr") return std::nullopt;
     TypeSpec pointee_spec = global.type;
     pointee_spec.ptr_level = 0;
+    pointee_spec.inner_rank = 0;
     const auto pointee = lower_constant_type(module, pointee_spec);
     if (!pointee || (pointee->kind != TypeKind::Integer &&
                      pointee->kind != TypeKind::Floating &&
@@ -758,7 +762,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       (global.type.base == TB_STRUCT || global.type.base == TB_UNION) &&
       global.type.ptr_level == 0 && !global.type.is_lvalue_ref &&
       !global.type.is_rvalue_ref && global.type.array_rank == 0 &&
-      !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
+      !global.type.is_ptr_to_array && ordinary_no_split &&
       !global.type.is_fn_ptr;
   if (direct_aggregate) {
     if ((!global.is_extern_decl && global.init_text.empty()) ||
@@ -785,8 +789,11 @@ std::optional<Type> lower_global_type(const LirModule& module,
     return authoritative;
   }
 
+  if (!ordinary_no_split) return std::nullopt;
+  TypeSpec compatibility_type = global.type;
+  compatibility_type.inner_rank = 0;
   const auto authoritative =
-      lower_global_compatibility_type(module, global.type);
+      lower_global_compatibility_type(module, compatibility_type);
   if (!authoritative || authoritative->kind == TypeKind::Void ||
       !is_well_formed(*authoritative))
     return std::nullopt;

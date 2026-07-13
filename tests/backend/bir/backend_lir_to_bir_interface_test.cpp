@@ -2258,6 +2258,7 @@ void test_scalar_global_type_authority_without_mirror() {
   lir::LirGlobal declaration;
   declaration.name = "producer_long_declaration";
   declaration.type = scalar_type(c4c::TB_LONG);
+  declaration.type.inner_rank = -1;
   declaration.linkage_vis = "external hidden ";
   declaration.qualifier = "global ";
   declaration.llvm_type = "i32";
@@ -2268,6 +2269,7 @@ void test_scalar_global_type_authority_without_mirror() {
   lir::LirGlobal definition;
   definition.name = "producer_double_definition";
   definition.type = scalar_type(c4c::TB_DOUBLE);
+  definition.type.inner_rank = -1;
   definition.is_const = true;
   definition.linkage_vis = "protected ";
   definition.qualifier = "constant ";
@@ -2302,6 +2304,17 @@ void test_scalar_global_type_authority_without_mirror() {
          "floating TypeSpec authority must retain definition, visibility, and initializer facts");
   expect(bir::FoundationVerifier::verify(imported.value()).ok(),
          "mirror-free scalar global receipt must remain verifier reachable");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value() &&
+             canonical.value().view().global_objects().size() == 2,
+         "producer no-split scalar globals must reach Canonical BIR");
+  for (const int invalid_inner_rank : {-2, 1}) {
+    auto candidate = module;
+    candidate.globals[0].type.inner_rank = invalid_inner_rank;
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value() &&
+               !bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           "scalar globals must reject invalid non-split inner-rank residue transactionally");
+  }
 }
 
 void test_enum_storage_global_receipt_and_rejections() {
@@ -2948,6 +2961,7 @@ void test_scalar_pointer_global_receipt_and_rejections() {
     external.link_name_id = linked;
     external.type = scalar_type(c4c::TB_LONGLONG);
     external.type.ptr_level = 1;
+    external.type.inner_rank = -1;
     external.linkage_vis = "external hidden ";
     external.qualifier = "global ";
     external.llvm_type = "ptr";
@@ -3256,6 +3270,10 @@ void test_scalar_pointer_global_receipt_and_rejections() {
   };
   rejected([](lir::LirModule& m) { m.globals[0].type.ptr_level = -1; },
            "negative scalar-pointer extern depth must remain closed");
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = -2; },
+           "scalar pointers reject invalid negative inner-rank residue");
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = 1; },
+           "scalar pointers reject positive inner rank without split authority");
   rejected([](lir::LirModule& m) { m.globals[0].type.base = c4c::TB_STRUCT; },
            "aggregate scalar-pointer pointees must remain closed");
   rejected(
@@ -3676,6 +3694,7 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
     definition.type.array_rank = 1;
     definition.type.array_size = 0;
     definition.type.array_dims[0] = 0;
+    definition.type.inner_rank = -1;
     definition.is_const = true;
     definition.linkage_vis = "weak protected ";
     definition.qualifier = "constant ";
@@ -3928,6 +3947,12 @@ void test_fixed_scalar_base_array_global_receipt_and_rejections() {
       [](lir::LirModule& m) { m.globals[3].type.inner_rank = 1; },
       "inner array rank without pointer-to-array authority must remain unsupported");
   rejected(
+      [](lir::LirModule& m) { m.globals[0].type.inner_rank = -2; },
+      "fixed arrays reject invalid negative inner-rank residue");
+  rejected(
+      [](lir::LirModule& m) { m.globals[0].type.inner_rank = 1; },
+      "fixed arrays reject positive inner rank without split authority");
+  rejected(
       [](lir::LirModule& m) {
         m.globals[3].llvm_type_ref = lir::LirTypeRef("[4 x [0 x ptr]]");
       },
@@ -3972,6 +3997,7 @@ void test_direct_vector_global_receipt_and_rejections() {
     definition.type.is_vector = true;
     definition.type.vector_lanes = 4;
     definition.type.vector_bytes = 8;
+    definition.type.inner_rank = -1;
     definition.linkage_vis = "protected ";
     definition.qualifier = "global ";
     definition.llvm_type = "<4 x i16>";
@@ -4200,6 +4226,10 @@ void test_direct_vector_global_receipt_and_rejections() {
       "producer-valid direct vectors must not carry llvm_type_ref");
   rejected([](lir::LirModule& m) { m.globals[0].type.vrm_width = 2; },
            "VRM metadata must remain excluded from direct vector globals");
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = -2; },
+           "direct vectors reject invalid negative inner-rank residue");
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = 1; },
+           "direct vectors reject positive inner rank without split authority");
   rejected(
       [](lir::LirModule& m) {
         m.globals[0].type.is_vector = false;
@@ -4556,6 +4586,7 @@ void test_va_list_global_receipt_and_rejections() {
     definition.name = "va_list_definition";
     definition.link_name_id = definition_link;
     definition.type = scalar_type(c4c::TB_VA_LIST);
+    definition.type.inner_rank = -1;
     definition.linkage_vis = "weak protected ";
     definition.qualifier = "constant ";
     definition.llvm_type = storage;
@@ -4579,6 +4610,7 @@ void test_va_list_global_receipt_and_rejections() {
     pointer.name = "va_list_deep_pointer";
     pointer.type = scalar_type(c4c::TB_VA_LIST);
     pointer.type.ptr_level = 3;
+    pointer.type.inner_rank = -1;
     pointer.linkage_vis = "extern_weak protected ";
     pointer.qualifier = "global ";
     pointer.llvm_type = "ptr";
@@ -4594,6 +4626,7 @@ void test_va_list_global_receipt_and_rejections() {
     array.type.array_size = 2;
     array.type.array_dims[0] = 2;
     array.type.array_dims[1] = 3;
+    array.type.inner_rank = -1;
     array.linkage_vis = "external protected ";
     array.qualifier = "global ";
     array.llvm_type = "[2 x [3 x " + storage + "]]";
@@ -4880,6 +4913,12 @@ void test_va_list_global_receipt_and_rejections() {
     expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
            message + " (Canonical rollback)");
   };
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = -2; },
+           "direct va-list globals reject invalid negative inner-rank residue");
+  rejected([](lir::LirModule& m) { m.globals[2].type.inner_rank = 1; },
+           "va-list pointers reject positive inner rank without split authority");
+  rejected([](lir::LirModule& m) { m.globals[3].type.inner_rank = -2; },
+           "va-list arrays reject invalid negative inner-rank residue");
   rejected(
       [](lir::LirModule& m) {
         m.target_profile.arch = c4c::TargetArch::Riscv64;
@@ -4980,6 +5019,7 @@ void test_named_aggregate_global_receipt_and_rejections() {
     pair.name = "named_pair_global";
     pair.link_name_id = pair_link;
     pair.type = scalar_type(c4c::TB_STRUCT);
+    pair.type.inner_rank = -1;
     pair.linkage_vis = "protected ";
     pair.qualifier = "global ";
     pair.llvm_type = "%struct.PairGlobal";
@@ -5152,6 +5192,10 @@ void test_named_aggregate_global_receipt_and_rejections() {
                    bir::ImportErrorCode::UnsupportedGlobals,
            message + " (canonical rollback)");
   };
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = -2; },
+           "direct aggregates reject invalid negative inner-rank residue");
+  rejected([](lir::LirModule& m) { m.globals[0].type.inner_rank = 1; },
+           "direct aggregates reject positive inner rank without split authority");
   rejected([](lir::LirModule& m) { m.globals[2].llvm_type_ref.reset(); },
            "named aggregate externs require structured type identity transactionally");
   rejected(
