@@ -29,9 +29,9 @@ assembler may parse instruction/template syntax.
 - `src/backend/bir/pipeline/README.md`
 - `src/backend/bir/REVIEW_TEMPLATE.md`
 - `src/backend/bir/core/README.md`
+- `src/backend/bir/verify/README.md`
 - `src/backend/bir/preparation/README.md`
 - `src/backend/bir/preparation/inline_asm/README.md`
-- `src/backend/bir/mir/README.md`
 - `docs/inline_asm_transport/`
 
 ## Current Targets
@@ -39,7 +39,8 @@ assembler may parse instruction/template syntax.
 - ordered-architecture and checkpoint acceptance
 - structured opaque inline-asm transport into Canonical BIR
 - revision-bound target-aware inline-asm preparation
-- verified preparation-to-MIR handoff and structured regalloc requirements
+- verified `PreparedBir` publication and a bounded handoff to new MIR
+- structured, string-free regalloc requirements
 - late assembler substitution and first parse
 
 ## Non-Goals
@@ -60,10 +61,15 @@ assembler may parse instruction/template syntax.
 2. LIR-to-BIR constructs target-independent Raw BIR; canonical passes publish
    verified `CanonicalBir` without normalizing target syntax.
 3. `preparation/inline_asm` reads immutable `CanonicalBir` plus target context
-   and produces a typed immutable plan bound to exact revisions.
-4. Prepared-input verification gates MIR construction; MIR/regalloc consume
-   roles/classes/groups/ties/early-clobbers/clobber units from that plan only.
-5. Late assembly substitutes completed assignments and first parses/encodes
+   and produces a typed immutable plan bound to the exact canonical revision
+   and target-context identity/version.
+4. The ordered planners and Prepared-input verification publish one verified
+   `PreparedBir` containing that typed plan component.
+5. MIR construction consumes verified `PreparedBir` (or its verified read-only
+   view), never raw `CanonicalBir` plus a separately supplied plan.
+6. MIR/regalloc consume roles/classes/groups/ties/early-clobbers/clobber units
+   from typed prepared/MIR records only.
+7. Late assembly substitutes completed assignments and first parses/encodes
    the opaque instruction payload.
 
 ## Execution Rules
@@ -71,7 +77,7 @@ assembler may parse instruction/template syntax.
 - Step 1 is a design repair and joint architecture review. No later
   implementation step is authorized until its completion check passes.
 - Keep Step 1 bounded to the inline-asm checkpoint and its CanonicalBir,
-  preparation, and MIR adjacency. Do not take over review of unrelated
+  `PreparedBir` publication, and new-MIR adjacency. Do not take over review of unrelated
   scaffold areas; only confirm the architecture-wide acceptance prerequisite.
 - Treat the user-authored `src/backend/bir/**` scaffold as authoritative input; do not
   modify it in the checkpoint-repair packet.
@@ -83,17 +89,25 @@ assembler may parse instruction/template syntax.
 - Require negative proofs for stale/mismatched plans, illegal groups, ties,
   early-clobbers, clobbers, and unsupported syntax.
 - Keep legacy translation units absent from compile metadata.
+- Treat the missing authoritative new-MIR ownership/stage-token/verifier
+  contract as a Step 1 blocker. Do not recreate deleted
+  `src/backend/bir/mir/**` documents or choose a replacement filesystem owner
+  within this runbook.
+- Record the dangling MIR links in the surviving BIR README/pipeline as
+  scaffold adjacency debt outside this packet; they are not implementation
+  authority.
 
-## Step 1: Repair and jointly accept the architecture checkpoint
+## Step 1: Repair PreparedBir publication and define the missing new-MIR handoff
 
-Goal: reconcile the inline-asm checkpoint with the ordered BIR architecture
+Goal: reconcile the inline-asm checkpoint with `PreparedBir` publication and
+freeze the bounded decisions required from an authoritative new-MIR contract
 before any implementation is allowed.
 
 Primary targets:
 
 - `docs/inline_asm_transport/`
-- user-authored architecture documents under `src/backend/bir/**`
-- the adjacent canonical-BIR, preparation, and MIR contracts
+- the surviving ordered pipeline, verification, and preparation contracts
+- the missing bounded `PreparedBir` to new-MIR adjacency contract
 
 Concrete actions:
 
@@ -108,12 +122,26 @@ Concrete actions:
   plan bound to exact module/function revision and target-context identity.
 - Place roles, classes, group widths/alignment/contiguity, ties,
   early-clobbers, memory/CC effects, and physical clobber units in that plan.
+- Specify the plan as a typed component of the verified `PreparedBir` product,
+  bound to the same canonical revision and target-context identity/version.
+- Require Prepared-input verification before `PreparedBir` publication and
+  reject stale, missing, mismatched, or cross-bundle plan components there.
+- Require MIR construction to consume verified `PreparedBir` or a verified
+  read-only view; prohibit raw `CanonicalBir` plus a side plan.
+- Record the exact still-missing new-MIR decisions: MIR owner, constructed-MIR
+  output stage token, immediate verifier profile/gate, revision/staleness
+  behavior, diagnostics, and transactional failure/publication behavior.
+- Keep the location and shape of that authoritative new-MIR contract open for
+  an explicit architecture decision; do not recreate deleted BIR-owned MIR
+  documents.
 - Re-home all related diagnostics and proof rows to the stage that can decide
-  them; include stale/missing/mismatched-plan rejection before MIR publication.
+  them.
 - Preserve the evidence-backed RV64 `r`, `VR`, `VRM2`, `VRM4`, `VRM8` table as
   a preparation contract and keep `VRM1` unsupported.
-- Review the repaired checkpoint together with the preceding CanonicalBir and
-  following MIR contracts using `src/backend/bir/REVIEW_TEMPLATE.md`.
+- Review the repaired checkpoint against CanonicalBir, preparation,
+  Prepared-input verification, `PreparedBir` publication, and the newly
+  authoritative following-MIR contract using
+  `src/backend/bir/REVIEW_TEMPLATE.md`.
 - Record architecture-wide acceptance as an external prerequisite rather than
   expanding this packet into review of unrelated scaffold areas.
 - Do not declare implementation authorization until that prerequisite holds
@@ -122,10 +150,12 @@ Concrete actions:
 
 Completion check:
 
-- The bounded adjacency review accepts one coherent stage order and authority
-  map, every inline-asm plan is revision-bound and verified, and canonical BIR
-  has no target interpretation. Step 2 remains unauthorized until the separate
-  architecture-wide acceptance prerequisite is also confirmed.
+- The checkpoint routes the revision/target-bound inline-asm plan through
+  verified `PreparedBir`; an authoritative new-MIR contract supplies the
+  missing owner, stage token, immediate verifier, staleness, diagnostics, and
+  transactional publication decisions; and the bounded adjacency review
+  accepts the complete handoff. Step 2 remains unauthorized until this check
+  and the separate architecture-wide acceptance prerequisite both pass.
 
 ## Step 2: Establish target-independent transport through Canonical BIR
 
@@ -170,21 +200,22 @@ Completion check:
 - A verified plan contains every target-specific fact required downstream,
   and neither MIR nor regalloc needs source-string interpretation.
 
-## Step 4: Construct MIR from verified preparation
+## Step 4: Construct MIR from verified PreparedBir
 
-Goal: translate canonical semantics plus the preparation plan into allocatable
-machine requirements.
+Goal: translate the verified prepared product into allocatable machine
+requirements.
 
 Concrete actions:
 
-- Define minimal MIR ownership/identity for inline-asm pseudos and require the
-  verified matching preparation plan at the construction boundary.
+- Implement the separately accepted new-MIR ownership/identity contract for
+  inline-asm pseudos and require verified `PreparedBir` (or its verified
+  read-only view) at the construction boundary.
 - Preserve operand/result order, distinct incoming/produced identities, ties,
   clobbers, and opaque payload while translating plan facts into MIR records.
 - Reject absent, stale, mismatched, or unrepresentable plans before partial MIR
   publication.
-- Add direct BIR-plus-plan-to-MIR tests, including byte equality and mismatch
-  failures.
+- Add direct PreparedBir-to-MIR tests, including byte equality, cross-bundle,
+  stale-revision, target-mismatch, and verifier-gate failures.
 
 Completion check:
 

@@ -18,10 +18,11 @@ Inline asm has two facts with different interpretation times. The instruction
 payload must remain opaque until assembly, while operand constraints must be
 resolved before register allocation. The replacement architecture now defines
 an ordered boundary for that split: canonical BIR is target-independent;
-`preparation/inline_asm` is the sole target-aware constraint owner; MIR and
-regalloc consume its verified plan. Putting RV64 normalization, physical
-register meaning, or constraint-contract provenance in LIR-to-BIR or canonical
-BIR would violate that architecture even if a narrow testcase passed.
+`preparation/inline_asm` is the sole target-aware constraint owner; the
+verified inline-asm plan becomes a typed component of published `PreparedBir`,
+which MIR construction and regalloc consume. Putting RV64 normalization,
+physical register meaning, or constraint-contract provenance in LIR-to-BIR or
+canonical BIR would violate that architecture even if a narrow testcase passed.
 
 ## Core Contract
 
@@ -35,12 +36,19 @@ BIR would violate that architecture even if a narrow testcase passed.
   classification, allocator requirement, or prepared-plan result.
 - `preparation/inline_asm` consumes immutable verified `CanonicalBir` plus the
   selected target context. It is the sole normalizer of constraints and
-  clobbers and produces an immutable, revision-bound typed plan.
+  clobbers and produces an immutable typed plan bound to the exact canonical
+  revision and target-context identity/version.
 - The typed inline-asm plan carries operand roles, register classes, group
   width/alignment/contiguity, ties, early-clobbers, memory/condition-code
   effects, and resolved clobber units with structured diagnostics.
-- BIR-to-MIR/MIR construction requires the verified plan. MIR and regalloc
-  consume structured requirements only and never inspect original strings.
+- Canonical BIR plus the ordered target-aware planners pass Prepared-input
+  verification and publish one verified `PreparedBir`; its typed inline-asm
+  component is inseparable from the canonical revision and target context it
+  was prepared for.
+- MIR construction consumes verified `PreparedBir` (or a verified read-only
+  `PreparedBir` view), never raw `CanonicalBir` plus an independently supplied
+  side plan. MIR and regalloc consume structured requirements only and never
+  inspect original strings.
 - RV64 preparation must support the evidence-backed `r`, `=r`, `VR`, `VRM2`,
   `VRM4`, and `VRM8` contract, including read/write forms, matching ties,
   early-clobbers, and clobbers. `VRM1` remains unsupported.
@@ -52,15 +60,18 @@ BIR would violate that architecture even if a narrow testcase passed.
 
 ## In Scope
 
-- Repairing the inline-asm ownership/schema checkpoint to match
-  `src/backend/bir/README.md`, `pipeline/README.md`, and the preparation/MIR
-  contracts.
+- Repairing the inline-asm ownership/schema checkpoint to match the surviving
+  ordered-pipeline, verification, and preparation contracts.
 - A target-independent structured source carrier across parser/HIR/LIR and
   Raw/Canonical BIR, while retaining separate LLVM-compatibility rendering.
 - A target-aware `preparation/inline_asm` plan tied to exact canonical BIR and
   target-context revisions.
 - New MIR construction, allocator requirements, and late assembly consuming
   only the appropriate verified products.
+- A bounded design handoff that identifies the required ownership, stage
+  tokens, immediate verifier gate, revision/staleness rules, diagnostics, and
+  transactional failure behavior for `PreparedBir` to new MIR without
+  deciding the new MIR contract's filesystem location.
 - Direct transport, preparation, BIR-to-MIR, allocator, and bounded late
   assembler/end-to-end proof after architecture acceptance.
 
@@ -77,12 +88,23 @@ BIR would violate that architecture even if a narrow testcase passed.
 - Parsing asm instructions/templates before late assembly.
 - General GCC/LLVM constraint compatibility beyond reviewed target tables.
 - Resuming idea 730 globals work or broad ABI/object/linker/runtime bring-up.
+- Recreating or treating the deleted `src/backend/bir/mir/**` scaffold as
+  authority. Its replacement ownership and location require a separate
+  architecture decision.
 
 ## Acceptance Criteria
 
 - The inline-asm checkpoint and its adjacent ordered-architecture contracts
   jointly identify exact input/output stage tokens, revision binding,
   diagnostics, failure behavior, verification gates, and legacy coverage.
+- Prepared-input verification publishes `PreparedBir` with a typed
+  inline-asm plan component bound to the same canonical revision and selected
+  target context; no caller can mix that component with an unrelated bundle.
+- An authoritative new-MIR contract names the owner of constructed MIR, its
+  input/output stage tokens, immediate verifier profile, revision/staleness
+  behavior, diagnostics, and transactional publication rule. Until that
+  contract exists and is reviewed, Step 1 and implementation authorization
+  remain blocked; this idea does not prescribe its filesystem location.
 - This idea does not take over exhaustive review of unrelated scaffold areas;
   the architecture-wide `accepted` state remains an external prerequisite for
   implementation.
@@ -95,7 +117,9 @@ BIR would violate that architecture even if a narrow testcase passed.
   early-clobbers, clobbers, `VR`, `VRM2`, `VRM4`, and `VRM8` into a verified
   typed plan; `VRM1` and unreviewed forms fail closed.
 - The plan is bound to the exact canonical module/function revision and target
-  context, and stale or mismatched plans are rejected before MIR publication.
+  context, and stale or mismatched plans are rejected before `PreparedBir`
+  publication; MIR construction accepts only the matching verified prepared
+  product.
 - MIR construction preserves distinct input/output SSA identities while
   translating the verified plan into allocatable requirements.
 - Regalloc enforces class, group width/alignment/contiguity, ties,
@@ -113,6 +137,12 @@ BIR would violate that architecture even if a narrow testcase passed.
   authorize physical interpretation, or stores a preparation/allocator result.
 - Preparation mutates `CanonicalBir`, produces an untyped side table, or emits
   a plan without exact BIR-revision and target-context binding.
+- A caller may pair raw `CanonicalBir` with an independently verified
+  inline-asm plan, bypass Prepared-input verification, or construct MIR
+  without a verified `PreparedBir` token/view.
+- Deleted BIR-owned MIR documents are restored or cited as current authority,
+  or a new MIR filesystem owner is invented without an explicit architecture
+  decision.
 - MIR construction or regalloc reads original constraint/clobber strings,
   guesses from spelling, or bypasses preparation verification.
 - Any pre-assembler pass tokenizes or interprets mnemonics, directives,
