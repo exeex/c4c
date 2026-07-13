@@ -8,31 +8,28 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 initialized-global/initializer packet added typed lossless
-  `GlobalInitializer` receipt for the coherent ordinary initialized-definition
-  subset. Raw-BIR now preserves `LirGlobal::init_text` byte-for-byte as an
-  opaque payload and preserves ordered, duplicate-retaining function references
-  as epoch-owned `LinkNameId`s resolved only through the module link-name table.
-- Builder resolution rejects invalid or dangling initializer references before
-  append, importer publication remains module-transactional, and foundation
-  verification enforces extern/definition initializer coherence plus every
-  initializer link's epoch and link-name domain. Initializer-free external
-  global coverage remains admitted and unchanged.
+- Plan Step 3 constant initialized-definition packet now admits the exact
+  coherent `is_const=true` plus `constant ` qualifier form beside the existing
+  `is_const=false` plus `global ` form. Both remain restricted to non-extern,
+  non-internal definitions with empty linkage visibility, exact structured
+  type/source/rendered-type parity, and a nonempty opaque initializer payload.
+- Nearby receipt coverage proves constant definitions preserve the typed object
+  type, `is_const`, byte-exact opaque payload, and ordered structured initializer
+  links. Both mismatched `is_const`/qualifier directions reject the whole module.
 
 ## Suggested Next
 
-- Execute only the next bounded Step 3 constant initialized-definition packet.
-  Reuse the typed initializer receipt while requiring exact agreement between
-  `is_const`, the structured type, and the `constant ` qualifier; do not absorb
-  weak/visibility or aggregate special-type work into that packet.
+- Execute one bounded Step 3 internal initialized-definition packet. Admit only
+  producer-evidenced `internal ` linkage forms with exact ordinary/constant
+  qualifier pairing, prove typed `is_internal` receipt and transactional
+  rejection of linkage/flag mismatches, and leave weak/visibility variants out.
 
 ## Watchouts
 
-- The admitted definition subset is deliberately restricted to non-internal,
-  non-const, empty-linkage `global ` rows with exact `TypeSpec`/`LirTypeRef`
-  parity and a nonempty opaque initializer payload. Weak/visibility forms and
-  non-scalar special type parity still lack current typed authority and remain
-  fail-closed.
+- Constant admission extends only `validate_module_surface`; the existing typed
+  global/initializer receipt already preserves all required fields. External
+  declarations remain unchanged, and internal, weak/visibility, aggregate, and
+  special-type variants still fail closed.
 - `init_text` is opaque receipt evidence, not parsed semantic or topology
   authority. `initializer_function_link_name_ids` alone supplies structured
   initializer references, and `LirGlobal.id` remains producer-default
@@ -42,8 +39,6 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
-- The supervisor reran the exact fresh build plus matching `^backend_` before
-  and after commands; canonical `test_before.log` and `test_after.log` both
-  record 4/4 backend tests passing. The documented non-decreasing monotonic
-  guard passed with an equal CTest count because nearby initializer coverage
-  was added inside the existing interface test binary.
+- The fresh build completed and root `test_after.log` records 4/4 backend tests
+  passing. The selected proof is sufficient for this importer admission and its
+  nearby interface coverage.

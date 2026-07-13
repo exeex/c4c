@@ -1476,6 +1476,16 @@ void test_global_object_receipt_and_views() {
   initialized.initializer_function_link_name_ids = {
       init_fn_b, init_fn_a, init_fn_b};
   module.globals.push_back(std::move(initialized));
+  auto constant_initialized = external_global(
+      "constant_initialized_global", c4c::kInvalidLinkName, c4c::TB_DOUBLE,
+      lir::LirTypeRef("double"), 8, true);
+  constant_initialized.linkage_vis.clear();
+  constant_initialized.qualifier = "constant ";
+  constant_initialized.is_extern_decl = false;
+  constant_initialized.init_text = "double 1.25";
+  constant_initialized.initializer_function_link_name_ids = {
+      init_fn_a, init_fn_b};
+  module.globals.push_back(std::move(constant_initialized));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
   expect(imported.has_value(),
@@ -1484,12 +1494,13 @@ void test_global_object_receipt_and_views() {
          "published global storage must be verifier reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 3 && ids[0].slot == 0 && ids[1].slot == 1 &&
-             ids[2].slot == 2,
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
          "Raw-BIR global IDs must follow source vector order, not LirGlobal.id");
   const auto fallback = view.global_object(ids[0]).value();
   const auto linked = view.global_object(ids[1]).value();
   const auto definition = view.global_object(ids[2]).value();
+  const auto constant_definition = view.global_object(ids[3]).value();
   expect(fallback.source_name == "fallback_global" &&
              fallback.object_type == bir::Type{bir::TypeKind::I32} &&
              fallback.alignment == 4 && !fallback.is_internal &&
@@ -1503,7 +1514,13 @@ void test_global_object_receipt_and_views() {
              !fallback.initializer && !linked.initializer &&
              !definition.is_extern_declaration && definition.initializer &&
              definition.initializer->opaque_payload ==
-                 std::string{"i32 7\n\0tail", 11},
+                 std::string{"i32 7\n\0tail", 11} &&
+             constant_definition.object_type ==
+                 bir::Type{bir::TypeKind::F64} &&
+             constant_definition.is_const &&
+             !constant_definition.is_extern_declaration &&
+             constant_definition.initializer &&
+             constant_definition.initializer->opaque_payload == "double 1.25",
          "global views must preserve type, identity, alignment, and semantic flags");
   const auto& initializer_links = definition.initializer->function_links;
   expect(initializer_links.size() == 3 &&
@@ -1511,6 +1528,14 @@ void test_global_object_receipt_and_views() {
              view.spelling(initializer_links[1]).value() == "init_fn_a" &&
              initializer_links[2] == initializer_links[0],
          "initializer links must preserve ordered structured references through the link-name table");
+  const auto& constant_initializer_links =
+      constant_definition.initializer->function_links;
+  expect(constant_initializer_links.size() == 2 &&
+             view.spelling(constant_initializer_links[0]).value() ==
+                 "init_fn_a" &&
+             view.spelling(constant_initializer_links[1]).value() ==
+                 "init_fn_b",
+         "constant initializer links must preserve ordered structured references");
   expect(view.global_object("fallback_global").value() == ids[0] &&
              view.global_object(std::get<bir::LinkNameId>(linked.identity))
                      .value() == ids[1],
@@ -1573,6 +1598,20 @@ void test_global_object_rejections_and_transactionality() {
            "linkage compatibility conflicts must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].qualifier = "constant "; },
            "qualifier compatibility conflicts must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].is_const = true;
+             m.globals[0].init_text = "i32 0";
+           },
+           "constant definitions with global qualifiers must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].qualifier = "constant ";
+             m.globals[0].init_text = "i32 0";
+           },
+           "non-const definitions with constant qualifiers must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].is_internal = true; },
            "incoherent external/global flags must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].align_bytes = 3; },
