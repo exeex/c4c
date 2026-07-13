@@ -1,39 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/730_post_legacy_bir_shell_bootstrap.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Restore CMake generation without legacy sources
+Current Step ID: 2
+Current Step Title: Freeze the bounded schema and API checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-- Step 1 removed the obsolete prepared-BIR, prealloc, route, semantic-BIR, and
-  `backend_lir_to_bir_notes` target/registration blocks from
-  `tests/backend/bir/CMakeLists.txt`.
+- Step 1 completed at `793eeeb90`: removed obsolete prepared-BIR, prealloc,
+  route, semantic-BIR, and `backend_lir_to_bir_notes` target/registration
+  blocks from `tests/backend/bir/CMakeLists.txt`.
 - CMake configuration and generation now succeed without any
   `src/backend/legacy/` entry in `build/compile_commands.json`.
+- The default build reaches the first production seam:
+  `src/backend/backend.hpp` includes missing `bir/bir.hpp`.
 
 ## Suggested Next
 
-- Add the new BIR shell header at `src/backend/bir/bir.hpp` and reconcile the
-  direct `backend.hpp` consumer; the first compiler seam is
-  `backend.hpp:3:10: fatal error: bir/bir.hpp: No such file or directory`.
+- Execute Step 2: derive and review the bounded core file/type/API checkpoint
+  from the 715 contract and blueprint before implementing `bir.hpp` or broad
+  core infrastructure.
 
 ## Watchouts
 
-- Never compile or transplant `src/backend/legacy` code.
-- Bootstrap only explicit empty BIR/MIR behavior; do not imply target codegen.
-- Retain tests only for direct LIR-to-new-BIR and new-BIR-to-MIR contracts.
-- The five remaining BIR view-contract targets are the next test-retention
-  decision; this packet did not edit test sources or widen beyond the obsolete
-  target blocks delegated for Step 1.
+- `bir.hpp` must be a facade over a real core, not a legacy copy or empty fake.
+- Preserve owner/generation IDs, separate storage/order, builder-only mutation,
+  RawBir publication, and terminator-only CFG authority.
+- Do not implement the full P0--P13 roadmap without a concrete migration need.
+- Not-yet-migrated LIR forms must reject safely; never fall back to legacy or
+  silently disappear.
 
 ## Proof
 
-- `cmake --build --preset default -j 2` — CMake generation succeeded, then the
+- `cmake --build --preset default -j 2` — CMake generation succeeded, then
   compile stopped at missing `bir/bir.hpp` in `src/backend/backend.hpp` (also
   reached through `src/codegen/llvm/llvm_codegen.cpp`).
 - `rg -n '/src/backend/legacy/' build/compile_commands.json` — no matches.
-- No `test_after.log` was written because root test logs were outside this
-  packet's owned files; proof output is available in the executor handoff.
+- No new proof run; this update changes lifecycle intent and runbook only.

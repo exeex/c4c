@@ -1,133 +1,166 @@
-# Post-Legacy BIR Shell Bootstrap
+# 715-Guided BIR Core Redesign And LIR Import Migration
 
 Status: Open
-Type: backend interface bootstrap and build restoration
+Type: backend core redesign and interface migration
+
+## Lifecycle Progress
+
+Step 1 completed at `793eeeb90`: obsolete prepared-BIR, prealloc, route,
+semantic-BIR, and `backend_lir_to_bir_notes` registrations were removed; CMake
+generation succeeds without `src/backend/legacy/**` compile entries.  The first
+production seam is the missing active `src/backend/bir/bir.hpp` included by
+`src/backend/backend.hpp`.
 
 ## Intent
 
-Restore a buildable backend around a new minimal BIR shell without compiling or
-reimporting the legacy BIR and preallocation implementation.  Preserve the
-`src/backend/bir/lir_to_bir` source family, migrate it onto the new shell, and
-publish an explicit empty BIR view through a minimal BIR-to-MIR consumer seam.
+Use the accepted idea-715 research contract to design a bounded real BIR core,
+expose it through a new active `bir.hpp` facade, and migrate the retained
+`src/backend/bir/lir_to_bir` family onto builders for that core.  The new BIR is
+neither a copied legacy monolith nor an always-empty compatibility fake.
 
-This is bootstrap work, not semantic target-codegen restoration.  Empty
-BIR/MIR behavior must be explicit and fail safely wherever non-empty backend
-output is still unsupported.
+The design authorities are:
 
-## Why This Exists
+- `docs/backend/pass_ready_bir/03_pass_ready_bir_contract.md`
+- `docs/backend/pass_ready_bir/05_target_schema_and_api_blueprint.md`
 
-The old BIR and preallocation implementation now lives under
-`src/backend/legacy`, while active test registrations still name removed
-production sources such as `src/backend/bir/bir.cpp`.  CMake generation fails
-before the repository can reveal the next real interface seam.  A small new
-schema and consumer path are needed so the retained LIR-to-BIR and BIR-to-MIR
-contracts can compile independently of the quarantined implementation.
+They provide ownership and API constraints, not permission to implement the
+entire P0--P13 roadmap in this bootstrap idea.
 
-## Core Architecture Contract
+## Core Foundation Contract
 
-- `src/backend/legacy/**` is reference-only and forbidden from production and
-  test build graphs.
-- `src/backend/bir/lir_to_bir/**` remains the active LIR-to-BIR source family,
-  but must migrate to the new schema instead of importing, copying, renaming,
-  or wrapping legacy BIR APIs.
-- The new BIR layer begins as the smallest schema/view capable of representing
-  and publishing an explicitly empty module or equivalent top-level view.
-- The new BIR-to-MIR seam consumes that empty view and produces an explicitly
-  empty result or a clear safe unsupported outcome.  It must not imply that
-  target lowering, emission, object generation, or runtime execution works.
-- Tests survive only when they directly specify LIR-to-new-BIR or
-  new-BIR-to-MIR.  Other backend tests and their dedicated support and
-  registrations are removed.
+- `bir.hpp` is a narrow public facade over a real schema under
+  `src/backend/bir/core/`; it is not the ownership location for a monolith.
+- Stable semantic IDs include generation and owner information:
+  `FunctionId`, `BlockId`, `InstId`, and `ValueId`.  Add module/global/local IDs
+  only when an actual migrated family requires them.
+- Storage ownership is separate from semantic iteration order.  Module owns
+  functions and module entities; functions own blocks, instructions, values,
+  parameters, and needed locals; explicit ID order lists define traversal.
+- The initial semantic node set is `Value`, `Inst`, `Block`, `Function`, and
+  `Module`, with only the opcode/attribute/type surface required by migrated
+  families.
+- A block terminator is the sole authority for CFG successors.  No route,
+  predecessor, prepared, or target side table may become competing authority.
+- Construction is builder-only.  Builders reject foreign owners and invalid
+  references at the earliest supported stage.
+- Publication returns a move-only `RawBir` result/wrapper around owned core
+  storage and a read-only view.  Published core contains no route, prealloc,
+  prepared, target, printer, dump, or debug authority.
 
-## Required Sequence
+## Staged Verification Contract
 
-1. Restore CMake generation first by removing obsolete legacy/internal backend
-   test targets and registrations that reference missing or quarantined
-   sources.  Do not add legacy paths to make generation pass.
-2. Build immediately after generation succeeds.  Treat the first compiler or
-   linker failure as the next true production seam and record it before adding
-   new APIs.
-3. Introduce the minimal new BIR schema/view with explicit empty-state
-   invariants and no copied legacy representation surface.
-4. Migrate the retained `lir_to_bir` source family to construct or publish the
-   new empty shell for the supported bootstrap input path.
-5. Introduce the minimal BIR-to-MIR consumer entry that accepts the empty view
-   and returns explicit empty/safe bootstrap behavior.
-6. Add or retain only focused direct-interface tests, remove remaining obsolete
-   tests and dedicated fixtures/helpers/expectations/registrations, and finish
-   with focused interface proof plus broader CTest.
+Verification grows with the migrated surface:
+
+1. Foundation publication checks nonzero owner/generation IDs, live resolution,
+   unique ownership, order-list membership, and required terminators.
+2. Each semantic-family migration adds its operand/result/type/attribute and
+   ownership rules before that family is considered published.
+3. CFG-bearing publication verifies that successors derive only from legal
+   terminators and remain within the owning function.
+4. Raw publication rejects unresolved builder tokens and any forbidden legacy,
+   route, prealloc, prepared, target, printer, or debug authority.
+
+Full editor transactions, RAUW, analysis managers, canonical pass pipelines,
+and the full verifier roadmap remain later idea-715 follow-ups unless a concrete
+LIR import packet proves a minimal piece is necessary for its direct contract.
+
+## LIR-To-BIR Migration Order
+
+Inventory and migrate the existing family exactly in this order, refining a
+packet only when build evidence shows an internal dependency:
+
+1. import spine: `lowering.hpp`, `context.cpp`, `module.cpp`, `types.cpp`
+2. CFG publication: `cfg.cpp`
+3. globals: `globals.cpp`, `global_initializers.cpp`
+4. scalar and aggregate: `scalar.cpp`, `aggregate.cpp`
+5. memory foundation: `memory/memory_types.hpp`,
+   `memory/memory_helpers.hpp`, `memory/local_slots.cpp`,
+   `memory/addressing.cpp`, `memory/provenance.cpp`,
+   `memory/value_materialization.cpp`, `memory/local_gep.cpp`,
+   `memory/intrinsics.cpp`, `memory/coordinator.cpp`
+6. calls: `calling.cpp`, `call_abi.cpp`
+7. remaining import analysis: `analysis.cpp`
+
+Each family constructs through the new builders, adds its matching verification
+rules, and receives build plus direct LIR-to-new-BIR proof before the next
+family begins.  Not-yet-migrated forms must return a clear safe rejection; they
+must not silently disappear and must not fall back to legacy BIR.
+
+## BIR-To-MIR Boundary
+
+The initial BIR-to-MIR consumer may accept only the newly published Raw/verified
+view and the semantic subset explicitly migrated so far.  Unsupported non-empty
+semantics reject safely and observably.  This idea does not revive prealloc,
+prepared BIR, target planning, or legacy lowering authority.
+
+## Test Policy
+
+Retain or add only direct LIR-to-new-BIR and new-BIR-to-MIR tests.  Stable-ID,
+owner/generation, order, and terminator-authority behavior belongs in durable
+tests only when observable through one of those interfaces.  Packet-local
+internal proof may be transient.  Do not preserve internal route/prealloc,
+printer/dump/lookup/ID-shape, target, object, or runtime tests.
 
 ## In Scope
 
-- CMake/test registration cleanup required to generate and expose the next
-  active backend seam.
-- A minimal non-legacy BIR schema and read-only/publication view.
-- Migration of `src/backend/bir/lir_to_bir` to the new shell.
-- A minimal new BIR-to-MIR consumer entry for an empty view.
-- Direct LIR-to-new-BIR and new-BIR-to-MIR boundary tests.
-- Removal of obsolete backend tests and their exclusively dedicated support,
-  build targets, and registrations.
-- Incremental configure/build proof and final broader CTest.
+- A reviewed schema/API checkpoint before broad implementation.
+- Real bounded BIR IDs, storage/order, semantic nodes, builders, RawBir
+  publication, read-only views, and staged verification.
+- A narrow `bir.hpp` facade over the core.
+- Ordered migration of every retained `lir_to_bir` family listed above.
+- A bounded Raw/verified BIR-to-MIR consumer with safe unsupported rejection.
+- Direct two-interface tests and final default build plus broader CTest.
 
 ## Out Of Scope
 
-- Compiling anything under `src/backend/legacy`.
-- Copying, renaming, wrapping, or progressively recreating legacy BIR or
-  preallocation APIs as the new shell.
-- Restoring non-empty target lowering, instruction selection, register
-  allocation, emission, object generation, or runtime semantics.
-- Keeping route, prepare/prealloc, internal dump/printer/lookup/ID, target, or
-  runtime tests outside the two direct interface contracts.
-- Weakening a retained boundary expectation or relabeling an internal test as
-  a boundary test.
-
-## Validation Ladder
-
-For each implementation seam:
-
-1. run CMake generation when build graph inputs change
-2. build the affected target or default preset to expose the next seam
-3. run focused direct-interface tests as soon as they exist
-4. run broader CTest after obsolete test/support cleanup is complete
-
-The initial accepted proof may produce no semantic backend output, but empty
-behavior must be observable, intentional, and safe.
+- Compiling, copying, renaming, wrapping, or re-exporting
+  `src/backend/legacy/**`.
+- Implementing all P0--P13 work now.
+- FunctionEditor, RAUW, analysis manager, general CFG mutation, canonical pass
+  suite, or full preparation pipeline without a demonstrated migration need.
+- Reviving prealloc/prepared or target realization authority in core BIR.
+- Silent empty output for meaningful not-yet-migrated LIR.
 
 ## Acceptance Criteria
 
-- CMake generation succeeds without any source or target under
-  `src/backend/legacy` entering a production or test build graph.
-- Obsolete registrations referencing removed BIR sources are gone, including
-  the known `backend_prepare_phi_materialize_test` and
-  `backend_lir_to_bir_notes_test` failures unless replaced by genuinely direct
-  new-interface proof.
-- A minimal new BIR schema/view represents and publishes an explicit empty
-  state without legacy API transplantation.
-- The active `lir_to_bir` source family builds against the new shell.
-- A minimal BIR-to-MIR entry accepts the empty view and returns explicit empty
-  or safe unsupported behavior without claiming target codegen support.
-- Only direct LIR-to-new-BIR and new-BIR-to-MIR backend tests remain; obsolete
-  tests and their dedicated fixtures, helpers, expectations, targets, and
-  registrations are removed.
-- Incremental configure/build proof is recorded after each seam, both focused
-  interface contracts are tested, and the final broader CTest result is
-  reviewed under the new bootstrap surface.
+- A schema/API checkpoint records the bounded file/type/API surface and maps it
+  to the two design-authority documents before broad implementation.
+- New `bir.hpp` exposes a real core facade with owner/generation-aware IDs,
+  separate ownership/order, semantic nodes, terminator-only successors,
+  builder-only construction, RawBir publication, and staged verification.
+- Published core contains no legacy, route, prealloc, prepared, target,
+  printer, dump, or debug authority.
+- Every listed `lir_to_bir` file is migrated in the declared family order or is
+  explicitly rejected with remaining work recorded; accepted families have
+  direct interface proof and build proof.
+- Not-yet-supported forms reject safely without legacy fallback or silent loss.
+- BIR-to-MIR consumes only the supported published Raw/verified view and rejects
+  unsupported semantics without prealloc revival.
+- Build metadata contains no `src/backend/legacy/**` compile entry.
+- Direct LIR-to-new-BIR and new-BIR-to-MIR tests are non-empty and green; the
+  final default build and broader CTest are reviewed.
+- Editor/RAUW/analysis/canonical-pass work not required by migration is recorded
+  as later 715 follow-up scope rather than smuggled into this implementation.
 
 ## Reviewer Reject Signals
 
-- Any production or test target compiles a path under `src/backend/legacy`.
-- Legacy BIR or preallocation types, APIs, layouts, helpers, or route machinery
-  are copied, renamed, wrapped, symlinked, or re-exported as the new shell.
-- CMake generation is repaired by adding missing legacy sources rather than
-  deleting obsolete non-boundary test targets and registrations.
-- The implementation grows non-empty target semantics before the minimal empty
-  schema and two interface seams have independent proof.
-- Empty behavior silently drops meaningful input or pretends successful target
-  codegen; unsupported non-empty use must fail clearly and safely.
-- Route, prepared/prealloc, dump/printer/lookup/ID, target lowering/emission,
-  object, or runtime tests remain without direct assertion-level proof of one
-  retained interface.
-- A retained interface expectation is weakened or an internal test is merely
-  relabeled to survive cleanup.
-- Only the known CMake error is patched while the next build seam is left
-  unobserved, or implementation batches omit their matching build proof.
+- `bir.hpp` becomes a copied or renamed legacy monolith, an always-empty fake,
+  or a public mutable container surface.
+- IDs are vector positions, pointers, names, labels, or unowned integers; slot
+  reuse can resolve a stale ID to a new entity; allocation order defines
+  traversal order.
+- CFG successors exist outside terminators as authoritative route/predecessor
+  state.
+- Published RawBir contains route, prealloc, prepared, target, printer, dump,
+  debug, or legacy compatibility authority.
+- Broad P0--P13 infrastructure lands before the bounded schema checkpoint or
+  without a concrete migration need.
+- `lir_to_bir` is made to compile through legacy includes/API transplantation,
+  silent dropping, family-shaped shortcuts, or migration without matching
+  verification and direct-interface proof.
+- Families are migrated opportunistically without the declared inventory/order
+  or without recording safe rejection for remaining forms.
+- BIR-to-MIR revives prealloc/prepared state or pretends unsupported non-empty
+  semantics reached MIR successfully.
+- Internal-only tests are retained, or stable-ID/CFG tests are claimed as
+  durable protection without observation through one retained interface.
