@@ -56,9 +56,8 @@ The first callable parameter receiver surface is exactly:
 
 - empty zero-fixed-parameter declaration and definition signatures
 - explicit-void declaration and definition signature shape
-- default-shape nonvariadic fixed `int`, `uint`, `long`, `ulong`, `long long`,
-  `unsigned long long`, `float`, and `double` declaration and definition
-  signatures
+- default-shape nonvariadic fixed `int`, `uint`, `long long`, `unsigned long
+  long`, `float`, and `double` declaration and definition signatures
 
 The plain row has exact structured count, order, base/shape, nonbyval state,
 and typed mirror parity across `LirFunction.params`, `signature_params`, and
@@ -66,14 +65,18 @@ and typed mirror parity across `LirFunction.params`, `signature_params`, and
 no fixed signature rows or mirrors, and the native void-list flag.
 
 Body parameter binding remains blocked because current body operands do not
-carry native parameter value identity. Pointer, narrow integer, aggregate,
-byval, HFA/vector/other ABI expansion, variadic, function-pointer, and
-`va_list` receipt also remains blocked. Do not infer any of these rows from
-names, mirror spelling, raw operands, or ABI position.
+carry native parameter value identity. `long` and `unsigned long` are also
+blocked: production LIR and its verifier currently require 64-bit mirrors even
+for I686, while new-BIR return/global type policy preserves 32-bit I686 long.
+Open inactive idea 743 owns that target-width convergence. Pointer, narrow
+integer, aggregate, byval, HFA/vector/other ABI expansion, variadic,
+function-pointer, and `va_list` receipt also remains blocked. Do not infer any
+of these rows from names, mirror spelling, raw operands, or ABI position.
 
 ## Non-Goals For The Current Step
 
 - no function-body parameter binding or parameter value IDs
+- no `long` or `unsigned long` receipt pending idea 743 target-width policy
 - no pointer, narrow, aggregate/byval, HFA/vector/expanded, variadic,
   function-pointer, or `va_list` receipt
 - no CFG, block-order, edge, stack-object, hoisted-alloca, local-object, or
@@ -105,7 +108,7 @@ names, mirror spelling, raw operands, or ABI position.
 
 ## Ordered Steps
 
-### Step 4.5.1 - Receive zero, void and plain fixed scalar signatures
+### Step 4.5.1 - Receive zero, void and target-stable plain scalar signatures
 
 Goal: receive the exact declaration/definition signature surface authorized by
 the idea-742 handoff without claiming body parameter identity.
@@ -122,9 +125,10 @@ Actions:
 - preserve explicit void only when `params` contains the single plain
   `TB_VOID` sentinel, both fixed ABI tracks are empty, the void-list flag is
   true, and the variadic flag is false
-- for the authorized plain bases, require exact three-track count and order,
-  default `TypeSpec` shape, `is_byval=false`, nonvariadic state, and exact typed
-  integer/floating mirror agreement
+- for only `int`, `uint`, `long long`, `unsigned long long`, `float`, and
+  `double`, require exact three-track count and order, default `TypeSpec` shape,
+  `is_byval=false`, nonvariadic state, and exact typed integer/floating mirror
+  agreement
 - lower those structured types into the existing BIR function signature and
   create ordinary typed `ParameterDef` values by ordinal where the existing
   model requires them; ordinal is BIR storage order, not source identity
@@ -132,17 +136,19 @@ Actions:
   do not resolve raw body operands or bind them by name/position
 - verify exact signature/parameter ownership, type/order, malformed parity,
   duplicates, and whole-module rollback
-- keep pointer, narrow, aggregate/byval, expanded, variadic, function-pointer,
-  `va_list`, and any non-default shape at `UnsupportedFunctionParameters`
+- keep `long`, `unsigned long`, pointer, narrow, aggregate/byval, expanded,
+  variadic, function-pointer, `va_list`, and any non-default shape at
+  `UnsupportedFunctionParameters`
 - add structural positive, misleading-display, neighboring malformed, and
   transactional tests without matching a focused testcase name
 
 Completion check:
 
-- a fresh build and exact focused proof receive zero/void plus default-shape
-  nonvariadic plain fixed scalar declaration/definition signatures from
-  structured facts; malformed neighbors reject atomically; body parameter use
-  and every excluded shape remain fail-closed
+- a fresh build and exact focused proof receive zero/void plus only the six
+  target-stable default-shape nonvariadic scalar families named above for
+  declarations and definitions; malformed neighbors reject atomically; I686
+  `long`/`unsigned long`, body parameter use, and every other excluded shape
+  remain fail-closed
 
 ### Step 4.5.2 - Reassess remaining function, CFG and local-object authority
 

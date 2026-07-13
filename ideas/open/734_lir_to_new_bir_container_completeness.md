@@ -67,12 +67,18 @@ exact structured parity contract among `LirFunction.params`,
 nonvariadic plain fixed scalars. It also preserved the distinct zero-parameter
 and explicit-void shapes.
 
-The first resumed Step 4.5 packet owns only those zero/void shapes and fixed
-plain scalar declaration/definition signatures. It must not bind body operands
-to parameters. Pointer, narrow, aggregate/byval, HFA/vector/other expansion,
-variadic, function-pointer, and `va_list` rows remain blocked exactly as the
-handoff matrix states. Names, signature rendering, body text, and ABI position
-remain non-authoritative.
+The first resumed Step 4.5 packet owns only those zero/void shapes and
+default-shape nonvariadic fixed `int`, `uint`, `long long`, `unsigned long
+long`, `float`, and `double` declaration/definition signatures. It must not
+bind body operands to parameters.
+
+`long` and `unsigned long` are newly blocked by a target-policy contradiction:
+production LIR and its verifier require an unconditional 64-bit mirror while
+new BIR preserves 32-bit I686 long semantics. Open inactive idea 743 owns that
+cross-surface convergence. Pointer, narrow, aggregate/byval,
+HFA/vector/other expansion, variadic, function-pointer, and `va_list` rows
+remain blocked exactly as the handoff matrix states. Names, signature
+rendering, body text, and ABI position remain non-authoritative.
 
 ## Why This Exists
 
