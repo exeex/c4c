@@ -43,21 +43,23 @@ struct StructuredTypeSpecFacts {
   bool is_function_pointer = false;
 };
 
-struct ScalarArrayFacts {
+struct ArrayTypeFacts {
   TypeKind element_kind = TypeKind::Void;
   std::uint32_t element_bit_width = 0;
+  int element_pointer_depth = 0;
   std::vector<std::int64_t> dimensions;
 };
 
-inline bool operator==(const ScalarArrayFacts& lhs,
-                       const ScalarArrayFacts& rhs) noexcept {
+inline bool operator==(const ArrayTypeFacts& lhs,
+                       const ArrayTypeFacts& rhs) noexcept {
   return lhs.element_kind == rhs.element_kind &&
          lhs.element_bit_width == rhs.element_bit_width &&
+         lhs.element_pointer_depth == rhs.element_pointer_depth &&
          lhs.dimensions == rhs.dimensions;
 }
 
-inline bool operator!=(const ScalarArrayFacts& lhs,
-                       const ScalarArrayFacts& rhs) noexcept {
+inline bool operator!=(const ArrayTypeFacts& lhs,
+                       const ArrayTypeFacts& rhs) noexcept {
   return !(lhs == rhs);
 }
 
@@ -83,7 +85,7 @@ struct Type {
   c4c::StructNameId struct_name_id = c4c::kInvalidStructName;
   std::string spelling;
   std::optional<StructuredTypeSpecFacts> structured_spec;
-  std::optional<ScalarArrayFacts> scalar_array;
+  std::optional<ArrayTypeFacts> array_facts;
 
   Type() = default;
   Type(TypeKind type_kind) : kind(type_kind) {
@@ -109,7 +111,7 @@ struct Type {
 };
 
 inline bool operator==(const Type& lhs, const Type& rhs) noexcept {
-  if (lhs.scalar_array != rhs.scalar_array) return false;
+  if (lhs.array_facts != rhs.array_facts) return false;
   const auto integer_width = [](const Type& type) -> std::uint32_t {
     switch (type.kind) {
       case TypeKind::I1: return 1;
@@ -149,7 +151,7 @@ inline bool operator!=(const Type& lhs, const Type& rhs) noexcept {
 }
 
 inline bool is_well_formed(const Type& type) {
-  if (type.kind != TypeKind::Array && type.scalar_array) return false;
+  if (type.kind != TypeKind::Array && type.array_facts) return false;
   if (type.structured_spec) {
     const auto& spec = *type.structured_spec;
     if (type.kind != TypeKind::Void ||
@@ -200,17 +202,17 @@ inline bool is_well_formed(const Type& type) {
       if (type.bit_width != 0 || !no_name || type.spelling.size() < 2 ||
           type.spelling.front() != '[' || type.spelling.back() != ']')
         return false;
-      if (!type.scalar_array) return true;
-      if (type.scalar_array->dimensions.empty()) return false;
-      for (const auto dimension : type.scalar_array->dimensions)
+      if (!type.array_facts) return true;
+      if (type.array_facts->dimensions.empty()) return false;
+      for (const auto dimension : type.array_facts->dimensions)
         if (dimension <= 0) return false;
       std::string element_spelling;
-      if (type.scalar_array->element_kind == TypeKind::Integer) {
-        if (type.scalar_array->element_bit_width == 0) return false;
+      if (type.array_facts->element_kind == TypeKind::Integer) {
+        if (type.array_facts->element_bit_width == 0) return false;
         element_spelling =
-            "i" + std::to_string(type.scalar_array->element_bit_width);
-      } else if (type.scalar_array->element_kind == TypeKind::Floating) {
-        switch (type.scalar_array->element_bit_width) {
+            "i" + std::to_string(type.array_facts->element_bit_width);
+      } else if (type.array_facts->element_kind == TypeKind::Floating) {
+        switch (type.array_facts->element_bit_width) {
           case 16: element_spelling = "half"; break;
           case 32: element_spelling = "float"; break;
           case 64: element_spelling = "double"; break;
@@ -221,8 +223,12 @@ inline bool is_well_formed(const Type& type) {
       } else {
         return false;
       }
-      for (auto dimension = type.scalar_array->dimensions.rbegin();
-           dimension != type.scalar_array->dimensions.rend(); ++dimension)
+      if (type.array_facts->element_pointer_depth == 1)
+        element_spelling = "ptr";
+      else if (type.array_facts->element_pointer_depth != 0)
+        return false;
+      for (auto dimension = type.array_facts->dimensions.rbegin();
+           dimension != type.array_facts->dimensions.rend(); ++dimension)
         element_spelling =
             "[" + std::to_string(*dimension) + " x " + element_spelling + "]";
       return type.spelling == element_spelling;

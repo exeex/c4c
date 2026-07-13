@@ -717,8 +717,8 @@ void test_verifier_rejects_malformed_raw_type() {
 
   bir::ModuleBuilder array_builder;
   bir::Type malformed_array{bir::TypeKind::Array, 0, "[5 x i16]"};
-  malformed_array.scalar_array =
-      bir::ScalarArrayFacts{bir::TypeKind::Integer, 16, {5, 2}};
+  malformed_array.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 0, {5, 2}};
   expect(array_builder
              .add_global_object("malformed_array", std::move(malformed_array),
                                 4, false, false, false, true)
@@ -733,8 +733,8 @@ void test_verifier_rejects_malformed_raw_type() {
 
   bir::ModuleBuilder empty_array_builder;
   bir::Type empty_array{bir::TypeKind::Array, 0, "[5 x i16]"};
-  empty_array.scalar_array =
-      bir::ScalarArrayFacts{bir::TypeKind::Integer, 16, {}};
+  empty_array.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 0, {}};
   expect(empty_array_builder
              .add_global_object("empty_array", std::move(empty_array), 4,
                                 false, false, false, true)
@@ -746,6 +746,49 @@ void test_verifier_rejects_malformed_raw_type() {
                  bir::PublishError::VerificationFailed &&
              !rejected_empty_array.error().verification.errors.empty(),
          "Raw publication verifier must reject empty typed array dimensions");
+
+  const auto malformed_array_facts_reject = [](std::string name,
+                                                bir::Type type) {
+    bir::ModuleBuilder malformed_builder;
+    if (!malformed_builder
+             .add_global_object(std::move(name), std::move(type), 4, false,
+                                false, false, true)
+             .has_value())
+      return false;
+    const auto published = std::move(malformed_builder).publish();
+    return !published.has_value() &&
+           published.error().reason ==
+               bir::PublishError::VerificationFailed &&
+           !published.error().verification.errors.empty();
+  };
+
+  bir::Type excessive_pointer_depth{bir::TypeKind::Array, 0, "[5 x ptr]"};
+  excessive_pointer_depth.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 2, {5}};
+  expect(malformed_array_facts_reject("excessive_pointer_depth",
+                                      std::move(excessive_pointer_depth)),
+         "Raw publication verifier must reject unsupported array element pointer depth");
+
+  bir::Type nonscalar_pointer_base{bir::TypeKind::Array, 0, "[5 x ptr]"};
+  nonscalar_pointer_base.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Struct, 0, 1, {5}};
+  expect(malformed_array_facts_reject("nonscalar_pointer_base",
+                                      std::move(nonscalar_pointer_base)),
+         "Raw publication verifier must reject nonscalar pointer-element base facts");
+
+  bir::Type pointer_spelling_conflict{bir::TypeKind::Array, 0, "[5 x i16]"};
+  pointer_spelling_conflict.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 1, {5}};
+  expect(malformed_array_facts_reject("pointer_spelling_conflict",
+                                      std::move(pointer_spelling_conflict)),
+         "Raw publication verifier must reject pointer depth that disagrees with array spelling");
+
+  bir::Type facts_on_scalar{bir::TypeKind::Integer, 16, "i16"};
+  facts_on_scalar.array_facts =
+      bir::ArrayTypeFacts{bir::TypeKind::Integer, 16, 0, {5}};
+  expect(malformed_array_facts_reject("facts_on_scalar",
+                                      std::move(facts_on_scalar)),
+         "Raw publication verifier must reject typed array facts on non-array types");
 }
 
 void test_module_name_and_struct_declaration_receipt() {
@@ -1809,7 +1852,7 @@ void test_scalar_global_type_authority_without_mirror() {
          "mirror-free scalar global receipt must remain verifier reachable");
 }
 
-void test_fixed_scalar_array_global_receipt_and_rejections() {
+void test_fixed_scalar_base_array_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
     module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -1862,29 +1905,45 @@ void test_fixed_scalar_array_global_receipt_and_rejections() {
     multidimensional.align_bytes = 32;
     multidimensional.is_extern_decl = true;
     module.globals.push_back(std::move(multidimensional));
+
+    lir::LirGlobal pointer_elements;
+    pointer_elements.name = "extern_multidimensional_pointer_array";
+    pointer_elements.type = scalar_type(c4c::TB_FLOAT);
+    pointer_elements.type.ptr_level = 1;
+    pointer_elements.type.array_rank = 2;
+    pointer_elements.type.array_size = 4;
+    pointer_elements.type.array_dims[0] = 4;
+    pointer_elements.type.array_dims[1] = 2;
+    pointer_elements.linkage_vis = "external hidden ";
+    pointer_elements.qualifier = "global ";
+    pointer_elements.llvm_type = "[4 x [2 x ptr]]";
+    pointer_elements.align_bytes = 16;
+    pointer_elements.is_extern_decl = true;
+    module.globals.push_back(std::move(pointer_elements));
     return module;
   };
 
   auto module = valid_module();
   auto imported = bir::lower_lir_to_raw_bir(module);
   expect(imported.has_value(),
-         "producer-shaped fixed scalar array definitions and declarations must import");
+         "producer-shaped fixed scalar-base array definitions and declarations must import");
   expect(bir::FoundationVerifier::verify(imported.value()).ok(),
-         "fixed scalar array global storage must be verifier reachable");
+         "fixed scalar-base array global storage must be verifier reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 3 && ids[0].slot == 0 && ids[1].slot == 1 &&
-             ids[2].slot == 2,
-         "fixed scalar arrays must preserve deterministic source order");
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
+         "fixed scalar-base arrays must preserve deterministic source order");
   const auto definition = view.global_object(ids[0]).value();
   const auto declaration = view.global_object(ids[1]).value();
   const auto multidimensional = view.global_object(ids[2]).value();
+  const auto pointer_elements = view.global_object(ids[3]).value();
   expect(definition.object_type.kind == bir::TypeKind::Array &&
              definition.object_type.bit_width == 0 &&
              definition.object_type.spelling == "[5 x i16]" &&
-             definition.object_type.scalar_array ==
-                 std::optional<bir::ScalarArrayFacts>{bir::ScalarArrayFacts{
-                     bir::TypeKind::Integer, 16, {5}}} &&
+             definition.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Integer, 16, 0, {5}}} &&
              std::holds_alternative<bir::LinkNameId>(definition.identity) &&
              !definition.is_internal && definition.is_weak &&
              definition.is_const &&
@@ -1903,9 +1962,9 @@ void test_fixed_scalar_array_global_receipt_and_rejections() {
          "fixed scalar array definitions must preserve exact typed shape and all object facts");
   expect(declaration.object_type.kind == bir::TypeKind::Array &&
              declaration.object_type.spelling == "[3 x double]" &&
-             declaration.object_type.scalar_array ==
-                 std::optional<bir::ScalarArrayFacts>{bir::ScalarArrayFacts{
-                     bir::TypeKind::Floating, 64, {3}}} &&
+             declaration.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Floating, 64, 0, {3}}} &&
              declaration.is_extern_declaration &&
              declaration.visibility == bir::SymbolVisibility::Hidden &&
              !declaration.initializer,
@@ -1913,19 +1972,34 @@ void test_fixed_scalar_array_global_receipt_and_rejections() {
   expect(multidimensional.object_type.kind == bir::TypeKind::Array &&
              multidimensional.object_type.spelling ==
                  "[2 x [3 x [7 x i32]]]" &&
-             multidimensional.object_type.scalar_array ==
-                 std::optional<bir::ScalarArrayFacts>{bir::ScalarArrayFacts{
-                     bir::TypeKind::Integer, 32, {2, 3, 7}}} &&
+             multidimensional.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Integer, 32, 0, {2, 3, 7}}} &&
              multidimensional.is_extern_declaration &&
              multidimensional.visibility ==
                  bir::SymbolVisibility::Protected &&
              multidimensional.alignment == 32 &&
              !multidimensional.initializer,
          "multidimensional scalar arrays must retain outer-to-inner typed dimensions and object facts");
+  expect(pointer_elements.object_type.kind == bir::TypeKind::Array &&
+             pointer_elements.object_type.bit_width == 0 &&
+             pointer_elements.object_type.spelling == "[4 x [2 x ptr]]" &&
+             pointer_elements.object_type.array_facts ==
+                 std::optional<bir::ArrayTypeFacts>{bir::ArrayTypeFacts{
+                     bir::TypeKind::Floating, 32, 1, {4, 2}}} &&
+             std::holds_alternative<bir::FallbackGlobalName>(
+                 pointer_elements.identity) &&
+             std::get<bir::FallbackGlobalName>(pointer_elements.identity).name ==
+                 "extern_multidimensional_pointer_array" &&
+             pointer_elements.is_extern_declaration &&
+             pointer_elements.visibility == bir::SymbolVisibility::Hidden &&
+             pointer_elements.alignment == 16 &&
+             !pointer_elements.initializer,
+         "pointer-element arrays must retain scalar pointee facts, pointer depth, ordered dimensions, and object facts");
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
   expect(canonical.has_value() &&
-             canonical.value().view().global_objects().size() == 3,
-         "producer-shaped fixed scalar arrays must publish Canonical BIR");
+             canonical.value().view().global_objects().size() == 4,
+         "producer-shaped fixed scalar-base arrays must publish Canonical BIR");
 
   const auto rejected = [&](auto mutate, const std::string& message) {
     auto candidate = valid_module();
@@ -1965,10 +2039,36 @@ void test_fixed_scalar_array_global_receipt_and_rejections() {
       "nonpositive inner dimensions must remain unsupported");
   rejected(
       [](lir::LirModule& m) {
-        m.globals[0].type.ptr_level = 1;
-        m.globals[0].llvm_type = "[5 x ptr]";
+        m.globals[3].type.ptr_level = 2;
       },
-      "pointer element arrays remain outside this packet");
+      "pointer-element arrays deeper than one level must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].type.base = c4c::TB_STRUCT;
+      },
+      "aggregate pointees in pointer-element arrays must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].type.is_ptr_to_array = true;
+        m.globals[3].type.inner_rank = 1;
+      },
+      "pointer-to-array declarators must not be confused with arrays of pointers");
+  rejected(
+      [](lir::LirModule& m) { m.globals[3].type.inner_rank = 1; },
+      "inner array rank without pointer-to-array authority must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) { m.globals[3].type.is_fn_ptr = true; },
+      "function-pointer element arrays must remain unsupported");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].llvm_type_ref = lir::LirTypeRef("[4 x [2 x ptr]]");
+      },
+      "producer-valid pointer-element arrays must not carry llvm_type_ref");
+  rejected(
+      [](lir::LirModule& m) {
+        m.globals[3].llvm_type = "[4 x [2 x i32]]";
+      },
+      "pointer-element array LLVM spelling remains parity-only and must match opaque ptr nesting");
   rejected(
       [](lir::LirModule& m) {
         m.globals[0].type.base = c4c::TB_STRUCT;
@@ -3053,7 +3153,7 @@ int main() {
   test_external_declaration_rejections_and_transactionality();
   test_global_object_receipt_and_views();
   test_scalar_global_type_authority_without_mirror();
-  test_fixed_scalar_array_global_receipt_and_rejections();
+  test_fixed_scalar_base_array_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();
   test_flexible_member_literal_struct_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();
