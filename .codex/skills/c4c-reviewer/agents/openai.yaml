@@ -1,4 +1,4 @@
 interface:
   display_name: "C4C Reviewer"
-  short_description: "Review plan drift and route health from plan.md git history"
-  default_prompt: "Review the active c4c plan by finding the right plan.md checkpoint in git history, diffing from that commit to HEAD, and judging drift, technical debt, and route quality."
+  short_description: "Independently review route health at an authorized gate"
+  default_prompt: "After confirming an AGENTS.md reviewer gate applies, independently review the active c4c route from the correct git-history checkpoint; otherwise stop without creating a review artifact."

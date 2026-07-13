@@ -28,6 +28,9 @@ canonical execution state that the executor must keep current.
 5. Read the relevant current section of [`todo.md`](/workspaces/c4c/todo.md)
    when the packet includes canonical execution-state updates.
 6. Treat the packet as the contract for this slice.
+7. If the packet conflicts with explicit user scope recorded in the delegated
+   context or AGENTS.md, stop and report the conflict instead of implementing
+   the broader artifact contract.
 
 ## Decision Flow
 
@@ -111,6 +114,8 @@ Do not repave the whole file. Do not rewrite plan structure. Do not convert rout
    testcase-shaped matching, or other named-case-only shortcuts instead of a
    real capability repair, stop and report the overfit risk instead of
    implementing it.
+8. An architecture decision does not widen the packet to include prerequisites,
+   downstream implementation, or adjacent cleanup.
 
 ## Packet Shape
 

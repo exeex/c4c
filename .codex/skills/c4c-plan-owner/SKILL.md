@@ -1,6 +1,6 @@
 ---
 name: c4c-plan-owner
-description: "c4c lifecycle specialist. Use when a delegated message starts with `to_subagent: c4c-plan-owner` or when the task is to activate an idea, generate or repair `plan.md` and `todo.md`, decide whether a plan is complete, or close the active plan. This role must follow `plan-lifecycle`, use `idea-to-runbook-plan` when producing `plan.md`, and run `c4c-regression-guard` itself before accepting a close."
+description: "c4c lifecycle specialist. Use when a delegated message starts with `to_subagent: c4c-plan-owner` or when the task is to activate an idea, generate or repair `plan.md` and `todo.md`, decide whether a plan is complete, or close the active plan. This role must follow `plan-lifecycle` and use `idea-to-runbook-plan` when producing `plan.md`."
 ---
 
 # C4C Plan Owner
@@ -22,8 +22,8 @@ does not perform implementation work.
    creation format below. For research or umbrella ideas, also load the
    matching template reference named there.
 6. Read only the lifecycle files needed for the assigned operation.
-7. If the supervisor provides a reviewer report path under `review/`, read that
-   report before rewriting `plan.md` or `todo.md`.
+7. If the supervisor provides a gated reviewer report path under `review/`,
+   read it as advisory evidence before rewriting `plan.md` or `todo.md`.
 
 ## Required Workflow
 
@@ -63,17 +63,18 @@ requires its own template, but every new idea must include these concepts:
 - in-scope work
 - out-of-scope work
 - acceptance or completion criteria
-- reviewer reject signals
+- acceptance reject signals
 
-The reviewer reject section is mandatory. Prefer the heading:
+The reject-signal section is mandatory. Keep the established heading:
 
 ```markdown
 ## Reviewer Reject Signals
 ```
 
-That section must explicitly tell `c4c-reviewer` what evidence should cause
-the slice or route to be rejected instead of accepted as progress. Make the
-signals concrete and tied to the idea's domain. Include reject signals for:
+These are supervisor-facing acceptance boundaries by default. If a reviewer
+gate later applies, the same section also tells `c4c-reviewer` what evidence
+must block acceptance. Make the signals concrete and tied to the idea's
+domain. Include reject signals for:
 
 - testcase-shaped shortcuts or named-case-only fixes
 - unsupported expectation downgrades or weaker test contracts without explicit
@@ -83,9 +84,9 @@ signals concrete and tied to the idea's domain. Include reject signals for:
 - broad rewrites outside the idea's scope
 - retaining the exact old failure mode behind a new abstraction name
 
-Do not leave the section generic. A reviewer should be able to read it and
-know which concrete diffs, tests, logs, or route choices must block acceptance
-for this idea.
+Do not leave the section generic. The supervisor, or a gated reviewer, should
+be able to identify which concrete diffs, tests, logs, or route choices must
+block acceptance for this idea.
 
 ### Specialized Idea Types
 
@@ -117,7 +118,7 @@ when that idea type is requested or clearly fits the task.
 - decide whether the active plan is complete and whether the linked source idea
   is actually complete
 - close the active plan and move the source idea into `ideas/closed/`
-- run the close-time regression gate before accepting closure
+- require supervisor-owned acceptance proof before closing code-bearing work
 
 ## Hard Boundaries
 
@@ -134,6 +135,7 @@ when that idea type is requested or clearly fits the task.
    `Just Finished` should remain an
    overwrite-style latest-packet summary that can name the relevant `plan.md`
    step once execution begins.
+7. Do not generate, replace, or roll forward canonical regression logs.
 
 ## Lifecycle Rules
 
@@ -148,10 +150,10 @@ when that idea type is requested or clearly fits the task.
    lifecycle model and quality bar defined by `plan-lifecycle`.
 8. When writing `plan.md`, use the runbook shape and transformation rules
    defined by `idea-to-runbook-plan`.
-9. If a reviewer report under `review/` requests narrowing or rewriting the
-   route, absorb that payload into `todo.md` / `plan.md` before touching the
-   source idea, instead of relying on the supervisor to restate it from
-   memory.
+9. If a gated reviewer report under `review/` requests narrowing or rewriting
+   the route, treat it as advisory evidence. Apply it only when consistent with
+   the user's explicit scope, and prefer `todo.md` / `plan.md` before the source
+   idea.
 10. Only rewrite the linked source idea during normal execution when the source
    intent itself changed, a durable deactivation/closure note is required, or
    the work must be split into a separate initiative under `ideas/open/`.
@@ -160,7 +162,7 @@ when that idea type is requested or clearly fits the task.
 11. Do not rewrite `plan.md` just because one executor packet completed. A real
     plan rewrite should usually represent a route checkpoint after several
     implementation commits, roughly 5 to 10, unless blocked sooner by repair,
-    activation, close, or reviewer-justified reset.
+    activation, close, or supervisor-directed repair.
 12. Do not close a source idea just because the current runbook or `todo.md`
     slice is exhausted. Close only when the source idea itself is satisfied or
     intentionally concluded as complete.
@@ -171,17 +173,23 @@ when that idea type is requested or clearly fits the task.
     that step into numbered substeps when the source idea supports it, then
     reset the local hook-managed plan-review counter for the rewritten current
     step.
+15. The user's explicit source intent overrides idea, plan, todo, reviewer, and
+    historical artifacts. An architecture decision does not authorize adding
+    prerequisites, downstream implementation, or adjacent work to the idea.
+16. If a requested correction would expand source scope, create a separate
+    initiative unless the user explicitly changes that source scope.
 
 ## Close Gate
 
 When the delegated task is to close an idea or active plan:
 
-1. load and use `c4c-regression-guard`
-2. prefer existing executor-produced `test_before.log` and `test_after.log` if
-   they already cover the needed close scope
-3. if those logs do not exist, generate them yourself via
-   `c4c-regression-guard`
-4. do not accept close if the regression guard fails
+1. verify source-idea completion under `plan-lifecycle`
+2. for code-bearing work, require fresh acceptance proof already selected and
+   accepted by the supervisor
+3. if required proof is absent, stale, or rejected, do not generate it; return
+   the exact missing proof as a blocker
+4. lifecycle-only or documentation-only closure may use structural and diff
+   checks when the supervisor packet identifies it as non-code work
 5. report the close result explicitly as either:
    - `close accepted`
    - `close rejected`
@@ -189,7 +197,8 @@ When the delegated task is to close an idea or active plan:
 Close is only valid when both conditions hold:
 
 - source-idea completion is true under `plan-lifecycle`
-- regression guard passes for the chosen close scope
+- required supervisor-owned acceptance proof is present and accepted, or the
+  closure is explicitly lifecycle-only/documentation-only
 
 ## Output
 

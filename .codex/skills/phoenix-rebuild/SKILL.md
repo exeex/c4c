@@ -500,7 +500,8 @@ Typical migration order:
 Before moving to the next idea, the supervisor checks that the current stage's
 artifacts exist and are good enough.
 
-Use a reviewer when route quality or draft quality is unclear.
+Use a reviewer only when supervisor inspection leaves route quality or draft
+quality materially ambiguous, or another AGENTS.md reviewer gate applies.
 
 Typical gates:
 

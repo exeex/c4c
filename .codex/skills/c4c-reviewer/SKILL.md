@@ -1,6 +1,6 @@
 ---
 name: c4c-reviewer
-description: "c4c review specialist. Use when a delegated message starts with `to_subagent: c4c-reviewer` or when the supervisor needs an independent review of whether the current implementation path is still aligned with the active source idea by comparing the git diff from the relevant active-idea history point to `HEAD`."
+description: "c4c independent review specialist. Use only for a delegated `to_subagent: c4c-reviewer` packet that satisfies an AGENTS.md reviewer gate, then compare the relevant active-idea history point to `HEAD`."
 ---
 
 # C4C Reviewer
@@ -17,17 +17,22 @@ Reviewer payload should be written into repo-local transient files under
 
 1. Confirm the first delegated line is `to_subagent: c4c-reviewer`.
 2. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
-3. If the delegated packet says to use `c4c-clang-tools`, use that skill first
+3. Confirm the packet names an allowed reviewer gate: explicit user request,
+   unresolved material ambiguity after supervisor diagnosis, or a formal
+   independent-review acceptance gate. Otherwise stop without writing a
+   review artifact.
+4. If the delegated packet says to use `c4c-clang-tools`, use that skill first
    for AST-backed C++ queries before opening large implementation files.
-4. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md). Treat
-   that active idea as the primary review contract.
-5. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
+5. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md). Treat
+   it as the primary artifact contract unless the delegated user scope
+   explicitly supersedes it.
+6. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
    [`todo.md`](/workspaces/c4c/todo.md) as execution/transcription context, not
    as the final source of truth when they disagree with the source idea.
-6. Use `scripts/plan_review_state.py show` only when you need the local
+7. Use `scripts/plan_review_state.py show` only when you need the local
    `.plan_review_state.json` context behind the mirrored review metadata in
    [`todo.md`](/workspaces/c4c/todo.md).
-7. Determine the review base from git history for the active source idea and
+8. Determine the review base from git history for the active source idea and
    lifecycle activation, not from metadata written inside `plan.md`.
 
 Assume delegated packets may include:
@@ -35,6 +40,7 @@ Assume delegated packets may include:
 ```text
 to_subagent: c4c-reviewer
 Objective: <one-sentence review goal>
+Gate: <explicit user request | unresolved supervisor ambiguity | formal acceptance gate>
 Focus: <scope or file families>
 Tooling: <optional; `use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
 Review Question: <what to judge>
@@ -96,24 +102,16 @@ packet state, but treat them as possibly lossy transcriptions of the idea:
 - whether the recent commit history shows excessive `plan_change` churn that
   should have stayed in `todo.md`
 
-## Review Cadence
+## Review Gate Discipline
 
-- this is not a fixed every-5-commits loop
-- commit count since the chosen active-idea checkpoint is only a weak signal,
-  because once that count crosses a threshold it stays above the threshold
-  until another checkpoint lands
-- the supervisor should normally request this review only after substantial
-  churn, roughly 10 or more commits since the chosen active-idea checkpoint, and
-  only when the recent history suggests route ambiguity, repeated lifecycle
-  repairs, or packet-boundary drift
-- repeated `plan_change` commits only 1 to 3 implementation commits apart are
-  a smell; reviewers should ask whether those rewrites really belonged in
-  `todo.md` instead
-- the supervisor may also call it earlier when drift, scope creep, or repeated
-  review findings suggest the route may be wrong
-- if a recent review concluded `on track` and no new route concern or
-  plan/todo rewrite has happened since then, prefer continuing execution
-  instead of re-running review
+- Reviewer use is off by default.
+- Ordinary git history, status, scope comparison, drift triage, reminders, and
+  high commit counts belong to supervisor diagnosis and must not create a
+  review artifact.
+- Commit count, lifecycle churn, or suspected drift may be evidence inside an
+  already-authorized independent review; none is an invocation gate by itself.
+- If the delegated gate is unclear, stop and ask the supervisor to identify
+  which AGENTS.md gate applies.
 
 ## Hard Boundaries
 
@@ -126,6 +124,8 @@ packet state, but treat them as possibly lossy transcriptions of the idea:
    the correction.
 6. Do not treat testcase-overfit as acceptable just because the active subset
    passes; report it as a blocking finding.
+7. Do not treat reviewer conclusions as authority to expand implementation
+   scope or rewrite user-defined source intent.
 
 ## Overfit Findings
 

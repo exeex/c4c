@@ -1,18 +1,19 @@
 ---
 name: plan-lifecycle
-description: Manage the c4c planning lifecycle across ideas/open/*.md, ideas/closed/*.md, plan.md, and todo.md. Use when activating a plan from an open idea, executing an active plan, deactivating or switching plans, or closing a completed idea.
+description: Manage the c4c planning lifecycle across ideas/draft/*.md, ideas/open/*.md, ideas/closed/*.md, plan.md, and todo.md. Use when activating a plan from an open idea, executing an active plan, deactivating or switching plans, or closing a completed idea.
 ---
 
 # Plan Lifecycle
 
 Use this skill when the task involves the lifecycle of planning artifacts in this repo.
 
-The repo has four planning locations:
+The repo has five planning locations:
 
-1. `ideas/open/*.md`: open idea inventory
-2. `ideas/closed/*.md`: closed archive
-3. [`plan.md`](/workspaces/c4c/plan.md): the single active execution runbook
-4. [`todo.md`](/workspaces/c4c/todo.md): execution-state scratchpad for the active plan
+1. `ideas/draft/*.md`: parked ideas, not activation candidates
+2. `ideas/open/*.md`: open idea inventory
+3. `ideas/closed/*.md`: closed archive
+4. [`plan.md`](/workspaces/c4c/plan.md): the single active execution runbook
+5. [`todo.md`](/workspaces/c4c/todo.md): execution-state scratchpad for the active plan
 
 Think of them as layered artifacts:
 
@@ -67,9 +68,10 @@ When new information appears during execution, apply this ladder in order:
    contract, ordering, or proof expectations changed within the same source
    idea
 3. update the linked `ideas/open/*.md` only when one of these is true:
-   - the human changed source intent
+   - the user explicitly changed source intent
    - deactivation or closure needs a compact durable summary
-   - a reviewer or lifecycle repair proves the source idea itself is wrong
+   - the supervisor delegates correction of a stale artifact to match the
+     user's explicit intent
    - a separate initiative must be recorded under `ideas/open/`
 
 If a change fits at a lower layer, do not promote it upward.
@@ -98,7 +100,7 @@ Execution state should declare near the top:
 - `Current Step ID: <step number from plan.md, or none>`
 - `Current Step Title: <step label from plan.md, or none>`
 - optional reminder lines emitted only when a hook-managed limit is hit:
-  `你該做code review了` and/or `你該做baseline sanity check了`
+  `你該做code review了` and/or `你該做test baseline review了`
 
 When lifecycle work creates or resets [`todo.md`](/workspaces/c4c/todo.md), use
 an executor-compatible skeleton instead of a custom format. The mutable packet
@@ -126,6 +128,8 @@ in skill text.
 When touched as part of lifecycle work, path already carries most status:
 
 - files in `ideas/open/` are open
+- files in `ideas/draft/` are parked and must not be activated until explicitly
+  moved to `ideas/open/`
 - files in `ideas/closed/` are closed
 - the active open idea is the one linked from [`plan.md`](/workspaces/c4c/plan.md)
 
@@ -170,6 +174,10 @@ Do this:
 
 Do not continuously mirror execution churn back into the source idea.
 
+The user's explicit source intent overrides lifecycle artifacts. Agreement on
+an architecture direction does not authorize absorbing prerequisites,
+downstream implementation, or adjacent work into the active idea.
+
 Do not rewrite [`plan.md`](/workspaces/c4c/plan.md) after every packet. Normal
 execution should be able to accumulate several implementation commits, roughly
 5 to 10, between real plan checkpoints unless a blocker or route reset forces
@@ -209,11 +217,13 @@ Do this:
 1. verify the runbook is actually complete
 2. verify the source idea is actually complete, not merely that the current
    route is exhausted
-3. update the source file in `ideas/open/` only enough to mark it complete and
+3. for code-bearing work, require supervisor-owned acceptance proof; the plan
+   owner does not generate or roll forward canonical regression logs
+4. update the source file in `ideas/open/` only enough to mark it complete and
    add durable leftover-issue notes if needed
-4. delete [`todo.md`](/workspaces/c4c/todo.md)
-5. delete [`plan.md`](/workspaces/c4c/plan.md)
-6. move the updated source file from `ideas/open/` to `ideas/closed/`
+5. delete [`todo.md`](/workspaces/c4c/todo.md)
+6. delete [`plan.md`](/workspaces/c4c/plan.md)
+7. move the updated source file from `ideas/open/` to `ideas/closed/`
 
 ## Decision Rules
 

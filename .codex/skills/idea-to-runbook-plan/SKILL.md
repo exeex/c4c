@@ -16,7 +16,7 @@ Expect these files:
 
 - one source file under `ideas/open/*.md`
 - current [`plan.md`](/workspaces/c4c/plan.md), if it exists
-- [`c4c-supervisor-orchestrator` execution control reference](/workspaces/c4c/.codex/skills/c4c-supervisor-orchestrator/references/execution-control.md)
+- current [`AGENTS.md`](/workspaces/c4c/AGENTS.md)
 
 Read the current `plan.md` before rewriting it so you preserve useful runbook conventions already adopted in this repo.
 
@@ -26,6 +26,10 @@ Turn proposal-style planning into a runbook that an implementation agent can exe
 
 The runbook is a transcription of the source idea, not permission to rewrite
 the source idea.
+
+The user's explicit scope overrides stale source or lifecycle text. Agreement
+on an architecture direction does not authorize adding prerequisites,
+downstream implementation, or adjacent work to the runbook.
 
 Preserve:
 
