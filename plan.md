@@ -1,4 +1,4 @@
-# MIR-Ready Abstract BIR And Inline-Assembly Runbook
+# LIR-to-BIR Carrier Bootstrap Runbook
 
 Status: Active
 Source Idea: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
@@ -6,259 +6,149 @@ Supersedes: the paused idea-730 globals packet; its WIP remains in `stash@{0}`
 
 ## Purpose
 
-Define and then build a BIR-to-MIR boundary where the IR body is still BIR:
-only verified abstract semantic nodes, with abstract physical registers and
-normal spill/reload already resolved before target instruction selection.
+Finish the smallest usable LIR-to-BIR boundary before resuming allocation or
+MIR architecture work.
 
 ## Goal
 
-Publish a `MirReadyBirView` over one immutable allocated BIR revision, while
-preserving inline asm opaquely and giving its structured constraints to the
-BIR allocator.
+Make the current LIR importer publish verified, target-independent Raw and
+Canonical BIR whose structs can carry the imported abstract semantic nodes,
+including opaque inline asm.
 
 ## Core Rule
 
-Canonical BIR has source semantics only. Target preparation injects typed
-capacity/ABI facts; BIR owns normal allocation and spilling; MIR selects target
-instructions and maps abstract assignments to concrete ABI registers.
+This runbook ends at verified Canonical BIR. Copy source-semantic LIR facts
+into typed BIR carriers without interpreting target constraints, assigning
+registers, inserting spills, or designing MIR.
 
 ## Read First
 
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
-- `src/backend/bir/README.md`
-- `src/backend/bir/pipeline/README.md`
-- `src/backend/bir/REVIEW_TEMPLATE.md`
-- `src/backend/bir/core/README.md`
-- `src/backend/bir/verify/README.md`
-- `src/backend/bir/preparation/README.md`
-- `src/backend/bir/preparation/inline_asm/README.md`
-- `docs/inline_asm_transport/`
+- `src/backend/bir/bir.hpp`
+- `src/backend/bir/core/ids.hpp`
+- `src/backend/bir/core/ir.hpp`
+- `src/backend/bir/core/builder.hpp`
+- `src/backend/bir/core/view.hpp`
+- `src/backend/bir/verify/verifier.hpp`
+- `src/backend/bir/lir_to_bir.hpp`
+- `src/backend/bir/lir_to_bir.cpp`
+- `src/codegen/lir/ir.hpp`
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp`
 
 ## Current Targets
 
-- accepted MIR-ready BIR node and stage/view contract
-- target pool/capacity preparation for RV64, AArch64, and x86
-- BIR-owned abstract allocation and spill/reload
-- opaque inline-asm transport with structured allocation constraints
-- MIR instruction selection and concrete ABI register mapping
-- late assembler substitution and first parse
+- stable abstract BIR node and operand/result carriers required by the direct
+  importer
+- builder and read-only view support for those carriers
+- verifier-issued `RawBir` and `CanonicalBir` publication
+- lossless `InlineAsm` carriage of opaque payload, ordered structured
+  operands, original constraint tokens/text available at the LIR boundary,
+  and clobber syntax
+- direct LIR-to-BIR interface tests only
 
 ## Non-Goals
 
-- Do not implement before Step 1 architecture acceptance.
-- Do not put target facts in Canonical BIR or concrete registers/opcodes in
-  MIR-ready BIR.
-- Do not create a second prepared instruction graph.
-- Do not make target backends the normal spill/reload owner.
-- Do not parse inline-asm instructions before late assembly.
-- Do not restore legacy/prealloc/old-MIR routes, deleted BIR-owned MIR docs, or
-  apply `stash@{0}`.
+- Do not edit or depend on `docs/**`, architecture READMEs, or transient
+  `review/**` reports for this packet.
+- Do not implement register allocation, target pool budgets, ABI register
+  mapping, `MirReadyBirView`, MIR, spill/reload insertion, or late assembly.
+- Do not parse or normalize inline-asm mnemonics, templates, constraints,
+  clobbers, register classes, or target metadata.
+- Do not add target opcodes, concrete registers, frame offsets, or target
+  profiles to Raw/Canonical BIR.
+- Do not restore legacy/prealloc/old-MIR sources or apply `stash@{0}`.
+- Do not expand the accepted test surface beyond the direct
+  `backend_lir_to_bir_interface` target.
 
 ## Working Model
 
-1. Parser/HIR/LIR and Raw/Canonical BIR preserve opaque inline-asm payload,
-   structured operands, and original constraint/clobber syntax.
-2. Target preparation reads immutable verified Canonical BIR plus the selected
-   target and produces revision-bound pool, ABI, class/group, tie, clobber,
-   and capacity facts.
-3. BIR allocation consumes those facts and transactionally publishes a new
-   immutable BIR revision with abstract `(category, class/group, slot)`
-   assignments and required abstract `Spill`/`Reload` nodes.
-4. Prepared-input verification publishes a `PreparedBir` capability whose
-   public boundary is `MirReadyBirView` over that exact allocated revision and
-   its typed facts. It is not another IR.
-5. MIR construction selects target instructions and maps abstract assignments
-   to concrete RV64/AArch64/x86 registers under the calling convention.
-6. Backend spill/reload is permitted only as a bounded final legalization or
-   encoding fallback, never for ordinary capacity exhaustion.
-7. Late assembly substitutes assigned registers and first parses the opaque
-   inline-asm payload.
+1. `ModuleBuilder` constructs unpublished typed BIR storage with stable IDs.
+2. The Raw verifier validates ownership, ordering, operands/results, CFG, and
+   carrier shape before it can issue `RawBir`.
+3. A minimal Canonical publication gate verifies and exposes the same
+   target-independent semantic graph as `CanonicalBir`; it does not allocate
+   registers or rewrite nodes into machine form.
+4. `InlineAsm` is one abstract instruction node. Its payload stays opaque;
+   ordered operands and source constraint/clobber syntax stay typed and
+   separately inspectable.
+5. A later allocation attachment may have a typed reserved seam, but
+   Raw/Canonical publication requires it to be absent/unassigned.
 
 ## Execution Rules
 
-- Step 1 is design and independent review only. No implementation step is
-  authorized until its completion check passes.
-- Freeze an explicit closed node table; the named nodes are examples, not an
-  implied exhaustive list.
-- Define immutable revision creation and verifier gates rather than mutating a
-  published Canonical BIR graph.
-- Bind every target/preparation/allocation fact to the exact BIR revision and
-  target-context identity/version.
-- Prove ordinary pressure, retries, eviction, groups, and spill/reload all use
-  the same capacity and legality model.
-- Keep RV64 inline-asm evidence at `r`, `VR`, `VRM2`, `VRM4`, and `VRM8`;
-  reject `VRM1` and unreviewed syntax.
-- Do not choose a replacement MIR filesystem owner or recreate deleted
-  `src/backend/bir/mir/**` documents in this runbook.
-- Keep legacy translation units absent from compile metadata.
+- Implement only node kinds that the bounded importer tests exercise plus the
+  `InlineAsm` carrier required by the active idea. Do not attempt a complete
+  compiler-wide opcode catalog.
+- Keep instruction payloads in a closed typed variant; do not introduce a
+  stringly target opcode escape hatch.
+- Preserve source operand ordinal, result index, input value, output value,
+  and destination identity as separate fields wherever the available LIR
+  facts distinguish them. Do not use allocation ties to collapse SSA identity.
+- Copy inline-asm payload and constraint/clobber syntax byte-for-byte from the
+  LIR carrier. Unsupported or insufficiently structured LIR forms must return
+  a structured importer error and publish no partial BIR.
+- If an allocation seam is added, keep it target-neutral and verifier-enforced
+  as absent in Raw/Canonical BIR. Do not invent incomplete `Spill`/`Reload`
+  nodes in this packet.
+- Keep publication transactional: a build/import/verification error produces
+  no `RawBir` or `CanonicalBir` token.
+- Use only the supervisor-delegated build command and direct interface-test
+  command as proof.
 
-## Step 1: Freeze the MIR-ready abstract-BIR boundary
+## Step 1: Implement the verified LIR-to-BIR carrier boundary
 
-Goal: jointly accept the BIR node, target-preparation, abstract-allocation,
-stage-view, MIR adjacency, and inline-asm contracts before implementation.
+Goal: make one direct LIR module import into inspectable, verified Raw and
+Canonical BIR without target interpretation.
 
 Primary targets:
 
-- `docs/inline_asm_transport/`
-- surviving BIR pipeline, preparation, and verification contracts
-- the bounded BIR-to-new-MIR adjacency contract
+- `src/backend/bir/core/{ir,builder,view}.{hpp,cpp}`
+- `src/backend/bir/verify/verifier.{hpp,cpp}`
+- `src/backend/bir/{bir,lir_to_bir}.hpp`
+- `src/backend/bir/lir_to_bir.cpp`
+- only the minimum LIR carrier field additions that direct import requires
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp`
 
 Concrete actions:
 
-- Freeze the closed MIR-ready abstract-node table, including abstract
-  `InlineAsm`, `Spill`, and `Reload`, plus rejection of target opcodes and
-  concrete physical registers.
-- Define target-supplied caller-saved/callee-saved/temp capacities, reserved
-  slots, ABI eligibility, register classes, and group rules for RV64, AArch64,
-  and x86.
-- Define abstract assignment identity `(category, class/group, slot)` and the
-  invariants for all allocatable values, ties, clobbers, atomic groups, and
-  abstract spill-slot identities without concrete frame offsets.
-- Define BIR-owned allocation and capacity-driven spill/reload insertion as a
-  transactional transformation producing a new immutable BIR revision.
-- Normatively define `PreparedBir` as a capability, not an IR copy, and
-  `MirReadyBirView` as a read-only view of that exact allocated revision plus
-  typed revision-bound facts.
-- Define the MIR adjacency: verified input view, target instruction selection,
-  concrete ABI register mapping, output token/verifier, diagnostics,
-  staleness, and transactional publication without inventing its filesystem
-  owner.
-- Bound backend spill/reload to final legalization/encoding constraints and
-  require diagnostics/proof that it cannot hide ordinary BIR allocation
-  failures.
-- Preserve `InlineAsm` as an opaque BIR node; put structured constraint
-  normalization in target preparation and instruction parsing only at late
-  assembly. Keep source/output/result/destination identities distinct and
-  treat ties as assignment equality rather than SSA identity.
-- Repair the checkpoint proof matrix for stale/mismatched facts, incomplete
-  assignments, capacity exhaustion, illegal groups, missing spills, forbidden
-  nodes, and backend fallback misuse.
-- Review the complete adjacency with `src/backend/bir/REVIEW_TEMPLATE.md` and
-  record architecture-wide acceptance as an external prerequisite.
+- Replace the empty bootstrap opcode/unsupported-instruction placeholder with
+  the smallest closed abstract semantic-node variant required by the direct
+  importer, including `InlineAsm`.
+- Give instruction views typed access to opcode/payload, ordered operands,
+  ordered results, and stable `InstId`/`ValueId` ownership.
+- Extend builders and verification so malformed ownership, arity, result
+  definitions, CFG references, or inline-asm carrier shape fail before
+  publication.
+- Connect current LIR instructions in the admitted subset to those builders;
+  retain structured rejection for unsupported LIR rather than silently
+  dropping it.
+- Carry inline-asm payload opaquely and keep ordered structured operands plus
+  original constraint/clobber syntax separately inspectable. Do not carry or
+  derive early parsed instruction metadata as BIR authority.
+- Add the minimal verifier-issued `CanonicalBir` stage/view over verified
+  target-independent storage. It must not be a second rewritten graph and must
+  not contain allocation state.
+- Add only a reserved typed allocation attachment seam if compilation or API
+  shape requires it; assert in verification/tests that Raw and Canonical
+  publication leave it absent.
+- Extend the direct interface test with positive view assertions and negative
+  transactional rejection for the admitted ordinary-node and inline-asm
+  carrier shapes.
 
 Completion check:
 
-- Independent review accepts one coherent contract from Canonical BIR through
-  target preparation, allocated immutable BIR publication,
-  `MirReadyBirView`, and new-MIR construction; no open owner/token/verifier or
-  fallback ambiguity remains. Step 2 is unauthorized until then.
+- The supervisor-selected backend-enabled build succeeds.
+- `backend_lir_to_bir_interface` passes and directly proves stable views,
+  admitted abstract nodes, opaque inline-asm payload equality, separate
+  constraint/clobber carriage, no target/allocation facts, and no publication
+  on malformed or unsupported input.
+- No docs, broad backend tests, regalloc, spill/reload, MIR, target-capacity,
+  or legacy files are required for acceptance.
 
-## Step 2: Establish target-independent transport through Canonical BIR
+## Deferred After This Runbook
 
-Goal: publish source-semantic inline asm without target normalization.
-
-Concrete actions:
-
-- Add the smallest structured parser/HIR/LIR carrier for operand order,
-  values, destinations, results, original constraints, and clobbers; keep LLVM
-  rendering separate and non-authoritative.
-- Preserve payload bytes exactly and remove early instruction parsing from the
-  new-backend route.
-- Add Raw/Canonical BIR node, builders, views, verification, results, and
-  writebacks containing target-independent facts only.
-- Test multi-output/UseDef identities, original syntax, malformed payload byte
-  equality, and absence of target-normalized fields.
-
-Completion check:
-
-- Verified Canonical BIR retains exact source facts without target
-  classification or instruction parsing.
-
-## Step 3: Implement target-aware preparation
-
-Goal: publish all capacity and constraint facts required by BIR allocation.
-
-Concrete actions:
-
-- Define target-context identity/version and reviewed abstract pool descriptors
-  for RV64, AArch64, and x86.
-- Normalize inline-asm roles, classes/groups, ties, early-clobbers, effects,
-  and clobber units into immutable revision-bound facts.
-- Reject unsupported syntax, stale revisions, target mismatch, impossible
-  pool/group definitions, and `VRM1` with owner-specific diagnostics.
-- Prove Canonical BIR remains unchanged and no downstream stage reads source
-  constraint strings.
-
-Completion check:
-
-- Verified preparation contains every target fact needed for allocation while
-  Canonical BIR remains target-independent.
-
-## Step 4: Allocate abstract registers and publish MIR-ready BIR
-
-Goal: make BIR the normal allocation and spill/reload owner.
-
-Concrete actions:
-
-- Assign every allocatable value an abstract category/class/group/slot under
-  the prepared capacities and ABI constraints.
-- Apply the same legality model in normal, retry, eviction, group, spill, and
-  fallback paths; allocate groups atomically.
-- Insert abstract `Spill`/`Reload` nodes for capacity pressure and verify their
-  dominance, liveness, ownership, and slot consistency.
-- Transactionally publish a new immutable allocated BIR revision; on failure,
-  publish no partial graph or capability.
-- Verify the closed node set and complete assignments, then publish
-  `PreparedBir`/`MirReadyBirView` bound to the same revision and target facts.
-
-Completion check:
-
-- Direct BIR tests prove complete legal assignments and correct spills under
-  scalar/group pressure; MIR-ready publication rejects every incomplete,
-  stale, or forbidden graph.
-
-## Step 5: Construct MIR and map concrete registers
-
-Goal: lower verified abstract BIR without becoming a second allocator.
-
-Concrete actions:
-
-- Consume only verified `MirReadyBirView` and select target instructions.
-- Map abstract category/class/group/slot assignments to concrete registers
-  according to the selected RV64/AArch64/x86 calling convention.
-- Preserve inline-asm payload/operand order and translate its verified
-  assignments without reading source strings.
-- Define and test the narrow final legalization spill/reload fallback; reject
-  attempts to use it for ordinary capacity exhaustion or missing BIR spills.
-- Publish verified MIR transactionally with explicit revision trace and
-  diagnostics.
-
-Completion check:
-
-- Concrete mappings are deterministic and ABI-legal, and pressure already
-  resolved by BIR cannot trigger ordinary backend allocation.
-
-## Step 6: Add the late assembler seam
-
-Goal: make late assembly the first inline-instruction parser.
-
-Concrete actions:
-
-- Accept opaque payload plus completed concrete operand assignments.
-- Substitute the reviewed placeholder grammar, then parse mnemonics,
-  directives, `.insn`, and encoding details.
-- Prove invalid payloads survive earlier boundaries unchanged and fail here.
-
-Completion check:
-
-- Instrumentation and diagnostics identify late assembly as the first parser.
-
-## Step 7: Prove the bounded end-to-end route
-
-Goal: accept the route only when every ownership boundary works together.
-
-Concrete actions:
-
-- Exercise scalar, pressure/spill, calling-convention category, and admitted
-  RV64 vector-group cases through transport, preparation, BIR allocation, MIR
-  mapping, and late assembly.
-- Verify payload equality, revision binding, abstract and concrete assignments,
-  spill/reload ownership, substitution, and owner-specific negative failures.
-- Confirm build metadata excludes legacy/prealloc/old-MIR sources and run the
-  supervisor-selected broader regression guard.
-
-Completion check:
-
-- The bounded route is green and review finds no early parsing, target leakage
-  into Canonical BIR, missing BIR allocation, backend second allocation, or
-  testcase overfit.
+The source idea remains open after Step 1. Target preparation, abstract
+physical-register categories and capacities, allocation, spill/reload,
+MIR-ready publication, target calling-convention mapping, and late assembly
+must receive a later reviewed runbook. They are not blockers for this
+LIR-to-BIR bootstrap and are not authorized here.

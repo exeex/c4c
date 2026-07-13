@@ -63,8 +63,13 @@ could not be verified independently.
 - RV64 preparation must support the evidence-backed `r`, `=r`, `VR`, `VRM2`,
   `VRM4`, and `VRM8` forms, including read/write forms, matching ties,
   early-clobbers, and clobbers. `VRM1` remains unsupported.
-- No implementation is authorized until the ordered architecture and this
-  repaired boundary are jointly reviewed and accepted.
+- The target-independent LIR-to-Raw/Canonical-BIR carrier bootstrap is
+  explicitly authorized before the broader boundary review: it may add typed
+  abstract nodes, views, builders, verification, and lossless opaque
+  inline-asm carriage, but Raw/Canonical publication must remain unallocated
+  and target-independent. Register allocation, spill/reload, target budgets,
+  MIR-ready publication, MIR, and late assembly remain unauthorized until the
+  ordered architecture and repaired boundary are jointly reviewed.
 
 ## In Scope
 
@@ -82,7 +87,9 @@ could not be verified independently.
 
 ## Out Of Scope
 
-- Implementation while the architecture/checkpoint is unaccepted.
+- Allocation, spill/reload, target-budget, MIR-ready, MIR, or late-assembly
+  implementation while the architecture/checkpoint is unaccepted. The bounded
+  target-independent LIR-to-BIR carrier bootstrap above is the only exception.
 - Compiling or restoring `src/backend/legacy/**`, old prealloc/MIR, removed
   `c4c-as`, or deleted `src/backend/bir/mir/**` documents.
 - Target interpretation in parser, HIR, LIR, LIR-to-BIR, or Canonical BIR.
