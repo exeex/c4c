@@ -2,8 +2,9 @@
 
 Status: Active
 Source Idea: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
-Supersedes: the documentation-convergence acceptance tail rejected by
-`review/731_full_architecture_review.md`
+Supersedes: the documentation-convergence acceptance tail rejected by the
+first full review and the failed Step 13 tail recorded in
+`review/731_full_architecture_review_repeat.md`
 
 ## Purpose
 
@@ -32,15 +33,15 @@ no blocking finding.
 ## Read First
 
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
-- `review/731_full_architecture_review.md`
+- `review/731_full_architecture_review_repeat.md`
 - `src/backend/bir/README.md`
 - `src/backend/bir/REVIEW_TEMPLATE.md`
 - `src/backend/bir/LEGACY_COVERAGE.md`
 
 ## Accepted Checkpoint
 
-- The root inventory currently accounts for all 43 BIR Markdown files: one
-  root overview and 42 distinct subordinate paths.
+- The root inventory currently accounts for all 44 BIR Markdown files: one
+  root overview and 43 distinct subordinate paths.
 - Raw and Canonical BIR remain target-independent and unallocated.
 - C7 owns inline-asm target vocabulary/context tables; C9 alone parses, types,
   and binds original constraint text.
@@ -48,6 +49,9 @@ no blocking finding.
   E4 `AllocatedBir` revision.
 - Diagnostics remain read-only and compatibility remains a non-authoritative
   quarantine.
+- C9's immutable Canonical binding and shared per-revision projected-constraint
+  authority are already resolved; Step 9 repairs must preserve that Step 10
+  checkpoint rather than introduce a second binder.
 - The strict no-late-allocation-repair decision is accepted and must not be
   reopened as a shortcut around D5 or E4.
 
@@ -99,8 +103,10 @@ bundle or invent a temporary.
 
 ## Execution Rules
 
-1. Execute steps and numbered substeps in order. Do not begin a later repair
-   because its local wording appears easier.
+1. For this review reset, execute Steps 9.1, 9.2, 11, 12, and 13 in order.
+   Steps 2.1-8 and Step 10 are resolved checkpoints; recheck their adjacency
+   when touched, but do not create a separate repeat packet unless a repair
+   invalidates one of their contracts.
 2. Treat each substep as one bounded documentation packet. Compare all edited
    contracts with their immediate predecessor, successor, and root entry.
 3. Replace stale identifiers mechanically only after checking the semantic
@@ -338,7 +344,8 @@ Completion check:
 ### Step 9.1 - Choose the BIR-owned D5 parallel-copy realization route
 
 Goal: make cyclic and overlapping D5 copies realizable without weakening the
-strict E4/MIR contract.
+strict E4/MIR contract, and make every product consumed after copy resolution
+exact-current for the resolved candidate revision.
 
 Primary targets:
 
@@ -356,16 +363,30 @@ Actions:
   verifier gate at which it must be absent
 - preserve stable identities and transactional publication without claiming
   simultaneous multi-copy is one machine instruction
+- choose one coherent publication route for the revision advanced by copy
+  resolution: either a named registered owner validates and installs exact-key
+  E1 liveness, E2 assignment, E3 spill/reload state, and target-realizability
+  products for the new revision, or the stage order/publication contract is
+  changed so E4 never treats predecessor-keyed products as current
+- for every preserved, rekeyed, or recomputed product, name the invoking owner,
+  source and output keys, preservation validator or recomputation rule,
+  invalidation behavior, and all-or-nothing rollback boundary
+- keep `ConstraintProjectionTransaction` as the sole projected-constraint
+  authority; do not claim its preservation record also mints E1/E2/E3 or
+  realizability products
 
 Completion check:
 
 - every admitted D5 copy shape has a documented route to directly realizable
   BIR nodes before E4, or fails transactionally before publication
+- the resolved revision has exact-current E1, E2, E3 spill, projected
+  constraint, and target-realizability products through named owners, and E4
+  cannot consume a product keyed only to the initial-D5 or E3-retry revision
 
 ### Step 9.2 - Reconcile allocation and strict downstream realization
 
 Goal: synchronize the chosen D5 route with liveness, allocation, spill/reload,
-E4, and MIR consumption.
+frame-aware realizability, verifier intervals, E4, and MIR consumption.
 
 Review in this order:
 
@@ -376,11 +397,35 @@ Review in this order:
 5. the E1-E4 profiles in `src/backend/bir/verify/README.md`
 6. root F1-F3 boundary language
 
+Actions:
+
+- add one BIR-owned post-allocation realizability input and closure that knows
+  enough abstract frame-placement bounds to prove direct one-record mapping,
+  or restrict the admitted allocated schema so the same proof is complete
+- cover E3 `Spill`/`Reload`, D2 outgoing-stack operations, dynamic-frame
+  interactions, call/frame accesses, scratch state, and any displacement or
+  address-materialization limit that could otherwise require multiple MIR
+  records
+- require that closure to reject transactionally before E4 when one-record
+  mapping cannot be proved; MIR/F1 remains a non-repairing mapper and cannot
+  return capacity, spill, copy, frame, or address repair to D4
+- define separate verifier intervals for the initial-D5 Pseudo publication and
+  the assigned E3-retry/D5-resolved private candidate: the first forbids
+  allocation facts, while the latter admits the exact assignments and explicit
+  spill state required by copy resolution
+- make E4's cumulative Pseudo recheck name the private-candidate interval while
+  retaining the same graph, Pseudo-schema, revision, and failure-atomicity
+  rules
+
 Completion check:
 
 - all required scratch/copy/spill state is allocated and verified before E4;
   every non-`InlineAsm` node consumed by MIR is directly realizable under the
   chosen strict mapping, and MIR/backend has no repair escape hatch
+- stack, call, spill, reload, frame, and scratch nodes each have a documented
+  one-record proof before `MirReadyBirView` publication, and the verifier no
+  longer both forbids and requires allocation state on the same D5-to-E4
+  candidate interval
 
 ### Step 10 - Freeze per-revision constraint projection ownership
 
@@ -430,12 +475,23 @@ Actions:
   contract merely to satisfy the ledger
 - verify the core interval/home/spill/reload wording matches E1-E3 BIR
   ownership and strict MIR non-ownership
-- recheck every `Accepted` row for exactly one present, indexed owner
+- inventory the complete current `src/backend/legacy/` tree and map every file
+  or explicitly exhaustive family to exactly one ledger row
+- add exact dispositions for the nested `prealloc/stack_layout/**`,
+  `prealloc/regalloc/**`, and `prealloc/prepared_printer/**` families rather
+  than relying on parent-name shorthand or a core-only evidence row
+- correct every address-preparation owner from C5 to C6 in the ledger and core
+  map, while preserving C5 exclusively for variadic planning
+- recheck every `Accepted` row for exactly one present, indexed owner and every
+  Reject/Defer row for an explicit boundary
 
 Completion check:
 
 - no ledger owner is absent or ambiguous, and no core/legacy disposition sends
   ordinary allocation or pressure repair outside BIR
+- an exhaustive current legacy-path check finds exactly one ledger disposition
+  per path/family, including all nested stack-layout, regalloc, and prepared
+  printer files, with no address capability assigned to C5
 
 ### Step 12 - Reconcile the root and run the complete documentation proof
 
@@ -448,10 +504,13 @@ Actions:
 - reconcile every root link, A-F position, adjacent profile, analysis/planner
   dependency, verifier gate, projection product, copy-resolution edge, retry
   edge, and implementation-status statement
+- prove that every product required after D5 copy resolution is exact-current,
+  every admitted stack/call/spill/frame node has a BIR-owned one-record
+  realizability proof, and the two D5 verifier intervals are distinct
 - run `git diff --check`, local Markdown link/path validation, and focused
   searches for stale IDs, duplicate authority, unresolved acceptance choices,
-  copied graphs, late allocation repair, absent legacy owners, and revision-key
-  ambiguity
+  copied graphs, late allocation repair, absent legacy paths/owners, stale C5
+  address ownership, and revision-key ambiguity
 - do not record architecture acceptance in this step
 
 Completion check:
@@ -469,6 +528,12 @@ Actions:
   `REVIEW_TEMPLATE.md`, this runbook, and idea 731
 - audit all adjacent profiles, open questions, A-F identifiers, D2 ownership,
   D5 realizability, projection keys, and legacy dispositions
+- independently recheck the four blockers from
+  `review/731_full_architecture_review_repeat.md`: exact-current E1/E2/E3 and
+  realizability products after the D5 revision advance; BIR-owned frame-aware
+  one-record closure; distinct initial-D5 versus assigned retry/resolved
+  verifier intervals; and exhaustive legacy-path ownership with C6 address
+  attribution
 - explicitly re-judge the strict no-late-allocation-repair rule and verify it
   has not been used to conceal an unrealizable post-D5 node
 - classify every finding as resolved, intentionally deferred implementation,
