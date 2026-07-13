@@ -1349,8 +1349,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (function.signature_is_variadic)
     return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
                       "variadic functions require explicit signature lowering");
-  if (!lower_signature_type(module, function.return_type,
-                            function.signature_return_type_ref))
+  const auto signature_return_type =
+      lower_signature_type(module, function.return_type,
+                           function.signature_return_type_ref);
+  if (!signature_return_type)
     return fail<void>(ImportErrorCode::UnsupportedReturnType, name, {},
                       "structured return TypeSpec is malformed, outside direct "
                       "scalar receipt, or conflicts with its optional mirror");
@@ -1609,11 +1611,57 @@ Result<void, ImportError> validate_function(const LirModule& module,
         [&](const auto& terminator) -> Result<void, ImportError> {
           using Term = std::decay_t<decltype(terminator)>;
           if constexpr (std::is_same_v<Term, LirRet>) {
-            if (terminator.value_str ||
-                terminator.type_str.kind() != codegen::lir::LirTypeKind::Void)
-              return fail<void>(ImportErrorCode::InvalidVoidReturn, name,
-                                block.label,
-                                "LirRet must carry type 'void' and no value");
+            if (signature_return_type->kind == TypeKind::Void) {
+              if (terminator.value_str ||
+                  terminator.type_str.kind() !=
+                      codegen::lir::LirTypeKind::Void)
+                return fail<void>(ImportErrorCode::InvalidVoidReturn, name,
+                                  block.label,
+                                  "void LirRet must carry structured void type and no value");
+            } else {
+              const auto return_type =
+                  lower_lir_type(module, terminator.type_str);
+              if (!is_integer_type(*signature_return_type) ||
+                  !return_type || !is_integer_type(*return_type) ||
+                  terminator.type_str.kind() !=
+                      codegen::lir::LirTypeKind::Integer ||
+                  !terminator.type_str.integer_bit_width() ||
+                  *return_type != *signature_return_type ||
+                  !terminator.value_str)
+                return fail<void>(
+                    ImportErrorCode::UnsupportedTerminator, name,
+                    block.label,
+                    "scalar return requires one authoritative integer value with exact signature type");
+              const auto& value = *terminator.value_str;
+              if (value.kind() == codegen::lir::LirOperandKind::Immediate) {
+                const auto* immediate = value.integer_immediate();
+                if (!immediate || !integer_immediate_representable(
+                                      immediate->value,
+                                      *terminator.type_str.integer_bit_width()))
+                  return fail<void>(
+                      ImportErrorCode::UnsupportedTerminator, name,
+                      block.label,
+                      "scalar return immediate lacks exact in-range authority");
+              } else if (value.kind() ==
+                         codegen::lir::LirOperandKind::SsaValue) {
+                const auto* value_id = value.value_id();
+                const auto found = value_id
+                                       ? source_values.find(value_id->value)
+                                       : source_values.end();
+                if (!value_id || !value_id->valid() ||
+                    found == source_values.end() ||
+                    found->second != *signature_return_type)
+                  return fail<void>(
+                      ImportErrorCode::UnsupportedTerminator, name,
+                      block.label,
+                      "scalar return SSA value must resolve in the current-function registry with exact signature type");
+              } else {
+                return fail<void>(
+                    ImportErrorCode::UnsupportedTerminator, name,
+                    block.label,
+                    "scalar return value has an unsupported authority alternative");
+              }
+            }
           } else if constexpr (std::is_same_v<Term, LirBr>) {
             if (terminator.target_label.empty() ||
                 labels.find(terminator.target_label) == labels.end())
@@ -1648,7 +1696,10 @@ ImportError builder_failure(std::string function, std::string block,
 }
 
 Result<Terminator, ImportError> lower_terminator(
+    const LirModule& module, const Type& signature_return_type,
     const codegen::lir::LirTerminator& terminator,
+    const std::unordered_map<std::uint32_t, ValueId>& source_values,
+    FunctionBuilder& function_builder,
     const std::unordered_map<std::string, BlockId>& blocks,
     const std::string& function, const std::string& block) {
   return std::visit(
@@ -1663,13 +1714,41 @@ Result<Terminator, ImportError> lower_terminator(
           return Result<Terminator, ImportError>::success(
               JumpTerm{target->second});
         } else if constexpr (std::is_same_v<Term, LirRet>) {
-          if (lir_terminator.value_str ||
-              lir_terminator.type_str.kind() !=
-                  codegen::lir::LirTypeKind::Void)
-            return fail<Terminator>(ImportErrorCode::InvalidVoidReturn,
-                                    function, block,
-                                    "LirRet must carry type 'void' and no value");
-          return Result<Terminator, ImportError>::success(ReturnTerm{});
+          if (signature_return_type.kind == TypeKind::Void)
+            return Result<Terminator, ImportError>::success(ReturnTerm{});
+          const auto return_type =
+              lower_lir_type(module, lir_terminator.type_str);
+          if (!return_type || *return_type != signature_return_type ||
+              !lir_terminator.value_str)
+            return fail<Terminator>(
+                ImportErrorCode::UnsupportedTerminator, function, block,
+                "validated scalar return type or value disappeared");
+          const auto& value = *lir_terminator.value_str;
+          if (const auto* immediate = value.integer_immediate()) {
+            auto reserved = function_builder.reserve_value(*return_type);
+            if (!reserved)
+              return Result<Terminator, ImportError>::failure(builder_failure(
+                  function, block, "reserve return immediate",
+                  reserved.error()));
+            auto defined = function_builder.define_int_constant(
+                reserved.value(), static_cast<std::int64_t>(immediate->value));
+            if (!defined)
+              return Result<Terminator, ImportError>::failure(builder_failure(
+                  function, block, "define return immediate",
+                  defined.error()));
+            return Result<Terminator, ImportError>::success(
+                ReturnTerm{reserved.value()});
+          }
+          const auto* value_id = value.value_id();
+          const auto found =
+              value_id ? source_values.find(value_id->value)
+                       : source_values.end();
+          if (found == source_values.end())
+            return fail<Terminator>(
+                ImportErrorCode::UnsupportedTerminator, function, block,
+                "validated scalar return SSA value disappeared from the current-function registry");
+          return Result<Terminator, ImportError>::success(
+              ReturnTerm{found->second});
         } else if constexpr (std::is_same_v<Term, LirUnreachable>) {
           return Result<Terminator, ImportError>::success(UnreachableTerm{});
         } else if constexpr (std::is_same_v<Term, LirCondBr>) {
@@ -1793,10 +1872,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   }
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);
-    FunctionSignature signature;
-    signature.return_type =
+    const Type imported_return_type =
         *lower_signature_type(module, function.return_type,
                               function.signature_return_type_ref);
+    FunctionSignature signature;
+    signature.return_type = imported_return_type;
     auto created =
         builder.create_function(std::move(signature), name, function.is_declaration);
     if (!created)
@@ -2101,8 +2181,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                   inline_asm.ordinary_results[index].type)});
               }
             }
-            auto terminator =
-                lower_terminator(block.terminator, blocks, name, block.label);
+            auto terminator = lower_terminator(
+                module, imported_return_type, block.terminator, source_values,
+                function_builder, blocks, name, block.label);
             if (!terminator) {
               edit_error = std::move(terminator.error());
               return Result<void, BuildError>::failure(

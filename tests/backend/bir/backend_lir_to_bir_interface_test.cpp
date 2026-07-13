@@ -91,7 +91,7 @@ void test_structured_gep_index_adapter() {
          "raw SSA index should retain display-keyed compatibility lookup");
 }
 
-void test_authoritative_return_stays_outside_new_bir_receipt() {
+void test_void_return_rejects_authoritative_value() {
   lir::LirBlock block;
   block.id = lir::LirBlockId{0};
   block.label = "entry";
@@ -3094,6 +3094,311 @@ void test_selected_global_array_gep_rejections() {
       lir::LirTypeRef::integer(32)};
   rejected(std::move(invalid_return), bir::ImportErrorCode::InvalidVoidReturn,
            "admitted GEPs must advance diagnosis to the unsupported return boundary");
+}
+
+lir::LirModule scalar_integer_return_module(lir::LirOperand value,
+                                             unsigned bit_width = 32) {
+  lir::LirModule module;
+  auto block = return_block(0, "entry");
+  block.terminator = lir::LirRet{
+      std::move(value), lir::LirTypeRef::integer(bit_width)};
+
+  lir::LirFunction function;
+  function.name = "scalar_integer_return";
+  switch (bit_width) {
+    case 8: function.return_type = scalar_type(c4c::TB_SCHAR); break;
+    case 16: function.return_type = scalar_type(c4c::TB_SHORT); break;
+    case 32: function.return_type = scalar_type(c4c::TB_INT); break;
+    case 64: function.return_type = scalar_type(c4c::TB_LONGLONG); break;
+    default: function.return_type = scalar_type(c4c::TB_INT); break;
+  }
+  function.return_type.inner_rank = -1;
+  function.signature_return_type_ref =
+      lir::LirTypeRef::integer(bit_width);
+  function.blocks.push_back(std::move(block));
+  function.entry = function.blocks.front().id;
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_scalar_integer_return_receipt() {
+  auto module = scalar_integer_return_module(
+      lir::LirOperand::integer("%misleading-immediate-display", 37));
+  module.functions.push_back(
+      void_definition("void_return_retained", {return_block(0, "entry")}));
+
+  const auto inspect = [](const auto& module_view,
+                          const std::string& layer) {
+    const auto functions = module_view.functions();
+    expect(functions.size() == 2,
+           layer + " must retain integer and void return functions");
+    const auto integer_function = module_view.function(functions[0]).value();
+    expect(integer_function.signature().return_type ==
+               bir::Type{bir::TypeKind::I32},
+           layer + " must retain the exact imported integer signature");
+    const auto integer_terminator =
+        integer_function.terminator(integer_function.blocks()[0]).value();
+    const auto* integer_return =
+        std::get_if<bir::ReturnTerm>(&integer_terminator);
+    expect(integer_return && integer_return->value,
+           layer + " must publish one scalar ReturnTerm value");
+    const auto returned = integer_function.value(*integer_return->value).value();
+    const auto* constant = std::get_if<bir::ConstantDef>(&returned.definition);
+    expect(returned.type == bir::Type{bir::TypeKind::I32} &&
+               !returned.source_id && constant,
+           layer + " immediate return must be a source-less exact ordinary constant");
+    const auto definition = module_view.constant(constant->constant).value();
+    const auto* integer =
+        std::get_if<bir::IntegerConstant>(&definition.payload);
+    expect(definition.type == bir::Type{bir::TypeKind::I32} && integer &&
+               integer->value == 37,
+           layer + " must ignore return display and retain native immediate authority");
+
+    const auto void_function = module_view.function(functions[1]).value();
+    const auto void_terminator =
+        void_function.terminator(void_function.blocks()[0]).value();
+    const auto* void_return = std::get_if<bir::ReturnTerm>(&void_terminator);
+    expect(void_function.signature().return_type.kind == bir::TypeKind::Void &&
+               void_return && !void_return->value,
+           layer + " must preserve existing valueless void ReturnTerm receipt");
+  };
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "authoritative immediate and void returns should publish verified Raw BIR");
+  inspect(raw.value().view(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "authoritative immediate and void returns should publish Canonical BIR");
+  inspect(canonical.value().view(), "Canonical BIR");
+}
+
+void test_scalar_integer_ssa_return_receipt() {
+  auto module = direct_global_integer_load_module();
+  auto& function = module.functions[0];
+  function.return_type = scalar_type(c4c::TB_INT);
+  function.return_type.inner_rank = -1;
+  function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  function.blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::ssa("%display-points-at-wrong-value",
+                           lir::LirValueId{31}),
+      lir::LirTypeRef::integer(32)};
+
+  const auto inspect = [](const auto& module_view,
+                          const std::string& layer) {
+    const auto function_id = module_view.functions()[0];
+    const auto function = module_view.function(function_id).value();
+    const auto block = function.blocks()[0];
+    const auto instructions = function.instructions(block).value();
+    const auto load_result =
+        function.instruction(instructions[0]).value().results()[0];
+    const auto terminator = function.terminator(block).value();
+    const auto* returned = std::get_if<bir::ReturnTerm>(&terminator);
+    expect(function.signature().return_type ==
+               bir::Type{bir::TypeKind::I32} &&
+               returned && returned->value && *returned->value == load_result &&
+               function.source_value(
+                           bir::SourceValueId{function_id, 31})
+                       .value() == load_result,
+           layer + " SSA return must reuse the exact prior Load result and native source identity");
+  };
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "a current-function authoritative Load result should be returnable");
+  inspect(raw.value().view(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the same SSA ReturnTerm should publish Canonical BIR");
+  inspect(canonical.value().view(), "Canonical BIR");
+}
+
+void test_scalar_integer_return_builder_contract() {
+  bir::ModuleBuilder builder;
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::I32};
+  const auto function =
+      builder.create_function(signature, "builder_integer_return", false);
+  const auto foreign =
+      builder.create_function(signature, "foreign_integer_return", false);
+  expect(function.has_value() && foreign.has_value(),
+         "return builder fixture should create both typed owners");
+
+  bir::ValueId returned{};
+  bir::ValueId foreign_value{};
+  const auto foreign_edit = builder.with_function(
+      foreign.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto block = function_builder.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto value =
+            function_builder.reserve_value(bir::Type{bir::TypeKind::I32});
+        if (!value)
+          return bir::Result<void, bir::BuildError>::failure(value.error());
+        foreign_value = value.value();
+        const auto defined = function_builder.define_int_constant(value.value(), 1);
+        if (!defined) return defined;
+        return function_builder.set_terminator(
+            block.value(), bir::ReturnTerm{value.value()});
+      });
+  expect(foreign_edit.has_value(),
+         "foreign return owner fixture should be internally valid");
+
+  const auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto block = function_builder.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        expect(function_builder
+                       .set_terminator(block.value(), bir::ReturnTerm{})
+                       .error() == bir::BuildError::InvalidReturn,
+               "nonvoid builder return must reject a missing value");
+        expect(function_builder
+                       .set_terminator(block.value(),
+                                       bir::ReturnTerm{foreign_value})
+                       .error() == bir::BuildError::ForeignOwner,
+               "builder return must reject a cross-function ValueId");
+        const auto wrong =
+            function_builder.reserve_value(bir::Type{bir::TypeKind::I64});
+        if (!wrong)
+          return bir::Result<void, bir::BuildError>::failure(wrong.error());
+        auto defined_wrong =
+            function_builder.define_int_constant(wrong.value(), 2);
+        if (!defined_wrong) return defined_wrong;
+        expect(function_builder
+                       .set_terminator(block.value(),
+                                       bir::ReturnTerm{wrong.value()})
+                       .error() == bir::BuildError::InvalidReturn,
+               "builder return must reject a local value of the wrong type");
+        const auto value =
+            function_builder.reserve_value(bir::Type{bir::TypeKind::I32});
+        if (!value)
+          return bir::Result<void, bir::BuildError>::failure(value.error());
+        returned = value.value();
+        auto defined = function_builder.define_int_constant(returned, 3);
+        if (!defined) return defined;
+        return function_builder.set_terminator(
+            block.value(), bir::ReturnTerm{returned});
+      });
+  expect(edited.has_value(),
+         "valid return should remain set after rejected public-builder guards");
+  const auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "builder and FoundationVerifier must accept the exact typed ReturnTerm");
+  const auto view = raw.value().view().function(function.value()).value();
+  const auto terminator = view.terminator(view.blocks()[0]).value();
+  const auto* return_term = std::get_if<bir::ReturnTerm>(&terminator);
+  expect(return_term && return_term->value == returned,
+         "published builder return must retain its exact local ValueId");
+}
+
+void test_scalar_integer_return_rejections() {
+  const auto rejected = [](lir::LirModule candidate,
+                           bir::ImportErrorCode expected,
+                           const std::string& message) {
+    candidate.functions.insert(candidate.functions.begin(),
+                               void_definition("accepted_before_bad_return",
+                                               {return_block(0, "entry")}));
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() && raw.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical.has_value() && canonical.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+
+  auto raw_value = scalar_integer_return_module(lir::LirOperand::raw("37"));
+  rejected(std::move(raw_value), bir::ImportErrorCode::UnsupportedTerminator,
+           "raw return text must not become scalar authority");
+
+  auto monostate = scalar_integer_return_module(lir::LirOperand("%unknown"));
+  rejected(std::move(monostate), bir::ImportErrorCode::UnsupportedTerminator,
+           "classified return display without native authority must reject");
+
+  auto wrong_authority = scalar_integer_return_module(
+      lir::LirOperand::global("37", static_cast<c4c::LinkNameId>(1)));
+  rejected(std::move(wrong_authority),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "LinkNameId return authority must remain unsupported");
+
+  auto missing = scalar_integer_return_module(
+      lir::LirOperand::integer("ignored", 1));
+  std::get<lir::LirRet>(missing.functions[0].blocks[0].terminator).value_str.reset();
+  rejected(std::move(missing), bir::ImportErrorCode::UnsupportedTerminator,
+           "integer signatures must reject missing return values");
+
+  auto mismatched_type = scalar_integer_return_module(
+      lir::LirOperand::integer("ignored", 1));
+  std::get<lir::LirRet>(mismatched_type.functions[0].blocks[0].terminator)
+      .type_str = lir::LirTypeRef::integer(64);
+  rejected(std::move(mismatched_type),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "return type must exactly match the imported function signature");
+
+  auto raw_type = scalar_integer_return_module(
+      lir::LirOperand::integer("ignored", 1));
+  std::get<lir::LirRet>(raw_type.functions[0].blocks[0].terminator).type_str =
+      lir::LirTypeRef("i32", lir::LirTypeKind::RawText);
+  rejected(std::move(raw_type), bir::ImportErrorCode::UnsupportedTerminator,
+           "raw return type text must not satisfy structured signature agreement");
+
+  auto out_of_range = scalar_integer_return_module(
+      lir::LirOperand::integer("looks-small", 256), 8);
+  rejected(std::move(out_of_range),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "out-of-range return immediates must reject before constant creation");
+
+  auto unknown_ssa = scalar_integer_return_module(
+      lir::LirOperand::ssa("%looks-known", lir::LirValueId{999}));
+  rejected(std::move(unknown_ssa),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "unknown current-function SSA returns must reject");
+
+  auto invalid_ssa = scalar_integer_return_module(
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid()));
+  rejected(std::move(invalid_ssa),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "invalid native SSA return identity must reject");
+
+  auto cross_function_ssa = direct_global_integer_load_module();
+  auto cross_return = scalar_integer_return_module(
+      lir::LirOperand::ssa("%looks-shared", lir::LirValueId{31}));
+  cross_function_ssa.functions.push_back(
+      std::move(cross_return.functions.front()));
+  rejected(std::move(cross_function_ssa),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "an SSA identity defined only in another function must not cross registries");
+
+  auto mismatched_ssa = direct_global_integer_load_module();
+  auto& mismatch_function = mismatched_ssa.functions[0];
+  mismatch_function.return_type = scalar_type(c4c::TB_INT);
+  mismatch_function.return_type.inner_rank = -1;
+  mismatch_function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  mismatch_function.blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::ssa("%looks-i32", lir::LirValueId{32}),
+      lir::LirTypeRef::integer(32)};
+  rejected(std::move(mismatched_ssa),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "SSA return identity must carry the exact signature type");
+
+  auto noninteger = scalar_integer_return_module(
+      lir::LirOperand::integer("ignored", 1));
+  auto& noninteger_function = noninteger.functions[0];
+  noninteger_function.return_type = scalar_type(c4c::TB_DOUBLE);
+  noninteger_function.signature_return_type_ref = lir::LirTypeRef("double");
+  std::get<lir::LirRet>(noninteger_function.blocks[0].terminator).type_str =
+      lir::LirTypeRef("double");
+  rejected(std::move(noninteger),
+           bir::ImportErrorCode::UnsupportedTerminator,
+           "noninteger scalar returns remain fail-closed");
+
+  auto extra_void = scalar_integer_return_module(
+      lir::LirOperand::integer("ignored", 1));
+  auto& void_function = extra_void.functions[0];
+  void_function.return_type = scalar_type(c4c::TB_VOID);
+  void_function.signature_return_type_ref = lir::LirTypeRef("void");
+  rejected(std::move(extra_void), bir::ImportErrorCode::InvalidVoidReturn,
+           "void signatures must retain exact valueless return receipt");
 }
 
 void test_string_pool_receipt_and_views() {
@@ -7659,7 +7964,7 @@ void test_inline_asm_shape_rejection() {
 
 int main() {
   test_structured_gep_index_adapter();
-  test_authoritative_return_stays_outside_new_bir_receipt();
+  test_void_return_rejects_authoritative_value();
   test_supported_import_and_views();
   test_generic_inline_asm_ssa_edges();
   test_structured_lir_import_ssa_chain();
@@ -7686,6 +7991,10 @@ int main() {
   test_selected_global_array_gep_ssa_index_receipt();
   test_selected_global_array_gep_builder_contract();
   test_selected_global_array_gep_rejections();
+  test_scalar_integer_return_receipt();
+  test_scalar_integer_ssa_return_receipt();
+  test_scalar_integer_return_builder_contract();
+  test_scalar_integer_return_rejections();
   test_string_pool_receipt_and_views();
   test_string_pool_rejections_and_transactionality();
   test_external_declaration_receipt_and_views();
