@@ -63,17 +63,20 @@ Current Step Title: Resolve the external C1 Markdown boundary and Canonical inpu
 - No shared analysis belongs at C1. Publication/value-flow, call graph,
   provenance, memory effects and other analyses remain at their later declared
   earliest consumers.
+- Plan-owner accepted the missing-owner audit recorded in `869388429` and
+  authorized exactly one coordinated documentation-only Step-1 boundary
+  packet. Step 1 remains current until that packet is complete and a fresh
+  re-audit accepts every two-sided seam.
 
 ## Suggested Next
 
-- Authorize one coordinated Step-1 documentation packet that creates
-  `src/target_profile/README.md` and repairs all two-sided links/authority seams
-  together. Keep Step 1 active until that packet is complete and proven; do
-  not advance to C2 from this audit.
+- Execute the one authorized coordinated Step-1 documentation packet, then
+  re-audit its owner, authority, links, implementation truth and exact diff
+  scope. Advance to C2 only after that re-audit passes.
 
 ## Watchouts
 
-- Exact coordinated seam set:
+- Exact authorized documentation edit set:
   `src/target_profile/README.md` (new sole external C1 owner),
   `src/backend/bir/README.md` (link the normative C1 owner cell and preserve
   exact B8->C1->C2 order),
@@ -84,8 +87,15 @@ Current Step Title: Resolve the external C1 Markdown boundary and Canonical inpu
   `src/backend/bir/target_layout/README.md` (replace header-as-authority with
   the C1 owner and consume its exact validated key), and
   `src/backend/bir/preparation/README.md` (link the C1 producer in the boundary
-  and product table). Because pipeline/verifier are accepted shared seams,
-  authorize the set before editing any member.
+  and product table). The packet must repair these six files together because
+  pipeline/verifier are accepted shared seams.
+- The executor may additionally update only `todo.md` for canonical Step-1
+  progress and proof; no other path is writable.
+- Preserve the authority split exactly: C1 selects, normalizes and validates
+  the explicit request and produces `TargetProfile` plus
+  `TargetFingerprint`; the shared verifier alone binds them to the exact
+  Canonical stamp and produces `VerifiedPreparationInput`; C2 alone derives
+  target layout.
 - `docs/target_abi_contract_research/*` is useful historical evidence but must
   not become the normative C1 owner or receive lifecycle edits.
 - Preserve the accepted semantic-size/alignment/address-space distinction:
@@ -96,7 +106,8 @@ Current Step Title: Resolve the external C1 Markdown boundary and Canonical inpu
   relocation mutable/defaulted, exposes directly constructible public fields,
   and is not bound to Canonical revision identity.
 - Do not edit code/tests/build/logs, invent implementation, activate Child D or
-  move shared analyses earlier.
+  move shared analyses earlier. Do not mutate BIR, claim implementation, or
+  place any analysis in C1 authority.
 
 ## Proof
 

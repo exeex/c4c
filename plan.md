@@ -120,12 +120,11 @@ callable planner/pipeline, verifier reachability and proof. Truthfully mark
 absent, partial and scaffolded owners; documentation acceptance cannot claim
 target preparation exists.
 
-C1 is external authority, not a license to invent BIR implementation. If no
-exact current Markdown owner exists, record the missing boundary/placeholder,
-its required owner and index seam, then stop until a coordinated documentation
-packet names the authorized path. Likewise, shared root/verifier/analysis/
-diagnostic or adjacent D1 edits require an exact two-sided coordinated boundary
-in this runbook; do not silently reassign them.
+C1 is external authority, not a license to invent BIR implementation. The
+accepted missing-owner audit in `869388429` authorizes only the coordinated
+documentation boundary named in Step 1. Other shared root/verifier/analysis/
+diagnostic or adjacent D1 edits still require a separate exact two-sided
+coordinated boundary in this runbook; do not silently reassign them.
 
 ## Non-Goals
 
@@ -165,26 +164,60 @@ in this runbook; do not silently reassign them.
 
 ### Step 1 - Resolve the external C1 Markdown boundary and Canonical input
 
-Goal: classify the exact external target-profile selection authority and bind
+Goal: establish the exact external target-profile selection authority and bind
 it to the accepted Canonical input without inventing implementation.
+
+Authorized writable set for one coordinated documentation-only packet:
+
+- create `src/target_profile/README.md` as the sole external C1 target-request
+  selection, normalization and validation owner
+- repair only the required two-sided authority and links in
+  `src/backend/bir/README.md`
+- repair only the accepted B8/C1 downstream authority and links in
+  `src/backend/bir/pipeline/README.md`
+- repair only the C1/verifier binding authority and links in
+  `src/backend/bir/verify/README.md`
+- repair only the C1/C2 input authority and links in
+  `src/backend/bir/target_layout/README.md`
+- repair only the C1 producer authority and links in
+  `src/backend/bir/preparation/README.md`
+
+These six paths are the complete documentation edit set. The executor may
+additionally update only `todo.md` for canonical Step-1 progress and proof; no
+other path is writable. The shared pipeline and verifier documents are
+accepted boundaries, so all six documentation paths must be changed and
+re-audited as one coherent slice.
 
 Actions:
 
-- audit the root C1 clause and current target-profile documentation/authority
-  for requested triple, arch, OS, ABI, relocation, float ABI and capabilities
-- prove C1 consumes only the accepted exact `CanonicalBir` plus the request,
-  mutates no BIR, and publishes one validated exact target-context key
-- determine whether an explicit Markdown owner/placeholder and root index entry
-  are missing; if so, record the exact path/owner/two-sided seam and stop for a
-  coordinated documentation packet
+- create the external C1 owner with truthful partial-foundation implementation
+  status, core-first ownership clauses and exhaustive input/output matrices for
+  requested triple, arch, OS, ABI, relocation, float ABI, capabilities and
+  selection/schema versions
+- make C1 alone select, normalize and validate the explicit request, then
+  publish one immutable `TargetProfile` plus one complete
+  `TargetFingerprint`; C1 cannot choose a target for the user
+- preserve the shared verifier as the sole authority that binds the validated
+  profile/fingerprint to the exact Canonical `PipelineStageStamp` and produces
+  `VerifiedPreparationInput`
+- preserve C2 as the sole target-layout derivation authority; C1 cannot parse
+  rendered `data_layout`, derive layout or run C3-C9
+- prove C1 consumes only the accepted exact `CanonicalBir` plus the explicit
+  request, mutates no BIR and publishes nothing on validation failure
 - place publication/value-flow, call-graph or other accepted analyses only at
   their later earliest consumers, not in C1 authority
+- after the coordinated edits, re-audit all six paths for exact ownership,
+  two-sided links, input/output matrices, implementation truth, failure
+  atomicity and diff scope; keep Step 1 current until this re-audit passes
 
 Completion check:
 
-- C1 has one explicit external Markdown authority or one exact coordinated
-  placeholder requirement; no duplicate BIR owner or implementation is
-  invented, and the accepted Canonical/C1 boundary is unambiguous
+- all six authorized paths form one coherent boundary: C1 alone produces the
+  validated profile/fingerprint, verifier alone produces exact-Canonical-bound
+  `VerifiedPreparationInput`, and C2 alone derives layout; no implementation
+  claim, BIR mutation, C1 analysis ownership, documentation edit outside the
+  six-path set or noncanonical `todo.md` edit exists. Advance to Step 2 only
+  after the post-packet re-audit proves this check.
 
 ### Step 2 - Converge C2 target-layout derivation
 
