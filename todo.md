@@ -3,59 +3,59 @@
 Status: Active
 Source Idea Path: ideas/open/736_bir_phase_b_canonical_document_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Converge dominance/publication analyses and B4 P04 SSA
+Current Step ID: 5
+Current Step Title: Converge memory/provenance analyses and B5 P05 memory
 
 ## Just Finished
 
-- Completed plan Step 3 in the required order: exact-revision CFG analysis
-  first, then B3/P03 CFG canonicalization.
-- Defined `AnalysisId::Cfg` as a function-scope, schema-1,
-  `CanonicalSemantic` immutable analysis over the exact P02
-  `ScalarsCanonical` checkpoint. Its closed key binds epoch, module/function
-  revisions, empty dependencies/options and no target/preparation axes.
-- Added exhaustive analysis input/output matrices for terminator-derived
-  successor and incoming occurrences, exact `EdgeKey {source, role, index}`
-  multiplicity, reachability, unreachable blocks, traversal products,
-  optional empty forms, unsupported/malformed errors, stable-ID identity,
-  stale rejection and precise invalidation/preservation.
-- Converged P03 with exact matching P02/CFG inputs and 28 closed CFG-form rows:
-  14 `Normalize`, nine `Preserve` and five `Reject`. Terminators remain the
-  sole stored successor authority; parallel occurrences and phi incoming keys
-  remain distinct.
+- Completed plan Step 4 in required order: dominance, publication/value-flow,
+  then B4/P04 SSA.
+- Converged schema-1 `Dominance` over the exact B3 `CfgCanonical` checkpoint
+  and freshly recomputed same-revision `Cfg`. Its closed key/dependency/options
+  contract preserves stable block/value/instruction and parallel-`EdgeKey`
+  dominance/frontier semantics, explicit empty/unreachable/no-exit states,
+  stale rejection and transitive invalidation.
+- Converged schema-1 `PublicationValueFlow` over the same B3 revision with
+  exact CFG and dominance dependencies. Its stable definition/use/parameter/
+  return/call/phi/carrier facts distinguish `Known`, `Absent`, reasoned
+  `Unknown` and malformed failure without implying BIR publication authority.
+- Converged P04 to exact-current B3 analyses with 32 closed SSA-form rows: 11
+  `Normalize`, 11 `Preserve` and ten `Reject`. Exact phi incoming coverage
+  retains every parallel `EdgeKey`; no name, position, dense index, legacy
+  record or unregistered rule may identify or invent a value.
 - Defined deterministic full-wave private transactions, complete rollback,
-  cumulative `RawVerified` + `TypesLegal` + `ScalarsCanonical` +
-  `CfgCanonical` postconditions and mutation-derived transitive invalidation.
-- Required CFG recomputation from every resulting P03 terminator set before
-  exact-B3 dominance/publication/B4 use. The pre-planning B2 handle cannot
-  substitute, even for an unchecked preservation claim.
-- Confirmed implementation remains absent: both owner directories contain only
-  their contracts and no checked-in C/C++ definition names the CFG analysis or
-  pass. No shared-owner seam was found, so the packet advances to Step 4.
+  cumulative Raw+P01+P02+P03+P04 postconditions, typed atomic RAUW, exact
+  def-use/phi verification and mutation-derived transitive invalidation.
+- Defined exact B5 acceptance of one immutable B4 `SsaCanonical` wave with
+  complete def-use and edge-occurrence phi coverage. B3 handles cannot cross a
+  changed revision.
+- Confirmed all three implementations remain absent: each owner directory has
+  only its contract and no checked-in C/C++ definition names either analysis
+  or P04 pass. No shared-owner seam remains, so the packet advances to Step 5.
 
 ## Suggested Next
 
-- Execute plan Step 4 in required order: converge exact-B3 CFG-dependent
-  dominance and publication analyses, then B4/P04 SSA and its B5 handoff.
+- Execute plan Step 5 in required order: converge memory-effects and
+  provenance prerequisites, then B5/P05 memory and its B6 handoff.
 
 ## Watchouts
 
-- Step 4 must consume the freshly recomputed exact-B3 CFG result; stale
-  pre-P03 facts, dense indices, predecessor-block sets, names, positions and
-  rendered text cannot establish dominance, availability or phi identity.
-- Preserve exact parallel `EdgeKey` multiplicity through dominance frontiers
-  and SSA incoming coverage. P04 may construct SSA but cannot mutate topology
-  or invent incoming values without its registered rule.
-- CFG analysis and P03 implementations are absent. Keep target/profile/helper/
-  ABI/preparation/allocation authority and runtime-coverage claims out.
+- Memory effects may be available from Raw, but every handle used by P05 must
+  match the exact B4 revision; provenance requires its exact typed-value/CFG/
+  dominance prerequisites. Neither analysis is stored semantic truth.
+- Preserve exact CFG/SSA and parallel-edge identity through P05. Do not infer
+  alias, object identity, alignment, address decomposition or effect semantics
+  from names, text, target layout, ABI/helper routes or compatibility records.
+- Dominance, publication/value-flow and P04 implementations are absent; their
+  matrices are design authority, not runtime coverage.
 
 ## Proof
 
-- Documentation-only packet. The delegated scope explicitly forbids code,
-  tests, builds and log edits; canonical regression logs were not touched.
-- Exact scope/diff-check, metadata/order/matrices, CFG key/multiplicity, closed
-  dispositions, atomicity/invalidation, mandatory recomputation, B4 handoff,
-  links and implementation-truth proof:
+- Documentation-only packet. The delegated scope forbids code, tests, builds
+  and log edits; canonical regression logs were not touched.
+- Exact scope/diff-check, metadata/order/matrices, dependency/stale forms,
+  parallel-edge dominance/availability, exhaustive P04 dispositions,
+  transaction/invalidation, B5 handoff, links and implementation truth proof:
 
 ```bash
 python3 - <<'PY'
@@ -64,14 +64,15 @@ from pathlib import Path
 import re
 import subprocess
 
-analysis_path = Path('src/backend/bir/analysis/cfg/README.md')
-pass_path = Path('src/backend/bir/passes/cfg/README.md')
-analysis = analysis_path.read_text()
-cfg_pass = pass_path.read_text()
+dominance_path = Path('src/backend/bir/analysis/dominance/README.md')
+publication_path = Path('src/backend/bir/analysis/publication/README.md')
+ssa_path = Path('src/backend/bir/passes/ssa/README.md')
+dominance = dominance_path.read_text()
+publication = publication_path.read_text()
+ssa = ssa_path.read_text()
 framework = Path('src/backend/bir/analysis/README.md').read_text()
-root = Path('src/backend/bir/README.md').read_text()
-dominance = Path('src/backend/bir/analysis/dominance/README.md').read_text()
-ssa = Path('src/backend/bir/passes/ssa/README.md').read_text()
+cfg = Path('src/backend/bir/analysis/cfg/README.md').read_text()
+b5 = Path('src/backend/bir/passes/memory/README.md').read_text()
 
 def ordered(text, headings):
     positions = [text.index(heading) for heading in headings]
@@ -86,7 +87,7 @@ analysis_details = ['## Ordered Behavior', '## Invariants',
                     '## Proof Requirements', '## Open Questions',
                     '## Review Checklist']
 pass_details = ['## Ordered Behavior', '## Invariants',
-                '## Exhaustive P03 CFG-Form Disposition Matrix',
+                '## Exhaustive P04 SSA-Form Disposition Matrix',
                 '## Verification and Publication',
                 '## Failure and Diagnostics',
                 '## Analysis and Invalidation',
@@ -94,9 +95,11 @@ pass_details = ['## Ordered Behavior', '## Invariants',
                 '## Proof Requirements', '## Open Questions',
                 '## Review Checklist']
 for text, kind, phase in (
-        (analysis, 'analysis',
-         'B3 / P03 earliest planning consumer and mandatory post-P03 recomputation'),
-        (cfg_pass, 'pass', 'B3 / P03')):
+        (dominance, 'analysis',
+         'B4 / P04 earliest consumer and later exact-CFG semantic queries'),
+        (publication, 'analysis',
+         'B4 / P04 earliest consumer and later exact-revision semantic queries'),
+        (ssa, 'pass', 'B4 / P04')):
     head = '\n'.join(text.splitlines()[:11])
     for item in ('Contract-Status: under-review',
                  'Implementation-Status: absent', f'Kind: {kind}',
@@ -107,8 +110,9 @@ for text, kind, phase in (
         assert item in head, (item, head)
     ordered(text, core)
     assert '- [ ]' not in text
-ordered(analysis, analysis_details)
-ordered(cfg_pass, pass_details)
+ordered(dominance, analysis_details)
+ordered(publication, analysis_details)
+ordered(ssa, pass_details)
 
 def rows(text, start, end):
     section = text.split(start, 1)[1].split(end, 1)[0]
@@ -120,87 +124,96 @@ def rows(text, start, end):
                 result.append(cells)
     return result[1:]
 
-analysis_inputs = rows(analysis,
-    '### Exact descriptor and input-key matrix', '## Outputs')
-analysis_outputs = rows(analysis,
-    '### Exhaustive CFG result-family matrix', '## Adjacent-Stage Contract')
-pass_inputs = rows(cfg_pass,
-    '### Exact input and dependency matrix', '## Outputs')
-pass_outputs = rows(cfg_pass,
-    '### Exact output handoff matrix', '## Adjacent-Stage Contract')
-forms = rows(cfg_pass,
-    '## Exhaustive P03 CFG-Form Disposition Matrix',
-    '## Verification and Publication')
-assert (len(analysis_inputs), len(analysis_outputs), len(pass_inputs),
-        len(pass_outputs), len(forms)) == (8, 9, 8, 6, 28)
+din = rows(dominance, '### Exact descriptor and input-key matrix', '## Outputs')
+dout = rows(dominance, '### Exhaustive dominance result-family matrix',
+            '## Adjacent-Stage Contract')
+pin = rows(publication, '### Exact descriptor and input-key matrix', '## Outputs')
+pout = rows(publication, '### Exhaustive value-flow result-family matrix',
+            '## Adjacent-Stage Contract')
+sin = rows(ssa, '### Exact input and dependency matrix', '## Outputs')
+sout = rows(ssa, '### Exact output handoff matrix',
+            '## Adjacent-Stage Contract')
+forms = rows(ssa, '## Exhaustive P04 SSA-Form Disposition Matrix',
+             '## Verification and Publication')
+assert tuple(map(len, (din, dout, pin, pout, sin, sout, forms))) == (
+    9, 9, 9, 10, 9, 6, 32)
 assert all(len(row) == 6 and all(row) for row in forms)
 counts = Counter(row[2] for row in forms)
-assert counts == {'Normalize': 14, 'Preserve': 9, 'Reject': 5}, counts
+assert counts == {'Normalize': 11, 'Preserve': 11, 'Reject': 10}, counts
 for row in forms:
     assert row[2] in ('Normalize', 'Preserve', 'Reject'), row
     assert '`' in row[3] or 'no failure' in row[3], row
     assert row[5] == 'absent', row
 
 for phrase in (
-    '`AnalysisId::Cfg`, schema version 1', '`CanonicalSemantic`',
-    'exact `ModuleEpoch` plus checkpoint `ModuleRevision`',
-    'exact `FunctionId` plus `FunctionRevision`',
-    'empty ordered `dependencies` set',
-    'canonical empty `AnalysisOptionsFingerprint`',
-    'target-layout key `None`; preparation digest empty',
-    'EdgeKey { source BlockId, SuccessorRole role, uint32_t index }',
-    'parallel-edge multiplicity', 'does not use an `Unknown` graph answer',
-    'returns `StaleAnalysis`; it never rebinds',
-    'P03 deliberately requires post-mutation CFG recomputation'):
-    assert phrase in analysis, phrase
+    '`AnalysisId::Dominance`, schema version 1',
+    'freshly\nrecomputed `AnalysisId::Cfg` handle',
+    'ordered singleton `{AnalysisId::Cfg, schema 1, complete key}`',
+    '`Dominators` or `DominatorsAndPostdominators`',
+    'parallel occurrences remain distinct',
+    '`Known`, `Absent`, `Unreachable` and `NoExit`',
+    'A key\nmismatch returns `StaleAnalysis`',
+    'Any CFG dependency invalidation transitively invalidates dominance'):
+    assert phrase in dominance, phrase
 for phrase in (
-    '`PassId::CfgCanonicalize`', '`AnalysisId::Cfg`',
-    '`RawVerified` + `TypesLegal` + `ScalarsCanonical`',
-    'one private transaction per function in the occurrence wave',
-    'Failure rolls back the\nentire wave',
-    'establishes `CfgCanonical` only after',
-    'pre-planning B2 handle or patched cache cannot substitute',
-    'Recompute CFG from every resulting\n   terminator set',
-    'B4 requires that\nsame immutable revision, `CfgCanonical`, exact-current CFG'):
-    assert phrase in cfg_pass, phrase
+    '`AnalysisId::PublicationValueFlow`, schema 1',
+    'schema-1 `AnalysisId::Cfg` at identical complete key',
+    'schema-1 `AnalysisId::Dominance(Dominators)`',
+    'ordered `{Cfg complete key, Dominance complete key}`',
+    'parallel edges remain distinct',
+    '`Unknown` is result data and denies a rewrite',
+    'emit `Known`,\n   `Absent` or stable-reason `Unknown` facts',
+    'Any CFG/dominance invalidation transitively invalidates publication flow'):
+    assert phrase in publication, phrase
+for phrase in (
+    '`PassId::SsaCanonicalize`',
+    'exact-current schema-1 `Cfg`,\n`Dominance(Dominators)` and '
+    '`PublicationValueFlow` handles',
+    '`RawVerified` + `TypesLegal` + `ScalarsCanonical` + `CfgCanonical`',
+    'one private transaction per function in the wave',
+    'Raw+P01+P02+P03+P04 postconditions',
+    'Failure rolls back\nthe entire wave',
+    'B5 accepts only this exact immutable B4 wave with `SsaCanonical`',
+    'Old B3 handles remain stale after revision increment'):
+    assert phrase in ssa, phrase
 
-# Read-only shared/downstream owners agree with the converged boundary.
-assert ('before `B3/P03` planning; recomputed from the resulting terminators '
-        'afterward') in root
-assert 'dependencies: { AnalysisId::Cfg schema 1 }' in dominance
-assert ('The input is one immutable function view with exact epoch/module/function\n'
-        'revision and `PassProperty::CfgCanonical`') in ssa
-assert 'Exact-revision CFG and dominance\nhandles are required' in ssa
-assert 'one stable numeric `AnalysisId`, one schema\nversion' in framework
+# Read-only framework, accepted CFG and B5 agree with this boundary.
 assert 'After any revision increment, every old handle is\nstale' in framework
+assert 'P03 deliberately requires post-mutation CFG recomputation' in cfg
+assert ('The input is one immutable whole-module candidate stamped with the exact\n'
+        '`ModuleEpoch`, `ModuleRevision`, ordered function-revision digest') in b5
+assert 'cumulative properties through `SsaCanonical`' in b5
+assert 'exact `EdgeKey` phi coverage' in b5
 
-for path, text in ((analysis_path, analysis), (pass_path, cfg_pass)):
+for path, text in ((dominance_path, dominance),
+                   (publication_path, publication), (ssa_path, ssa)):
     for link in re.findall(r'\[[^]]+\]\(([^)]+)\)', text):
         assert (path.parent / link).resolve().exists(), (path, link)
-assert [p.name for p in analysis_path.parent.iterdir()] == ['README.md']
-assert [p.name for p in pass_path.parent.iterdir()] == ['README.md']
+    assert [p.name for p in path.parent.iterdir()] == ['README.md']
 cpp_hits = []
 for path in Path('src').rglob('*'):
     if path.suffix in ('.cpp', '.hpp'):
         text = path.read_text(errors='ignore')
-        if ('AnalysisId::Cfg' in text or
-                'PassId::CfgCanonicalize' in text):
+        if (any(name in text for name in (
+                'AnalysisId::Dominance',
+                'AnalysisId::PublicationValueFlow',
+                'PassId::SsaCanonicalize'))):
             cpp_hits.append(path.as_posix())
 assert not cpp_hits, cpp_hits
 
 changed = set(subprocess.check_output(
     ['git', 'diff', '--name-only'], text=True).splitlines())
 expected = {
-    'src/backend/bir/analysis/cfg/README.md',
-    'src/backend/bir/passes/cfg/README.md',
+    'src/backend/bir/analysis/dominance/README.md',
+    'src/backend/bir/analysis/publication/README.md',
+    'src/backend/bir/passes/ssa/README.md',
     'todo.md',
 }
 assert changed == expected, (changed, expected)
-print('PASS step=3 analysis_inputs=8 analysis_outputs=9 cfg_inputs=8 '
-      'cfg_outputs=6 forms=28 normalize=14 preserve=9 reject=5 '
-      'edge_identity=role-index multiplicity=exact transaction=atomic '
-      'invalidation=transitive recompute=mandatory b4=exact '
-      'implementation=absent scope=3 next=4')
+print('PASS step=4 dominance=9/9 publication=9/10 ssa=9/6 forms=32 '
+      'normalize=11 preserve=11 reject=10 dependencies=exact stale=rejected '
+      'parallel_edges=exact transaction=atomic invalidation=transitive '
+      'b5=exact implementation=absent scope=4 next=5')
 PY
 git diff --check
 ```
@@ -208,6 +221,6 @@ git diff --check
 - Result:
 
 ```text
-PASS step=3 analysis_inputs=8 analysis_outputs=9 cfg_inputs=8 cfg_outputs=6 forms=28 normalize=14 preserve=9 reject=5 edge_identity=role-index multiplicity=exact transaction=atomic invalidation=transitive recompute=mandatory b4=exact implementation=absent scope=3 next=4
+PASS step=4 dominance=9/9 publication=9/10 ssa=9/6 forms=32 normalize=11 preserve=11 reject=10 dependencies=exact stale=rejected parallel_edges=exact transaction=atomic invalidation=transitive b5=exact implementation=absent scope=4 next=5
 git diff --check: PASS
 ```
