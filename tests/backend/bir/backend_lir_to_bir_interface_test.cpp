@@ -1186,6 +1186,254 @@ void test_string_pool_rejections_and_transactionality() {
          "FoundationVerifier must reject malformed staged string storage");
 }
 
+void test_external_declaration_receipt_and_views() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto void_link = module.link_names.intern("linked_void");
+  const auto struct_link = module.link_names.intern("linked_struct");
+  const auto payload_name = module.struct_names.intern("%struct.Payload");
+  module.record_struct_decl(lir::LirStructDecl{payload_name});
+
+  const auto payload_type =
+      lir::LirTypeRef::struct_type("%struct.Payload", payload_name);
+  const lir::LirExternDecl fallback_sign{
+      "fallback_sign", "i8", lir::LirTypeRef::integer(8),
+      lir::LirExtAttr::SignExt, c4c::kInvalidLinkName};
+  const lir::LirExternDecl linked_void{
+      "linked_void", "void", lir::LirTypeRef("void"),
+      lir::LirExtAttr::None, void_link};
+  const lir::LirExternDecl linked_struct{
+      "linked_struct", "%struct.Payload", payload_type,
+      lir::LirExtAttr::None, struct_link};
+  const lir::LirExternDecl fallback_zero{
+      "fallback_zero", "i32", lir::LirTypeRef::integer(32),
+      lir::LirExtAttr::ZeroExt, c4c::kInvalidLinkName};
+  module.extern_decls = {fallback_sign, linked_void, linked_struct,
+                         fallback_zero};
+  module.extern_decl_link_name_map.emplace(
+      void_link, lir::LirModule::ExternDeclInfo{
+                     linked_void.name, linked_void.return_type_str,
+                     linked_void.return_type, linked_void.return_ext_attr,
+                     linked_void.link_name_id});
+  module.extern_decl_link_name_map.emplace(
+      struct_link, lir::LirModule::ExternDeclInfo{
+                       linked_struct.name, linked_struct.return_type_str,
+                       linked_struct.return_type,
+                       linked_struct.return_ext_attr,
+                       linked_struct.link_name_id});
+  module.extern_decl_name_map.emplace(
+      fallback_sign.name,
+      lir::LirModule::ExternDeclInfo{
+          fallback_sign.name, fallback_sign.return_type_str,
+          fallback_sign.return_type, fallback_sign.return_ext_attr,
+          fallback_sign.link_name_id});
+  module.extern_decl_name_map.emplace(
+      fallback_zero.name,
+      lir::LirModule::ExternDeclInfo{
+          fallback_zero.name, fallback_zero.return_type_str,
+          fallback_zero.return_type, fallback_zero.return_ext_attr,
+          fallback_zero.link_name_id});
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "ordered link-backed and fallback external declarations should publish");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "published external state should be reachable by FoundationVerifier");
+  const auto view = imported.value().view();
+  const auto ids = view.external_declarations();
+  expect(ids.size() == 4 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2 && ids[3].slot == 3,
+         "external declaration IDs must preserve vector authority and order");
+  const auto raw_sign = view.external_declaration(ids[0]).value();
+  const auto raw_void = view.external_declaration(ids[1]).value();
+  const auto raw_struct = view.external_declaration(ids[2]).value();
+  const auto raw_zero = view.external_declaration(ids[3]).value();
+  expect(raw_sign.source_name == "fallback_sign" &&
+             raw_sign.return_type == bir::Type{bir::TypeKind::I8} &&
+             raw_sign.return_extension == bir::ReturnExtension::SignExt &&
+             std::get<bir::FallbackExternalName>(raw_sign.identity).name ==
+                 "fallback_sign" &&
+             raw_void.return_type.kind == bir::TypeKind::Void &&
+             raw_void.return_extension == bir::ReturnExtension::None &&
+             std::holds_alternative<bir::LinkNameId>(raw_void.identity) &&
+             raw_struct.return_type.kind == bir::TypeKind::Struct &&
+             raw_struct.return_type.struct_name_id == payload_name &&
+             std::holds_alternative<bir::LinkNameId>(raw_struct.identity) &&
+             raw_zero.return_type == bir::Type{bir::TypeKind::I32} &&
+             raw_zero.return_extension == bir::ReturnExtension::ZeroExt,
+         "immutable extern views must preserve names, structured types, identities, and attrs");
+  expect(view.external_declaration("fallback_zero").value() == ids[3] &&
+             view.external_declaration(
+                     std::get<bir::LinkNameId>(raw_struct.identity))
+                     .value() == ids[2],
+         "typed name and link lookups must resolve exact external identities");
+}
+
+void test_external_declaration_rejections_and_transactionality() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto linked = module.link_names.intern("linked_ext");
+    const lir::LirExternDecl link_row{
+        "linked_ext", "i32", lir::LirTypeRef::integer(32),
+        lir::LirExtAttr::None, linked};
+    const lir::LirExternDecl fallback_row{
+        "fallback_ext", "void", lir::LirTypeRef("void"),
+        lir::LirExtAttr::None, c4c::kInvalidLinkName};
+    module.extern_decls = {link_row, fallback_row};
+    module.extern_decl_link_name_map.emplace(
+        linked, lir::LirModule::ExternDeclInfo{
+                    link_row.name, link_row.return_type_str,
+                    link_row.return_type, link_row.return_ext_attr,
+                    link_row.link_name_id});
+    module.extern_decl_name_map.emplace(
+        fallback_row.name,
+        lir::LirModule::ExternDeclInfo{
+            fallback_row.name, fallback_row.return_type_str,
+            fallback_row.return_type, fallback_row.return_ext_attr,
+            fallback_row.link_name_id});
+    module.functions.push_back(void_declaration("valid_before_bad_extern"));
+    return module;
+  };
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto module = valid_module();
+    mutate(module);
+    auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code ==
+                   bir::ImportErrorCode::UnsupportedExternDeclarations,
+           message);
+  };
+
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decl_name_map.erase("fallback_ext");
+      },
+      "missing external parity evidence must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        const auto extra = module.link_names.intern("extra_ext");
+        module.extern_decl_link_name_map.emplace(
+            extra, lir::LirModule::ExternDeclInfo{
+                       "extra_ext", "i32", lir::LirTypeRef::integer(32),
+                       lir::LirExtAttr::None, extra});
+      },
+      "extra external map evidence must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decl_name_map["fallback_ext"].return_type =
+            lir::LirTypeRef::integer(64);
+      },
+      "conflicting external map evidence must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[1].name = "linked_ext";
+        auto info = module.extern_decl_name_map.extract("fallback_ext");
+        info.key() = "linked_ext";
+        info.mapped().name = "linked_ext";
+        module.extern_decl_name_map.insert(std::move(info));
+      },
+      "duplicate semantic external identities must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        const auto invalid = static_cast<c4c::LinkNameId>(999);
+        auto info = module.extern_decl_link_name_map.begin()->second;
+        module.extern_decl_link_name_map.clear();
+        info.link_name_id = invalid;
+        module.extern_decl_link_name_map.emplace(invalid, info);
+        module.extern_decls[0].link_name_id = invalid;
+      },
+      "unresolved external link identities must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[0].name = "wrong_link_spelling";
+        module.extern_decl_link_name_map.begin()->second.name =
+            "wrong_link_spelling";
+      },
+      "link/name incoherence must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[1].name.clear();
+      },
+      "empty fallback names must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[0].return_type =
+            lir::LirTypeRef("semantic raw type");
+        module.extern_decls[0].return_type_str = "semantic raw type";
+        auto& info = module.extern_decl_link_name_map.begin()->second;
+        info.return_type = module.extern_decls[0].return_type;
+        info.return_type_str = module.extern_decls[0].return_type_str;
+      },
+      "RawText external return types must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[0].return_type = lir::LirTypeRef(
+            "not-an-integer", lir::LirTypeKind::Integer);
+        module.extern_decls[0].return_type_str = "not-an-integer";
+        auto& info = module.extern_decl_link_name_map.begin()->second;
+        info.return_type = module.extern_decls[0].return_type;
+        info.return_type_str = module.extern_decls[0].return_type_str;
+      },
+      "malformed structured external return types must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[1].return_ext_attr = lir::LirExtAttr::SignExt;
+        module.extern_decl_name_map["fallback_ext"].return_ext_attr =
+            lir::LirExtAttr::SignExt;
+      },
+      "void external returns cannot carry extension attrs");
+  rejected(
+      [](lir::LirModule& module) {
+        const auto unknown = static_cast<lir::LirExtAttr>(255);
+        module.extern_decls[0].return_ext_attr = unknown;
+        module.extern_decl_link_name_map.begin()->second.return_ext_attr =
+            unknown;
+      },
+      "unknown external return extension attrs must reject the whole module");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[0].return_type_str = "i64";
+        module.extern_decl_link_name_map.begin()->second.return_type_str = "i64";
+      },
+      "compatibility return text must agree with structured authority");
+
+  bir::ModuleBuilder builder;
+  expect(builder.add_link_name(1, "linked_ext").has_value(),
+         "staged link name should be available to external receipt");
+  expect(builder
+             .add_external_declaration("", bir::Type{bir::TypeKind::I32},
+                                       bir::ReturnExtension::None)
+             .error() == bir::BuildError::EmptyExternalName,
+         "builder must reject empty fallback identities");
+  expect(builder
+             .add_external_declaration(
+                 "linked_ext", bir::Type{bir::TypeKind::I32},
+                 bir::ReturnExtension::None, c4c::kInvalidLinkName)
+             .error() == bir::BuildError::InvalidExternalLinkName,
+         "builder must reject an explicitly invalid link identity");
+  expect(builder
+             .add_external_declaration("fallback_bad",
+                                       bir::Type{bir::TypeKind::Void},
+                                       bir::ReturnExtension::SignExt)
+             .has_value(),
+         "builder should retain malformed staged external state for diagnosis");
+  expect(builder
+             .add_external_declaration("fallback_bad",
+                                       bir::Type{bir::TypeKind::Void},
+                                       bir::ReturnExtension::None)
+             .error() == bir::BuildError::DuplicateExternalDeclaration,
+         "duplicate builder receipt must fail without a second row");
+  auto published = std::move(builder).publish();
+  expect(!published.has_value() &&
+             published.error().reason == bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject malformed staged external storage");
+}
+
 void test_structured_rejection() {
   lir::LirModule module;
   module.globals.push_back(lir::LirGlobal{});
@@ -1236,6 +1484,8 @@ int main() {
   test_constant_value_rejections_and_forward_use();
   test_string_pool_receipt_and_views();
   test_string_pool_rejections_and_transactionality();
+  test_external_declaration_receipt_and_views();
+  test_external_declaration_rejections_and_transactionality();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
   return 0;

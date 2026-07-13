@@ -20,6 +20,8 @@ using codegen::lir::LirBr;
 using codegen::lir::LirCondBr;
 using codegen::lir::LirConstFloat;
 using codegen::lir::LirConstInt;
+using codegen::lir::LirExtAttr;
+using codegen::lir::LirExternDecl;
 using codegen::lir::LirFunction;
 using codegen::lir::LirIndirectBr;
 using codegen::lir::LirInlineAsmOp;
@@ -112,6 +114,18 @@ std::optional<Type> lower_lir_type(const LirModule& module,
   return std::nullopt;
 }
 
+bool is_integer_type(const Type& type) noexcept {
+  switch (type.kind) {
+    case TypeKind::I1:
+    case TypeKind::I8:
+    case TypeKind::I16:
+    case TypeKind::I32:
+    case TypeKind::I64:
+    case TypeKind::Integer: return true;
+    default: return false;
+  }
+}
+
 std::optional<Type> lower_signature_type(
     const LirModule& module, const TypeSpec& structured,
     const std::optional<codegen::lir::LirTypeRef>& mirror) {
@@ -173,6 +187,35 @@ std::optional<Type> lower_constant_type(const LirModule& module,
     default: return std::nullopt;
   }
   return Type{TypeKind::Integer, width, "i" + std::to_string(width)};
+}
+
+std::optional<ReturnExtension> lower_return_extension(
+    LirExtAttr extension) {
+  switch (extension) {
+    case LirExtAttr::None: return ReturnExtension::None;
+    case LirExtAttr::SignExt: return ReturnExtension::SignExt;
+    case LirExtAttr::ZeroExt: return ReturnExtension::ZeroExt;
+  }
+  return std::nullopt;
+}
+
+bool same_lir_type(const codegen::lir::LirTypeRef& lhs,
+                   const codegen::lir::LirTypeRef& rhs) {
+  return lhs.kind() == rhs.kind() && lhs.str() == rhs.str() &&
+         lhs.integer_bit_width() == rhs.integer_bit_width() &&
+         lhs.vrm_width() == rhs.vrm_width() &&
+         lhs.has_struct_name_id() == rhs.has_struct_name_id() &&
+         (!lhs.has_struct_name_id() ||
+          lhs.struct_name_id() == rhs.struct_name_id());
+}
+
+bool same_extern_snapshot(const LirExternDecl& declaration,
+                          const LirModule::ExternDeclInfo& evidence) {
+  return declaration.name == evidence.name &&
+         declaration.return_type_str == evidence.return_type_str &&
+         same_lir_type(declaration.return_type, evidence.return_type) &&
+         declaration.return_ext_attr == evidence.return_ext_attr &&
+         declaration.link_name_id == evidence.link_name_id;
 }
 
 std::size_t inline_asm_constraint_count(std::string_view constraints) {
@@ -376,10 +419,6 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
       return fail<void>(ImportErrorCode::UnsupportedStringPool, {}, {},
                         "cache values must resolve one-to-one to ordinary rows");
   }
-  if (!module.extern_decls.empty() || !module.extern_decl_link_name_map.empty() ||
-      !module.extern_decl_name_map.empty())
-    return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
-                      "extern-only declaration state requires explicit lowering");
   const auto valid_name_table = [](const auto& table, auto invalid) {
     if (table.ids_.key_by_id_.size() != table.ids_.id_by_key_.size())
       return false;
@@ -420,6 +459,63 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         return fail<void>(ImportErrorCode::UnsupportedTypeDeclarations, {}, {},
                           "struct declaration contains a malformed or unresolved field type");
     }
+  }
+
+  if (module.extern_decl_link_name_map.size() +
+          module.extern_decl_name_map.size() !=
+      module.extern_decls.size())
+    return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                      "external declaration vector and parity maps differ in size");
+
+  std::unordered_set<c4c::LinkNameId> external_link_ids;
+  std::unordered_set<std::string> external_names;
+  external_link_ids.reserve(module.extern_decls.size());
+  external_names.reserve(module.extern_decls.size());
+  for (const auto& declaration : module.extern_decls) {
+    const auto type = lower_lir_type(module, declaration.return_type);
+    const auto extension = lower_return_extension(declaration.return_ext_attr);
+    if (declaration.name.empty() || !type || !extension ||
+        declaration.return_type_str != declaration.return_type.str() ||
+        (declaration.return_type.has_struct_name_id() &&
+         module.find_struct_decl(declaration.return_type.struct_name_id()) ==
+             nullptr) ||
+        (*extension != ReturnExtension::None && !is_integer_type(*type)) ||
+        !external_names.insert(declaration.name).second)
+      return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                        "external declaration name, type, extension, or identity is malformed");
+
+    if (declaration.link_name_id != c4c::kInvalidLinkName) {
+      if (module.link_names.spelling(declaration.link_name_id) !=
+              declaration.name ||
+          !external_link_ids.insert(declaration.link_name_id).second)
+        return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                          "link-backed external identity is unresolved or duplicated");
+      const auto evidence =
+          module.extern_decl_link_name_map.find(declaration.link_name_id);
+      if (evidence == module.extern_decl_link_name_map.end() ||
+          !same_extern_snapshot(declaration, evidence->second))
+        return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                          "link-backed external parity evidence is missing or conflicting");
+    } else {
+      const auto evidence = module.extern_decl_name_map.find(declaration.name);
+      if (evidence == module.extern_decl_name_map.end() ||
+          !same_extern_snapshot(declaration, evidence->second))
+        return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                          "fallback external parity evidence is missing or conflicting");
+    }
+  }
+  for (const auto& entry : module.extern_decl_link_name_map) {
+    if (entry.first == c4c::kInvalidLinkName ||
+        entry.second.link_name_id != entry.first || entry.second.name.empty() ||
+        module.link_names.spelling(entry.first) != entry.second.name)
+      return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                        "external link map contains malformed parity evidence");
+  }
+  for (const auto& entry : module.extern_decl_name_map) {
+    if (entry.first.empty() || entry.second.name != entry.first ||
+        entry.second.link_name_id != c4c::kInvalidLinkName)
+      return fail<void>(ImportErrorCode::UnsupportedExternDeclarations, {}, {},
+                        "external fallback map contains malformed parity evidence");
   }
   if (has_intrinsic_requirements(module))
     return fail<void>(ImportErrorCode::UnsupportedIntrinsicRequirements, {}, {},
@@ -674,6 +770,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import string-pool row", added.error()));
+  }
+  for (const auto& declaration : module.extern_decls) {
+    auto added = builder.add_external_declaration(
+        declaration.name, *lower_lir_type(module, declaration.return_type),
+        *lower_return_extension(declaration.return_ext_attr),
+        declaration.link_name_id == c4c::kInvalidLinkName
+            ? std::nullopt
+            : std::optional<c4c::LinkNameId>{declaration.link_name_id});
+    if (!added)
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          {}, {}, "import external declaration", added.error()));
   }
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);

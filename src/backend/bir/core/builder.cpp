@@ -181,6 +181,67 @@ Result<StringDataId, BuildError> ModuleBuilder::add_string_data(
   return Result<StringDataId, BuildError>::success(id);
 }
 
+Result<ExternalDeclId, BuildError> ModuleBuilder::add_external_declaration(
+    std::string source_name, Type return_type,
+    ReturnExtension return_extension,
+    std::optional<c4c::LinkNameId> source_link_name) {
+  if (state_ == State::Consumed)
+    return Result<ExternalDeclId, BuildError>::failure(
+        BuildError::AlreadyConsumed);
+  if (state_ == State::EditingFunction)
+    return Result<ExternalDeclId, BuildError>::failure(
+        BuildError::ActiveFunctionEdit);
+  if (!data_ || data_->epoch_ == 0)
+    return Result<ExternalDeclId, BuildError>::failure(
+        BuildError::EpochExhausted);
+  if (source_name.empty())
+    return Result<ExternalDeclId, BuildError>::failure(
+        BuildError::EmptyExternalName);
+  if (data_->external_decls_by_name_.count(source_name) != 0)
+    return Result<ExternalDeclId, BuildError>::failure(
+        BuildError::DuplicateExternalDeclaration);
+  if (data_->external_decls_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<ExternalDeclId, BuildError>::failure(
+        BuildError::StorageExhausted);
+
+  std::variant<LinkNameId, FallbackExternalName> identity =
+      FallbackExternalName{source_name};
+  if (source_link_name) {
+    if (*source_link_name == c4c::kInvalidLinkName)
+      return Result<ExternalDeclId, BuildError>::failure(
+          BuildError::InvalidExternalLinkName);
+    const auto linked =
+        data_->link_names_by_source_id_.find(*source_link_name);
+    if (linked == data_->link_names_by_source_id_.end() ||
+        linked->second.slot >= data_->link_names_.size() ||
+        data_->link_names_[linked->second.slot].spelling != source_name)
+      return Result<ExternalDeclId, BuildError>::failure(
+          BuildError::InvalidExternalLinkName);
+    if (data_->external_decls_by_link_name_.count(linked->second) != 0)
+      return Result<ExternalDeclId, BuildError>::failure(
+          BuildError::DuplicateExternalDeclaration);
+    identity = linked->second;
+  }
+
+  const ExternalDeclId id{
+      data_->epoch_, static_cast<SlotIndex>(data_->external_decls_.size())};
+  data_->external_decls_.push_back(ExternalDeclaration{
+      source_name, std::move(return_type), return_extension, identity});
+  try {
+    data_->external_decls_by_name_.emplace(source_name, id);
+    if (const auto* link_name = std::get_if<LinkNameId>(&identity))
+      data_->external_decls_by_link_name_.emplace(*link_name, id);
+  } catch (...) {
+    data_->external_decls_by_name_.erase(source_name);
+    if (const auto* link_name = std::get_if<LinkNameId>(&identity))
+      data_->external_decls_by_link_name_.erase(*link_name);
+    data_->external_decls_.pop_back();
+    throw;
+  }
+  return Result<ExternalDeclId, BuildError>::success(id);
+}
+
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>
 ModuleBuilder::mutable_function(FunctionId function) {
   if (!data_ || data_->epoch_ == 0)

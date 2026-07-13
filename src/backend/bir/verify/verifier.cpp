@@ -43,6 +43,15 @@ bool floating_type(const Type& type) noexcept {
          type.kind == TypeKind::Floating;
 }
 
+bool known(ReturnExtension extension) noexcept {
+  switch (extension) {
+    case ReturnExtension::None:
+    case ReturnExtension::SignExt:
+    case ReturnExtension::ZeroExt: return true;
+  }
+  return false;
+}
+
 bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
   switch (instruction.opcode) {
     case Opcode::InlineAsm:
@@ -181,6 +190,86 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
          module.string_data_[entry.second.slot].pool_name != entry.first))
       report(result, VerificationRule::StringDataStorage, {}, entry.second,
              "string data name index contains a foreign or conflicting row");
+  }
+
+  std::size_t linked_external_count = 0;
+  for (std::size_t index = 0; index < module.external_decls_.size(); ++index) {
+    const ExternalDeclId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& declaration = module.external_decls_[index];
+    const auto named =
+        module.external_decls_by_name_.find(declaration.source_name);
+    bool return_type_resolves = true;
+    if (declaration.return_type.struct_name_id != c4c::kInvalidStructName) {
+      const auto struct_name = module.struct_names_by_source_id_.find(
+          declaration.return_type.struct_name_id);
+      return_type_resolves =
+          struct_name != module.struct_names_by_source_id_.end() &&
+          struct_name->second.slot < module.struct_names_.size() &&
+          module.struct_names_[struct_name->second.slot].spelling ==
+              declaration.return_type.spelling &&
+          module.struct_decls_by_name_.count(struct_name->second) != 0;
+    }
+    if (!id.valid() || declaration.source_name.empty() ||
+        !is_well_formed(declaration.return_type) ||
+        !return_type_resolves ||
+        !known(declaration.return_extension) ||
+        (declaration.return_extension != ReturnExtension::None &&
+         !integer_type(declaration.return_type)) ||
+        named == module.external_decls_by_name_.end() || named->second != id)
+      report(result, VerificationRule::ExternalDeclaration, {}, id,
+             "external declaration name, type, extension, and name index must agree");
+
+    if (const auto* link_name =
+            std::get_if<LinkNameId>(&declaration.identity)) {
+      ++linked_external_count;
+      const auto linked =
+          module.external_decls_by_link_name_.find(*link_name);
+      if (!link_name->valid() || link_name->epoch != module.epoch_ ||
+          link_name->slot >= module.link_names_.size() ||
+          (link_name->slot < module.link_names_.size() &&
+           module.link_names_[link_name->slot].spelling !=
+               declaration.source_name) ||
+          linked == module.external_decls_by_link_name_.end() ||
+          linked->second != id)
+        report(result, VerificationRule::ExternalDeclaration, {}, id,
+               "link-backed external identity must resolve exactly");
+    } else if (const auto* fallback =
+                   std::get_if<FallbackExternalName>(&declaration.identity)) {
+      if (fallback->name.empty() || fallback->name != declaration.source_name)
+        report(result, VerificationRule::ExternalDeclaration, {}, id,
+               "fallback external identity must retain its exact source name");
+    } else {
+      report(result, VerificationRule::ExternalDeclaration, {}, id,
+             "external identity has no known alternative");
+    }
+  }
+  if (module.external_decls_by_name_.size() !=
+      module.external_decls_.size())
+    report(result, VerificationRule::ExternalDeclaration, {}, ModuleEntity{},
+           "external name index size must match ordered declarations");
+  if (module.external_decls_by_link_name_.size() != linked_external_count)
+    report(result, VerificationRule::ExternalDeclaration, {}, ModuleEntity{},
+           "external link index size must match link-backed declarations");
+  for (const auto& entry : module.external_decls_by_name_) {
+    if (entry.first.empty() || entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.external_decls_.size() ||
+        (entry.second.slot < module.external_decls_.size() &&
+         module.external_decls_[entry.second.slot].source_name != entry.first))
+      report(result, VerificationRule::ExternalDeclaration, {}, entry.second,
+             "external name index contains a foreign or conflicting row");
+  }
+  for (const auto& entry : module.external_decls_by_link_name_) {
+    if (!entry.first.valid() || entry.first.epoch != module.epoch_ ||
+        entry.second.epoch != module.epoch_ ||
+        entry.second.slot >= module.external_decls_.size() ||
+        (entry.second.slot < module.external_decls_.size() &&
+         (!std::holds_alternative<LinkNameId>(
+              module.external_decls_[entry.second.slot].identity) ||
+          std::get<LinkNameId>(
+              module.external_decls_[entry.second.slot].identity) !=
+              entry.first)))
+      report(result, VerificationRule::ExternalDeclaration, {}, entry.second,
+             "external link index contains a foreign or conflicting row");
   }
 
   const auto function_counts = counts(module.function_order_.ids_);

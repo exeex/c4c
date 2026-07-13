@@ -8,30 +8,34 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 packet 3A completed the current LIR string-pool family: added
-  epoch-owned `StringDataId`, ordered Raw-BIR storage, builder receipt, immutable
-  ID/name views, production import, and reachable foundation verification.
-- Import preserves every `pool_name`, opaque `raw_bytes` byte, `byte_length`, and
-  vector position exactly. It validates counter parity and cache values only as
-  structured evidence, without using cache keys or payload parsing for semantic
-  identity or order.
+- Plan Step 3 extern-declaration packet completed ordered receipt from
+  `LirModule::extern_decls`: added epoch-owned `ExternalDeclId`, typed Raw-BIR
+  storage, builder receipt, immutable name/link views, production import, and
+  reachable foundation verification.
+- Receipt preserves vector order, source name, structured return type,
+  `None`/`SignExt`/`ZeroExt`, and either a resolved link-table identity or an
+  explicit fallback name. The two extern maps are strict parity/dedup evidence;
+  they do not supply declaration order.
 
 ## Suggested Next
 
 - Execute only the next bounded Step 3 global object/symbol identity packet.
-  Preserve initializer state as an explicit unsupported boundary until its own
-  typed packet; do not drop it or parse rendered initializer text.
+  Account explicitly for the current producer evidence: `LirGlobal.id` remains
+  default/unpopulated, so it cannot yet be authoritative identity, and
+  `init_text` plus `initializer_function_link_name_ids` require a typed receipt
+  or an explicit unsupported boundary rather than being dropped or text-parsed.
 
 ## Watchouts
 
-- Current producer evidence has two structured string forms: nonnegative lengths
-  are cache-backed ordinary rows; `byte_length == -1` is the cacheless wide-row
-  sentinel. The counter covers both forms, and lengths below `-1` are malformed.
-- `str_pool_map` keys are source-byte dedup evidence while ordered rows carry an
-  opaque escaped/preformatted carrier. Never compare them by decoding text;
-  cache values alone reconcile ordinary row names.
-- Globals, externs, broader symbols, and initializers remain unsupported. The
-  next packet must not silently accept a global while dropping initializer state.
+- Extern receipt requires exact vector/map cardinality and snapshot parity;
+  vector position alone defines Raw-BIR order. Link-backed rows must resolve
+  through the imported link table with identical spelling.
+- Structured `LirTypeRef` is return-type authority; `return_type_str` is only
+  exact compatibility evidence. Raw text, malformed types, void/extension
+  incoherence, unknown attrs, and duplicate identities remain rejected.
+- Globals, broader symbols, and initializers remain unsupported. In particular,
+  the next packet must not promote the currently default `LirGlobal.id` or
+  silently accept a global while dropping either initializer evidence field.
 
 ## Proof
 

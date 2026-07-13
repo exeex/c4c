@@ -50,6 +50,20 @@ struct StringData {
   std::int64_t byte_length = 0;
 };
 
+enum class ReturnExtension : std::uint8_t { None, SignExt, ZeroExt };
+
+struct FallbackExternalName {
+  std::string name;
+};
+
+struct ExternalDeclaration {
+  std::string source_name;
+  Type return_type;
+  ReturnExtension return_extension = ReturnExtension::None;
+  std::variant<LinkNameId, FallbackExternalName> identity =
+      FallbackExternalName{};
+};
+
 struct ValueDef {
   ValueKind kind = ValueKind::Parameter;
   Type type{};
@@ -203,6 +217,9 @@ struct ModuleData {
   std::vector<ConstantDefinition> constants_;
   std::vector<StringData> string_data_;
   std::unordered_map<std::string, StringDataId> string_data_by_name_;
+  std::vector<ExternalDeclaration> external_decls_;
+  std::unordered_map<std::string, ExternalDeclId> external_decls_by_name_;
+  std::unordered_map<LinkNameId, ExternalDeclId> external_decls_by_link_name_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;

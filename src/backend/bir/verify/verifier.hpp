@@ -16,6 +16,7 @@ enum class VerificationRule {
   StructDeclaration,
   ConstantDefinition,
   StringDataStorage,
+  ExternalDeclaration,
   FunctionStorageAndOrder,
   BlockStorageAndOrder,
   InstructionStorageAndOrder,
@@ -35,7 +36,7 @@ struct LinkNameEntity {
 using VerificationEntity =
     std::variant<ModuleEntity, FunctionId, BlockId, InstId, ValueId,
                  SourceValueId, LinkNameId, StructNameId, StructDeclId,
-                 ConstantId, StringDataId, LinkNameEntity>;
+                 ConstantId, StringDataId, ExternalDeclId, LinkNameEntity>;
 
 struct VerificationError {
   VerificationRule rule = VerificationRule::ModuleEpoch;

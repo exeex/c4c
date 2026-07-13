@@ -39,6 +39,9 @@ enum class BuildError {
   DuplicateSourceValue,
   EmptyStringDataName,
   DuplicateStringDataName,
+  EmptyExternalName,
+  InvalidExternalLinkName,
+  DuplicateExternalDeclaration,
   ValueAlreadyDefined,
   DefinitionTypeMismatch,
   TerminatorAlreadySet,
@@ -162,6 +165,10 @@ class ModuleBuilder {
   Result<StringDataId, BuildError> add_string_data(std::string pool_name,
                                                   std::string raw_bytes,
                                                   std::int64_t byte_length);
+  Result<ExternalDeclId, BuildError> add_external_declaration(
+      std::string source_name, Type return_type,
+      ReturnExtension return_extension,
+      std::optional<c4c::LinkNameId> source_link_name = std::nullopt);
 
   using FunctionEdit =
       std::function<Result<void, BuildError>(FunctionBuilder&)>;

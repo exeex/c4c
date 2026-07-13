@@ -175,6 +175,13 @@ class ModuleView {
       ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
     return ids;
   }
+  std::vector<ExternalDeclId> external_declarations() const {
+    std::vector<ExternalDeclId> ids;
+    ids.reserve(data_->external_decls_.size());
+    for (std::size_t i = 0; i < data_->external_decls_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
 
   Result<std::string, ResolveError> spelling(LinkNameId id) const {
     if (id.epoch != data_->epoch_)
@@ -235,6 +242,36 @@ class ModuleView {
       return Result<StringDataId, ResolveError>::failure(
           ResolveError::OutOfRange);
     return Result<StringDataId, ResolveError>::success(found->second);
+  }
+  Result<ExternalDeclaration, ResolveError> external_declaration(
+      ExternalDeclId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<ExternalDeclaration, ResolveError>::failure(
+          ResolveError::WrongEpoch);
+    if (id.slot >= data_->external_decls_.size())
+      return Result<ExternalDeclaration, ResolveError>::failure(
+          ResolveError::OutOfRange);
+    return Result<ExternalDeclaration, ResolveError>::success(
+        data_->external_decls_[id.slot]);
+  }
+  Result<ExternalDeclId, ResolveError> external_declaration(
+      const std::string& source_name) const {
+    const auto found = data_->external_decls_by_name_.find(source_name);
+    if (found == data_->external_decls_by_name_.end())
+      return Result<ExternalDeclId, ResolveError>::failure(
+          ResolveError::OutOfRange);
+    return Result<ExternalDeclId, ResolveError>::success(found->second);
+  }
+  Result<ExternalDeclId, ResolveError> external_declaration(
+      LinkNameId link_name) const {
+    if (link_name.epoch != data_->epoch_)
+      return Result<ExternalDeclId, ResolveError>::failure(
+          ResolveError::WrongEpoch);
+    const auto found = data_->external_decls_by_link_name_.find(link_name);
+    if (found == data_->external_decls_by_link_name_.end())
+      return Result<ExternalDeclId, ResolveError>::failure(
+          ResolveError::OutOfRange);
+    return Result<ExternalDeclId, ResolveError>::success(found->second);
   }
 
   Result<FunctionView, ResolveError> function(FunctionId id) const {
