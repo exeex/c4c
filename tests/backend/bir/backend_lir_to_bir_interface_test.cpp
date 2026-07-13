@@ -230,12 +230,12 @@ void test_generic_inline_asm_ssa_edges() {
 void test_lir_inline_asm_structured_value_contract() {
   static_assert(std::is_same_v<
                 decltype(lir::LirInlineAsmValueBinding::value),
-                lir::LirValueId>);
-  const auto binding = [](std::uint32_t value, std::string type,
+                lir::LirOperand>);
+  const auto binding = [](std::string value, std::string type,
                           lir::LirInlineAsmValueRole role,
                           std::size_t constraint_index) {
     return lir::LirInlineAsmValueBinding{
-        lir::LirValueId{value}, lir::LirTypeRef(std::move(type)), role,
+        lir::LirOperand(std::move(value)), lir::LirTypeRef(std::move(type)), role,
         constraint_index};
   };
   const auto verify_op = [](lir::LirInlineAsmOp op) {
@@ -262,7 +262,7 @@ void test_lir_inline_asm_structured_value_contract() {
   input.original_asm_text = "opaque input %0";
   input.original_constraint_text = "r";
   input.ordinary_inputs = {
-      binding(10, "i64", lir::LirInlineAsmValueRole::Input, 0)};
+      binding("%input", "i64", lir::LirInlineAsmValueRole::Input, 0)};
   verify_op(input);
   expect(input.original_asm_text == "opaque input %0" &&
              input.asm_text == "llvm input rendering" &&
@@ -275,24 +275,24 @@ void test_lir_inline_asm_structured_value_contract() {
   output.original_asm_text = "opaque output %0";
   output.original_constraint_text = "=r";
   output.ordinary_results = {
-      binding(11, "i64", lir::LirInlineAsmValueRole::Output, 0)};
+      binding("%output", "i64", lir::LirInlineAsmValueRole::Output, 0)};
   verify_op(output);
 
   auto read_write = void_inline_asm("llvm read/write rendering", "+r,r");
   read_write.original_asm_text = "opaque read/write %0, %1";
   read_write.original_constraint_text = "+r,r";
   read_write.ordinary_inputs = {
-      binding(20, "i64", lir::LirInlineAsmValueRole::ReadWrite, 0),
-      binding(22, "i64", lir::LirInlineAsmValueRole::Input, 1)};
+      binding("%old", "i64", lir::LirInlineAsmValueRole::ReadWrite, 0),
+      binding("%input", "i64", lir::LirInlineAsmValueRole::Input, 1)};
   read_write.ordinary_results = {
-      binding(21, "i64", lir::LirInlineAsmValueRole::ReadWrite, 0)};
+      binding("%new", "i64", lir::LirInlineAsmValueRole::ReadWrite, 0)};
   verify_op(read_write);
-  expect(read_write.ordinary_inputs[0].value.value !=
-             read_write.ordinary_results[0].value.value,
+  expect(read_write.ordinary_inputs[0].value !=
+             read_write.ordinary_results[0].value,
          "read/write LIR asm must use distinct ordinary input/result IDs");
 
   auto invalid_identity = input;
-  invalid_identity.ordinary_inputs[0].value = lir::LirValueId::invalid();
+  invalid_identity.ordinary_inputs[0].value = lir::LirOperand();
   expect_rejected(std::move(invalid_identity),
                   "invalid ordinary input identity must be rejected");
 

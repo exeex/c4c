@@ -1,36 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Define the structured LIR inline-asm value contract
+Current Step ID: 2
+Current Step Title: Populate semantics and compatibility rendering in HIR-to-LIR
 
 # Current Packet
 
 ## Just Finished
 
-- Completed Plan Step 1: added the structured `LirInlineAsmOp` ordinary-value
-  contract, explicit original semantic text fields, role/order/type/identity
-  verification, and focused input/output/read-write model coverage.
+- Corrected Plan Step 2 read/write memory lowering to evaluate each output
+  lvalue once, reuse its cached pointer for compatibility rendering, and load
+  the structured old value from that pointer while keeping a distinct new
+  semantic result.
 
 ## Suggested Next
 
-- Execute Plan Step 2 by populating original semantic text and ordinary
-  input/result bindings in HIR-to-LIR while retaining LLVM compatibility
-  rendering for the current printer.
+- Execute Plan Step 3 by transactionally mapping structured LIR operands and
+  results into generic BIR SSA edges without consulting compatibility text.
 
 ## Watchouts
 
-- `LirInlineAsmValueBinding::value` is an ordinary `LirValueId`; keep producer
-  and importer wiring on that identity rather than introducing another value
-  family.
-- HIR-to-LIR does not populate the new semantic fields yet, and LIR-to-BIR does
-  not consume them yet. Until Steps 2 and 3 land, manually structured void LIR
-  asm must not be treated as losslessly imported by the current adapter.
+- Keep non-scalar output addresses cached across output, tied-input, and
+  semantic-old-value construction; calling `emit_lval` or `emit_rval_id` again
+  can duplicate side effects in member/index/call-based lvalues.
+- Multi-output/memory compatibility lowering still prints through pointer
+  arguments, while semantic results use distinct ordinary SSA names. Step 3
+  must consume `ordinary_inputs`/`ordinary_results`, never `args_str`,
+  `result`, or `ret_type`, as semantic authority.
 - The existing unrelated dirty README changes remain outside this slice.
 
 ## Proof
 
 - Passed: `cmake --preset default && cmake --build --preset default && ctest
   --test-dir build -j --output-on-failure -R
-  '^(frontend_hir_tests|backend_lir_to_bir_interface)$' > test_after.log 2>&1`.
-- Canonical proof log: `test_after.log` (2/2 tests passed).
+  '^(frontend_hir_tests|backend_lir_to_bir_interface|inline_asm_aarch64_simple)$'
+  > test_after.log 2>&1`.
+- Canonical proof log: `test_after.log` (3/3 tests passed).

@@ -406,12 +406,12 @@ enum class LirInlineAsmValueRole : std::uint8_t {
   ReadWrite,
 };
 
-// Constraint-position metadata for an ordinary LIR SSA identity.  This is not
-// a second inline-asm value system: value remains the same LirValueId used by
-// every other instruction, while role and constraint_index describe how that
-// identity participates in this opaque operation.
+// Constraint-position metadata for an ordinary typed-LIR value. This is not a
+// second inline-asm value system: value remains the same LirOperand carrier
+// used by other typed instructions, while role and constraint_index describe
+// how that identity participates in this opaque operation.
 struct LirInlineAsmValueBinding {
-  LirValueId value = LirValueId::invalid();
+  LirOperand value;
   LirTypeRef type;
   LirInlineAsmValueRole role = LirInlineAsmValueRole::Input;
   std::size_t constraint_index = 0;

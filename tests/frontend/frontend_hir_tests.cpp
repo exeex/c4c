@@ -7352,12 +7352,46 @@ int ordinary(int value) {
   __asm__ __volatile__("addi %0, %0, 1" : "+r"(value));
   return value;
 }
+
+int compatibility(int value) {
+  __asm__ __volatile__("yield\n%0" : "+g"(value) : : "memory");
+  return value;
+}
+
+int output_only(int seed) {
+  int value;
+  __asm__("mov %1, %0" : "=r"(value) : "r"(seed));
+  return value;
+}
+
+void multi_memory(int* first, int* second, int input) {
+  __asm__ __volatile__("opaque %0, %1, %2"
+                       : "=m"(*first), "+m"(*second)
+                       : "r"(input));
+}
+
+int* next_inline_asm_slot();
+
+void side_effect_memory() {
+  __asm__ __volatile__("opaque %0" : "+m"(*next_inline_asm_slot()));
+}
 )cpp";
   const c4c::hir::Module module = lower_hir_module(source);
   const c4c::hir::Function* insn_r = find_hir_function_by_name(module, "insn_r");
   const c4c::hir::Function* ordinary = find_hir_function_by_name(module, "ordinary");
+  const c4c::hir::Function* compatibility =
+      find_hir_function_by_name(module, "compatibility");
+  const c4c::hir::Function* output_only =
+      find_hir_function_by_name(module, "output_only");
+  const c4c::hir::Function* multi_memory =
+      find_hir_function_by_name(module, "multi_memory");
+  const c4c::hir::Function* side_effect_memory =
+      find_hir_function_by_name(module, "side_effect_memory");
   expect_true(insn_r != nullptr, ".insn r fixture should lower to HIR");
   expect_true(ordinary != nullptr, "ordinary inline asm fixture should lower to HIR");
+  expect_true(compatibility != nullptr && output_only != nullptr &&
+                  multi_memory != nullptr && side_effect_memory != nullptr,
+              "compatibility and structured-output fixtures should lower to HIR");
 
   const c4c::hir::InlineAsmStmt* insn_asm =
       find_single_inline_asm_stmt(*insn_r);
@@ -7418,10 +7452,28 @@ int ordinary(int value) {
       find_lir_function("insn_r");
   const c4c::codegen::lir::LirFunction* lir_ordinary =
       find_lir_function("ordinary");
+  const c4c::codegen::lir::LirFunction* lir_compatibility =
+      find_lir_function("compatibility");
+  const c4c::codegen::lir::LirFunction* lir_output_only =
+      find_lir_function("output_only");
+  const c4c::codegen::lir::LirFunction* lir_multi_memory =
+      find_lir_function("multi_memory");
+  const c4c::codegen::lir::LirFunction* lir_side_effect_memory =
+      find_lir_function("side_effect_memory");
   expect_true(lir_insn_r != nullptr, ".insn r fixture should lower to LIR");
   expect_true(lir_ordinary != nullptr, "ordinary fixture should lower to LIR");
+  expect_true(lir_compatibility != nullptr && lir_output_only != nullptr &&
+                  lir_multi_memory != nullptr &&
+                  lir_side_effect_memory != nullptr,
+              "compatibility and structured-output fixtures should lower to LIR");
   const auto* lir_insn_asm = find_lir_inline_asm(*lir_insn_r);
   const auto* lir_ordinary_asm = find_lir_inline_asm(*lir_ordinary);
+  const auto* lir_compatibility_asm =
+      find_lir_inline_asm(*lir_compatibility);
+  const auto* lir_output_only_asm = find_lir_inline_asm(*lir_output_only);
+  const auto* lir_multi_memory_asm = find_lir_inline_asm(*lir_multi_memory);
+  const auto* lir_side_effect_memory_asm =
+      find_lir_inline_asm(*lir_side_effect_memory);
   expect_true(lir_insn_asm != nullptr && lir_insn_asm->insn_r.has_value(),
               ".insn r LIR op should preserve structured metadata from HIR");
   expect_true(lir_ordinary_asm != nullptr && !lir_ordinary_asm->insn_r.has_value(),
@@ -7435,6 +7487,97 @@ int ordinary(int value) {
                 ".insn r LIR opcode metadata should preserve numeric field");
   expect_eq_int(static_cast<int>(lir_insn_asm->insn_r->operand_indices[2]), 2,
                 ".insn r LIR rs2 metadata should preserve operand position");
+  expect_eq(lir_insn_asm->original_asm_text, insn_asm->asm_template,
+            "LIR should preserve HIR asm text as semantic authority");
+  expect_eq(lir_insn_asm->original_constraint_text, insn_asm->constraints,
+            "LIR should preserve HIR constraints as semantic authority");
+  expect_eq_int(static_cast<int>(lir_insn_asm->ordinary_inputs.size()), 3,
+                "read/write plus explicit inputs should remain ordered ordinary values");
+  expect_eq_int(static_cast<int>(lir_insn_asm->ordinary_results.size()), 1,
+                "read/write asm should produce one ordinary result");
+  expect_true(lir_insn_asm->ordinary_inputs[0].role ==
+                  c4c::codegen::lir::LirInlineAsmValueRole::ReadWrite &&
+                  lir_insn_asm->ordinary_results[0].role ==
+                      c4c::codegen::lir::LirInlineAsmValueRole::ReadWrite &&
+                  lir_insn_asm->ordinary_inputs[0].constraint_index == 0 &&
+                  lir_insn_asm->ordinary_results[0].constraint_index == 0,
+              "read/write input and result should share only their semantic constraint role");
+  expect_true(lir_insn_asm->ordinary_inputs[0].value !=
+                  lir_insn_asm->ordinary_results[0].value,
+              "read/write lowering should preserve distinct old/new ordinary identities");
+  expect_true(!lir_insn_asm->args_str.empty() &&
+                  !lir_insn_asm->ordinary_inputs[0].value.empty(),
+              "structured values should survive independently of LLVM args_str rendering");
+
+  expect_true(lir_output_only_asm != nullptr &&
+                  lir_output_only_asm->ordinary_inputs.size() == 1 &&
+                  lir_output_only_asm->ordinary_results.size() == 1 &&
+                  lir_output_only_asm->ordinary_results[0].role ==
+                      c4c::codegen::lir::LirInlineAsmValueRole::Output,
+              "output-only asm should preserve its input and produced result roles");
+  expect_true(lir_multi_memory_asm != nullptr &&
+                  lir_multi_memory_asm->ordinary_results.size() == 2 &&
+                  lir_multi_memory_asm->ordinary_inputs.size() == 2 &&
+                  lir_multi_memory_asm->ordinary_results[0].role ==
+                      c4c::codegen::lir::LirInlineAsmValueRole::Output &&
+                  lir_multi_memory_asm->ordinary_results[1].role ==
+                      c4c::codegen::lir::LirInlineAsmValueRole::ReadWrite &&
+                  lir_multi_memory_asm->ordinary_inputs[0].role ==
+                      c4c::codegen::lir::LirInlineAsmValueRole::ReadWrite &&
+                  lir_multi_memory_asm->ordinary_inputs[1].role ==
+                      c4c::codegen::lir::LirInlineAsmValueRole::Input,
+              "multi-output asm should preserve ordered output, read/write, and input roles");
+  expect_true(lir_multi_memory_asm->ordinary_inputs[0].value !=
+                  lir_multi_memory_asm->ordinary_results[1].value,
+              "multi-output read/write asm should keep its old/new identities distinct");
+
+  std::size_t side_effect_call_count = 0;
+  for (const auto& block : lir_side_effect_memory->blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst)) {
+        ++side_effect_call_count;
+      }
+    }
+  }
+  expect_eq_int(static_cast<int>(side_effect_call_count), 1,
+                "read/write memory output lvalue should be evaluated exactly once");
+  expect_true(lir_side_effect_memory_asm != nullptr &&
+                  lir_side_effect_memory_asm->ordinary_inputs.size() == 1 &&
+                  lir_side_effect_memory_asm->ordinary_results.size() == 1 &&
+                  lir_side_effect_memory_asm->ordinary_inputs[0].value !=
+                      lir_side_effect_memory_asm->ordinary_results[0].value,
+              "single-evaluation read/write memory asm should retain distinct old/new values");
+
+  expect_true(lir_compatibility_asm != nullptr,
+              "compatibility fixture should contain LIR inline asm");
+  expect_eq(lir_compatibility_asm->original_asm_text, "yield\n${0}",
+            "semantic asm text should retain the HIR spelling");
+  expect_eq(lir_compatibility_asm->original_constraint_text, "+g",
+            "semantic constraints should retain the HIR spelling");
+  expect_eq(lir_compatibility_asm->asm_text, "yield\\0A${0}",
+            "LLVM compatibility text should retain escaped output rendering");
+  expect_true(lir_compatibility_asm->constraints.find("imr") != std::string::npos,
+              "LLVM compatibility constraints should retain target-specific rewriting");
+  const std::string rendered_before =
+      c4c::codegen::lir::print_llvm(lir_module);
+  c4c::codegen::lir::LirModule semantic_drift = lir_module;
+  c4c::codegen::lir::LirInlineAsmOp* drift_compatibility = nullptr;
+  for (auto& function : semantic_drift.functions) {
+    if (function.name != "compatibility") continue;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<c4c::codegen::lir::LirInlineAsmOp>(&inst)) {
+          drift_compatibility = op;
+        }
+      }
+    }
+  }
+  expect_true(drift_compatibility != nullptr,
+              "semantic drift fixture should find compatibility inline asm");
+  drift_compatibility->original_asm_text = "semantic-only replacement";
+  drift_compatibility->original_constraint_text = "+r";
+  expect_eq(c4c::codegen::lir::print_llvm(semantic_drift), rendered_before,
+            "LLVM printer output should depend only on compatibility rendering state");
 
   c4c::codegen::lir::LirModule drift = lir_module;
   auto drift_fn_it = std::find_if(

@@ -574,9 +574,10 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
             const auto& binding = bindings[index];
             const std::string item_field =
                 std::string(field) + "[" + std::to_string(index) + "]";
-            if (!binding.value.valid()) {
-              fail_verify(item_field + ".value",
-                          "must carry a valid ordinary LirValueId");
+            if (ordinary_role == LirInlineAsmValueRole::Output) {
+              verify_result_operand(binding.value, item_field + ".value");
+            } else {
+              verify_value_operand(binding.value, item_field + ".value");
             }
             require_module_type_ref(mod, binding.type, item_field + ".type");
             if (binding.role != ordinary_role &&
@@ -605,7 +606,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
          result_index < op->ordinary_results.size(); ++result_index) {
       const auto& result = op->ordinary_results[result_index];
       for (std::size_t earlier = 0; earlier < result_index; ++earlier) {
-        if (op->ordinary_results[earlier].value.value == result.value.value) {
+        if (op->ordinary_results[earlier].value == result.value) {
           fail_verify("LirInlineAsmOp.ordinary_results",
                       "result identities must be unique");
         }
@@ -613,7 +614,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
 
       const LirInlineAsmValueBinding* matching_input = nullptr;
       for (const auto& input : op->ordinary_inputs) {
-        if (input.value.value == result.value.value) {
+        if (input.value == result.value) {
           fail_verify("LirInlineAsmOp.ordinary_results",
                       "a produced result must be distinct from every input use");
         }
