@@ -44,6 +44,8 @@ enum class BuildError {
   DuplicateExternalDeclaration,
   EmptyGlobalName,
   InvalidGlobalLinkName,
+  InvalidGlobalInitializer,
+  InvalidGlobalInitializerLinkName,
   DuplicateGlobalObject,
   ValueAlreadyDefined,
   DefinitionTypeMismatch,
@@ -175,7 +177,9 @@ class ModuleBuilder {
   Result<GlobalObjectId, BuildError> add_global_object(
       std::string source_name, Type object_type, int alignment,
       bool is_internal, bool is_const, bool is_extern_declaration,
-      std::optional<c4c::LinkNameId> source_link_name = std::nullopt);
+      std::optional<c4c::LinkNameId> source_link_name = std::nullopt,
+      std::optional<std::string> initializer_payload = std::nullopt,
+      std::vector<c4c::LinkNameId> initializer_function_links = {});
 
   using FunctionEdit =
       std::function<Result<void, BuildError>(FunctionBuilder&)>;

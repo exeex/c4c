@@ -68,9 +68,11 @@ struct FallbackGlobalName {
   std::string name;
 };
 
-// Initializer-free external global receipt. Definitions deliberately remain
-// outside this bounded representation until their initializer has a typed,
-// lossless Raw-BIR form.
+struct GlobalInitializer {
+  std::string opaque_payload;
+  std::vector<LinkNameId> function_links;
+};
+
 struct GlobalObject {
   std::string source_name;
   Type object_type;
@@ -79,6 +81,7 @@ struct GlobalObject {
   bool is_internal = false;
   bool is_const = false;
   bool is_extern_declaration = true;
+  std::optional<GlobalInitializer> initializer;
 };
 
 struct ValueDef {

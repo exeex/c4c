@@ -245,7 +245,9 @@ Result<ExternalDeclId, BuildError> ModuleBuilder::add_external_declaration(
 Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
     std::string source_name, Type object_type, int alignment,
     bool is_internal, bool is_const, bool is_extern_declaration,
-    std::optional<c4c::LinkNameId> source_link_name) {
+    std::optional<c4c::LinkNameId> source_link_name,
+    std::optional<std::string> initializer_payload,
+    std::vector<c4c::LinkNameId> initializer_function_links) {
   if (state_ == State::Consumed)
     return Result<GlobalObjectId, BuildError>::failure(BuildError::AlreadyConsumed);
   if (state_ == State::EditingFunction)
@@ -278,11 +280,34 @@ Result<GlobalObjectId, BuildError> ModuleBuilder::add_global_object(
     identity = linked->second;
   }
 
+  if (!initializer_payload && !initializer_function_links.empty())
+    return Result<GlobalObjectId, BuildError>::failure(
+        BuildError::InvalidGlobalInitializer);
+  std::vector<LinkNameId> resolved_initializer_links;
+  resolved_initializer_links.reserve(initializer_function_links.size());
+  for (const c4c::LinkNameId source_id : initializer_function_links) {
+    if (source_id == c4c::kInvalidLinkName)
+      return Result<GlobalObjectId, BuildError>::failure(
+          BuildError::InvalidGlobalInitializerLinkName);
+    const auto linked = data_->link_names_by_source_id_.find(source_id);
+    if (linked == data_->link_names_by_source_id_.end() ||
+        linked->second.slot >= data_->link_names_.size())
+      return Result<GlobalObjectId, BuildError>::failure(
+          BuildError::InvalidGlobalInitializerLinkName);
+    resolved_initializer_links.push_back(linked->second);
+  }
+
+  std::optional<GlobalInitializer> initializer;
+  if (initializer_payload)
+    initializer = GlobalInitializer{std::move(*initializer_payload),
+                                    std::move(resolved_initializer_links)};
+
   const GlobalObjectId id{data_->epoch_,
                           static_cast<SlotIndex>(data_->globals_.size())};
   data_->globals_.push_back(GlobalObject{source_name, std::move(object_type),
                                          identity, alignment, is_internal,
-                                         is_const, is_extern_declaration});
+                                         is_const, is_extern_declaration,
+                                         std::move(initializer)});
   try {
     data_->globals_by_name_.emplace(source_name, id);
     if (const auto* link_name = std::get_if<LinkNameId>(&identity))

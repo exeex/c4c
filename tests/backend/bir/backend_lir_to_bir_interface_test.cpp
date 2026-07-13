@@ -1440,6 +1440,8 @@ void test_global_object_receipt_and_views() {
   module.link_names.attach_text_table(module.link_name_texts.get());
   module.struct_names.attach_text_table(module.link_name_texts.get());
   const auto linked_name = module.link_names.intern("linked_global");
+  const auto init_fn_a = module.link_names.intern("init_fn_a");
+  const auto init_fn_b = module.link_names.intern("init_fn_b");
 
   const auto external_global = [](std::string name, c4c::LinkNameId link,
                                   c4c::TypeBase base,
@@ -1465,6 +1467,15 @@ void test_global_object_receipt_and_views() {
   module.globals.push_back(external_global(
       "linked_global", linked_name, c4c::TB_DOUBLE,
       lir::LirTypeRef("double"), 8, true));
+  auto initialized = external_global(
+      "initialized_global", c4c::kInvalidLinkName, c4c::TB_INT,
+      lir::LirTypeRef::integer(32), 4, false);
+  initialized.linkage_vis.clear();
+  initialized.is_extern_decl = false;
+  initialized.init_text = std::string{"i32 7\n\0tail", 11};
+  initialized.initializer_function_link_name_ids = {
+      init_fn_b, init_fn_a, init_fn_b};
+  module.globals.push_back(std::move(initialized));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
   expect(imported.has_value(),
@@ -1473,10 +1484,12 @@ void test_global_object_receipt_and_views() {
          "published global storage must be verifier reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 2 && ids[0].slot == 0 && ids[1].slot == 1,
+  expect(ids.size() == 3 && ids[0].slot == 0 && ids[1].slot == 1 &&
+             ids[2].slot == 2,
          "Raw-BIR global IDs must follow source vector order, not LirGlobal.id");
   const auto fallback = view.global_object(ids[0]).value();
   const auto linked = view.global_object(ids[1]).value();
+  const auto definition = view.global_object(ids[2]).value();
   expect(fallback.source_name == "fallback_global" &&
              fallback.object_type == bir::Type{bir::TypeKind::I32} &&
              fallback.alignment == 4 && !fallback.is_internal &&
@@ -1486,8 +1499,18 @@ void test_global_object_receipt_and_views() {
              linked.source_name == "linked_global" &&
              linked.object_type == bir::Type{bir::TypeKind::F64} &&
              linked.alignment == 8 && linked.is_const &&
-             std::holds_alternative<bir::LinkNameId>(linked.identity),
+             std::holds_alternative<bir::LinkNameId>(linked.identity) &&
+             !fallback.initializer && !linked.initializer &&
+             !definition.is_extern_declaration && definition.initializer &&
+             definition.initializer->opaque_payload ==
+                 std::string{"i32 7\n\0tail", 11},
          "global views must preserve type, identity, alignment, and semantic flags");
+  const auto& initializer_links = definition.initializer->function_links;
+  expect(initializer_links.size() == 3 &&
+             view.spelling(initializer_links[0]).value() == "init_fn_b" &&
+             view.spelling(initializer_links[1]).value() == "init_fn_a" &&
+             initializer_links[2] == initializer_links[0],
+         "initializer links must preserve ordered structured references through the link-name table");
   expect(view.global_object("fallback_global").value() == ids[0] &&
              view.global_object(std::get<bir::LinkNameId>(linked.identity))
                      .value() == ids[1],
@@ -1555,14 +1578,30 @@ void test_global_object_rejections_and_transactionality() {
   rejected([](lir::LirModule& m) { m.globals[0].align_bytes = 3; },
            "non-power-of-two global alignment must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].is_extern_decl = false; },
-           "global definitions remain outside this initializer-free packet");
+           "definitions without initializer payloads must reject transactionally");
   rejected([](lir::LirModule& m) { m.globals[0].init_text = "i32 0"; },
            "text initializers must never be silently dropped or parsed");
   rejected([](lir::LirModule& m) {
              m.globals[0].initializer_function_link_name_ids.push_back(
                  m.globals[0].link_name_id);
            },
-           "typed initializer reference evidence must never be silently dropped");
+           "extern declarations cannot carry initializer reference evidence");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].init_text = "i32 0";
+             m.globals[0].initializer_function_link_name_ids = {
+                 static_cast<c4c::LinkNameId>(999)};
+           },
+           "dangling initializer function links must reject the whole module");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].init_text = "i32 0";
+             m.globals[0].initializer_function_link_name_ids = {
+                 c4c::kInvalidLinkName};
+           },
+           "invalid initializer function links must reject the whole module");
 
   bir::ModuleBuilder builder;
   expect(builder.add_link_name(1, "linked_global").has_value(),
@@ -1580,6 +1619,22 @@ void test_global_object_rejections_and_transactionality() {
              .error() == bir::BuildError::InvalidGlobalLinkName,
          "builder must reject explicitly invalid link identities");
   expect(builder
+             .add_global_object("bad_initializer_link",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, false, std::nullopt,
+                                std::string{"i32 0"},
+                                {static_cast<c4c::LinkNameId>(999)})
+             .error() == bir::BuildError::InvalidGlobalInitializerLinkName,
+         "builder must resolve every initializer link before appending a global");
+  expect(builder
+             .add_global_object("bad_invalid_initializer_link",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, false, std::nullopt,
+                                std::string{"i32 0"},
+                                {c4c::kInvalidLinkName})
+             .error() == bir::BuildError::InvalidGlobalInitializerLinkName,
+         "builder must reject invalid initializer link sentinels");
+  expect(builder
              .add_global_object("malformed_global",
                                 bir::Type{bir::TypeKind::Void}, 3,
                                 true, false, false)
@@ -1595,6 +1650,40 @@ void test_global_object_rejections_and_transactionality() {
   expect(!published.has_value() &&
              published.error().reason == bir::PublishError::VerificationFailed,
          "FoundationVerifier must reject malformed staged global state");
+
+  bir::ModuleBuilder coherence_builder;
+  expect(coherence_builder
+             .add_global_object("extern_with_initializer",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, true, std::nullopt,
+                                std::string{"i32 0"})
+             .has_value(),
+         "builder should stage initializer coherence errors for verifier diagnosis");
+  auto incoherent = std::move(coherence_builder).publish();
+  expect(!incoherent.has_value() &&
+             incoherent.error().reason == bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject extern globals carrying initializers");
+
+  bir::ModuleBuilder no_partial_builder;
+  expect(no_partial_builder.add_link_name(1, "init_target").has_value(),
+         "initializer target should enter the sole link-name table");
+  expect(no_partial_builder
+             .add_global_object("rejected_definition",
+                                bir::Type{bir::TypeKind::I32}, 4,
+                                false, false, false, std::nullopt,
+                                std::string{"i32 0"},
+                                {static_cast<c4c::LinkNameId>(99)})
+             .error() == bir::BuildError::InvalidGlobalInitializerLinkName,
+         "dangling initializer receipt must fail before publication state changes");
+  const auto first_after_rejection =
+      no_partial_builder.add_global_object(
+          "accepted_definition", bir::Type{bir::TypeKind::I32}, 4,
+          false, false, false, std::nullopt, std::string{"i32 0"}, {1});
+  expect(first_after_rejection.has_value() &&
+             first_after_rejection.value().slot == 0,
+         "failed initializer resolution must not append a partial global row");
+  expect(std::move(no_partial_builder).publish().has_value(),
+         "a valid definition after rejected receipt should publish normally");
 }
 
 void test_inline_asm_shape_rejection() {

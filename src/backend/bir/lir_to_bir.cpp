@@ -394,12 +394,18 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         module.find_struct_decl(global.llvm_type_ref->struct_name_id()) == nullptr)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global structured type names an unresolved declaration");
-    if (!global.is_extern_decl || global.is_internal ||
-        global.linkage_vis != "external " || global.qualifier != "global " ||
-        !global.init_text.empty() ||
-        !global.initializer_function_link_name_ids.empty())
+    const bool coherent_external =
+        global.is_extern_decl && !global.is_internal &&
+        global.linkage_vis == "external " && global.qualifier == "global " &&
+        global.init_text.empty() &&
+        global.initializer_function_link_name_ids.empty();
+    const bool coherent_ordinary_definition =
+        !global.is_extern_decl && !global.is_internal && !global.is_const &&
+        global.linkage_vis.empty() && global.qualifier == "global " &&
+        !global.init_text.empty();
+    if (!coherent_external && !coherent_ordinary_definition)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                        "only lossless initializer-free external globals are admitted");
+                        "only coherent external declarations and ordinary initialized definitions are admitted");
     if (global.align_bytes < 0 ||
         (global.align_bytes != 0 &&
          (global.align_bytes & (global.align_bytes - 1)) != 0))
@@ -410,6 +416,13 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
           !global_link_ids.insert(global.link_name_id).second)
         return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                           "link-backed global identity is unresolved, mismatched, or duplicated");
+    }
+    for (const c4c::LinkNameId function_link :
+         global.initializer_function_link_name_ids) {
+      if (function_link == c4c::kInvalidLinkName ||
+          module.link_names.spelling(function_link).empty())
+        return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
+                          "initializer function link is invalid or unresolved");
     }
   }
   if (module.string_pool.empty()) {
@@ -823,7 +836,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
         global.is_extern_decl,
         global.link_name_id == c4c::kInvalidLinkName
             ? std::nullopt
-            : std::optional<c4c::LinkNameId>{global.link_name_id});
+            : std::optional<c4c::LinkNameId>{global.link_name_id},
+        global.is_extern_decl
+            ? std::nullopt
+            : std::optional<std::string>{global.init_text},
+        global.initializer_function_link_name_ids);
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import global object", added.error()));

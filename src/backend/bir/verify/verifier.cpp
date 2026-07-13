@@ -296,10 +296,23 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         !is_well_formed(global.object_type) ||
         global.object_type.kind == TypeKind::Void || !type_resolves ||
         !valid_alignment || global.is_internal ||
-        !global.is_extern_declaration ||
+        (global.is_extern_declaration == global.initializer.has_value()) ||
         named == module.globals_by_name_.end() || named->second != id)
       report(result, VerificationRule::GlobalObject, {}, id,
-             "global identity, external shape, type, alignment, and name index must agree");
+             "global identity, definition/extern initializer shape, type, alignment, and name index must agree");
+
+    if (global.initializer) {
+      if (global.initializer->opaque_payload.empty())
+        report(result, VerificationRule::GlobalObject, {}, id,
+               "global definition initializer payload must be present exactly");
+      for (const LinkNameId function_link :
+           global.initializer->function_links) {
+        if (!function_link.valid() || function_link.epoch != module.epoch_ ||
+            function_link.slot >= module.link_names_.size())
+          report(result, VerificationRule::GlobalObject, {}, function_link,
+                 "global initializer function link must resolve in the module link-name domain");
+      }
+    }
 
     if (const auto* link_name = std::get_if<LinkNameId>(&global.identity)) {
       ++linked_global_count;
