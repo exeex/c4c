@@ -4,7 +4,7 @@ Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
 `ComparisonSelect` is a target-independent `CanonicalSemantic` analysis used
-by P02 and later semantic consumers. It derives relationships from typed
+by B2 / P02 and later semantic consumers. It derives relationships from typed
 instructions, values, stable IDs, and ordinary def-use. It is not a pipeline
 stage and never mutates or publishes BIR.
 
@@ -106,8 +106,9 @@ reconstruct it from text or retain facts from an earlier revision.
 
 ## 5. Consumer boundary
 
-P02 may use these facts to plan its own closed transactional rewrites, but the
-analysis cannot prescribe operand swaps, folds, fusion, or pass order. Later
-select/condition consumers may query the same schema only through a handle for
-their exact input revision. Any target-bound consumer must compute its own
-later-domain facts rather than adding target information to this result.
+B2 / P02 may use these facts to plan its own closed transactional rewrites, but
+the analysis cannot prescribe operand swaps, folds, fusion, or pass order.
+Later select/condition consumers may query the same schema only through a
+handle for their exact input revision. Any target-bound consumer must compute
+its own later-domain facts rather than adding target information to this
+result.

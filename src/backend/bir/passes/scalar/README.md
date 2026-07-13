@@ -3,8 +3,9 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P02` is the `S03` transformation. It converts the exact committed P01 output
-into normalized target-independent scalar, comparison, cast, and select forms.
+`P02` is the `B2` transformation. It converts the exact committed B1 / P01
+output into normalized target-independent scalar, comparison, cast, and select
+forms for the B3 / P03 successor.
 
 ## 1. Exact input and analysis checkpoint
 
@@ -87,7 +88,7 @@ authoritative `MutationSummary`, and runs P02 postconditions plus
 verifier-on-commit. The pipeline publishes the complete function wave once;
 failure in any function discards the unpublished occurrence candidate.
 
-Success publishes exactly one immutable S03 revision:
+Success publishes exactly one immutable B2 revision:
 
 - the input epoch and framework-derived module/function revisions;
 - `PassProperty::ScalarsCanonical` established by the executor;

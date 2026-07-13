@@ -3,16 +3,16 @@
 Status: closed architecture contract. Implementation is deferred until the BIR
 architecture is accepted.
 
-`P01` is the `S02` transformation in the root BIR order. It converts one
+`P01` is the `B1` transformation in the root BIR order. It converts one
 verified `RawBir` revision into legal target-independent type and opcode forms.
 It is a semantic-schema conversion, not recovery for a malformed draft and not
 a machine-facing legalization phase.
 
 ```text
-S01 published RawBir
-  -> P01 legalize (this contract)
-  -> committed TypesLegal revision
-  -> S03 / P02 scalar
+A2 published RawBir
+  -> B1 / P01 legalize (this contract)
+  -> committed B1 TypesLegal revision
+  -> B2 / P02 scalar
 ```
 
 ## 1. Exact input checkpoint

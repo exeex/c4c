@@ -3,38 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Resolve pipeline-wide representation choices
+Current Step ID: 4
+Current Step Title: Repair B1-B2 canonical pass identifiers
 
 ## Just Finished
 
-- Plan Step 3.2 closed the pipeline's acceptance-critical representation
-  choices without making the pipeline a duplicate semantic owner.
-- Synchronized explicit-`Phi` SSA and the core-owned `{source BlockId,
-  SuccessorRole, index}` `EdgeKey`; intrinsic registry/versioning, asm-goto
-  result availability, local-unwind rejection, aggregate paths, memory-effect
-  analysis ownership, and runtime-helper eligibility with their local owners.
-- Selected deterministic plan-first ID reservation and cancellation/last-good
-  semantics, leaving only labeled implementation choices and producer/source
-  gaps in the pipeline gap ledger.
+- Plan Step 4 repaired the obsolete stage identifiers across B1 / P01 legalize,
+  B2 / P02 scalar canonicalization, and their `ComparisonSelect` analysis
+  dependency.
+- Recorded the canonical A2 -> B1 / P01 -> B2 / P02 -> B3 / P03 adjacency
+  without changing the target-independent transactional contracts, opaque
+  `InlineAsm` preservation, or exact-revision immutable analysis boundary.
 
 ## Suggested Next
 
-- Execute Plan Step 4, "Repair B1-B2 canonical pass identifiers."
+- Execute Plan Step 5, "Repair B3-B4 canonical pass identifiers."
 
 ## Watchouts
 
-- Keep the pipeline's Section 18 as a pointer ledger: core remains sole owner
-  of SSA, `EdgeKey`, intrinsic registry, asm-goto availability, and unwind
-  topology; the named pass/preparation documents own their local dispositions.
-- Step 4 should repair B1-B2 identifiers only and preserve the root README as
-  sole normative order authority.
+- Preserve the root README as the sole normative order authority while Step 5
+  repairs CFG/SSA pass and analysis/publication identifiers.
+- Keep pass-local semantics intact; this packet changed registry identities
+  and adjacency only.
 - Step 14 and implementation remain forbidden pending completion of the repair
   route and a new blocker-free independent Step 13 review.
 
 ## Proof
 
-- Passed: `git diff --check && ! rg -n 'chosen canonical SSA.*must|EdgeKey.*final|intrinsic namespace.*open|asm-goto outputs.*open|exception/unwind edges.*open|runtime-helper eligibility.*open|unresolved.*(SSA|EdgeKey|intrinsic|asm-goto|exception|helper)' src/backend/bir/pipeline/README.md && rg -n 'explicit.*Phi|SuccessorRole|RegistryVersion|asm-goto|MayUnwind|runtime.helper|analysis-only|deterministic|cancellation|source gap|implementation choice' src/backend/bir/pipeline/README.md`.
+- Passed: `git diff --check && ! rg -n 'S0[0-9]|S1[0-9]|S2[0-9]|G01' src/backend/bir/passes/legalize/README.md src/backend/bir/passes/scalar/README.md src/backend/bir/analysis/comparison/README.md && rg -n 'A2|B1|B2|B3|P01|P02|target-independent|transaction|revision|opaque' src/backend/bir/passes/legalize/README.md src/backend/bir/passes/scalar/README.md src/backend/bir/analysis/comparison/README.md`.
 - The supervisor-selected documentation proof was sufficient; this packet did
   not create or modify `test_after.log` because regression logs were explicitly
   outside packet ownership.
