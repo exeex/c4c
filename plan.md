@@ -3,8 +3,10 @@
 Status: Active
 Source Idea: ideas/open/731_inline_asm_transport_and_regalloc_contract.md
 Supersedes: the documentation-convergence acceptance tail rejected by the
-first full review and the failed Step 13 tail recorded in
-`review/731_full_architecture_review_repeat.md`
+first full review, the failed Step 13 tail recorded in
+`review/731_full_architecture_review_repeat.md`, and the repeated Step 13
+checkpoint rejected by
+`review/731_post_repair_full_architecture_review.md`
 
 ## Purpose
 
@@ -34,6 +36,7 @@ no blocking finding.
 
 - `ideas/open/731_inline_asm_transport_and_regalloc_contract.md`
 - `review/731_full_architecture_review_repeat.md`
+- `review/731_post_repair_full_architecture_review.md`
 - `src/backend/bir/README.md`
 - `src/backend/bir/REVIEW_TEMPLATE.md`
 - `src/backend/bir/LEGACY_COVERAGE.md`
@@ -103,9 +106,9 @@ bundle or invent a temporary.
 
 ## Execution Rules
 
-1. For this review reset, execute Steps 9.1, 9.2, 11, 12, and 13 in order.
-   Steps 2.1-8 and Step 10 are resolved checkpoints; recheck their adjacency
-   when touched, but do not create a separate repeat packet unless a repair
+1. For this review reset, execute Steps 9.2, 12, and 13 in order. Steps 2.1-9.1,
+   10, and 11 are resolved checkpoints; recheck their adjacency when touched,
+   but do not create a separate repeat packet unless the Step 9.2 repair
    invalidates one of their contracts.
 2. Treat each substep as one bounded documentation packet. Compare all edited
    contracts with their immediate predecessor, successor, and root entry.
@@ -393,22 +396,47 @@ Review in this order:
 1. `src/backend/bir/analysis/liveness/README.md`
 2. `src/backend/bir/regalloc/README.md`
 3. `src/backend/bir/regalloc/spill_reload/README.md`
-4. `src/backend/bir/allocated/README.md`
-5. the E1-E4 profiles in `src/backend/bir/verify/README.md`
-6. root F1-F3 boundary language
+4. `src/backend/bir/pseudo/README.md`
+5. `src/backend/bir/passes/out_of_ssa/README.md`
+6. `src/backend/bir/allocated/README.md`
+7. `src/backend/bir/pipeline/README.md`
+8. the E1-E4 profiles and ownership coverage ledgers in
+   `src/backend/bir/verify/README.md`
+9. root F1-F3 boundary language and the normative MIR boundary
 
 Actions:
 
 - add one BIR-owned post-allocation realizability input and closure that knows
   enough abstract frame-placement bounds to prove direct one-record mapping,
   or restrict the admitted allocated schema so the same proof is complete
+- choose and document one explicit BIR-owned post-E3 producer/schema route for
+  every required final-frame action. The route must admit an explicit
+  one-record representation for frame setup/teardown, stack adjustment,
+  callee-save/restore, and any other required frame action; it may use a
+  bounded E4 subordinate mutator followed by full exact-current reprojection
+  and recomputation, or another coherent BIR-owned route with equivalent
+  publication guarantees
+- if the route mutates after E3, name its input and output revisions, admitted
+  node/schema additions, stable-identity rules, sole invoking owner,
+  invalidation behavior, exact-current `ProjectedConstraintSet`, E1, E2, E3,
+  frame, and target-realizability recomputation order, verifier interval, and
+  all-or-nothing rollback boundary; no predecessor-keyed product may be
+  relabeled current
 - cover E3 `Spill`/`Reload`, D2 outgoing-stack operations, dynamic-frame
   interactions, call/frame accesses, scratch state, and any displacement or
   address-materialization limit that could otherwise require multiple MIR
   records
+- do not treat failure-only handling for ordinary spill or call frames as the
+  realization route: supported frame-requiring capacity spills and calls must
+  have a named BIR-owned path to admitted one-record actions before F1
 - require that closure to reject transactionally before E4 when one-record
   mapping cannot be proved; MIR/F1 remains a non-repairing mapper and cannot
   return capacity, spill, copy, frame, or address repair to D4
+- reconcile `pipeline/README.md` and `verify/README.md` coverage and legacy
+  ledgers so E4 is the exact owner of the private `FrameRealizationPlan` and
+  F1 is apply-only; remove every remaining claim that MIR/backend or an
+  outside-BIR owner chooses frame layout, offsets, storage plans, or
+  prologue/epilogue policy
 - define separate verifier intervals for the initial-D5 Pseudo publication and
   the assigned E3-retry/D5-resolved private candidate: the first forbids
   allocation facts, while the latter admits the exact assignments and explicit
@@ -422,10 +450,15 @@ Completion check:
 - all required scratch/copy/spill state is allocated and verified before E4;
   every non-`InlineAsm` node consumed by MIR is directly realizable under the
   chosen strict mapping, and MIR/backend has no repair escape hatch
+- every required final-frame action has one explicit admitted post-E3 BIR
+  producer/schema route, including ordinary nonzero spill/call frames; the
+  route is not merely a transactional failure clause
 - stack, call, spill, reload, frame, and scratch nodes each have a documented
   one-record proof before `MirReadyBirView` publication, and the verifier no
   longer both forbids and requires allocation state on the same D5-to-E4
   candidate interval
+- the pipeline and verifier ownership ledgers agree that E4 privately owns the
+  exact `FrameRealizationPlan` and F1 only applies it
 
 ### Step 10 - Freeze per-revision constraint projection ownership
 
@@ -506,7 +539,10 @@ Actions:
   edge, and implementation-status statement
 - prove that every product required after D5 copy resolution is exact-current,
   every admitted stack/call/spill/frame node has a BIR-owned one-record
-  realizability proof, and the two D5 verifier intervals are distinct
+  realizability proof, every required post-E3 final-frame action has an
+  explicit BIR-owned producer/schema route, the pipeline and verifier ledgers
+  assign the exact private `FrameRealizationPlan` to E4 and make F1 apply-only,
+  and the two D5 verifier intervals are distinct
 - run `git diff --check`, local Markdown link/path validation, and focused
   searches for stale IDs, duplicate authority, unresolved acceptance choices,
   copied graphs, late allocation repair, absent legacy paths/owners, stale C5
@@ -534,6 +570,11 @@ Actions:
   one-record closure; distinct initial-D5 versus assigned retry/resolved
   verifier intervals; and exhaustive legacy-path ownership with C6 address
   attribution
+- independently recheck both blockers from
+  `review/731_post_repair_full_architecture_review.md`: an admitted BIR-owned
+  post-E3 producer/schema route for every required final-frame action, and
+  synchronized pipeline/verifier ledgers in which E4 owns the exact private
+  `FrameRealizationPlan` while F1 is apply-only
 - explicitly re-judge the strict no-late-allocation-repair rule and verify it
   has not been used to conceal an unrealizable post-D5 node
 - classify every finding as resolved, intentionally deferred implementation,
