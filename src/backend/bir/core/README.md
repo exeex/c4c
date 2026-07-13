@@ -1,16 +1,16 @@
 # Raw BIR Core Design Contract
 
-Status: **Raw-boundary contract reviewed; wider target schema remains under
-review**. This file is deliberately more complete than the bootstrap
+Status: **closed architecture contract; implementation remains incomplete**.
+This file is deliberately more complete than the bootstrap
 implementation. It is not a claim that the headers in this directory already
 implement the APIs below.
 
 This contract defines the storage and public API of `RawBir`, the first owned,
 verified IR produced after LIR import. It is intended to be reviewed together
-with the ordered pass contracts. A decision marked **Target** is proposed for
-the replacement architecture; a statement marked **Confirmed current fact**
-describes code that exists today; an item marked **Open** must be resolved before
-implementation.
+with the ordered pass contracts. A decision marked **Target** is part of the
+accepted replacement architecture; a statement marked **Confirmed current
+fact** describes code that exists today. Missing source carriers or missing
+implementation are recorded as such and are not unresolved architecture.
 
 ## 1. Scope and authority
 
@@ -42,7 +42,7 @@ produces `CanonicalBir` over the same core storage.
 
 ### 1.2 Stage ownership inside core
 
-The following are explicitly outside **Raw and Canonical** BIR core:
+The following are explicitly outside **Raw/Canonical core storage**:
 
 - abstract register homes, register classes chosen for allocation,
   spill/reload decisions, spill-slot identities, live intervals, coalescing,
@@ -70,9 +70,13 @@ provenance from core and bind those results to a revision. Target preparation
 may read canonical core and produce revision-bound capacity, ABI-eligibility,
 class/group, tie, early-clobber, and clobber-exclusion facts. Original asm
 constraint/clobber tokens remain semantic Raw/Canonical payload; normalized
-target meaning does not. Chosen abstract or physical homes, spill/reload nodes,
-frame identities, and target operations are typed later-plan or MIR facts;
-none may be written back into Raw/Canonical BIR.
+target meaning does not. Allocation liveness and interference are exact-revision
+`E1` BIR analysis products; chosen abstract homes are `E2` BIR allocation
+products; and abstract spill-object identities plus explicit `Spill`/`Reload`
+nodes are owned by the private `E3` Pseudo BIR candidate. None may be written
+back into Raw/Canonical core storage. Concrete registers, frame locations,
+target operations, and encodings remain MIR/backend facts after verified `E4`
+publication.
 
 ### 1.3 Dependency boundary
 
@@ -118,14 +122,14 @@ opaque source payload:
 
 Asm-goto topology and the later revision-bound constraint interpretation,
 register allocation, spill/reload, and MIR forms described later in this
-document remain target design, not current core state. Parsed constraint
-objects are deliberately not future Raw/Canonical core state.
+document remain unimplemented, not architecturally unresolved. Parsed
+constraint objects are deliberately not future Raw/Canonical core state.
 
 ## 3. Ownership graph
 
 ```text
 RawBir (move-only stage proof)
-└── ModuleData [ModuleEpoch, ModuleRevision]
+└── ModuleData [ModuleEpoch, ModuleRevision, RegistryVersion]
     ├── SemanticDataLayout: byte order + per-address-space pointer layout
     ├── TypeStore:        SlotMap<TypeData, TypeId> + structural interning
     ├── TypeNameStore:    SlotMap<TypeNameData, TypeNameId>
@@ -174,6 +178,7 @@ only the successful Raw verification gate can construct it from a consumed
 using ModuleEpoch = std::uint64_t;
 using ModuleRevision = std::uint64_t;
 using FunctionRevision = std::uint64_t;
+using RegistryVersion = std::uint64_t;
 using SlotIndex = std::uint32_t;
 using Generation = std::uint32_t;
 
@@ -562,6 +567,17 @@ must not use producer spelling/position as semantic identity. Memory provenance
 is not stored here: it is derived from object IDs and pointer-producing
 instructions by a revision-keyed analysis.
 
+This is the complete Raw/Canonical v1 debug/origin schema. Object debug types
+are reconstructed from the entity's semantic `TypeId`, resolved layout, symbol
+or local attachment, and the scope/location graph; core does not maintain a
+second debug-type identity graph. Richer lexical, macro, discriminator, or
+source-language type detail may be dropped at import and cannot affect
+verification. `OriginId` is the sole import/pass provenance link; parallel
+origin arrays and producer positions are not alternate authority. This bounded
+retained subset is sufficient for v1 object debug output, while richer output
+is an implementation/source-carrier extension rather than an architecture
+prerequisite.
+
 ## 6. Function IR schema
 
 ### 6.1 Values, operands, and definitions
@@ -631,7 +647,7 @@ Representative payloads:
 enum class MemoryEffect : std::uint8_t {
   None, Read, Write, ReadWrite, Allocate, Fence, Unknown
 };
-struct IntrinsicId { std::uint32_t value; }; // build-versioned semantic registry
+struct IntrinsicId { std::uint32_t value; }; // interpreted only with RegistryVersion
 enum class UnaryOp : std::uint8_t { Neg, BitNot, LogicalNot, FNeg };
 enum class BinaryOp : std::uint8_t {
   Add, Sub, Mul, UDiv, SDiv, URem, SRem, And, Or, Xor, Shl, LShr, AShr,
@@ -774,6 +790,16 @@ registry entry supplies complete type/immediate arity, effects, purity, and
 required semantic feature. Target feature availability is checked by
 legalization/preparation rather than hidden inside the numeric ID.
 
+Core owns one closed, build-versioned semantic intrinsic registry. A module
+records its `RegistryVersion`, and `IntrinsicId` denotes only the entry at that
+version; registry entries own the stable semantic name, operand/result and
+immediate schema, conservative effects, portable feature class, and required
+legalization disposition. P07 owns alias normalization into those canonical
+IDs. Unknown IDs, mismatched versions, and ISA-opcode identities fail closed.
+An operation with target-independent semantics may carry a required-feature
+tag, but selected instructions, helpers, and target support decisions remain
+later-stage products.
+
 Fixed automatic objects use `LocalId` plus `LocalAddr`; they never imply a frame
 slot. `DynamicAlloc` has one descriptor-visible count/byte-size operand and a
 pointer result, while its payload records element type and requested alignment.
@@ -910,15 +936,34 @@ independently mutable edge table. `AsmGotoTerm` makes
 inline-asm control edges visible without letting an ordinary instruction own a
 hidden CFG. Its `asm_instruction` must be the final ordinary instruction in the
 same block, must be `Opcode::InlineAsm`, and its label constraints must match
-the terminator targets one-for-one. `ReturnTerm` has no value for a void
+the terminator targets one-for-one when the later constraint-binding product is
+formed. The stored target vector itself is the ordered typed topology; Raw does
+not recover or authorize targets by parsing constraint text. `ReturnTerm` has no value for a void
 `FunctionType` and exactly one type-equal semantic value otherwise. Aggregate
 and complex returns are one typed aggregate value; physical return lanes are
 not representable in core. A `Call` likewise produces zero results for void and
 exactly one result of its semantic function result type otherwise.
 
+Asm-goto results use the paired ordinary-instruction model, not terminator-
+defined edge values. Every result is defined by the final `InlineAsm`
+instruction and is therefore available on each successor edge under the same
+dominance rule as any other instruction result. The `AsmGotoTerm` owns only
+ordered fallthrough/goto topology. A producer form whose outputs have
+edge-specific definitions or availability cannot be represented by v1 and
+must fail import; it must not be approximated with duplicated values, hidden
+edge payload, or parsed constraint state.
+
+Raw/Canonical v1 has no in-function exception, invoke, cleanup-pad, or landing-
+pad edge. `CallEffects::MayUnwind` means an exception may escape the current
+function; it does not create a hidden successor. A producer call requiring a
+local unwind destination is an explicit source/schema gap and fails import.
+If a later architecture admits handled exceptions, core terminators and their
+ordered successor slots must own those edges and P03/P04 must process their
+`EdgeKey`s; no call payload or exception side table may become CFG authority.
+
 ### 6.5 SSA choice
 
-**Target:** use explicit `Phi` instructions with incoming
+**Target (closed):** use explicit `Phi` instructions with incoming
 `(EdgeKey incoming_edge, Operand value)` pairs because legacy BIR, LIR import, and
 the reference backend already expose this form. Core must not also implement
 block arguments as a simultaneous authority. Phi operands participate in
@@ -932,6 +977,14 @@ entry names one such slot; parallel switch or asm-goto edges from the same
 source therefore remain separate even when their destination is identical.
 Reordering or redirecting successor slots must update phi edge keys in the same
 transaction.
+
+`EdgeKey` has exactly the stored schema `{source BlockId, SuccessorRole,
+successor_index}`. The role and index together are the typed successor-slot
+ordinal used by P03/P04; destination block, predecessor number, rendered label,
+and vector position elsewhere are never edge identity. Raw permits valid
+single-definition SSA values and explicit phis; P04 is the sole owner of the
+canonical phi placement/order and promotion promises. Block arguments are not
+an alternate v1 representation.
 
 ## 7. Def-use contract
 
@@ -1357,7 +1410,7 @@ belong in core.
 | `src/backend/legacy/bir_memory_provenance.hpp: MemoryAccessProvenance`; `bir_local_array_semantic_gep.hpp` | object/range/path proof records | core preserves explicit objects, GEP/ptr-offset derivations, effects, source origins | proof/status/index records are revision-keyed provenance/range analyses, not core fields |
 | `bir.hpp: AtomicOperation` and atomic enums; `src/backend/legacy/prealloc/atomics.cpp` | atomic kind/order/result and later target carriers | ordinary atomic instructions with complete operands/results/orderings | carrier/register/loop/helper realization belongs to preparation/MIR |
 | `bir.hpp: CallInst`, `CallingConv` | direct/indirect call, args/results, variadic and semantic call flags | symbol-or-operand callee, structural callee type, typed args/results, source convention | `CallArgAbiInfo`, `CallResultAbiInfo`, arg source routing, call moves and homes |
-| `src/backend/legacy/prealloc/call_plans.cpp`; `regalloc/call_return_abi.cpp` | ABI classification, source recovery, call placement | core supplies typed call operands, exact producer def-use, symbols and object facts | ABI eligibility, chosen homes, and register/stack move plans remain typed preparation/MIR products outside BIR |
+| `src/backend/legacy/prealloc/call_plans.cpp`; `regalloc/call_return_abi.cpp` | ABI classification, source recovery, call placement | core supplies typed call operands, exact producer def-use, symbols and object facts | ABI eligibility is preparation state; chosen abstract homes are E2 BIR products; register/stack realization remains later BIR/MIR work outside Raw/Canonical core |
 | `bir.hpp: InlineAsmMetadata`, `InlineAsmOperandMetadata`; `prealloc/inline_asm.cpp` | asm template, constraints, ties, clobbers, memory/address intent and realization | ordinary `InlineAsm` operand/result edges plus original opaque asm/constraint text, ordered clobbers, side effects, and `AsmGotoTerm` CFG | parsed constraints, ties, chosen homes, target operations, and encoding are revision-bound later-stage facts outside Raw/Canonical core |
 | `bir.hpp: IntrinsicOperation`; `prealloc/special_carriers.hpp: PreparedIntrinsicCarrier` | intrinsic semantic family plus target carrier | typed semantic intrinsic ID, immediates, operands/results/effects | required target feature legality and carrier placement are pipeline/preparation/MIR |
 | `src/backend/legacy/prealloc/variadic*.cpp/.hpp` | entry save areas, va_list layout, va_start/arg/copy/end plans | semantic variadic signature and explicit vararg operations with requested types/layout | register save areas, offsets, helper resources and operand homes |
@@ -1369,7 +1422,7 @@ belong in core.
 | `bir_route7_comparison.cpp`, `bir_comparison_view.cpp` | comparison producer and branch condition recovery | compare opcode/result IDs plus terminator condition use | fused/materialized target choice is analysis/MIR, not core annotation |
 | `bir_route8.cpp`, `bir_return_view.cpp` | return-chain recovery and call-result lanes | optional single return operand, zero-or-one call result, aggregate/complex semantic value, exact def-use | return-chain indexes and every ABI lane home |
 | `bir_validate.cpp: validate_*`, `validate` | legacy structural and semantic checks | structured Raw/Canonical verifier rules over stable IDs and descriptors | text-only boolean validation and name fallback |
-| `src/backend/legacy/prealloc/liveness.*`, `regalloc/*`, `stack_layout/*` | liveness, homes, allocation, slots, moves, frame | core supplies stable instructions/values/uses/CFG inputs and revisions | every interval/home/spill/reload/register/frame-offset/move remains analysis, typed later-plan, or MIR/backend state outside BIR |
+| `src/backend/legacy/prealloc/liveness.*`, `regalloc/*`, `stack_layout/*` | liveness, homes, allocation, slots, moves, frame | core supplies stable instructions/values/uses/CFG inputs and revisions | intervals/interference are E1 BIR analysis, abstract homes are E2 BIR products, and abstract spill objects plus explicit spill/reload nodes are E3 Pseudo BIR; concrete registers/frame offsets/machine moves remain later |
 
 Coverage means the new IR retains the semantic input needed to recompute the
 old outcome. It does not require preserving an old route status, lookup table,
@@ -1422,11 +1475,11 @@ for these confirmed gaps:
   source gap, not defaults inferred from spelling.
 - current LIR has no top-level-asm carrier, including no producer-supplied
   ordered `SymbolId` dependency vector; it also lacks alias, symbol-version,
-  constructor-priority, destructor-priority, and exception/unwind module
+  constructor-priority, destructor-priority, and handled exception/unwind
   families. Core has owners for the former module directives, but import must
   report the missing carrier and must never recover dependencies by parsing asm
-  text. Exception/unwind remains outside this schema until a typed semantic
-  design is added.
+  text. V1 deliberately admits only `MayUnwind` escape effects; invoke,
+  cleanup-pad, landing-pad, and local unwind-edge forms fail import.
 - the target schema distinguishes IEEE binary16/32/64/128 from x87
   extended-80 semantics and keeps semantic width separate from object storage
   size/alignment. Current LIR text that says only `F128`, `half`, or `long
@@ -1443,7 +1496,7 @@ legacy prepared records to Raw BIR.
 This table audits design ownership, not implementation or end-to-end compiler
 completion. `schema-owned` means this document assigns a closed core schema;
 `source-gap` means the core schema exists but today's LIR cannot populate it
-losslessly; `open` means a design decision is still unresolved.
+losslessly. No acceptance-critical v1 family remains architecturally open.
 
 | Feature family | Status | Evidence / remaining boundary |
 |---|---|---|
@@ -1458,31 +1511,27 @@ losslessly; `open` means a design decision is still unresolved.
 | CFG, exact parallel-edge `EdgeKey` phi authority and single-value return | `schema-owned` | terminator-derived successor-slot multiset; no physical return lanes |
 | Inline asm constraints, operands, clobbers and asm-goto edges | `bounded-current` plus `source-gap` | current generic SSA inputs/results and original opaque payload transport non-goto asm; typed symbol/address-space value carriers and asm-goto topology remain source gaps, while parsed constraints are intentionally later revision-bound facts |
 | Top-level asm, symbol versions and constructor/destructor priority | `source-gap` | ordered module records exist; current LIR has no complete producer family |
-| Target-independent intrinsic namespace | `open` | descriptor mechanics exist; stable semantic registry boundary is unresolved |
-| Modern asm-goto output-edge value semantics | `open` | paired `InlineAsm`/`AsmGotoTerm` is defined; output value edge model needs review |
-| Debug scopes/types required for object debug output | `open` | IDs and attachments exist; required retained subset is unresolved |
-| Exception/unwind/cleanup-pad control flow | `open` | call unwind effect is represented, but no exception-edge core schema is approved |
+| Target-independent intrinsic namespace | `schema-owned` | core owns the build-versioned semantic registry and P07 canonicalizes aliases; ISA selection and feature support remain later |
+| Modern asm-goto output-edge value semantics | `schema-owned` plus `source-gap` | paired `InlineAsm` results are ordinary definitions available on every successor; edge-specific output definitions are rejected by v1 |
+| Debug scopes/types required for object debug output | `schema-owned` | file/scope/location IDs and origin attachments are the retained subset; semantic `TypeId` supplies object type/layout and no parallel debug-type authority exists |
+| Exception/unwind/cleanup-pad control flow | `source-gap` | `MayUnwind` models escape only; v1 rejects local unwind destinations and stores no hidden exception edges |
 | Stable IDs, reservation, exact def-use, transactions, revisions and atomic publication | `schema-owned` | `ReservedInst`, descriptors, editors, `ModuleDraft -> verify -> RawBir` |
-| ABI placement, chosen homes, spill/reload, call moves, frame, opcodes and emission | `schema-owned` | explicitly excluded from every Raw/Canonical BIR revision and deferred to later plans/MIR |
+| ABI placement, chosen homes, spill/reload, call moves, frame, opcodes and emission | `schema-owned` | excluded from Raw/Canonical core; D2 prepares ABI/call facts, E1 owns allocation liveness, E2 owns abstract homes, E3 owns explicit Pseudo BIR spill/reload, E4 publishes, and MIR owns concrete target realization |
 
-## 16. Open review questions
+## 16. Closed v1 policy choices
 
-1. Do modern asm-goto output operands require terminator-defined edge values, or
-   is the paired `InlineAsm` instruction plus `AsmGotoTerm` sufficient?
-2. Which source attributes beyond those listed are semantically required before
-   ABI preparation (for example sanitizer suppression or patchability)? Each
-   needs an owner and stage justification; `returns_twice` is already owned by
-   `FunctionAttributes` and `CallEffects`.
-3. Should `ConstantId` slots be generation-reused? Immutable module interning
-    may be simpler and safer if constant/type slots are append-only for a module.
-4. What subset of debug scopes/types must survive to object debug generation,
-    beyond instruction locations and display names?
-5. Which target-independent intrinsic namespace is stable enough for core, and
-    which reference-backend ISA-named intrinsics require a structured inline-asm
-    or later target-extension design instead?
-6. Can object size/alignment always be imported from structured LIR metadata,
-    or must Raw BIR temporarily accept unresolved layout tokens? Publication
-    currently requires all such tokens resolved.
+The remaining policy is fail-closed and does not defer architecture decisions:
 
-No implementation should begin until these questions and the neighboring pass
-contracts agree on inputs, outputs, and the fixed pass order.
+1. Source attributes not named by the closed function/call registries are
+   rejected when semantically required; diagnostics-only attributes may be
+   dropped. New semantic attributes require an explicit registry extension and
+   stage owner.
+2. Interned `TypeId` and `ConstantId` slots are append-only for one module epoch;
+   they tombstone but are not generation-reused. Other slot maps retain the
+   generation-reuse rules in section 4.
+3. Raw publication requires resolved structured object size/alignment and exact
+   floating format/storage layout. Unresolved layout tokens are a producer gap,
+   never temporary Raw payload.
+4. Architecture acceptance does not imply implementation completion. The
+   bootstrap source gaps catalogued above remain fail-closed until their typed
+   carriers and verifier rules are implemented.
