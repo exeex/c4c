@@ -8,30 +8,30 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- The Plan Step 3 accumulated audit found and remediated six unclassified
-  verified Raw-BIR lookup/uniqueness indexes: link and struct spelling,
-  typed struct declaration, string data, external declaration, and global
-  object indexes. Each now has exact guard classification and code-adjacent
-  evidence of its primary typed/order/identity authority and bidirectional
-  `FoundationVerifier` checks.
-- This is string-authority guard hygiene only, not container capability
-  progress and not completion of a semantic family.
+- Plan Step 3 now admits producer-valid direct named struct and union extern
+  global declarations when `llvm_type_ref` carries an exact, resolvable
+  `StructNameId`. External and weak-external rows preserve link-backed or
+  fallback identity, source order, visibility, alignment, and no initializer
+  through verified Raw BIR and Canonical BIR.
+- Named definitions and flexible literal struct definitions retain their
+  existing paths; unkeyed literal aggregate externs and malformed authority or
+  declaration facts still reject transactionally.
 
 ## Suggested Next
 
-- Resume the producer-valid Plan Step 3 global-family audit and checkpoint
-  decision. Treat any uncovered producer family as a bounded Step 3 packet
-  rather than declaring the checkpoint complete from this guard-only cleanup.
+- Audit the next producer-valid Plan Step 3 globals/objects family, or make the
+  Step 3 checkpoint decision if no additional producer-emitted family remains.
 
 ## Watchouts
 
-- The spelling/name maps remain verified secondary indexes. The typed IDs,
-  ordered tables, and explicit `LinkNameId`/fallback identity variants remain
-  primary; no runtime behavior or semantic acceptance changed.
+- Direct aggregate externs require a named structured mirror with a valid,
+  resolvable `StructNameId` and exact rendered spelling parity. Do not widen
+  this route to literal aggregates, pointer/array aggregate neighbors, or
+  initializer-bearing declarations without separate producer evidence.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
-  `cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^string_authority_guard$' > test_after.log 2>&1`.
-- The fresh build completed and root `test_after.log` records the guard passing
-  1/1; JSON validation and `git diff --check` also passed.
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
+- The fresh build completed and root `test_after.log` records all 4/4 backend
+  tests passing.

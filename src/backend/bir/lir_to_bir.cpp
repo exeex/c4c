@@ -333,7 +333,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
       !global.type.is_ptr_to_array && global.type.inner_rank == 0 &&
       !global.type.is_fn_ptr;
   if (direct_aggregate) {
-    if (global.is_extern_decl || global.init_text.empty() ||
+    if ((!global.is_extern_decl && global.init_text.empty()) ||
         !global.llvm_type_ref)
       return std::nullopt;
     const auto authoritative =
@@ -344,7 +344,8 @@ std::optional<Type> lower_global_type(const LirModule& module,
       return std::nullopt;
 
     if (authoritative->struct_name_id == c4c::kInvalidStructName) {
-      if (global.type.base != TB_STRUCT || authoritative->spelling.size() < 2 ||
+      if (global.is_extern_decl || global.type.base != TB_STRUCT ||
+          authoritative->spelling.size() < 2 ||
           authoritative->spelling.front() != '{' ||
           authoritative->spelling.back() != '}')
         return std::nullopt;
