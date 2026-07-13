@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the remaining ordinary authority baseline
+Current Step ID: 2
+Current Step Title: Extract and bind four focused one-contract probes
 
 ## Just Finished
 
@@ -21,20 +21,19 @@ Current Step Title: Establish the remaining ordinary authority baseline
 
 ## Suggested Next
 
-- Execute Plan Step 2 only: extract and bind the four focused one-contract
-  probes named by the runbook and authority matrix.
+- Execute Plan Step 2: extract and bind the four focused one-contract probes
+  named by the runbook and authority matrix.
 
 ## Watchouts
 
-- Keep CFG/terminator targets, stack/local/alloca/object ownership, body
-  parameters, and opaque inline-assembly text outside generic ordinary value
-  publication.
-- Generic `fresh_value` result/use propagation fits scalar call, binary, cast,
-  compare, select, and several aggregate/vector result edges, but PHIs need
-  `LirBlockId`, call args need a non-string owned carrier, and local pointers
-  need a separate object relation.
-- Current production `fresh_value(ctx)` remains exactly the two selected-global
-  CC-GEP-1/CC-LOAD-1 sites; do not infer authority from other `%t*` results.
+- Keep one primary authority contract per focused probe; do not combine the
+  four first bad facts into a monolithic case.
+- Observe each production boundary and bind its exact carrier transition plus
+  verifier obligations before any producer implementation.
+- The SSA-argument probe must reuse the argument carrier established by the
+  immediate-argument seam; do not create a duplicate SSA-only carrier.
+- Keep CFG/terminator targets, stack/local/alloca/object ownership, and body
+  parameter identity outside Step 2.
 
 ## Proof
 
