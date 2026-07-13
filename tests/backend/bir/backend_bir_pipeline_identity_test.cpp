@@ -150,11 +150,105 @@ void test_malformed_digest_input_is_rejected() {
          "failed construction must not perturb later deterministic results");
 }
 
+bir::RawBir publish(bir::ModuleBuilder& builder, const std::string& context) {
+  auto published = std::move(builder).publish();
+  expect(published.has_value(), context + " must publish valid RawBir");
+  return std::move(published).value();
+}
+
+bir::FunctionId add_void_function(bir::ModuleBuilder& builder,
+                                  const std::string& name,
+                                  bool is_declaration) {
+  auto created = builder.create_function(
+      bir::FunctionSignature{bir::Type{bir::TypeKind::Void}, {}, false}, name,
+      is_declaration);
+  expect(created.has_value(), "function construction must succeed");
+  if (!is_declaration) {
+    auto edited = builder.with_function(
+        created.value(), [](bir::FunctionBuilder& function_builder) {
+          auto block = function_builder.create_block("entry");
+          if (!block)
+            return bir::Result<void, bir::BuildError>::failure(block.error());
+          return function_builder.set_terminator(block.value(),
+                                                 bir::ReturnTerm{});
+        });
+    expect(edited.has_value(), "definition construction must succeed");
+  }
+  return created.value();
+}
+
+void test_published_storage_owns_exact_initial_stamp() {
+  bir::ModuleBuilder empty_builder;
+  auto empty = publish(empty_builder, "empty module");
+  const auto empty_view = empty.view();
+  const auto empty_digest =
+      bir::compute_function_revision_digest(empty_view.epoch(), {});
+  expect(empty_digest.has_value(), "empty module digest must be computable");
+  expect(empty.stage_stamp() ==
+             bir::PipelineStageStamp{empty_view.epoch(), bir::ModuleRevision{0},
+                                     empty_digest.value()},
+         "empty RawBir must freeze the exact initial storage stamp");
+  expect(empty_view.revision() == bir::ModuleRevision{0},
+         "builder publication must not count construction as a transform");
+
+  bir::ModuleBuilder populated_builder;
+  const auto declaration =
+      add_void_function(populated_builder, "decl_first", true);
+  const auto definition =
+      add_void_function(populated_builder, "definition_second", false);
+  auto raw = publish(populated_builder, "populated module");
+  const auto raw_view = raw.view();
+  expect(raw_view.functions() ==
+             std::vector<bir::FunctionId>{declaration, definition},
+         "declarations and definitions must retain explicit module order");
+
+  std::vector<bir::FunctionRevisionEntry> revisions;
+  for (const auto id : raw_view.functions()) {
+    auto function_view = raw_view.function(id);
+    expect(function_view.has_value(), "ordered function must resolve");
+    expect(function_view.value().revision() == bir::FunctionRevision{0},
+           "construction edits must leave each function revision at zero");
+    revisions.push_back({id, function_view.value().revision()});
+  }
+  auto expected_digest =
+      bir::compute_function_revision_digest(raw_view.epoch(), revisions);
+  expect(expected_digest.has_value(), "live ordered revisions must digest");
+  expect(raw.stage_stamp().function_revisions == expected_digest.value(),
+         "RawBir digest must use explicit function order and live revisions");
+  expect(raw.stage_stamp().epoch == raw_view.epoch() &&
+             raw.stage_stamp().module_revision == raw_view.revision(),
+         "RawBir stamp axes must exactly match owned storage");
+
+  const auto raw_stamp = raw.stage_stamp();
+  auto canonicalized = bir::canonicalize(std::move(raw));
+  expect(canonicalized.has_value(), "valid RawBir must canonicalize");
+  auto canonical = std::move(canonicalized).value();
+  expect(canonical.stage_stamp() == raw_stamp,
+         "no-op canonicalization must preserve the exact storage stamp");
+  expect(canonical.view().revision() == bir::ModuleRevision{0},
+         "no-op canonicalization must not bump module revision");
+}
+
+void test_separate_builders_receive_distinct_epochs() {
+  bir::ModuleBuilder first_builder;
+  bir::ModuleBuilder second_builder;
+  add_void_function(first_builder, "same_shape", true);
+  add_void_function(second_builder, "same_shape", true);
+  auto first = publish(first_builder, "first same-shape module");
+  auto second = publish(second_builder, "second same-shape module");
+  expect(first.stage_stamp().epoch != second.stage_stamp().epoch,
+         "same-shape modules from separate builders need distinct epochs");
+  expect(first.stage_stamp() != second.stage_stamp(),
+         "module epoch must distinguish otherwise identical initial storage");
+}
+
 }  // namespace
 
 int main() {
   test_stable_digest_and_typed_revision_axes();
   test_pipeline_stamp_checks_every_axis();
   test_malformed_digest_input_is_rejected();
+  test_published_storage_owns_exact_initial_stamp();
+  test_separate_builders_receive_distinct_epochs();
   return 0;
 }

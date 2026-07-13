@@ -3,6 +3,7 @@
 #include "ids.hpp"
 #include "storage.hpp"
 #include "type.hpp"
+#include "../pipeline/identity.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -108,6 +109,7 @@ struct BlockData {
 
 struct FunctionData {
  private:
+  FunctionRevision revision_{};
   FunctionSignature signature_;
   bool is_declaration_ = false;
   std::string link_name_;
@@ -127,6 +129,8 @@ struct FunctionData {
 struct ModuleData {
  private:
   ModuleEpoch epoch_ = 0;
+  ModuleRevision revision_{};
+  PipelineStageStamp stage_stamp_{};
   SlotMap<FunctionData, FunctionId, ModuleEpoch> functions_;
   IdOrder<FunctionId> function_order_;
   std::unordered_map<std::string, FunctionId> functions_by_link_name_;
@@ -135,6 +139,8 @@ struct ModuleData {
   friend class ::c4c::backend::bir::FunctionView;
   friend class ::c4c::backend::bir::ModuleBuilder;
   friend class ::c4c::backend::bir::FoundationVerifier;
+  friend class ::c4c::backend::bir::RawBir;
+  friend class ::c4c::backend::bir::CanonicalBir;
 };
 
 }  // namespace detail

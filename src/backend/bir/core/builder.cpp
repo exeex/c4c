@@ -165,18 +165,39 @@ Result<void, BuildError> ModuleBuilder::with_function(FunctionId function,
 Result<RawBir, PublishFailure> ModuleBuilder::publish() && {
   if (state_ == State::Consumed)
     return Result<RawBir, PublishFailure>::failure(
-        {PublishError::AlreadyConsumed, {}});
+        {PublishError::AlreadyConsumed, {}, std::nullopt});
   if (state_ == State::EditingFunction)
     return Result<RawBir, PublishFailure>::failure(
-        {PublishError::ActiveFunctionEdit, {}});
+        {PublishError::ActiveFunctionEdit, {}, std::nullopt});
   if (!data_ || data_->epoch_ == 0)
     return Result<RawBir, PublishFailure>::failure(
-        {PublishError::EpochExhausted, {}});
+        {PublishError::EpochExhausted, {}, std::nullopt});
 
   auto verification = FoundationVerifier::verify(*data_);
   if (!verification)
     return Result<RawBir, PublishFailure>::failure(
-        {PublishError::VerificationFailed, std::move(verification)});
+        {PublishError::VerificationFailed, std::move(verification), std::nullopt});
+
+  std::vector<FunctionRevisionEntry> revisions;
+  revisions.reserve(data_->function_order_.ids().size());
+  for (const auto function : data_->function_order_.ids()) {
+    auto resolved = data_->functions_.get(data_->epoch_, function);
+    if (!resolved) {
+      const FunctionRevisionDigestError identity_error{
+          function.valid()
+              ? FunctionRevisionDigestErrorCode::ForeignFunctionId
+              : FunctionRevisionDigestErrorCode::InvalidFunctionId,
+          revisions.size(), function};
+      return Result<RawBir, PublishFailure>::failure(
+          {PublishError::PipelineIdentityFailed, {}, identity_error});
+    }
+    revisions.push_back({function, resolved.value().get().revision_});
+  }
+  auto digest = compute_function_revision_digest(data_->epoch_, revisions);
+  if (!digest)
+    return Result<RawBir, PublishFailure>::failure(
+        {PublishError::PipelineIdentityFailed, {}, digest.error()});
+  data_->stage_stamp_ = {data_->epoch_, data_->revision_, digest.value()};
 
   state_ = State::Consumed;
   return Result<RawBir, PublishFailure>::success(

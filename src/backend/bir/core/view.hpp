@@ -45,6 +45,7 @@ class BlockView {
 class FunctionView {
  public:
   FunctionId id() const noexcept { return id_; }
+  FunctionRevision revision() const noexcept { return data_->revision_; }
   FunctionSignature signature() const { return data_->signature_; }
   bool is_declaration() const noexcept { return data_->is_declaration_; }
   std::string link_name() const { return data_->link_name_; }
@@ -125,6 +126,7 @@ class FunctionView {
 class ModuleView {
  public:
   ModuleEpoch epoch() const noexcept { return data_->epoch_; }
+  ModuleRevision revision() const noexcept { return data_->revision_; }
   std::vector<FunctionId> functions() const { return data_->function_order_.ids(); }
 
   Result<FunctionView, ResolveError> function(FunctionId id) const {

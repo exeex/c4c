@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,11 +41,13 @@ enum class PublishError {
   ActiveFunctionEdit,
   EpochExhausted,
   VerificationFailed,
+  PipelineIdentityFailed,
 };
 
 struct PublishFailure {
   PublishError reason = PublishError::VerificationFailed;
   VerificationResult verification;
+  std::optional<FunctionRevisionDigestError> identity_error;
 };
 
 class ModuleBuilder;
@@ -65,6 +68,7 @@ class RawBir {
   RawBir& operator=(const RawBir&) = delete;
 
   ModuleView view() const { return ModuleView(*data_); }
+  PipelineStageStamp stage_stamp() const noexcept { return data_->stage_stamp_; }
 
  private:
   RawBir(std::unique_ptr<detail::ModuleData> data, detail::RawStateToken token)
@@ -85,6 +89,7 @@ class CanonicalBir {
   CanonicalBir& operator=(const CanonicalBir&) = delete;
 
   ModuleView view() const { return ModuleView(*data_); }
+  PipelineStageStamp stage_stamp() const noexcept { return data_->stage_stamp_; }
 
  private:
   explicit CanonicalBir(std::unique_ptr<detail::ModuleData> data)
