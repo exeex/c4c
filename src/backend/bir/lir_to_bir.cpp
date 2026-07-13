@@ -30,6 +30,7 @@ using codegen::lir::LirInlineAsmOp;
 using codegen::lir::LirInlineAsmValueBinding;
 using codegen::lir::LirInlineAsmValueRole;
 using codegen::lir::LirModule;
+using codegen::lir::LirLoadOp;
 using codegen::lir::LirRet;
 using codegen::lir::LirStoreOp;
 using codegen::lir::LirSwitch;
@@ -1462,6 +1463,42 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "store destination must resolve to one exactly typed global object");
         continue;
       }
+      if (const auto* load = std::get_if<LirLoadOp>(&instruction)) {
+        const auto type = lower_lir_type(module, load->type_str);
+        const auto* result = load->result.value_id();
+        const auto* source = load->ptr.link_name_id();
+        if (!type || !is_integer_type(*type) ||
+            load->type_str.kind() != codegen::lir::LirTypeKind::Integer ||
+            load->result.kind() != codegen::lir::LirOperandKind::SsaValue ||
+            !result || !result->valid() ||
+            load->ptr.kind() != codegen::lir::LirOperandKind::Global ||
+            !source || *source == c4c::kInvalidLinkName) {
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "load requires an authoritative LirValueId result and direct-global LinkNameId");
+        }
+        const LirGlobal* selected = nullptr;
+        for (const auto& global : module.globals) {
+          if (global.link_name_id != *source) continue;
+          if (selected)
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "load source LinkNameId has ambiguous global ownership");
+          selected = &global;
+        }
+        const auto global_type =
+            selected ? lower_global_type(module, *selected) : std::nullopt;
+        if (!selected || !global_type || *global_type != *type)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "load source must resolve to one exactly typed global object");
+        if (!source_values.emplace(result->value, *type).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "duplicate authoritative LirValueId definition");
+        continue;
+      }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
       if (!inline_asm)
         return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -1789,6 +1826,48 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                "append store",
                                                appended.error());
                   return Result<void, BuildError>::failure(appended.error());
+                }
+                continue;
+              }
+              if (const auto* load = std::get_if<LirLoadOp>(&instruction)) {
+                const Type type = *lower_lir_type(module, load->type_str);
+                const auto source =
+                    global_objects.find(*load->ptr.link_name_id());
+                if (source == global_objects.end()) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated load source disappeared from the global registry"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::InvalidGlobalObject);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.label),
+                    LoadSpec{source->second, type,
+                             load->result.value_id()->value});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append load",
+                                               appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (appended.value().results.size() != 1) {
+                  edit_error = ImportError{
+                      ImportErrorCode::BuilderFailure, name, block.label,
+                      "load builder returned an inconsistent result count"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::StorageExhausted);
+                }
+                const auto registered = source_values.emplace(
+                    load->result.value_id()->value,
+                    appended.value().results[0]);
+                if (!registered.second) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "load result collided in the current-function source registry"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::DuplicateSourceValue);
                 }
                 continue;
               }

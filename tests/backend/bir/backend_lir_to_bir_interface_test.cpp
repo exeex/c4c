@@ -2299,11 +2299,10 @@ void test_direct_global_integer_store_rejections() {
   later_load.functions[0].blocks[0].insts.push_back(lir::LirLoadOp{
       lir::LirOperand::ssa("%loaded", lir::LirValueId{77}),
       lir::LirTypeRef::integer(32),
-      lir::LirOperand::global("@store_i32_global",
-                              later_load.globals[0].link_name_id)});
+      lir::LirOperand("@store_i32_global")});
   rejected(std::move(later_load),
            bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
-           "a later unsupported load must roll back all earlier admitted stores");
+           "a later raw load must roll back all earlier admitted stores");
 
   auto later_gep = direct_global_integer_store_module();
   later_gep.functions[0].blocks[0].insts.push_back(lir::LirGepOp{
@@ -2317,6 +2316,301 @@ void test_direct_global_integer_store_rejections() {
   rejected(std::move(later_gep),
            bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
            "a neighboring authoritative GEP must remain outside Store receipt");
+}
+
+lir::LirModule direct_global_integer_load_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto i32_link = module.link_names.intern("load_i32_global");
+  const auto i64_link = module.link_names.intern("load_i64_global");
+
+  const auto external_global = [](std::string name, c4c::LinkNameId link,
+                                  c4c::TypeBase base, std::string type,
+                                  int alignment) {
+    lir::LirGlobal global;
+    global.name = std::move(name);
+    global.link_name_id = link;
+    global.type = scalar_type(base);
+    global.linkage_vis = "external ";
+    global.qualifier = "global ";
+    global.llvm_type = std::move(type);
+    global.align_bytes = alignment;
+    global.is_extern_decl = true;
+    return global;
+  };
+  module.globals.push_back(external_global(
+      "load_i32_global", i32_link, c4c::TB_INT, "i32", 4));
+  module.globals.push_back(external_global(
+      "load_i64_global", i64_link, c4c::TB_LONGLONG, "i64", 8));
+
+  auto block = return_block(0, "entry");
+  block.insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%display-result-999", lir::LirValueId{31}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@misleading-load-source", i32_link)});
+  block.insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%display-result-zero", lir::LirValueId{32}),
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::global("@also-misleading-load-source", i64_link)});
+  module.functions.push_back(
+      void_definition("direct_global_integer_loads", {std::move(block)}));
+  return module;
+}
+
+void test_direct_global_integer_load_receipt() {
+  const auto module = direct_global_integer_load_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "two neighboring authoritative direct-global integer loads should publish Raw BIR");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "typed Load payloads and source-backed results should be verifier reachable");
+
+  const auto module_view = imported.value().view();
+  const auto globals = module_view.global_objects();
+  const auto function_id = module_view.functions()[0];
+  const auto function = module_view.function(function_id).value();
+  const auto instructions =
+      function.instructions(function.blocks()[0]).value();
+  expect(globals.size() == 2 && instructions.size() == 2,
+         "global and Load source order must remain exact");
+  std::vector<bir::ValueId> result_order;
+  for (std::size_t index = 0; index < instructions.size(); ++index) {
+    const auto instruction = function.instruction(instructions[index]).value();
+    const auto* load = instruction.load();
+    const std::uint32_t source_id = static_cast<std::uint32_t>(31 + index);
+    expect(instruction.opcode() == bir::Opcode::Load && load &&
+               load->source == globals[index] &&
+               instruction.operands().empty() &&
+               instruction.results().size() == 1,
+           "immutable Load view must expose one selected global and one result");
+    const auto result_id = instruction.results()[0];
+    result_order.push_back(result_id);
+    const auto result = function.value(result_id).value();
+    const auto* definition =
+        std::get_if<bir::InstResultDef>(&result.definition);
+    expect(result.type == load->loaded_type && result.source_id &&
+               result.source_id->owner == function_id &&
+               result.source_id->value == source_id && definition &&
+               definition->instruction == instructions[index] &&
+               definition->result_index == 0 &&
+               function.source_value(
+                           bir::SourceValueId{function_id, source_id})
+                       .value() == result_id,
+           "Load result must retain one native current-function source identity and coherent InstResultDef");
+  }
+  expect(function.values() == result_order,
+         "Load results must preserve source instruction order in the sole value registry");
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the admitted Load graph should pass canonical verification unchanged");
+  const auto canonical_view = canonical.value().view();
+  const auto canonical_function_id = canonical_view.functions()[0];
+  const auto canonical_function =
+      canonical_view.function(canonical_function_id).value();
+  expect(canonical_function
+                 .source_value(
+                     bir::SourceValueId{canonical_function_id, 31})
+                 .has_value() &&
+             canonical_function
+                     .instructions(canonical_function.blocks()[0])
+                     .value().size() == 2,
+         "Canonical BIR must preserve both Load nodes and source-value lookup");
+}
+
+void test_direct_global_integer_load_builder_contract() {
+  bir::ModuleBuilder builder;
+  const auto global = builder.add_global_object(
+      "builder_load_global", bir::Type{bir::TypeKind::I32}, 4,
+      false, false, false, true);
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::Void};
+  const auto function =
+      builder.create_function(signature, "builder_load", false);
+  const auto foreign_function =
+      builder.create_function(signature, "foreign_load_owner", true);
+  expect(global.has_value() && function.has_value() &&
+             foreign_function.has_value(),
+         "Load builder fixture should create its typed owners");
+
+  bir::InstId loaded{};
+  bir::ValueId result{};
+  const auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto block = function_builder.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto invalid_global = function_builder.append(
+            block.value(),
+            bir::LoadSpec{bir::GlobalObjectId{999, 0},
+                          bir::Type{bir::TypeKind::I32}, 15});
+        expect(!invalid_global.has_value() &&
+                   invalid_global.error() ==
+                       bir::BuildError::InvalidGlobalObject,
+               "Load builder must reject a foreign global without staging state");
+        const auto wrong_type = function_builder.append(
+            block.value(),
+            bir::LoadSpec{global.value(), bir::Type{bir::TypeKind::I64}, 15});
+        expect(!wrong_type.has_value() &&
+                   wrong_type.error() == bir::BuildError::InvalidValueType,
+               "Load builder must reject incoherent global/result type facts");
+        const auto invalid_source = function_builder.append(
+            block.value(),
+            bir::LoadSpec{global.value(), bir::Type{bir::TypeKind::I32},
+                          std::numeric_limits<std::uint32_t>::max()});
+        expect(!invalid_source.has_value() &&
+                   invalid_source.error() ==
+                       bir::BuildError::InvalidSourceValueId,
+               "Load builder must reject the invalid native source identity");
+        const auto appended = function_builder.append(
+            block.value(),
+            bir::LoadSpec{global.value(), bir::Type{bir::TypeKind::I32}, 15});
+        if (!appended)
+          return bir::Result<void, bir::BuildError>::failure(appended.error());
+        loaded = appended.value().instruction;
+        result = appended.value().results[0];
+        const auto duplicate = function_builder.append(
+            block.value(),
+            bir::LoadSpec{global.value(), bir::Type{bir::TypeKind::I32}, 15});
+        expect(!duplicate.has_value() &&
+                   duplicate.error() ==
+                       bir::BuildError::DuplicateSourceValue,
+               "Load builder must reject duplicate current-function source identities atomically");
+        return function_builder.set_terminator(block.value(),
+                                               bir::ReturnTerm{});
+      });
+  expect(edited.has_value(), "one coherent Load should remain after rejected appends");
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "a structurally built Load plus void return should publish Raw BIR");
+  const auto module_view = raw.value().view();
+  const auto view = module_view.function(function.value()).value();
+  expect(view.instructions(view.blocks()[0]).value() ==
+                 std::vector<bir::InstId>{loaded} &&
+             view.instruction(loaded).value().load() != nullptr &&
+             view.source_value(bir::SourceValueId{function.value(), 15})
+                     .value() == result &&
+             view.source_value(
+                     bir::SourceValueId{foreign_function.value(), 15})
+                     .error() == bir::ResolveError::WrongOwner,
+         "Load construction must publish one source-backed result and isolate cross-function lookup");
+  expect(bir::canonicalize(std::move(raw).value()).has_value(),
+         "the structural Load plus void return should publish Canonical BIR");
+}
+
+void test_direct_global_integer_load_rejections() {
+  const auto rejected = [](lir::LirModule candidate,
+                           bir::ImportErrorCode expected,
+                           const std::string& message) {
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() && raw.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical.has_value() && canonical.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+
+  auto raw_result = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(raw_result.functions[0].blocks[0].insts[0]).result =
+      lir::LirOperand("%raw_result");
+  rejected(std::move(raw_result),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a display-only Load result must remain unsupported");
+
+  auto raw_pointer = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(raw_pointer.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand("@load_i32_global");
+  rejected(std::move(raw_pointer),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a display-only Load pointer must remain unsupported");
+
+  auto local_pointer = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(local_pointer.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::ssa("%local", lir::LirValueId{9});
+  rejected(std::move(local_pointer),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an SSA/local Load pointer must remain outside direct-global receipt");
+
+  auto wrong_result_authority = direct_global_integer_load_module();
+  auto& wrong_result = std::get<lir::LirLoadOp>(
+      wrong_result_authority.functions[0].blocks[0].insts[0]);
+  wrong_result.result = lir::LirOperand::global(
+      "%looks-like-result", wrong_result_authority.globals[0].link_name_id);
+  rejected(std::move(wrong_result_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a non-result authority alternative must not be interpreted by display");
+
+  auto wrong_pointer_authority = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(
+      wrong_pointer_authority.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::integer("@load_i32_global", 1);
+  rejected(std::move(wrong_pointer_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a non-global Load pointer authority must remain unsupported");
+
+  auto invalid_result = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(invalid_result.functions[0].blocks[0].insts[0])
+      .result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  rejected(std::move(invalid_result),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an invalid native Load result identity must reject transactionally");
+
+  auto noninteger = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(noninteger.functions[0].blocks[0].insts[0])
+      .type_str = lir::LirTypeRef("double");
+  rejected(std::move(noninteger),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a noninteger Load type must remain unsupported");
+
+  auto mismatched = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(mismatched.functions[0].blocks[0].insts[0])
+      .type_str = lir::LirTypeRef::integer(64);
+  rejected(std::move(mismatched),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "the Load type must exactly match its selected global object");
+
+  auto duplicate = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(duplicate.functions[0].blocks[0].insts[1]).result =
+      lir::LirOperand::ssa("%different-display-same-id", lir::LirValueId{31});
+  rejected(std::move(duplicate),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "duplicate native result identities must reject without display fallback");
+
+  auto unresolved = direct_global_integer_load_module();
+  std::get<lir::LirLoadOp>(unresolved.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::global("@looks-valid",
+                              static_cast<c4c::LinkNameId>(999));
+  rejected(std::move(unresolved),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an unresolved native Load LinkNameId must reject transactionally");
+
+  auto ambiguous = direct_global_integer_load_module();
+  ambiguous.globals[1].link_name_id = ambiguous.globals[0].link_name_id;
+  ambiguous.globals[1].name = ambiguous.globals[0].name;
+  rejected(std::move(ambiguous), bir::ImportErrorCode::UnsupportedGlobals,
+           "ambiguous Load global ownership must reject before function publication");
+
+  auto invalid_return = direct_global_integer_load_module();
+  invalid_return.functions[0].blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::integer("misleading", 1),
+      lir::LirTypeRef::integer(32)};
+  rejected(std::move(invalid_return), bir::ImportErrorCode::InvalidVoidReturn,
+           "accepted loads must advance diagnosis to the unsupported return boundary");
+
+  auto later_gep = direct_global_integer_load_module();
+  later_gep.functions[0].blocks[0].insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%address", lir::LirValueId{78}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@load_i32_global",
+                              later_gep.globals[0].link_name_id),
+      true,
+      {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                               lir::LirOperand::integer("0", 0))}});
+  rejected(std::move(later_gep),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a later unsupported GEP must roll back all earlier admitted loads");
 }
 
 void test_string_pool_receipt_and_views() {
@@ -6902,6 +7196,9 @@ int main() {
   test_direct_global_integer_store_receipt();
   test_direct_global_integer_store_builder_contract();
   test_direct_global_integer_store_rejections();
+  test_direct_global_integer_load_receipt();
+  test_direct_global_integer_load_builder_contract();
+  test_direct_global_integer_load_rejections();
   test_string_pool_receipt_and_views();
   test_string_pool_rejections_and_transactionality();
   test_external_declaration_receipt_and_views();

@@ -154,6 +154,12 @@ struct StoreSpec {
   ValueId value{};
 };
 
+struct LoadSpec {
+  GlobalObjectId source{};
+  Type loaded_type{};
+  std::uint32_t source_result_id = 0;
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -241,6 +247,7 @@ class FunctionBuilder {
   Result<BlockId, BuildError> create_block(std::string debug_name = {});
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, StoreSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, LoadSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

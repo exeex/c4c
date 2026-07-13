@@ -67,6 +67,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<InlineAsmNode>(instruction.payload);
     case Opcode::Store:
       return std::holds_alternative<StoreNode>(instruction.payload);
+    case Opcode::Load:
+      return std::holds_alternative<LoadNode>(instruction.payload);
   }
   return false;
 }
@@ -618,6 +620,30 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "store must have one typed integer value use, no results, and one exact global destination");
+      }
+      if (const auto* load = std::get_if<LoadNode>(&instruction.payload)) {
+        const bool source_resolves =
+            load->source.valid() && load->source.epoch == module.epoch_ &&
+            load->source.slot < module.globals_.size();
+        const ValueDef* result_value = nullptr;
+        if (instruction.results.size() == 1) {
+          const auto resolved =
+              function.values_.get(function_id, instruction.results[0]);
+          if (resolved) result_value = &resolved.value().get();
+        }
+        if (!instruction.operands.empty() || instruction.results.size() != 1 ||
+            !source_resolves || !is_well_formed(load->loaded_type) ||
+            !integer_type(load->loaded_type) || !result_value ||
+            (result_value && result_value->type != load->loaded_type) ||
+            (result_value &&
+             (!result_value->source_id ||
+              result_value->source_id->owner != function_id)) ||
+            (source_resolves &&
+             module.globals_[load->source.slot].object_type !=
+                 load->loaded_type))
+          report(result, VerificationRule::ValueDefinition, function_id,
+                 inst_id,
+                 "load must have no operands, one source-backed typed integer result, and one exact global source");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {
