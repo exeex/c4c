@@ -162,19 +162,25 @@ Result<void, BuildError> ModuleBuilder::with_function(FunctionId function,
   }
 }
 
-Result<RawBir, PublishError> ModuleBuilder::publish() && {
+Result<RawBir, PublishFailure> ModuleBuilder::publish() && {
   if (state_ == State::Consumed)
-    return Result<RawBir, PublishError>::failure(PublishError::AlreadyConsumed);
+    return Result<RawBir, PublishFailure>::failure(
+        {PublishError::AlreadyConsumed, {}});
   if (state_ == State::EditingFunction)
-    return Result<RawBir, PublishError>::failure(
-        PublishError::ActiveFunctionEdit);
+    return Result<RawBir, PublishFailure>::failure(
+        {PublishError::ActiveFunctionEdit, {}});
   if (!data_ || data_->epoch_ == 0)
-    return Result<RawBir, PublishError>::failure(PublishError::EpochExhausted);
+    return Result<RawBir, PublishFailure>::failure(
+        {PublishError::EpochExhausted, {}});
 
-  // Step 4B owns verification. Until it lands, storage must remain repairable
-  // inside this open builder and no unchecked RawBir may escape.
-  return Result<RawBir, PublishError>::failure(
-      PublishError::VerificationUnavailable);
+  auto verification = FoundationVerifier::verify(*data_);
+  if (!verification)
+    return Result<RawBir, PublishFailure>::failure(
+        {PublishError::VerificationFailed, std::move(verification)});
+
+  state_ = State::Consumed;
+  return Result<RawBir, PublishFailure>::success(
+      RawBir(std::move(data_), detail::RawStateToken{}));
 }
 
 Result<std::reference_wrapper<detail::FunctionData>, BuildError>

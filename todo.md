@@ -8,46 +8,42 @@ Current Step Title: Implement builders, RawBir publication, and foundation verif
 
 ## Just Finished
 
-- Step 4A implemented noncopyable/nonmovable scoped module/function builders,
-  monotonic nonzero module epochs, exact link-name declaration/definition
-  merging, parameter construction, append-only blocks, checked foundation
-  terminators, and explicit unsupported-opcode rejection.
-- Added move-only `RawBir` ownership with borrowed `ModuleView`; its only
-  constructor remains builder-private.
-- Kept publication closed until Step 4B: `publish() &&` returns
-  `PublishError::VerificationUnavailable` without consuming storage, so an
-  unchecked `RawBir` cannot escape and the builder remains repairable.
+- Step 4B completed the `FoundationRaw` verifier for exact epoch/owner/
+  generation/kind resolution, storage/order membership, parameters and value
+  definitions, function shape, terminators, bounded alternatives, and the
+  bidirectionally exact link-name index.
+- `publish() &&` now returns structured `PublishFailure` diagnostics, preserves
+  an open repairable builder after verification failure, and consumes storage
+  into move-only `RawBir` only after zero-error verification.
+- Preserved `bir.hpp` as the requested grouped include/declaration reading map;
+  no mutable storage or test-only mutation surface was exposed.
 
 ## Suggested Next
 
-- Execute Step 4B: implement the foundation verifier and connect successful
-  `publish() &&` exclusively to zero-error verification.
+- Begin Step 5 with the new `bir/lir_to_bir.hpp` public entry and the bounded
+  import-spine packet; keep not-yet-migrated semantic forms on explicit
+  rejection paths.
 
 ## Watchouts
 
-- `RawBir` construction exists only for Step 4B to call after verification;
-  do not replace `VerificationUnavailable` with success until the complete
-  foundation profile accepts the owned storage.
-- `ModuleBuilder` restores `Open` after callback return or exception and
-  invalidates the scope token before returning; future builder operations must
-  preserve that synchronous capability boundary.
-- The default build still stops at the separately owned missing
-  `bir/lir_to_bir.hpp` backend consumer seam.
+- Foundation deliberately rejects every live ordinary instruction until a
+  semantic opcode family and its verifier rules land atomically.
+- The default build remains blocked outside this packet because
+  `src/backend/backend.hpp` includes missing `bir/lir_to_bir.hpp`; do not route
+  around this by compiling legacy BIR or prealloc.
 
 ## Proof
 
-- Packet-local C++17 runtime executable covered link-name merge/rejections,
-  variadic signature conflicts, nested edit/create/publish rejection,
-  parameter/block lookup, foreign owners, condition and return types, all four
-  terminators, unsupported append, and non-consuming unavailable publication —
-  passed; temporary source and binary removed.
-- Inline facade/header syntax and `core/builder.cpp` syntax — passed.
-- Negative facade probes confirmed builder storage is private, `RawBir` cannot
-  be default-constructed, and unqualified owning `ModuleData` is unavailable —
-  passed; temporary files removed.
-- `git diff --check`, builder legacy-reference search, and compile-database
-  `src/backend/legacy/` search — passed with no matches.
-- `cmake --build --preset default -j 2` — regenerated with `builder.cpp` in the
-  backend target, then reached the known external seam and failed because
-  `src/backend/backend.hpp` includes missing `bir/lir_to_bir.hpp`.
-- The delegated packet excluded logs, so no `test_after.log` was written.
+- Packet-local C++17 runtime proof passed valid declaration and minimal
+  definition publication, active-edit rejection, post-success consumption,
+  structured verification failure, repair-and-republish, and reachable
+  malformed cases for every foundation diagnostic family. Verifier-private
+  mutation existed only in the temporary proof.
+- C++17 facade/implementation syntax and negative public probes passed:
+  `RawBir` is not default constructible and builder storage remains private.
+- `git diff --check` and compile-database `src/backend/legacy/` search passed.
+- `cmake --build --preset default -j 2` reached the known external seam and
+  failed only because `src/backend/backend.hpp` includes missing
+  `bir/lir_to_bir.hpp`.
+- The delegated owned-file set excluded logs, so no `test_after.log` was
+  written; temporary proof sources, outputs, and executable were removed.

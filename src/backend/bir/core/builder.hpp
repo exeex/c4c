@@ -3,6 +3,7 @@
 #include "ir.hpp"
 #include "result.hpp"
 #include "view.hpp"
+#include "../verify/verifier.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -38,7 +39,12 @@ enum class PublishError {
   AlreadyConsumed,
   ActiveFunctionEdit,
   EpochExhausted,
-  VerificationUnavailable,
+  VerificationFailed,
+};
+
+struct PublishFailure {
+  PublishError reason = PublishError::VerificationFailed;
+  VerificationResult verification;
 };
 
 class ModuleBuilder;
@@ -99,7 +105,7 @@ class ModuleBuilder {
       std::function<Result<void, BuildError>(FunctionBuilder&)>;
   Result<void, BuildError> with_function(FunctionId function,
                                           FunctionEdit edit);
-  Result<RawBir, PublishError> publish() &&;
+  Result<RawBir, PublishFailure> publish() &&;
 
  private:
   enum class State : std::uint8_t { Open, EditingFunction, Consumed };
