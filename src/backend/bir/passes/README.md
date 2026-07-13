@@ -91,10 +91,13 @@ ABI placement, frame, stack-slot, register-allocation, spill, or move state
 printer/renderer output, debug dumps, textual instruction spelling, or notes
 ```
 
-Target-independent BIR semantics may include an already-resolved module data
-layout where the core schema requires it. That is not permission for a canonical
-pass to inspect a target register profile, calling convention placement policy,
-legal machine opcode set, or backend feature switch.
+Raw and Canonical BIR may preserve source-semantic typed sizes, alignments, and
+address spaces owned by their accepted rows. They contain no semantic
+`target_profile`, rendered `data_layout`, target triple, pointer-width/address-
+space layout selection, or other C1/C2 target context. C1 independently selects
+the exact `TargetProfile`, and C2 derives target layout. A canonical pass cannot
+inspect or reconstruct those facts, calling-convention placement policy, legal
+machine opcode sets, or backend feature switches.
 
 ## 2. Closed identities and static descriptors
 
