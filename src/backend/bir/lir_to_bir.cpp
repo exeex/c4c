@@ -415,6 +415,11 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         global.linkage_vis == "external " && global.qualifier == "global " &&
         global.init_text.empty() &&
         global.initializer_function_link_name_ids.empty();
+    const bool coherent_weak_external =
+        global.is_extern_decl && !global.is_internal &&
+        global.linkage_vis == "extern_weak " &&
+        global.qualifier == "global " && global.init_text.empty() &&
+        global.initializer_function_link_name_ids.empty();
     const bool coherent_ordinary_definition =
         !global.is_extern_decl && !global.is_internal && !global.is_const &&
         global.linkage_vis.empty() && global.qualifier == "global " &&
@@ -442,7 +447,8 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         global.linkage_vis == "weak " && global.qualifier == "constant " &&
         type->kind != TypeKind::Pointer && !global.init_text.empty();
-    if (!coherent_external && !coherent_ordinary_definition &&
+    if (!coherent_external && !coherent_weak_external &&
+        !coherent_ordinary_definition &&
         !coherent_constant_definition &&
         !coherent_const_pointer_definition &&
         !coherent_internal_ordinary_definition &&
@@ -450,7 +456,7 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !coherent_weak_ordinary_definition &&
         !coherent_weak_constant_definition)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                        "only coherent external declarations, visibility-free const-pointer globals, and initialized ordinary, internal, or weak global/constant definitions are admitted");
+                        "only coherent external or weak-external declarations, visibility-free const-pointer globals, and initialized ordinary, internal, or weak global/constant definitions are admitted");
     if (global.align_bytes < 0 ||
         (global.align_bytes != 0 &&
          (global.align_bytes & (global.align_bytes - 1)) != 0))
@@ -878,7 +884,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     auto added = builder.add_global_object(
         global.name, *lower_lir_type(module, *global.llvm_type_ref),
         global.align_bytes, global.is_internal,
-        global.linkage_vis == "weak ", global.is_const, global.is_extern_decl,
+        global.linkage_vis == "weak " ||
+            global.linkage_vis == "extern_weak ",
+        global.is_const, global.is_extern_decl,
         global.link_name_id == c4c::kInvalidLinkName
             ? std::nullopt
             : std::optional<c4c::LinkNameId>{global.link_name_id},

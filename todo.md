@@ -8,41 +8,37 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 const-pointer initialized-definition packet now admits the exact
-  visibility-free producer form with `is_const=true`, structured `ptr`
-  authority, `global ` qualifier, and a nonempty opaque initializer. Import
-  preserves the typed Raw-BIR pointer, const state, identity, payload, and
-  ordered initializer links without parsing initializer text.
-- Nearby coverage distinguishes this producer form from the existing scalar
-  const `constant ` definition and proves transactional rejection for a
-  non-pointer const+`global ` mismatch, a pointer const+`constant ` mismatch,
-  and a non-const ordinary pointer definition.
+- Plan Step 3 weak-external global packet now admits the exact existing LIR
+  producer row with `linkage_vis == "extern_weak "`, `global ` qualifier, empty
+  initializer evidence, `is_extern_decl=true`, and `is_internal=false`.
+- Import preserves both typed Raw-BIR facts: weak linkage and external
+  declaration state. Ordinary `external ` declarations remain non-weak, while
+  definition-shaped, constant-qualified, and initializer-bearing extern-weak
+  near-neighbors reject the whole module transactionally.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 string-pool or external-symbol completeness packet
-  selected from the remaining runbook scope, keeping it independent of
-  aggregate and flexible-special-type global support.
+- Execute one bounded remaining Step 3 global, external-symbol, or initializer
+  completeness packet selected from the runbook, keeping aggregate and
+  flexible-special-type global support separate.
 
 ## Watchouts
 
-- Pointer admission requires the structured `LirTypeRef` to lower exactly to
-  Raw-BIR `TypeKind::Pointer`; `TypeSpec` and rendered text remain compatibility
-  parity only. The compatibility path is limited to one ordinary pointer level
-  and excludes references, arrays, pointer-to-array, inner-rank, and special
-  function-pointer shapes. It is enabled only after the exact owned
-  const-pointer producer row is established, so external, non-const, internal,
-  and weak pointer rows remain fail-closed before existing coherence branches.
-- Const pointer definitions are admitted only with empty linkage visibility and
-  `global `; internal/weak pointer constants and `constant ` pointer forms remain
-  fail-closed. Aggregate and flexible special types remain unsupported.
-- `init_text` remains opaque receipt evidence; structured initializer function
-  link IDs alone provide topology authority.
+- Weak external admission is exact to `extern_weak ` with no visibility suffix,
+  a `global ` qualifier, declaration state, no internal flag, and no initializer
+  payload or initializer links. Visibility-qualified variants and definition
+  shapes remain fail-closed.
+- Raw-BIR represents weak external declarations through the existing
+  independent `is_weak` and `is_extern_declaration` fields. The verifier still
+  rejects weak+internal and all declaration/initializer state mismatches.
+- Aggregate and flexible-special-type globals remain unsupported and were not
+  widened by this packet.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers importer admission, transactional
-  rejection, typed global views, and initializer receipt preservation.
+  passing. The selected proof covers exact importer admission, typed weak and
+  external-declaration views, verifier publication, and transactional rejection
+  of malformed near-neighbor rows.
