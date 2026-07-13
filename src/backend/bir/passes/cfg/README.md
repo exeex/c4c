@@ -59,6 +59,13 @@ P03 does not construct SSA, choose phi values, schedule copies, change memory
 or call semantics, interpret inline-assembly constraints, or make target,
 layout, placement, allocation, or machine decisions.
 
+Later D5 may split the exact successor-slot occurrences needed for edge-local
+copy placement. It uses the same transactional CFG editor and replacement-key
+repair rule, creates fresh deterministic block/terminator IDs, and publishes a
+new revision. P03 preparation is not a promise that all later critical or
+parallel edges are already split, and no stored predecessor or label table is
+consulted by D5.
+
 ## 3. Analysis use and invalidation
 
 P03 may request exact-revision CFG and reachability facts to plan a proposal.

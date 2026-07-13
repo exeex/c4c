@@ -27,7 +27,7 @@ extension namespace.
 | `GenericCall` | ordinary or runtime-helper call awaiting the shared ABI transport rewrite | `D1` | private D1 candidate only; forbidden at `D3` publication |
 | `AbiArgMove`, `AbiArgStore`, `AbiCall`, `AbiResultMove`, `AbiPreserve`, `AbiRestore` | explicit shared call transport with abstract ABI-slot and stack-object requirements | `D2` | `D2` onward; must be directly realizable after `D4` |
 | `InlineAsm` | one opaque template plus ordinary ordered uses/results and the exact projected bound-constraint record | `D1` preserves/binds | `D1` onward; one BIR node maps to one opaque MIR record |
-| `ParallelCopy`, `EdgeCopy` | explicit phi/block-argument destruction operations | `D5` | `D5` onward; forbidden before out-of-SSA |
+| `ParallelCopy`, `EdgeCopy` | typed edge-local assignments replacing phi/block-argument transport; `ParallelCopy` reads all sources before simultaneously writing its unique destinations, while `EdgeCopy` is the singleton non-overlapping form | `D5` | `D5` onward; forbidden before out-of-SSA and checked against exact originating `EdgeKey` provenance |
 | `Spill`, `Reload` | explicit capacity-repair transitions using abstract spill-object identity | `E3` | allocation retry candidate onward; forbidden in D-stage publication |
 
 Core terminators remain the sole CFG-successor authority. The admitted
@@ -87,6 +87,14 @@ parent revision to be reused without an explicit preservation proof.
   every non-`InlineAsm` node is directly realizable as one machine instruction
   without introducing a new allocatable value, use, definition, or CFG edge.
 - D5 alone adds copy pseudos for out-of-SSA. E3 alone adds `Spill`/`Reload`.
+- D5 copy destinations are explicit assignment roles for stable virtual
+  allocation identities, not new SSA definitions. A `ParallelCopy` has
+  canonical destination order, unique destinations, typed sources, and atomic
+  read-before-write semantics, so cycles require no implicit temporary.
+- An `EdgeKey` on a D5 copy is provenance checked against terminator-derived
+  topology and the D5 placement plan. It is not a stored successor. Every copy
+  executes in a source-, destination-, or freshly split edge-local region that
+  denotes exactly that successor-slot occurrence.
 - The schema never stores machine-register identities, machine instruction
   encodings, stack displacements, late frame layout, or assembler parse trees.
 
@@ -103,5 +111,8 @@ derived-fact updates, freezes one exact revision, and invokes the verifier
 profile required at its boundary. Failure publishes no instruction subset,
 function subset, property, stage key, or reusable analysis result. D3 mints the
 first `PseudoBir`; D4 and later mutators publish replacement immutable
-revisions only after their required full gate. The predecessor capability
+revisions only after their required full gate. In particular, D5 consumes only
+the fully reverified D4 revision and publishes its replacement only after full
+Pseudo reverification proves copy coverage and absence of phi semantics; E1
+cannot consume an incrementally checked candidate. The predecessor capability
 remains unchanged and cannot be relabeled as the successor.

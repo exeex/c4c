@@ -52,6 +52,12 @@ target instructions. Legacy phi materialization is assigned to root stage
 parallel-copy planning and cycle-safe transfer realization on its private BIR
 candidate; P04 only preserves the canonical SSA semantics that D5 consumes.
 
+D5 consumes each incoming by its exact `EdgeKey`, retains the former join
+result `ValueId` as the virtual allocation identity used by ordinary consumers,
+and replaces the join definition with admitted copy-destination roles. Its full
+post-mutation Pseudo gate must reject any remaining phi instruction, block
+argument, incoming map, or SSA-only edge-use semantics before E1.
+
 ## 3. Transaction and exact output
 
 `PassId::SsaCanonicalize` is a `Function` pass requiring `CfgCanonical`,

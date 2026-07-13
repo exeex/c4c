@@ -170,14 +170,14 @@ rollback may retain its explicitly permitted last-good checkpoint, but only a
 new exact P07 occurrence followed by a successful G01 transaction can publish
 `CanonicalBir`.
 
-### Pseudo profile and D3/D4 publication
+### Pseudo profile and D3/D4/D5 publication
 
 The `Pseudo` profile accepts only one private frozen candidate carrying a
 complete `PseudoStageKey`. That key must name the exact current
 `PipelineStageStamp`, parent Canonical stamp, `TargetFingerprint`, layout and
 pseudo-schema fingerprints, `VerifiedPreparationBundle` fingerprint,
 `BoundConstraintSet` fingerprint, and the ordered fingerprints of every D1,
-D2, and applicable D4 occurrence. Equal module revisions, equal semantic
+D2, and applicable D4/D5 occurrence. Equal module revisions, equal semantic
 hashes, compatible targets, or copied reports do not establish freshness.
 
 The cumulative Pseudo check rejects:
@@ -214,7 +214,26 @@ non-`InlineAsm` instruction directly maps to exactly one machine instruction
 without adding a use, definition, temporary, CFG edge, or allocation action.
 `InlineAsm` instead retains the specified one-node-to-one-opaque-record rule.
 
-Any failure discards the complete D3 or D4 candidate and publishes no function
+D5 accepts only that exact fully reverified D4 publication. Before D5, the
+profile rejects `ParallelCopy` and `EdgeCopy`; after D5, it requires the D5
+fingerprint, rejects every phi instruction, block argument, incoming map, and
+SSA-only edge use, and checks each copy against the exact terminator-derived
+`EdgeKey` occurrence and its edge-local placement. Copy destinations are the
+stable former join-result allocation identities and are valid only in admitted
+copy assignment roles. `EdgeCopy` must be a typed singleton. `ParallelCopy`
+must have canonical entry order, unique typed destinations, and simultaneous
+read-before-write semantics, including cycles without an implicit temporary.
+Every planned incoming transfer must appear once and no unplanned transfer may
+appear.
+
+Any D5 CFG split, join removal, or copy insertion advances the revision and
+invalidates affected CFG, dominance, SSA, lowered def-use/value-flow, liveness,
+constraint, and realizability products. The runner recomputes the required
+facts and reruns the entire module `Pseudo` profile on one frozen candidate.
+Only the green full gate atomically publishes the D5 `PseudoBir` capability
+accepted by E1; incremental verification cannot mint it.
+
+Any failure discards the complete D3, D4, or D5 candidate and publishes no function
 subset, stage capability, property, cache entry, or derived product. Public
 rechecks and incremental edit verification diagnose only; they cannot mint or
 repair `PseudoBir`.
@@ -405,6 +424,10 @@ enum class VerifyRule : std::uint16_t {
   PseudoForbiddenAllocationFact = 0x0A08,
   PseudoDirectRealizabilityInvalid = 0x0A09,
   PseudoPublicationIncomplete = 0x0A0A,
+  PseudoCopyPlacementInvalid = 0x0A0B,
+  PseudoParallelCopyInvalid = 0x0A0C,
+  PseudoPhiLoweringIncomplete = 0x0A0D,
+  PseudoCopyCoverageMismatch = 0x0A0E,
 };
 
 struct ReservationSite {
@@ -508,7 +531,7 @@ values rather than renumbering an existing rule. Messages are presentation only.
 | `0x0700–0x070B` | `MemoryAccessInvalid` through `FenceInvalid` | loads/stores/address spaces/alignment, GEP, dynamic allocation and stack state, memcpy/memmove/memset, atomics and fences |
 | `0x0800–0x080A` | `AggregatePathInvalid` through `InlineAsmEffectInvalid` | aggregates, layouts, vector lanes/masks, intrinsic registry/schema, and opaque inline-asm payload plus ordinary value edges, clobber order, and effects |
 | `0x0900–0x0904` | `DebugReferenceInvalid` through `ForbiddenCompatibilityPayload` | debug/provenance structure and the absence of route/preparation/regalloc/MIR/text-placeholder authority |
-| `0x0A00–0x0A0A` | `PseudoStageKeyInvalid` through `PseudoPublicationIncomplete` | exact pseudo revision/product lineage, closed and stage-legal pseudo schema, absence of semantic/machine/allocation leftovers, complete call and inline-asm binding, D4 direct realizability, and atomic whole-stage publication |
+| `0x0A00–0x0A0E` | `PseudoStageKeyInvalid` through `PseudoCopyCoverageMismatch` | exact pseudo revision/product lineage, closed and stage-legal pseudo schema, absence of semantic/machine/allocation leftovers, complete call and inline-asm binding, D4 direct realizability, D5 edge placement/simultaneous-copy/phi-removal coverage, and atomic whole-stage publication |
 
 The coverage ledger below maps every feature family to these IDs. A feature
 cannot be called verifier-covered until its negative tests assert the mapped
@@ -1258,6 +1281,7 @@ input is verified here but the named decision belongs after BIR.
 | aggregates, complex values, vector lanes/masks | Contracted | `AggregatePathInvalid`–`VectorMaskInvalid`; physical return lanes are deferred stage facts |
 | semantic intrinsics, overflow, bit/memory/SIMD/CRC/crypto | Contracted; target support is deferred stage | `IntrinsicIdInvalid`, `IntrinsicSchemaInvalid`; no selected opcode/helper in BIR |
 | opaque inline asm and asm-goto | Bounded non-goto generic SSA transport is current; typed symbol/address-space carriers and asm-goto remain source gaps; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
+| D5 phi/block-argument destruction and edge copies | Contracted; implementation deferred | `PseudoCopyPlacementInvalid`–`PseudoCopyCoverageMismatch`; exact `EdgeKey` provenance, edge-local execution, simultaneous cycle-safe bundles, lowered assignment roles, and no residual phi semantics before E1 |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
 | ABI placement, register allocation, spill/reload, frame, target opcode/relocation encoding/emission | Deferred stage and forbidden in BIR | `ForbiddenStageFact`, `ForbiddenCompatibilityPayload` |
 
