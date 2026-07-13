@@ -1,0 +1,138 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <type_traits>
+
+namespace c4c::backend::bir {
+
+using ModuleEpoch = std::uint64_t;
+using SlotIndex = std::uint32_t;
+using Generation = std::uint32_t;
+
+struct FunctionId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  Generation generation = 0;
+
+  constexpr bool valid() const noexcept { return epoch != 0 && generation != 0; }
+};
+
+struct BlockId {
+  FunctionId owner{};
+  SlotIndex slot = 0;
+  Generation generation = 0;
+
+  constexpr bool valid() const noexcept { return owner.valid() && generation != 0; }
+};
+
+struct InstId {
+  FunctionId owner{};
+  SlotIndex slot = 0;
+  Generation generation = 0;
+
+  constexpr bool valid() const noexcept { return owner.valid() && generation != 0; }
+};
+
+enum class ValueKind : std::uint8_t { Parameter, InstResult };
+
+struct ValueId {
+  FunctionId owner{};
+  ValueKind kind = ValueKind::Parameter;
+  SlotIndex slot = 0;
+  Generation generation = 0;
+
+  constexpr bool valid() const noexcept { return owner.valid() && generation != 0; }
+};
+
+constexpr bool operator==(FunctionId lhs, FunctionId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot &&
+         lhs.generation == rhs.generation;
+}
+constexpr bool operator!=(FunctionId lhs, FunctionId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(BlockId lhs, BlockId rhs) noexcept {
+  return lhs.owner == rhs.owner && lhs.slot == rhs.slot &&
+         lhs.generation == rhs.generation;
+}
+constexpr bool operator!=(BlockId lhs, BlockId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(InstId lhs, InstId rhs) noexcept {
+  return lhs.owner == rhs.owner && lhs.slot == rhs.slot &&
+         lhs.generation == rhs.generation;
+}
+constexpr bool operator!=(InstId lhs, InstId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(ValueId lhs, ValueId rhs) noexcept {
+  return lhs.owner == rhs.owner && lhs.kind == rhs.kind && lhs.slot == rhs.slot &&
+         lhs.generation == rhs.generation;
+}
+constexpr bool operator!=(ValueId lhs, ValueId rhs) noexcept { return !(lhs == rhs); }
+
+namespace detail {
+
+inline std::size_t hash_combine(std::size_t seed, std::size_t value) noexcept {
+  return seed ^ (value + static_cast<std::size_t>(0x9e3779b9U) + (seed << 6U) +
+                 (seed >> 2U));
+}
+
+inline std::size_t hash_function_id(FunctionId id) noexcept {
+  auto result = std::hash<ModuleEpoch>{}(id.epoch);
+  result = hash_combine(result, std::hash<SlotIndex>{}(id.slot));
+  return hash_combine(result, std::hash<Generation>{}(id.generation));
+}
+
+}  // namespace detail
+
+static_assert(std::is_trivially_copyable_v<FunctionId>);
+static_assert(std::is_trivially_copyable_v<BlockId>);
+static_assert(std::is_trivially_copyable_v<InstId>);
+static_assert(std::is_trivially_copyable_v<ValueId>);
+
+}  // namespace c4c::backend::bir
+
+namespace std {
+
+template <>
+struct hash<c4c::backend::bir::FunctionId> {
+  size_t operator()(c4c::backend::bir::FunctionId id) const noexcept {
+    return c4c::backend::bir::detail::hash_function_id(id);
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::BlockId> {
+  size_t operator()(c4c::backend::bir::BlockId id) const noexcept {
+    auto result = c4c::backend::bir::detail::hash_function_id(id.owner);
+    result = c4c::backend::bir::detail::hash_combine(
+        result, hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+    return c4c::backend::bir::detail::hash_combine(
+        result, hash<c4c::backend::bir::Generation>{}(id.generation));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::InstId> {
+  size_t operator()(c4c::backend::bir::InstId id) const noexcept {
+    auto result = c4c::backend::bir::detail::hash_function_id(id.owner);
+    result = c4c::backend::bir::detail::hash_combine(
+        result, hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+    return c4c::backend::bir::detail::hash_combine(
+        result, hash<c4c::backend::bir::Generation>{}(id.generation));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::ValueId> {
+  size_t operator()(c4c::backend::bir::ValueId id) const noexcept {
+    auto result = c4c::backend::bir::detail::hash_function_id(id.owner);
+    result = c4c::backend::bir::detail::hash_combine(
+        result, hash<std::underlying_type_t<c4c::backend::bir::ValueKind>>{}(
+                    static_cast<std::underlying_type_t<c4c::backend::bir::ValueKind>>(
+                        id.kind)));
+    result = c4c::backend::bir::detail::hash_combine(
+        result, hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+    return c4c::backend::bir::detail::hash_combine(
+        result, hash<c4c::backend::bir::Generation>{}(id.generation));
+  }
+};
+
+}  // namespace std
