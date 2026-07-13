@@ -8,43 +8,44 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid positive fixed TypeSpec array globals
-  whose elements are direct integer/floating scalars or exactly one-level
-  pointers to those scalar bases. General Raw array facts preserve scalar
-  pointee kind/width, element pointer depth, and exact outer-to-inner
-  dimensions while nested LLVM spelling remains parity-only.
-- Existing rank-one and multidimensional direct-scalar paths remain green. A
-  multidimensional pointer-element extern proves opaque `ptr` nesting, object
-  metadata, Foundation reachability, and Raw/Canonical publication; excessive
-  pointer depth, aggregate pointees, pointer-to-array/inner-rank neighbors,
-  function pointers, unexpected mirrors, parity conflicts, and malformed
-  staged array facts reject transactionally.
+- Plan Step 3 now admits producer-valid external and weak-external declarations
+  of exactly one-level pointers to integer/floating scalar bases. Raw pointer
+  facts preserve pointee kind, pointee width, and pointer depth without parsing
+  opaque `ptr` spelling; existing admitted const-pointer definitions now retain
+  the same typed facts.
+- Generic fact-free Raw pointers remain valid for unrelated `LirTypeRef`
+  contracts. Malformed staged pointer facts and unsupported neighboring global
+  shapes reject transactionally, including deeper pointers, aggregate
+  pointees, pointer-to-array/inner-rank and function-pointer forms, parity or
+  mirror conflicts, and ordinary nonconst pointer definitions.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 producer-valid pointer-typed extern-global
-  declaration packet, first confirming whether the producer emits an
-  `llvm_type_ref` mirror and which linkage/qualifier rows are authoritative.
+- Execute one bounded Step 3 packet admitting producer-valid ordinary nonconst
+  definitions of exactly one-level pointers to integer/floating scalar bases.
+  Preserve typed `PointerTypeFacts` together with the existing authoritative
+  linkage and initializer facts, and prove Raw/Canonical publication plus
+  transactional rejection and rollback. Keep deeper, aggregate-pointee, and
+  function-pointer forms closed; leave intrinsic-requirement parity for the
+  later instruction/intrinsic work that supplies its typed authority.
 
 ## Watchouts
 
-- Typed fixed-array admission requires rank within the eight-dimension producer
-  capacity, positive active dimensions, `array_size == array_dims[0]`, absent
-  `llvm_type_ref`, and an integer/floating scalar base after clearing array and
-  pointer declarators. Only element pointer depth zero or one is admitted;
-  aggregate/void/complex/va-list bases, references, pointer-to-array,
-  function-pointer, vector, unsized, and deeper-pointer shapes remain closed.
-- `llvm_type` is reconstructed from facts and compared exactly; it is never
-  parsed and never substitutes for scalar pointee semantics. The generic
-  `LirTypeRef` array value path remains an independent opaque contract.
+- Scalar-pointer global authority comes only from a one-level, non-reference,
+  non-array/non-vector/non-function-pointer `TypeSpec` whose cleared base lowers
+  to an integer or floating scalar. The branch is gated to extern declarations
+  and the preexisting const-pointer producer row; ordinary nonconst pointer
+  definitions remain closed.
+- Producer globals omit `llvm_type_ref` for pointer shapes. A manually supplied
+  mirror is accepted only as generic `ptr` corroboration and never supplies
+  pointee semantics; rendered `llvm_type` is exact parity evidence only.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers direct-scalar and one-level
-  pointer-element fixed arrays, `FoundationVerifier` reachability, Canonical
-  publication, exact object-fact preservation, Raw array-fact coherence, and
-  Raw/Canonical transactional rejection of neighboring malformed and
-  unsupported shapes.
+  passing. The selected proof covers typed external, weak-external, and const
+  pointer globals, exact object-fact preservation, `FoundationVerifier`
+  reachability, Canonical publication, malformed Raw pointer-fact rejection,
+  and Raw/Canonical rollback for unsupported neighboring shapes.

@@ -50,6 +50,24 @@ struct ArrayTypeFacts {
   std::vector<std::int64_t> dimensions;
 };
 
+struct PointerTypeFacts {
+  TypeKind pointee_kind = TypeKind::Void;
+  std::uint32_t pointee_bit_width = 0;
+  int pointer_depth = 0;
+};
+
+inline bool operator==(const PointerTypeFacts& lhs,
+                       const PointerTypeFacts& rhs) noexcept {
+  return lhs.pointee_kind == rhs.pointee_kind &&
+         lhs.pointee_bit_width == rhs.pointee_bit_width &&
+         lhs.pointer_depth == rhs.pointer_depth;
+}
+
+inline bool operator!=(const PointerTypeFacts& lhs,
+                       const PointerTypeFacts& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
 inline bool operator==(const ArrayTypeFacts& lhs,
                        const ArrayTypeFacts& rhs) noexcept {
   return lhs.element_kind == rhs.element_kind &&
@@ -86,6 +104,7 @@ struct Type {
   std::string spelling;
   std::optional<StructuredTypeSpecFacts> structured_spec;
   std::optional<ArrayTypeFacts> array_facts;
+  std::optional<PointerTypeFacts> pointer_facts;
 
   Type() = default;
   Type(TypeKind type_kind) : kind(type_kind) {
@@ -112,6 +131,7 @@ struct Type {
 
 inline bool operator==(const Type& lhs, const Type& rhs) noexcept {
   if (lhs.array_facts != rhs.array_facts) return false;
+  if (lhs.pointer_facts != rhs.pointer_facts) return false;
   const auto integer_width = [](const Type& type) -> std::uint32_t {
     switch (type.kind) {
       case TypeKind::I1: return 1;
@@ -152,6 +172,7 @@ inline bool operator!=(const Type& lhs, const Type& rhs) noexcept {
 
 inline bool is_well_formed(const Type& type) {
   if (type.kind != TypeKind::Array && type.array_facts) return false;
+  if (type.kind != TypeKind::Pointer && type.pointer_facts) return false;
   if (type.structured_spec) {
     const auto& spec = *type.structured_spec;
     if (type.kind != TypeKind::Void ||
@@ -184,7 +205,21 @@ inline bool is_well_formed(const Type& type) {
               (type.bit_width == 80 && type.spelling == "x86_fp80") ||
               (type.bit_width == 128 && type.spelling == "fp128"));
     case TypeKind::Pointer:
-      return type.bit_width == 0 && no_name && type.spelling == "ptr";
+      if (type.bit_width != 0 || !no_name || type.spelling != "ptr")
+        return false;
+      if (!type.pointer_facts) return true;
+      if (type.pointer_facts->pointer_depth != 1) return false;
+      if (type.pointer_facts->pointee_kind == TypeKind::Integer)
+        return type.pointer_facts->pointee_bit_width != 0;
+      if (type.pointer_facts->pointee_kind != TypeKind::Floating) return false;
+      switch (type.pointer_facts->pointee_bit_width) {
+        case 16:
+        case 32:
+        case 64:
+        case 80:
+        case 128: return true;
+        default: return false;
+      }
     case TypeKind::VrmRegister:
       return (type.bit_width == 1 || type.bit_width == 2 ||
               type.bit_width == 4 || type.bit_width == 8) &&

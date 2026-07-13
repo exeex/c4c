@@ -191,13 +191,7 @@ std::optional<Type> lower_constant_type(const LirModule& module,
 }
 
 std::optional<Type> lower_global_compatibility_type(const LirModule& module,
-                                                    const TypeSpec& type,
-                                                    bool allow_pointer) {
-  if (allow_pointer && type.ptr_level == 1 && !type.is_lvalue_ref &&
-      !type.is_rvalue_ref &&
-      type.array_rank == 0 && !type.is_ptr_to_array && type.inner_rank == 0 &&
-      !type.is_fn_ptr)
-    return Type{TypeKind::Pointer};
+                                                    const TypeSpec& type) {
   return lower_constant_type(module, type);
 }
 
@@ -302,6 +296,36 @@ std::optional<Type> lower_global_type(const LirModule& module,
     return result;
   }
 
+  const bool scalar_pointer_global =
+      (global.is_extern_decl || allow_pointer) && global.type.ptr_level == 1 &&
+      !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
+      global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
+      global.type.inner_rank == 0 && !global.type.is_fn_ptr &&
+      !global.type.is_vector && global.type.array_size_expr == nullptr;
+  if (scalar_pointer_global) {
+    if (global.llvm_type != "ptr") return std::nullopt;
+    TypeSpec pointee_spec = global.type;
+    pointee_spec.ptr_level = 0;
+    const auto pointee = lower_constant_type(module, pointee_spec);
+    if (!pointee || (pointee->kind != TypeKind::Integer &&
+                     pointee->kind != TypeKind::Floating))
+      return std::nullopt;
+
+    if (global.llvm_type_ref) {
+      const auto mirror = lower_lir_type(module, *global.llvm_type_ref);
+      if (!mirror || mirror->kind != TypeKind::Pointer ||
+          mirror->spelling != "ptr" ||
+          global.llvm_type_ref->str() != "ptr")
+        return std::nullopt;
+    }
+
+    Type result{TypeKind::Pointer};
+    result.pointer_facts =
+        PointerTypeFacts{pointee->kind, pointee->bit_width, 1};
+    if (!is_well_formed(result)) return std::nullopt;
+    return result;
+  }
+
   const bool direct_aggregate =
       (global.type.base == TB_STRUCT || global.type.base == TB_UNION) &&
       global.type.ptr_level == 0 && !global.type.is_lvalue_ref &&
@@ -333,7 +357,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
   }
 
   const auto authoritative =
-      lower_global_compatibility_type(module, global.type, allow_pointer);
+      lower_global_compatibility_type(module, global.type);
   if (!authoritative || authoritative->kind == TypeKind::Void ||
       !is_well_formed(*authoritative))
     return std::nullopt;
