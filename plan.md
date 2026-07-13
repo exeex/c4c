@@ -1,385 +1,313 @@
-# LIR-To-New-BIR Container And Import Completeness Runbook
+# LIR Remaining Ordinary Value Identity Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Reactivated from: completed parameter-authority handoff in ideas/closed/742_lir_function_parameter_authority_publication.md
+Source Idea: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
+Activated from: repeated producer-identity blocker after accepted idea-734 Plan Step 5.1
 
 ## Purpose
 
-Resume target-independent Raw-BIR receipt at the exact function-signature row
-unblocked by idea 742 while preserving all landed module, global,
-instruction, and terminator work and keeping every unproven parameter shape
-fail-closed.
+Decompose the remaining production ordinary instruction result/use identity
+family into checked rows and focused probes, publish native authority through
+the existing LIR value model, and hand only proven receiver rows back to parked
+idea 734.
 
 ## Goal
 
-Import every semantic fact with structured typed LIR authority into one
-verified Raw-BIR module without loss or partial publication. Record a separate
-producer initiative whenever a required source identity remains raw rather
-than reconstructing it from presentation.
+Give every in-scope production ordinary result and use a stable typed
+`LirOperand` authority allocated or resolved before rendering, with reachable
+ownership/type verification and no parallel value model.
 
 ## Core Rule
 
-Every successful row must map an existing typed LIR authority directly to one
-typed Raw-BIR container, builder path, verifier rule, and transactional proof.
-Names, signature rendering, raw body operands, testcase identity, and ABI
-position are never parameter identity or type authority.
+Native authority precedes presentation. Allocate results through the owning
+function's `LirValueId` path, propagate the exact ID to SSA uses, and preserve
+native immediates and `LinkNameId` uses. Never recover identity from `%t*`
+spelling, formatted operands, printer output, type text, or testcase identity.
 
 ## Read First
 
+- `ideas/open/744_lir_remaining_ordinary_value_identity_publication.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `docs/lir_function_parameter_authority/handoff_to_734.md`
-- `ideas/closed/742_lir_function_parameter_authority_publication.md`
+- `ideas/closed/741_lir_structured_operand_and_terminator_identity_decomposition.md`
+- `docs/lir_structured_identity/authority_matrix.md`
 - `docs/lir_structured_identity/handoff_to_734.md`
-- current new-BIR function/signature storage, builders, views, verifier, and
-  LIR importer owners
-- `src/backend/bir/lir_to_bir/README.md` and
-  `src/backend/bir/LEGACY_COVERAGE.md` as coverage evidence only
+- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and ordinary
+  HIR-to-LIR expression/call producers
+- `src/codegen/lir/call_args_ops.hpp` and
+  `src/codegen/lir/hir_to_lir/call/target.cpp`
 
-## Landed Progress
+## Current Evidence
 
-- Runbook Steps 1-3 completed the coverage foundation, typed module/type/value
-  storage, globals, strings, externs, symbols, initializer topology,
-  specialization metadata, intrinsic requirements, and direct scalar return
-  signature receipt.
-- Steps 4.1-4.4 receive direct selected-global scalar integer stores, direct
-  selected-global scalar loads, selected-global array-decay GEPs, and scalar
-  integer returns through structured identity.
-- Closed idea 741 supplied the exact instruction/terminator authorities for
-  those four receiver rows.
-- Closed idea 742 now publishes definition logical parameters, verifies proven
-  plain three-track parity, and classifies every neighboring parameter shape.
+- Idea 734 direct zero-argument void Call receipt is accepted at commit
+  `49ed1b386` with 3033/3033 monotonic proof.
+- Scalar-result call production uses `fresh_tmp(ctx)`, so the result retains
+  display spelling without `LirValueId` authority.
+- Structured call arguments are currently rebuilt from formatted operand
+  strings, so scalar SSA arguments lose stable current-function identity.
+- Authoritative production `fresh_value(ctx)` use is currently bounded to the
+  selected-global load/GEP paths completed by idea 741.
+- Closed idea 741 explicitly leaves other ordinary rows raw or unclaimed; this
+  plan extends that model without reopening its four completed contracts.
 
-## Current Structured Handoff
+## Current Targets
 
-The first callable parameter receiver surface is exactly:
+- checked remaining-row authority matrix under
+  `docs/lir_remaining_ordinary_value_identity/`
+- four focused one-contract C probes under `tests/backend/case/`
+- ordinary HIR-to-LIR call/expression producers
+- existing `LirOperand`, `LirValueId`, typed-immediate, and `LinkNameId`
+  carriers
+- reachable LIR ownership/type verification and focused frontend tests
+- final checked handoff to idea 734
 
-- empty zero-fixed-parameter declaration and definition signatures
-- explicit-void declaration and definition signature shape
-- default-shape nonvariadic fixed `int`, `uint`, `long long`, `unsigned long
-  long`, `float`, and `double` declaration and definition signatures
+## Non-Goals
 
-The plain row has exact structured count, order, base/shape, nonbyval state,
-and typed mirror parity across `LirFunction.params`, `signature_params`, and
-`signature_param_type_refs`. Explicit void uses one logical `TB_VOID` sentinel,
-no fixed signature rows or mirrors, and the native void-list flag.
+- no new-BIR opcode, container, builder, verifier, importer, or receipt work
+- no reopening or weakening the idea-741 store/load/GEP/return contracts
+- no string/name/result-spelling lookup or parallel value graph
+- no target/ABI lowering, call placement/expansion, variadic lowering,
+  canonicalization, allocation, MIR, emission, or assembler work
+- no CFG or terminator target identity
+- no stack slot, alloca, local-object, lifetime, or body-parameter identity
+  unless a separate evidence-backed lifecycle decision changes scope
+- no testcase-specific fields, named-case dispatch, expectation weakening, or
+  supported-to-unsupported changes
 
-Body parameter binding remains blocked because current body operands do not
-carry native parameter value identity. `long` and `unsigned long` are also
-blocked: production LIR and its verifier currently require 64-bit mirrors even
-for I686, while new-BIR return/global type policy preserves 32-bit I686 long.
-Open inactive idea 743 owns that target-width convergence. Pointer, narrow
-integer, aggregate, byval, HFA/vector/other ABI expansion, variadic,
-function-pointer, and `va_list` receipt also remains blocked. Do not infer any
-of these rows from names, mirror spelling, raw operands, or ABI position.
+## Working Model
 
-## Non-Goals For The Current Step
-
-- no function-body parameter binding or parameter value IDs
-- no `long` or `unsigned long` receipt pending idea 743 target-width policy
-- no pointer, narrow, aggregate/byval, HFA/vector/expanded, variadic,
-  function-pointer, or `va_list` receipt
-- no CFG, block-order, edge, stack-object, hoisted-alloca, local-object, or
-  lifetime work
-- no ordinary-instruction or terminator expansion beyond landed rows
-- no target interpretation, ABI placement, canonicalization, allocation, MIR,
-  emission, or legacy-BIR resurrection
+- `LirValueId` is function-owned result/SSA-use identity.
+- `LirIntegerImmediate` is native scalar immediate authority.
+- `LinkNameId` is module-owned direct symbol/callee/global identity.
+- `monostate` means no semantic authority and cannot support receipt.
+- Display/kind text is presentation or diagnostics only after native authority
+  exists.
+- Stack/local-object and CFG/terminator target identity are separate families,
+  not ordinary result/use work by proximity.
 
 ## Execution Rules
 
-1. Implement one exact handed-off receiver row per bounded packet.
-2. Consume structured logical, ABI-signature, typed-mirror, and flag authority
-   directly; do not add a name side table or parallel parameter model.
-3. Extend storage/builder/view only if the existing typed function signature
-   model lacks an exact destination; wire importer and reachable verification
-   in the same packet.
-4. Preserve declaration/definition parity, source order, exact type agreement,
-   ownership, and whole-module transactional publication.
-5. Reject missing, extra, reordered, shape-conflicting, byval, variadic, or
-   mirror-conflicting authority with stable diagnostics.
-6. Keep all non-authorized parameter and body forms explicitly fail-closed.
-7. Reject testcase dispatch, display parsing, expectation weakening,
-   supported-to-unsupported changes, and catch-all success.
+1. Do not edit producers before the remaining-row baseline and focused probe
+   bind the row to one generic carrier/verifier contract.
+2. Keep one primary contract per probe and one coherent generic seam per code
+   packet.
+3. Allocate native results before rendering and return the same operand to
+   every downstream structured use.
+4. Preserve the closed idea-741 paths and use them as regression neighbors.
+5. Extend reachable verification with every producer seam: invalid, duplicate,
+   missing, unknown, cross-owner, alternative, and type conflicts must reject.
+6. Do not treat matrix edits, helper renames, or display parity as capability.
+7. Classify unrelated raw rows truthfully rather than widening a packet.
 8. Every code packet requires a fresh build, exact focused proof, neighboring
-   malformed proof, production boundary observation, and the
-   supervisor-selected regression checkpoint.
-9. Keep routine execution updates in `todo.md`; change this runbook only for a
-   real route or proof correction.
+   malformed proof, and the supervisor-selected regression checkpoint.
+9. Keep routine packet progress in `todo.md`; alter the source idea or runbook
+   only for a real route/scope/proof correction.
 
 ## Ordered Steps
 
-### Step 4.5.1 - Receive zero, void and target-stable plain scalar signatures
+### Step 1 - Establish the remaining ordinary authority baseline
 
-Goal: receive the exact declaration/definition signature surface authorized by
-the idea-742 handoff without claiming body parameter identity.
-
-Primary target:
-
-- existing Raw-BIR `FunctionSignature`, `ParameterDef`, function builder/view,
-  verifier, and `src/backend/bir/lir_to_bir.cpp` signature import boundary
-
-Actions:
-
-- preserve zero-argument shape only when all three parameter tracks are empty
-  and the void-list and variadic flags are false
-- preserve explicit void only when `params` contains the single plain
-  `TB_VOID` sentinel, both fixed ABI tracks are empty, the void-list flag is
-  true, and the variadic flag is false
-- for only `int`, `uint`, `long long`, `unsigned long long`, `float`, and
-  `double`, require exact three-track count and order, default `TypeSpec` shape,
-  `is_byval=false`, nonvariadic state, and exact typed integer/floating mirror
-  agreement
-- lower those structured types into the existing BIR function signature and
-  create ordinary typed `ParameterDef` values by ordinal where the existing
-  model requires them; ordinal is BIR storage order, not source identity
-- support declarations and definitions whose bodies do not use parameters;
-  do not resolve raw body operands or bind them by name/position
-- verify exact signature/parameter ownership, type/order, malformed parity,
-  duplicates, and whole-module rollback
-- keep `long`, `unsigned long`, pointer, narrow, aggregate/byval, expanded,
-  variadic, function-pointer, `va_list`, and any non-default shape at
-  `UnsupportedFunctionParameters`
-- add structural positive, misleading-display, neighboring malformed, and
-  transactional tests without matching a focused testcase name
-
-Completion check:
-
-- a fresh build and exact focused proof receive zero/void plus only the six
-  target-stable default-shape nonvariadic scalar families named above for
-  declarations and definitions; malformed neighbors reject atomically; I686
-  `long`/`unsigned long`, body parameter use, and every other excluded shape
-  remain fail-closed
-
-### Step 4.5.2 - Reassess remaining function, CFG and local-object authority
-
-Goal: choose the next exact structured function-surface row only after Step
-4.5.1 is accepted.
-
-Actions:
-
-- inventory remaining function metadata, block/edge, stack-object,
-  hoisted-alloca, local-object, and lifetime rows against actual typed source
-  authority
-- select one bounded receiver packet where authority is already structured
-- create a separate producer-identity initiative for any required raw row;
-  never parse labels, names, operands, or rendering
-- do not absorb blocked parameter families merely because plain signatures are
-  received
-
-Completion check:
-
-- the next packet has one exact typed authority/destination/proof contract, or
-  a separate producer initiative records the blocker without scope drift
-
-Inventory result (complete):
-
-- `LirFunction::is_internal` and `can_elide_if_unreferenced` are native
-  booleans populated directly from HIR linkage, static, inline, and retained
-  helper facts; LIR dead-internal elimination already consumes the elision fact
-- current Raw-BIR `FunctionData`, builder, and immutable view have no
-  destination for either fact, and the importer silently drops both
-- CFG receipt is blocked despite structured block IDs and entry selection:
-  branch, conditional-branch, and switch successors remain raw labels, while
-  the structured indirect-branch ID form has no production path
-- stack slots retain `LirStackSlotId`, owned `TypeSpec`, alignment, and VLA
-  state, but production allocation, result, and ownership bindings still cross
-  raw `LirOperand`/alloca seams; isolated storage receipt would not unlock a
-  production-success path
-- body parameter uses remain raw and cannot be bound through signature ordinal,
-  display name, or ABI position
-- the next exact receiver seam is only the two structured function booleans;
-  CFG, local/stack objects, and body binding remain blocked
-
-### Step 4.5.3 - Receive function linkage and elision facts
-
-Goal: preserve the exact structured function linkage/elision metadata already
-used by LIR without broadening into CFG, local objects, or body identities.
+Goal: produce a checked execution baseline for every remaining production
+ordinary result/use row before changing carriers or producers.
 
 Primary target:
 
-- Raw-BIR `FunctionData`, function builder/view, reachable verifier, and
-  `src/backend/bir/lir_to_bir.cpp` function import/merge boundary
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md`
 
 Actions:
 
-- add exactly `is_internal` and `can_elide_if_unreferenced` to the typed
-  function container and expose immutable view accessors
-- extend builder creation and established duplicate/declaration-definition
-  merge paths so neither fact is silently dropped, guessed, or reconstructed
-- import both native `LirFunction` booleans for declarations and definitions;
-  do not derive them from link names, signature text, function order, body
-  presence, or testcase identity
-- preserve producer-valid declaration/definition merge behavior and require
-  repeated/merged function identities to retain one coherent metadata result;
-  reject contradictory or illegal duplicates rather than silently ORing,
-  clearing, or replacing facts
-- extend reachable Raw and Canonical verification for exact container/view/
-  builder agreement, function ownership, duplicate identity, and merge parity
-- prove whole-module rollback for malformed or conflicting metadata/merge
-  inputs
-- add focused structural coverage for every producer-valid boolean
-  combination, declaration and definition paths, misleading display/link
-  spelling, and neighboring merge conflicts
-- add a production-focused retained referenced internal/static or inline/helper
-  proof where the LIR elimination policy keeps the function; if elimination
-  makes a standalone producer case impossible, use a direct structured LIR
-  probe plus a production neighboring observation without weakening the claim
-- keep function-body parameter binding, CFG/targets, blocks/edges, stack slots,
-  allocas, local objects, lifetime state, and all excluded signature families
-  unchanged and fail-closed
+- start from the final closed idea-741 38-variant matrix and current
+  `LirInst` definition; do not regenerate or reopen its four completed rows
+- enumerate every remaining modern production ordinary result and operand use
+  individually, distinguishing producerless legacy alternatives
+- record exact producer function, current carrier alternative, current
+  `fresh_tmp`/`fresh_value` behavior, native type authority, verifier state,
+  focused probe, dependency, and receiver disposition
+- identify which rows can share generic result allocation or use propagation
+  and which need a later separate semantic carrier
+- classify stack/local-object, body-parameter, and CFG/terminator target
+  identity as separate blocked families unless concrete evidence proves the
+  ordinary carrier contract is production-complete for a named row
+- confirm the four required seams below are independently executable and do
+  not hide a larger prerequisite
 
 Completion check:
 
-- a fresh build and exact focused proof preserve both native booleans through
-  Raw and Canonical function views for producer-valid declarations,
-  definitions, and merges; malformed/conflicting merges reject atomically; a
-  retained production function demonstrates callable receipt where possible;
-  and no CFG, local-object, or body-identity surface is admitted
+- the checked matrix accounts for every remaining production ordinary
+  result/use row without a catch-all, preserves all idea-741 dispositions, and
+  gives each in-scope row one exact next action or truthful blocker
 
-### Step 5 - Complete ordinary instruction semantic families
+### Step 2 - Extract and bind four focused one-contract probes
 
-Goal: give every structured-authority `LirInst` alternative a typed new-BIR
-node, ordinary operand/result wiring, and verifier coverage.
+Goal: turn the repeated family into independent producer contracts before
+implementation.
 
 Actions:
 
-- implement coherent instruction-family packets in dependency order
-- preserve opcode, typed operands/results, effects, object/symbol references,
-  metadata, and source order directly from typed LIR
-- create a separate producer-identity initiative for required raw rows rather
-  than deriving semantics from text
-- extend builder/view/verifier/importer and nearby positive/negative tests
+- create `lir_direct_scalar_result_call_identity.c` for native scalar call
+  result identity
+- create `lir_direct_void_immediate_arg_identity.c` for native scalar immediate
+  call-argument authority
+- create `lir_direct_void_ssa_arg_identity.c` for a call argument using the
+  exact authoritative result of a selected-global load
+- create `lir_scalar_ordinary_value_chain_identity.c` for one representative
+  non-call result/use chain
+- keep each file minimal and one-contract; retain larger integration cases only
+  as later observations
+- bind each probe in the matrix to its producer, exact carrier transition,
+  verifier rejection obligations, and forbidden text fallback
 
 Completion check:
 
-- every current instruction row has an exact supported typed path or a durable
-  blocked-source disposition; accumulated focused and broader proof passes
+- all four probes expose one stable first bad fact and are bound to distinct
+  generic producer/verifier contracts without testcase-shaped implementation
 
-### Step 5.1 - Receive direct zero-argument void calls
+### Step 3 - Publish direct scalar call result identity
 
-Goal: receive the smallest production `LirCallOp` row with complete structured
-callee identity and signature authority, without admitting arguments, results,
-indirect targets, or presentation-derived semantics.
-
-Primary target:
-
-- minimal Raw-BIR `Call` opcode/node plus core builder/view/verifier and
-  `src/backend/bir/lir_to_bir.cpp` function-body import dispatch
-
-Exact source row:
-
-- modern `LirCallOp` whose `result` is empty and carries no authority
-- typed `return_type` is void and `return_ext_attr` is `LirExtAttr::None`
-- native `direct_callee_link_name_id` resolves to exactly one module function
-- `structured_args` and `arg_type_refs` are empty
-- `callee_signature` is present with a typed void return, extension attribute
-  `None`, no fixed parameter types or mirrors, nonvariadic state,
-  `has_unspecified_params=false`, and a known zero-fixed-parameter empty or
-  explicit-void shape
-- `callee`, function/name spelling, `args_str`, and `callee_type_suffix` are
-  presentation only and never identity, argument, or signature authority
+Goal: replace scalar-result call display-only allocation with an owning native
+result ID.
 
 Actions:
 
-- add the minimal typed `Call` payload storing exactly one target `FunctionId`,
-  with zero operands and zero results
-- extend builder creation, immutable Raw/Canonical view exposure, and reachable
-  verification for opcode/payload agreement, target ownership/existence,
-  no-result/no-operand shape, block/function ownership, and source order
-- build a structured `LinkNameId -> FunctionId` registry for all accepted
-  module functions before lowering bodies, using a two-pass create-then-body
-  flow or an equivalent exact design
-- support arbitrary source order, forward calls, and recursive/self calls where
-  the exact row is otherwise valid; never depend on a callee having been
-  encountered earlier
-- resolve declaration/definition identities through the established function
-  merge contract and require the call-site structured callee signature to agree
-  with the resolved target's imported zero/void nonvariadic signature
-- import only the exact source row above and ignore presentation drift after
-  structured authority has passed
-- reject missing/invalid/unresolved/ambiguous `LinkNameId`, absent or
-  conflicting structured callee signature, target-signature disagreement,
-  non-`None` return extension, result/nonvoid calls, any structured arguments
-  or argument type refs, indirect calls, variadic or unspecified signatures,
-  and malformed declaration/definition merges
-- prove whole-module rollback for failures discovered in forward/recursive
-  target resolution, body lowering, and final verification
-- add structural positive tests for declaration and definition targets,
-  misleading callee/name/args/suffix presentation, arbitrary source order,
-  forward calls, and recursive calls where production supports them
-- add a production-focused direct void no-argument call and neighboring
-  malformed/conflicting/rollback proof without matching testcase identity
+- allocate the result through `fresh_value(ctx)` in the ordinary call producer
+  before formatting
+- store and return the same `LirOperand{LirValueId}` through the existing call
+  result field and downstream expression path
+- preserve void calls as empty/no-authority results
+- verify result kind, uniqueness, current-function ownership, return-type
+  agreement, malformed alternatives, and display independence
+- keep new-BIR call-result receipt outside this idea
 
 Completion check:
 
-- a fresh build and exact focused proof publish zero-operand/zero-result BIR
-  `Call` nodes targeting the correct `FunctionId` for production direct void
-  no-argument calls in arbitrary valid source order; forward/recursive and
-  declaration/definition identity are safe; misleading presentation has no
-  effect; all excluded call shapes reject atomically; and the later generic
-  Step 5 instruction-family contract remains unchanged
+- the focused scalar-result call and neighboring result shapes publish native
+  ownership and malformed/misleading variants reject without text recovery
 
-### Step 6 - Complete terminators and structured inline-assembly transport
+### Step 4 - Publish direct void scalar immediate argument authority
 
-Goal: complete structured terminator receipt and preserve inline-assembly facts
-without a parallel value or target-interpretation system.
+Goal: preserve native immediate authority through structured call argument
+construction.
 
 Actions:
 
-- implement only terminator rows with structured target/value authority
-- verify targets, edge arguments/results, successor identity, and malformed CFG
-  atomically
-- preserve opaque byte-exact assembly text and ordinary operand/result identity
-  without parsing, allocation, or target preparation
-- keep raw compatibility fail-closed and separate missing producer identity
+- pass the existing `LirIntegerImmediate` operand into the structured call arg
+  rather than reconstructing it from formatted argument text
+- preserve the native argument `LirTypeRef`, extension metadata, and source
+  order without performing ABI placement
+- verify immediate range/type/alternative agreement and malformed authority
+- keep variadic, expanded, aggregate, and other unrelated argument shapes out
+  of this packet
 
 Completion check:
 
-- all structured terminator and inline-assembly variants have neighboring
-  positive/negative proof and no target interpretation enters Raw BIR
+- the focused void immediate call carries a native typed immediate through the
+  ordinary structured argument path and malformed neighbors reject
 
-### Step 7 - Integrate the dispatcher, verifier and build boundary
+### Step 5 - Publish direct void scalar SSA argument authority
 
-Goal: prove all landed semantic families form one production importer and one
-reachable verification/publication boundary.
+Goal: prove an already-authoritative ordinary result becomes the exact call
+use without a name lookup.
 
 Actions:
 
-- remove bounded-surface rejections only for rows with typed receipt and proof
-- integrate migrated importer owners exactly once without legacy authority
-- prove deterministic diagnostics and whole-module rollback across early,
-  mid-module, and final-verifier failures
-- reconcile the coverage ledger with callable implementation and explicit
-  blocked-source dispositions
+- propagate the selected-global load result `LirValueId` into the structured
+  scalar call argument
+- preserve current-function ownership, argument order/type, and exact use of
+  the same ID
+- reject unknown, duplicate, cross-function, type-conflicting, monostate, and
+  formatted-only alternatives
+- retain the closed global-load producer contract unchanged
 
 Completion check:
 
-- accumulated broader proof passes and no accepted row exposes partial state or
-  relies on display-derived semantics
+- the focused load-to-call probe carries one exact source ID end to end and
+  reachable verification rejects all ownership/type conflicts
 
-### Step 8 - Prove lossless completeness and transactional publication
+### Step 6 - Prove a representative non-call scalar result/use chain
 
-Goal: close idea 734 only on exhaustive structured coverage and explicit
-disposition of every remaining source-authority gap.
+Goal: demonstrate that the ordinary carrier mechanism is generic beyond calls
+and refine the remaining-row classification.
 
 Actions:
 
-- re-enumerate actual LIR variants and metadata against the final ledger,
-  destinations, dispatcher, verifier, and tests
-- prove representative structural parity without rendering as authority
-- run the supervisor-selected fresh build, focused suite, and full regression
-- audit scope, diagnostics, rollback, legacy quarantine, and forbidden
-  downstream work
+- choose the smallest production scalar ordinary result/use pair justified by
+  the Step 1 matrix
+- allocate its result through the same owning value path and propagate the ID
+  to one later ordinary use
+- extend verifier coverage for opcode/type/ownership and malformed alternatives
+- use the result to classify which neighboring ordinary rows share the exact
+  mechanism and which need a distinct future packet
 
 Completion check:
 
-- every acceptance criterion is evidenced by callable code and tests, every
-  current row has a truthful disposition, and the supervisor can decide idea
-  734 closure without unsupported rows being misreported as capability
+- the focused scalar chain preserves a native ID across two non-call ordinary
+  operations and supports an evidence-backed remaining-row packet sequence
+
+### Step 7 - Complete bounded generic ordinary producer seams
+
+Goal: apply the proven mechanism to the remaining in-scope production rows in
+coherent, independently verifiable packets.
+
+Actions:
+
+- group rows only when they share result allocation, operand propagation, type
+  authority, and verifier rules
+- implement one group per executor packet with focused neighboring proof
+- keep rows needing opcode/predicate/object/aggregate/ABI-specific authority
+  blocked until that additional contract is separately proven
+- continuously update the checked matrix and preserve the four idea-741 rows
+- do not absorb stack/local, body-parameter, or CFG/terminator target families
+
+Completion check:
+
+- every in-scope remaining production ordinary row has native result/use
+  authority and proof, or an exact separately owned blocker with no false
+  receiver-ready claim
+
+### Step 8 - Audit verification and publish the idea-734 handoff
+
+Goal: prove the producer boundary is complete and give the receiver exact
+callable rows.
+
+Actions:
+
+- re-enumerate current ordinary variants/producers against the final matrix
+- audit invalid, duplicate, missing, unknown, cross-owner, alternative, and
+  type-conflict rejection through reachable verification
+- create `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
+- name exact source fields, carrier alternatives, producer guarantees,
+  verifier obligations, focused proof, and receiver work for every unblocked
+  row
+- keep all unproven, separate-family, and producerless rows explicitly
+  fail-closed
+
+Completion check:
+
+- the matrix and handoff have no omitted production ordinary row, no display-
+  derived authority, and enough exact detail for bounded idea-734 receiver
+  packets
+
+### Step 9 - Prove acceptance, close and resume idea 734
+
+Goal: close the decomposition only after source acceptance and broader proof.
+
+Actions:
+
+- run a fresh build, focused producer/verifier tests, relevant backend boundary
+  tests, and the supervisor-selected full regression checkpoint
+- audit the final diff against every Reviewer Reject Signal
+- ask plan-owner whether idea 744 is complete; do not infer completion from
+  runbook exhaustion
+- if accepted, close idea 744 and reactivate idea 734 at the first exact
+  receiver row named by the handoff
+
+Completion check:
+
+- supervisor proof is accepted, every source criterion is evidenced, no reject
+  signal is present, and lifecycle can resume idea 734 without broad ordinary
+  receipt claims
 
 ## Runbook Completion And Handoff
 
-Completing Step 8 makes idea 734 eligible for closure; it does not resume the
-parked documentation child automatically. Lifecycle then returns to idea 732
-and reruns documentation convergence against the landed implementation from
-phase A onward.
+Idea 734 remains open and parked throughout this producer initiative. Closing
+idea 744 proves native ordinary result/use publication only; all new-BIR
+containers and receipt remain with idea 734.

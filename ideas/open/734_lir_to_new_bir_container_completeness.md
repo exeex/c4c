@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active)
+Status: Open (parked on ordinary value identity)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -30,13 +30,15 @@ return rows from that committed handoff. At Step 4.5 it reached a second
 producer-authority boundary: declarations publish structured logical
 parameters through `LirFunction.params`, but definitions omitted that
 publication while retaining their structured ABI signature tracks. Closed
-idea 742 repaired and classified that producer seam. Idea 734 now resumes only
-at the exact bounded receiver row authorized by
-`docs/lir_function_parameter_authority/handoff_to_734.md`. The in-progress
-phase-C documentation child remains open but parked. The already-landed
-phase-A and phase-B documentation acceptances and phase-C C1-C6 slices are
-preserved as historical evidence; they are not current post-implementation
-acceptance.
+idea 742 repaired and classified that producer seam. Idea 734 then received
+the bounded target-stable parameter signatures, function linkage/elision
+metadata, and direct zero-argument void calls. At the next Step 5 row it reached
+the repeated remaining ordinary result/use identity family now owned by active
+idea 744. Idea 734 remains open and must resume only from idea 744's accepted
+handoff. The in-progress phase-C documentation child remains open but parked.
+The already-landed phase-A and phase-B documentation acceptances and phase-C
+C1-C6 slices are preserved as historical evidence; they are not current
+post-implementation acceptance.
 
 After this idea is implemented, accepted and closed, reactivate idea 732 and
 rerun documentation convergence against the landed C++ implementation from
@@ -79,6 +81,29 @@ cross-surface convergence. Pointer, narrow, aggregate/byval,
 HFA/vector/other expansion, variadic, function-pointer, and `va_list` rows
 remain blocked exactly as the handoff matrix states. Names, signature
 rendering, body text, and ABI position remain non-authoritative.
+
+## Current Ordinary Value Identity Blocker
+
+Plan Step 5.1 direct zero-argument void `Call` receipt is accepted in commit
+`49ed1b386`, with fresh focused proof and a 3033/3033 full monotonic regression
+checkpoint. That receiver row stores only a structured target `FunctionId` and
+needs no result or argument value identity.
+
+The next call rows are not receiver-ready. Production scalar-result calls use
+`fresh_tmp(ctx)`, leaving `LirCallOp.result` with display spelling but no
+`LirValueId`. `lir_call_structured_args` constructs argument operands from
+formatted strings, so scalar SSA call uses likewise lack stable current-
+function identity. Current authoritative `fresh_value(ctx)` production is
+limited to the bounded selected-global load/GEP seams delivered by closed idea
+741. The same missing result/use family recurs across most remaining ordinary
+variants.
+
+Idea 734 must not reconstruct these identities from result names, formatted
+operands, printer output, or testcase identity. Active idea 744 owns the
+remaining ordinary producer publication and verifier decomposition using the
+existing `LirOperand`/`LirValueId`/typed-immediate/`LinkNameId` model. Closed
+idea 741 remains complete and unchanged. CFG/terminator targets, stack/local
+objects, and body parameter identity remain separate blocked families.
 
 ## Why This Exists
 
