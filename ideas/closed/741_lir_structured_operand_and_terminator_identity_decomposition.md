@@ -1,6 +1,6 @@
 # Structured LIR Operand And Terminator Identity
 
-Status: Open (active decomposition)
+Status: Closed (complete)
 Type: typed LIR identity-carrier decomposition
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
 
@@ -118,3 +118,19 @@ malformed, and proven across neighboring rows without text parsing.
   rejection of malformed identity state.
 - Reject closing or superseding idea 734; this initiative must hand the typed
   carrier capability back to that open consumer.
+
+## Completion Evidence
+
+- The final checked authority matrix matches all 38 current `LirInst`
+  alternatives and all 6 `LirTerminator` alternatives without a catch-all or
+  omitted row.
+- CC-STORE-1, CC-LOAD-1, CC-GEP-1, and CC-RET-1 provide the four bounded
+  authoritative carrier/producer/verifier contracts required by this idea;
+  raw compatibility rows remain explicitly outside their claims.
+- `docs/lir_structured_identity/handoff_to_734.md` records the exact typed
+  authority available to the open consumer and the receiver implementation
+  still owned by idea 734.
+- Fresh focused proof passed 2/2 and the exact full suite passed 3033/3033 at
+  the accepted Step 6 gate.
+- Closure records producer-side completion only. It does not claim new-BIR
+  instruction or non-void terminator receipt and does not complete idea 734.

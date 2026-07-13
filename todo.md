@@ -1,56 +1,41 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/741_lir_structured_operand_and_terminator_identity_decomposition.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Prove and hand back to idea 734
+Current Step ID: 4.1
+Current Step Title: Receive direct selected-global scalar integer stores
 
 ## Just Finished
 
-- Plan Step 6 completes the final structured-identity audit and exact handoff
-  to open idea 734.
-- The matrix mechanically matches all 38 current `LirInst` alternatives and
-  all 6 `LirTerminator` alternatives with no catch-all or omitted variant. Its
-  current-status tables distinguish the four authoritative producer shapes
-  from every raw/monostate compatibility row still outside idea 741.
-- CC-STORE-1, CC-LOAD-1, CC-GEP-1, and CC-RET-1 each record their exact native
-  authority, producer seam, reachable verifier obligation, focused proof, and
-  presentation-only display status.
-- `docs/lir_structured_identity/handoff_to_734.md` names the exact store, load,
-  GEP, and scalar-return receipt subrows now unblocked and the remaining
-  receiver-owned containers, mapping, verifier, importer, and transactionality
-  work. It does not claim importer implementation or idea-734 completion.
+- Closed idea 741 after its exhaustive 38/38 instruction plus 6/6 terminator
+  audit, four authoritative producer carrier contracts, fresh focused/full
+  proof, and committed exact handoff to idea 734.
+- Reactivated idea 734 at the first receiver-owned function-body subrow. No
+  new-BIR instruction or non-void terminator receipt is claimed by the handoff.
 
 ## Suggested Next
 
-- Ask plan-owner for the lifecycle closure/deactivation decision for exhausted
-  idea 741 and, if accepted, reactivate open idea 734 at its blocked Step 4
-  function-body receipt boundary.
+- Implement only the direct selected-global scalar integer `LirStoreOp` row:
+  typed Raw-BIR Store payload, `LinkNameId` global mapping,
+  `LirIntegerImmediate` ordinary value materialization, ordered use edges,
+  reachable verification, neighboring malformed/raw rejection, and
+  module-transactional proof.
 
 ## Watchouts
 
-- Runbook exhaustion does not itself close idea 741; lifecycle disposition
-  remains plan-owner/supervisor work.
-- “Unblocked” is deliberately subrow-specific. Other modern instruction and
-  terminator producers still carry raw/monostate compatibility and must not be
-  received by parsing display; they need a separate producer-identity
-  initiative if idea 734 reaches them.
-- Active new-BIR behavior is unchanged: store/load/GEP remain
-  `UnsupportedOrdinaryInstruction`, and scalar return remains
-  `InvalidVoidReturn`. Idea 734 owns all receiving implementation.
+- Do not parse the store's value or pointer display, match the focused testcase,
+  or add a producer-name side table. Reuse one coherent BIR value/global/
+  constant registry.
+- Keep SSA/local pointer stores, non-integer values, and every raw/monostate
+  compatibility row fail-closed. The idea-741 handoff does not establish
+  whole-modern-LIR readiness.
+- Store receipt is one bounded subrow; load, GEP, scalar return, remaining
+  function/CFG/local-object work, and other instruction families stay later.
 
 ## Proof
 
-- `cmake --build --preset default` passed.
-- `ctest --test-dir build -R
-  '^(frontend_lir_call_type_ref|backend_lir_to_bir_interface)$'
-  --output-on-failure` passed 2/2.
-- The four Step 3 focused `--dump-bir` probes retained exact boundaries:
-  store/load/GEP are `UnsupportedOrdinaryInstruction`; scalar return is
-  `InvalidVoidReturn`. Focused `--codegen llvm` retained the store/load/GEP/ret
-  capability observations, while native authority evidence remains the C++
-  structural tests rather than rendered output.
-- Exact full proof `ctest --test-dir build -j --output-on-failure >
-  test_after.log` passed 3033/3033, matching `test_before.log`. `git diff
-  --check` passed.
+- Idea 741 closure gate: fresh focused proof 2/2 and exact full suite 3033/3033.
+- Current receiver boundaries before this packet remain
+  `UnsupportedOrdinaryInstruction` for store/load/GEP and `InvalidVoidReturn`
+  for scalar value return.
