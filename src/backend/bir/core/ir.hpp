@@ -23,10 +23,33 @@ struct InstResultDef {
   std::uint16_t result_index = 0;
 };
 
+struct UnresolvedDef {};
+
+struct IntegerConstant {
+  std::int64_t value = 0;
+};
+
+struct FloatingConstant {
+  std::uint64_t bits = 0;
+};
+
+using ConstantPayload = std::variant<IntegerConstant, FloatingConstant>;
+
+struct ConstantDefinition {
+  Type type{};
+  ConstantPayload payload = IntegerConstant{};
+};
+
+struct ConstantDef {
+  ConstantId constant{};
+};
+
 struct ValueDef {
   ValueKind kind = ValueKind::Parameter;
   Type type{};
-  std::variant<ParameterDef, InstResultDef> definition = ParameterDef{};
+  std::optional<SourceValueId> source_id;
+  std::variant<UnresolvedDef, ParameterDef, InstResultDef, ConstantDef>
+      definition = UnresolvedDef{};
 };
 
 enum class Opcode : std::uint8_t { InlineAsm };
@@ -135,7 +158,9 @@ struct FunctionData {
   SlotMap<InstData, InstId, FunctionId> insts_;
   SlotMap<ValueDef, ValueId, FunctionId> values_;
   IdOrder<BlockId> block_order_;
+  IdOrder<ValueId> value_order_;
   std::vector<ValueId> parameters_;
+  std::unordered_map<std::uint32_t, ValueId> values_by_source_id_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;
@@ -169,10 +194,12 @@ struct ModuleData {
   std::unordered_map<std::string, StructNameId> struct_names_by_spelling_;
   std::vector<StructDeclaration> struct_decls_;
   std::unordered_map<StructNameId, StructDeclId> struct_decls_by_name_;
+  std::vector<ConstantDefinition> constants_;
 
   friend class ::c4c::backend::bir::ModuleView;
   friend class ::c4c::backend::bir::FunctionView;
   friend class ::c4c::backend::bir::ModuleBuilder;
+  friend class ::c4c::backend::bir::FunctionBuilder;
   friend class ::c4c::backend::bir::FoundationVerifier;
   friend class ::c4c::backend::bir::RawBir;
   friend class ::c4c::backend::bir::CanonicalBir;

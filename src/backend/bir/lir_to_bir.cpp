@@ -3,6 +3,8 @@
 #include "../../codegen/lir/ir.hpp"
 
 #include <algorithm>
+#include <cstring>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -16,6 +18,8 @@ namespace {
 using codegen::lir::LirBlock;
 using codegen::lir::LirBr;
 using codegen::lir::LirCondBr;
+using codegen::lir::LirConstFloat;
+using codegen::lir::LirConstInt;
 using codegen::lir::LirFunction;
 using codegen::lir::LirIndirectBr;
 using codegen::lir::LirInlineAsmOp;
@@ -130,6 +134,45 @@ std::optional<Type> lower_signature_type(
     if (!mirrored || mirrored->kind != TypeKind::Void) return std::nullopt;
   }
   return result;
+}
+
+std::optional<Type> lower_constant_type(const LirModule& module,
+                                        const TypeSpec& type) {
+  if (type.ptr_level != 0 || type.is_lvalue_ref || type.is_rvalue_ref ||
+      type.array_rank != 0 || type.is_ptr_to_array || type.inner_rank != 0 ||
+      type.is_fn_ptr)
+    return std::nullopt;
+
+  std::uint32_t width = 0;
+  switch (type.base) {
+    case TB_BOOL: width = 1; break;
+    case TB_CHAR:
+    case TB_UCHAR:
+    case TB_SCHAR: width = 8; break;
+    case TB_SHORT:
+    case TB_USHORT: width = 16; break;
+    case TB_INT:
+    case TB_UINT: width = 32; break;
+    case TB_LONG:
+    case TB_ULONG:
+      width = module.target_profile.arch == c4c::TargetArch::I686 ? 32 : 64;
+      break;
+    case TB_LONGLONG:
+    case TB_ULONGLONG: width = 64; break;
+    case TB_INT128:
+    case TB_UINT128: width = 128; break;
+    case TB_FLOAT: return Type{TypeKind::Floating, 32, "float"};
+    case TB_DOUBLE: return Type{TypeKind::Floating, 64, "double"};
+    case TB_LONGDOUBLE:
+      if (module.target_profile.os == c4c::TargetOs::Windows)
+        return Type{TypeKind::Floating, 64, "double"};
+      if (module.target_profile.arch == c4c::TargetArch::X86_64 ||
+          module.target_profile.arch == c4c::TargetArch::I686)
+        return Type{TypeKind::Floating, 80, "x86_fp80"};
+      return Type{TypeKind::Floating, 128, "fp128"};
+    default: return std::nullopt;
+  }
+  return Type{TypeKind::Integer, width, "i" + std::to_string(width)};
 }
 
 std::size_t inline_asm_constraint_count(std::string_view constraints) {
@@ -389,6 +432,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::string> labels;
   std::unordered_set<std::uint32_t> block_ids;
   std::unordered_map<std::string, Type> ordinary_values;
+  std::unordered_map<std::uint32_t, Type> source_values;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
@@ -402,11 +446,50 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::DuplicateBlockId, name, block.label,
                         "LirBlockId values must be unique within a function");
     for (const auto& instruction : block.insts) {
+      if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
+        const auto type = lower_constant_type(module, constant->type);
+        if (!constant->result.valid())
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "integer constant has an invalid LirValueId");
+        if (!type || (type->kind != TypeKind::Integer &&
+                      type->kind != TypeKind::I1 &&
+                      type->kind != TypeKind::I8 &&
+                      type->kind != TypeKind::I16 &&
+                      type->kind != TypeKind::I32 &&
+                      type->kind != TypeKind::I64))
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "integer constant has a malformed or non-integer type");
+        if (!source_values.emplace(constant->result.value, *type).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "duplicate authoritative LirValueId definition");
+        continue;
+      }
+      if (const auto* constant = std::get_if<LirConstFloat>(&instruction)) {
+        const auto type = lower_constant_type(module, constant->type);
+        if (!constant->result.valid())
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "floating constant has an invalid LirValueId");
+        if (!type || (type->kind != TypeKind::Floating &&
+                      type->kind != TypeKind::F32 &&
+                      type->kind != TypeKind::F64))
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "floating constant has a malformed or non-floating type");
+        if (!source_values.emplace(constant->result.value, *type).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "duplicate authoritative LirValueId definition");
+        continue;
+      }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
       if (!inline_asm)
         return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
                           block.label,
-                          "only LirInlineAsmOp is in the bounded carrier slice");
+                          "instruction family is outside the bounded constant/value slice");
       auto checked = validate_inline_asm_shape(
           module, *inline_asm, name, block.label, ordinary_values);
       if (!checked) return checked;
@@ -565,6 +648,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
         created.value(), [&](FunctionBuilder& function_builder) {
           std::unordered_map<std::string, BlockId> blocks;
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
+          std::unordered_map<std::uint32_t, ValueId> source_values;
           blocks.reserve(function.blocks.size());
           for (const LirBlock& block : function.blocks) {
             auto created_block = function_builder.create_block(block.label);
@@ -578,6 +662,55 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
 
           for (const LirBlock& block : function.blocks) {
             for (const auto& instruction : block.insts) {
+              std::optional<std::pair<std::uint32_t, Type>> source;
+              if (const auto* constant = std::get_if<LirConstInt>(&instruction))
+                source = std::pair{constant->result.value,
+                                   *lower_constant_type(module, constant->type)};
+              else if (const auto* constant =
+                           std::get_if<LirConstFloat>(&instruction))
+                source = std::pair{constant->result.value,
+                                   *lower_constant_type(module, constant->type)};
+              if (!source) continue;
+              auto reserved = function_builder.reserve_source_value(
+                  source->first, std::move(source->second));
+              if (!reserved) {
+                edit_error = builder_failure(name, block.label,
+                                             "reserve source value",
+                                             reserved.error());
+                return Result<void, BuildError>::failure(reserved.error());
+              }
+              source_values.emplace(source->first, reserved.value());
+            }
+          }
+
+          for (const LirBlock& block : function.blocks) {
+            for (const auto& instruction : block.insts) {
+              if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
+                auto defined = function_builder.define_int_constant(
+                    source_values.at(constant->result.value),
+                    static_cast<std::int64_t>(constant->value));
+                if (!defined) {
+                  edit_error = builder_failure(name, block.label,
+                                               "define integer constant",
+                                               defined.error());
+                  return defined;
+                }
+                continue;
+              }
+              if (const auto* constant = std::get_if<LirConstFloat>(&instruction)) {
+                static_assert(sizeof(constant->value) == sizeof(std::uint64_t));
+                std::uint64_t bits = 0;
+                std::memcpy(&bits, &constant->value, sizeof(bits));
+                auto defined = function_builder.define_float_constant_bits(
+                    source_values.at(constant->result.value), bits);
+                if (!defined) {
+                  edit_error = builder_failure(name, block.label,
+                                               "define floating constant",
+                                               defined.error());
+                  return defined;
+                }
+                continue;
+              }
               const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);
               InlineAsmSpec spec;
               spec.asm_text = inline_asm.original_asm_text;

@@ -1,4 +1,4 @@
-#include "verifier.hpp"
+#include "../core/builder.hpp"
 
 #include <cstddef>
 #include <string>
@@ -20,10 +20,27 @@ void report(VerificationResult& result, VerificationRule rule,
 bool known(ValueKind kind) noexcept {
   switch (kind) {
     case ValueKind::Parameter:
-    case ValueKind::InstResult:
+    case ValueKind::Ordinary:
       return true;
   }
   return false;
+}
+
+bool integer_type(const Type& type) noexcept {
+  switch (type.kind) {
+    case TypeKind::I1:
+    case TypeKind::I8:
+    case TypeKind::I16:
+    case TypeKind::I32:
+    case TypeKind::I64:
+    case TypeKind::Integer: return true;
+    default: return false;
+  }
+}
+
+bool floating_type(const Type& type) noexcept {
+  return type.kind == TypeKind::F32 || type.kind == TypeKind::F64 ||
+         type.kind == TypeKind::Floating;
 }
 
 bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
@@ -125,6 +142,25 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
   if (module.struct_decls_by_name_.size() != module.struct_decls_.size())
     report(result, VerificationRule::StructDeclaration, {}, ModuleEntity{},
            "struct declaration cache size must match source order");
+
+  std::unordered_map<ConstantId, std::size_t> constant_references;
+  for (std::size_t index = 0; index < module.constants_.size(); ++index) {
+    const ConstantId id{module.epoch_, static_cast<SlotIndex>(index)};
+    const auto& constant = module.constants_[index];
+    if (!id.valid() || !is_well_formed(constant.type) ||
+        constant.type.kind == TypeKind::Void ||
+        constant.payload.valueless_by_exception()) {
+      report(result, VerificationRule::ConstantDefinition, {}, id,
+             "constant identity, type, and payload must be well formed");
+      continue;
+    }
+    if (std::holds_alternative<IntegerConstant>(constant.payload) !=
+            integer_type(constant.type) ||
+        std::holds_alternative<FloatingConstant>(constant.payload) !=
+            floating_type(constant.type))
+      report(result, VerificationRule::ConstantDefinition, {}, id,
+             "constant payload alternative must match its exact type domain");
+  }
 
   const auto function_counts = counts(module.function_order_.ids_);
   std::unordered_set<FunctionId> live_functions;
@@ -278,6 +314,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                "parameter kind, ordinal, or type does not match its signature");
     }
 
+    const auto value_counts = counts(function.value_order_.ids_);
+
     for (std::size_t value_slot = 0; value_slot < function.values_.slots_.size();
          ++value_slot) {
       const auto& value_storage = function.values_.slots_[value_slot];
@@ -290,6 +328,10 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           !function.values_.contains(function_id, value_id))
         report(result, VerificationRule::ValueDefinition, function_id,
                value_id, "live value does not resolve by exact owner/kind/ID");
+      const auto ordered = value_counts.find(value_id);
+      if (ordered == value_counts.end() || ordered->second != 1)
+        report(result, VerificationRule::ValueDefinition, function_id,
+               value_id, "live value must appear exactly once in value order");
       if (!is_well_formed(value.type))
         report(result, VerificationRule::BoundedAlternative, function_id,
                value_id, "value type is malformed");
@@ -307,12 +349,63 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                      std::get_if<InstResultDef>(&value.definition)) {
         const auto instruction =
             function.insts_.get(function_id, inst_result->instruction);
-        if (value.kind != ValueKind::InstResult || !instruction ||
+        if (value.kind != ValueKind::Ordinary || !instruction ||
             inst_result->result_index >= instruction.value().get().results.size() ||
             instruction.value().get().results[inst_result->result_index] != value_id)
           report(result, VerificationRule::ValueDefinition, function_id,
                  value_id, "instruction-result definition is incoherent");
+      } else if (std::holds_alternative<UnresolvedDef>(value.definition)) {
+        report(result, VerificationRule::ValueDefinition, function_id,
+               value_id, "reserved ordinary value has no definition");
+      } else if (const auto* constant =
+                     std::get_if<ConstantDef>(&value.definition)) {
+        if (value.kind != ValueKind::Ordinary || !constant->constant.valid() ||
+            constant->constant.epoch != module.epoch_ ||
+            constant->constant.slot >= module.constants_.size() ||
+            (constant->constant.slot < module.constants_.size() &&
+             module.constants_[constant->constant.slot].type != value.type)) {
+          report(result, VerificationRule::ValueDefinition, function_id,
+                 value_id,
+                 "constant value definition must resolve with its exact type");
+        } else {
+          ++constant_references[constant->constant];
+        }
       }
+      if (value.source_id) {
+        const auto indexed =
+            function.values_by_source_id_.find(value.source_id->value);
+        if (!value.source_id->valid() || value.source_id->owner != function_id ||
+            indexed == function.values_by_source_id_.end() ||
+            indexed->second != value_id)
+          report(result, VerificationRule::SourceValueIndex, function_id,
+                 *value.source_id,
+                 "source value identity must resolve to the exact ordinary value");
+      }
+    }
+
+    for (const auto value_id : function.value_order_.ids_)
+      if (value_id.owner != function_id ||
+          !function.values_.contains(function_id, value_id))
+        report(result, VerificationRule::ValueDefinition, function_id,
+               value_id, "value order contains a foreign or unresolved ID");
+
+
+    std::size_t source_value_count = 0;
+    for (const auto& slot : function.values_.slots_)
+      if (slot.value && slot.value->source_id) ++source_value_count;
+    if (source_value_count != function.values_by_source_id_.size())
+      report(result, VerificationRule::SourceValueIndex, function_id,
+             function_id,
+             "source value index size must match source-backed live values");
+    for (const auto& entry : function.values_by_source_id_) {
+      const auto value = function.values_.get(function_id, entry.second);
+      if (!value || entry.second.kind != ValueKind::Ordinary ||
+          !value.value().get().source_id ||
+          value.value().get().source_id->owner != function_id ||
+          value.value().get().source_id->value != entry.first)
+        report(result, VerificationRule::SourceValueIndex, function_id,
+               SourceValueId{function_id, entry.first},
+               "source value index contains a foreign or conflicting definition");
     }
 
     if (function.is_declaration_) {
@@ -388,6 +481,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              function_id, "module order contains a foreign or unresolved ID");
   }
 
+  for (std::size_t index = 0; index < module.constants_.size(); ++index) {
+    const ConstantId id{module.epoch_, static_cast<SlotIndex>(index)};
+    if (constant_references[id] != 1)
+      report(result, VerificationRule::ConstantDefinition, {}, id,
+             "each constant must define exactly one ordinary value");
+  }
+
   if (module.functions_by_link_name_.size() != live_names.size())
     report(result, VerificationRule::LinkNameIndex, {}, ModuleEntity{},
            "link-name index size must exactly match unique live functions");
@@ -410,6 +510,11 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
   }
 
   return result;
+}
+
+VerificationResult FoundationVerifier::verify(const RawBir& raw,
+                                               VerifyProfile profile) {
+  return verify(*raw.data_, profile);
 }
 
 }  // namespace c4c::backend::bir

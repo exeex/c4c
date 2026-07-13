@@ -34,6 +34,11 @@ enum class BuildError {
   ForeignOwner,
   InvalidBlock,
   InvalidValue,
+  InvalidValueType,
+  InvalidSourceValueId,
+  DuplicateSourceValue,
+  ValueAlreadyDefined,
+  DefinitionTypeMismatch,
   TerminatorAlreadySet,
   InvalidConditionType,
   InvalidReturn,
@@ -88,6 +93,7 @@ class RawBir {
   detail::RawStateToken token_;
 
   friend class ModuleBuilder;
+  friend class FoundationVerifier;
   friend Result<CanonicalBir, VerificationResult> canonicalize(RawBir&&);
   friend struct pipeline_internal::CheckpointAccess;
 };
@@ -183,6 +189,13 @@ class FunctionBuilder {
 
   FunctionId id() const noexcept { return function_; }
   Result<ValueId, BuildError> parameter(std::uint32_t ordinal) const;
+  Result<ValueId, BuildError> reserve_value(Type type);
+  Result<ValueId, BuildError> reserve_source_value(std::uint32_t source_id,
+                                                   Type type);
+  Result<void, BuildError> define_int_constant(ValueId value,
+                                               std::int64_t exact_value);
+  Result<void, BuildError> define_float_constant_bits(ValueId value,
+                                                      std::uint64_t exact_bits);
   Result<BlockId, BuildError> create_block(std::string debug_name = {});
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,

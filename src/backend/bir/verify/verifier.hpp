@@ -14,11 +14,13 @@ enum class VerificationRule {
   ModuleEpoch,
   ModuleNameTable,
   StructDeclaration,
+  ConstantDefinition,
   FunctionStorageAndOrder,
   BlockStorageAndOrder,
   InstructionStorageAndOrder,
   ParameterDefinition,
   ValueDefinition,
+  SourceValueIndex,
   FunctionShape,
   Terminator,
   LinkNameIndex,
@@ -31,7 +33,8 @@ struct LinkNameEntity {
 };
 using VerificationEntity =
     std::variant<ModuleEntity, FunctionId, BlockId, InstId, ValueId,
-                 LinkNameId, StructNameId, StructDeclId, LinkNameEntity>;
+                 SourceValueId, LinkNameId, StructNameId, StructDeclId,
+                 ConstantId, LinkNameEntity>;
 
 struct VerificationError {
   VerificationRule rule = VerificationRule::ModuleEpoch;
@@ -49,6 +52,9 @@ struct VerificationResult {
 
 class FoundationVerifier {
  public:
+  static VerificationResult verify(const RawBir& raw,
+                                   VerifyProfile profile =
+                                       VerifyProfile::FoundationRaw);
   static VerificationResult verify(const detail::ModuleData& module,
                                    VerifyProfile profile =
                                        VerifyProfile::FoundationRaw);

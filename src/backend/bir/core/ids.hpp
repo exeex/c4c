@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 namespace c4c::backend::bir {
@@ -40,6 +41,12 @@ struct StructDeclId {
   constexpr bool valid() const noexcept { return epoch != 0; }
 };
 
+struct ConstantId {
+  ModuleEpoch epoch = 0;
+  SlotIndex slot = 0;
+  constexpr bool valid() const noexcept { return epoch != 0; }
+};
+
 struct BlockId {
   FunctionId owner{};
   SlotIndex slot = 0;
@@ -56,7 +63,7 @@ struct InstId {
   constexpr bool valid() const noexcept { return owner.valid() && generation != 0; }
 };
 
-enum class ValueKind : std::uint8_t { Parameter, InstResult };
+enum class ValueKind : std::uint8_t { Parameter, Ordinary };
 
 struct ValueId {
   FunctionId owner{};
@@ -65,6 +72,17 @@ struct ValueId {
   Generation generation = 0;
 
   constexpr bool valid() const noexcept { return owner.valid() && generation != 0; }
+};
+
+// A typed reference back to an authoritative function-local source value ID.
+// Source value zero is valid; UINT32_MAX is the invalid sentinel used by LIR.
+struct SourceValueId {
+  FunctionId owner{};
+  std::uint32_t value = std::numeric_limits<std::uint32_t>::max();
+
+  constexpr bool valid() const noexcept {
+    return owner.valid() && value != std::numeric_limits<std::uint32_t>::max();
+  }
 };
 
 constexpr bool operator==(FunctionId lhs, FunctionId rhs) noexcept {
@@ -84,6 +102,12 @@ constexpr bool operator==(StructDeclId lhs, StructDeclId rhs) noexcept {
   return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
 }
 constexpr bool operator!=(StructDeclId lhs, StructDeclId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(ConstantId lhs, ConstantId rhs) noexcept {
+  return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot;
+}
+constexpr bool operator!=(ConstantId lhs, ConstantId rhs) noexcept {
+  return !(lhs == rhs);
+}
 constexpr bool operator==(BlockId lhs, BlockId rhs) noexcept {
   return lhs.owner == rhs.owner && lhs.slot == rhs.slot &&
          lhs.generation == rhs.generation;
@@ -99,6 +123,12 @@ constexpr bool operator==(ValueId lhs, ValueId rhs) noexcept {
          lhs.generation == rhs.generation;
 }
 constexpr bool operator!=(ValueId lhs, ValueId rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator==(SourceValueId lhs, SourceValueId rhs) noexcept {
+  return lhs.owner == rhs.owner && lhs.value == rhs.value;
+}
+constexpr bool operator!=(SourceValueId lhs, SourceValueId rhs) noexcept {
+  return !(lhs == rhs);
+}
 
 namespace detail {
 
@@ -119,9 +149,11 @@ static_assert(std::is_trivially_copyable_v<FunctionId>);
 static_assert(std::is_trivially_copyable_v<LinkNameId>);
 static_assert(std::is_trivially_copyable_v<StructNameId>);
 static_assert(std::is_trivially_copyable_v<StructDeclId>);
+static_assert(std::is_trivially_copyable_v<ConstantId>);
 static_assert(std::is_trivially_copyable_v<BlockId>);
 static_assert(std::is_trivially_copyable_v<InstId>);
 static_assert(std::is_trivially_copyable_v<ValueId>);
+static_assert(std::is_trivially_copyable_v<SourceValueId>);
 
 }  // namespace c4c::backend::bir
 
@@ -152,6 +184,15 @@ template <>
 struct hash<c4c::backend::bir::StructDeclId> {
   size_t operator()(c4c::backend::bir::StructDeclId id) const noexcept {
     return c4c::backend::bir::detail::hash_combine(hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch), hash<c4c::backend::bir::SlotIndex>{}(id.slot));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::ConstantId> {
+  size_t operator()(c4c::backend::bir::ConstantId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(
+        hash<c4c::backend::bir::ModuleEpoch>{}(id.epoch),
+        hash<c4c::backend::bir::SlotIndex>{}(id.slot));
   }
 };
 
@@ -189,6 +230,15 @@ struct hash<c4c::backend::bir::ValueId> {
         result, hash<c4c::backend::bir::SlotIndex>{}(id.slot));
     return c4c::backend::bir::detail::hash_combine(
         result, hash<c4c::backend::bir::Generation>{}(id.generation));
+  }
+};
+
+template <>
+struct hash<c4c::backend::bir::SourceValueId> {
+  size_t operator()(c4c::backend::bir::SourceValueId id) const noexcept {
+    return c4c::backend::bir::detail::hash_combine(
+        c4c::backend::bir::detail::hash_function_id(id.owner),
+        hash<std::uint32_t>{}(id.value));
   }
 };
 

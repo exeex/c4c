@@ -50,6 +50,7 @@ class FunctionView {
   bool is_declaration() const noexcept { return data_->is_declaration_; }
   std::string link_name() const { return data_->link_name_; }
   std::vector<ValueId> parameters() const { return data_->parameters_; }
+  std::vector<ValueId> values() const { return data_->value_order_.ids(); }
   std::vector<BlockId> blocks() const { return data_->block_order_.ids(); }
 
   Result<BlockView, ResolveError> block(BlockId id) const {
@@ -64,6 +65,17 @@ class FunctionView {
     if (!resolved)
       return Result<ValueDef, ResolveError>::failure(resolved.error());
     return Result<ValueDef, ResolveError>::success(resolved.value().get());
+  }
+
+  Result<ValueId, ResolveError> source_value(SourceValueId id) const {
+    if (id.owner.epoch != id_.epoch)
+      return Result<ValueId, ResolveError>::failure(ResolveError::WrongEpoch);
+    if (id.owner != id_)
+      return Result<ValueId, ResolveError>::failure(ResolveError::WrongOwner);
+    const auto found = data_->values_by_source_id_.find(id.value);
+    if (found == data_->values_by_source_id_.end())
+      return Result<ValueId, ResolveError>::failure(ResolveError::OutOfRange);
+    return Result<ValueId, ResolveError>::success(found->second);
   }
 
   Result<InstView, ResolveError> instruction(InstId id) const {
@@ -149,6 +161,13 @@ class ModuleView {
       ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
     return ids;
   }
+  std::vector<ConstantId> constants() const {
+    std::vector<ConstantId> ids;
+    ids.reserve(data_->constants_.size());
+    for (std::size_t i = 0; i < data_->constants_.size(); ++i)
+      ids.push_back({data_->epoch_, static_cast<SlotIndex>(i)});
+    return ids;
+  }
 
   Result<std::string, ResolveError> spelling(LinkNameId id) const {
     if (id.epoch != data_->epoch_)
@@ -184,6 +203,16 @@ class ModuleView {
     if (id.slot >= data_->struct_decls_.size())
       return Result<StructDeclaration, ResolveError>::failure(ResolveError::OutOfRange);
     return Result<StructDeclaration, ResolveError>::success(data_->struct_decls_[id.slot]);
+  }
+  Result<ConstantDefinition, ResolveError> constant(ConstantId id) const {
+    if (id.epoch != data_->epoch_)
+      return Result<ConstantDefinition, ResolveError>::failure(
+          ResolveError::WrongEpoch);
+    if (id.slot >= data_->constants_.size())
+      return Result<ConstantDefinition, ResolveError>::failure(
+          ResolveError::OutOfRange);
+    return Result<ConstantDefinition, ResolveError>::success(
+        data_->constants_[id.slot]);
   }
 
   Result<FunctionView, ResolveError> function(FunctionId id) const {

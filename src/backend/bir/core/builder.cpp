@@ -37,6 +37,23 @@ bool same_owner(FunctionId function, ValueId value) noexcept {
   return value.owner == function;
 }
 
+bool integer_type(const Type& type) noexcept {
+  switch (type.kind) {
+    case TypeKind::I1:
+    case TypeKind::I8:
+    case TypeKind::I16:
+    case TypeKind::I32:
+    case TypeKind::I64:
+    case TypeKind::Integer: return true;
+    default: return false;
+  }
+}
+
+bool floating_type(const Type& type) noexcept {
+  return type.kind == TypeKind::F32 || type.kind == TypeKind::F64 ||
+         type.kind == TypeKind::Floating;
+}
+
 }  // namespace
 
 ModuleBuilder::ModuleBuilder() : data_(std::make_unique<detail::ModuleData>()) {
@@ -189,6 +206,8 @@ Result<FunctionId, BuildError> ModuleBuilder::create_function(
     auto value = stored.values_.emplace(id, std::move(parameter));
     if (!value)
       return Result<FunctionId, BuildError>::failure(storage_error(value.error()));
+    if (!stored.value_order_.append(value.value()))
+      return Result<FunctionId, BuildError>::failure(BuildError::StorageExhausted);
     stored.parameters_.push_back(value.value());
   }
 
@@ -312,6 +331,113 @@ Result<ValueId, BuildError> FunctionBuilder::parameter(
   return Result<ValueId, BuildError>::success(parameters[ordinal]);
 }
 
+Result<ValueId, BuildError> FunctionBuilder::reserve_value(Type type) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<ValueId, BuildError>::failure(function.error());
+  if (!is_well_formed(type) || type.kind == TypeKind::Void)
+    return Result<ValueId, BuildError>::failure(BuildError::InvalidValueType);
+  ValueDef value;
+  value.kind = ValueKind::Ordinary;
+  value.type = std::move(type);
+  auto inserted =
+      function.value().get().values_.emplace(function_, std::move(value));
+  if (!inserted)
+    return Result<ValueId, BuildError>::failure(storage_error(inserted.error()));
+  if (!function.value().get().value_order_.append(inserted.value())) {
+    function.value().get().values_.erase(function_, inserted.value());
+    return Result<ValueId, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<ValueId, BuildError>::success(inserted.value());
+}
+
+Result<ValueId, BuildError> FunctionBuilder::reserve_source_value(
+    std::uint32_t source_id, Type type) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<ValueId, BuildError>::failure(function.error());
+  if (source_id == std::numeric_limits<std::uint32_t>::max())
+    return Result<ValueId, BuildError>::failure(BuildError::InvalidSourceValueId);
+  auto& data = function.value().get();
+  if (data.values_by_source_id_.count(source_id) != 0)
+    return Result<ValueId, BuildError>::failure(BuildError::DuplicateSourceValue);
+  if (!is_well_formed(type) || type.kind == TypeKind::Void)
+    return Result<ValueId, BuildError>::failure(BuildError::InvalidValueType);
+  ValueDef value;
+  value.kind = ValueKind::Ordinary;
+  value.type = std::move(type);
+  value.source_id = SourceValueId{function_, source_id};
+  auto inserted = data.values_.emplace(function_, std::move(value));
+  if (!inserted)
+    return Result<ValueId, BuildError>::failure(storage_error(inserted.error()));
+  if (!data.value_order_.append(inserted.value())) {
+    data.values_.erase(function_, inserted.value());
+    return Result<ValueId, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  try {
+    data.values_by_source_id_.emplace(source_id, inserted.value());
+  } catch (...) {
+    data.value_order_.erase(inserted.value());
+    data.values_.erase(function_, inserted.value());
+    throw;
+  }
+  return Result<ValueId, BuildError>::success(inserted.value());
+}
+
+Result<void, BuildError> FunctionBuilder::define_int_constant(
+    ValueId value, std::int64_t exact_value) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<void, BuildError>::failure(function.error());
+  if (!same_owner(function_, value))
+    return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+  auto resolved = function.value().get().values_.get_mut(function_, value);
+  if (!resolved)
+    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+  auto& definition = resolved.value().get();
+  if (definition.kind != ValueKind::Ordinary || !integer_type(definition.type))
+    return Result<void, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  if (!std::holds_alternative<UnresolvedDef>(definition.definition))
+    return Result<void, BuildError>::failure(BuildError::ValueAlreadyDefined);
+  if (parent_->data_->constants_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<void, BuildError>::failure(BuildError::StorageExhausted);
+  const ConstantId constant{
+      parent_->data_->epoch_,
+      static_cast<SlotIndex>(parent_->data_->constants_.size())};
+  parent_->data_->constants_.push_back(
+      ConstantDefinition{definition.type, IntegerConstant{exact_value}});
+  definition.definition = ConstantDef{constant};
+  return Result<void, BuildError>::success();
+}
+
+Result<void, BuildError> FunctionBuilder::define_float_constant_bits(
+    ValueId value, std::uint64_t exact_bits) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<void, BuildError>::failure(function.error());
+  if (!same_owner(function_, value))
+    return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+  auto resolved = function.value().get().values_.get_mut(function_, value);
+  if (!resolved)
+    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+  auto& definition = resolved.value().get();
+  if (definition.kind != ValueKind::Ordinary || !floating_type(definition.type))
+    return Result<void, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  if (!std::holds_alternative<UnresolvedDef>(definition.definition))
+    return Result<void, BuildError>::failure(BuildError::ValueAlreadyDefined);
+  if (parent_->data_->constants_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<void, BuildError>::failure(BuildError::StorageExhausted);
+  const ConstantId constant{
+      parent_->data_->epoch_,
+      static_cast<SlotIndex>(parent_->data_->constants_.size())};
+  parent_->data_->constants_.push_back(
+      ConstantDefinition{definition.type, FloatingConstant{exact_bits}});
+  definition.definition = ConstantDef{constant};
+  return Result<void, BuildError>::success();
+}
+
 Result<BlockId, BuildError> FunctionBuilder::create_block(
     std::string debug_name) {
   auto function = mutable_function();
@@ -374,7 +500,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   results.reserve(spec.result_types.size());
   for (std::size_t index = 0; index < spec.result_types.size(); ++index) {
     ValueDef value;
-    value.kind = ValueKind::InstResult;
+    value.kind = ValueKind::Ordinary;
     value.type = spec.result_types[index];
     value.definition =
         InstResultDef{instruction_id, static_cast<std::uint16_t>(index)};
@@ -399,9 +525,22 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   }
   stored_instruction.value().get().results = results;
 
+  for (const auto result : results) {
+    if (!function_data.value_order_.append(result)) {
+      for (const auto rollback : results)
+        function_data.value_order_.erase(rollback);
+      for (const auto rollback : results)
+        function_data.values_.erase(function_, rollback);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+    }
+  }
+
   auto block_data = function_data.blocks_.get_mut(function_, block);
   if (!block_data ||
       !block_data.value().get().instruction_order_.append(instruction_id)) {
+    for (const auto result : results)
+      function_data.value_order_.erase(result);
     for (const auto result : results)
       function_data.values_.erase(function_, result);
     function_data.insts_.erase(function_, instruction_id);

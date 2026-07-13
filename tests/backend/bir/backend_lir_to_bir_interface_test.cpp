@@ -2,8 +2,10 @@
 #include "src/codegen/lir/ir.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -50,6 +52,19 @@ lir::LirBlock return_block(std::uint32_t id, std::string label) {
   block.label = std::move(label);
   block.terminator = lir::LirRet{std::nullopt, "void"};
   return block;
+}
+
+c4c::TypeSpec scalar_type(c4c::TypeBase base) {
+  c4c::TypeSpec type{};
+  type.base = base;
+  return type;
+}
+
+double double_from_bits(std::uint64_t bits) {
+  double value = 0.0;
+  static_assert(sizeof(value) == sizeof(bits));
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
 }
 
 lir::LirInlineAsmOp void_inline_asm(std::string asm_text,
@@ -829,6 +844,210 @@ void test_module_name_and_struct_declaration_rejections() {
          "publication verifier must reject malformed staged declarations");
 }
 
+void test_structured_constant_value_receipt() {
+  constexpr std::uint64_t negative_zero = UINT64_C(0x8000000000000000);
+  constexpr std::uint64_t quiet_nan = UINT64_C(0x7ff8000000000042);
+
+  lir::LirModule module;
+  auto block = return_block(0, "entry");
+  block.insts = {
+      lir::LirConstInt{lir::LirValueId{0}, scalar_type(c4c::TB_LONGLONG),
+                       std::numeric_limits<long long>::min()},
+      lir::LirConstInt{lir::LirValueId{17}, scalar_type(c4c::TB_LONGLONG),
+                       std::numeric_limits<long long>::max()},
+      lir::LirConstFloat{lir::LirValueId{8}, scalar_type(c4c::TB_DOUBLE),
+                         double_from_bits(negative_zero)},
+      lir::LirConstFloat{lir::LirValueId{9}, scalar_type(c4c::TB_DOUBLE),
+                         double_from_bits(quiet_nan)},
+  };
+  module.functions.push_back(
+      void_definition("structured_constants", {std::move(block)}));
+
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "typed integer and floating constants should publish RawBir");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "published constant state should be reachable by FoundationVerifier");
+  const auto module_view = imported.value().view();
+  const auto function_id = module_view.functions().front();
+  const auto function = module_view.function(function_id).value();
+  const auto values = function.values();
+  expect(values.size() == 4,
+         "constants must be ordinary values, not fabricated instructions");
+  expect(function.instructions(function.blocks().front()).value().empty(),
+         "constant definitions must not create runtime instruction nodes");
+
+  const auto min_id =
+      function.source_value(bir::SourceValueId{function_id, 0}).value();
+  const auto max_id =
+      function.source_value(bir::SourceValueId{function_id, 17}).value();
+  const auto neg_zero_id =
+      function.source_value(bir::SourceValueId{function_id, 8}).value();
+  const auto nan_id =
+      function.source_value(bir::SourceValueId{function_id, 9}).value();
+  const auto min_def = function.value(min_id).value();
+  const auto max_def = function.value(max_id).value();
+  const auto neg_zero_def = function.value(neg_zero_id).value();
+  const auto nan_def = function.value(nan_id).value();
+  const auto min_constant = module_view
+                                .constant(std::get<bir::ConstantDef>(
+                                              min_def.definition)
+                                              .constant)
+                                .value();
+  const auto max_constant = module_view
+                                .constant(std::get<bir::ConstantDef>(
+                                              max_def.definition)
+                                              .constant)
+                                .value();
+  const auto neg_zero_constant =
+      module_view
+          .constant(std::get<bir::ConstantDef>(neg_zero_def.definition).constant)
+          .value();
+  const auto nan_constant =
+      module_view.constant(std::get<bir::ConstantDef>(nan_def.definition).constant)
+          .value();
+  expect(std::get<bir::IntegerConstant>(min_constant.payload).value ==
+             std::numeric_limits<std::int64_t>::min() &&
+             std::get<bir::IntegerConstant>(max_constant.payload).value ==
+                 std::numeric_limits<std::int64_t>::max(),
+         "integer constants must preserve signed boundary values exactly");
+  expect(std::get<bir::FloatingConstant>(neg_zero_constant.payload).bits ==
+             negative_zero &&
+             std::get<bir::FloatingConstant>(nan_constant.payload).bits == quiet_nan,
+         "floating constants must preserve negative-zero and NaN payload bits");
+  expect(min_def.type == bir::Type{bir::TypeKind::I64} &&
+             neg_zero_def.type == bir::Type{bir::TypeKind::F64},
+         "constant immutable views must expose their exact typed definitions");
+}
+
+void test_constant_value_rejections_and_forward_use() {
+  const auto rejected = [](lir::LirModule module, const std::string& message) {
+    auto imported = bir::lower_lir_to_raw_bir(module);
+    expect(!imported.has_value() &&
+               imported.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message);
+  };
+  const auto module_with = [](std::string name,
+                              std::vector<lir::LirInst> instructions) {
+    lir::LirModule module;
+    module.functions.push_back(void_declaration("valid_before_" + name));
+    auto block = return_block(0, "entry");
+    block.insts = std::move(instructions);
+    module.functions.push_back(
+        void_definition(std::move(name), {std::move(block)}));
+    return module;
+  };
+
+  rejected(module_with(
+               "duplicate_constant",
+               {lir::LirConstInt{lir::LirValueId{3}, scalar_type(c4c::TB_INT), 1},
+                lir::LirConstFloat{lir::LirValueId{3}, scalar_type(c4c::TB_DOUBLE),
+                                   1.0}}),
+           "duplicate LirValueId definitions must roll back the whole module");
+  rejected(module_with(
+               "missing_constant",
+               {lir::LirConstInt{lir::LirValueId::invalid(),
+                                 scalar_type(c4c::TB_INT), 1}}),
+           "invalid source result identities must be rejected");
+  rejected(module_with(
+               "mistyped_constant",
+               {lir::LirConstInt{lir::LirValueId{1}, scalar_type(c4c::TB_DOUBLE), 1}}),
+           "integer payloads with floating types must be rejected");
+
+  bir::ModuleBuilder builder;
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::Void};
+  auto function = builder.create_function(signature, "forward_constant", false);
+  expect(function.has_value(), "forward-use function should be constructible");
+  bir::ValueId reserved{};
+  bir::InstId use{};
+  auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        auto block = function_builder.create_block("entry");
+        if (!block) return bir::Result<void, bir::BuildError>::failure(block.error());
+        auto value = function_builder.reserve_source_value(
+            41, bir::Type{bir::TypeKind::I64});
+        if (!value) return bir::Result<void, bir::BuildError>::failure(value.error());
+        reserved = value.value();
+
+        bir::InlineAsmSpec spec;
+        spec.asm_text = "forward use";
+        spec.constraint_text = "r";
+        spec.inputs = {reserved};
+        auto appended = function_builder.append(block.value(), std::move(spec));
+        if (!appended)
+          return bir::Result<void, bir::BuildError>::failure(appended.error());
+        use = appended.value().instruction;
+        auto defined = function_builder.define_int_constant(reserved, -7);
+        if (!defined) return defined;
+        expect(!function_builder.define_int_constant(reserved, -8).has_value(),
+               "conflicting second definitions must be rejected");
+        return function_builder.set_terminator(block.value(), bir::ReturnTerm{});
+      });
+  expect(edited.has_value(),
+         "a reserved identity should permit a use before its constant definition");
+  auto published = std::move(builder).publish();
+  expect(published.has_value(),
+         "a resolved forward use should pass foundation verification");
+  const auto published_view = published.value().view();
+  const auto view = published_view.function(function.value()).value();
+  const auto reserved_definition = view.value(reserved).value();
+  const auto reserved_constant =
+      published_view
+          .constant(std::get<bir::ConstantDef>(reserved_definition.definition)
+                        .constant)
+          .value();
+  expect(view.instruction(use).value().operands() ==
+             std::vector<bir::ValueId>{reserved} &&
+             std::get<bir::IntegerConstant>(reserved_constant.payload).value == -7,
+         "forward uses and the later typed definition must share one ValueId");
+
+  bir::ModuleBuilder unresolved_builder;
+  auto unresolved_function = unresolved_builder.create_function(
+      signature, "unresolved_constant", false);
+  auto unresolved_edit = unresolved_builder.with_function(
+      unresolved_function.value(), [&](bir::FunctionBuilder& function_builder) {
+        auto block = function_builder.create_block("entry");
+        if (!block) return bir::Result<void, bir::BuildError>::failure(block.error());
+        auto value = function_builder.reserve_value(bir::Type{bir::TypeKind::I64});
+        if (!value) return bir::Result<void, bir::BuildError>::failure(value.error());
+        expect(!function_builder.define_float_constant_bits(value.value(), 0)
+                    .has_value(),
+               "mistyped definitions must be rejected without consuming a reservation");
+        return function_builder.set_terminator(block.value(), bir::ReturnTerm{});
+      });
+  expect(unresolved_edit.has_value(), "unresolved staged state should remain inspectable");
+  auto unresolved = std::move(unresolved_builder).publish();
+  expect(!unresolved.has_value() &&
+             unresolved.error().reason == bir::PublishError::VerificationFailed,
+         "FoundationVerifier must reject unresolved reservations");
+
+  bir::ModuleBuilder foreign_builder;
+  auto owner = foreign_builder.create_function(signature, "owner", false);
+  auto foreign = foreign_builder.create_function(signature, "foreign", false);
+  bir::ValueId owner_value{};
+  expect(foreign_builder
+             .with_function(owner.value(), [&](bir::FunctionBuilder& fb) {
+               auto block = fb.create_block("entry");
+               owner_value = fb.reserve_value(bir::Type{bir::TypeKind::I64}).value();
+               fb.define_int_constant(owner_value, 1);
+               return fb.set_terminator(block.value(), bir::ReturnTerm{});
+             })
+             .has_value(),
+         "owner value setup should succeed");
+  expect(foreign_builder
+             .with_function(foreign.value(), [&](bir::FunctionBuilder& fb) {
+               expect(fb.define_int_constant(owner_value, 2).error() ==
+                          bir::BuildError::ForeignOwner,
+                      "foreign definitions must be rejected by exact owner");
+               auto block = fb.create_block("entry");
+               return fb.set_terminator(block.value(), bir::ReturnTerm{});
+             })
+             .has_value(),
+         "foreign rejection should not poison the surrounding edit");
+}
+
 void test_structured_rejection() {
   lir::LirModule module;
   module.globals.push_back(lir::LirGlobal{});
@@ -875,6 +1094,8 @@ int main() {
   test_verifier_rejects_malformed_raw_type();
   test_module_name_and_struct_declaration_receipt();
   test_module_name_and_struct_declaration_rejections();
+  test_structured_constant_value_receipt();
+  test_constant_value_rejections_and_forward_use();
   test_structured_rejection();
   test_inline_asm_shape_rejection();
   return 0;
