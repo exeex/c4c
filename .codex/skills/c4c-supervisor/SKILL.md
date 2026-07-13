@@ -1,6 +1,6 @@
 ---
 name: c4c-supervisor
-description: Lightweight c4c orchestration shell. Use for the direct user-facing agent that decides whether to call the plan owner, an executor, or a reviewer, checks git status before and after delegation, normalizes canonical regression logs, runs supervisor-side validation, and commits completed coherent slices. This role should stay lightweight.
+description: Lightweight c4c orchestration shell for the direct user-facing agent. Use it to answer read-only interactive diagnosis directly, route lifecycle or implementation mutations to specialists, keep reviewer use off by default unless an explicit independent-review gate applies, validate returned slices, and create final commits.
 ---
 
 # C4C Supervisor
@@ -44,6 +44,8 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - decide whether `c4c-reviewer` is needed and whether delegated `c4c-executor`
   or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
   token on C++ exploration
+- answer interactive git-history, status, scope, and drift diagnosis directly;
+  specialist mutation boundaries do not require delegating read-only analysis
 - flush completed ready slices before delegating new work
 - watch `todo.md` execution metadata so oversized steps can trigger plan review
   from stable state instead of chat-only judgment
@@ -68,6 +70,11 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 8. Do not issue a new specialist packet while a previously completed coherent
    slice is already sitting ready in the worktree; validate and commit or
    explicitly reject it first.
+9. Do not call `c4c-reviewer` or create a review artifact for an ordinary
+   interactive git-log, status, scope, or drift question.
+10. Treat the user's explicit scope as authoritative over idea, plan, todo,
+    review, and history artifacts. An architecture-direction decision does not
+    authorize implementation-scope expansion.
 
 ## Stable Handoff
 
@@ -118,6 +125,9 @@ Review Question: <what to judge>
 Report Path: review/<name>.md
 If Blocked: stop and report the exact history ambiguity
 ```
+
+Construct this packet only after one of the reviewer gates below is satisfied.
+Ordinary supervisor diagnosis must not produce a transient `review/` artifact.
 
 Include `Tooling` only to steer delegated exploration. Keep this guidance in
 the delegated prompt, not in [`todo.md`](/workspaces/c4c/todo.md).
@@ -172,9 +182,8 @@ Choose the next specialist with these rules:
 - if route friction can be fixed in `todo.md`, do that before `plan.md`
 - if route friction can be fixed in `plan.md`, do not touch the source idea
 - if `todo.md` contains `你該做code review了` after a commit:
-  run a route-quality/code-review pass before delegating another execution
-  packet; prefer `c4c-reviewer` when the diff is non-trivial or route risk is
-  unclear
+  run a supervisor-owned route-quality/code-review pass before delegating
+  another execution packet; a reminder alone is not a reviewer gate
 - if `todo.md` contains `你該做test baseline review了` after a commit:
   review `test_baseline.new.log` against `test_baseline.log` before
   delegating another execution packet
@@ -189,9 +198,16 @@ Choose the next specialist with these rules:
 - when a packet will inspect large or cross-linked C++ code:
   decide whether to add a `Tooling` line telling the subagent to use
   `c4c-clang-tools` first for AST-backed queries
-- call `c4c-reviewer` only for real route risk:
-  repeated lifecycle repairs, multiple direction-changing plan commits, packet boundary drift, or explicit drift suspicion
-- do not call `c4c-reviewer` only because commit count is high
+- keep `c4c-reviewer` off by default; call it only when at least one of these
+  gates is true:
+  1. the user explicitly requests an independent review
+  2. the supervisor first completes its own read-only diagnosis and identifies
+     a material ambiguity it cannot resolve from available evidence
+  3. the active source idea or runbook contains a formal independent-review
+     acceptance gate for the current checkpoint
+- do not call `c4c-reviewer` merely because history is long, commit count is
+  high, scope drift is suspected, a plan changed direction, a reminder exists,
+  or the user asks what happened; inspect and answer those cases directly
 
 Use `c4c-plan-owner` during normal execution only when one of these is true:
 
@@ -234,8 +250,8 @@ Baseline review follow-up:
 - do not move `test_baseline.new.log` to `test_baseline.log` by hand outside
   the supervisor-owned acceptance path
 
-Treat these as overfit-warning signals that normally require reviewer scrutiny
-before acceptance and often require rejection:
+Treat these as overfit-warning signals that require supervisor scrutiny and
+often rejection. Reviewer use still requires one of the explicit gates above:
 
 - tests move from supported-path assertions to unsupported or diagnostic
   assertions without explicit user approval
@@ -288,8 +304,8 @@ After a specialist returns:
     Next` field before sending the next packet
 12. reject the slice if it is testcase-overfit, even if the chosen subset is
     now green
-13. if overfit risk is non-trivial and not already resolved, call
-    `c4c-reviewer` instead of accepting the slice on supervisor judgment alone
+13. if overfit risk is non-trivial, reject or diagnose it directly; call
+    `c4c-reviewer` only when one of the explicit reviewer gates is also true
 14. if the reviewer says `route reset needed`, delegate rewrite of `todo.md` /
     `plan.md` before more execution
 15. if the slice is complete, validation is sufficient, and no overfit concern

@@ -62,6 +62,25 @@ This repo uses a single-plan lifecycle.
    `c4c-supervisor`.
 5. Use the exact `to_subagent: <role>` prefix so routing is stable.
 
+## Interactive Authority
+
+- In an interactive run, the supervisor handles read-only diagnosis directly,
+  including git-history inspection, lifecycle/status explanation, scope
+  comparison, and drift triage. The existence of a matching specialist does
+  not require delegation for these read-only questions.
+- A user's explicit statement of source intent or scope is authoritative over
+  existing idea text, `plan.md`, `todo.md`, reviewer reports, and historical
+  agent conclusions. Treat conflicting artifacts as stale or wrong; do not use
+  them to override or reinterpret the user's scope.
+- Agreement on an architecture direction changes only that architectural
+  decision. It does not authorize expanding the implementation scope, absorbing
+  prerequisites or downstream work into the current idea, or rewriting durable
+  source intent. Record a separate initiative when that work is independently
+  required.
+- Delegate mutations to the matching specialist as described below. Do not
+  delegate merely to obtain a second statement of evidence the supervisor can
+  inspect and explain directly.
+
 ## Supervisor Authority
 
 - Owns orchestration, route choice, and anti-drift decisions.
@@ -80,7 +99,14 @@ This repo uses a single-plan lifecycle.
 - Prefers `executor`-updated `todo.md` plus code in one commit over routine
   `plan-owner` rewrites.
 - Does not perform lifecycle or implementation edits directly when a matching
-  specialist exists.
+  specialist exists. This mutation boundary does not prohibit supervisor-owned
+  read-only diagnosis in interactive runs.
+- Treats reviewer use as off by default. Call a reviewer only when the user
+  explicitly requests an independent review, the supervisor has completed its
+  own read-only diagnosis and a material ambiguity remains, or the active
+  source idea/runbook has a formal independent-review acceptance gate.
+- Does not call a reviewer or create a review artifact for ordinary git-log,
+  status, scope, or drift questions.
 - Must reject testcase-overfit slices even if narrow proof is green.
 - Role-specific packet shape and operating details live in
   `.codex/skills/c4c-supervisor/`.
@@ -133,7 +159,8 @@ This repo uses a single-plan lifecycle.
 
 ## Review Artifact Rule
 
-- reviewer output should live under `review/`
+- when one of the explicit reviewer gates is satisfied and a reviewer is
+  actually invoked, reviewer output should live under `review/`
 - supervisor should pass that `review/...` path to `plan-owner` when plan/todo
   rewrite is needed
 - files under `review/` are transient artifacts, not canonical lifecycle state
@@ -173,8 +200,8 @@ This repo uses a single-plan lifecycle.
    `ctest --test-dir build -j --output-on-failure`, or
    `scripts/full_scan.sh`, depending on scope.
 5. A green subset is not sufficient when the diff appears to downgrade
-   expectations or overfit a named failing case; the supervisor must escalate
-   to reviewer scrutiny or reject the slice.
+   expectations or overfit a named failing case; the supervisor must scrutinize
+   and reject the slice directly unless an explicit reviewer gate applies.
 6. Canonical regression-log filenames are fixed: `test_before.log` and
    `test_after.log`. Routine execution should not leave other root-level `.log`
    files behind.
