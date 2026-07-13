@@ -8,46 +8,56 @@ Current Step Title: Reconcile allocation and strict downstream realization
 
 ## Just Finished
 
-- Fresh Plan Step 13 review at
-  `review/731_final_frame_action_architecture_review.md` rejected Step 14 with
-  one bounded Step 9.2/Step 10 adjacency blocker.
-- The explicit E4 frame-action producer/schema, ownership ledgers, exact-current
-  E1/E2/E3/frame/target route, verifier intervals, legacy inventory, D2/C9
-  authority separation, strict F1 boundary, and docs-only scope remain resolved
-  checkpoints. Idea 731 remains open and unchanged.
+- Completed the reopened Plan Step 9.2 / Step 10 projection-adjacency repair
+  from `review/731_final_frame_action_architecture_review.md`.
+- The sole C9 `ConstraintProjectionTransaction` owner now states that post-E3
+  D5 copy resolution stages its candidate, `CopyResolutionFingerprint`, and
+  complete mutation/replacement/tombstone lineage privately inside E4, with no
+  standalone projection, revision, product, or consumer boundary.
+- After `FrameActionMaterializationTransaction`, E4 invokes that sole authority
+  exactly once. The final `ProjectedConstraintKey` binds the materialized
+  `PipelineStageStamp`, both copy/frame-action fingerprints, and both complete
+  mutation/replacement/tombstone summary families.
+- Projection is explicitly first in E4's atomic six-product closure, followed
+  by exact-current E1, E2, E3, frame-realization, and target-realizability
+  products. Earlier D1/D2/D4/initial-D5/E3 projection rules remain unchanged.
 
 ## Suggested Next
 
-- Execute one bounded Plan Step 9.2 packet reopening only Step 10 adjacency:
-  repair `src/backend/bir/regalloc/constraints/README.md` as the sole projection
-  owner, then recheck `passes/out_of_ssa/README.md`, `allocated/README.md`,
-  `pseudo/README.md`, `verify/README.md`, and the root for the same route.
-- The repaired route must say private D5 contributes complete mutation lineage
-  without publishing a projection; E4 invokes projection once after frame-action
-  materialization; the final key binds the materialized stamp,
-  `CopyResolutionFingerprint`, `FrameActionFingerprint`, and both mutation/
-  replacement/tombstone summaries.
-- Repeat Step 12 after the focused repair, then obtain a new independent Step 13
-  review. Step 14 remains forbidden until that exact review reports zero
-  blockers.
+- Repeat Plan Step 12's complete 44-document structure/link, exact legacy, and
+  semantic/negative proof against this focused repair, then obtain a fresh
+  independent Step 13 review. Step 14 remains forbidden until that exact review
+  reports zero blockers.
 
 ## Watchouts
 
-- The blocker is in the sole projection owner: it still requires a separate
-  pre-E4 D5 projection and omits E4 frame-action occurrence lineage and
-  `FrameActionFingerprint`. Do not alter the already-selected E4 route or add a
-  second projection authority.
-- Preserve the final atomic order: private D5 resolution -> frame-action draft
-  -> E4 materialization -> sole constraint projection -> E1 -> E2 -> E3 ->
-  frame plan -> target realizability. No predecessor projection may be relabeled
-  current or published from private D5 staging.
-- Preserve all completed checkpoints, especially the finite frame-action schema,
-  strict no-late-repair/F1 apply-only boundary, distinct verifier intervals,
-  exact legacy ledger, and D2/C9 ownership.
+- Private post-E3 D5 resolution must never gain a separately current
+  `ProjectedConstraintSet`; its full lineage is consumed only by E4's one
+  post-materialization projection invocation.
+- Preserve final order: D5 private staging -> frame-action draft -> frame-action
+  materialization -> projection -> E1 `LivenessInterferenceKey` -> E2
+  `AssignmentKey` -> E3 `SpillStateKey` -> `FrameRealizationPlan`/key ->
+  `TargetRealizabilityKey`, installed atomically.
+- Stable IDs, structural equality, preservation records, or predecessor keys
+  never establish final-revision freshness. Do not add another binder or
+  projection owner.
 
 ## Proof
 
-- Lifecycle reset only. The focused executor must record fresh docs-only proof
-  for the sole-owner key and invocation route. Step 12 must then repeat the
-  complete structure, links, legacy inventory, and semantic/negative checks
-  before the new independent Step 13 review.
+- Passed `git diff --check`.
+- Positive proof passed:
+  `positive PASS: sole post-materialization projection binds both fingerprints
+  and both mutation families; six-product E4 closure ordered and atomic`.
+- Focused positive searches covered the sole projection owner, private D5
+  staging/no projection, exact post-materialization E4 invocation, materialized
+  stamp, both fingerprints, both mutation/replacement/tombstone summaries, all
+  six exact-current products, invalidation, rollback, and atomic installation
+  across the owner and adjacent contracts.
+- Focused negatives found no affirmative separate post-E3 D5 projection or
+  publication, final projection before materialization, predecessor relabeling,
+  alternate projection authority, F1/MIR repair, acceptance marker,
+  testcase-shaped shortcut, expectation downgrade, or test-file change.
+- `git status --short` contains only the owned constraints document and
+  `todo.md`, plus the three pre-existing untracked review reports.
+- Docs-only packet: no build/test subset applies and no regression log was
+  created or modified.

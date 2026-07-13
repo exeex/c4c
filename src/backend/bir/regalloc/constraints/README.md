@@ -77,10 +77,18 @@ transaction, not a new A-F stage. Its only output type is an immutable
 That key contains the C9 `BoundConstraintSet` fingerprint and its Canonical
 stamp; the candidate's exact current `PipelineStageStamp`; the exact target,
 layout, constraint-interpreter, pseudo-schema, and projection-schema
-fingerprints; the ordered D1/D2/D4/initial-D5/E3/D5-resolution occurrence
-fingerprints applicable to that candidate; and a deterministic projection
-fingerprint covering the mutator's replacement/tombstone map, mutation
-summary, and every current constraint-bearing instruction/value occurrence.
+fingerprints; the ordered transformation occurrence fingerprints applicable
+to that candidate; and a deterministic projection fingerprint covering the
+complete mutation summary, replacement map, tombstone map, and every current
+constraint-bearing instruction/value occurrence.
+
+For the final E4 materialized revision specifically, `ProjectedConstraintKey`
+must bind the materialized `PipelineStageStamp`,
+`CopyResolutionFingerprint`, `FrameActionFingerprint`, the complete D5 copy
+mutation/replacement/tombstone summaries, and the complete E4 frame-action
+mutation/replacement/tombstone summaries. Omitting either fingerprint or
+either summary family is a stale/incomplete key, even if all surviving stable
+IDs and requirements compare equal.
 The product records current stable identities and ordinals, their immutable C9
 source bindings where applicable, authorized pseudo requirement provenance,
 old-to-current mappings, and tombstones. It neither reparses source text nor
@@ -98,8 +106,8 @@ authorizing rule, or incomplete coverage reject the candidate. Stable-ID
 equality, structural equality, copied records, and predecessor keys never
 establish freshness.
 
-Each mutator invokes this same authority before its private output can be
-verified, frozen, published, or consumed:
+Each earlier published-revision mutator invokes this same authority before its
+private output can be verified, frozen, published, or consumed:
 
 - D1 supplies the Canonical-to-pseudo replacement map and D1 occurrence
   fingerprint to create the first `ProjectedConstraintSet`;
@@ -109,24 +117,53 @@ verified, frozen, published, or consumed:
 - initial D5 supplies its join-removal, copy, scratch, and CFG mutation map
   before publishing the E1 input;
 - every E3 retry supplies its spill/reload and any CFG/identity mapping before
-  reverification and the next E1 attempt; and
-- D5 `CopyResolutionTransaction` supplies its copy replacement and scratch
-  tombstone map before the resolved candidate can enter E4.
+  reverification and the next E1 attempt.
 
-D3, D4, D5, E1, E2, E3, and E4 accept only the
+Post-E3 D5 copy resolution is the deliberate private exception. Its
+`CopyResolutionTransaction` stages the resolved candidate,
+`CopyResolutionFingerprint`, complete copy mutation/replacement/tombstone
+summaries, and preservation lineage inside E4's enclosing
+`AllocatedPublicationTransaction`. It invokes no projection, publishes no
+standalone `ProjectedConstraintSet`/`ProjectedConstraintKey`, and installs no
+revision or product. The predecessor E3 projection remains immutable lineage;
+it is not current for the resolved graph.
+
+After `FrameActionMaterializationTransaction` has inserted every bounded frame
+action and produced the materialized stamp, `FrameActionFingerprint`, and
+complete frame-action mutation/replacement/tombstone summaries, E4 invokes
+this sole projection authority exactly once. The invocation consumes both the
+private D5 and E4 summary families and produces the only
+`ProjectedConstraintSet` current for the final materialized revision. The
+materialized graph is the first final-projection input, this C9 owner remains
+unique, and post-resolution rekeying is forbidden.
+
+Projection is the first product in E4's atomic six-product closure. On its
+success, E1 produces exact-current `LivenessInterferenceKey`; E2 validates and
+produces `AssignmentKey`; E3 validates and produces `SpillStateKey`; the frame
+owner derives `FrameRealizationPlan`/`FrameRealizationKey`; and the target
+owner produces `TargetRealizabilityKey`. Each consumer binds all preceding
+exact-current keys plus both D5/E4 fingerprints. E4 installs the final revision
+and all six products only after every owner succeeds.
+
+D3, D4, initial D5, every E1/E2/E3 retry, and final E4 accept only the
 `ProjectedConstraintSet` whose key names their exact current input revision.
+Private post-E3 D5 resolution publishes no consumer boundary and has no
+standalone current projection.
 D1 alone may read Canonical-keyed C9 directly, and only to invoke the initial
 projection. No later consumer may read C9 or a predecessor projection as its
 revision-local constraint product.
 
 Projection is failure-atomic with its enclosing mutator. It builds privately,
 validates complete current-occurrence coverage and the entire key, and is
-committed only with the candidate revision. Projection cancellation, stale
-input, schema mismatch, invalid mapping, or validation failure aborts the
-enclosing transaction and publishes no candidate, projection, tombstone,
-cache entry, or partial function result. Any key ingredient or covered
-occurrence change invalidates the complete product and all consumers derived
-from it.
+committed only with the candidate revision. For E4, any projection or later
+owner failure rolls back copy resolution, frame-action materialization, all
+staged summaries, and every staged product. Projection cancellation, stale
+input, schema mismatch, invalid mapping, or validation failure publishes no
+candidate, projection, tombstone, cache entry, partial function result, or E4
+capability. Any key ingredient or covered occurrence change invalidates the
+complete product and all consumers derived from it; stable IDs, structural
+equality, preservation records, and predecessor products cannot relabel it
+current.
 
 ## Transaction, verification, and invalidation
 
