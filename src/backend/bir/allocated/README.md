@@ -4,8 +4,10 @@ Status: scaffold (unimplemented).
 
 ## Owns
 
-The E4 transaction freezes one stable E3 candidate and runs the complete
-`Allocated` verifier profile against that exact graph revision. Success mints
+The E4 transaction freezes the exact resolved revision produced when D5's
+subordinate `CopyResolutionTransaction` succeeds on one stable E3 candidate,
+and runs the complete `Allocated` verifier profile against that revision.
+Success mints
 one owning `AllocatedBir` stage token, one `PreparedBir` readiness capability
 bound to that token, and borrowing `MirReadyBirView` instances. All three name
 the same immutable module/function revisions and the same preparation,
@@ -22,21 +24,25 @@ machine-only home that was absent from the frozen BIR revision.
 
 ## Input
 
-A stable E3 candidate produced from one fully reverified D5 revision, its
-verified abstract-register layout, the exact `VerifiedPreparationBundle` and
-`BoundConstraintSet`, revision-bound E1 liveness/interference and E2 assignment
-facts, and explicit E3 spill/reload state. Every product carries the frozen
-candidate revision and its complete predecessor fingerprints.
+One private D5 copy-resolution output containing no `ParallelCopy` or
+`CopyScratch` node, its exact `CopyResolutionFingerprint`, verified
+abstract-register layout, exact `VerifiedPreparationBundle`, and exact current
+revision projections of the constraint, E1 liveness/interference, E2
+assignment, and E3 spill-state products. Every product is preserved or
+reprojected by its named owner for the resolved revision and carries the
+complete predecessor fingerprints; stable IDs alone do not establish
+freshness.
 
 ## Output
 
 An `AllocatedBir`, its same-revision `PreparedBir` capability, and a borrowed
 read-only `MirReadyBirView` over the closed semantic node table and
-allocator-created `Spill`/`Reload` nodes. Every allocatable identity and each
-of its uses has one verified legal abstract home or is covered by explicit
-spill residency and a dominating assigned reload result. The view exposes only
-verified typed facts and the immutable revision/fingerprint trace needed by
-MIR mapping and selection.
+allocator-created `Spill`/`Reload` nodes plus D5-resolved single-move
+`EdgeCopy` nodes. Every allocatable identity and each of its uses has one
+verified legal abstract home or is covered by explicit spill residency and a
+dominating assigned reload result. Every remaining non-`InlineAsm` node is
+directly one-to-one realizable. The view exposes only verified typed facts and
+the immutable revision/fingerprint trace needed by MIR mapping and selection.
 
 ## Verification and publication gate
 
@@ -48,16 +54,20 @@ rules before checking allocation. The final allocation checks prove:
   fixed-home occurrence, and ordinary use has an assignment in the admitted
   class/group/slot domain;
 - assignments satisfy ties, early-clobbers, interference, aliases, reserved
-  units, call clobbers, group alignment/width, and simultaneous-copy rules;
+  units, call clobbers, and group alignment/width; the copy-resolution record
+  separately proves preservation of the former simultaneous-copy semantics;
 - every spill object has one valid abstract identity and compatible value
   class, every `Spill` stores an assigned resident value at a legal point, and
   every `Reload` defines an assigned value that dominates exactly the uses it
   covers; no implicit residency transition or unresolved eviction remains;
 - the target, layout, preparation, constraint, pseudo-schema, D4/D5,
-  liveness, allocation, and spill fingerprints all name this exact revision
-  and one transaction; and
-- every node still has its verified one-to-one target mapping and every
-  required target/product binding is present, unique, and fresh.
+  liveness, allocation, spill, and `CopyResolutionFingerprint` products all
+  name this exact resolved revision and one transaction;
+- no `ParallelCopy` or `CopyScratch` node remains, every surviving `EdgeCopy`
+  is one legal single-home transfer, and the resolution record covers every
+  former bundle exactly; and
+- every non-`InlineAsm` node still has its verified one-to-one target mapping,
+  and every required target/product binding is present, unique, and fresh.
 
 Any non-admitted node, missing or illegal assignment, unresolved pressure,
 stale or mixed fingerprint, inconsistent spill object, malformed transition,
@@ -72,7 +82,8 @@ maps each verified abstract home through the exact target layout, and selects
 one machine record for each allocated pseudo node. It may choose concrete
 spellings, frame offsets for verified abstract objects, and encodings, but it
 cannot change assignments, add capacity spills/reloads or allocatable
-temporaries, expand a node, reinterpret a constraint, or conceal a missing BIR
-transition. An encoding constraint that cannot honor the view fails the MIR
-transaction and requires a separately reviewed upstream D4 schema/legalization
-change; it is never repaired while consuming the published view.
+temporaries, resolve or schedule copies, expand a node, reinterpret a
+constraint, or conceal a missing BIR transition. An encoding constraint that
+cannot honor the view fails the MIR transaction and requires a separately
+reviewed upstream D4 schema/legalization change; it is never repaired while
+consuming the published view.

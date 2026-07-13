@@ -17,6 +17,12 @@ allocation identity. E3 rejects stale requests, requests synthesized without
 an exhausted E2 attempt, and identities prohibited from spilling by ABI,
 constraint, group, or explicit nonspillable rules.
 
+Every D5 `CopyScratch` reservation is protected by an explicit rule that
+forbids memory eviction. E3 rejects a request naming one, never rewrites a
+reservation into memory residency, and
+never creates replacement scratch. A scratch-home shortage or alias conflict
+is an E2 allocation failure, not permission to weaken the D5 plan.
+
 ## Explicit spill state
 
 E3 creates one deterministic abstract spill-object identity with the value's
@@ -31,10 +37,12 @@ identity. It never contains a finalized frame location. E3 then places:
 
 Placement is CFG- and liveness-aware, including loops, call boundaries, and
 edge-local copies. It preserves `ParallelCopy` atomic reads, exact `EdgeKey`
-coverage, terminator authority, effects, and evaluation order. E3 may split a
-block or exact edge only transactionally and must update all affected
-identities and graph references. It cannot hide a transition in an operand,
-assignment table, calling convention, scratch convention, or MIR mapping.
+coverage, every `CopyScratch` reservation identity and simultaneous need,
+terminator authority, effects, and evaluation order. E3 may split a block or
+exact edge only transactionally and must update all affected identities and
+graph references. It cannot resolve or schedule a copy bundle, hide a
+transition in an operand, assignment table, calling convention, scratch
+convention, or MIR mapping.
 
 ## Rewrite, reverify, and retry
 
@@ -46,6 +54,12 @@ the complete retry-candidate verifier on one frozen module. Only a green full
 gate may become the immutable input to a new E1 analysis and a fresh E2
 attempt; incremental checks and facts from the prior revision have no
 publication authority.
+
+Because an E3 rewrite may change edge-local liveness or pressure, it
+invalidates the prior scratch interference and assignment facts even when all
+reservation IDs survive. The next E1/E2 retry must re-prove the full
+simultaneous-copy problem and assign every reservation again under the new
+exact revision.
 
 Progress is monotone and bounded: each green rewrite changes one previously
 unspilled original identity to permanent spill residency for the transaction,
@@ -66,5 +80,9 @@ uses, stale E2 requests, recursive spills, and any implicit pressure spill.
 
 Before candidate publication, every allocatable value is either assigned by
 E2 or has this verified explicit spill state, and every `Reload` result is
-assigned. Failure discards the entire private revision, spill objects, nodes,
+assigned. A candidate is stable only when E2 returns a complete legal
+assignment with no spill request and all non-spillable `CopyScratch`
+reservations assigned. That exact candidate plus its current E1/E2/E3 facts
+is the sole input to D5 copy resolution; E3 cannot run after resolution.
+Failure discards the entire private revision, spill objects, nodes,
 assignments, and derived products; the predecessor remains unchanged.

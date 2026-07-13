@@ -261,9 +261,12 @@ facts and reruns the entire module `Pseudo` profile on one frozen candidate.
 Only the green full gate atomically publishes the D5 `PseudoBir` capability
 accepted by E1; incremental verification cannot mint it.
 
-On the final stable post-E3 candidate, the subordinate D5
-`CopyResolutionTransaction` runs before E4. Its pre-E4 gate requires an exact
-`CopyResolutionInputKey` naming the current revision and D5, layout,
+On the final stable post-E3 candidate, and only after the current E1 product
+models every `CopyScratch` interval/interference and E2 has assigned each
+reservation a finite non-spillable non-aliasing home, the subordinate D5
+`CopyResolutionTransaction` runs before E4. The stable candidate plus its
+exact current E1, E2, and E3 facts is its sole input. Its pre-E4 gate requires
+an exact `CopyResolutionInputKey` naming the current revision and D5, layout,
 constraint-projection, E1 liveness, E2 assignment, E3 spill-state, and scratch
 fingerprints. It checks the immutable plan and preservation record, replays
 each emitted `EdgeCopy` sequence over assigned alias units, and proves that
@@ -337,9 +340,10 @@ MIR consumes only `MirReadyBirView`. It rechecks the exact revision and product
 fingerprints, maps verified abstract homes/objects through the bound target
 layout, and selects one machine record per allocated pseudo node. It cannot
 change assignments, introduce an allocatable temporary or capacity
-spill/reload, reinterpret constraints, expand instructions or calls, or hide a
-missing transition. Failure to map or encode the verified view fails the MIR
-transaction and requires an upstream schema/legalization change.
+spill/reload, create scratch, resolve or schedule copies, reinterpret
+constraints, expand instructions or calls, or hide a missing transition.
+Failure to map or encode the verified view fails the MIR transaction and
+requires an upstream schema/legalization change.
 
 ## Proposed public API
 

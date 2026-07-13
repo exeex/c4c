@@ -34,7 +34,12 @@ retry, and final verification. It requires:
   interval discontinuity visible; and
 - D5 copy bundles to retain simultaneous read-before-write behavior; legal
   coalescing may remove a later move but may not change edge coverage or
-  invent a temporary.
+  invent a temporary; and
+- every `CopyScratch` reservation to receive one finite legal home. The
+  reservation is non-spillable and aliases neither the component's transferred
+  homes nor any other scratch home needed simultaneously. Scratch reservations cannot be
+  coalesced with transferred values, evicted into spill state, or omitted
+  because a particular scheduling order appears to avoid them.
 
 The allocator uses a deterministic order derived from stable identities and
 reviewed layout order. Eviction requeues the displaced value and records the
@@ -42,6 +47,13 @@ rejected `(value, home, conflict-set)` choice. A choice cannot be retried with
 the same state. Because values and eligible homes are finite, an E2 attempt
 either assigns every pending value, returns one deterministic E3 spill request,
 or reports that no legal assignment/spill route exists.
+
+An E2 request may name only a spill-eligible ordinary allocation identity;
+`CopyScratch` is never such an identity. If ordinary E3 retries cannot produce
+a candidate with legal homes for the complete reservation set, or if any
+required scratch home aliases a protected transfer or simultaneous scratch
+home, E2 fails closed. It cannot ask D5 or MIR to create scratch capacity or
+repair the alias conflict.
 
 ## E1/E2/E3 retry protocol
 
@@ -70,8 +82,16 @@ Before the later publication boundary, the allocation candidate must prove
 that every allocatable identity is either assigned one legal abstract home or
 is represented by verified explicit spill state whose every register-resident
 use is reached through an assigned `Reload` result. It also proves complete
-tie/group/clobber/call/copy legality, absence of overlapping alias units, exact
-E1/revision/layout/constraint keys, and no unassigned or implicit-spill escape.
+tie/group/clobber/call/copy legality, complete legal assignments for every
+non-spillable `CopyScratch` reservation, absence of forbidden overlapping
+alias units, exact E1/revision/layout/constraint keys, and no unassigned or
+implicit-spill escape.
+
+Only the stable post-E3 candidate and its exact current E1, E2, and E3 facts
+may enter D5's subordinate `CopyResolutionTransaction`. E2 does not resolve or
+schedule a `ParallelCopy`; its assignment product supplies the already-chosen
+ordinary and scratch homes under which D5 must either emit directly realizable
+`EdgeCopy` nodes or reject the complete candidate.
 
 Any stale key, incomplete assignment, missing spill transition, verifier
 failure, or retry failure discards the entire private candidate and all E1/E2/
