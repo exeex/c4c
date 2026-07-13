@@ -2012,6 +2012,313 @@ void test_constant_value_rejections_and_forward_use() {
          "foreign rejection should not poison the surrounding edit");
 }
 
+lir::LirModule direct_global_integer_store_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto i32_link = module.link_names.intern("store_i32_global");
+  const auto i64_link = module.link_names.intern("store_i64_global");
+
+  const auto external_global = [](std::string name, c4c::LinkNameId link,
+                                  c4c::TypeBase base, std::string type,
+                                  int alignment) {
+    lir::LirGlobal global;
+    global.name = std::move(name);
+    global.link_name_id = link;
+    global.type = scalar_type(base);
+    global.linkage_vis = "external ";
+    global.qualifier = "global ";
+    global.llvm_type = std::move(type);
+    global.align_bytes = alignment;
+    global.is_extern_decl = true;
+    return global;
+  };
+  module.globals.push_back(external_global(
+      "store_i32_global", i32_link, c4c::TB_INT, "i32", 4));
+  module.globals.push_back(external_global(
+      "store_i64_global", i64_link, c4c::TB_LONGLONG, "i64", 8));
+
+  auto block = return_block(0, "entry");
+  block.insts.push_back(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::integer("displayed-as-999", 7),
+      lir::LirOperand::global("@misleading_destination", i32_link)});
+  block.insts.push_back(lir::LirStoreOp{
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::integer("displayed-as-zero", -9),
+      lir::LirOperand::global("@also_misleading", i64_link)});
+  module.functions.push_back(
+      void_definition("direct_global_integer_stores", {std::move(block)}));
+  return module;
+}
+
+void test_direct_global_integer_store_receipt() {
+  const auto module = direct_global_integer_store_module();
+  auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "two neighboring authoritative direct-global integer stores should publish Raw BIR");
+  expect(bir::FoundationVerifier::verify(imported.value()).ok(),
+         "typed Store payloads and value uses should be verifier reachable");
+
+  const auto module_view = imported.value().view();
+  const auto globals = module_view.global_objects();
+  const auto functions = module_view.functions();
+  const auto function = module_view.function(functions[0]).value();
+  const auto block = function.blocks()[0];
+  const auto instructions = function.instructions(block).value();
+  expect(globals.size() == 2 && instructions.size() == 2,
+         "global and store source order must remain exact");
+  for (std::size_t index = 0; index < instructions.size(); ++index) {
+    const auto instruction = function.instruction(instructions[index]).value();
+    const auto* store = instruction.store();
+    expect(instruction.opcode() == bir::Opcode::Store && store &&
+               store->destination == globals[index] &&
+               instruction.operands().size() == 1 &&
+               instruction.results().empty(),
+           "immutable instruction view must expose one selected global and one value use");
+    const auto value = function.value(instruction.operands()[0]).value();
+    const auto constant_id = std::get<bir::ConstantDef>(value.definition).constant;
+    const auto constant = module_view.constant(constant_id).value();
+    const auto expected = index == 0 ? 7 : -9;
+    expect(value.type == store->stored_type &&
+               constant.type == store->stored_type &&
+               std::get<bir::IntegerConstant>(constant.payload).value == expected,
+           "store immediates must use the existing exact typed constant/value model");
+  }
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "the admitted Store graph should pass canonical verification unchanged");
+  const auto canonical_function =
+      canonical.value().view().function(
+          canonical.value().view().functions()[0]).value();
+  expect(canonical_function.instructions(canonical_function.blocks()[0])
+                 .value().size() == 2,
+         "Canonical BIR must preserve both neighboring Store nodes");
+}
+
+void test_direct_global_integer_store_builder_contract() {
+  bir::ModuleBuilder builder;
+  const auto global = builder.add_global_object(
+      "builder_store_global", bir::Type{bir::TypeKind::I32}, 4,
+      false, false, false, true);
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::Void};
+  const auto function =
+      builder.create_function(signature, "builder_store", false);
+  const auto foreign_function =
+      builder.create_function(signature, "foreign_store_owner", true);
+  expect(global.has_value() && function.has_value() &&
+             foreign_function.has_value(),
+         "Store builder fixture should create its typed owners");
+  bir::InstId stored{};
+  const auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto block = function_builder.create_block("entry");
+        const auto value = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::I32});
+        if (!block || !value)
+          return bir::Result<void, bir::BuildError>::failure(
+              bir::BuildError::StorageExhausted);
+        auto defined = function_builder.define_int_constant(value.value(), 11);
+        if (!defined) return defined;
+        const auto foreign_global = function_builder.append(
+            block.value(),
+            bir::StoreSpec{bir::GlobalObjectId{999, 0},
+                           bir::Type{bir::TypeKind::I32}, value.value()});
+        expect(!foreign_global.has_value() &&
+                   foreign_global.error() ==
+                       bir::BuildError::InvalidGlobalObject,
+               "Store builder must reject a foreign global identity without staging an instruction");
+        const auto foreign_value = function_builder.append(
+            block.value(),
+            bir::StoreSpec{
+                global.value(), bir::Type{bir::TypeKind::I32},
+                bir::ValueId{foreign_function.value(),
+                             bir::ValueKind::Ordinary, 0, 1}});
+        expect(!foreign_value.has_value() &&
+                   foreign_value.error() == bir::BuildError::ForeignOwner,
+               "Store builder must reject a value use owned by another function");
+        const auto wrong_type = function_builder.append(
+            block.value(),
+            bir::StoreSpec{global.value(), bir::Type{bir::TypeKind::I64},
+                           value.value()});
+        expect(!wrong_type.has_value() &&
+                   wrong_type.error() == bir::BuildError::InvalidValueType,
+               "Store builder must reject incoherent global/value/type facts");
+        const auto appended = function_builder.append(
+            block.value(),
+            bir::StoreSpec{global.value(), bir::Type{bir::TypeKind::I32},
+                           value.value()});
+        if (!appended)
+          return bir::Result<void, bir::BuildError>::failure(appended.error());
+        stored = appended.value().instruction;
+        return function_builder.set_terminator(block.value(),
+                                               bir::ReturnTerm{});
+      });
+  expect(edited.has_value(), "one coherent Store should remain after rejected appends");
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "a structurally built Store plus void return should publish Raw BIR");
+  const auto view = raw.value().view().function(function.value()).value();
+  expect(view.instructions(view.blocks()[0]).value() ==
+                 std::vector<bir::InstId>{stored} &&
+             view.instruction(stored).value().store() != nullptr,
+         "rejected appends must leave only the structural Store reachable through the immutable view");
+  expect(bir::canonicalize(std::move(raw).value()).has_value(),
+         "the structural Store plus void return should publish Canonical BIR");
+
+  bir::ModuleBuilder malformed_builder;
+  const auto malformed_global = malformed_builder.add_global_object(
+      "unresolved_store_global", bir::Type{bir::TypeKind::I32}, 4,
+      false, false, false, true);
+  const auto malformed_function = malformed_builder.create_function(
+      signature, "unresolved_store", false);
+  expect(malformed_builder
+             .with_function(
+                 malformed_function.value(),
+                 [&](bir::FunctionBuilder& function_builder) {
+                   const auto block = function_builder.create_block("entry");
+                   const auto unresolved = function_builder.reserve_value(
+                       bir::Type{bir::TypeKind::I32});
+                   const auto appended = function_builder.append(
+                       block.value(),
+                       bir::StoreSpec{malformed_global.value(),
+                                      bir::Type{bir::TypeKind::I32},
+                                      unresolved.value()});
+                   if (!appended)
+                     return bir::Result<void, bir::BuildError>::failure(
+                         appended.error());
+                   return function_builder.set_terminator(block.value(),
+                                                          bir::ReturnTerm{});
+                 })
+             .has_value(),
+         "the public builder should stage a Store use before its reserved value is defined");
+  const auto malformed = std::move(malformed_builder).publish();
+  expect(!malformed.has_value() &&
+             malformed.error().reason ==
+                 bir::PublishError::VerificationFailed,
+         "FoundationVerifier must prevent an unresolved Store operand graph from publishing Raw BIR");
+}
+
+void test_direct_global_integer_store_rejections() {
+  const auto rejected = [](lir::LirModule candidate,
+                           bir::ImportErrorCode expected,
+                           const std::string& message) {
+    const auto raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw.has_value() && raw.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical.has_value() && canonical.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+
+  auto raw_value = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(raw_value.functions[0].blocks[0].insts[0]).val =
+      lir::LirOperand("7");
+  rejected(std::move(raw_value),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a display-only integer value must remain unsupported");
+
+  auto raw_pointer = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(raw_pointer.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand("@store_i32_global");
+  rejected(std::move(raw_pointer),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a display-only global pointer must remain unsupported");
+
+  auto local_pointer = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(local_pointer.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::ssa("%local", lir::LirValueId{9});
+  rejected(std::move(local_pointer),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an SSA/local pointer store must remain outside direct-global receipt");
+
+  auto noninteger = direct_global_integer_store_module();
+  auto& noninteger_store =
+      std::get<lir::LirStoreOp>(noninteger.functions[0].blocks[0].insts[0]);
+  noninteger_store.type_str = lir::LirTypeRef("double");
+  rejected(std::move(noninteger),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a noninteger Store type must remain unsupported");
+
+  auto mismatched = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(mismatched.functions[0].blocks[0].insts[0])
+      .type_str = lir::LirTypeRef::integer(64);
+  rejected(std::move(mismatched),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "the Store type must exactly match its selected global object");
+
+  auto out_of_range = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(out_of_range.functions[0].blocks[0].insts[0]).val =
+      lir::LirOperand::integer("displayed-small", 1LL << 32);
+  rejected(std::move(out_of_range),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an out-of-range native immediate must reject without truncation");
+
+  auto wrong_value_authority = direct_global_integer_store_module();
+  auto& wrong_value = std::get<lir::LirStoreOp>(
+      wrong_value_authority.functions[0].blocks[0].insts[0]);
+  wrong_value.val = lir::LirOperand::global(
+      "7", wrong_value_authority.globals[0].link_name_id);
+  rejected(std::move(wrong_value_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a non-immediate authority alternative must not be interpreted by display");
+
+  auto wrong_pointer_authority = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(
+      wrong_pointer_authority.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::integer("@store_i32_global", 1);
+  rejected(std::move(wrong_pointer_authority),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a non-global pointer authority alternative must remain unsupported");
+
+  auto unresolved = direct_global_integer_store_module();
+  std::get<lir::LirStoreOp>(unresolved.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::global("@looks_valid",
+                              static_cast<c4c::LinkNameId>(999));
+  rejected(std::move(unresolved),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "an unresolved native LinkNameId must reject transactionally");
+
+  auto ambiguous = direct_global_integer_store_module();
+  ambiguous.globals[1].link_name_id = ambiguous.globals[0].link_name_id;
+  ambiguous.globals[1].name = ambiguous.globals[0].name;
+  rejected(std::move(ambiguous), bir::ImportErrorCode::UnsupportedGlobals,
+           "ambiguous global ownership must reject before function publication");
+
+  auto invalid_return = direct_global_integer_store_module();
+  invalid_return.functions[0].blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::integer("misleading", 1),
+      lir::LirTypeRef::integer(32)};
+  rejected(std::move(invalid_return), bir::ImportErrorCode::InvalidVoidReturn,
+           "accepted stores must advance diagnosis to the unsupported return boundary");
+
+  auto later_load = direct_global_integer_store_module();
+  later_load.functions[0].blocks[0].insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%loaded", lir::LirValueId{77}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@store_i32_global",
+                              later_load.globals[0].link_name_id)});
+  rejected(std::move(later_load),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a later unsupported load must roll back all earlier admitted stores");
+
+  auto later_gep = direct_global_integer_store_module();
+  later_gep.functions[0].blocks[0].insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%address", lir::LirValueId{78}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::global("@store_i32_global",
+                              later_gep.globals[0].link_name_id),
+      true,
+      {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                               lir::LirOperand::integer("0", 0))}});
+  rejected(std::move(later_gep),
+           bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           "a neighboring authoritative GEP must remain outside Store receipt");
+}
+
 void test_string_pool_receipt_and_views() {
   std::string embedded("A\0B", 3);
   embedded += "\\22\\5C";
@@ -6592,6 +6899,9 @@ int main() {
   test_module_name_and_struct_declaration_rejections();
   test_structured_constant_value_receipt();
   test_constant_value_rejections_and_forward_use();
+  test_direct_global_integer_store_receipt();
+  test_direct_global_integer_store_builder_contract();
+  test_direct_global_integer_store_rejections();
   test_string_pool_receipt_and_views();
   test_string_pool_rejections_and_transactionality();
   test_external_declaration_receipt_and_views();

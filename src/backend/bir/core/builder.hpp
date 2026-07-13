@@ -46,6 +46,7 @@ enum class BuildError {
   InvalidGlobalLinkName,
   InvalidGlobalInitializer,
   InvalidGlobalInitializerLinkName,
+  InvalidGlobalObject,
   DuplicateGlobalObject,
   EmptySpecializationField,
   InvalidSpecializationLinkName,
@@ -147,6 +148,12 @@ struct InlineAsmSpec {
   std::vector<Type> result_types;
 };
 
+struct StoreSpec {
+  GlobalObjectId destination{};
+  Type stored_type{};
+  ValueId value{};
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -233,6 +240,7 @@ class FunctionBuilder {
                                                       std::uint64_t exact_bits);
   Result<BlockId, BuildError> create_block(std::string debug_name = {});
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, StoreSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

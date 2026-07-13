@@ -16,6 +16,9 @@ class InstView {
   InstId id() const noexcept { return id_; }
   Opcode opcode() const noexcept { return data_->opcode; }
   const InstPayload& payload() const noexcept { return data_->payload; }
+  const StoreNode* store() const noexcept {
+    return std::get_if<StoreNode>(&data_->payload);
+  }
   const std::vector<ValueId>& operands() const noexcept { return data_->operands; }
   const std::vector<ValueId>& results() const noexcept { return data_->results; }
 

@@ -3,39 +3,45 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 4.1
-Current Step Title: Receive direct selected-global scalar integer stores
+Current Step ID: 4.2
+Current Step Title: Receive direct selected-global scalar loads
 
 ## Just Finished
 
-- Closed idea 741 after its exhaustive 38/38 instruction plus 6/6 terminator
-  audit, four authoritative producer carrier contracts, fresh focused/full
-  proof, and committed exact handoff to idea 734.
-- Reactivated idea 734 at the first receiver-owned function-body subrow. No
-  new-BIR instruction or non-void terminator receipt is claimed by the handoff.
+- Added the minimal typed Raw-BIR `StoreNode`: one resolved
+  `GlobalObjectId`, its exact integer `Type`, one ordinary constant `ValueId`
+  operand, no result, immutable view exposure, builder ownership/type checks,
+  and defensive foundation verification.
+- Imported only authoritative direct-global integer stores through a native
+  `LinkNameId` to imported-global registry and the existing typed
+  constant/value model. Display-only/raw rows, SSA/local pointers, wrong
+  authority alternatives, non-integers, overflow, mismatches, unresolved or
+  ambiguous globals, and later unsupported instructions remain transactional.
+- Proved two neighboring store shapes with misleading displays, structural
+  builder Raw/Canonical publication, post-store `InvalidVoidReturn`, unchanged
+  load/GEP rejection, fresh focused proof, and full 3033/3033 regression proof.
 
 ## Suggested Next
 
-- Implement only the direct selected-global scalar integer `LirStoreOp` row:
-  typed Raw-BIR Store payload, `LinkNameId` global mapping,
-  `LirIntegerImmediate` ordinary value materialization, ordered use edges,
-  reachable verification, neighboring malformed/raw rejection, and
-  module-transactional proof.
+- Implement only Step 4.2's authoritative direct selected-global scalar
+  `LirLoadOp` row, reusing the same imported-global registry and registering
+  exactly one ordinary result by the current function's source `LirValueId`.
 
 ## Watchouts
 
-- Do not parse the store's value or pointer display, match the focused testcase,
-  or add a producer-name side table. Reuse one coherent BIR value/global/
-  constant registry.
-- Keep SSA/local pointer stores, non-integer values, and every raw/monostate
-  compatibility row fail-closed. The idea-741 handoff does not establish
-  whole-modern-LIR readiness.
-- Store receipt is one bounded subrow; load, GEP, scalar return, remaining
-  function/CFG/local-object work, and other instruction families stay later.
+- Reuse typed `GlobalObjectId` and ordinary `ValueId` authority; do not add a
+  display/name side table or reinterpret raw load rows.
+- Keep SSA/local pointer loads, raw result/pointer identities, GEP, scalar
+  return, remaining function/CFG/local-object work, and other instruction
+  families fail-closed.
 
 ## Proof
 
-- Idea 741 closure gate: fresh focused proof 2/2 and exact full suite 3033/3033.
-- Current receiver boundaries before this packet remain
-  `UnsupportedOrdinaryInstruction` for store/load/GEP and `InvalidVoidReturn`
-  for scalar value return.
+- Fresh focused build and executable:
+  `cmake --build build --target backend_lir_to_bir_interface_test -j2` and
+  `./build/tests/backend/bir/backend_lir_to_bir_interface_test`.
+- Focused CTest: `backend_lir_to_bir_interface` passed 1/1.
+- Fresh full build passed; full CTest passed 3033/3033 into
+  `test_after.log`.
+- Canonical regression comparison against `test_before.log` passed with
+  equal 3033/3033 scope and no new failures or suspicious timeouts.

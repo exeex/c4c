@@ -31,6 +31,7 @@ using codegen::lir::LirInlineAsmValueBinding;
 using codegen::lir::LirInlineAsmValueRole;
 using codegen::lir::LirModule;
 using codegen::lir::LirRet;
+using codegen::lir::LirStoreOp;
 using codegen::lir::LirSwitch;
 using codegen::lir::LirUnreachable;
 
@@ -107,6 +108,16 @@ std::optional<Type> lower_lir_type(const LirModule& module,
     case LirTypeKind::RawText: break;
   }
   return std::nullopt;
+}
+
+bool integer_immediate_representable(long long value,
+                                     unsigned bit_width) noexcept {
+  if (bit_width == 0) return false;
+  if (bit_width >= 64) return true;
+  if (value < 0)
+    return value >= -(1LL << (bit_width - 1));
+  return static_cast<unsigned long long>(value) <=
+         ((1ULL << bit_width) - 1ULL);
 }
 
 bool is_integer_type(const Type& type) noexcept {
@@ -1415,6 +1426,42 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "duplicate authoritative LirValueId definition");
         continue;
       }
+      if (const auto* store = std::get_if<LirStoreOp>(&instruction)) {
+        const auto type = lower_lir_type(module, store->type_str);
+        const auto* immediate = store->val.integer_immediate();
+        const auto* destination = store->ptr.link_name_id();
+        if (!type || !is_integer_type(*type) ||
+            store->type_str.kind() !=
+                codegen::lir::LirTypeKind::Integer ||
+            !store->type_str.integer_bit_width() ||
+            store->val.kind() != codegen::lir::LirOperandKind::Immediate ||
+            !immediate ||
+            !integer_immediate_representable(
+                immediate->value, *store->type_str.integer_bit_width()) ||
+            store->ptr.kind() != codegen::lir::LirOperandKind::Global ||
+            !destination || *destination == c4c::kInvalidLinkName) {
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "store requires an authoritative integer immediate and direct-global LinkNameId");
+        }
+        const LirGlobal* selected = nullptr;
+        for (const auto& global : module.globals) {
+          if (global.link_name_id != *destination) continue;
+          if (selected)
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "store destination LinkNameId has ambiguous global ownership");
+          selected = &global;
+        }
+        const auto global_type =
+            selected ? lower_global_type(module, *selected) : std::nullopt;
+        if (!selected || !global_type || *global_type != *type)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "store destination must resolve to one exactly typed global object");
+        continue;
+      }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
       if (!inline_asm)
         return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -1535,6 +1582,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   }
 
   ModuleBuilder builder;
+  std::unordered_map<c4c::LinkNameId, GlobalObjectId> global_objects;
   auto requirements = builder.set_intrinsic_requirements(
       IntrinsicRequirements{module.need_va_start, module.need_va_end,
                             module.need_va_copy, module.need_memcpy,
@@ -1611,6 +1659,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import global object", added.error()));
+    if (global.link_name_id != c4c::kInvalidLinkName)
+      global_objects.emplace(global.link_name_id, added.value());
   }
   for (const auto& specialization : module.spec_entries) {
     auto added = builder.add_specialization(
@@ -1699,6 +1749,46 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                "define floating constant",
                                                defined.error());
                   return defined;
+                }
+                continue;
+              }
+              if (const auto* store = std::get_if<LirStoreOp>(&instruction)) {
+                const Type type = *lower_lir_type(module, store->type_str);
+                auto reserved = function_builder.reserve_value(type);
+                if (!reserved) {
+                  edit_error = builder_failure(name, block.label,
+                                               "reserve store immediate",
+                                               reserved.error());
+                  return Result<void, BuildError>::failure(reserved.error());
+                }
+                auto defined = function_builder.define_int_constant(
+                    reserved.value(),
+                    static_cast<std::int64_t>(
+                        store->val.integer_immediate()->value));
+                if (!defined) {
+                  edit_error = builder_failure(name, block.label,
+                                               "define store immediate",
+                                               defined.error());
+                  return defined;
+                }
+                const auto destination =
+                    global_objects.find(*store->ptr.link_name_id());
+                if (destination == global_objects.end()) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated store destination disappeared from the global registry"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::InvalidGlobalObject);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.label),
+                    StoreSpec{destination->second, type, reserved.value()});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append store",
+                                               appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
                 }
                 continue;
               }

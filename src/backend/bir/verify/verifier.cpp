@@ -65,6 +65,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
   switch (instruction.opcode) {
     case Opcode::InlineAsm:
       return std::holds_alternative<InlineAsmNode>(instruction.payload);
+    case Opcode::Store:
+      return std::holds_alternative<StoreNode>(instruction.payload);
   }
   return false;
 }
@@ -594,6 +596,29 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             !function.values_.contains(function_id, operand))
           report(result, VerificationRule::ValueDefinition, function_id,
                  operand, "instruction operand does not resolve in its owner");
+      if (const auto* store = std::get_if<StoreNode>(&instruction.payload)) {
+        const bool destination_resolves =
+            store->destination.valid() &&
+            store->destination.epoch == module.epoch_ &&
+            store->destination.slot < module.globals_.size();
+        const ValueDef* operand = nullptr;
+        if (instruction.operands.size() == 1) {
+          const auto resolved =
+              function.values_.get(function_id, instruction.operands[0]);
+          if (resolved) operand = &resolved.value().get();
+        }
+        if (instruction.operands.size() != 1 ||
+            !instruction.results.empty() || !destination_resolves ||
+            !is_well_formed(store->stored_type) ||
+            !integer_type(store->stored_type) || !operand ||
+            (operand && operand->type != store->stored_type) ||
+            (destination_resolves &&
+             module.globals_[store->destination.slot].object_type !=
+                 store->stored_type))
+          report(result, VerificationRule::ValueDefinition, function_id,
+                 inst_id,
+                 "store must have one typed integer value use, no results, and one exact global destination");
+      }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {
         const auto value_id = instruction.results[result_index];

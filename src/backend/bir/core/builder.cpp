@@ -808,6 +808,53 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       BuildResult{instruction_id, std::move(results)});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
+                                                         StoreSpec spec) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !same_owner(function_, spec.value))
+    return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& function_data = function.value().get();
+  if (!function_data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  const auto value = function_data.values_.get(function_, spec.value);
+  if (!value)
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidValue);
+  if (!spec.destination.valid() ||
+      spec.destination.epoch != parent_->data_->epoch_ ||
+      spec.destination.slot >= parent_->data_->globals_.size())
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::InvalidGlobalObject);
+  const auto& global = parent_->data_->globals_[spec.destination.slot];
+  if (!is_well_formed(spec.stored_type) ||
+      !integer_type(spec.stored_type) ||
+      value.value().get().type != spec.stored_type ||
+      global.object_type != spec.stored_type)
+    return Result<BuildResult, BuildError>::failure(
+        BuildError::InvalidValueType);
+
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Store;
+  instruction.payload =
+      StoreNode{spec.destination, std::move(spec.stored_type)};
+  instruction.operands = {spec.value};
+  auto inserted =
+      function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted)
+    return Result<BuildResult, BuildError>::failure(
+        storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data ||
+      !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(
+      BuildResult{instruction_id, {}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();

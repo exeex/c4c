@@ -134,7 +134,7 @@ struct ValueDef {
       definition = UnresolvedDef{};
 };
 
-enum class Opcode : std::uint8_t { InlineAsm };
+enum class Opcode : std::uint8_t { InlineAsm, Store };
 
 struct InlineAsmNode {
   std::string asm_text;
@@ -143,7 +143,12 @@ struct InlineAsmNode {
   bool side_effects = false;
 };
 
-using InstPayload = std::variant<InlineAsmNode>;
+struct StoreNode {
+  GlobalObjectId destination{};
+  Type stored_type{};
+};
+
+using InstPayload = std::variant<InlineAsmNode, StoreNode>;
 
 class BlockView;
 class FunctionView;
