@@ -1,14 +1,36 @@
 # Backend Test Contract Surface Retirement
 
-Status: Open
+Status: Closed — Superseded/Retired (not completed)
 Type: backend test contract-surface cleanup
 
-## Lifecycle Note
+## Closure Note (2026-07-13)
 
-Parked on 2026-07-13 while idea 730 bootstraps the post-legacy BIR shell and
-restores a buildable direct-interface test surface.  This idea remains open and
-inactive; resume its broader contract-surface retirement only after that
-bootstrap route is accepted.
+This idea is retired as superseded, not accepted as completed.  Its immediate
+active-graph surface-retirement objective was achieved by quarantine:
+`tests/backend/CMakeLists.txt` registers only `add_subdirectory(bir)`, and the
+current CTest graph contains exactly one `backend_` test,
+`backend_lir_to_bir_interface`.  The remaining 372 backend test files
+are intentionally retained as archived, uncompiled references outside the
+active graph.
+
+The stronger acceptance contract in this idea was not completed: the retained
+sources were not exhaustively deleted or assertion-classified, no permanent
+two-interface classification guard was accepted, and no new baseline is
+claimed here.  Quarantined reference files are now the chosen policy instead
+of mandatory source deletion.  When the new BIR-to-MIR boundary is
+implemented, its coverage should be added as direct interface tests under the
+active backend test graph rather than by reactivating the archived suite.
+
+No remaining work is transferred to the active inline-asm plan by this
+closure; any future test-surface change requires a fresh narrow idea against
+the interfaces that exist at that time.
+
+## Historical Lifecycle Note
+
+This idea was parked on 2026-07-13 while idea 730 bootstrapped the post-legacy
+BIR shell and restored a buildable direct-interface test surface.  At that
+checkpoint it remained open and inactive pending acceptance of the bootstrap
+route; the closure note above records the later retirement decision.
 
 ## Intent
 

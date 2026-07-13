@@ -1,7 +1,32 @@
 # 715-Guided BIR Core Redesign And LIR Import Migration
 
-Status: Open (Paused)
+Status: Closed — Superseded/Retired (not completed)
 Type: backend core redesign and interface migration
+
+## Closure Note (2026-07-13)
+
+This idea is retired as superseded, not accepted as completed.  Its bounded
+foundation/bootstrap work landed through `2b6148590`, and the later
+`ac2f344f2`-era active BIR provides the real core carrier and verified minimal
+LIR-to-BIR interface while the legacy compile graph remains quarantined.
+
+The monolithic migration promised here did not finish.  Unfinished families
+include globals and global initializers; scalar and aggregate operations; the
+memory foundation and addressing/materialization families; calls and call ABI;
+remaining import analysis; and the full BIR-to-MIR migration.  Those families
+are no longer ordered by this bootstrap idea.  Current ownership is expressed
+by the per-directory contracts and placeholders, including
+`src/backend/bir/lir_to_bir/README.md`, its `memory/README.md`, the BIR
+`core/` and `verify/` contracts, the `target_layout/`, `pseudo/`, `regalloc/`,
+and `allocated/` placeholders, and `src/backend/mir/README.md`.  Future work
+must use narrow reviewed ideas against those current contracts.
+
+The historical unaccepted globals patch remains in `stash@{0}` as
+`wip step 6.1 globals before inline asm priority switch`.  It must not be
+applied, dropped, or treated as accepted progress without a fresh reviewed
+idea that checks it against the current BIR schema.  This closure does not
+modify that stash and does not transfer these unfinished families into active
+idea 731.
 
 ## Lifecycle Progress
 
@@ -11,17 +36,16 @@ generation succeeds without `src/backend/legacy/**` compile entries.  The first
 production seam is the missing active `src/backend/bir/bir.hpp` included by
 `src/backend/backend.hpp`.
 
-## Paused State (2026-07-13)
+## Historical Paused State (2026-07-13)
 
-This idea remains open but is no longer the active plan.  Steps 1--5 completed
-through `2b6148590`: the bounded new-BIR foundation and minimal verified
-LIR-to-BIR import are active, legacy/prealloc/MIR sources remain quarantined,
-and the selected broader proof was green.  Step 6.1 globals work was started
-but was not accepted or committed; its eight-file working patch is preserved
-in `stash@{0}` (`wip step 6.1 globals before inline asm priority switch`).
-Globals and all later migration families remain incomplete.  Resume only by a
-future lifecycle switch that first reviews that stash against the then-current
-BIR schema.
+At this checkpoint the idea remained open but was no longer the active plan.
+Steps 1--5 had completed through `2b6148590`: the bounded new-BIR foundation
+and minimal verified LIR-to-BIR import were active, legacy/prealloc/MIR sources
+remained quarantined, and the selected broader proof was green.  Step 6.1
+globals work was started but was not accepted or committed; its eight-file
+working patch was preserved in `stash@{0}`
+(`wip step 6.1 globals before inline asm priority switch`).  The closure note
+above supersedes the former resume instruction.
 
 ## Intent
 
