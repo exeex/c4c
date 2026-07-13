@@ -8,42 +8,41 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 visibility-free weak initialized-definition packet added one
-  typed `GlobalObject::is_weak` fact and threaded it explicitly through the
-  builder, importer, automatic object view, and foundation verifier. Only exact
-  producer-authored non-extern, non-internal `weak ` definitions with nonempty
-  opaque initializers and coherent ordinary/constant qualifiers are admitted.
-- Nearby generic coverage proves weak ordinary and link-backed weak constant
-  definitions retain their distinction from ordinary/internal rows, exact typed
-  type/const/linkage facts, identity, opaque payload, and ordered initializer
-  links. Decorated and `extern_weak` neighbors reject transactionally; direct
-  builder proof accepts a coherent weak definition and rejects weak+internal or
-  weak+extern typed combinations at publication.
+- Plan Step 3 const-pointer initialized-definition packet now admits the exact
+  visibility-free producer form with `is_const=true`, structured `ptr`
+  authority, `global ` qualifier, and a nonempty opaque initializer. Import
+  preserves the typed Raw-BIR pointer, const state, identity, payload, and
+  ordered initializer links without parsing initializer text.
+- Nearby coverage distinguishes this producer form from the existing scalar
+  const `constant ` definition and proves transactional rejection for a
+  non-pointer const+`global ` mismatch, a pointer const+`constant ` mismatch,
+  and a non-const ordinary pointer definition.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 const-pointer initialized-definition packet.
-  Follow the producer's structured pointer-type authority where `is_const=true`
-  still uses `global ` rather than `constant `, prove exact pointer type and
-  opaque initializer receipt, and leave aggregates and flexible special types
-  out.
+- Execute one bounded Step 3 string-pool or external-symbol completeness packet
+  selected from the remaining runbook scope, keeping it independent of
+  aggregate and flexible-special-type global support.
 
 ## Watchouts
 
-- `LirGlobal` has no separate weak flag: exact `linkage_vis == "weak "` is the
-  producer-authored LIR authority mapped to Raw-BIR `is_weak=true`. Raw-BIR does
-  not store compatibility linkage text, and the verifier deliberately rejects
-  typed weak+internal and weak+extern combinations. Visibility-decorated weak,
-  `extern_weak`, aggregates, and flexible special types remain fail-closed.
-- `init_text` is opaque receipt evidence, not parsed semantic or topology
-  authority. `initializer_function_link_name_ids` alone supplies structured
-  initializer references, and `LirGlobal.id` remains producer-default
-  compatibility state rather than Raw-BIR identity.
+- Pointer admission requires the structured `LirTypeRef` to lower exactly to
+  Raw-BIR `TypeKind::Pointer`; `TypeSpec` and rendered text remain compatibility
+  parity only. The compatibility path is limited to one ordinary pointer level
+  and excludes references, arrays, pointer-to-array, inner-rank, and special
+  function-pointer shapes. It is enabled only after the exact owned
+  const-pointer producer row is established, so external, non-const, internal,
+  and weak pointer rows remain fail-closed before existing coherence branches.
+- Const pointer definitions are admitted only with empty linkage visibility and
+  `global `; internal/weak pointer constants and `constant ` pointer forms remain
+  fail-closed. Aggregate and flexible special types remain unsupported.
+- `init_text` remains opaque receipt evidence; structured initializer function
+  link IDs alone provide topology authority.
 
 ## Proof
 
 - Passed the supervisor-selected exact proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 - The fresh build completed and root `test_after.log` records 4/4 backend tests
-  passing. The selected proof covers the shared typed schema/builder/verifier
-  seam plus importer admission and nearby interface coverage.
+  passing. The selected proof covers importer admission, transactional
+  rejection, typed global views, and initializer receipt preservation.

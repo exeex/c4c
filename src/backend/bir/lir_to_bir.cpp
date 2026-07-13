@@ -189,6 +189,17 @@ std::optional<Type> lower_constant_type(const LirModule& module,
   return Type{TypeKind::Integer, width, "i" + std::to_string(width)};
 }
 
+std::optional<Type> lower_global_compatibility_type(const LirModule& module,
+                                                    const TypeSpec& type,
+                                                    bool allow_pointer) {
+  if (allow_pointer && type.ptr_level == 1 && !type.is_lvalue_ref &&
+      !type.is_rvalue_ref &&
+      type.array_rank == 0 && !type.is_ptr_to_array && type.inner_rank == 0 &&
+      !type.is_fn_ptr)
+    return Type{TypeKind::Pointer};
+  return lower_constant_type(module, type);
+}
+
 std::optional<ReturnExtension> lower_return_extension(
     LirExtAttr extension) {
   switch (extension) {
@@ -384,8 +395,13 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global_names.insert(global.name).second)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global name and structured type identity must be present and unique");
+    const bool const_pointer_producer_row =
+        !global.is_extern_decl && !global.is_internal && global.is_const &&
+        global.linkage_vis.empty() && global.qualifier == "global " &&
+        !global.init_text.empty();
     const auto type = lower_lir_type(module, *global.llvm_type_ref);
-    const auto source_type = lower_constant_type(module, global.type);
+    const auto source_type = lower_global_compatibility_type(
+        module, global.type, const_pointer_producer_row);
     if (!type || type->kind == TypeKind::Void || !source_type ||
         *source_type != *type || global.llvm_type != global.llvm_type_ref->str())
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
@@ -406,7 +422,9 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
     const bool coherent_constant_definition =
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         global.linkage_vis.empty() && global.qualifier == "constant " &&
-        !global.init_text.empty();
+        type->kind != TypeKind::Pointer && !global.init_text.empty();
+    const bool coherent_const_pointer_definition =
+        const_pointer_producer_row && type->kind == TypeKind::Pointer;
     const bool coherent_internal_ordinary_definition =
         !global.is_extern_decl && global.is_internal && !global.is_const &&
         global.linkage_vis == "internal " && global.qualifier == "global " &&
@@ -414,7 +432,8 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
     const bool coherent_internal_constant_definition =
         !global.is_extern_decl && global.is_internal && global.is_const &&
         global.linkage_vis == "internal " &&
-        global.qualifier == "constant " && !global.init_text.empty();
+        global.qualifier == "constant " && type->kind != TypeKind::Pointer &&
+        !global.init_text.empty();
     const bool coherent_weak_ordinary_definition =
         !global.is_extern_decl && !global.is_internal && !global.is_const &&
         global.linkage_vis == "weak " && global.qualifier == "global " &&
@@ -422,15 +441,16 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
     const bool coherent_weak_constant_definition =
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         global.linkage_vis == "weak " && global.qualifier == "constant " &&
-        !global.init_text.empty();
+        type->kind != TypeKind::Pointer && !global.init_text.empty();
     if (!coherent_external && !coherent_ordinary_definition &&
         !coherent_constant_definition &&
+        !coherent_const_pointer_definition &&
         !coherent_internal_ordinary_definition &&
         !coherent_internal_constant_definition &&
         !coherent_weak_ordinary_definition &&
         !coherent_weak_constant_definition)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                        "only coherent external declarations and initialized ordinary, internal, or weak global/constant definitions are admitted");
+                        "only coherent external declarations, visibility-free const-pointer globals, and initialized ordinary, internal, or weak global/constant definitions are admitted");
     if (global.align_bytes < 0 ||
         (global.align_bytes != 0 &&
          (global.align_bytes & (global.align_bytes - 1)) != 0))

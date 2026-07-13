@@ -1441,6 +1441,8 @@ void test_global_object_receipt_and_views() {
   module.struct_names.attach_text_table(module.link_name_texts.get());
   const auto linked_name = module.link_names.intern("linked_global");
   const auto weak_linked_name = module.link_names.intern("weak_constant_global");
+  const auto pointer_linked_name =
+      module.link_names.intern("const_pointer_global");
   const auto init_fn_a = module.link_names.intern("init_fn_a");
   const auto init_fn_b = module.link_names.intern("init_fn_b");
 
@@ -1525,6 +1527,16 @@ void test_global_object_receipt_and_views() {
   weak_constant_initialized.initializer_function_link_name_ids = {
       init_fn_b, init_fn_a};
   module.globals.push_back(std::move(weak_constant_initialized));
+  auto const_pointer_initialized = external_global(
+      "const_pointer_global", pointer_linked_name, c4c::TB_INT,
+      lir::LirTypeRef("ptr"), 8, true);
+  const_pointer_initialized.type.ptr_level = 1;
+  const_pointer_initialized.linkage_vis.clear();
+  const_pointer_initialized.is_extern_decl = false;
+  const_pointer_initialized.init_text = std::string{"ptr @target\0tail", 16};
+  const_pointer_initialized.initializer_function_link_name_ids = {
+      init_fn_a, init_fn_b, init_fn_a};
+  module.globals.push_back(std::move(const_pointer_initialized));
 
   auto imported = bir::lower_lir_to_raw_bir(module);
   expect(imported.has_value(),
@@ -1533,9 +1545,10 @@ void test_global_object_receipt_and_views() {
          "published global storage must be verifier reachable");
   const auto view = imported.value().view();
   const auto ids = view.global_objects();
-  expect(ids.size() == 8 && ids[0].slot == 0 && ids[1].slot == 1 &&
+  expect(ids.size() == 9 && ids[0].slot == 0 && ids[1].slot == 1 &&
              ids[2].slot == 2 && ids[3].slot == 3 && ids[4].slot == 4 &&
-             ids[5].slot == 5 && ids[6].slot == 6 && ids[7].slot == 7,
+             ids[5].slot == 5 && ids[6].slot == 6 && ids[7].slot == 7 &&
+             ids[8].slot == 8,
          "Raw-BIR global IDs must follow source vector order, not LirGlobal.id");
   const auto fallback = view.global_object(ids[0]).value();
   const auto linked = view.global_object(ids[1]).value();
@@ -1545,6 +1558,7 @@ void test_global_object_receipt_and_views() {
   const auto internal_constant_definition = view.global_object(ids[5]).value();
   const auto weak_definition = view.global_object(ids[6]).value();
   const auto weak_constant_definition = view.global_object(ids[7]).value();
+  const auto const_pointer_definition = view.global_object(ids[8]).value();
   expect(fallback.source_name == "fallback_global" &&
              fallback.object_type == bir::Type{bir::TypeKind::I32} &&
              fallback.alignment == 4 && !fallback.is_internal &&
@@ -1640,12 +1654,36 @@ void test_global_object_receipt_and_views() {
                      weak_constant_definition.initializer->function_links[1])
                      .value() == "init_fn_a",
          "weak constant definitions must preserve typed linkage, identity, type, payload, and ordered initializer links");
+  expect(const_pointer_definition.object_type ==
+                 bir::Type{bir::TypeKind::Pointer} &&
+             !const_pointer_definition.is_internal &&
+             !const_pointer_definition.is_weak &&
+             const_pointer_definition.is_const &&
+             !const_pointer_definition.is_extern_declaration &&
+             std::holds_alternative<bir::LinkNameId>(
+                 const_pointer_definition.identity) &&
+             const_pointer_definition.initializer &&
+             const_pointer_definition.initializer->opaque_payload ==
+                 std::string{"ptr @target\0tail", 16} &&
+             const_pointer_definition.initializer->function_links.size() == 3 &&
+             view.spelling(
+                     const_pointer_definition.initializer->function_links[0])
+                     .value() == "init_fn_a" &&
+             view.spelling(
+                     const_pointer_definition.initializer->function_links[1])
+                     .value() == "init_fn_b" &&
+             const_pointer_definition.initializer->function_links[2] ==
+                 const_pointer_definition.initializer->function_links[0],
+         "const-pointer global definitions must preserve exact typed authority, identity, opaque payload, and ordered initializer links");
   expect(view.global_object("fallback_global").value() == ids[0] &&
              view.global_object(std::get<bir::LinkNameId>(linked.identity))
                      .value() == ids[1] &&
              view.global_object(
                      std::get<bir::LinkNameId>(weak_constant_definition.identity))
-                     .value() == ids[7],
+                     .value() == ids[7] &&
+             view.global_object(
+                     std::get<bir::LinkNameId>(const_pointer_definition.identity))
+                     .value() == ids[8],
          "global name and link lookups must resolve ordered typed identities");
 }
 
@@ -1722,6 +1760,26 @@ void test_global_object_rejections_and_transactionality() {
              m.globals[0].init_text = "i32 0";
            },
            "constant definitions with global qualifiers must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "ptr";
+             m.globals[0].llvm_type_ref = lir::LirTypeRef("ptr");
+             m.globals[0].is_const = true;
+             m.globals[0].qualifier = "constant ";
+             m.globals[0].init_text = "ptr null";
+           },
+           "const-pointer definitions with constant qualifiers must reject transactionally");
+  rejected([](lir::LirModule& m) {
+             m.globals[0].is_extern_decl = false;
+             m.globals[0].linkage_vis.clear();
+             m.globals[0].type.ptr_level = 1;
+             m.globals[0].llvm_type = "ptr";
+             m.globals[0].llvm_type_ref = lir::LirTypeRef("ptr");
+             m.globals[0].init_text = "ptr null";
+           },
+           "non-const ordinary pointer definitions must remain unsupported transactionally");
   rejected([](lir::LirModule& m) {
              m.globals[0].is_extern_decl = false;
              m.globals[0].linkage_vis.clear();
