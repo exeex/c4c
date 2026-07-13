@@ -1,6 +1,7 @@
 # BIR verifier design
 
-Status: design under review. The checked-in `verifier.hpp/.cpp` is a partial
+Status: Raw publication boundary reviewed; later profiles and wider rules
+remain target design. The checked-in `verifier.hpp/.cpp` is a partial
 foundation implementation, not the complete contract described here.
 
 This directory owns structural and semantic validation of published BIR. The
@@ -255,8 +256,8 @@ enum class VerifyRule : std::uint16_t {
   IntrinsicIdInvalid = 0x0804,
   IntrinsicSchemaInvalid = 0x0805,
   InlineAsmStructureInvalid = 0x0806,
-  InlineAsmConstraintInvalid = 0x0807,
-  InlineAsmTieInvalid = 0x0808,
+  InlineAsmPayloadInvalid = 0x0807,
+  InlineAsmValueEdgeInvalid = 0x0808,
   InlineAsmClobberInvalid = 0x0809,
   InlineAsmEffectInvalid = 0x080A,
 
@@ -366,7 +367,7 @@ values rather than renumbering an existing rule. Messages are presentation only.
 | `0x0500–0x0513` | `OpcodeInvalid` through `CrossComponentUse` | opcode/profile/descriptor closure, operand/result arity/kind/type, unique definitions, exact def-use, phi placement and edge-key multiset, same-block order and dominance |
 | `0x0600–0x0608` | `CallCalleeInvalid` through `VarArgInvalid` | direct `SymbolId` or indirect callee, signature/arguments, `CallEffects`, typed operand bundles, optional semantic result/return, tail/noreturn, and variadics |
 | `0x0700–0x070B` | `MemoryAccessInvalid` through `FenceInvalid` | loads/stores/address spaces/alignment, GEP, dynamic allocation and stack state, memcpy/memmove/memset, atomics and fences |
-| `0x0800–0x080A` | `AggregatePathInvalid` through `InlineAsmEffectInvalid` | aggregates, layouts, vector lanes/masks, intrinsic registry/schema, structured inline-asm operands/constraints/ties/clobbers/effects |
+| `0x0800–0x080A` | `AggregatePathInvalid` through `InlineAsmEffectInvalid` | aggregates, layouts, vector lanes/masks, intrinsic registry/schema, and opaque inline-asm payload plus ordinary value edges, clobber order, and effects |
 | `0x0900–0x0904` | `DebugReferenceInvalid` through `ForbiddenCompatibilityPayload` | debug/provenance structure and the absence of route/preparation/regalloc/MIR/text-placeholder authority |
 
 The coverage ledger below maps every feature family to these IDs. A feature
@@ -715,7 +716,7 @@ alternatives even when they lower to one BIR opcode.
 | load/store/GEP, hoisted and inline alloca, memcpy/memset, stack save/restore | one semantic memory/object operation with typed address, size, alignment, volatility and address space | `alloca_insts` is merged into semantic entry order; it is never a second instruction list |
 | direct/indirect calls and variadic operations | typed callee identity or callee value, complete function signature, fixed/extra argument boundary and every argument value | `callee_name`, `args_str`, or incomplete extern return-only data cannot supply missing identity/signature; ABI classification is deferred |
 | branch/conditional/return/switch/indirect branch/unreachable | one typed terminator per block | `LirIndirectBrOp` must agree with and be consumed into terminator authority; disagreement or an instruction-only carrier is rejected |
-| inline asm | current bounded publication uses generic typed value operands/results plus opaque original template/constraint payload, clobbers, and side effects; the target requires richer structured constraint and asm-goto facts | `args_str` and compatibility result/type text are never authority; bounded shape is checked by the importer, while richer alternatives/symbol/address-space/goto forms remain rejected |
+| inline asm | generic typed value operands/results plus opaque original template/constraint payload, ordered clobbers, and side effects; future symbol/address-space/goto support must use ordinary typed carriers | `args_str` and compatibility result/type text are never authority; bounded shape is checked by the importer, while missing typed carriers remain rejected and parsed constraint facts are deferred |
 | globals, strings, externs, struct declarations and initializers | typed symbol/type/object identity and recursive initializer/relocation tree | `init_text`, pool names, or initializer name scans are compatibility text, not importer authority; missing typed initializer references are a source gap |
 | atomics | closed load/store/RMW/cmpxchg/fence payload with ordering and result mode | current `LirInst` has no structured atomic alternatives; this is an explicit producer-schema gap, not permission to copy the legacy parallel table |
 | i128/f128, complex/multivalue and runtime-helper-capable operations | preserve full semantic type, exact constant bits, operands and semantic results | target helper choice, split lanes and physical return carriers are deferred to legalization/preparation/MIR |
@@ -919,41 +920,30 @@ Variadic semantic operations (`va_start`, scalar/aggregate `va_arg`, `va_copy`,
 type, size/alignment, and operation arity. Register-save areas, GP/FP offsets,
 overflow areas, helper operand homes, and HFA register plans are forbidden.
 
-Inline assembly has exactly one Raw representation: structured
-`InlineAsmPayload`. There is no opaque/text-only Raw inline-asm opcode. The
-verifier validates the structured payload rather than parsing its rendered form
-as authority (`InlineAsmStructureInvalid`):
+Inline assembly has exactly one Raw representation: an ordinary instruction
+whose inputs and outputs live exclusively in the generic operand/result graph,
+plus `InlineAsmPayload` containing original opaque asm text, original opaque
+constraint text, ordered clobber spellings, and the side-effect flag. A
+read/write position is represented by an incoming use and a distinct result;
+Raw verification never collapses their identities.
 
-- template exists; outputs, inputs, symbolic names, operand types, address-space
-  metadata, and constraints have matching cardinality;
-- each operand constraint is parsed into a bounded semantic constraint object;
-  ties name an earlier compatible output; read/write and early-clobber roles are
-  coherent; duplicate symbolic names are rejected;
-- register, immediate, address, and memory operand kinds agree with value/type;
-  register outputs define explicit BIR result slots, memory outputs reference
-  writable lvalues, and read/write outputs expose both their input use and output
-  definition; clobbers are deduplicated and do not conflict with fixed/tied
-  operands under the target-independent constraint contract;
-- asm-goto labels and fallthrough are live local `BlockId`s and live only in the
-  paired `AsmGotoTerm`; successor keys are unique but multiple label slots may
-  target the same block. Goto form obeys output restrictions selected by the
-  language contract;
-- `volatile`, side-effect, memory, and condition-code semantics are explicit.
+The Raw verifier checks the closed opcode/payload alternative, same-function
+live operand ownership, exact instruction-result definitions and indices,
+known value types, deterministic clobber storage, and presence of the original
+payload required by the admitted bounded shape. It does not parse either text,
+recover values from renderer fields, derive roles/ties/classes, validate target
+register vocabulary, or rewrite the payload. Richer symbol/address-space and
+asm-goto forms fail import until their ordinary typed value/CFG carriers are
+defined; they are not smuggled into Raw storage as parsed side tables.
 
-Raw validation separates target-independent structure from target constraint
-meaning. It proves cardinality, roles, ties, symbolic references, value types,
-and that constraint/template tokens are losslessly represented; it does not
-claim that an architecture accepts a register class, fixed-register name,
-modifier, or instruction encoding. Those tokens are checked by a target
-constraint validator during preparation. Fixed registers written by the source
-are semantic requirements and must be preserved as constraint tokens, but they
-are not allocator assignments. Unknown target tokens are a deferred target
-validation error, never silently treated as generic registers. Raw/Canonical
-BIR stores no allocated homes, spill slots, spill/reload nodes, or rewritten
-assembly. Current LIR `insn_r` opcode/funct metadata and legacy
-`unsupported_facts` are not Raw semantic authority: the former is target
-encoding data to be derived/validated later, and the latter becomes a
-structured import failure rather than a published marker.
+The later constraint-binding stage is the sole interpreter of original
+constraint text. It binds that text to the exact generic operand/result order
+using revision-bound target tables. Unknown target tokens fail there, never as
+silently generic registers. Raw/Canonical BIR stores no parsed constraint
+authority, allocated homes, spill slots, spill/reload nodes, target operations,
+or rewritten assembly. Current LIR `insn_r` opcode/funct metadata and legacy
+`unsupported_facts` are likewise not Raw semantic authority: the former is
+later target data and the latter becomes a structured import failure.
 
 ## Debug and provenance are non-authoritative
 
@@ -1127,7 +1117,7 @@ input is verified here but the named decision belongs after BIR.
 | atomic load/store/RMW/cmpxchg/fence | Contracted Raw schema; current LIR source gap | `AtomicTypeInvalid`–`FenceInvalid`; never a legacy parallel agreement table |
 | aggregates, complex values, vector lanes/masks | Contracted | `AggregatePathInvalid`–`VectorMaskInvalid`; physical return lanes are deferred stage facts |
 | semantic intrinsics, overflow, bit/memory/SIMD/CRC/crypto | Contracted; target support is deferred stage | `IntrinsicIdInvalid`, `IntrinsicSchemaInvalid`; no selected opcode/helper in BIR |
-| structured inline asm and asm-goto | Target contracted; bounded non-goto generic SSA transport is current, while richer constraint objects and asm-goto remain source gaps | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; `InlineAsmStructureInvalid`–`InlineAsmEffectInvalid` and `AsmGotoPairInvalid` remain target rules |
+| opaque inline asm and asm-goto | Bounded non-goto generic SSA transport is current; typed symbol/address-space carriers and asm-goto remain source gaps; parsed constraint objects belong only to the later constraint product | current `FoundationVerifier` uses `BoundedAlternative` and `ValueDefinition`; fuller payload/value-edge/clobber/effect and `AsmGotoPairInvalid` rules remain target rules |
 | debug files/scopes/locations and provenance origins | Contracted | `DebugReferenceInvalid`–`ProvenanceInvalid`; `DebugFileId`, `DebugScopeId`, `DebugLocId`, and `OriginId` arrive through `ModuleEntityId` and have zero semantic authority |
 | ABI placement, register allocation, spill/reload, frame, target opcode/relocation encoding/emission | Deferred stage and forbidden in BIR | `ForbiddenStageFact`, `ForbiddenCompatibilityPayload` |
 
@@ -1174,8 +1164,9 @@ input is verified here but the named decision belongs after BIR.
 4. Are exception/invoke edges required in the first complete Raw schema, or an
    explicit producer gap? Tail requests, switch, indirect branch, and asm-goto
    are already covered in this contract.
-5. What is the exact registry/API boundary between Raw inline-asm structural
-   checks and the target constraint verifier that must run before preparation?
+5. Which later constraint-binding API should materialize the already-settled
+   boundary: Raw checks generic SSA edges and opaque payload storage, while the
+   later revision-bound constraint stage alone parses and binds target meaning?
 6. Which single service owns aggregate object layout and long-double storage
    layout while immutable `TypeId` records retain the verified result?
 7. Will debug provenance be attached by IDs or parallel arrays? Parallel arrays

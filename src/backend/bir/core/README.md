@@ -1,8 +1,9 @@
 # Raw BIR Core Design Contract
 
-Status: **target design under review**. This file is deliberately more complete
-than the bootstrap implementation. It is not a claim that the headers in this
-directory already implement the APIs below.
+Status: **Raw-boundary contract reviewed; wider target schema remains under
+review**. This file is deliberately more complete than the bootstrap
+implementation. It is not a claim that the headers in this directory already
+implement the APIs below.
 
 This contract defines the storage and public API of `RawBir`, the first owned,
 verified IR produced after LIR import. It is intended to be reviewed together
@@ -115,9 +116,10 @@ opaque source payload:
   instruction and every result created by that append before returning an
   error.
 
-The complete structured constraint objects, asm-goto topology, target
-constraint preparation, register allocation, spill/reload, and MIR forms
-described later in this document remain target design, not current core state.
+Asm-goto topology and the later revision-bound constraint interpretation,
+register allocation, spill/reload, and MIR forms described later in this
+document remain target design, not current core state. Parsed constraint
+objects are deliberately not future Raw/Canonical core state.
 
 ## 3. Ownership graph
 
@@ -630,7 +632,6 @@ enum class MemoryEffect : std::uint8_t {
   None, Read, Write, ReadWrite, Allocate, Fence, Unknown
 };
 struct IntrinsicId { std::uint32_t value; }; // build-versioned semantic registry
-struct AsmOperandConstraint;
 enum class UnaryOp : std::uint8_t { Neg, BitNot, LogicalNot, FNeg };
 enum class BinaryOp : std::uint8_t {
   Add, Sub, Mul, UDiv, SDiv, URem, SRem, And, Or, Xor, Shl, LShr, AShr,
@@ -722,30 +723,16 @@ struct IntrinsicPayload {
   MemoryEffect declared_effect;
 };
 struct InlineAsmPayload {
-  std::string template_text;
-  std::vector<AsmOperandConstraint> constraints;
-  std::vector<std::string> clobber_names;
+  std::string original_asm_text;
+  std::string original_constraint_text;
+  std::vector<std::string> original_clobber_spellings;
   bool side_effects;
-  bool may_read_memory;
-  bool may_write_memory;
 };
 ```
 
 The remaining supporting closed descriptor types are:
 
 ```cpp
-enum class AsmOperandKind : std::uint8_t {
-  Input, Output, ReadWrite, TiedInput, Immediate, Memory, Address, Label
-};
-struct AsmOperandConstraint {
-  AsmOperandKind kind;
-  std::string source_constraint;
-  std::optional<std::uint16_t> tied_to;
-  std::optional<std::string> symbolic_name;
-  bool early_clobber;
-  bool requires_explicit_register;
-  std::optional<std::string> explicit_register_spelling;
-};
 struct NoPayload {};
 struct UnaryPayload { UnaryOp operation; };
 struct BinaryPayload { BinaryOp operation; };
@@ -810,13 +797,17 @@ kind/type/range cardinality is verified against the closed schema. None of
 these fields assigns an ABI class, argument register, stack offset, call move,
 or physical return location.
 
-Inline-assembly constraints remain semantic source requirements. A constraint
-may express input/output/tie/early-clobber, symbolic name, immediate, memory,
-address, or an explicit source register requirement. Core does not assign a
-register to a generic constraint and does not translate a physical spelling to
-a target register number. If the importer cannot produce the complete
-structured payload, import fails; there is no opaque `InlineAsm` alternative
-and constraints are never silently dropped.
+Inline assembly uses the ordinary instruction value graph. Its ordered generic
+operands are the inputs/uses and its ordered generic results are the
+definitions; a read/write position therefore has an incoming value and a
+distinct produced value rather than a collapsed identity. The payload retains
+only the original opaque asm text, original opaque constraint text, ordered
+clobber spellings, and side-effect flag. Core does not parse those strings,
+derive ties/classes, assign registers, or translate a physical spelling to a
+target register number. The later constraint-binding stage interprets the
+original constraint text against these exact operand/result orders and
+revision-bound target tables. Renderer text and parsed constraint objects are
+not Raw/Canonical core authority.
 
 ### 6.3 Instruction and descriptor contract
 
@@ -1334,8 +1325,11 @@ merely to pass one testcase.
    computing ABI homes;
 9. loads/stores/atomics have valid pointer/address spaces, widths, alignment,
    volatile and ordering rules; aggregate indices/ranges are in bounds;
-10. inline asm exposes every input/output/tie/clobber/memory/control effect;
-    intrinsics expose typed operands, immediates, results, and declared effects;
+10. inline asm exposes every ordinary input and output through the generic
+    operand/result graph and preserves its original opaque asm text, original
+    opaque constraint text, ordered clobber spellings, and side-effect flag;
+    Raw verification does not parse target constraint meaning; intrinsics
+    expose typed operands, immediates, results, and declared effects;
 11. debug/origin IDs resolve, but missing debug data never changes semantics;
 12. no LIR spelling map, legacy route/prealloc record, frame/register/ABI plan,
     target opcode, emitted relocation kind, or raw persistent pointer is stored.
@@ -1364,7 +1358,7 @@ belong in core.
 | `bir.hpp: AtomicOperation` and atomic enums; `src/backend/legacy/prealloc/atomics.cpp` | atomic kind/order/result and later target carriers | ordinary atomic instructions with complete operands/results/orderings | carrier/register/loop/helper realization belongs to preparation/MIR |
 | `bir.hpp: CallInst`, `CallingConv` | direct/indirect call, args/results, variadic and semantic call flags | symbol-or-operand callee, structural callee type, typed args/results, source convention | `CallArgAbiInfo`, `CallResultAbiInfo`, arg source routing, call moves and homes |
 | `src/backend/legacy/prealloc/call_plans.cpp`; `regalloc/call_return_abi.cpp` | ABI classification, source recovery, call placement | core supplies typed call operands, exact producer def-use, symbols and object facts | ABI eligibility, chosen homes, and register/stack move plans remain typed preparation/MIR products outside BIR |
-| `bir.hpp: InlineAsmMetadata`, `InlineAsmOperandMetadata`; `prealloc/inline_asm.cpp` | asm template, constraints, ties, clobbers, memory/address intent and realization | semantic `InlineAsm` operands/constraints/ties/effects; `AsmGotoTerm` CFG | chosen abstract/physical homes, target opcode, and encoding are typed later-plan/MIR facts outside BIR |
+| `bir.hpp: InlineAsmMetadata`, `InlineAsmOperandMetadata`; `prealloc/inline_asm.cpp` | asm template, constraints, ties, clobbers, memory/address intent and realization | ordinary `InlineAsm` operand/result edges plus original opaque asm/constraint text, ordered clobbers, side effects, and `AsmGotoTerm` CFG | parsed constraints, ties, chosen homes, target operations, and encoding are revision-bound later-stage facts outside Raw/Canonical core |
 | `bir.hpp: IntrinsicOperation`; `prealloc/special_carriers.hpp: PreparedIntrinsicCarrier` | intrinsic semantic family plus target carrier | typed semantic intrinsic ID, immediates, operands/results/effects | required target feature legality and carrier placement are pipeline/preparation/MIR |
 | `src/backend/legacy/prealloc/variadic*.cpp/.hpp` | entry save areas, va_list layout, va_start/arg/copy/end plans | semantic variadic signature and explicit vararg operations with requested types/layout | register save areas, offsets, helper resources and operand homes |
 | `prealloc/dynamic_stack.cpp`, `frame.hpp: PreparedDynamicStackOp` | dynamic alloca/save/restore and final stack realization | `DynamicAlloc`, `StackSave`, `StackRestore`, lifetime operations, typed sizes/alignment | concrete SP adjustment, slots, offsets, alignment sequence |
@@ -1413,9 +1407,11 @@ for these confirmed gaps:
   semantics, not an allowed side-table import route.
 - `LirInlineAsmOp` now carries ordered ordinary SSA inputs/results with types,
   input/output/read-write roles, and source constraint positions for the
-  bounded non-goto transport slice. It still lacks the target design's parsed
-  alternatives, symbolic names, symbol/address-space facts, and asm-goto
-  carrier; those richer forms must be rejected rather than synthesized.
+  bounded non-goto transport slice. It still lacks typed symbol/address-space
+  value carriers and asm-goto topology; those richer forms must be rejected
+  rather than synthesized. Parsed alternatives and symbolic constraint meaning
+  are intentionally produced only by the later revision-bound constraint
+  stage.
 - `LirGlobal::init_text` is still compatibility text and its function-ID list
   is not a recursive initializer tree. It cannot authoritatively produce
   sparse object bytes, arbitrary symbol/block relocations, nested aggregates,
@@ -1460,7 +1456,7 @@ losslessly; `open` means a design decision is still unresolved.
 | Atomic load/store/RMW/cmpxchg/fence | `source-gap` | closed core payload exists; current `LirInst` has no typed atomic family |
 | Direct/indirect calls, zero-or-one result, effects, attributes and bundles | `source-gap` | `CallPayload`, `CallEffects`, `CallSiteAttributes`; compatibility calls omit required facts |
 | CFG, exact parallel-edge `EdgeKey` phi authority and single-value return | `schema-owned` | terminator-derived successor-slot multiset; no physical return lanes |
-| Inline asm constraints, operands, clobbers and asm-goto edges | `bounded-current` plus `source-gap` | current generic SSA inputs/results and original opaque payload transport non-goto asm; parsed alternatives, symbolic names, symbol/address-space facts, and asm-goto remain source gaps |
+| Inline asm constraints, operands, clobbers and asm-goto edges | `bounded-current` plus `source-gap` | current generic SSA inputs/results and original opaque payload transport non-goto asm; typed symbol/address-space value carriers and asm-goto topology remain source gaps, while parsed constraints are intentionally later revision-bound facts |
 | Top-level asm, symbol versions and constructor/destructor priority | `source-gap` | ordered module records exist; current LIR has no complete producer family |
 | Target-independent intrinsic namespace | `open` | descriptor mechanics exist; stable semantic registry boundary is unresolved |
 | Modern asm-goto output-edge value semantics | `open` | paired `InlineAsm`/`AsmGotoTerm` is defined; output value edge model needs review |

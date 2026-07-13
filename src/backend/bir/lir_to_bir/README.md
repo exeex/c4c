@@ -1,7 +1,8 @@
 # LIR-to-Raw-BIR Import Design
 
-Status: `under-review`. This is a design contract, not a statement that the
-current importer implements it.
+Status: Raw publication boundary reviewed; general import remains target
+design. This is not a statement that the current importer implements the full
+surface below.
 
 The importer is the only stage allowed to translate `codegen::lir::LirModule`
 identity and semantics into new-BIR identity. Its job is lossless semantic
@@ -102,11 +103,14 @@ the broader contracts below remain target design:
   unsupported binding types, duplicate results, malformed roles/order, and
   incomplete read/write pairs are also rejected.
 
-Validation covers the entire module before builder mutation. Construction then
-uses one `ModuleBuilder`, and only its final successful `publish()` returns a
-`RawBir`; validation, builder, or publication failure returns no partial
-module. This is module transactionality, not a claim of general LIR-to-BIR
-support.
+Validation covers the entire module before builder mutation. The checked-in
+bootstrap then uses one `ModuleBuilder`, whose temporary `publish()` adapter
+performs foundation verification and returns no partial module on validation,
+builder, or publication failure. The accepted target boundary replaces that
+adapter with `ModuleBuilder::finish() -> ModuleDraft` followed by the sole
+`verify_and_publish_raw(ModuleDraft&&)` stage transition. No importer path may
+construct `RawBir` directly. This is module transactionality, not a claim of
+general LIR-to-BIR support.
 
 ### 1.2 Target `LirModule` inventory
 
@@ -621,7 +625,7 @@ rules above make that current instance an explicit source-gap failure.
 | `LirGep`, `LirGepOp` | core `GetElementPtr` | old indices are value IDs; new indices are `"type value"` strings; without structured typed indices the form is a **source gap** and fails | `memory` normalizes an already-typed path after the producer replaces index text |
 | `LirSelect`, `LirSelectOp` | core `Select` | condition and both typed values; no compare fusion | `scalar` |
 | `LirIntrinsic` | core `Intrinsic` only after lossless registry recognition | current form has only name, optional result ID, and argument IDs: result type, semantic ID, effects, immediates, and feature contract are **source gaps** | `intrinsics`; unknown/underspecified names fail |
-| `LirInlineAsm`, `LirInlineAsmOp` | core `InlineAsm`; the current bounded importer accepts only `LirInlineAsmOp` with ordered structured ordinary inputs/results | current `LirInlineAsmOp` preserves typed SSA bindings, input/output/read-write roles, constraint positions, original template/constraint text, clobbers, and side effects; parsed alternatives, names, symbol/address-space facts, and goto labels remain absent, while `args_str` is never authority | richer constraint validation and asm-goto need later schema work; target placement remains deferred |
+| `LirInlineAsm`, `LirInlineAsmOp` | core `InlineAsm`; the current bounded importer accepts only `LirInlineAsmOp` with ordered structured ordinary inputs/results | current `LirInlineAsmOp` preserves typed SSA bindings, input/output/read-write roles, constraint positions, original template/constraint text, clobbers, and side effects; typed symbol/address-space facts and goto labels remain absent, while `args_str` is never authority | asm-goto needs later ordinary CFG schema work; parsed constraint binding is deferred to `regalloc/constraints` |
 | `LirMemcpyOp`, `LirMemsetOp` | semantic memory intrinsic | operands, byte count/value, volatility, align/address spaces if present | `memory` is the first owner; `intrinsics` may later canonicalize registry identity |
 | `LirVaStartOp`, `LirVaEndOp`, `LirVaCopyOp`, `LirVaArgOp` | semantic variadic operations | va-list address(es), result type, aggregate shape if present | `intrinsics`; variadic preparation later |
 | `LirStackSaveOp`, `LirStackRestoreOp` | semantic dynamic-stack lifetime operations | saved/restored pointer identity and ordering | `memory`; frame realization later |
@@ -785,35 +789,33 @@ is not importer work; source operations retain i128/f128 semantics.
 
 ## 10. Inline assembly semantic payload
 
-Raw-stage core `InlineAsm` must preserve, without physical placement:
+Raw-stage core `InlineAsm` has one lossless carrier model:
 
-- template bytes and dialect;
-- `side_effects`, volatile, align-stack, and goto state when represented;
-- result type and ordered outputs, inputs, read/write and tied relationships;
-- structured alternatives, names, early-clobber/commutative modifiers,
-  matching operands, immediate/memory/address/register classes, plus optional
-  raw constraint spelling as a non-authoritative mirror;
-- clobbers including `memory` and condition codes;
-- operand types, values, symbol identities, address spaces, and goto `BlockId`s;
-- template named references and modifiers;
-- validated structured `insn_r` payload without choosing physical registers.
+- inputs are ordinary ordered instruction operands and outputs are ordinary
+  ordered instruction results with exact BIR `ValueId` definitions;
+- a read/write constraint position maps an incoming source value and a distinct
+  produced result; a later tie constrains assignments, never SSA identity;
+- payload contains only original opaque asm text, original opaque constraint
+  text, ordered clobber spellings, and the side-effect flag;
+- any typed symbol/address-space operands and asm-goto `BlockId` edges, once
+  supported, use ordinary value/terminator carriers rather than a second asm
+  identity graph.
 
-Target-independent constraint validation/normalization may be a dedicated
-canonical pass; it consumes structured tokens rather than reparsing source
-text. Target-specific constraint satisfaction belongs to preparation; register
-assignment, spill/reload, target opcode selection, and encoding belong to
-MIR/later target stages. Unsupported constraints are structured import errors; an
-`unsupported_facts` string bag is not acceptable final authority.
+The importer validates the structured LIR binding order and exact source-value
+mapping needed to build those generic edges, but it neither parses the original
+constraint text nor stores parsed alternatives, classes, ties, or fixed-register
+meaning. `args_str`, rewritten LLVM-compatible constraints, result/type text,
+and `insn_r` target metadata are never authority. The later
+`regalloc/constraints` stage is the sole constraint interpreter and binds the
+opaque original text to these exact operand/result orders using revision-bound
+target tables.
 
-Today's LIR cannot satisfy that full target payload for all source forms.
-`LirInlineAsm` still lacks operand types, clobbers, and a side-effect bit.
-`LirInlineAsmOp` now carries the bounded slice's typed ordinary SSA bindings,
-roles, constraint positions, clobbers, side effects, and distinct read/write
-input/result identities. It still lacks parsed alternatives, symbolic operand
-names, asm-goto blocks, symbol/address-space facts, and complete target
-constraint objects. The current importer accepts only the bounded non-goto
-shape described in section 1.1 and rejects the remaining gaps; compatibility
-parsing cannot create them.
+Today's `LirInlineAsmOp` supplies the bounded non-goto typed SSA inputs/results,
+roles/constraint positions used for import validation, original payload,
+clobbers, and side effects. It still lacks typed symbol/address-space carriers
+and asm-goto topology. The current importer accepts only section 1.1's bounded
+shape and rejects those remaining gaps; compatibility parsing cannot create
+them.
 
 ## 11. Raw-only forms and ownership
 
@@ -827,7 +829,7 @@ parsing cannot create them.
 | multi-index GEP and address-space-rich access | semantic address not canonical | `memory` normalizes the GEP using aggregate layout; it is the single first owner |
 | aggregate insert/extract and byval/sret markers | decomposition is premature | `aggregate` |
 | semantic/feature intrinsic | registry canonicalization pending; name is mirror-only | `intrinsics` |
-| structured raw inline-asm constraints | canonical validation is pending but target placement is later | `legalize` validates/normalizes target-independent tokens; `preparation/inline_asm` later places operands |
+| opaque inline-asm payload plus generic value edges | source semantics must survive unchanged | preserved through canonical passes; later `regalloc/constraints` alone parses and binds target meaning |
 
 “Raw-only” never means malformed, untyped, identity-free, or silently lossy.
 
@@ -1009,9 +1011,9 @@ Reject or relocate:
    semantics be added to LIR before importer implementation begins?
 10. Which raw intrinsic registry is target-independent, and how are target
     feature requirements represented without selecting an instruction?
-11. What exact structured inline-asm constraint schema must the producer supply
-    before import, and which target-independent invariants does `legalize`
-    validate without reparsing text?
+11. Which typed ordinary value/CFG carriers are still needed for inline-asm
+    symbol/address-space operands and asm-goto, without adding parsed constraint
+    authority to Raw/Canonical BIR?
 12. Which mirror-parity cases may migration tooling temporarily enable, and
     what producer milestone removes each? No enabled case may survive as
     semantic authority in Raw BIR.
@@ -1030,8 +1032,9 @@ bootstrap importer or the quarantined legacy importer.
 
 Already schema-owned in the target design, but not yet implemented by the
 bootstrap C++ core: full types/constants, symbols/globals/initializers, general
-closed opcodes/descriptors, call effects/bundles, complete structured
-inline-asm constraints/asm-goto, reservation, and the target publication API.
+closed opcodes/descriptors, call effects/bundles, typed inline-asm
+symbol/address-space and asm-goto carriers, reservation, and the target
+publication API.
 The current core does implement stable bootstrap IDs, one generic
 `Opcode::InlineAsm` value-edge carrier, and foundation-verifier publication.
 The remaining absence is planned work, not evidence that this importer should
@@ -1051,9 +1054,10 @@ Real current-LIR producer gaps blocking affected backend features:
 - TLS/common/weak/section/visibility/used, aliases,
   constructors/destructors, symver, and top-level asm with typed `SymbolId`
   dependencies;
-- parsed inline-asm alternatives, symbolic names, symbols/address spaces, and
-  asm-goto control edges beyond the implemented typed ordinary SSA binding
-  slice.
+- typed inline-asm symbol/address-space operands and asm-goto control edges
+  beyond the implemented typed ordinary SSA binding slice. Parsed alternatives
+  and symbolic constraint meaning are later constraint-product facts, not an
+  importer source gap.
 
 Unresolved target-schema choices that must be closed before the corresponding
 features are declared design-complete:
