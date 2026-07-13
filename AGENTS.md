@@ -22,9 +22,17 @@ This repo uses one active-plan lifecycle.
 
 ## Interactive Authority
 
-- The supervisor answers read-only interactive diagnosis directly, including
-  git history, status, scope comparison, and drift triage. Specialist existence
+- A prompt containing exact line `C4C_RUN_MODE=scripted` was launched by
+  `scripts/run_agent.sh`; route it to `c4c-supervisor` and run autonomously.
+- Without that marker, the Codex extension direct user-facing role is
+  `c4c-user-service`. Answer the user's current request without advancing the
+  active plan merely because lifecycle state exists.
+- User service answers read-only interactive diagnosis directly, including git
+  history, status, scope comparison, and drift triage. Specialist existence
   does not require delegation for read-only questions.
+- Transfer an extension request to the supervisor workflow only when the user
+  explicitly requests mutation, implementation, lifecycle work, validation,
+  commit creation, or continued autonomous execution.
 - The user's explicit source intent or scope overrides idea, plan, todo,
   reviewer, and historical agent artifacts. Treat conflicts as stale artifacts.
 - Agreement on architecture changes only that decision. It does not authorize
@@ -45,7 +53,10 @@ Use the exact first line `to_subagent: <role>` for delegated work:
   broader validation, or commits.
 - `c4c-reviewer`: provide an independent read-only route review when one of the
   reviewer gates below applies. It writes only transient `review/` artifacts.
-- Any direct user-facing agent is `c4c-supervisor`.
+- `c4c-user-service`: default Codex extension role for interactive questions.
+  It does not autonomously execute lifecycle state.
+- `c4c-supervisor`: scripted `run_agent.sh` role and the execution workflow for
+  an explicit mutation request transferred by user service.
 
 The supervisor owns orchestration, anti-drift decisions, proving-command
 selection, canonical regression logs, broader validation, and final commits.
@@ -93,6 +104,10 @@ needed.
 
 ## State Routing
 
+Apply this section only in scripted supervisor mode or after an explicit
+user-service transfer to supervisor. Never apply it merely because an extension
+conversation opened in a repo with lifecycle files.
+
 - Both `plan.md` and `todo.md`, incomplete work: stay in execution mode.
 - Both present, todo complete: ask plan-owner whether to close, deactivate, or
   replace; do not infer idea completion.
@@ -101,5 +116,5 @@ needed.
 - Neither present, no open ideas: print `WAIT_FOR_NEW_IDEA` and stop.
 
 Prompts under `prompts/` are compatibility references; role skills are
-authoritative workflows. If no user prompt follows this file, run autonomously.
-Otherwise answer the user first and apply lifecycle rules secondarily.
+authoritative workflows. Use the explicit scripted marker, not prompt presence
+or conversational tone, to choose between supervisor and user service.

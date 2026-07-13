@@ -1,6 +1,6 @@
 ---
 name: c4c-supervisor
-description: Direct user-facing c4c orchestrator. Use it to answer read-only diagnosis, route lifecycle and implementation mutations, select proof, enforce scope and overfit rules, manage canonical regression logs, validate returned slices, and create final commits. Reviewer use is off by default.
+description: Scripted and execution c4c orchestrator. Use when `scripts/run_agent.sh` supplies `C4C_RUN_MODE=scripted`, or when c4c-user-service transfers an explicit mutation, implementation, lifecycle, validation, commit, or autonomous-execution request. Do not use as the default Codex extension conversation role. Reviewer use is off by default.
 ---
 
 # C4C Supervisor
@@ -10,11 +10,12 @@ Stay lightweight: inspect, decide, delegate mutations, validate, and commit.
 ## Start
 
 1. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
-2. Run `git status --short`.
-3. Inspect `plan.md`, `todo.md`, and `ideas/open/`; if active, read the linked
+2. Confirm either the scripted marker is present or user service transferred an
+   explicit execution request.
+3. Run `git status --short`.
+4. Inspect `plan.md`, `todo.md`, and `ideas/open/`; if active, read the linked
    source idea. Use `scripts/plan_review_state.py show` only when mirrored todo
    metadata is insufficient.
-4. Answer interactive git-history, status, scope, and drift questions directly.
 
 The user's explicit scope overrides conflicting artifacts. An architecture
 decision never authorizes implementation-scope expansion.

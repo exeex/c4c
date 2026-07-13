@@ -326,14 +326,18 @@ def read_text(path: Path) -> str:
 
 def build_prompt(cli: str, prompt_path: Path) -> str:
     prompt_text = read_text(prompt_path)
+    scripted_marker = (
+        "C4C_RUN_MODE=scripted\n"
+        "C4C_ROLE=c4c-supervisor\n"
+        "C4C_ENTRYPOINT=scripts/run_agent_common.py\n\n"
+    )
     if cli == "codex" and prompt_path == REPO_ROOT / "AGENTS.md":
-        return (
+        return scripted_marker + (
             "Follow the repository instructions already auto-loaded from the workspace "
-            "root AGENTS.md. This run was started by scripts/run_agent_common.py in "
-            "scripted agent mode, so operate autonomously and avoid unnecessary "
-            "clarifying questions unless blocked."
+            "root AGENTS.md. Operate autonomously as c4c-supervisor and avoid "
+            "unnecessary clarifying questions unless blocked."
         )
-    return prompt_text
+    return scripted_marker + prompt_text
 
 
 def show_current_score() -> None:
