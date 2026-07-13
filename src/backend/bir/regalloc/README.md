@@ -17,16 +17,23 @@ assembly instruction text.
 
 ## Input
 
-Verified pseudo BIR, a profile-keyed pseudo-register layout, and typed operand,
-result, clobber, and grouping constraints.
+One immutable Canonical-BIR revision, a target-context-keyed verified abstract
+layout, and preparation facts bound to that exact revision/layout: typed
+operand/result requirements, ABI eligibility, resolved clobbers, ties,
+early-clobbers, and group rules.
 
 ## Output
 
-Complete pseudo-home assignments plus explicit abstract spill-slot and
-`Spill`/`Reload` facts suitable for `AllocatedBir` verification.
+A new immutable BIR revision plus complete abstract
+`(category, class/group, slot)` assignments, abstract spill-slot identities,
+and explicit `Spill`/`Reload` nodes suitable for allocated-boundary
+verification. Canonical BIR remains unchanged.
 
 ## Verification and publication gate
 
 Allocation publishes only when all live ranges obey class, alias, reserved,
 ABI, tie, clobber, group-width, alignment, and capacity rules and all evicted
-values have consistent explicit spill state.
+values have consistent explicit spill state. Initial choice, retry, eviction,
+spill, reload, and fallback use one legality predicate. Stale keys, exhaustion
+without a legal spill route, incomplete assignments, or candidate-verifier
+failure discard the entire private candidate and publish no revision.

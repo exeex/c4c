@@ -14,16 +14,22 @@ repair, or target-specific spill allocators.
 
 ## Input
 
-Pseudo BIR, shared liveness/interference facts, allocation pressure and
-eviction decisions, and the verified pseudo-register layout.
+The allocator's private candidate fork, revision-bound liveness/interference,
+allocation pressure and eviction decisions, typed preparation facts, and the
+verified abstract-register layout.
 
 ## Output
 
-Revision-bound abstract spill slots and explicit pseudo `Spill`/`Reload` nodes
-that make every transition between memory state and pseudo homes visible.
+Candidate-local abstract spill-slot identities and explicit abstract
+`Spill`/`Reload` nodes that make every transition between spill residency and
+an assigned abstract home visible. Spill slots contain type/size/alignment but
+never a concrete frame index or offset.
 
 ## Verification and publication gate
 
 Publication must prove slot identity/type consistency, legal placement,
 dominance and liveness coverage, and complete reloads before uses. No implicit
-pressure spill may cross the `AllocatedBir` boundary.
+pressure spill may cross the allocated boundary. A spilled value has a
+dominating `Spill`; every later register use is covered by an assigned
+`Reload` result. Failure discards the private candidate and publishes no slot,
+node, assignment fact, or new revision.

@@ -10,10 +10,13 @@ contracts in the same review.
 
 The pipeline is a canonicalization boundary, not a target backend hidden under
 a pass-manager name. It accepts one already typed and Raw-verified semantic
-module and publishes one immutable `CanonicalBir`. Target ABI classification,
-call moves, physical registers, spills, stack slots, frame offsets, target
-opcodes, instruction selection, prologue/epilogue, and emission are outside
-this pipeline.
+module and publishes one immutable target-independent `CanonicalBir`. Target
+preparation and shared BIR allocation are downstream of this canonicalization
+pipeline: they may publish a new allocated BIR revision with abstract
+assignments and abstract `Spill`/`Reload` nodes, but never write those facts
+into `CanonicalBir`. Concrete registers, frame offsets, target opcodes,
+instruction selection, prologue/epilogue, and emission remain later MIR/backend
+authority.
 
 ## 1. Normative stage graph
 
@@ -25,8 +28,11 @@ ModuleBuilder
   --verify_and_publish_raw()--> RawBir
   --run_bir_pipeline()--> CanonicalBir
   --verify_preparation_input(target)--> VerifiedPreparationInput
-  --external prepare_canonical_bir(...)--> typed preparation plans
-  --external target-backend pipeline--> target output
+  --target layout + prepare_canonical_bir(...)--> verified preparation facts
+  --shared BIR allocation--> immutable allocated BIR revision
+  --allocated publication--> PreparedBir / MirReadyBirView
+  --external target MIR construction--> verified target MIR
+  --late assembly--> target output
 ```
 
 `ModuleDraft` and `RawBir` are defined by
@@ -47,10 +53,21 @@ ModuleBuilder
   stage and not a container of prepared facts;
 - `VerifiedPreparationInput` is a short-lived immutable capability tying a
   `CanonicalBir` view, target context, verification report, and exact revision
-  axes/function-revision digest together for the external preparation API.
+  axes/function-revision digest together for the external preparation API. It
+  borrows the immutable `CanonicalBir` storage and cannot outlive that owning
+  capability;
+- preparation facts bind to that exact borrow and target-layout version;
+- shared BIR allocation privately forks from the Canonical revision and may
+  publish a distinct immutable allocated revision only after complete
+  assignment/spill verification;
+- `PreparedBir` is the later capability over that allocated revision, not a
+  synonym for `VerifiedPreparationInput` or preparation facts;
+- `MirReadyBirView` is a read-only view of the same allocated graph.
 
-There is no `src/backend/bir/mir` stage or namespace. Preparation and MIR are
-external consumers of this directory's final typed handoff.
+There is no `src/backend/bir/mir` stage or namespace. Preparation, layout,
+allocation, and allocated-publication ownership are documented under their
+existing BIR directories; target MIR remains an external consumer of the
+verified `MirReadyBirView`.
 
 ## 2. Immutable built-in pass order
 
@@ -103,7 +120,7 @@ later pass, or running an undocumented cleanup pass, is forbidden.
 | `aggregate` | canonical scalar, CFG, SSA and memory profiles; resolved record/array/union/complex types | aggregate values, copies, extracts/inserts, layout-independent aggregate paths and by-value semantic boundaries have unique forms; it preserves memory-canonical GEP/address descriptors and emits no earlier-stage noncanonical operation | target layout decomposition, sret/register classification, stack copy sequence, target lane choice |
 | `intrinsics` | all preceding canonical profiles and structured intrinsic/inline-asm semantic payloads | intrinsic namespaces, signatures, effects, atomics represented as intrinsics, runtime-helper-eligible operations and opaque semantic inline asm satisfy the final Canonical profile; unsupported semantics fail with diagnostics | helper symbol choice, asm constraint realization, clobber registers, target instructions |
 | Canonical publication | successful `P07` candidate with a complete frozen stage stamp | full Canonical verifier passes on that same frozen module revision and ordered function-revision digest, then mints `CanonicalBir` atomically | partial publication or “verified earlier” shortcuts |
-| Prepared-input gate | immutable `CanonicalBir`, explicit `TargetContext`, no canonical edit capability | cumulative `PreparedInput` verification succeeds and returns `VerifiedPreparationInput` bound to the complete `PipelineStageStamp` plus target fingerprint | writing ABI/address/call facts into BIR or calling the result `PreparedBir` |
+| Prepared-input gate | immutable `CanonicalBir`, explicit `TargetContext`, no canonical edit capability | cumulative `PreparedInput` verification succeeds and returns a borrowing `VerifiedPreparationInput` bound to the complete `PipelineStageStamp` plus target fingerprint; target layout and preparation consume it, then shared allocation may fork a separate allocated revision | writing ABI/address/call/allocation facts into Canonical BIR, calling this gate's result `PreparedBir`, or treating preparation facts as an instruction graph |
 
 No pass may loosen its predecessor's postconditions. Every later pass either
 preserves those profiles or fails its transaction.
@@ -643,7 +660,7 @@ The legacy tree is evidence for capabilities, not a shape to preserve.
 | `prealloc/addressing.hpp`, memory freshness, atomics, object data | memory/aggregate/intrinsic semantic canonicalization plus analyses; target addresses and storage plans remain preparation/MIR |
 | `prealloc/liveness.*` | reusable revision-bound BIR analysis when needed; never a canonical pass or stored authority |
 | `prealloc/out_of_ssa.cpp` phi materialization, join transfers, parallel-copy bundles | rejected from BIR canonical pipeline; external MIR construction/out-of-SSA owns it after preparation |
-| `prealloc/regalloc.cpp`, allocation constraints, spill/reload and move bundles | external MIR/backend pipeline; no physical location is written to Canonical BIR |
+| `prealloc/regalloc.cpp`, allocation constraints, spill/reload and move bundles | typed target preparation plus shared BIR allocation own abstract constraints, assignments, and capacity `Spill`/`Reload` in a new allocated revision; MIR owns concrete mapping and machine moves; no allocation fact is written to Canonical BIR |
 | stack layout, dynamic stack plan, frame plan, storage plan | semantic stack-save/restore/allocation operations remain BIR; physical slots/frame policy are external |
 | call plans, variadic entry plans, inline-asm carriers, runtime-helper facts | `intrinsics` guarantees typed semantic inputs; external typed preparation owns classifications and plans |
 | prepared lookups, traversal coordinates and agreement tables | replaced by stable IDs, immutable typed plan handles and revision checks; no duplicate authority |
@@ -672,7 +689,7 @@ used `src/passes` orchestration leads to these decisions:
 | hard-coded three iterations and diminishing-return percentage | reject as a correctness criterion; use deterministic convergence and hard budgets |
 | whole-module mutable IR passed directly among functions | reject; transactions, revisions and stage tokens are mandatory |
 | text assembly peephole passes | reject from BIR; target output work is later |
-| combined stack layout/regalloc/codegen state | reject from canonical BIR; those are external target/MIR owners |
+| combined stack layout/regalloc/codegen state | split: shared BIR allocation owns abstract assignments and ordinary capacity spill/reload in a new revision; target MIR/backend owns concrete registers, frame layout, selection, and encoding |
 | target-specific div-by-constant gating inside the semantic pass list | do not copy into canonicalization; target-dependent expansion requires a later target stage or a proven target-independent semantic transform |
 | inline asm symbol resolution after inlining | retain the need for explicit symbol dependencies, but Raw import must already provide structured identities; no text reparsing in this pipeline |
 
@@ -741,8 +758,10 @@ implementation:
   algorithm and stress proof;
 - cancellation semantics must decide whether a completed pass barrier is
   returned as last-good without ever treating it as success;
-- `VerifiedPreparationInput` lifetime and whether it owns or borrows
-  `CanonicalBir` storage require an API-level ownership decision;
+- `VerifiedPreparationInput` is fixed as a short-lived borrow of immutable
+  `CanonicalBir` storage; the concrete C++ lifetime encoding remains an
+  implementation choice but may not copy the graph or outlive the owning
+  `CanonicalBir` capability;
 - no optimization family such as DCE/GVN/LICM is currently part of this
   canonicalization plan. Adding one requires explicit source intent, ordered
   entries, fixed-point policy, and separate semantic coverage review.
