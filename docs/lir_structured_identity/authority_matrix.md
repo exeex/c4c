@@ -77,12 +77,12 @@ Coverage keys:
 These are expected failing producer probes. They establish the current first
 fact; they do not claim BIR support.
 
-| Focused probe | Exact primary contract | Current baseline first failure | Integration contrast |
-|---|---|---|---|
-| `lir_identity_global_store.c` | `LirStoreOp.val` must gain native immediate identity for `7`; `LirStoreOp.ptr` must resolve the scalar global through stable symbol identity | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `store i32 7, ptr @lir_identity_scalar` | `global_store.c` stores and then loads the same global; retain it as broader integration evidence |
-| `global_load.c` | `LirLoadOp.result` needs stable result identity and `LirLoadOp.ptr` needs stable global-symbol identity | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `%t0 = load i32, ptr @g_counter` | `defined_pointer_global_pointer.c` adds pointer-global initialization/indexing and remains integration-only |
-| `lir_identity_global_array_address.c` | First `LirGepOp` needs stable result/global-base identity and individually structured immediate indices `i64 0`, `i64 0` | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `%t0 = getelementptr [1 x i32], ptr @lir_identity_array, i64 0, i64 0`, with no preceding cast; later comparison/control is non-primary | `defined_global_array.c` remains cast-first/later-GEP integration evidence |
-| `aarch64_return_zero_smoke.c` | `LirRet` needs typed native immediate identity for scalar `0` and typed `i32` return authority | `InvalidVoidReturn`, `main`, `entry`; LLVM has no ordinary instruction and first body fact is `ret i32 0` | `riscv64_zero_aggregate_global_storage.c` remains aggregate/global integration evidence |
+| Focused probe | Exact primary contract | Step 4 carrier binding | Current baseline first failure | Integration contrast |
+|---|---|---|---|---|
+| `lir_identity_global_store.c` | `LirStoreOp.val` must gain native immediate identity for `7`; `LirStoreOp.ptr` must resolve the scalar global through stable symbol identity | [CC-STORE-1](carrier_contract.md#cc-store-1) | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `store i32 7, ptr @lir_identity_scalar` | `global_store.c` stores and then loads the same global; retain it as broader integration evidence |
+| `global_load.c` | `LirLoadOp.result` needs stable result identity and `LirLoadOp.ptr` needs stable global-symbol identity | [CC-LOAD-1](carrier_contract.md#cc-load-1) | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `%t0 = load i32, ptr @g_counter` | `defined_pointer_global_pointer.c` adds pointer-global initialization/indexing and remains integration-only |
+| `lir_identity_global_array_address.c` | First `LirGepOp` needs stable result/global-base identity and individually structured immediate indices `i64 0`, `i64 0` | [CC-GEP-1](carrier_contract.md#cc-gep-1) | `UnsupportedOrdinaryInstruction`, `main`, `entry`; LLVM first body fact is `%t0 = getelementptr [1 x i32], ptr @lir_identity_array, i64 0, i64 0`, with no preceding cast; later comparison/control is non-primary | `defined_global_array.c` remains cast-first/later-GEP integration evidence |
+| `aarch64_return_zero_smoke.c` | `LirRet` needs typed native immediate identity for scalar `0` and typed `i32` return authority | [CC-RET-1](carrier_contract.md#cc-ret-1) | `InvalidVoidReturn`, `main`, `entry`; LLVM has no ordinary instruction and first body fact is `ret i32 0` | `riscv64_zero_aggregate_global_storage.c` remains aggregate/global integration evidence |
 
 ## `LirInst` alternatives
 
