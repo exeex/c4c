@@ -248,8 +248,7 @@ std::optional<GlobalLinkageFacts> decode_global_linkage(
 }
 
 std::optional<Type> lower_global_type(const LirModule& module,
-                                      const LirGlobal& global,
-                                      bool allow_pointer) {
+                                      const LirGlobal& global) {
   constexpr int kArrayDimensionCapacity =
       sizeof(global.type.array_dims) / sizeof(global.type.array_dims[0]);
   const bool fixed_scalar_base_array =
@@ -297,8 +296,7 @@ std::optional<Type> lower_global_type(const LirModule& module,
   }
 
   const bool scalar_pointer_global =
-      (global.is_extern_decl || allow_pointer ||
-       (!global.is_const && !global.init_text.empty())) &&
+      (global.is_extern_decl || !global.init_text.empty()) &&
       global.type.ptr_level == 1 &&
       !global.type.is_lvalue_ref && !global.type.is_rvalue_ref &&
       global.type.array_rank == 0 && !global.type.is_ptr_to_array &&
@@ -580,8 +578,7 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         !linkage->is_weak && global.qualifier == "global " &&
         !global.init_text.empty();
-    const auto type =
-        lower_global_type(module, global, const_pointer_producer_row);
+    const auto type = lower_global_type(module, global);
     if (!type)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
                         "global structured type authority is malformed or conflicts with compatibility evidence");
@@ -609,6 +606,10 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         type->kind != TypeKind::Pointer && !global.init_text.empty();
     const bool coherent_const_pointer_definition =
         const_pointer_producer_row && type->kind == TypeKind::Pointer;
+    const bool coherent_internal_const_pointer_definition =
+        !global.is_extern_decl && global.is_internal && global.is_const &&
+        !linkage->is_weak && global.qualifier == "global " &&
+        type->kind == TypeKind::Pointer && !global.init_text.empty();
     const bool coherent_internal_ordinary_definition =
         !global.is_extern_decl && global.is_internal && !global.is_const &&
         !linkage->is_weak && global.qualifier == "global " &&
@@ -626,16 +627,22 @@ Result<void, ImportError> validate_module_surface(const LirModule& module) {
         !global.is_extern_decl && !global.is_internal && global.is_const &&
         linkage->is_weak && global.qualifier == "constant " &&
         type->kind != TypeKind::Pointer && !global.init_text.empty();
+    const bool coherent_weak_const_pointer_definition =
+        !global.is_extern_decl && !global.is_internal && global.is_const &&
+        linkage->is_weak && global.qualifier == "global " &&
+        type->kind == TypeKind::Pointer && !global.init_text.empty();
     if (!coherent_external && !coherent_weak_external &&
         !coherent_ordinary_definition &&
         !coherent_constant_definition &&
         !coherent_const_pointer_definition &&
+        !coherent_internal_const_pointer_definition &&
         !coherent_internal_ordinary_definition &&
         !coherent_internal_constant_definition &&
         !coherent_weak_ordinary_definition &&
-        !coherent_weak_constant_definition)
+        !coherent_weak_constant_definition &&
+        !coherent_weak_const_pointer_definition)
       return fail<void>(ImportErrorCode::UnsupportedGlobals, {}, {},
-                        "only coherent external or weak-external declarations, visibility-free const-pointer globals, and initialized ordinary, internal, or weak global/constant definitions are admitted");
+                        "only coherent external or weak-external declarations and initialized ordinary, internal, or weak global/constant definitions are admitted");
     if (global.align_bytes < 0 ||
         (global.align_bytes != 0 &&
          (global.align_bytes & (global.align_bytes - 1)) != 0))
@@ -1075,12 +1082,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   }
   for (const auto& global : module.globals) {
     const auto linkage = decode_global_linkage(global);
-    const bool const_pointer_producer_row =
-        !global.is_extern_decl && !global.is_internal && global.is_const &&
-        !linkage->is_weak && global.qualifier == "global " &&
-        !global.init_text.empty();
-    const auto type =
-        lower_global_type(module, global, const_pointer_producer_row);
+    const auto type = lower_global_type(module, global);
     auto added = builder.add_global_object(
         global.name, *type,
         global.align_bytes, global.is_internal,

@@ -8,39 +8,33 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
 
 ## Just Finished
 
-- Plan Step 3 now admits producer-valid ordinary, internal, and weak nonconst
-  definitions of exactly one-level pointers to integer/floating scalar bases.
-  Raw and Canonical BIR preserve pointee kind/width/depth, source order,
-  identity, linkage, visibility, alignment, byte-exact opaque initializer
-  payloads, and ordered initializer link identities.
-- Existing coherence authority still rejects empty initializers, constant
-  qualifiers on nonconst definitions, internal flag/linkage mismatch, and
-  internal or weak const-pointer neighbors. Deeper pointers, aggregate and
-  function pointees, and rendered/mirror conflicts remain transactional.
+- Plan Step 3 now admits producer-valid internal and weak const definitions of
+  exactly one-level pointers to integer/floating scalar bases while preserving
+  the existing ordinary const-pointer and nonconst rows. Raw, Foundation, and
+  Canonical BIR preserve typed `PointerTypeFacts`, source order, link-backed
+  identity, decoded linkage and visibility, alignment, byte-exact opaque
+  initializer payloads, and ordered initializer link identities.
+- Explicit object-coherence rows keep constant qualifiers, missing
+  initializers, linkage/flag and extern contradictions, deeper pointers,
+  aggregate or function pointees, and rendered/mirror conflicts transactional.
 
 ## Suggested Next
 
-- Execute one bounded Step 3 packet admitting producer-valid internal and weak
-  const definitions of exactly one-level pointers to integer/floating scalar
-  bases. Preserve typed `PointerTypeFacts` together with opaque initializer
-  payloads and ordered initializer link identities, enforce the authoritative
-  linkage/visibility/qualifier facts, and prove Raw and Canonical publication
-  plus transactional rejection and rollback. Keep deeper pointers, aggregate
-  pointees, and function pointers closed; do not advance to the accumulated
-  module checkpoint until these producer-valid rows are covered.
+- Execute the accumulated Plan Step 3 module-level checkpoint required by
+  `plan.md`: audit the Steps 2-3 module families for any remaining generic
+  unsupported valid LIR rows, then run the supervisor-selected broader proof.
+  Treat any discovered uncovered producer family as a bounded Step 3 packet
+  instead of declaring the checkpoint complete.
 
 ## Watchouts
 
-- Scalar-pointer global authority comes only from a one-level, non-reference,
-  non-array/non-vector/non-function-pointer `TypeSpec` whose cleared base lowers
-  to an integer or floating scalar. Pointer definitions require a nonempty
-  initializer payload, and the producer emits qualifier `global ` even when
-  `is_const` is true; existing ordinary, internal, or weak coherence predicates
-  remain authoritative for linkage, visibility, qualifier, and initializer
-  shape.
-- Producer globals omit `llvm_type_ref` for pointer shapes. A manually supplied
-  mirror is accepted only as generic `ptr` corroboration and never supplies
-  pointee semantics; rendered `llvm_type` is exact parity evidence only.
+- The scalar-pointer type constructor is intentionally broader than object
+  publication: it constructs facts for initialized definitions regardless of
+  constness, while explicit ordinary/internal/weak coherence rows remain the
+  authority for qualifier, linkage, visibility, initializer, and flag shape.
+- Internal and weak const pointer producers use qualifier `global `, not
+  `constant `. Producer globals omit `llvm_type_ref` for pointer shapes; any
+  supplied mirror remains generic `ptr` corroboration only.
 
 ## Proof
 
@@ -50,4 +44,5 @@ Current Step Title: Complete globals, strings, externs, symbols and initializers
   passing. The selected proof covers typed external, weak-external, const, and
   nonconst ordinary/internal/weak pointer globals, exact object and initializer
   preservation, `FoundationVerifier` reachability, Canonical publication, and
-  Raw/Canonical rollback for unsupported neighboring shapes.
+  Raw/Canonical rollback for unsupported neighboring shapes and coherence
+  contradictions.
