@@ -60,3 +60,35 @@ the LIR producer boundary.
   producer source.
 - Reject a carrier that leaves missing, foreign, or non-pointer address failure
   reachable behind a renamed field or permits downstream fallback.
+
+## Resumption Record: rvalue identity-preservation blocker
+
+Last accepted progress remains paused idea 734 Step 7.23: commit `0995a3deb`
+received typed `LirSwitch` authority, and the matching backend guard accepted
+5/5. The full-baseline candidate with 73 failures was rejected and is not
+full-suite-green evidence. No 757 step is complete.
+
+The interrupted runbook pointer is Step 1, `Publish computed-goto address
+authority`. The attempted producer route reached
+`StmtEmitter::emit_control_flow_stmt(IndirBrStmt)`, whose
+`emit_rval_operand` result is string-only. A local `DeclRef` falls through to
+`LirOperand::raw(emit_rval_expr(...))`; `emit_rval_payload(DeclRef)` in
+`src/codegen/lir/hir_to_lir/expr/coordinator.cpp` emits a typed `%dispatch`
+`LirLoadOp` but returns only its spelling. Thus Step 1 cannot publish a typed
+address `LirValueId` without prohibited text recovery.
+
+Classification: `separate-blocker`. Open idea
+`ideas/open/758_lir_rvalue_value_identity_preservation_for_computed_goto.md`
+owns only preservation of existing local/parameter rvalue typed value identity
+through the current rvalue/operand route. It does not own the 757
+`LirIndirectBrOp` field, verifier, producer handoff, or Raw-BIR work.
+
+Exact return action after that blocker has an accepted handoff: reactivate 757
+at Step 1 and publish `LirIndirectBrOp`'s typed address field from the
+preserved rvalue identity. Prove valid, missing, invalid, foreign, non-pointer,
+and misleading-display cases; run a fresh build and
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+The uncommitted 757 prototype (field plus verifier) was reverted after the
+focused test failed under real lowering because the address ID was absent; it
+has no implementation commit. Before that packet, the supervisor recorded a
+fresh build and the exact focused test passing 1/1 in `test_before.log`.
