@@ -1898,19 +1898,30 @@ std::string StmtEmitter::to_bool(FnCtx& ctx, const std::string& val, const TypeS
 
 lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
                                               const TypeSpec& ts) {
-  if (llvm_ty(ts) == "i1" && val.value_id() && val.value_id()->valid()) return val;
-
   const lir::LirOperand result = fresh_value(ctx);
   const std::string ty = llvm_ty(ts);
   if (ty == "ptr") {
-    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", "ptr", val, "null"});
+    const lir::LirOperand as_int(fresh_tmp(ctx));
+    emit_lir_op(ctx, lir::LirCastOp{as_int, lir::LirCastKind::PtrToInt,
+                                    lir::LirTypeRef("ptr"), val,
+                                    lir::LirTypeRef::integer(64)});
+    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne",
+                                   lir::LirTypeRef::integer(64), as_int,
+                                   lir::LirOperand::integer("0", 0)});
   } else if (ty == "i1") {
-    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", "i1", val, "false"});
+    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne",
+                                   lir::LirTypeRef::integer(1), val,
+                                   lir::LirOperand::integer("0", 0)});
   } else if (is_float_base(ts.base) && ts.ptr_level == 0 && ts.array_rank == 0) {
-    emit_lir_op(ctx, lir::LirCmpOp{result, true, "une", ty, val,
+    emit_lir_op(ctx, lir::LirCmpOp{result, true, "une", lir::LirTypeRef(ty), val,
                                    fp_literal(ts.base, 0.0)});
   } else {
-    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", ty, val, "0"});
+    const int bits = int_bits(llvm_storage_base(ts));
+    const lir::LirTypeRef cmp_type =
+        bits > 0 ? lir::LirTypeRef::integer(static_cast<unsigned>(bits))
+                 : lir::LirTypeRef(ty);
+    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", cmp_type, val,
+                                   lir::LirOperand::integer("0", 0)});
   }
   return result;
 }
