@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.4
-Current Step Title: Publish representative scalar abs result/use authority (complete)
+Current Step ID: 7.5
+Current Step Title: Publish representative scalar floating binary result/use authority
 
 ## Just Finished
 
@@ -22,20 +22,26 @@ Current Step Title: Publish representative scalar abs result/use authority (comp
 
 ## Suggested Next
 
-- Execute the Step-8 producer-boundary re-enumeration and verifier audit against
-  the completed scalar producer packets and exact remaining-row blockers.
+- Execute Step 7.5: publish representative scalar floating `LirBinOp`
+  result/use authority.
 
 ## Watchouts
 
-- The Step-7.4 claim covers only the existing integer abs special branch; no
-  other builtin, direct, indirect, variadic, or ABI call route was broadened.
-- Abs arguments without structurally published identity remain monostate SSA;
-  do not reconstruct authority from their displays during the Step-8 audit.
-- Aggregate/vector rows still need their own opcode/type/index/mask contracts;
-  pointer/object, CFG/parameters, inline assembly, and BIR remain separate.
-- Preserve the four idea-741 neighbors and completed Steps 3 through 7.4 while
-  auditing exact blockers; do not turn an ownership-ready carrier into a false
-  producer guarantee.
+- Own only one ordinary nonpointer, nonvector scalar floating `LirBinOp`
+  two-operation result/use chain with exact native floating opcode and type
+  authority.
+- Allocate both results through the common `fresh_value`/`LirOperand` path and
+  preserve the exact first result ID into the later operation in the same
+  function.
+- Keep structurally unavailable initial floating operands as honest monostate
+  compatibility; do not add a floating-immediate carrier or infer IDs from
+  display spelling.
+- Accept misleading display after native authority is proven; reject invalid
+  or duplicate results, unknown or cross-function uses, invalid opcode, and
+  missing or conflicting type authority.
+- Keep complex, vector, pointer, logical-helper, cast, compare, select, abs,
+  other Step-7 rows, CFG/terminators, parameters, calls, inline assembly, and
+  new-BIR work outside Step 7.5.
 
 ## Proof
 
