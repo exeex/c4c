@@ -623,3 +623,24 @@ accepted a producer handoff proving `comp-goto-1.c` publishes valid
 `addr_value`: reactivate 734 after Step 7.24 and send the completed receiver
 slice to plan-owner for a close/repair decision. Preserve the accepted receiver
 work and proof; do not repeat Step 7.24.
+
+## Resumption Update: accepted 764/772 baseline disposition
+
+The Step 7.24 receiver remains accepted and must not be re-executed. Closed
+764 delivered its production computed-goto carrier repair, and closed 772
+cleared the remaining `pr70460` GEP-pointer baseline blocker; the supervisor
+accepted the resulting fresh full-suite candidate at 3037/3037.
+
+This source is not capability-complete: its matrix still lacks structured
+PHI incoming value/predecessor authority, followed by the separately scoped
+local/object, memory/va, aggregate/vector, body-parameter, and other remaining
+families already enumerated above. The earliest eligible dependency is the
+already-open `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`:
+it owns only the PHI carrier authority that this importer cannot obtain from
+text, and its sole predecessor, closed 750, has accepted current-function CFG
+block identities.
+
+Return point: activate 751 now. After its accepted typed handoff, reactivate
+734 for plan-owner repair of one bounded Raw-BIR PHI receiver derived from that
+handoff; preserve accepted Steps 7.20 through 7.24 and do not absorb the later
+authority families into that receiver.
