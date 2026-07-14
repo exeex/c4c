@@ -1311,6 +1311,11 @@ std::size_t inline_asm_constraint_count(std::string_view constraints) {
   return count;
 }
 
+bool is_native_inline_asm_output_type(const Type& type) {
+  return type == Type{TypeKind::Integer, 32, "i32"} ||
+         type == Type{TypeKind::Integer, 64, "i64"};
+}
+
 Result<void, ImportError> validate_inline_asm_shape(
     const LirModule& module, const LirInlineAsmOp& inline_asm,
     const std::string& function,
@@ -1395,20 +1400,23 @@ Result<void, ImportError> validate_inline_asm_shape(
       return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                         "read/write input lacks a distinct produced result");
   }
-  const Type i32{TypeKind::Integer, 32, "i32"};
-  const bool native_i32_output = inline_asm.ordinary_inputs.empty() &&
+  const auto native_output_type = lower_lir_type(
+      module, inline_asm.ordinary_results.empty()
+                  ? codegen::lir::LirTypeRef{}
+                  : inline_asm.ordinary_results[0].type);
+  const bool native_output = inline_asm.ordinary_inputs.empty() &&
       inline_asm.ordinary_results.size() == 1 &&
       inline_asm.ordinary_results[0].role == LirInlineAsmValueRole::Output &&
       inline_asm.ordinary_results[0].constraint_index == 0 &&
-      lower_lir_type(module, inline_asm.ordinary_results[0].type) == i32 &&
+      native_output_type && is_native_inline_asm_output_type(*native_output_type) &&
       inline_asm.ordinary_results[0].value.value_id() &&
       inline_asm.ordinary_results[0].value.value_id()->valid();
-  if (native_i32_output) {
+  if (native_output) {
     const auto id = inline_asm.ordinary_results[0].value.value_id()->value;
     if (source_values.count(id) != 0 || !inline_asm_results.insert(id).second)
       return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                         "native inline-asm result LirValueId is duplicate");
-    source_values.emplace(id, i32);
+    source_values.emplace(id, *native_output_type);
   }
   for (const auto& result : inline_asm.ordinary_results)
     ordinary_values.emplace(result.value.str(), *lower_lir_type(module, result.type));
@@ -1783,7 +1791,6 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const auto* immediate = store->val.integer_immediate();
         const auto* destination = store->ptr.link_name_id();
         const auto* source = store->val.value_id();
-        const Type i32{TypeKind::Integer, 32, "i32"};
         const bool immediate_store =
             store->val.kind() == codegen::lir::LirOperandKind::Immediate &&
             immediate && store->type_str.integer_bit_width() &&
@@ -1791,10 +1798,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
                 immediate->value, *store->type_str.integer_bit_width());
         const bool inline_asm_store =
             store->val.kind() == codegen::lir::LirOperandKind::SsaValue &&
-            source && source->valid() && type && *type == i32 &&
+            source && source->valid() && type &&
+            is_native_inline_asm_output_type(*type) &&
             inline_asm_results.count(source->value) != 0 &&
             source_values.find(source->value) != source_values.end() &&
-            source_values.at(source->value) == i32;
+            source_values.at(source->value) == *type;
         if (!type || !is_integer_type(*type) ||
             store->type_str.kind() !=
                 codegen::lir::LirTypeKind::Integer ||
@@ -2845,15 +2853,19 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 spec.result_types.push_back(
                     *lower_lir_type(module, result.type));
               }
-              const Type i32{TypeKind::Integer, 32, "i32"};
-              const bool native_i32_output = inline_asm.ordinary_inputs.empty() &&
+              const auto native_output_type = lower_lir_type(
+                  module, inline_asm.ordinary_results.empty()
+                              ? codegen::lir::LirTypeRef{}
+                              : inline_asm.ordinary_results[0].type);
+              const bool native_output = inline_asm.ordinary_inputs.empty() &&
                   inline_asm.ordinary_results.size() == 1 &&
                   inline_asm.ordinary_results[0].role == LirInlineAsmValueRole::Output &&
                   inline_asm.ordinary_results[0].constraint_index == 0 &&
-                  *lower_lir_type(module, inline_asm.ordinary_results[0].type) == i32 &&
+                  native_output_type &&
+                  is_native_inline_asm_output_type(*native_output_type) &&
                   inline_asm.ordinary_results[0].value.value_id() &&
                   inline_asm.ordinary_results[0].value.value_id()->valid();
-              if (native_i32_output)
+              if (native_output)
                 spec.source_result_id =
                     inline_asm.ordinary_results.front().value.value_id()->value;
               const auto source_result_id = spec.source_result_id;

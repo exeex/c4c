@@ -8519,8 +8519,9 @@ void test_inline_asm_shape_rejection() {
          "textual-only inline asm must publish no partial CanonicalBir");
 }
 
-void test_i32_inline_asm_output_store_receipt_and_rejections() {
-  const auto make_module = [] {
+void test_inline_asm_output_store_receipt_and_rejections(
+    std::uint32_t width, std::size_t global_index, std::uint32_t source_id) {
+  const auto make_module = [=] {
     auto module = direct_global_integer_store_module();
     auto& block = module.functions[0].blocks[0];
     block.insts.clear();
@@ -8529,17 +8530,17 @@ void test_i32_inline_asm_output_store_receipt_and_rejections() {
     producer.constraints = "presentation-only constraints";
     producer.args_str = "presentation-only arguments";
     producer.ordinary_results = {{
-        lir::LirOperand::ssa("%presentation-output", lir::LirValueId{42}),
-        lir::LirTypeRef::integer(32), lir::LirInlineAsmValueRole::Output, 0}};
+        lir::LirOperand::ssa("%presentation-output", lir::LirValueId{source_id}),
+        lir::LirTypeRef::integer(width), lir::LirInlineAsmValueRole::Output, 0}};
     block.insts.push_back(std::move(producer));
     block.insts.push_back(lir::LirStoreOp{
-        lir::LirTypeRef::integer(32),
-        lir::LirOperand::ssa("%different-display", lir::LirValueId{42}),
+        lir::LirTypeRef::integer(width),
+        lir::LirOperand::ssa("%different-display", lir::LirValueId{source_id}),
         lir::LirOperand::global("@presentation-destination",
-                                module.globals[0].link_name_id)});
+                                module.globals[global_index].link_name_id)});
     return module;
   };
-  const auto inspect = [](const auto& graph, std::string_view layer) {
+  const auto inspect = [=](const auto& graph, std::string_view layer) {
     const auto view = graph.view();
     const auto function_id = view.functions().front();
     const auto function = view.function(function_id).value();
@@ -8552,16 +8553,17 @@ void test_i32_inline_asm_output_store_receipt_and_rejections() {
                store_instruction.operands() == asm_instruction.results(),
            std::string(layer) + " must connect the source-backed asm result to Store");
     const auto result = function.value(asm_instruction.results()[0]).value();
-    expect(result.type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
-               result.source_id == bir::SourceValueId{function_id, 42} &&
-               function.source_value(bir::SourceValueId{function_id, 42}).value() ==
+    expect(result.type == bir::Type{bir::TypeKind::Integer, width,
+                                    "i" + std::to_string(width)} &&
+               result.source_id == bir::SourceValueId{function_id, source_id} &&
+               function.source_value(bir::SourceValueId{function_id, source_id}).value() ==
                    asm_instruction.results()[0],
            std::string(layer) + " must retain the native output LirValueId");
   };
   const auto module = make_module();
   const auto raw = bir::lower_lir_to_raw_bir(module);
   expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
-         "the checked i32 inline-asm output/store route must publish verified Raw BIR");
+         "the checked inline-asm output/store route must publish verified Raw BIR");
   inspect(raw.value(), "Raw BIR");
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
   expect(canonical.has_value(), "the checked i32 inline-asm output/store route must canonicalize");
@@ -8585,11 +8587,11 @@ void test_i32_inline_asm_output_store_receipt_and_rejections() {
            "wrong binding role must reject");
   rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].constraint_index = 1; },
            "wrong binding index must reject");
-  rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].type = lir::LirTypeRef::integer(64); },
+  rejected([=](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].type = lir::LirTypeRef::integer(width == 32 ? 64 : 32); },
            "wrong binding type must reject");
-  rejected([](auto& m) { std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1]).val = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); },
+  rejected([=](auto& m) { std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1]).val = lir::LirOperand::ssa("%unknown", lir::LirValueId{source_id + 1}); },
            "unknown Store source must reject");
-  rejected([](auto& m) { std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1]).type_str = lir::LirTypeRef::integer(64); },
+  rejected([=](auto& m) { std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1]).type_str = lir::LirTypeRef::integer(width == 32 ? 64 : 32); },
            "Store type mismatch must reject");
   rejected([](auto& m) { m.functions[0].blocks[0].insts.pop_back(); },
            "missing Store use must reject");
@@ -8597,6 +8599,14 @@ void test_i32_inline_asm_output_store_receipt_and_rejections() {
            "duplicate Store use must reject");
   rejected([](auto& m) { auto other = m.functions[0]; other.name = "foreign"; other.blocks[0].insts.erase(other.blocks[0].insts.begin()); m.functions.push_back(std::move(other)); },
            "cross-function Store use must reject");
+}
+
+void test_i32_inline_asm_output_store_receipt_and_rejections() {
+  test_inline_asm_output_store_receipt_and_rejections(32, 0, 42);
+}
+
+void test_i64_inline_asm_output_store_receipt_and_rejections() {
+  test_inline_asm_output_store_receipt_and_rejections(64, 1, 43);
 }
 
 lir::LirCallOp direct_void_call(c4c::LinkNameId target) {
@@ -9500,6 +9510,7 @@ int main() {
   test_lir_inline_asm_structured_value_contract();
   test_closed_typed_lir_type_receipt();
   test_i32_inline_asm_output_store_receipt_and_rejections();
+  test_i64_inline_asm_output_store_receipt_and_rejections();
   test_structured_type_spec_signature_receipt();
   test_direct_scalar_signature_receipt();
   test_direct_scalar_signature_rejections_and_transactionality();
