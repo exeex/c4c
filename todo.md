@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Publish direct void scalar SSA argument authority (complete)
+Current Step ID: 6
+Current Step Title: Prove a representative non-call scalar result/use chain
 
 ## Just Finished
 
@@ -26,16 +26,16 @@ Current Step Title: Publish direct void scalar SSA argument authority (complete)
 
 ## Watchouts
 
-- Choose the smallest production scalar ordinary result/use pair justified by
-  the Step-1 matrix; the focused two-operation integer `LirBinOp` chain is the
-  current boundary probe.
-- Reuse the owning value allocator and common `LirOperand` mechanism; do not
-  infer identity from `%tN`, instruction order, rendered LLVM, or opcode text.
-- Preserve native opcode/type facts and prove one exact result ID becomes the
+- Own only the focused two-operation integer `LirBinOp` chain selected by the
+  Step-1 matrix and probe.
+- Reuse the owning value allocator and common `LirOperand`: allocate
+  authoritative result IDs and preserve the exact first result ID into the
   later ordinary use in the same function.
-- Reject invalid/duplicate definitions and unknown/cross-function uses without
-  expanding into CFG, parameters, pointer/object, aggregate/vector, inline-asm,
-  call, or new-BIR work.
+- Preserve native opcode and type facts; do not derive either from rendering.
+- Accept misleading display after native authority is proven; reject invalid
+  or duplicate result IDs and unknown or cross-function uses.
+- Keep CFG/terminators, parameters, pointer/object identity, aggregate/vector,
+  inline assembly, calls, and new-BIR work outside Step 6.
 
 ## Proof
 
