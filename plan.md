@@ -1,6 +1,7 @@
 # Unresolved External Direct Scalar-Call Signature and Result Authority Runbook
 
 Status: Active
+Runbook State: Blocked on source-representation research idea 747
 Source Idea: ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md
 Supersedes: blocked idea-744 Plan Step 7.32 while this prerequisite is active
 
@@ -9,6 +10,15 @@ Supersedes: blocked idea-744 Plan Step 7.32 while this prerequisite is active
 Publish only the missing source-level authority for the plain-`DeclRef`
 unresolved-external direct, fixed-empty scalar-call route, then hand the exact
 contract back to idea 744.
+
+The runbook is blocked before implementation. The two source probes tried in
+Step 1 split the required properties: a declared fixed-empty call retains
+`target_fn`, while an undeclared call reaches unresolved-external handling but
+lacks native direct global/link identity. This does not prove no legal source
+representation exists. The separate documentation-only research initiative
+`ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md`
+must decide that representation question before this runbook can resume,
+retire, or be replaced.
 
 ## Goal
 
@@ -89,6 +99,14 @@ Completion check:
 
 - one exact source-level seam and probe show how native signature and result
   authority must be published without text recovery or HIR fabrication
+
+Blocked checkpoint:
+
+- Step 1 cannot satisfy its positive-probe completion check from the current
+  fixtures. Do not advance to Step 2. Research idea 747 must establish either
+  a legal source-to-HIR representation carrying both required properties or
+  evidence sufficient to conclude that such a representation is unavailable;
+  the latter requires a lifecycle decision, not a fabricated route.
 
 ### Step 2 - Publish signature and scalar-result authority
 

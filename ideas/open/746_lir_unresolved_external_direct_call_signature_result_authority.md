@@ -1,8 +1,9 @@
 # Unresolved External Direct Scalar-Call Signature and Result Authority
 
-Status: Open (active)
+Status: Open (active runbook blocked; source-representation research pending)
 Type: producer-side unresolved-external call authority prerequisite
 Blocks: Plan Step 7.32 of ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
+Related research prerequisite: ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md
 
 ## Goal
 
@@ -67,6 +68,18 @@ publishes.
   fail-closed.
 - No verifier relaxation or idea-734 receiver claim is accepted until the
   source-level production facts above are proven.
+
+## Durable Blocker
+
+Step 1 traced the relevant producer seam but did not bind the required positive
+source probe. A declared fixed-empty source call retains `target_fn` and stays
+on the local-target path; an undeclared source call reaches unresolved-external
+handling but lacks the native direct global/link identity required by this
+idea. The evidence does not establish that no legal production-facing source
+representation can satisfy both properties. It requires the distinct,
+documentation-only source-language/frontend investigation in idea 747 before
+this runbook may resume, retire, or be replaced. This does not complete the
+prerequisite and does not unblock, close, or supersede idea 744.
 
 ## Reviewer Reject Signals
 

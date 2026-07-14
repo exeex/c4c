@@ -1,6 +1,7 @@
 # Current Packet
 
 Status: Active
+Packet State: Blocked on source-representation research idea 747
 Source Idea Path: ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md
 Source Plan Path: plan.md
 Current Step ID: 1
@@ -20,12 +21,13 @@ Current Step Title: Trace and bind the plain-DeclRef unresolved-external produce
 
 ## Suggested Next
 
-- Keep Step 1 active. Locate or demonstrate the absence of a production-facing
-  source construct that simultaneously preserves the plain-`DeclRef` global
-  link identity and leaves `target_fn` absent for a fixed-empty scalar call.
-  If one exists, bind that fixture and its native declaration facts to the
-  Step 2 `FnPtrSig`/result-publication packet. Do not begin Step 2 until that
-  binding exists.
+- Do not begin Step 2. Run the separate, documentation-only
+  `ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md`
+  investigation to determine whether a legal production-facing source form can
+  simultaneously preserve direct global/link identity and leave `target_fn`
+  absent. Resume Step 1 only if that investigation supplies a concrete native
+  source/HIR carrier contract; otherwise retire or replace this runbook without
+  claiming the prerequisite or idea 744 complete.
 
 ## Watchouts
 
@@ -46,9 +48,13 @@ Current Step Title: Trace and bind the plain-DeclRef unresolved-external produce
   lacks direct global/link identity. No current evidence authorizes an HIR
   fabrication, prototype relocation, or text-derived substitute. The exact
   unblocker is one production-facing source fixture satisfying both properties,
-  or evidence that the frontend has no such legal source representation, which
-  requires supervisor scope/lifecycle direction before any new initiative or
-  route is chosen.
+  or evidence that the frontend has no such legal source representation. That
+  question is now isolated in open research idea 747. The current evidence is
+  insufficient to conclude that no legal production-facing source
+  representation exists: it shows only that the declared and undeclared forms
+  tried so far split the required properties. A distinct source-language and
+  frontend-representation investigation is required before a valid production
+  route, retirement, or replacement can be selected.
 
 ## Proof
 
