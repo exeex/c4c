@@ -78,3 +78,26 @@ carrier, verifier, Raw-BIR, or backend gap.
 - Reject tests that prove only a named external case, omit malformed
   structured-authority coverage, or retain the empty `LirStoreOp.val` failure
   behind a renamed abstraction.
+
+## Closure Record — 2026-07-14
+
+Disposition: capability complete.
+
+- Accepted implementation: `9cb82f9cb` preserves a pointer-represented
+  `DirectConstant` in generic `StmtEmitter::emit_set_assign_value` before the
+  string coercion path, retaining each automatic local table element's
+  structured identity through its indexed pointer-store consumer.
+- Accepted proof: a fresh `cmake --build --preset default`, focused
+  `^frontend_lir_label_address_rvalue_probe$`, and
+  `^frontend_lir_` guard passed 7/7. The focused probe's stacked worktree hunk
+  verifies both automatic `void *table[] = { &&first, &&second };` element
+  stores retain the native direct constant and its owner, target, pointer type,
+  and produced-value identity. The prior `frontend_lir_call_type_ref`
+  empty-store-value failure no longer occurs.
+- Scope boundary: no carrier, verifier, Raw-BIR/importer, backend,
+  automatic-table decay, or broad table/rvalue redesign was accepted. The
+  direct-rvalue producer code and focused-probe edits already stacked for 768
+  Step 5 remain uncommitted and unaccepted.
+- Return: resume
+  `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
+  exactly at Step 5; Steps 1--4 remain preserved.

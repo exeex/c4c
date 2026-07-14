@@ -1,41 +1,35 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/771_lir_automatic_local_label_address_table_initializer_authority.md
+Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Preserve structured direct-constant authority through emission
+Current Step ID: 5
+Current Step Title: Repair and prove native direct LabelAddrExpr rvalue production
 
 ## Just Finished
 
-- Step 2 preserved a pointer-represented `DirectConstant` in generic
-  `StmtEmitter::emit_set_assign_value` before any `coerce(rhs.str(), ...)`
-  call, so each automatic `void *table[] = { &&first, &&second };` indexed
-  element store retains its produced identity and the producer's pointer,
-  current-function-owner, and target-label authority. The focused probe now
-  verifies both element stores and the existing direct-rvalue malformed cases
-  remain the nearby same-feature authority coverage.
+- 771 closed capability-complete after `9cb82f9cb` preserved direct constants
+  through the generic automatic local initializer consumer. Its fresh build,
+  focused probe, and `^frontend_lir_` guard passed 7/7. 768 Steps 1--4 remain
+  accepted, while the stacked Step 5 producer code and focused-probe hunk
+  remain uncommitted and unaccepted.
 
 ## Suggested Next
 
-- Step 3 should review the completed bounded route, preserve 768 Step 5 as
-  the sole return point, and decide lifecycle handoff; do not absorb the
-  stacked 768 producer packet.
+- Step 5 must reassess the direct `LabelAddrExpr` producer packet on its own
+  merits using the accepted 770 and 771 prerequisites. Do not redo Steps 1--4
+  or treat the 771 consumer proof as acceptance of the stacked producer work.
 
 ## Watchouts
 
-- This remains initializer-element production only: exclude later table
-  `DeclRef` decay, carrier/`IndirBrStmt`, verifier, backend, Raw-BIR/importer,
-  767, and 769. No additional malformed mutation was added at this consumer:
-  its legal input is the pre-existing function-owned `DirectConstant`, and
-  testing malformed owner/target/type/value identity here would require
-  producer or verifier mutation outside this packet. The stacked direct-rvalue
-  probe already rejects raw text plus invalid/foreign owner or target,
-  non-pointer type, and missing/invalid/foreign produced identities.
+- No synthetic bridge, raw-text recovery, testcase-shaped routing, carrier or
+  verifier change, 767/769/771 reopening, or automatic-table `DeclRef` decay.
+  Keep the current producer code unaccepted until fresh independent proof and
+  scope review complete.
 
 ## Proof
 
-- `cmake --build --preset default` passed; `ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_label_address_rvalue_probe$'` passed;
-  and `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' |
-  tee test_after.log` passed (7/7). Proof log: `test_after.log`.
+- 771 acceptance evidence is retained only as prerequisite evidence:
+  `cmake --build --preset default`,
+  `^frontend_lir_label_address_rvalue_probe$`, and `^frontend_lir_` passed
+  7/7. Step 5 requires its own fresh build and focused/broader proof decision.

@@ -276,3 +276,21 @@ consumption decomposition, not a monolithic integration or carrier route.
   publication, external integrations, 764 work, or broad rvalue/table redesign
   here. Reject synthetic bridges, raw-text recovery, testcase routing, and
   expectation downgrades.
+
+## Resumption Update — 2026-07-14 Automatic Local Table Initializer Accepted
+
+- 771 is capability-complete and archived at
+  `ideas/closed/771_lir_automatic_local_label_address_table_initializer_authority.md`.
+  Its accepted generic initializer-consumer implementation is `9cb82f9cb`.
+  A fresh build, focused `^frontend_lir_label_address_rvalue_probe$`, and
+  `^frontend_lir_` guard passed 7/7; the focused stacked-worktree proof
+  verifies both automatic local table element stores retain the structured
+  direct-constant identity. Regression comparison against the matching earlier
+  frontend-LIR baseline is non-regressive 7/7 with
+  `--allow-non-decreasing-passed`; direct before/after attribution is
+  unavailable because the unaccepted Step 5 stack changed between captures.
+- Exact active return: Steps 1--4 stay accepted. Resume **Step 5 — Repair and
+  prove native direct `LabelAddrExpr` rvalue production**. The current
+  uncommitted Step 5 producer files and focused-probe hunk remain unaccepted;
+  rerun and assess that packet on its own merits. Do not redo Steps 1--4 or
+  reopen 771, 767, 769, carrier behavior, or automatic-table `DeclRef` decay.
