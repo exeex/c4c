@@ -8,65 +8,46 @@ Current Step Title: Publish i64 inline-asm output binding authority
 
 ## Just Finished
 
-- Stopped Plan Step 7.24 without code changes and classified producer-specific
-  implicit call-argument coercion as an exact separately owned blocker.
-- Erasing or replacing the SExt source ID removes selected-global provenance,
-  but the remaining exact i32-to-i64 SExt plus fixed i64 call-argument shape is
-  also valid for other authoritative i32 producers. Inferring the source from
-  that shape overclaims; declining the claim cannot reject the required
-  missing or wrong selected-global source mutation.
-- Truthful producer-specific coercion verification therefore requires a native
-  coercion/source-purpose carrier. That design belongs to a separate future
-  semantic-carrier initiative; producer/name/text inference is forbidden.
-- Step 7 remains active: the accepted scalar inline-asm Output role/type/index
-  contract has one carrier-ready i64 width neighbor that needs no source-purpose
-  inference, input-count schema, or multi-result mapping.
-- Builtin parity, scalar multi-output inline assembly, and inline-asm inputs
-  retain their exact separately owned blockers and are not reopened here.
+- Completed Plan Step 7.25 for PS's single non-explicit-register output-only
+  scalar i64 `LirInlineAsmOp` binding without production or schema changes.
+- Focused production coverage proves that the accepted Step-7.21 generic path
+  resolves i64 natively, allocates the semantic output through `fresh_value`,
+  stores the exact ID in the sole i64/Output/index-zero binding, and preserves
+  that ID through representation-preserving coercion into the later i64 Store.
+- Reachable malformed coverage rejects missing, invalid, duplicate, and wrong-
+  alternative definitions; wrong role, index, count/position, binding/operation
+  width; unknown/cross-function Store uses; and Store-width conflicts.
+- Misleading compatibility-result, binding, Store, rendered, and opaque text
+  passes with native facts unchanged. The accepted i32 Step-7.21 contract stays
+  unchanged and proves the same mechanism at its neighboring width.
 
 ## Suggested Next
 
-- Executor: complete Plan Step 7.25 for only PS's single output-only scalar i64
-  `LirInlineAsmOp` route. Allocate the semantic output through `fresh_value`,
-  store the exact ID in its native i64/Output/index-zero result binding, and
-  preserve that ID through representation-preserving coercion into the later
-  type-matched i64 Store.
+- Supervisor: select the next carrier-ready Step-7 row from the updated matrix;
+  do not reopen the separately blocked parity, multi-output, inline-asm input,
+  or implicit-coercion families without their required native carriers.
 
 ## Watchouts
 
-- Own exactly one non-explicit-register output-only i64 binding. Require one
-  function-owned definition and exact agreement among native i64 type, Output
-  role, output index zero, result collection position/count, operation return
-  type, and the later Store type/use.
-- Reuse the Step-7.21 output binding and ownership mechanism without changing
-  its accepted i32 contract. Do not add a new width-purpose field or infer
-  width/identity from rendered constraint, result, operand, or temporary text.
-- Compatibility `result`, rendered operands, original assembly/constraint
-  text, clobbers, and all other mirrors remain presentation/opaque. They may
-  observe native authority but never create, repair, select, or validate it.
-- Reachable verification must reject invalid/duplicate/missing output
-  definitions; wrong role/index/count/position or type alternatives; unknown
-  or cross-function Store uses; and any i32/i64 or binding-to-Store type
-  conflict. Misleading displays with unchanged native facts must pass.
-- Exclude accepted i32 Step 7.21, inputs, tied/read-write, multi-output, memory,
-  address, immediate, clobber, explicit-register, floating/vector/aggregate
-  bindings, `insn_r` semantics, opaque-text interpretation, compatibility-
-  result authority, stack/local/object and body parameters, CFG, BIR receipt,
-  parity, and all idea-741 contracts.
-- This packet is carrier-ready only on the existing single-result inline-asm
-  Output role/type/index carrier, `fresh_value`, representation-preserving
-  Store edge, and ownership verifier. If i64 publication needs a new semantic
-  carrier or any name/text-derived bridge, stop and return that exact blocker
-  rather than widening Step 7.25.
+- Step 7.25 is evidence that the single scalar integer Output binding mechanism
+  is width-generic; it does not authorize input-count, multi-result mapping,
+  tied/read-write, explicit-register, floating/vector/aggregate, or text-derived
+  semantics.
+- Keep compatibility `result`, rendered operands, assembly/constraint text,
+  clobbers, and other mirrors authority-free. No width-purpose field was needed
+  or added.
+- Producer-specific implicit coercion still needs a coercion/source-purpose
+  carrier; inline-asm inputs still need native expected-shape/count authority;
+  scalar multi-output still needs result mapping/extraction authority.
 
 ## Proof
 
-- Fresh `cmake --build --preset default`.
-- Focused `ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure`
-  with an output-only i64 identity/Store chain, misleading-display positives,
-  and malformed definition, role/index/count/position, width, and Store-use
-  cases.
-- Preserve Step-7.21 i32 output behavior, neighboring inline-asm metadata/
-  diagnostics, and accepted generic identity coverage unchanged; the
-  supervisor owns matched regression logs and any broader/full proof.
-- Run `git diff --check` before handoff.
+- Fresh `cmake --build --preset default`: passed.
+- Matched focused before/after
+  `ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure`:
+  passed 1/1 before and 1/1 after.
+- Transient focused logs: `/tmp/c4c_step_7_25_before.log` and
+  `/tmp/c4c_step_7_25_after.log`; no canonical full logs were written.
+- Supervisor full matched regression guard: 3033/3033 passed before and
+  3033/3033 passed after, delta 0/0 with no new failures.
+- `git diff --check`: passed.

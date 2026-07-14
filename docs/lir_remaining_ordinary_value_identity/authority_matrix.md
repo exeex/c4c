@@ -113,7 +113,7 @@ grouped only where they share one producer and disposition.
 | `LirShuffleVectorOp`: `result,vec1,vec2,mask`; `vec_type,mask_type` | Active, PB vector-scalar splat branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_shufflevector_identity.c`; mask needs distinct typed constant/vector carrier; **generic result/use plus distinct vector semantics** |
 | `LirVaArgOp`: `result,ap_ptr`; `type_str` | Active, PV `emit_rval_payload(VaArgExpr)` and `emit_amd64_va_arg` semantic routes | Text-only operands; result `fresh_tmp` | Native type; kind/type only and ownership-ready | `lir_vaarg_identity.c`; **generic result** but pointer/object/ABI use is **separate va-list family** |
 | `LirAllocaOp`: `result,count`; `type_str,align` | Active in PF/PS/PL/PX/PC/PI/PV/`core.cpp` for VLA, locals, temporaries and ABI copies | Result and optional count text-only; result `fresh_tmp` or named stack spelling | Native type/alignment; kind/type only and ownership-ready | Requires stack/local object ownership, dynamic-count use, and hoisted/body ordering; `lir_alloca_object_identity.c`; **separate stack/local family** |
-| `LirInlineAsmOp`: compatibility `result`; semantic `ordinary_inputs/results[].value`; binding type/role/index; original text/clobbers; rendered mirrors; `insn_r` | Active, PS `emit_non_control_flow_stmt(InlineAsmStmt)` | Step 7.21 allocates only the scalar integer output-only semantic result through `fresh_value`, keeps the compatibility result authority-free, and preserves the exact binding ID into the later Store. Read/write, memory, multi-output, and other bindings remain compatibility. Assembly/constraint/clobber text remains raw by design | Native binding types/roles/indices and R metadata; verifier checks shape/order/pairing. The focused output-only row requires one exact type/role/index result binding, collects it as a function-owned definition, and requires its Store use type to match | Step 7.21 closes only the scalar integer output-only binding-to-Store edge. Read/write/input/memory/vector/multi-output/explicit-register/`insn_r` semantics and all opaque text remain unclaimed or presentation-only; `lir_inline_asm_binding_identity.c`; **generic binding values + presentation/opaque payload** |
+| `LirInlineAsmOp`: compatibility `result`; semantic `ordinary_inputs/results[].value`; binding type/role/index; original text/clobbers; rendered mirrors; `insn_r` | Active, PS `emit_non_control_flow_stmt(InlineAsmStmt)` | Steps 7.21 and 7.25 prove the width-generic scalar integer output-only path for i32 and i64: the semantic result is allocated through `fresh_value`, the compatibility result stays authority-free, and the exact binding ID reaches the type-matched Store. Read/write, memory, multi-output, and other bindings remain compatibility. Assembly/constraint/clobber text remains raw by design | Native binding types/roles/indices and R metadata; verifier checks shape/order/pairing. The focused output-only rows require one exact type/role/index result binding, collect it as a function-owned definition, and require its Store use type to match at both proven widths | Steps 7.21 and 7.25 close only the scalar i32/i64 output-only binding-to-Store edges. Read/write/input/memory/vector/multi-output/explicit-register/`insn_r` semantics and all opaque text remain unclaimed or presentation-only; `lir_inline_asm_binding_identity.c`; **generic binding values + presentation/opaque payload** |
 
 ## Separate adjacent identity families
 
@@ -781,6 +781,29 @@ vector, and multi-output bindings, `insn_r` semantics, opaque text,
 compatibility-result authority, stack/local/body-parameter publication, CFG,
 BIR receipt, and idea-741 contracts remain outside this packet.
 
+## Step-7.25 i64 inline-asm output binding contract
+
+The claimed row is only PS's single non-explicit-register output-only scalar
+i64 `LirInlineAsmOp` binding. It needs no producer or schema specialization:
+the Step-7.21 generic path resolves the output as i64, allocates its semantic
+result through `fresh_value`, stores that exact operand in the sole native
+i64/`Output`/constraint-index-zero result binding, and preserves the same ID
+through representation-preserving coercion into the later i64 Store. The
+compatibility result and every rendered or opaque string remain authority-free.
+
+Focused i64 coverage proves the exact definition/binding/Store chain and
+display independence. Reachable verification rejects invalid, duplicate,
+missing, or wrong-alternative definitions; wrong role, index, count, position,
+binding width, or operation width; unknown or cross-function Store uses; and
+binding-to-Store width conflicts. The accepted Step-7.21 i32 behavior is the
+nearby same-mechanism regression neighbor.
+
+Inputs, tied/read-write, multi-output, memory, address, immediate, clobber,
+explicit-register, floating/vector/aggregate bindings, `insn_r` semantics,
+opaque-text interpretation, compatibility-result authority, stack/local/
+object/body-parameter publication, CFG, BIR receipt, parity, and idea-741
+contracts remain outside this packet.
+
 ## Mechanical coverage check
 
 Reproducible source-side extraction:
@@ -884,9 +907,9 @@ Current-source spot checks used for this baseline:
   exact trunc result into the Add; both widths publish an exact one-integer-
   parameter signature and no zero-count behavior;
 - representative scalar inline-asm output: PS allocates the output-only i32
-  semantic binding through `fresh_value`, keeps the compatibility result and
-  opaque/rendered text authority-free, and preserves the exact output ID into
-  the later type-matched Store;
+  and i64 semantic bindings through the same `fresh_value` path, keeps the
+  compatibility result and opaque/rendered text authority-free, and preserves
+  each exact output ID into its later type-matched Store;
 - representative scalar abs: `call/builtin.cpp` routes the existing integer
   abs argument through the common operand/coercion seam, allocates its exact
   i32/i64 result through `fresh_value`, and preserves the result ID into a later

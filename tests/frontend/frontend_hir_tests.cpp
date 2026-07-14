@@ -7817,6 +7817,200 @@ int inline_asm_output_identity(void) {
                   "verifier should reject conflicting inline-asm output use type");
 }
 
+void test_lir_inline_asm_i64_scalar_output_binding_identity() {
+  namespace lir = c4c::codegen::lir;
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+long long inline_asm_i64_output_identity(void) {
+  long long value;
+  __asm__("mov $7, %0" : "=r"(value));
+  return value + 1;
+}
+)cpp");
+  lir::LirModule lowered = lir::lower(hir_module);
+
+  struct FocusedPair {
+    lir::LirInlineAsmOp* inline_asm = nullptr;
+    lir::LirStoreOp* later_store = nullptr;
+  };
+  const auto require_pair = [](lir::LirModule& module) {
+    auto function = std::find_if(
+        module.functions.begin(), module.functions.end(),
+        [](const lir::LirFunction& fn) {
+          return fn.name == "inline_asm_i64_output_identity";
+        });
+    expect_true(function != module.functions.end(),
+                "focused i64 inline-asm output function should lower to LIR");
+    FocusedPair pair;
+    for (auto& block : function->blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirInlineAsmOp>(&inst)) {
+          expect_true(pair.inline_asm == nullptr,
+                      "focused i64 fixture should contain one inline-asm op");
+          pair.inline_asm = op;
+        }
+        if (auto* store = std::get_if<lir::LirStoreOp>(&inst);
+            store && store->val.value_id()) {
+          expect_true(pair.later_store == nullptr,
+                      "focused i64 fixture should contain one authoritative output store");
+          pair.later_store = store;
+        }
+      }
+    }
+    expect_true(pair.inline_asm && pair.later_store,
+                "focused i64 fixture should contain its semantic output/store pair");
+    return pair;
+  };
+  const auto expect_rejected = [](const lir::LirModule& module,
+                                  std::string_view message) {
+    bool rejected = false;
+    try {
+      lir::verify_module(module);
+    } catch (const lir::LirVerifyError&) {
+      rejected = true;
+    }
+    expect_true(rejected, std::string(message));
+  };
+
+  FocusedPair pair = require_pair(lowered);
+  expect_true(
+      !pair.inline_asm->result.has_authority() &&
+          pair.inline_asm->ret_type == lir::LirTypeRef::integer(64) &&
+          pair.inline_asm->ordinary_inputs.empty() &&
+          pair.inline_asm->ordinary_results.size() == 1 &&
+          pair.inline_asm->ordinary_results[0].role ==
+              lir::LirInlineAsmValueRole::Output &&
+          pair.inline_asm->ordinary_results[0].constraint_index == 0 &&
+          pair.inline_asm->ordinary_results[0].type ==
+              lir::LirTypeRef::integer(64) &&
+          pair.inline_asm->ordinary_results[0].value.value_id() &&
+          pair.inline_asm->ordinary_results[0].value.value_id()->valid() &&
+          pair.later_store->type_str == lir::LirTypeRef::integer(64) &&
+          pair.later_store->val.value_id() &&
+          *pair.later_store->val.value_id() ==
+              *pair.inline_asm->ordinary_results[0].value.value_id(),
+      "i64 output-only inline asm should reuse the generic exact semantic result/store edge");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  FocusedPair misleading_pair = require_pair(misleading);
+  misleading_pair.inline_asm->result.str() = "@rendered-not-i64-result";
+  misleading_pair.inline_asm->ordinary_results[0].value.str() = "17";
+  misleading_pair.later_store->val.str() = "%rendered-not-i64-use";
+  misleading_pair.inline_asm->asm_text = "rendered replacement";
+  misleading_pair.inline_asm->constraints = "rendered constraints";
+  misleading_pair.inline_asm->args_str = "rendered arguments";
+  misleading_pair.inline_asm->original_asm_text = "opaque replacement";
+  misleading_pair.inline_asm->original_constraint_text.clear();
+  misleading_pair.inline_asm->clobbers = {"opaque-clobber"};
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_definition = lowered;
+  require_pair(missing_definition).inline_asm->ordinary_results.clear();
+  expect_rejected(missing_definition,
+                  "verifier should reject a missing i64 output definition");
+
+  lir::LirModule missing_authority = lowered;
+  require_pair(missing_authority).inline_asm->ordinary_results[0].value =
+      lir::LirOperand("%missing");
+  expect_rejected(missing_authority,
+                  "verifier should reject i64 output without definition authority");
+
+  lir::LirModule wrong_alternative = lowered;
+  require_pair(wrong_alternative).inline_asm->ordinary_results[0].value =
+      lir::LirOperand::integer("7", 7);
+  expect_rejected(wrong_alternative,
+                  "verifier should reject the wrong i64 output authority alternative");
+
+  lir::LirModule invalid_definition = lowered;
+  require_pair(invalid_definition).inline_asm->ordinary_results[0].value =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_rejected(invalid_definition,
+                  "verifier should reject invalid i64 output definition authority");
+
+  lir::LirModule duplicate_definition = lowered;
+  FocusedPair duplicate_pair = require_pair(duplicate_definition);
+  duplicate_pair.inline_asm->ordinary_results.push_back(
+      duplicate_pair.inline_asm->ordinary_results[0]);
+  expect_rejected(duplicate_definition,
+                  "verifier should reject duplicate i64 output definitions");
+
+  lir::LirModule wrong_role = lowered;
+  require_pair(wrong_role).inline_asm->ordinary_results[0].role =
+      lir::LirInlineAsmValueRole::ReadWrite;
+  expect_rejected(wrong_role,
+                  "verifier should reject conflicting i64 output role");
+
+  lir::LirModule wrong_index = lowered;
+  require_pair(wrong_index).inline_asm->ordinary_results[0].constraint_index = 1;
+  expect_rejected(wrong_index,
+                  "verifier should reject conflicting i64 output index");
+
+  lir::LirModule wrong_count_and_position = lowered;
+  FocusedPair position_pair = require_pair(wrong_count_and_position);
+  lir::LirInlineAsmValueBinding displaced =
+      position_pair.inline_asm->ordinary_results[0];
+  displaced.value = lir::LirOperand::ssa("%displaced", lir::LirValueId{99});
+  position_pair.inline_asm->ordinary_results.insert(
+      position_pair.inline_asm->ordinary_results.begin(), displaced);
+  expect_rejected(
+      wrong_count_and_position,
+      "verifier should reject an i64 output displaced from the sole result position");
+
+  lir::LirModule wrong_binding_width = lowered;
+  require_pair(wrong_binding_width).inline_asm->ordinary_results[0].type =
+      lir::LirTypeRef::integer(32);
+  expect_rejected(wrong_binding_width,
+                  "verifier should reject conflicting i64 output binding width");
+
+  lir::LirModule wrong_operation_width = lowered;
+  require_pair(wrong_operation_width).inline_asm->ret_type =
+      lir::LirTypeRef::integer(32);
+  expect_rejected(wrong_operation_width,
+                  "verifier should reject conflicting i64 inline-asm return width");
+
+  lir::LirModule unknown_store_use = lowered;
+  require_pair(unknown_store_use).later_store->val =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_rejected(unknown_store_use,
+                  "verifier should reject unknown i64 inline-asm output use");
+
+  lir::LirModule cross_function_use = lowered;
+  lir::LirFunction foreign_owner = *std::find_if(
+      cross_function_use.functions.begin(), cross_function_use.functions.end(),
+      [](const lir::LirFunction& fn) {
+        return fn.name == "inline_asm_i64_output_identity";
+      });
+  foreign_owner.name = "inline_asm_i64_foreign_owner";
+  lir::LirInlineAsmOp* foreign_asm = nullptr;
+  lir::LirStoreOp* foreign_store = nullptr;
+  for (auto& block : foreign_owner.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* op = std::get_if<lir::LirInlineAsmOp>(&inst)) foreign_asm = op;
+      if (auto* store = std::get_if<lir::LirStoreOp>(&inst);
+          store && store->val.value_id()) {
+        foreign_store = store;
+      }
+    }
+  }
+  expect_true(foreign_asm && foreign_store,
+              "cross-function i64 fixture should retain its output/store pair");
+  foreign_asm->ordinary_results[0].value =
+      lir::LirOperand::ssa("%foreign", lir::LirValueId{99});
+  foreign_store->val =
+      lir::LirOperand::ssa("%foreign-use", lir::LirValueId{99});
+  cross_function_use.functions.push_back(std::move(foreign_owner));
+  require_pair(cross_function_use).later_store->val =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_rejected(cross_function_use,
+                  "verifier should reject cross-function i64 output use");
+
+  lir::LirModule wrong_store_width = lowered;
+  require_pair(wrong_store_width).later_store->type_str =
+      lir::LirTypeRef::integer(32);
+  expect_rejected(wrong_store_width,
+                  "verifier should reject conflicting i64 output Store width");
+}
+
 }  // namespace
 
 int main() {
@@ -7951,6 +8145,7 @@ int main() {
   test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata();
   test_inline_asm_insn_r_structured_metadata_and_diagnostics();
   test_lir_inline_asm_scalar_output_binding_identity();
+  test_lir_inline_asm_i64_scalar_output_binding_identity();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;
