@@ -3805,6 +3805,55 @@ long long lir_scalar_cast_result_use_identity(void) {
       "verifier should reject cast destination type conflicting with extension kind");
 }
 
+void test_ternary_coerce_result_authority_loss_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+long long lir_ternary_coerce_result_authority_loss(int condition, int input) {
+  return (condition ? input : 7LL) + 1LL;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_ternary_coerce_result_authority_loss");
+  std::vector<lir::LirCastOp*> casts;
+  std::vector<lir::LirPhiOp*> phis;
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) casts.push_back(cast);
+      if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) phis.push_back(phi);
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) binary_ops.push_back(binary);
+    }
+  }
+  const auto coercion = std::find_if(casts.begin(), casts.end(),
+                                     [](const lir::LirCastOp* cast) {
+    return cast->kind == lir::LirCastKind::Trunc &&
+           cast->from_type.kind() == lir::LirTypeKind::Integer &&
+           cast->from_type.integer_bit_width() == 64 &&
+           cast->to_type.kind() == lir::LirTypeKind::Integer &&
+           cast->to_type.integer_bit_width() == 32;
+  });
+  expect_true(coercion != casts.end() && phis.size() == 1 && binary_ops.size() == 1,
+              "ternary/coerce probe should retain an arm coercion, one PHI, and one later use");
+  expect_true(phis[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  phis[0]->type_str.integer_bit_width() == 32,
+              "ternary PHI should retain its resolved i32 result type");
+  expect_true(phis[0]->incoming.size() == 2,
+              "ternary PHI should retain both incoming arms");
+  expect_true(binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  binary_ops[0]->type_str.integer_bit_width() == 64,
+              "later ternary consumer should retain an i64 Add fact");
+  expect_true(!(*coercion)->result.value_id() && !phis[0]->result.value_id() &&
+                  !binary_ops[0]->lhs.value_id(),
+              "ternary arm coercion, PHI result, and later consumer lack LirValueId authority");
+  expect_true(!(*coercion)->result.has_authority() && !phis[0]->result.has_authority() &&
+                  !binary_ops[0]->lhs.has_authority(),
+              "ternary path exposes only raw result spellings, so no verifier-backed malformed-ID proof exists");
+  lir::verify_module(lowered);
+}
+
 void test_scalar_fptrunc_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -7021,6 +7070,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_ordinary_value_chain_identity_boundary();
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
+  test_ternary_coerce_result_authority_loss_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
   test_scalar_fpext_result_use_identity_boundary();
   test_scalar_sitofp_result_use_identity_boundary();
