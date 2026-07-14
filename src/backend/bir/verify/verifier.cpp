@@ -74,6 +74,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::Call:
       return std::holds_alternative<CallNode>(instruction.payload) ||
              std::holds_alternative<IntrinsicCallNode>(instruction.payload);
+    case Opcode::Cast:
+      return std::holds_alternative<CastNode>(instruction.payload);
   }
   return false;
 }
@@ -747,6 +749,26 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         }
         if (!exact) report(result, VerificationRule::ValueDefinition, function_id,
                            inst_id, "intrinsic call must retain an exact native integer signature, LinkNameId, operands, and source-backed result");
+      }
+      if (const auto* cast = std::get_if<CastNode>(&instruction.payload)) {
+        const Type i64{TypeKind::Integer, 64, "i64"};
+        const Type i32{TypeKind::Integer, 32, "i32"};
+        bool exact = cast->kind == CastKind::Trunc && cast->from_type == i64 &&
+            cast->to_type == i32 && instruction.operands.size() == 1 &&
+            instruction.results.size() == 1;
+        if (exact) {
+          const auto operand = function.values_.get(function_id, instruction.operands[0]);
+          exact = operand && operand.value().get().type == i64;
+          const auto* def = exact ? std::get_if<InstResultDef>(&operand.value().get().definition) : nullptr;
+          if (!def) exact = false;
+          if (exact) {
+            const auto producer = function.insts_.get(function_id, def->instruction);
+            exact = producer && std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload);
+          }
+        }
+        if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == i32 && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "cast must retain the exact i64 intrinsic-result to i32 Trunc receipt");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {

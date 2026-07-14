@@ -19,6 +19,7 @@ namespace {
 using codegen::lir::LirBlock;
 using codegen::lir::LirBr;
 using codegen::lir::LirCallOp;
+using codegen::lir::LirCastOp;
 using codegen::lir::LirCondBr;
 using codegen::lir::LirConstFloat;
 using codegen::lir::LirConstInt;
@@ -503,6 +504,27 @@ bool exact_integer_intrinsic_call(
       return false;
   }
   return true;
+}
+
+bool exact_i64_intrinsic_trunc_cast(
+    const LirModule& module, const LirCastOp& cast,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& intrinsic_results) {
+  using codegen::lir::LirOperandKind;
+  const auto* result = cast.result.value_id();
+  const auto* operand = cast.operand.value_id();
+  const auto from = lower_lir_type(module, cast.from_type);
+  const auto to = lower_lir_type(module, cast.to_type);
+  const Type i64{TypeKind::Integer, 64, "i64"};
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  const auto found = operand ? source_values.find(operand->value) : source_values.end();
+  return cast.kind == codegen::lir::LirCastKind::Trunc &&
+      cast.result.kind() == LirOperandKind::SsaValue && result && result->valid() &&
+      cast.operand.kind() == LirOperandKind::SsaValue && operand && operand->valid() &&
+      cast.from_type.kind() == codegen::lir::LirTypeKind::Integer &&
+      cast.to_type.kind() == codegen::lir::LirTypeKind::Integer &&
+      from && to && *from == i64 && *to == i32 && found != source_values.end() &&
+      found->second == i64 && intrinsic_results.count(operand->value) == 1;
 }
 
 std::optional<Type> lower_constant_type(const LirModule& module,
@@ -1664,6 +1686,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> block_ids;
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
+  std::unordered_set<std::uint32_t> intrinsic_results;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
@@ -1880,7 +1903,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
           if (!source_values.emplace(call->result.value_id()->value, *result_type).second)
             return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                               name, block.label,
-                              "duplicate authoritative LirValueId definition");
+                            "duplicate authoritative LirValueId definition");
+          intrinsic_results.insert(call->result.value_id()->value);
           continue;
         }
         if (exact_direct_void_call(module, *call)) continue;
@@ -1894,6 +1918,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "duplicate authoritative LirValueId definition");
+        continue;
+      }
+      if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
+        if (!exact_i64_intrinsic_trunc_cast(module, *cast, source_values,
+                                            intrinsic_results) ||
+            !source_values.emplace(cast->result.value_id()->value,
+                                   Type{TypeKind::Integer, 32, "i32"}).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "cast requires one current-function i64 intrinsic result and exact i64-to-i32 Trunc receipt");
         continue;
       }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
@@ -2623,6 +2657,33 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     return Result<void, BuildError>::failure(
                         BuildError::DuplicateSourceValue);
                   }
+                }
+                continue;
+              }
+              if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
+                const auto operand = source_values.find(cast->operand.value_id()->value);
+                if (operand == source_values.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "validated intrinsic cast operand disappeared from the current-function registry"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.label),
+                    CastSpec{CastKind::Trunc, *lower_lir_type(module, cast->from_type),
+                             *lower_lir_type(module, cast->to_type), operand->second,
+                             cast->result.value_id()->value});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label, "append intrinsic trunc cast", appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (appended.value().results.size() != 1 ||
+                    !source_values.emplace(cast->result.value_id()->value,
+                                           appended.value().results[0]).second) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "intrinsic trunc cast result registration failed"};
+                  return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
                 }
                 continue;
               }

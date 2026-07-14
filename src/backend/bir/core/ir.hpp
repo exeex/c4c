@@ -134,7 +134,7 @@ struct ValueDef {
       definition = UnresolvedDef{};
 };
 
-enum class Opcode : std::uint8_t { InlineAsm, Store, Load, GetElementPtr, Call };
+enum class Opcode : std::uint8_t { InlineAsm, Store, Load, GetElementPtr, Call, Cast };
 
 struct InlineAsmNode {
   std::string asm_text;
@@ -172,9 +172,17 @@ struct IntrinsicCallNode {
   std::optional<bool> zero_count_is_undef;
 };
 
+enum class CastKind : std::uint8_t { Trunc };
+
+struct CastNode {
+  CastKind kind = CastKind::Trunc;
+  Type from_type{};
+  Type to_type{};
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-                 CallNode, IntrinsicCallNode>;
+                 CallNode, IntrinsicCallNode, CastNode>;
 
 class BlockView;
 class FunctionView;

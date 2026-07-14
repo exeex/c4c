@@ -8999,6 +8999,76 @@ void test_native_intrinsic_receipt_and_rejections() {
   rejected([](auto&, auto& call) { call.intrinsic_kind = static_cast<lir::LirIntrinsicKind>(99); }, "other intrinsic kinds must remain fail-closed");
 }
 
+lir::LirModule intrinsic_i64_trunc_module() {
+  auto module = native_intrinsic_module();
+  auto& caller = module.functions[0];
+  auto& intrinsic = std::get<lir::LirCallOp>(caller.blocks[0].insts[1]);
+  intrinsic.return_type = lir::LirTypeRef::integer(64);
+  intrinsic.callee_signature->return_type_ref = lir::LirTypeRef::integer(64);
+  intrinsic.callee_signature->fixed_param_types[0] = "i64";
+  intrinsic.callee_signature->fixed_param_type_refs[0] = lir::LirTypeRef::integer(64);
+  intrinsic.arg_type_refs[0] = lir::LirTypeRef::integer(64);
+  intrinsic.structured_args[0] = {"i64", lir::LirOperand::integer("wide", 41),
+                                  lir::LirTypeRef::integer(64)};
+  intrinsic.result = lir::LirOperand::ssa("%intrinsic.i64", lir::LirValueId{9});
+  caller.blocks[0].insts.erase(caller.blocks[0].insts.begin() + 2);
+  caller.blocks[0].insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%trunc", lir::LirValueId{10}),
+      .kind = lir::LirCastKind::Trunc,
+      .from_type = lir::LirTypeRef::integer(64),
+      .operand = lir::LirOperand::ssa("%intrinsic.i64", lir::LirValueId{9}),
+      .to_type = lir::LirTypeRef::integer(32),
+  });
+  caller.blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::ssa("%return", lir::LirValueId{10}), lir::LirTypeRef::integer(32)};
+  return module;
+}
+
+void test_native_intrinsic_i64_trunc_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 2, layer + " must retain intrinsic and Trunc separately");
+    const auto intrinsic = caller.instruction(insts[0]).value();
+    const auto trunc = caller.instruction(insts[1]).value();
+    expect(intrinsic.intrinsic_call() && intrinsic.results().size() == 1 &&
+               intrinsic.intrinsic_call()->type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+               trunc.opcode() == bir::Opcode::Cast && trunc.cast() &&
+               trunc.cast()->kind == bir::CastKind::Trunc &&
+               trunc.cast()->from_type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+               trunc.cast()->to_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               trunc.operands() == std::vector<bir::ValueId>{intrinsic.results()[0]} &&
+               trunc.results().size() == 1 &&
+               caller.value(trunc.results()[0]).value().source_id ==
+                   bir::SourceValueId{caller_id, 10},
+           layer + " must retain a typed intrinsic-result i64-to-i32 Trunc receipt");
+  };
+  const auto module = intrinsic_i64_trunc_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "i64 intrinsic Trunc must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "i64 intrinsic Trunc must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = intrinsic_i64_trunc_module();
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[2]);
+    mutate(candidate, cast);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code == bir::ImportErrorCode::UnsupportedOrdinaryInstruction, message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code == bir::ImportErrorCode::UnsupportedOrdinaryInstruction, message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& cast) { cast.kind = lir::LirCastKind::ZExt; }, "other casts must remain fail-closed");
+  rejected([](auto&, auto& cast) { cast.operand = lir::LirOperand::integer("bad", 0); }, "immediate cast operands must remain fail-closed");
+  rejected([](auto&, auto& cast) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unknown cast operands must reject atomically");
+  rejected([](auto&, auto& cast) { cast.from_type = lir::LirTypeRef::integer(32); }, "wrong cast endpoints must reject atomically");
+  rejected([](auto&, auto& cast) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9}); }, "duplicate cast result ids must reject atomically");
+}
+
 }  // namespace
 
 int main() {
@@ -9066,5 +9136,6 @@ int main() {
   test_direct_zero_argument_void_call_rejections();
   test_direct_integer_call_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
+  test_native_intrinsic_i64_trunc_receipt_and_rejections();
   return 0;
 }

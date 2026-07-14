@@ -184,6 +184,14 @@ struct IntrinsicCallSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct CastSpec {
+  CastKind kind = CastKind::Trunc;
+  Type from_type{};
+  Type to_type{};
+  ValueId operand{};
+  std::uint32_t source_result_id = 0;
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -277,6 +285,7 @@ class FunctionBuilder {
                                          GetElementPtrSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, CastSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

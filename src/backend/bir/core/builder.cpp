@@ -1246,6 +1246,52 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
   return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !same_owner(function_, spec.operand))
+    return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& function_data = function.value().get();
+  if (!function_data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  const Type i64{TypeKind::Integer, 64, "i64"};
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  auto operand = function_data.values_.get(function_, spec.operand);
+  if (spec.kind != CastKind::Trunc || spec.from_type != i64 || spec.to_type != i32 ||
+      !operand || operand.value().get().type != i64 ||
+      function_data.values_by_source_id_.count(spec.source_result_id) != 0)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  const auto* operand_def = std::get_if<InstResultDef>(&operand.value().get().definition);
+  if (!operand_def)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  const auto producer = function_data.insts_.get(function_, operand_def->instruction);
+  if (!producer || !std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload))
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Cast;
+  instruction.payload = CastNode{spec.kind, spec.from_type, spec.to_type};
+  instruction.operands = {spec.operand};
+  auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  ValueDef result{ValueKind::Ordinary, spec.to_type,
+                  SourceValueId{function_, spec.source_result_id}, InstResultDef{instruction_id, 0}};
+  auto inserted_result = function_data.values_.emplace(function_, std::move(result));
+  if (!inserted_result) { function_data.insts_.erase(function_, instruction_id); return Result<BuildResult, BuildError>::failure(storage_error(inserted_result.error())); }
+  const auto result_id = inserted_result.value();
+  auto stored = function_data.insts_.get_mut(function_, instruction_id);
+  if (!stored) { function_data.values_.erase(function_, result_id); function_data.insts_.erase(function_, instruction_id); return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted); }
+  stored.value().get().results = {result_id};
+  try { function_data.values_by_source_id_.emplace(spec.source_result_id, result_id); function_data.value_order_.append(result_id); }
+  catch (...) { function_data.values_by_source_id_.erase(spec.source_result_id); function_data.values_.erase(function_, result_id); function_data.insts_.erase(function_, instruction_id); throw; }
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.values_by_source_id_.erase(spec.source_result_id); function_data.value_order_.erase(result_id); function_data.values_.erase(function_, result_id); function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();

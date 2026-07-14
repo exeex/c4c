@@ -8,41 +8,18 @@ Current Step Title: Take subsequent checked ordinary rows one at a time
 
 ## Just Finished
 
-- Plan Step 5.3: received native integer intrinsic `LirCallOp` rows for
-  `Cttz`, `Ctlz`, and `Ctpop` into a separate tagged Raw-BIR intrinsic-call
-  payload with module `LinkNameId`, exact integer operands/signature, native
-  zero-count behavior/`i1` flag where applicable, source-backed owning result,
-  verifier coverage, and Raw/Canonical transactional rejection coverage.
+- Plan Step 5.3: received the selected deferred i64 intrinsic-result
+  `LirCastOp Trunc` row into a separately tagged Raw-BIR cast payload with an
+  exact `i64 -> i32` edge, the current-function `Cttz`/`Ctlz`/`Ctpop` result
+  as its sole operand, and a source-backed owning result. The builder,
+  importer, and verifier fail closed for every other cast shape, operand
+  authority, result collision, foreign/non-intrinsic source, or malformed
+  Raw-BIR payload; Raw and Canonical receipt/rejection coverage was added.
 
 ## Suggested Next
 
-- Execute the single selected Step 5.3 row: the deferred i64 intrinsic
-  follow-on `LirCastOp Trunc` receipt only. This is receiver-ready because the
-  handoff publishes the native result/source IDs and `Trunc` endpoints, and
-  Step 5.3 now registers the i64 intrinsic producer result.
-
-  - Typed source: one current-function `LirCastOp{result: LirValueId,
-    operand: LirValueId, kind: LirCastKind::Trunc, from_type: i64,
-    to_type: i32}` whose operand resolves to the just-supported i64
-    `Cttz`/`Ctlz`/`Ctpop` intrinsic-call result. No immediate or text operand
-    is admitted.
-  - Typed destination: add one tagged Raw-BIR cast instruction payload with
-    native `Trunc`, exact `i64 -> i32` endpoints, one source value edge, and
-    one source-backed result-registry edge for the owning `LirValueId`; it must
-    remain distinct from intrinsic-call identity and preserve the existing
-    intrinsic result as its operand.
-  - Import/verifier obligations: resolve the operand only in the current
-    function; require unique result definition, exact `Trunc` kind/endpoints,
-    a compatible registered i64 intrinsic result, and an i32 result. Verify
-    Raw-BIR payload/tag/arity/type/result-use coherence and reject atomically
-    for missing or duplicate result IDs, unknown/foreign/non-intrinsic source,
-    wrong kind/endpoints, type conflict, malformed payload, or every other
-    cast/operand alternative.
-  - Focused proof: add Raw and Canonical intrinsic-to-Trunc receipt assertions
-    plus transactional rejection coverage in `backend_lir_to_bir_interface`;
-    retain the producer/verifier chain in `frontend_lir_call_type_ref`. The
-    delegated proof is `cmake --build --preset default` then
-    `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'`.
+- Supervisor selects the next Step 5.3 ordinary row; this packet does not
+  admit broader scalar casts or downstream uses of the truncation result.
 
 ## Watchouts
 
@@ -57,4 +34,4 @@ Current Step Title: Take subsequent checked ordinary rows one at a time
 
 - `cmake --build --preset default` followed by
   `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$' > test_after.log`
-  passed for Step 5.3; `test_after.log` is the preserved proof log.
+  passed for this Step 5.3 packet; `test_after.log` is the preserved proof log.
