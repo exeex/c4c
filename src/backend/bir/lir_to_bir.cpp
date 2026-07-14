@@ -452,6 +452,7 @@ std::optional<Type> native_floating_call_type(
 
 bool exact_direct_native_floating_call(const LirModule& module,
                                        const LirCallOp& call) {
+  const Type f64{TypeKind::F64, 64, "double"};
   const auto* result = call.result.value_id();
   if (call.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
       !result->valid() || call.return_ext_attr != LirExtAttr::None ||
@@ -462,18 +463,20 @@ bool exact_direct_native_floating_call(const LirModule& module,
 
   const auto return_type = native_floating_call_type(module, call.return_type);
   const auto& signature = *call.callee_signature;
-  if (!return_type || !signature.return_type_ref ||
+  if (!return_type || *return_type != f64 || !signature.return_type_ref ||
       *signature.return_type_ref != call.return_type ||
       !native_floating_call_type(module, *signature.return_type_ref) ||
       *native_floating_call_type(module, *signature.return_type_ref) != *return_type ||
       signature.return_ext_attr != LirExtAttr::None || signature.is_variadic ||
-      signature.has_unspecified_params || !signature.fixed_param_types.empty() ||
+      signature.has_unspecified_params || !signature.has_void_param_list ||
+      !signature.fixed_param_types.empty() ||
       !signature.fixed_param_type_refs.empty())
     return false;
 
-  bool resolved = false;
+  const LirFunction* resolved = nullptr;
   for (const auto& target : module.functions) {
     if (target.link_name_id != call.direct_callee_link_name_id) continue;
+    if (resolved) return false;
     const auto target_return = lower_signature_type(
         module, target.return_type, target.signature_return_type_ref);
     const auto target_params = lower_function_parameter_types(module, target);
@@ -481,12 +484,14 @@ bool exact_direct_native_floating_call(const LirModule& module,
                                    ? native_floating_call_type(
                                          module, *target.signature_return_type_ref)
                                    : std::nullopt;
-    if (!target_return || !target_mirror || *target_mirror != *return_type ||
-        !target_params || !target_params->empty() || target.signature_is_variadic)
+    if (!target.is_declaration || !target_return || *target_return != f64 ||
+        !target_mirror || *target_mirror != f64 ||
+        !target_params || !target_params->empty() || target.signature_is_variadic ||
+        !target.signature_has_void_param_list)
       return false;
-    resolved = true;
+    resolved = &target;
   }
-  return resolved;
+  return resolved != nullptr;
 }
 
 bool exact_downstream_double_fadd(
@@ -2931,7 +2936,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool integer_result =
                     call->return_type.kind() == codegen::lir::LirTypeKind::Integer;
                 const bool native_floating_result =
-                    native_floating_call_type(module, call->return_type).has_value();
+                    call->return_type == codegen::lir::LirTypeRef("double");
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     CallSpec{callee->second, std::move(arguments),

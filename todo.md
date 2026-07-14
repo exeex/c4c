@@ -8,34 +8,31 @@ Current Step Title: Receive the checked fixed-void external double call result
 
 ## Just Finished
 
-- Step 7.3 complete: received only the native i32 `Cttz` result followed by
-  its immediate-one i32 Add (`2f7055845`). The importer, Raw-BIR builder, and
-  verifier keep the ordered source identity and require the Add lhs to be that
-  admitted i32 Cttz result. The ffs zero comparison and Select remain
-  unsupported because their comparison lhs has no typed LIR value carrier.
+- Step 7.4 complete: received only the resolved external `double target(void)`
+  direct-call result and its exact later double `FAdd` lhs use. The importer
+  requires one bodyless module declaration with the shared LinkNameId, native
+  double return, and structured fixed-void signature; it preserves the caller
+  result/source ordering and rejects non-double, unresolved, duplicate,
+  malformed, or cross-owner call/use authority without admitting FAdd broadly.
 
 ## Suggested Next
 
-- Execute Step 7.4 only: receive the authority-matrix Step-7.32 resolved,
-  zero-argument external double `LirCallOp` result and its exact later double
-  `FAdd` use. Do not receive the FAdd itself, argument-bearing/variadic/
-  indirect calls, or any ffs comparison or Select.
+- Send the exhausted runbook to plan-owner for its explicit completion,
+  repair, replacement, or conclusion decision after the supervisor-owned
+  regression gate; do not infer source-idea completion from this packet.
 
 ## Watchouts
 
-- The next call is authorized by
-  `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` Step 7.32:
-  valid current-function result ID, module `LinkNameId` shared with exactly one
-  fixed-void external Function declaration, exact native double return type,
-  empty fixed-void signature, and exact downstream `FAdd` lhs ID. Missing,
-  duplicate, unresolved, cross-owner, signature/type, or result/use-linkage
-  authority fails closed. The ffs zero comparison and Select remain unsupported
-  because their lhs lacks a typed receiving carrier.
+- Step 7.32 remains deliberately narrow: only the resolved fixed-void external
+  native-double call and its typed downstream FAdd lhs are admitted. FAdd
+  itself, `float`/other floating, indirect, variadic, argument-bearing, ABI,
+  aggregate/object, ffs comparison/Select, and presentation recovery remain
+  fail-closed.
 
 ## Proof
 
-- Step 7.3 passed: `cmake --build --preset default && ctest --test-dir build
+- Step 7.4 passed: `cmake --build --preset default && ctest --test-dir build
   -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
-  proof log: `test_after.log`. Step 7.4 requires the same fresh focused 2/2
-  proof, plus the supervisor-owned regression gate before any later closure.
+  proof log: `test_after.log`. The focused proof is sufficient for this packet;
+  the supervisor owns the regression gate and runbook disposition.

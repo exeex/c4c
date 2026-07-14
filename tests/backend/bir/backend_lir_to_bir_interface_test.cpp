@@ -9221,6 +9221,10 @@ lir::LirFunction direct_native_floating_function(std::string name,
   function.return_type = scalar_type(c4c::TB_DOUBLE);
   function.return_type.inner_rank = -1;
   function.signature_return_type_ref = lir::LirTypeRef("double");
+  auto void_parameter = scalar_type(c4c::TB_VOID);
+  void_parameter.inner_rank = -1;
+  function.params.emplace_back("%void-display", void_parameter);
+  function.signature_has_void_param_list = true;
   return function;
 }
 
@@ -9613,9 +9617,17 @@ void test_direct_native_floating_call_receipt_and_rejections() {
   rejected([](auto&, auto& call) { call.callee_signature->is_variadic = true; },
            "variadic native call carrier must reject");
   rejected([](auto&, auto& call) {
+             call.callee_signature->has_void_param_list = false;
+           }, "non-void native call carrier must reject");
+  rejected([](auto&, auto& call) {
              call.callee_signature->fixed_param_types = {"double"};
              call.callee_signature->fixed_param_type_refs = {lir::LirTypeRef("double")};
            }, "argument-bearing native call carrier must reject");
+  rejected([](auto& module, auto&) {
+             module.functions[1].signature_has_void_param_list = false;
+           }, "non-void native callee declaration must reject");
+  rejected([](auto&, auto& call) { call.return_type = lir::LirTypeRef("float"); },
+           "nonmatching floating call return must reject");
   rejected([](auto& module, auto&) {
              auto duplicate = direct_native_floating_function(
                  "conflicting_native_float_target", true);
