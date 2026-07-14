@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.13
-Current Step Title: Publish wider scalar select narrowing result/use authority (complete)
+Current Step ID: 7.14
+Current Step Title: Publish builtin-ffs plus-one result/select-use authority
 
 ## Just Finished
 
@@ -20,18 +20,26 @@ Current Step Title: Publish wider scalar select narrowing result/use authority (
 
 ## Suggested Next
 
-- Select the next bounded Step-7 matrix row whose result allocation, operand
-  propagation, type authority, and verifier rules form one coherent packet.
+- Execute Step 7.14: publish the builtin-ffs scalar plus-one `LirBinOp` result
+  as the exact false-arm use of its existing `LirSelectOp`.
 
 ## Watchouts
 
-- Preserve Step-7.13's exact i64 select → i32 Trunc → later i32 use chain and
-  strict integer narrowing contract.
-- Keep cttz, plus-one, zero-comparison, condition, and false-arm producers
-  honest compatibility; never derive their IDs from rendered spelling.
-- Exclude other builtins/calls, other select or cast producers, pointer/vector/
-  complex/aggregate/object work, implicit coercions, CFG/parameters, inline
-  assembly, and BIR from this completed packet.
+- Own only PI's scalar integer add-one operation inside `emit_builtin_ffs_call`
+  for the existing i32 and i64 routes. Allocate its `LirBinOp.result` through
+  `fresh_value` and preserve that exact result ID as the existing select's
+  false-arm operand.
+- Retain native integer Add opcode/type authority and publish the structural
+  constant one as `LirIntegerImmediate`; keep the cttz-produced lhs honest
+  monostate until its call-result row is separately owned.
+- Require unique current-function result ownership and exact select-arm use;
+  reject invalid/duplicate results, unknown or cross-function uses, invalid or
+  conflicting opcode/type authority, and malformed immediate alternatives.
+- Accept misleading result/false-arm displays only after native authority is
+  proven. Do not infer the cttz result or any select edge from rendered text.
+- Preserve Steps 7.3 and 7.13. Exclude the cttz call result, zero comparison,
+  select condition, other builtins/calls/binaries/selects, pointer/vector/
+  aggregate/object work, CFG/parameters, inline assembly, and BIR.
 
 ## Proof
 
