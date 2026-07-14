@@ -1,124 +1,163 @@
-# LIR Global-Initializer Label-Address Authority Runbook
+# Computed-Goto Label-Address Table Initialization Authority Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/769_lir_global_initializer_label_address_authority.md
-Supersedes: 768 Step 3 while the static-storage initializer contract is absent
+Source Idea: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
+Resumed from: 769 after accepted structured global-initializer contract;
+continue at preserved Step 3
 
 ## Purpose
 
-Establish the structured global/static initializer authority required for the
-parked 768 static label-address probe, without touching direct/local rvalue or
-computed-goto carrier routes.
+Replace the repeatedly moving carrier route with focused frontend-LIR producer
+probes for label-address table initialization, representation, and rvalue
+consumption seams.
 
 ## Goal
 
-Represent, publish, and verify a global initializer label address using stable
-enclosing-function and target-label identities.
+Identify the narrowest generic upstream producer/result authority seam before
+any implementation packet, without consuming 764's downstream carrier work.
 
 ## Core Rule
 
-`blockaddress(...)` presentation text and function-ID-only initializer metadata
-are insufficient authority. The contract must remain structured end to end.
+The `IndirBrStmt` carrier already copies `emit_rval_operand(target).value_id()`
+exactly. Focused probes must therefore find authority before that consumer;
+external cases remain integration evidence, never implementation selectors.
 
 ## Read First
 
-- `ideas/open/769_lir_global_initializer_label_address_authority.md`
 - `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
-- `docs/lir_computed_goto_label_address_authority/step2_producer_map.md`
-- direct `ConstInitEmitter`, global-lowering, `LirGlobal`, and verifier code
+- `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
+- `ideas/closed/769_lir_global_initializer_label_address_authority.md`
+- `ideas/closed/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
+- `ideas/closed/766_lir_ssa_indexed_gep_pointer_result_authority.md`
+- `ideas/closed/765_lir_member_bitfield_rvalue_value_identity_publication.md`
+- direct frontend-LIR producers for label-address table initialization,
+  representation, and rvalue consumption
 
 ## Non-Goals
 
-- no `LirOperand` direct-rvalue or automatic/local table work
-- no `IndirBrStmt`/`LirIndirectBrOp.addr_value`, backend/case, raw-text
-  recovery, or changes to 765/766/767
-- no Raw-BIR/importer implementation; name a successor if evidence requires it
+- no `IndirBrStmt`/`LirIndirectBrOp.addr_value` publication or verifier change
+- no Raw-BIR/importer, 734, backend/case ownership absent new evidence, or
+  rework of accepted 765/766/767
+- no text recovery, testcase-specific logic, synthetic bridge, or broad
+  rvalue/pointer/table/CFG/PHI/local-object/memory/va/aggregate-vector redesign
 
 ## Execution Rules
 
-1. Keep the representation specific to structured global initializer elements.
-2. Use a direct frontend-LIR positive proof plus nearby malformed rejection;
-   external integration cases remain non-primary evidence.
-3. If downstream use requires Raw-BIR/importer work, stop at the demonstrated
-   boundary and create a separately scoped blocker rather than widening scope.
+1. Use the preserved five-case command for baseline/integration evidence only.
+2. Use direct frontend-LIR production probes for ownership until evidence moves
+   the fault downstream; do not make reduced external-test copies.
+3. Record a positive and nearby malformed contract for every separated form,
+   but do not accept raw behavior as a passing capability.
+4. Do not choose an implementation seam until producer maps show a shared
+   generic owner or a precise separately scoped blocker.
 
 ## Ordered Steps
 
-### Step 1 - Map the static initializer representation boundary
+### Step 1 - Establish the blocked label-address table failure-family baseline
 
-Goal: identify the smallest existing global initializer model extension that
-can carry enclosing-function and target-label identities.
-
-Actions:
-
-- inspect `ConstInitEmitter`, global lowering, `LirGlobal`, and verifier
-- trace the current `blockaddress(...)` serialization and function-ID-only
-  retention boundary
-- select the structured element shape and record any Raw-BIR/importer boundary
-
-Completion check:
-
-- one generic LIR representation/publisher/verifier seam is named, with no
-  direct/local or carrier scope drift.
-
-### Step 2 - Implement structured publication and verifier validation
-
-Goal: publish the selected element and reject malformed function/label links.
+Goal: retain the exact boundary after accepted 765/766/767 and prove why a
+new upstream decomposition—not another carrier patch—is required.
 
 Actions:
 
-- implement only the selected global-initializer representation, publication,
-  and verifier checks
-- add a focused frontend-LIR positive fixture and a nearby malformed fixture
-- do not add importer, backend, or carrier behavior
+- run the preserved five-case command after a fresh build
+- record the 1/5 versus 4/5 result and classify the four failures only by the
+  shared missing target authority
+- retain the carrier evidence that `IndirBrStmt` copies `addr.value_id()`
+  exactly; do not patch the external cases or carrier
 
 Completion check:
 
-- focused positive LIR retains both identities and malformed function or label
-  identity is rejected by the verifier.
+- the baseline records the same family boundary and no conclusion assigns
+  producer ownership by testcase name or claims carrier progress.
 
-### Step 3 - Diagnose the expanded full-suite regression gate
+### Step 2 - Enumerate separated label-address table producer forms
 
-Goal: establish exact causality for the four newly failing expanded-suite
-cases before accepting the focused LIR contract, committing further work, or
-making a Raw-BIR/importer lifecycle decision.
+Goal: trace only far enough to distinguish generic label-address table
+initialization, table representation, and rvalue-consumption forms before the
+accepted table-element GEP/load result.
 
 Actions:
 
-- reproduce and preserve exact evidence for the new failures:
-  `llvm gcc torture 20040302_1`, `20041214_1`, `920501_4`, and `920501_5`
-- compare the failures against the pre-commit green baseline and the accepted
-  Step 2 structured-initializer change to determine whether that owned change
-  caused the expansion
-- inspect the production authority path generically; do not make a named-case
-  matcher, rendered-text workaround, or testcase-shaped fix
-- if the evidence shows the structured element is merely unconsumed at the
-  Raw-BIR/importer boundary, stop and create/switch atomically to a distinct
-  downstream importer blocker; do not expand 769
+- inventory static and local source forms only where their upstream producer
+  contract differs
+- name each direct frontend-LIR producer, structured input/result candidate,
+  and first missing-authority boundary
+- do not select a repair or reopen accepted prerequisite contracts
 
 Completion check:
 
-- exact reproduction and causality are recorded, and either the expanded
-  baseline is restored with a generic in-scope correction or an explicitly
-  separate downstream importer blocker is active with 769's return point
-  preserved. The focused 5/5 result alone is not acceptance.
+- a compact map names source-form producer/result contracts without external
+  testcase numbers as ownership labels.
 
-### Step 4 - Accept the contract and hand off to 768
+### Step 3 - Extract direct frontend-LIR producer probes
 
-Goal: accept the focused static initializer capability or identify the exact
-downstream importer blocker.
+Goal: make each separated source form executable as a focused production-path
+harness with one precise future positive and malformed contract.
 
 Actions:
 
-- after Step 3 eliminates the expanded-baseline regression, run the selected
-  fresh build, direct focused positive/malformed proof, and accepted expanded
-  baseline comparison
-- assess whether existing downstream consumption needs Raw-BIR/importer work;
-  if it does, use only the separately scoped blocker created by Step 3
-- otherwise record the accepted representation and return 768 to Step 3
+- add or extend directly relevant frontend-LIR harnesses, one primary producer
+  contract per probe
+- begin with the accepted static structured initializer representation from
+  769, then cover the remaining automatic-table and direct-rvalue forms
+- record the exact structured authority assertion and nearby malformed
+  rejection each probe will require; do not mark raw behavior passing
+- document why frontend-LIR owns the probe or record evidence that moves it to
+  backend/case before creating a backend probe
 
 Completion check:
 
-- the focused proof and expanded baseline are accepted and lifecycle handoff
-  states either 768’s exact return point or a separately scoped named
-  downstream blocker.
+- every form has a focused non-monolithic probe and explicit positive/malformed
+  contract, without expectation downgrade or carrier assertion.
+
+### Step 4 - Bind probes and select the narrowest generic producer seam
+
+Goal: compare the focused producer/result maps and authorize one implementation
+packet or identify a precise separately scoped blocker.
+
+Actions:
+
+- bind each probe to its direct generic producer/result contract
+- select a shared or separate seam only when evidence is sufficient
+- state the selected proof packet and exact post-acceptance return to 764
+
+Completion check:
+
+- the decomposition authorizes one narrow generic implementation/proof packet,
+  or names a precise blocker; it does not publish the carrier or claim external
+  integration success.
+
+### Step 5 - Implement and prove the selected producer seam
+
+Goal: implement only the Step 4-selected generic upstream contract and activate
+its focused frontend-LIR positive/malformed proof.
+
+Actions:
+
+- make only selected producer/result and direct frontend-LIR test changes
+- run a fresh build and the Step 4-selected focused proof; retain external
+  cases as later integration probes
+- report accepted capability, proof, and exact return to 764 Step 1
+
+Completion check:
+
+- the selected producer capability and focused proof pass without carrier or
+  verifier mutation, text recovery, testcase branching, or broad redesign.
+
+### Step 6 - Hand off the resolved producer capability to 764
+
+Goal: preserve the accepted upstream authority seam so 764 can resume only its
+downstream carrier/integration responsibility.
+
+Actions:
+
+- record the accepted producer/result contract, direct proof, and remaining
+  integration obligation for lifecycle handoff
+- request return to 764 Step 1 only after Step 5 acceptance
+
+Completion check:
+
+- lifecycle handoff names the accepted capability and exact return: 764 reruns
+  all five consumers and publishes carrier authority only if necessary, then
+  returns to 734 for plan-owner disposition.

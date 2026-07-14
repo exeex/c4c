@@ -1,58 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/769_lir_global_initializer_label_address_authority.md
+Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Diagnose the expanded full-suite regression gate
-你該做test baseline review了
+Current Step Title: Extract direct frontend-LIR producer probes
 
 ## Just Finished
 
-- Step 2 completed: `LirGlobal::initializer_elements` now publishes each
-  static label-address initializer as `{LinkNameId enclosing_function,
-  LirBlockId target}` from the HIR constant/global-lowering walk. The LIR
-  verifier requires exactly one matching function owner and exactly one block
-  in that function. Direct frontend-LIR coverage proves structured positive
-  publication and malformed owner/target rejection.
-
-- The Step 2 focused `frontend_lir` proof passed 5/5 in commit `56d86556a`,
-  but it is not final acceptance: the post-commit full-suite candidate
-  `test_baseline.new.log` regressed from the green `test_baseline.log` baseline
-  (3034/0 to 3035) with four new failures: `llvm gcc torture 20040302_1`,
-  `20041214_1`, `920501_4`, and `920501_5`.
+- Lifecycle switch: 769's bounded structured global-initializer contract is
+  complete; resume 768 at its preserved Step 3.
 
 ## Suggested Next
 
-- Reproduce the four expanded-suite failures exactly and establish whether
-  `56d86556a`'s structured global-initializer authority caused them. Investigate
-  the production authority path generically; no further commit or Raw-BIR/
-  importer handoff decision is permitted until the expansion is eliminated or
-  an evidence-backed, separately scoped downstream importer blocker is created
-  and activated atomically.
+- Begin Step 3 from the accepted static structured initializer representation,
+  then extract the remaining focused producer probes. Do not modify carrier or
+  Raw-BIR/importer routes.
 
 ## Watchouts
 
-- `init_text` remains display/compatibility spelling and is not used as
-  label-target authority. Raw-BIR/importer global lowering still has no field
-  for the structured element, so any integration consumption remains a
-  separately scoped downstream blocker if Step 3 proves it is the cause; do
-  not assume that boundary explains the new failures.
-
-- The hook rejected `test_baseline.new.log` against `test_baseline.log`; the
-  four-failure expansion is a live acceptance blocker, not a baseline roll
-  forward candidate.
+- The four-case missing-`addr_value` family predates 769 and is 768 producer
+  evidence, not a global-initializer regression or a Raw-BIR/importer boundary.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_' > test_after.log` passed (5/5,
-  including `frontend_lir_global_label_address_initializer`); log:
-  `test_after.log`.
-
-- Reproduction and prevention proof required before another commit: run the
-  exact expanded-suite comparison that produced `test_baseline.new.log`, show
-  none of the four named cases are newly failing versus `test_baseline.log`,
-  and retain direct focused positive/malformed frontend-LIR proof. If a
-  Raw-BIR/importer boundary is proven, instead preserve the reproducer and
-  causality evidence in the separately scoped blocker before any handoff.
+- Preserved acceptance evidence: `56d86556a` focused `frontend_lir` 5/5;
+  fresh exact four-case reproduction remains 4/4 failing only at missing
+  `LirIndirectBrOp.addr_value`, as recorded before 769 in 768 and 764.

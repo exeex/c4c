@@ -1,8 +1,7 @@
 # LIR Computed-Goto Label-Address Table Initialization Authority Decomposition
 
-Status: Open (parked behind
-`ideas/open/769_lir_global_initializer_label_address_authority.md`, active
-blocker for `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
+Status: Open (active blocker for
+`ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
 Type: decomposition of upstream computed-goto label-address table producer seams
 Predecessor: 764 Step 1, after accepted 765, 766, and 767 prerequisites
 
@@ -112,3 +111,22 @@ consumption decomposition, not a monolithic integration or carrier route.
   static contract, complete Step 4 seam selection, then only the selected
   upstream producer packet and handoff to 764. The accepted 767 static-table
   decay control remains untouched.
+
+## Resumption Update — 2026-07-14 Global-Initializer Contract Accepted
+
+- 769 completed its bounded structured global/static initializer contract in
+  `56d86556a`: `LirGlobal::initializer_elements` carries the enclosing
+  `LinkNameId` and target `LirBlockId`, and the verifier rejects malformed
+  owner/target links. Its direct `frontend_lir` proof passed 5/5.
+- The subsequent fresh build and exact four-case reproduction failed all four
+  cases only because `LirIndirectBrOp.addr_value` is still absent. This is not
+  a regression caused by 769: the same family and missing-authority stop were
+  already preserved after accepted 767 (`403e86afd`) in this idea and in 764.
+  It is an upstream producer investigation for this idea's Step 3, not a
+  Raw-BIR/importer boundary and not a reason to reopen 769.
+- Exact return point: resume Step 3 — Extract direct frontend-LIR producer
+  probes. First use the accepted static structured representation to extract
+  its positive/malformed production probe, then complete the automatic-table
+  and direct-rvalue forms before Step 4 selects any generic producer seam.
+  Do not alter `IndirBrStmt`, `LirIndirectBrOp.addr_value`, Raw-BIR/importer,
+  765/766/767, or derive authority from rendered text.

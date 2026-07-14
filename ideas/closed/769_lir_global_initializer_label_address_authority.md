@@ -1,7 +1,8 @@
 # LIR Global-Initializer Label-Address Authority
 
-Status: Open (active blocker for
-`ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`)
+Status: Closed (capability complete; resumed
+`ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
+at Step 3)
 Type: focused global/static initializer representation and verifier contract
 Predecessor: 768 Step 3 static-storage initializer probe
 
@@ -81,3 +82,24 @@ carrier result.
   blocker with the exact missing importer contract.
 - Reject a broad global initializer rewrite or an element that retains the old
   function-ID-only / no-target-label failure mode under a new name.
+
+## Closure Record — 2026-07-14
+
+Disposition: capability complete; return to
+`ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
+Step 3.
+
+- Step 1 selected the structured global-initializer representation boundary.
+  Step 2 was accepted in `56d86556a`: global lowering publishes one structured
+  initializer element with enclosing-function and target-label identities, and
+  verifier validation rejects malformed function/label references. The focused
+  `frontend_lir` proof passed 5/5.
+- The baseline candidate was rejected and is not rolled forward. A fresh build
+  followed by the exact four-case reproduction still fails all four only at
+  missing `LirIndirectBrOp.addr_value` authority. That failure family was
+  already recorded after accepted 767 (`403e86afd`) in 768 and 764, so it is
+  not caused by the structured publication in `56d86556a`.
+- No Raw-BIR/importer contract is selected or required by this evidence. The
+  remaining work is 768's paused upstream label-address table producer probe;
+  it must resume at Step 3 and must not be folded into this closed global
+  initializer contract.
