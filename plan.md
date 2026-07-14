@@ -7,9 +7,9 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 ## Purpose
 
 Continue the bounded target-independent Raw-BIR receiver route without
-repeating accepted work. Receive exactly one producer-published explicit
-signed scalar integer-to-floating conversion result/use chain from native
-kind, endpoints, and value authority.
+repeating accepted work. Receive exactly one producer-published builtin-ffs
+add-one result and its exact select false-arm edge from native integer
+opcode/type, value, and immediate authority.
 
 ## Goal
 
@@ -20,15 +20,15 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-The selected explicit scalar `LirCastOp::SIToFP` native kind and endpoints,
-current-function source/result IDs, and later typed use are the sole
-authority. Presentation is display only.
+The selected builtin-ffs `LirBinOp` native integer Add/type, fresh result ID,
+exact immediate one, and select false-arm ID are the sole authority.
+Presentation is display only.
 
 ## Read First
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.9)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.14)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -75,6 +75,14 @@ authority. Presentation is display only.
   row. The focused backend/producer proof passed 2/2, the matching regression
   guard passed with its allowed non-decreasing fixed-test count, and fresh
   broader `^backend_` proof passed 4/4.
+- Steps 7.11 and 7.12: explicit scalar FPToSI and FPToUI receipts with their
+  exact later i32 Add uses (`3e45cef35`, `9f8194fd0`). Do not repeat or
+  generalize these conversion rows.
+- Step 7.13: operand-free typed i64 builtin-ffs select receipt, its exact
+  i64-to-i32 Trunc, and later ordinary i32 Add (`f88276157`). The fresh
+  focused backend/producer proof passed 2/2, the matching regression guard
+  was non-decreasing, and fresh broader `^backend_` proof passed 4/4. Do not
+  receive the ffs condition or arms through that completed row.
 
 ## Non-Goals
 
@@ -82,16 +90,18 @@ authority. Presentation is display only.
   placement, canonicalization, allocation, MIR, emission, assembler work, or
   legacy-BIR revival
 - no conditional, switch, indirect, phi, local/body-parameter, unselected
-  inline-assembly, or new cast/compare receipt
+  inline-assembly, cttz-call, zero-comparison, select-condition, or new
+  cast/compare receipt
 
 ## Execution Rules
 
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected SIToFP only through its native kind/endpoints and
-   current-function source IDs; names and rendering are diagnostics only after
-   structured authority exists.
+3. Resolve the selected builtin-ffs add-one only through its native Add/type,
+   current-function result ID, representable immediate one, and exact select
+   false-arm ID; names and rendering are diagnostics only after structured
+   authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
 5. Record a separate producer initiative for any required authority gap.
 
@@ -688,7 +698,7 @@ one verified transactional explicit scalar double-to-unsigned-i32 FPToUI chain.
 The matching regression guard passed non-decreasing 2/2, and fresh broader
 `^backend_` proof passed 4/4.
 
-### Step 7.13 - Receive the checked wide builtin-ffs select narrowing
+### Step 7.13 - Receive the checked wide builtin-ffs select narrowing (complete)
 
 Goal: receive only PI's authority-matrix i64 `__builtin_ffsll`
 `LirSelectOp` result and its required explicit i64-to-i32 `LirCastOp::Trunc`
@@ -728,6 +738,49 @@ Completion check:
   2/2. The backend coverage demonstrates one verified transactional wide ffs
   select narrowing chain; the frontend test remains the producer-authority
   regression neighbor.
+
+Accepted in `f88276157`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional operand-free i64 ffs Select-to-Trunc-to-Add chain.
+The matching regression guard was non-decreasing, and fresh broader
+`^backend_` proof passed 4/4.
+
+### Step 7.14 - Receive the checked builtin-ffs add-one/select false arm
+
+Goal: receive only PI's shared i32/i64 builtin-ffs integer Add-one result and
+its exact `LirSelectOp.false_val` edge. Do not receive the Cttz lhs, equality
+comparison, select condition, or other binary/select rows.
+
+Primary targets:
+
+- typed Raw-BIR scalar integer binary payload, builder/view, and reachable
+  verifier support for an exact representable immediate
+- LIR-to-Raw-BIR binary dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only PI's producer-verified `LirBinOp{result: valid current-function
+  LirValueId, opcode: Add, type_str: i32|i64, rhs: LirIntegerImmediate{1}}`
+  to one typed Raw-BIR integer Add result and preserve that exact result ID as
+  the existing i32/i64 ffs `LirSelectOp.false_val`
+- require valid, unique add-one results; native Add/type coherence; a
+  representable exact immediate one; and resolved same-function result-to-
+  false-arm linkage, with full-module rollback for missing, invalid, duplicate,
+  cross-owner, unresolved-use, opcode/type conflict, wrong operand authority,
+  unrepresentable immediate, or malformed linkage
+- prove i32 and i64 positive add-one-to-false-arm boundaries plus neighboring
+  transactional failures. Keep the Cttz lhs, Eq-zero comparison and condition,
+  other builtin/binary/select producers, pointer/vector/complex/aggregate/
+  object work, implicit coercions, and presentation-derived authority
+  fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates verified transactional i32/i64
+  builtin-ffs add-one to false-arm linkage; the frontend test remains the
+  producer-authority regression neighbor.
 
 ### Source completion gate (not an executor packet)
 

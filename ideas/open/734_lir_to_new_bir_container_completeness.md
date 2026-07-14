@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active at Step 6.3 direct-branch receiver packet)
+Status: Open (active at repaired Step 7.14 builtin-ffs add-one/select-arm packet)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
