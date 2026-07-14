@@ -1,10 +1,10 @@
 # Current Packet
 
-Status: Packet Complete - Supervisor Proof Pending
+Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.17
-Current Step Title: Publish builtin-ctz call-result/use authority
+Current Step ID: 7.18
+Current Step Title: Publish builtin-clz call-result/use authority
 
 ## Just Finished
 
@@ -22,19 +22,27 @@ Current Step Title: Publish builtin-ctz call-result/use authority
 
 ## Suggested Next
 
-- Supervisor: run the matched narrow regression guard, review the packet diff,
-  and decide the next Step-7 row through plan-owner.
+- Execute Step 7.18: publish the i32/i64 builtin-clz Ctlz call result through
+  its optional narrowing and one later ordinary i32 use.
 
 ## Watchouts
 
-- Own only PI's i32/i64 `emit_builtin_ctz_call` route. The native intrinsic
-  kind remains Cttz; `LirCttzZeroBehavior` distinguishes ffs false/defined from
-  ctz true/undefined without callee-name matching.
+- Own only PI's i32/i64 `emit_builtin_clz_call` route. Add and publish native
+  Ctlz semantic kind, module-owned intrinsic `LinkNameId`, exact nonvariadic
+  integer/i1 signature, and exact undefined-zero i1 true fact without
+  callee-name matching.
+- Allocate the intrinsic result through `fresh_value`; return that exact ID for
+  i32 and preserve it through an authoritative i64-to-i32 Trunc for the wider
+  route, then carry the final exact operand into one later ordinary i32 use.
 - Preserve arg0's honest compatibility boundary: available native authority
   must be a valid current-function SSA ID, while monostate SSA or Immediate
   presentation does not acquire payload authority from spelling.
-- Keep the exact call-result-to-Trunc-to-final-use edges and exact i64-to-i32
-  narrowing. Exclude clz/popcount/parity and all other intrinsic/builtin/
+- Require native kind/callee/signature/type/count/zero-behavior agreement plus
+  unique result ownership and exact call-to-Trunc/use edges. Reject invalid or
+  duplicate results, unknown/cross-function uses, unresolved callees, and
+  wrong-kind, argument, flag, signature, endpoint, or narrowing conflicts.
+- Accept misleading displays only after authority is proven. Preserve the Cttz
+  ffs/ctz contracts; exclude popcount/parity and all other intrinsic/builtin/
   direct/indirect calls, ABI/variadic work, pointer/vector/aggregate/object
   families, CFG/parameters, inline assembly, and BIR.
 
