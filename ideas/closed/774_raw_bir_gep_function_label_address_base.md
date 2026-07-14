@@ -84,3 +84,27 @@ or 773 forwarding change.
   repair in this blocker.
 - Reject focused-positive-only acceptance without malformed contract coverage
   and a fresh build-backed Raw-BIR proof.
+
+## Closure Record
+
+Disposition: capability complete. This bounded Raw-BIR blocker is accepted and
+returns control to its parent, 773 Step 2.
+
+- Accepted implementation: `c64b78c48` (`backend: model Raw-BIR label-address
+  GEP bases`) introduced the explicit global-or-function-label authority, with
+  focused positive and malformed boundary coverage. `97121c359` (`backend:
+  verify typed Raw-BIR GEP bases`) made Raw-BIR verification consume that typed
+  authority directly, retaining the global-array contract and rejecting invalid
+  label bases.
+- Accepted proof: fresh `cmake --build --preset default` and
+  `ctest --test-dir build -j --output-on-failure -R
+  '^backend_lir_to_bir_interface$'` passed. The earlier matched `^backend_`
+  before/after guards each passed 5/5.
+- Baseline boundary: `test_baseline.new.log` remains rejected at 3037 total / 1
+  failure (`llvm_gcc_c_torture_src_pr70460_c`). It is the separately scoped 772
+  `emit_indexed_gep` / pr70460 forwarding issue, is not repaired or accepted
+  here, and must not be refreshed by this closure.
+- Parent return contract: 773 resumes its preserved Step 2 only to add the LIR
+  printer receipt and typed-direct-label LIR-to-BIR dispatch using this Raw-BIR
+  authority, with nearby malformed coverage. It must not absorb 772 forwarding
+  or pr70460 work; those remain for 773's later handoff to 772 Step 1.

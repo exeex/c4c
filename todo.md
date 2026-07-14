@@ -1,38 +1,38 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/774_raw_bir_gep_function_label_address_base.md
+Source Idea Path: ideas/open/773_lir_gep_direct_label_address_constant_contract.md
 Source Plan Path: plan.md
 Current Step ID: 2
-Current Step Title: Carry the variant through Raw-BIR GEP lowering consumers
+Current Step Title: Carry the validated form through printer and backend/lowering
 
 ## Just Finished
 
-- Plan Step 2: updated the Raw-BIR verifier to consume the typed GEP-base
-  authority directly. Global bases retain their exact global-array contract;
-  label bases must resolve to an exact current-function pointer
-  `LabelAddressConstant` with a current-function target. Focused coverage now
-  publishes and inspects the label-base Raw-BIR path without a global coercion.
+- Lifecycle return: 774 is capability-complete and archived. Its accepted
+  typed Raw-BIR GEP-base representation (`c64b78c48`, `97121c359`) is now the
+  bounded Step 2 input; it does not complete any 773 printer or dispatch work.
+- Step 1 remains accepted in `a4415f99c`: only the current-function typed
+  direct-label-address `DirectConstant(LirValueId)` passes the GEP verifier
+  gate, with nearby malformed-boundary coverage.
 
 ## Suggested Next
 
-- Execute Step 3: prove the bounded Raw-BIR boundary and prepare the exact
-  handoff for 773 Step 2; do not perform printer, dispatch, or 772 work.
+- Execute Step 2 only: add printer receipt and typed-direct-label LIR-to-BIR
+  dispatch using the structured Raw-BIR authority, with focused positive and
+  malformed coverage. Do not edit 772 `emit_indexed_gep` forwarding or pr70460.
 
 ## Watchouts
 
-- `GetElementPtrBase` no longer exposes a legacy global projection. Downstream
-  consumers must dispatch on `authority`; no text, generic value operand, or
-  synthetic global is permitted.
+- Direct GEP identity is table-backed only. Do not recover labels from text,
+  fabricate SSA/globals, coerce to a global base, or widen generic GEP
+  authority. The rejected 3037/1 pr70460 baseline remains out of scope.
 
 ## Proof
 
-- Passed `cmake --build --preset default` and
-  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`.
-  Canonical regression logs were not touched because they remain
-  supervisor-owned.
-- Baseline review rejected `test_baseline.new.log` (3037 total, 1 failed:
-  `llvm_gcc_c_torture_src_pr70460_c`) against the 3034/0 baseline. This is the
-  already-out-of-scope 772 `emit_indexed_gep` / pr70460 repair blocker, not a
-  774 baseline refresh or repair claim; resume 774 at Step 3 with its bounded
-  Raw-BIR proof.
+- 774 accepted fresh `cmake --build --preset default` and
+  `ctest --test-dir build -j --output-on-failure -R
+  '^backend_lir_to_bir_interface$'`; matched `^backend_` before/after guards
+  passed 5/5. This proof establishes the Raw-BIR input only.
+- Step 2 requires its own fresh build and focused verifier/printer/lowering
+  proof. Do not refresh or accept `test_baseline.new.log`; 772 owns the later
+  pr70460 forwarding repair and baseline route.

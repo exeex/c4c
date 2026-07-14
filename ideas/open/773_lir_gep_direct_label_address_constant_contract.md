@@ -1,6 +1,6 @@
 # Typed Direct Label-Address Constant Contract for LIR GEP Pointers
 
-Status: Open (active blocker for
+Status: Open (resumed at Step 2; active blocker for
 `ideas/open/772_lir_gep_pointer_authority_pr70460.md`)
 Type: bounded LIR verifier/printer/backend contract transition
 Blocked parent: `ideas/open/772_lir_gep_pointer_authority_pr70460.md`, Step 1
@@ -87,8 +87,8 @@ non-goal.
 
 ## Resumption Record
 
-Status: Interrupted by separately scoped active blocker
-`ideas/open/774_raw_bir_gep_function_label_address_base.md`.
+Status: Resumed after separately scoped blocker
+`ideas/closed/774_raw_bir_gep_function_label_address_base.md` completed.
 
 - Last accepted progress: Step 1, `Specify and verify the typed
   direct-label-address GEP base`, is accepted in `a4415f99c`
@@ -105,11 +105,16 @@ Status: Interrupted by separately scoped active blocker
   `lir_to_bir.cpp` rejects it before lowering. Carrying this structured
   identity therefore requires a Raw-BIR core schema/builder boundary change,
   outside this idea's explicit non-goals and Step 2 packet.
-- Exact return point: after 774 is accepted, resume this idea at Step 2. Add
-  the printer receipt and LIR-to-BIR dispatch for the already-verified typed
-  direct label address, using the new structured Raw-BIR authority; retain
-  malformed-boundary coverage. Then execute Step 3 and hand 772 back to its
-  Step 1 structured `emit_indexed_gep` forwarding repair.
+- Resumed return point: Step 2. Add only the printer receipt and LIR-to-BIR
+  dispatch for the already-verified typed direct label address, using 774's
+  accepted structured Raw-BIR authority; retain malformed-boundary coverage.
+  Do not absorb 772 forwarding or pr70460 work. Then execute Step 3 and hand
+  772 back to its Step 1 structured `emit_indexed_gep` forwarding repair.
+- Blocker acceptance: 774 completed in `c64b78c48` and `97121c359`; a fresh
+  build plus `^backend_lir_to_bir_interface$` proof passed, and matched
+  `^backend_` before/after guards passed 5/5. Its rejected 3037/1
+  `test_baseline.new.log` remains an out-of-scope 772 pr70460 boundary, not an
+  accepted or repaired baseline.
 - Remaining acceptance: printer and backend/lowering proof for this typed
   form, followed by Step 3 fresh focused proof and the precise handoff to 772.
   The rejected baseline remains rejected until those steps complete and 772

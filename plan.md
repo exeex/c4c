@@ -1,117 +1,118 @@
-# Raw-BIR Function-Owned Label-Address GEP Base Runbook
+# Typed Direct Label-Address Constant GEP Contract Runbook
 
 Status: Active
-Source Idea: ideas/open/774_raw_bir_gep_function_label_address_base.md
-Supersedes: 773 Step 2 while its out-of-scope Raw-BIR schema/builder blocker runs
+Source Idea: ideas/open/773_lir_gep_direct_label_address_constant_contract.md
+Resumed from: preserved 773 Step 2 after completed blocker 774
 
 ## Purpose
 
-Make the Raw-BIR GEP boundary able to retain one verified current-function
-direct label-address as structured base authority, without weakening its
-global-object base contract or borrowing 773's printer/forwarding work.
+Enable only a verified current-function direct label-address constant to serve
+as a typed `LirGepOp.ptr`, so the parent production seam can later retain its
+authority without text recovery or SSA fabrication.
 
 ## Goal
 
-Represent, build, and lower the bounded function-owned label-address GEP base
-alongside the existing global-array base.
+Transition verifier, printer, and backend/lowering contracts for the narrow
+`DirectConstant(LirValueId)` direct-label-address GEP base form.
 
 ## Core Rule
 
-Raw-BIR must carry typed identity and explicit ownership. A label spelling,
-rendered text, synthetic value, or global-object coercion is never authority.
+Direct constants remain function-owned typed authority. Admit them only after
+form-specific validation proves current-function direct-label-address identity;
+neither display text nor synthetic SSA is authority.
+
+## Accepted Progress
+
+- Step 1 is accepted in `a4415f99c` (`lir: verify direct label constants as
+  GEP bases`): verifier admission plus nearby interface coverage for the typed
+  `DirectConstant(LirValueId)` GEP base. Fresh build and
+  `^backend_lir_to_bir_interface$` proof passed.
+- The separately scoped Raw-BIR representation blocker completed in
+  `c64b78c48` and `97121c359`. Its fresh build and
+  `^backend_lir_to_bir_interface$` proof passed; matched `^backend_`
+  before/after guards passed 5/5. This is Step 2 input, not Step 2 completion.
 
 ## Read First
 
-- `ideas/open/774_raw_bir_gep_function_label_address_base.md`
 - `ideas/open/773_lir_gep_direct_label_address_constant_contract.md`
-- `src/backend/bir/core/ir.hpp`, `builder.hpp`, and `builder.cpp`
-- downstream Raw-BIR GEP lowering consumers and nearby Raw-BIR tests
+- `ideas/closed/774_raw_bir_gep_function_label_address_base.md`
+- `ideas/open/772_lir_gep_pointer_authority_pr70460.md` (resumption record)
+- existing direct-label-address constant verifier/printer/backend contracts
+- existing `LirGepOp` verification, printing, and lowering paths
 
 ## Non-Goals
 
-- no generic Raw-BIR redesign or unrelated operand widening
-- no raw-text/importer recovery, synthetic SSA/global, or label-spelling
-  identity
-- no LIR-to-BIR dispatch or LIR printer work, 773 Step 2 completion, 772
-  forwarding repair, 734, or
-  computed-goto work
+- no `pr70460` `emit_indexed_gep` forwarding-seam edit
+- no generic GEP pointer-model redesign or unrelated pointer operand widening
+- no synthetic SSA or text/RawText recovery
+- no computed-goto carrier, Raw-BIR/importer, or 734 work
 
 ## Execution Rules
 
-1. Preserve the existing global-array GEP-base route and its validation.
-2. Make the new base variant explicit and validate current-function ownership
-   plus direct-label-address identity at the appropriate builder/lowering seam.
-3. Add nearby positive and malformed tests; no named case, rendered text, or
-   testcase-specific selector may establish authority.
-4. Build fresh and run the focused Raw-BIR proof before handoff.
-   Do not refresh or accept the rejected full-suite baseline candidate.
-5. On acceptance, return only the representation contract to 773 Step 2; do
-   not silently perform 773 printer/forwarding or 772 production work here.
+1. Preserve fail-closed rejection for all operand forms other than the exact
+   validated current-function direct label-address constant.
+2. Keep verifier, printer, and lowering behavior aligned; do not make one
+   layer accept an operand another layer cannot represent or lower.
+3. Use 774's typed Raw-BIR authority directly; no text recovery, global
+   coercion, or fabricated SSA/global is permitted.
+4. Add nearby positive and malformed contract coverage; testcase names and
+   rendered text are never selectors or authority sources.
+5. Do not refresh or accept the rejected 3037/1 baseline candidate: 772 must
+   first repair structured forwarding and make `pr70460` pass.
 
 ## Ordered Steps
 
-### Step 1 - Specify the structured Raw-BIR GEP-base variant
+### Step 1 - Specify and verify the typed direct-label-address GEP base
 
-Goal: replace the `GlobalObjectId`-only GEP-base assumption with an explicit,
-bounded representation that can carry either the existing global object or the
-verified function-owned direct label address.
+Status: Complete (`a4415f99c`).
 
-Primary targets:
+Goal: make `LirGepOp.ptr` admit exactly the valid function-owned direct
+label-address `DirectConstant(LirValueId)` form.
 
-- `src/backend/bir/core/ir.hpp`
-- `src/backend/bir/core/builder.hpp`
-- focused node/spec/builder contract tests
+Completion check: verifier tests show the exact allowed form passes and the
+relevant malformed forms fail closed. Accepted proof: fresh build plus
+`^backend_lir_to_bir_interface$` passed.
 
-Actions:
+### Step 2 - Carry the validated form through printer and backend/lowering
 
-- inspect all `GetElementPtrSpec` / `GetElementPtrNode` storage and consumers
-- introduce the narrow structured variant and preserve an unambiguous legacy
-  global-object alternative
-- define builder-visible invariants for the function-owned label-address form
-  without a generic value-ID admission path
-- add focused structural and malformed coverage for both alternatives
-
-Completion check:
-
-- the schema and builder can distinguish supported alternatives, retain the
-  global-object contract, and fail closed for invalid function-owned identity.
-
-### Step 2 - Carry the variant through Raw-BIR GEP lowering consumers
-
-Goal: consume the new structured base through Raw-BIR GEP lowering without
-text recovery, global coercion, or synthetic values.
+Goal: represent and lower the verified typed direct constant as a GEP base.
 
 Primary targets:
 
-- Raw-BIR GEP builder call sites and lowering consumers
-- focused positive and malformed boundary tests
+- LIR GEP printer operand handling
+- backend/lowering GEP base dispatch
+- focused printer/lowering contract tests
 
 Actions:
 
-- update all necessary consumers to use the variant's typed authority
-- prove the existing global-array route still behaves identically
-- add focused coverage that builds and reaches the new lowering path, plus
-  malformed cases
+- add the exact validated direct-label-address branch where SSA/global is
+  currently assumed
+- use typed direct-constant resolution and 774's structured Raw-BIR authority,
+  never display text or a fabricated SSA/global value
+- retain fail-closed behavior for unverified or unsupported constants
+- prove printer and lowering agree with verifier admission, with nearby
+  positive and malformed coverage
+- do not edit 772 forwarding, pr70460, or baseline artifacts
 
 Completion check:
 
-- the structured function-owned form reaches Raw-BIR lowering as authority;
-  unsupported forms fail closed and global-array behavior remains covered.
+- focused printer/lowering coverage exercises the allowed typed operand and
+  rejects unsupported forms without changing the parent forwarding seam.
 
-### Step 3 - Prove the bounded boundary and hand 773 back
+### Step 3 - Prove the bounded contract and hand it back to 772
 
-Goal: provide accepted Raw-BIR evidence and the precise parent return contract.
+Goal: deliver an accepted contract transition with a precise parent return.
 
 Actions:
 
-- run a fresh build and selected focused Raw-BIR tests
-- inspect coverage for positive plus malformed boundaries and preserved global
-  behavior
-- report exact changed representation, proof, and the handoff for 773 to
-  resume Step 2
+- run a fresh build and the selected focused verifier/printer/lowering subset
+- inspect that tests cover positive and malformed boundaries rather than a
+  single named case
+- report changed contracts, exact proof, and the handoff to resume 772 Step 1
+- state that 772 must repair structured `emit_indexed_gep` forwarding and make
+  `llvm_gcc_c_torture_src_pr70460_c` pass before any new baseline evaluation
 
 Completion check:
 
 - fresh build and narrow proof pass, acceptance evidence is ready for the
-  supervisor, and 773's resumption point remains explicitly limited to printer
-  receipt and LIR-to-BIR dispatch before its later 772 handoff.
+  supervisor, and the parent return action is unambiguous.
