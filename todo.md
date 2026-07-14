@@ -8,16 +8,17 @@ Current Step Title: Validate and hand off to 760
 
 ## Just Finished
 
-- Plan Step 4 complete: `frontend_lir_call_type_ref_test` now proves enum-built
-  i32, ptr, and void refs retain builtin id, kind, width where applicable, and
-  rendered text. It mutates the i32 rendered text and proves id/width remain
-  enum-authoritative; a dynamic array remains text-compatible with no builtin
-  id.
+- Plan Step 5 complete: the supervisor's fresh build and six focused LIR
+  frontend/backend tests passed. Final inspection found no scope drift,
+  verifier relaxation, expectation downgrade, or runtime string-constructor
+  removal. `ideas/open/760_lir_string_constructor_deprecation_migration.md`
+  remains the explicit successor for migration work.
 
 ## Suggested Next
 
-- Step 5 validation and handoff: inspect the final diff, run the required
-  focused LIR/frontend/backend validation, and preserve 760 as successor.
+- No further implementation packet: return this exhausted runbook to the
+  plan-owner for an explicit completion/closure decision; 760 is the named
+  successor.
 
 ## Watchouts
 
@@ -30,9 +31,12 @@ Current Step Title: Validate and hand off to 760
   spellings remain supported text-backed inputs in this foundation slice.
 - The mutable `str()` compatibility surface intentionally does not rewrite an
   enum-built ref's cached typed authority.
+- Do not absorb the 760 string-constructor deprecation inventory or migration
+  into 759.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
-- `test_after.log` contains the passing `frontend_lir_call_type_ref` subset.
+- Supervisor passed: `cmake --build --preset default && ctest --test-dir build
+  -j --output-on-failure -R '^(frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)|backend_lir_(to_bir_interface|selected_pointer_authority))$'`.
+- Fresh build completed and all 6/6 focused LIR frontend/backend tests passed;
+  this executor did not rerun the command or modify `test_after.log`.
