@@ -87,6 +87,38 @@ void populate_selected_byval_parameter_materialization_authority(
       };
 }
 
+std::optional<lir::LirSelectedMemcpyAuthority>
+selected_byval_parameter_materialization_memcpy_authority(
+    const lir::LirFunction& function, long long size_bytes) {
+  const auto& selected = function.selected_memcpy_pointer_authority;
+  if (!selected.has_value()) return std::nullopt;
+
+  const auto& source = selected->byval_parameter;
+  const auto& destination = selected->destination_alloca;
+  if (!source.value.valid() || !destination.value.valid() ||
+      !source.object.valid() || !destination.object.valid() ||
+      source.pointer_type.kind() != lir::LirTypeKind::Pointer ||
+      destination.pointer_type.kind() != lir::LirTypeKind::Pointer ||
+      source.object_owner != function.link_name_id ||
+      destination.object_owner != function.link_name_id ||
+      !source.live_at_selected_site || !destination.live_at_selected_site ||
+      size_bytes <= 0) {
+    return std::nullopt;
+  }
+
+  return lir::LirSelectedMemcpyAuthority{
+      .destination = destination.value,
+      .source = source.value,
+      .size = lir::LirIntegerImmediate{size_bytes},
+      .destination_object = destination.object,
+      .source_object = source.object,
+      .destination_object_owner = destination.object_owner,
+      .source_object_owner = source.object_owner,
+      .destination_live_at_site = destination.live_at_selected_site,
+      .source_live_at_site = source.live_at_selected_site,
+  };
+}
+
 LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
                                       lir::LirModule* module, StructNameId name_id,
                                       bool is_union) {
@@ -290,13 +322,22 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(mod_, pts), "", 0});
       if (amd64_fixed_aggregate_byval(mod_, pts)) {
         module_->need_memcpy = true;
-        if (ctx.lir_function) {
-          populate_selected_byval_parameter_materialization_authority(
-              *ctx.lir_function);
+        if (!ctx.lir_function) {
+          throw std::runtime_error(
+              "StmtEmitter: selected byval memcpy requires current-function authority");
+        }
+        populate_selected_byval_parameter_materialization_authority(
+            *ctx.lir_function);
+        const long long size_bytes = llvm_cc::amd64_type_size_bytes(pts, mod_);
+        const auto authority = selected_byval_parameter_materialization_memcpy_authority(
+            *ctx.lir_function, size_bytes);
+        if (!authority.has_value()) {
+          throw std::runtime_error(
+              "StmtEmitter: selected byval memcpy has incomplete pointer authority");
         }
         emit_lir_op(ctx, lir::LirMemcpyOp{
-                             slot, pname, std::to_string(llvm_cc::amd64_type_size_bytes(pts, mod_)),
-                             false});
+                             slot, pname, std::to_string(size_bytes), false,
+                             std::move(authority)});
       } else {
         ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_value_ty(mod_, pts), pname, slot});
       }

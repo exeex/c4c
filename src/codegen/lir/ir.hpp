@@ -160,11 +160,28 @@ struct LirIntrinsic {
 // Typed intrinsic call operations.
 // Operands use string SSA names (matching current emitter convention).
 
+// Typed semantic authority for the one selected fixed-aggregate byval
+// materialization memcpy.  The display operands on LirMemcpyOp remain solely
+// compatibility spelling; this descriptor is deliberately optional so every
+// unselected memcpy producer remains outside the selected authority family.
+struct LirSelectedMemcpyAuthority {
+  LirValueId destination{};
+  LirValueId source{};
+  LirIntegerImmediate size{};
+  LirObjectId destination_object = LirObjectId::invalid();
+  LirObjectId source_object = LirObjectId::invalid();
+  LinkNameId destination_object_owner = kInvalidLinkName;
+  LinkNameId source_object_owner = kInvalidLinkName;
+  bool destination_live_at_site = false;
+  bool source_live_at_site = false;
+};
+
 struct LirMemcpyOp {
   LirOperand dst;         // ptr operand
   LirOperand src;         // ptr operand
   LirOperand size;        // i64 operand
   bool is_volatile = false;
+  std::optional<LirSelectedMemcpyAuthority> selected_authority;
 };
 
 struct LirVaStartOp {

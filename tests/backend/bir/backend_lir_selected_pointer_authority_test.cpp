@@ -207,6 +207,34 @@ void test_selected_byval_materialization_populates_authority() {
              authority.destination_alloca.live_at_selected_site,
          "selected definitions should be live at the selected site");
 
+  const lir::LirMemcpyOp* selected_memcpy = nullptr;
+  for (const lir::LirBlock& block : function.blocks) {
+    for (const lir::LirInst& inst : block.insts) {
+      if (const auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        selected_memcpy = memcpy;
+        break;
+      }
+    }
+    if (selected_memcpy) break;
+  }
+  expect(selected_memcpy != nullptr,
+         "selected producer fixture should emit its fixed-aggregate memcpy");
+  expect(selected_memcpy->selected_authority.has_value(),
+         "selected memcpy must publish typed authority rather than use display operands");
+  const auto& memcpy_authority = *selected_memcpy->selected_authority;
+  expect(memcpy_authority.destination == authority.destination_alloca.value &&
+             memcpy_authority.source == authority.byval_parameter.value,
+         "selected memcpy pointer identities must come from current-function authority");
+  expect(memcpy_authority.destination_object == authority.destination_alloca.object &&
+             memcpy_authority.source_object == authority.byval_parameter.object &&
+             memcpy_authority.destination_object_owner == function.link_name_id &&
+             memcpy_authority.source_object_owner == function.link_name_id,
+         "selected memcpy objects must retain current-function ownership");
+  expect(memcpy_authority.destination_live_at_site &&
+             memcpy_authority.source_live_at_site &&
+             memcpy_authority.size.value == 24,
+         "selected memcpy must publish live pointer authority and typed i64 size");
+
   lir::verify_module(module);
 }
 
