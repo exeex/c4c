@@ -3,35 +3,37 @@
 Status: Active
 Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Enumerate separated label-address table producer forms
+Current Step ID: 3
+Current Step Title: Extract direct frontend-LIR producer probes
 
 ## Just Finished
 
-- Completed plan.md Step 1 integration evidence only: after a fresh build, the
-  exact five-consumer subset retained the 1/5 versus 4/5 boundary.
-  `llvm_gcc_c_torture_src_comp_goto_1_c` passed; `20040302_1`, `20041214_1`,
-  `920501_4`, and `920501_5` all failed only because
-  `LirIndirectBrOp.addr_value` lacks current-function pointer `LirValueId`
-  authority. This assigns no carrier or testcase-specific ownership.
+- Completed plan.md Step 2 producer mapping in
+  `docs/lir_computed_goto_label_address_authority/step2_producer_map.md`.
+  The source-form-neutral map separates static-storage constant initialization,
+  automatic scalar initialization, automatic/static table representation, and
+  direct rvalue consumption before the accepted table-element GEP/load result.
+  It preserves 765/766/767 and selects no repair.
 
 ## Suggested Next
 
-- Step 2: enumerate separated label-address table producer forms, naming each
-  direct frontend-LIR producer, structured input/result candidate, and first
-  missing-authority boundary without selecting a repair.
+- Step 3: extract one focused frontend-LIR production probe for each mapped
+  form, with its structured positive assertion and nearby malformed contract;
+  do not use external integration cases, rendered text, carrier publication,
+  verifier changes, or any rework of 765/766/767.
 
 ## Watchouts
 
-- Preserve the five external cases as integration evidence only. The carrier,
-  verifier, Raw-BIR/importer, 734, and accepted 765/766/767 work remain out of
-  scope; use direct frontend-LIR production probes rather than backend/case or
-  named-testcase derivatives unless new evidence moves ownership.
+- The static-storage decay row is a structured control form, while local-array
+  decay and direct label-address rvalue production reach raw presentation
+  earlier. This is a map observation, not a selected seam: Step 3 must prove
+  each row with focused positive/malformed contracts before any repair choice.
 
 ## Proof
 
-- Ran `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R
-  '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'
-  > test_after.log`. The build passed; CTest intentionally returned nonzero
-  with the expected four failures. Proof log: `test_after.log`.
+- Documentation/evidence-only proof: ran the AST definition queries recorded
+  in `docs/lir_computed_goto_label_address_authority/step2_producer_map.md`
+  for `emit_rval_payload`, `emit_const_scalar_expr`,
+  `emit_rval_from_access_ptr`, and `emit_control_flow_stmt`, then ran
+  `git diff --check`. No build, CTest, or `test_after.log` was required or
+  written by this packet.
