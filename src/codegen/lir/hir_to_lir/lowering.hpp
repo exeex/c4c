@@ -483,8 +483,8 @@ class StmtEmitter {
   static TypeSpec bitfield_promoted_ts(const BitfieldAccess& bf);
   // Load a bitfield value from a storage unit pointer.
   // Returns a value of the promoted type (i32 for <=32-bit fields, i64 for wider).
-  std::string emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
-                                  const BitfieldAccess& bf);
+  lir::LirOperand emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
+                                     const BitfieldAccess& bf);
   // Store a value into a bitfield within a storage unit.
   void emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
                             const BitfieldAccess& bf,

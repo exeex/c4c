@@ -8,15 +8,19 @@ Current Step Title: Publish the production member/bitfield RHS value identity
 
 ## Just Finished
 
-- None; this upstream blocker was activated after 764 proved that the
-  computed-goto carrier and GEP verifier are behaving correctly and the RHS
-  member/bitfield rvalue is the first missing-authority seam.
+- Plan Step 1: confirmed `StmtEmitter::emit_rval_expr` routed `MemberExpr`
+  through the string-only `emit_rval_payload` path, whose final
+  `emit_bitfield_load` temporary was the first production owner dropping the
+  RHS identity for `insn.f1.offset`. `emit_member_rval_operand` now returns
+  the bitfield load's valid current-function `LirValueId`; its load,
+  shift/mask/sign-extension, and final value use structured operands so the
+  ID remains verifier-valid. `frontend_lir_call_type_ref` proves that exact
+  final ID reaches the member rvalue consumer.
 
 ## Suggested Next
 
-- Trace `insn.f1.offset` in `comp-goto-1.c` to the first production
-  member/bitfield rvalue owner that drops its `LirValueId`, then repair only
-  that owner.
+- Return to 764 Step 1 and reattempt only computed-goto address publication
+  using the repaired `insn.f1.offset` producer; do not resume 734 directly.
 
 ## Watchouts
 
@@ -24,11 +28,20 @@ Current Step Title: Publish the production member/bitfield RHS value identity
   address carrier. Do not publish a GEP result from a raw/partial RHS index.
 - Keep `verify_authoritative_gep` fail-closed and never derive identity from
   rendered operands, labels, LLVM/printer text, or testcase identity.
+- The requested external case still stops at the unchanged downstream
+  `LirIndirectBrOp.addr_value` authority failure. This packet intentionally
+  does not make the local-base GEP authoritative or relax its verifier.
 
 ## Proof
 
 - Preserved baseline: `ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`
   (recorded in `test_before.log`).
-- Before handoff: fresh `cmake --build --preset default` plus focused producer
-  and malformed-index proof selected during Step 1. The supervisor owns
-  broader acceptance and canonical regression logs.
+- Fresh `cmake --build --preset default` succeeded. The delegated
+  `ctest --test-dir build -j --output-on-failure -R
+  '^(backend_lir_to_bir_interface|llvm_gcc_c_torture_src_comp_goto_1_c)$'`
+  retained the expected downstream comp-goto failure and passed
+  `backend_lir_to_bir_interface`, including its malformed/raw-index
+  fail-closed coverage. Additional producer proof (not selected by that
+  regex): `ctest --test-dir build --output-on-failure -R
+  '^frontend_lir_call_type_ref$'` passed. No canonical regression log was
+  written; the supervisor owns those logs.

@@ -530,6 +530,9 @@ LirOperand StmtEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e) {
               ref->local)) {
     return emit_decl_ref_rval_operand(ctx, *ref, e);
   }
+  if (const auto* member = std::get_if<MemberExpr>(&e.payload)) {
+    return emit_member_rval_operand(ctx, *member, e);
+  }
   return LirOperand::raw(
       std::visit([&](const auto& p) -> std::string { return emit_rval_payload(ctx, p, e); },
                  e.payload));

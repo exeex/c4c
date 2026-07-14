@@ -3071,6 +3071,7 @@ int rvalue_local_identity(int input) {
   rvalue_identity_sink(local);
   return local;
 }
+
 int rvalue_parameter_identity(int parameter) {
   parameter = parameter + 1;
   rvalue_identity_sink(parameter);
@@ -3139,6 +3140,44 @@ int rvalue_parameter_identity(int parameter) {
     require_route_call(module, "rvalue_parameter_identity").structured_args[0].operand =
         lir::LirOperand::ssa("%foreign", lir::LirValueId{99});
   }, "foreign parameter rvalue identity must fail closed");
+}
+
+void test_member_bitfield_rvalue_identity_route() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+struct member_bitfield_identity_probe {
+  signed int offset : 18;
+  unsigned int ignored : 14;
+};
+int member_bitfield_identity_route(struct member_bitfield_identity_probe *insn) {
+  return insn->offset;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "member_bitfield_identity_route");
+  const lir::LirBinOp* final_bitfield_value = nullptr;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* binary = std::get_if<lir::LirBinOp>(&inst);
+      if (binary && binary->opcode.typed() == lir::LirBinaryOpcode::Add &&
+          binary->rhs.integer_immediate() &&
+          binary->rhs.integer_immediate()->value == 0) {
+        final_bitfield_value = binary;
+      }
+    }
+  }
+  expect_true(final_bitfield_value && final_bitfield_value->result.value_id() &&
+                  final_bitfield_value->result.value_id()->valid(),
+              "member bitfield rvalue must publish a valid final LirValueId");
+
+  const auto* returned = std::get_if<lir::LirRet>(&function.blocks.back().terminator);
+  expect_true(returned && returned->value_str && returned->value_str->value_id() &&
+                  *returned->value_str->value_id() ==
+                      *final_bitfield_value->result.value_id(),
+              "member bitfield rvalue must retain its exact ID through its consumer");
+  lir::verify_module(lowered);
 }
 
 void test_scalar_ordinary_value_chain_identity_boundary() {
@@ -6732,6 +6771,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_direct_void_immediate_arg_identity_boundary();
   test_direct_void_ssa_arg_identity_boundary();
   test_local_and_parameter_rvalue_identity_route();
+  test_member_bitfield_rvalue_identity_route();
   test_scalar_ordinary_value_chain_identity_boundary();
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();

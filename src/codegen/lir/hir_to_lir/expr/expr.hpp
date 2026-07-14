@@ -84,5 +84,7 @@ std::string emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr& e
 std::string emit_rval_payload(FnCtx& ctx, const PendingConstevalExpr& p, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const IndexExpr& idx, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e);
+LirOperand emit_member_rval_operand(FnCtx& ctx, const MemberExpr& m,
+                                    const Expr& e);
 
 #endif  // C4C_CODEGEN_LIR_HIR_TO_LIR_EXPR_MEMBERS_INCLUDED

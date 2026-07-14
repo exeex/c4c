@@ -174,36 +174,43 @@ std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr
   return cur_ptr;
 }
 
-std::string StmtEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
-                                            const BitfieldAccess& bf) {
-  const std::string result = fresh_tmp(ctx);
+LirOperand StmtEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
+                                           const BitfieldAccess& bf) {
   const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
   const int promoted_bits = bitfield_promoted_bits(bf);
   const std::string promoted_ty = "i" + std::to_string(promoted_bits);
 
-  const std::string unit = result + ".bf.unit";
+  const LirOperand unit = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{unit, unit_ty, unit_ptr});
 
-  std::string shifted = unit;
+  LirOperand shifted = unit;
   if (bf.bit_offset > 0) {
-    shifted = result + ".bf.shr";
-    emit_lir_op(
-        ctx, lir::LirBinOp{shifted, "lshr", unit_ty, unit, std::to_string(bf.bit_offset)});
+    shifted = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{
+                         shifted, "lshr", unit_ty, unit,
+                         LirOperand::integer(std::to_string(bf.bit_offset), bf.bit_offset)});
   }
 
   const unsigned long long mask = (bf.bit_width >= 64) ? ~0ULL : ((1ULL << bf.bit_width) - 1);
-  const std::string masked = result + ".bf.mask";
-  emit_lir_op(ctx, lir::LirBinOp{masked, "and", unit_ty, shifted, std::to_string(mask)});
+  const LirOperand masked = fresh_value(ctx);
+  emit_lir_op(ctx, lir::LirBinOp{
+                       masked, "and", unit_ty, shifted,
+                       LirOperand::integer(std::to_string(mask), static_cast<long long>(mask))});
 
-  std::string cur = masked;
+  LirOperand cur = masked;
   if (bf.is_signed && bf.bit_width < bf.storage_unit_bits) {
     const int shift_amt = bf.storage_unit_bits - bf.bit_width;
-    const std::string shl_tmp = result + ".bf.shl";
-    emit_lir_op(ctx, lir::LirBinOp{shl_tmp, "shl", unit_ty, masked, std::to_string(shift_amt)});
-    cur = result + ".bf.sext";
-    emit_lir_op(ctx, lir::LirBinOp{cur, "ashr", unit_ty, shl_tmp, std::to_string(shift_amt)});
+    const LirOperand shl_tmp = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{
+                         shl_tmp, "shl", unit_ty, masked,
+                         LirOperand::integer(std::to_string(shift_amt), shift_amt)});
+    cur = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{
+                         cur, "ashr", unit_ty, shl_tmp,
+                         LirOperand::integer(std::to_string(shift_amt), shift_amt)});
   }
 
+  const LirOperand result = fresh_value(ctx);
   if (bf.storage_unit_bits != promoted_bits) {
     if (bf.storage_unit_bits > promoted_bits) {
       emit_lir_op(ctx,
@@ -215,7 +222,8 @@ std::string StmtEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_
                                  unit_ty, cur, promoted_ty});
     }
   } else {
-    emit_lir_op(ctx, lir::LirBinOp{result, "add", unit_ty, cur, "0"});
+    emit_lir_op(ctx, lir::LirBinOp{result, "add", unit_ty, cur,
+                                   LirOperand::integer("0", 0)});
   }
 
   return result;
@@ -536,7 +544,7 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
                                                      bool reload_after_store) {
   if (lhs.is_bitfield()) {
     emit_bitfield_store(ctx, lhs.ptr.str(), lhs.bf, value.str(), value_ts);
-    return reload_after_store ? emit_bitfield_load(ctx, lhs.ptr.str(), lhs.bf)
+    return reload_after_store ? emit_bitfield_load(ctx, lhs.ptr.str(), lhs.bf).str()
                               : value.str();
   }
   const bool zero_init_aggregate =

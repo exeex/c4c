@@ -331,13 +331,18 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const E
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e) {
+  return emit_member_rval_operand(ctx, m, e).str();
+}
+
+LirOperand StmtEmitter::emit_member_rval_operand(FnCtx& ctx, const MemberExpr& m,
+                                                  const Expr& e) {
   TypeSpec field_ts{};
   BitfieldAccess bf;
   const std::string gep = emit_member_lval(ctx, m, field_ts, &bf);
   if (bf.is_bitfield()) {
     return emit_bitfield_load(ctx, gep, bf);
   }
-  return emit_rval_from_access_expr(ctx, e, gep, field_ts, true);
+  return LirOperand::raw(emit_rval_from_access_expr(ctx, e, gep, field_ts, true));
 }
 
 }  // namespace c4c::codegen::lir
