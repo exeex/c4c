@@ -1,6 +1,6 @@
 # LIR Direct-Branch Successor Identity Publication
 
-Status: Open (active blocker for idea 734)
+Status: Closed (capability complete; producer handoff accepted by idea 734)
 Type: bounded LIR producer-authority repair
 Blocked Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 
@@ -50,6 +50,25 @@ producer edits beyond its narrowly stated inline-assembly exception.
   malformed authority and shows no text-based fallback.
 - A handoff lets idea 734 select one direct-branch Raw-BIR receiver packet
   without re-auditing producer authority.
+
+## Closure Record
+
+Close accepted: capability complete.
+
+- Commit `cebc0a3bf` publishes `LirBr.successor` as the sole structural,
+  same-function `LirBlockId` authority while retaining `target_label` only as
+  display parity.
+- The durable receiver handoff is
+  `docs/lir_structured_identity/handoff_to_734.md`, including missing,
+  invalid, cross-function, duplicate-ownership, and display-mismatch
+  fail-closed boundaries.
+- Accepted focused proof:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+- Idea 734 resumes at Step 6.3 with exactly one Raw-BIR direct-jump receiver
+  packet. It must map `LirBr.successor` directly, verify same-function edge
+  ownership and transactionality, and must not recover an edge from
+  `target_label`. Conditional, switch, indirect, and phi work remain outside
+  this completed producer blocker.
 
 ## Reviewer Reject Signals
 

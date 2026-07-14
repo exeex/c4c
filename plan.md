@@ -1,85 +1,111 @@
-# LIR Direct-Branch Successor Identity Publication Runbook
+# LIR-To-New-BIR Container And Import Completeness Runbook
 
 Status: Active
-Source Idea: ideas/open/747_lir_direct_branch_successor_identity_publication.md
-Activated from: paused idea 734 Step 6.3 direct-branch successor authority gap
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 
 ## Purpose
 
-Publish the minimum producer-side structured authority needed for one direct
-unconditional branch. This blocker produces a handoff; it does not import a
-branch into Raw BIR.
+Resume the bounded target-independent Raw-BIR receiver route without repeating
+the accepted Steps 5.2 through 6.2. Receive exactly one direct unconditional
+branch using the producer-published structural successor identity.
 
 ## Goal
 
-Carry one `LirBr` successor as the existing structural `LirBlockId`, verify
-same-function ownership, and hand the exact row back to idea 734.
+Import each structured-authority LIR fact into one verified Raw-BIR module
+without loss or partial publication. Never recover a fact from presentation.
 
 ## Core Rule
 
-The carried block identity is semantic authority. Target-label spelling is
-presentation only and must neither create nor repair an edge.
+Every admitted row maps existing typed LIR authority directly to a typed
+Raw-BIR container, importer path, verifier rule, and transactional proof.
+`LirBr.successor` is the sole direct-edge authority; `target_label` is display
+only.
 
 ## Read First
 
-- `ideas/open/747_lir_direct_branch_successor_identity_publication.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` resumption record
-- `docs/lir_structured_identity/carrier_contract.md`
-- `docs/lir_structured_identity/authority_matrix.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/closed/747_lir_direct_branch_successor_identity_publication.md`
+- `docs/lir_structured_identity/handoff_to_734.md`
+- Raw-BIR terminator builders, views, verifier, and LIR importer
+
+## Landed Progress
+
+- Steps 1 through 3: coverage foundation plus typed module/type/value, global,
+  string, extern, symbol, initializer, specialization, intrinsic, and direct
+  scalar return-signature receipt.
+- Steps 4.1 through 4.5: selected-global Store/Load/GEP/Return, authorized
+  parameter signatures, linkage/elision metadata, and direct void Call receipt.
+- Steps 5.2 through 5.3.5: selected direct call and ordinary-value receiver
+  rows through normalized i32 `Mul` (`ea4b63135`).
+- Steps 6.1 and 6.2: selected i32 and i64 output-only inline-assembly binding
+  and Store rows (`ad82d1456`, `37014f013`). Do not repeat these rows.
+- Closed idea 747 published and verified the direct successor carrier in
+  `cebc0a3bf`; its focused producer proof passed.
 
 ## Non-Goals
 
-- no Raw-BIR container, importer, verifier, or test changes
-- no conditional, switch, indirect, phi, or inline-assembly authority work
-- no target interpretation or label-text recovery
+- no LIR redesign, label-text recovery, target interpretation, ABI placement,
+  canonicalization, allocation, MIR, emission, assembler work, or legacy-BIR
+  revival
+- no conditional, switch, indirect, phi, local/body-parameter, or unselected
+  inline-assembly receipt
 
 ## Execution Rules
 
-1. Change only the direct unconditional `LirBr` producer/verifier authority
-   seam and its focused proof.
-2. Preserve the existing compatibility label for display without treating it as
-   a semantic fallback.
-3. Reject every malformed edge before a valid LIR module reaches a consumer.
-4. End with a compact handoff for idea 734; do not implement its receiver.
+1. Implement exactly one handoff row or explicitly shared typed seam per packet.
+2. Add container, importer, reachable Raw-BIR verification, and transactional
+   positive/negative proof together.
+3. Resolve the direct destination only through `LirBr.successor`; names and
+   rendering are diagnostics only after structured authority exists.
+4. Preserve full-module rollback for every malformed or unsupported form.
+5. Record a separate producer initiative for any required authority gap.
 
 ## Ordered Steps
 
-### Step 1 - Publish and verify one direct `LirBr` successor ID
+### Step 6.3 - Receive the checked direct `LirBr` successor
 
-Goal: attach the existing structural destination `LirBlockId` to the direct
-unconditional branch as the sole semantic successor authority.
+Goal: receive the exact idea-747 handoff row as one typed Raw-BIR direct jump
+without widening CFG receipt.
 
 Primary targets:
 
-- LIR direct-branch construction and `LirBr` carrier
-- reachable LIR verifier and focused frontend LIR identity tests
+- typed Raw-BIR direct-jump destination/terminator builder and view
+- reachable Raw-BIR verifier and LIR-to-Raw-BIR terminator dispatch
+- focused backend receiver coverage plus the producer identity regression
 
 Actions:
 
-- preserve the compatibility target label, but add the exact current-function
-  structural `LirBlockId` selected at branch construction to the `LirBr`
-  semantic carrier; do not derive it by parsing or looking up the spelling
-- verify the ID is present, valid, and owned by the same function, and that it
-  identifies the exact emitted direct branch destination
-- add focused valid, missing, invalid, and cross-function branch-successor
-  coverage with no text-based fallback
-- record a handoff for idea 734 naming the carrier, ownership contract,
-  focused proof command, malformed-neighbor rejections, and the direct
-  Raw-BIR jump receiver return point
+- map only a direct unconditional `LirBr` whose `successor` is a valid,
+  current-function `LirBlockId` to one typed Raw-BIR direct-jump destination;
+  do not parse, look up, or repair the destination using `target_label`
+- preserve exact same-function destination ownership and block identity through
+  importer and reachable Raw-BIR verification; reject missing, invalid,
+  duplicate/cross-owner, or incoherent successor authority with no partial
+  module publication
+- prove a positive direct jump plus neighboring malformed successor,
+  ownership, destination, and rollback cases. Keep conditional, switch,
+  indirect, phi, and all presentation-derived CFG forms fail-closed
 
 Completion check:
 
-- a fresh build and focused producer/verifier proof show one direct `LirBr`
-  successor is carried and checked by `LirBlockId` only; malformed IDs reject
-  and the handoff is sufficient for idea 734 to resume.
+- a fresh build and supervisor-selected focused backend receiver proof, with
+  `frontend_lir_call_type_ref` as the producer regression neighbor, show one
+  transactional typed direct jump using `LirBlockId` only.
 
-### Step 2 - Return control to idea 734
+### Step 7 - Integrate the dispatcher, verifier and build boundary
 
-Goal: after Step 1 acceptance, close or otherwise conclude this bounded
-producer blocker through the lifecycle owner and reactivate idea 734 at its
-recorded Step 6.3 direct-branch receiver return point.
+Goal: prove landed families form one production importer with no partial state.
 
 Completion check:
 
-- the accepted handoff and proof reference are durable, and idea 734 has an
-  executable direct-branch receiver packet without reselecting old work.
+- broader proof passes and every accepted row has typed authority and receipt.
+
+### Step 8 - Prove lossless completeness and transactional publication
+
+Goal: close only after exhaustive matrix coverage and accepted full proof.
+
+Completion check:
+
+- every source acceptance criterion is callable and evidenced without
+  unsupported rows being claimed as complete.
