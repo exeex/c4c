@@ -1,37 +1,30 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/773_lir_gep_direct_label_address_constant_contract.md
+Source Idea Path: ideas/open/774_raw_bir_gep_function_label_address_base.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Carry the validated form through printer and backend/lowering
+Current Step ID: 1
+Current Step Title: Specify the structured Raw-BIR GEP-base variant
 
 ## Just Finished
 
-- Step 1 completed: `LirGepOp.ptr` now admits only a typed
-  `DirectConstant(LirValueId)` at the GEP-specific gate and resolves it in
-  `verify_function_value_ownership` against the current function's
-  pointer-typed direct-label-address table. Nearby interface coverage proves
-  the positive verifier path and rejects missing, arbitrary, non-pointer,
-  display-inconsistent, and non-pointer-form bases.
+- Lifecycle switch: 773 Step 1 remains accepted in `a4415f99c`; its Step 2 is
+  paused because the Raw-BIR `GlobalObjectId`-only GEP-base schema/builder
+  boundary is outside 773's source scope.
 
 ## Suggested Next
 
-- Step 2: carry the validated typed direct-label-address GEP base through the
-  printer and backend/lowering, with focused positive and malformed contract
-  coverage. Do not refresh or accept a full-suite baseline candidate; that
-  stays blocked until Step 3 hands 772 back and 772's structured forwarding
-  repair makes `pr70460` pass.
+- Execute Step 1: define the bounded structured Raw-BIR GEP-base variant,
+  retain the global-array contract, and add focused structural/malformed
+  coverage. Do not perform 773 printer work or 772 forwarding work.
 
 ## Watchouts
 
-- Generic pointer validation remains unchanged for all non-GEP operands and
-  non-direct GEP bases. Direct GEP identity is table-backed only; no label
-  spelling or printer text is authority.
+- The function-owned direct label address must remain typed authority. Do not
+  recover it from text, manufacture SSA/globals, or admit generic ValueIds.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build
-  --output-on-failure -R '^backend_lir_to_bir_interface$' | tee test_after.log`.
-  The fresh build and focused interface subset passed; proof output is
-  `test_after.log`.
+- No blocker implementation proof yet. The accepted outgoing evidence is
+  `a4415f99c` with a fresh build and
+  `^backend_lir_to_bir_interface$` pass for 773 Step 1 only.

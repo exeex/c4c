@@ -84,3 +84,33 @@ non-goal.
   blocker.
 - Reject focused-positive-only acceptance without malformed rejection coverage
   and a fresh build-backed printer/lowering proof.
+
+## Resumption Record
+
+Status: Interrupted by separately scoped active blocker
+`ideas/open/774_raw_bir_gep_function_label_address_base.md`.
+
+- Last accepted progress: Step 1, `Specify and verify the typed
+  direct-label-address GEP base`, is accepted in `a4415f99c`
+  (`lir: verify direct label constants as GEP bases`). It admitted only the
+  current-function typed `DirectConstant(LirValueId)` direct label-address
+  GEP base at the verifier boundary. Fresh build plus
+  `^backend_lir_to_bir_interface$` passed for that accepted slice.
+- Interrupted step: Step 2, `Carry the validated form through printer and
+  backend/lowering`. No Step 2 code, focused proof, or acceptance exists.
+- Blocker: Raw-BIR's `GetElementPtrSpec` / `GetElementPtrNode` schema and
+  builder encode `base` strictly as `GlobalObjectId`; the builder requires the
+  exact global array object. The verified direct label address instead resolves
+  as a current-function `ValueId` / `LabelAddressConstant`, and
+  `lir_to_bir.cpp` rejects it before lowering. Carrying this structured
+  identity therefore requires a Raw-BIR core schema/builder boundary change,
+  outside this idea's explicit non-goals and Step 2 packet.
+- Exact return point: after 774 is accepted, resume this idea at Step 2. Add
+  the printer receipt and LIR-to-BIR dispatch for the already-verified typed
+  direct label address, using the new structured Raw-BIR authority; retain
+  malformed-boundary coverage. Then execute Step 3 and hand 772 back to its
+  Step 1 structured `emit_indexed_gep` forwarding repair.
+- Remaining acceptance: printer and backend/lowering proof for this typed
+  form, followed by Step 3 fresh focused proof and the precise handoff to 772.
+  The rejected baseline remains rejected until those steps complete and 772
+  repairs its forwarding seam so `llvm_gcc_c_torture_src_pr70460_c` passes.
