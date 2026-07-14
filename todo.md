@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/759_lir_typed_ref_enum_foundation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add enum/id construction for LirTypeRef
+Current Step ID: 3
+Current Step Title: Extend the enum-first pattern to related closed-set refs
 
 ## Just Finished
 
