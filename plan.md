@@ -70,6 +70,11 @@ authority. Presentation is display only.
 - Step 7.9: explicit scalar signed i32-to-double SIToFP receipt and exact
   later double FMul use (`44f4119a2`). Do not repeat or generalize this cast
   row.
+- Step 7.10: explicit scalar unsigned i32-to-double UIToFP receipt and exact
+  later double FMul use (`4999fbc6f`). Do not repeat or generalize this cast
+  row. The focused backend/producer proof passed 2/2, the matching regression
+  guard passed with its allowed non-decreasing fixed-test count, and fresh
+  broader `^backend_` proof passed 4/4.
 
 ## Non-Goals
 
@@ -592,6 +597,48 @@ Completion check:
   `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
   2/2. The backend coverage demonstrates one verified transactional explicit
   scalar UIToFP chain; the frontend test remains the producer-authority
+  regression neighbor.
+
+Accepted in `4999fbc6f`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional explicit scalar unsigned i32-to-double UIToFP
+chain. The matching regression guard passed with its allowed non-decreasing
+fixed-test count, and fresh broader `^backend_` proof passed 4/4.
+
+### Step 7.11 - Receive the checked explicit scalar FPToSI result
+
+Goal: receive only the authority-matrix Step-7.11 explicit nonpointer,
+nonvector scalar double-to-signed-i32 `LirCastOp::FPToSI` and its exact later
+i32 Add use. Do not generalize floating-to-integer casts.
+
+Primary targets:
+
+- typed Raw-BIR FPToSI payload, builder/view, and reachable verifier
+- LIR-to-Raw-BIR cast dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified explicit scalar `LirCastOp{result: valid
+  current-function LirValueId, operand: exact admitted double FAdd result ID,
+  kind: FPToSI, from_type: double, to_type: i32}` to one typed Raw-BIR result,
+  preserving its exact later i32 Add use
+- require valid, unique current-function results; resolved source/result use
+  edges; exact FPToSI kind and double-to-signed-i32 endpoints; strict
+  floating-to-integer direction; instruction-result linkage; and full-module
+  rollback for missing, invalid, duplicate, cross-owner, unresolved-use,
+  wrong-kind/endpoints/direction, or malformed-linkage authority
+- prove the positive FAdd-to-FPToSI-to-Add chain plus neighboring transactional
+  failures. Require native FPToSI kind authority: signless i32 type refs do
+  not independently distinguish an FPToSI/FPToUI kind swap. Keep FPToUI,
+  SIToFP/UIToFP, FPTrunc/FPExt, pointer/bitcast/vector/complex/aggregate,
+  implicit, no-op, monostate-source, and presentation-derived casts fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional explicit
+  scalar FPToSI chain; the frontend test remains the producer-authority
   regression neighbor.
 
 ### Source completion gate (not an executor packet)
