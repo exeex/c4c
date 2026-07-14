@@ -701,6 +701,26 @@ bool integer_immediate_representable(long long value, unsigned bit_width) {
   return static_cast<unsigned long long>(value) <= maximum;
 }
 
+void verify_integer_cmp_operand_authority(const LirCmpOp& op) {
+  const auto verify_operand = [&op](const LirOperand& operand,
+                                    std::string_view field) {
+    if (!operand.has_authority() || operand.value_id()) return;
+    if (const LirIntegerImmediate* immediate = operand.integer_immediate()) {
+      const std::optional<unsigned> width = op.type_str.integer_bit_width();
+      if (!width ||
+          !integer_immediate_representable(immediate->value, *width)) {
+        fail_verify(field,
+                    "integer immediate is not representable by comparison type");
+      }
+      return;
+    }
+    fail_verify(field,
+                "authoritative integer comparison operand requires SSA or integer immediate authority");
+  };
+  verify_operand(op.lhs, "LirCmpOp.lhs");
+  verify_operand(op.rhs, "LirCmpOp.rhs");
+}
+
 void verify_direct_void_fixed_integer_immediate_call(const LirModule& mod,
                                                      const LirCallOp& call) {
   if (!is_direct_void_fixed_integer_signature_claim(call)) return;
@@ -1407,6 +1427,7 @@ void visit_modeled_value_uses(const LirInst& inst, Visitor&& visit) {
 
 void verify_function_value_ownership(const LirFunction& function) {
   std::unordered_set<uint32_t> definitions;
+  std::unordered_map<uint32_t, const LirInst*> definition_insts;
 
   const auto collect_definition = [&](const LirInst& inst) {
     const LirOperand* result = modeled_result_operand(inst);
@@ -1422,6 +1443,7 @@ void verify_function_value_ownership(const LirFunction& function) {
                   "duplicate LirValueId result authority " +
                       std::to_string(id->value));
     }
+    definition_insts.emplace(id->value, &inst);
   };
 
   for (const auto& inst : function.alloca_insts) collect_definition(inst);
@@ -1448,6 +1470,18 @@ void verify_function_value_ownership(const LirFunction& function) {
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       visit_modeled_value_uses(inst, verify_use);
+      const auto* select = std::get_if<LirSelectOp>(&inst);
+      if (!select || select->type_str.kind() != LirTypeKind::Integer) continue;
+      const LirValueId* condition_id = select->cond.value_id();
+      if (!condition_id) continue;
+      const auto definition = definition_insts.find(condition_id->value);
+      if (definition == definition_insts.end()) continue;
+      const auto* comparison = std::get_if<LirCmpOp>(definition->second);
+      if (!comparison) {
+        fail_verify("LirSelectOp.cond",
+                    "authoritative integer select condition requires a comparison result");
+      }
+      verify_integer_cmp_operand_authority(*comparison);
     }
     if (const auto* ret = std::get_if<LirRet>(&block.terminator);
         ret && ret->value_str.has_value()) {

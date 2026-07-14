@@ -3598,7 +3598,7 @@ int lir_scalar_select_result_use_identity(void) {
                   select.type_str.integer_bit_width() == 32 &&
                   select.result.value_id() && select.result.value_id()->valid() &&
                   select.cond.kind() == lir::LirOperandKind::SsaValue &&
-                  !select.cond.has_authority() &&
+                  select.cond.value_id() && select.cond.value_id()->valid() &&
                   select.true_val.integer_immediate() &&
                   select.true_val.integer_immediate()->value == 0 &&
                   select.false_val.kind() == lir::LirOperandKind::SsaValue &&
@@ -3775,9 +3775,10 @@ int lir_wide_ffs_select_trunc_identity(void) {
                   select->false_val.value_id() &&
                   *select->false_val.value_id() ==
                       *builtin_plus_one->result.value_id() &&
-                  !zero_cmp->result.has_authority() &&
+                  zero_cmp->result.value_id() &&
+                  select->cond.value_id() &&
+                  *select->cond.value_id() == *zero_cmp->result.value_id() &&
                   select->cond.kind() == lir::LirOperandKind::SsaValue &&
-                  !select->cond.has_authority() &&
                   select->false_val.kind() == lir::LirOperandKind::SsaValue,
               "wide ffs remaining internal producers should stay compatibility");
   lir::verify_module(lowered);
@@ -4093,6 +4094,179 @@ int lir_converted_literal_binary(void) {
       found_published_representable_literal,
       "normalized integer binaries should retain representable immediate authority");
   lir::verify_module(converted_literal_compatibility);
+}
+
+void test_builtin_ffs_zero_compare_select_condition_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_ffs_zero_compare_i32_source;
+long long lir_ffs_zero_compare_i64_source;
+int lir_ffs_zero_compare_i32(void) {
+  return __builtin_ffs(lir_ffs_zero_compare_i32_source);
+}
+int lir_ffs_zero_compare_i64(void) {
+  return __builtin_ffsll(lir_ffs_zero_compare_i64_source);
+}
+)c", "x86_64-linux-gnu");
+
+  struct FocusedPair {
+    lir::LirCallOp* cttz = nullptr;
+    lir::LirCmpOp* comparison = nullptr;
+    lir::LirSelectOp* select = nullptr;
+  };
+  const auto require_focused_pair = [](lir::LirModule& module,
+                                       std::string_view function_name) {
+    lir::LirFunction& focused = require_function(module, function_name);
+    FocusedPair pair;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* call = std::get_if<lir::LirCallOp>(&inst)) {
+          expect_true(pair.cttz == nullptr,
+                      "focused ffs fixture should contain one cttz call");
+          pair.cttz = call;
+        }
+        if (auto* comparison = std::get_if<lir::LirCmpOp>(&inst)) {
+          expect_true(pair.comparison == nullptr,
+                      "focused ffs fixture should contain one comparison");
+          pair.comparison = comparison;
+        }
+        if (auto* select = std::get_if<lir::LirSelectOp>(&inst)) {
+          expect_true(pair.select == nullptr,
+                      "focused ffs fixture should contain one select");
+          pair.select = select;
+        }
+      }
+    }
+    expect_true(pair.cttz && pair.comparison && pair.select,
+                "focused ffs fixture should contain cttz/compare/select");
+    return pair;
+  };
+
+  FocusedPair i32 =
+      require_focused_pair(lowered, "lir_ffs_zero_compare_i32");
+  FocusedPair i64 =
+      require_focused_pair(lowered, "lir_ffs_zero_compare_i64");
+  const auto expect_width_contract = [](const FocusedPair& pair,
+                                        unsigned width) {
+    expect_true(
+        !pair.cttz->result.has_authority() &&
+            pair.comparison->result.value_id() &&
+            pair.comparison->result.value_id()->valid() &&
+            !pair.comparison->is_float &&
+            pair.comparison->predicate.typed() == lir::LirCmpPredicate::Eq &&
+            pair.comparison->type_str.kind() == lir::LirTypeKind::Integer &&
+            pair.comparison->type_str.integer_bit_width() == width &&
+            pair.comparison->lhs.kind() == lir::LirOperandKind::SsaValue &&
+            !pair.comparison->lhs.has_authority() &&
+            pair.comparison->rhs.integer_immediate() &&
+            pair.comparison->rhs.integer_immediate()->value == 0 &&
+            pair.select->cond.value_id() &&
+            *pair.select->cond.value_id() ==
+                *pair.comparison->result.value_id(),
+        "ffs zero comparison should preserve Eq/type/zero authority into select");
+  };
+  expect_width_contract(i32, 32);
+  expect_width_contract(i64, 64);
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  FocusedPair misleading_i32 =
+      require_focused_pair(misleading, "lir_ffs_zero_compare_i32");
+  FocusedPair misleading_i64 =
+      require_focused_pair(misleading, "lir_ffs_zero_compare_i64");
+  misleading_i32.comparison->result.str() = "@rendered-not-zero-compare";
+  misleading_i32.select->cond.str() = "7";
+  misleading_i64.comparison->result.str() = "8";
+  misleading_i64.select->cond.str() = "@rendered-not-select-condition";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_pair(invalid_result, "lir_ffs_zero_compare_i32")
+      .comparison->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid ffs comparison result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  FocusedPair duplicate =
+      require_focused_pair(duplicate_result, "lir_ffs_zero_compare_i32");
+  duplicate.select->result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate.comparison->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate ffs comparison result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_pair(unknown_use, "lir_ffs_zero_compare_i32")
+      .select->cond = lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown ffs select condition ID");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("ffs_comparison_owner", lir::LirValueId{99}));
+  require_focused_pair(cross_function_use, "lir_ffs_zero_compare_i64")
+      .select->cond = lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function ffs select condition ID");
+
+  lir::LirModule invalid_predicate = lowered;
+  require_focused_pair(invalid_predicate, "lir_ffs_zero_compare_i32")
+      .comparison->predicate = lir::LirCmpPredicateRef("not-a-predicate");
+  expect_identity_verification_rejected(
+      invalid_predicate, "verifier should reject invalid ffs comparison predicate");
+
+  lir::LirModule conflicting_predicate = lowered;
+  require_focused_pair(conflicting_predicate, "lir_ffs_zero_compare_i32")
+      .comparison->predicate =
+      lir::LirCmpPredicateRef(lir::LirCmpPredicate::OEq);
+  expect_identity_verification_rejected(
+      conflicting_predicate,
+      "verifier should reject floating predicate on integer ffs comparison");
+
+  lir::LirModule conflicting_mode = lowered;
+  require_focused_pair(conflicting_mode, "lir_ffs_zero_compare_i64")
+      .comparison->is_float = true;
+  expect_identity_verification_rejected(
+      conflicting_mode,
+      "verifier should reject floating mode on integer ffs comparison");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_pair(missing_type, "lir_ffs_zero_compare_i64")
+      .comparison->type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type, "verifier should reject missing ffs comparison type");
+
+  lir::LirModule conflicting_type = lowered;
+  require_focused_pair(conflicting_type, "lir_ffs_zero_compare_i64")
+      .comparison->type_str = lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      conflicting_type, "verifier should reject floating ffs comparison type");
+
+  lir::LirModule wrong_argument_authority = lowered;
+  require_focused_pair(wrong_argument_authority, "lir_ffs_zero_compare_i32")
+      .comparison->lhs =
+      lir::LirOperand::global("@not-an-integer", c4c::LinkNameId{99});
+  expect_identity_verification_rejected(
+      wrong_argument_authority,
+      "verifier should reject noninteger authority for ffs comparison argument");
+
+  lir::LirModule wrong_zero_authority = lowered;
+  require_focused_pair(wrong_zero_authority, "lir_ffs_zero_compare_i32")
+      .comparison->rhs =
+      lir::LirOperand::global("@not-zero", c4c::LinkNameId{99});
+  expect_identity_verification_rejected(
+      wrong_zero_authority,
+      "verifier should reject noninteger authority for ffs comparison zero");
+
+  lir::LirModule unrepresentable_zero = lowered;
+  require_focused_pair(unrepresentable_zero, "lir_ffs_zero_compare_i32")
+      .comparison->rhs =
+      lir::LirOperand::integer("1099511627776", 1LL << 40);
+  expect_identity_verification_rejected(
+      unrepresentable_zero,
+      "verifier should reject unrepresentable ffs comparison immediate");
 }
 
 void test_scalar_abs_result_use_identity_boundary() {
@@ -4659,6 +4833,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_select_result_use_identity_boundary();
   test_wide_ffs_select_trunc_result_use_identity_boundary();
   test_builtin_ffs_plus_one_select_use_identity_boundary();
+  test_builtin_ffs_zero_compare_select_condition_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
