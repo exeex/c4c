@@ -8,37 +8,31 @@ Current Step Title: Implement native representation and lowering consumption
 
 ## Just Finished
 
-- Step 1 selected the function-owned non-instruction
-  `LirDirectLabelAddressConstant`: enclosing `LinkNameId`, `LirBlockId` target,
-  pointer `LirTypeRef`, and produced `LirValueId`. Its only direct use is
-  `LirOperandKind::DirectConstant`; the printer resolves it only in legal
-  direct operand contexts. The bounded passage is Raw-BIR
-  `ConstantPayload { BlockId target }`, builder definition, foundation
-  verification, importer pre-registration/mapped-target definition before
-  terminator lowering, then existing `IndirectJumpTerm ValueId` consumption.
+- Step 2 implemented the function-owned non-instruction
+  `LirDirectLabelAddressConstant`, its identity-only direct operand and legal
+  indirect-branch printer resolution, plus Raw-BIR label-address payload,
+  builder definition, verifier ownership/type checks, and importer
+  pre-registration/definition before terminator lowering. Existing
+  `IndirectJumpTerm` consumption remains through the source-value map. Focused
+  coverage admits the direct route and rejects invalid, duplicate, nonpointer,
+  invalid-owner, foreign-target, and mismatched direct-use/address cases.
 
 ## Suggested Next
 
-- Implement only the selected LIR direct-constant record/value use, legal
-  direct printer emission, and the minimal Raw-BIR/builder/verifier/importer
-  passage. Reject invalid/missing/duplicate values, non-pointer types,
-  invalid/foreign owner or target, and mismatched direct-use identity or
-  non-pointer address. Preserve `IndirectJumpTerm ValueId` consumption.
+- Supervisor to select the next bounded Step 770 packet; this packet does not
+  expand into producer lowering, legacy BIR, preparation/MIR/codegen, or other
+  label-address families.
 
 ## Watchouts
 
-- LLVM 19 does not accept `%x = blockaddress(...)` as an instruction. Do not
-  use `select`, `gep`, `bitcast`, text recovery, or dummy results. Do not touch
-  `scalar.cpp`, legacy BIR, preparation, MIR, codegen, carrier publication,
-  768 producer recovery, 764, external cases, table decay, or 767/769. The
-  selected Raw-BIR/importer passage is the sole exception; stop for a separate
-  blocker before any broader backend work.
+- LLVM 19 does not accept `%x = blockaddress(...)` as an instruction. This
+  packet stays a function-owned constant route; do not broaden into synthetic
+  bridges, producer lowering, legacy BIR, preparation/MIR/codegen, or carrier
+  publication.
 
 ## Proof
 
-- Lifecycle evidence: `a89f5f4c6` rejects the synthetic bridge; prior 768
-  progress and accepted prerequisite references are preserved in its resumption
-  record. The focused proof is the `backend_lir_to_bir_interface` fixture with
-  direct positive and malformed coverage. Exact narrow command selection awaits
-  the supervisor; do not assign it to the executor. No regression logs change
-  for this packet.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_lir_to_bir_interface$' >
+  /tmp/native_label_address_step2.log`. The supervisor-selected focused proof
+  is sufficient for this bounded packet; log: `/tmp/native_label_address_step2.log`.

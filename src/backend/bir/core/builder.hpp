@@ -321,6 +321,8 @@ class FunctionBuilder {
                                                std::int64_t exact_value);
   Result<void, BuildError> define_float_constant_bits(ValueId value,
                                                       std::uint64_t exact_bits);
+  Result<void, BuildError> define_label_address_constant(ValueId value,
+                                                         BlockId target);
   Result<BlockId, BuildError> create_block(std::string debug_name = {});
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, StoreSpec spec);

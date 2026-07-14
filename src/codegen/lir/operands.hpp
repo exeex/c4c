@@ -18,6 +18,7 @@ namespace c4c::codegen::lir {
 
 enum class LirOperandKind : unsigned char {
   SsaValue,
+  DirectConstant,
   Global,
   Label,
   Immediate,
@@ -58,6 +59,13 @@ class LirOperand {
 
   [[nodiscard]] static LirOperand ssa(std::string display, LirValueId id) {
     return LirOperand(std::move(display), LirOperandKind::SsaValue, id);
+  }
+
+  // A function-owned non-instruction constant.  Its display spelling is
+  // deliberately not authoritative: legal consumers resolve the value ID
+  // through the enclosing function's direct-constant table.
+  [[nodiscard]] static LirOperand direct_constant(LirValueId id) {
+    return LirOperand({}, LirOperandKind::DirectConstant, id);
   }
 
   [[nodiscard]] static LirOperand global(std::string display, LinkNameId id) {

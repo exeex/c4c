@@ -83,8 +83,29 @@ std::string_view render_ext_attr(LirExtAttr attr) {
 }
 
 // Render a single LirInst to text.
-void render_inst(std::ostringstream& os, const LirInst& inst,
-                 const c4c::LinkNameTable& link_names) {
+std::string resolve_direct_label_address(const LirFunction& function,
+                                         const LirOperand& operand,
+                                         const c4c::LinkNameTable& link_names) {
+  const auto* value = operand.value_id();
+  if (operand.kind() != LirOperandKind::DirectConstant || !value) return {};
+  const auto constant = std::find_if(
+      function.direct_label_address_constants.begin(),
+      function.direct_label_address_constants.end(), [&](const auto& item) {
+        return item.value == *value;
+      });
+  if (constant == function.direct_label_address_constants.end()) return {};
+  const auto block = std::find_if(function.blocks.begin(), function.blocks.end(),
+                                  [&](const auto& item) {
+                                    return item.id == constant->target;
+                                  });
+  const std::string_view owner = resolve_link_name(link_names, constant->owner);
+  if (block == function.blocks.end() || owner.empty()) return {};
+  return "blockaddress(" + llvm_global_sym(std::string(owner)) + ", %" +
+         block->label + ")";
+}
+
+void render_inst(std::ostringstream& os, const LirFunction& function,
+                 const LirInst& inst, const c4c::LinkNameTable& link_names) {
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
     const auto& result =
         require_operand_kind(op->result, "LirAllocaOp.result",
@@ -190,9 +211,12 @@ void render_inst(std::ostringstream& os, const LirInst& inst,
                                 LirOperandKind::SpecialToken})
        << ", i1 true)\n";
   } else if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
+    const std::string direct = resolve_direct_label_address(function, op->addr,
+                                                            link_names);
     os << "  indirectbr ptr "
-       << require_operand_kind(op->addr, "LirIndirectBrOp.addr",
+       << (direct.empty() ? require_operand_kind(op->addr, "LirIndirectBrOp.addr",
                                {LirOperandKind::SsaValue, LirOperandKind::Global})
+                          : direct)
        << ", [";
     for (size_t i = 0; i < op->targets.size(); ++i) {
       if (i) os << ", ";
@@ -519,9 +543,9 @@ std::string render_fn(const LirFunction& f, std::string_view resolved_name,
     fout << blk.label << ":\n";
     // Alloca instructions are hoisted to the start of the entry block.
     if (i == 0) {
-      for (const auto& inst : f.alloca_insts) render_inst(fout, inst, link_names);
+      for (const auto& inst : f.alloca_insts) render_inst(fout, f, inst, link_names);
     }
-    for (const auto& inst : blk.insts) render_inst(fout, inst, link_names);
+    for (const auto& inst : blk.insts) render_inst(fout, f, inst, link_names);
     render_terminator(fout, blk.terminator);
   }
   fout << "}\n\n";

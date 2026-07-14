@@ -1954,6 +1954,21 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify("LirIndirectBrOp.addr",
                   "display mirror must match the address-selected value definition");
     }
+    if (op.addr.kind() == LirOperandKind::DirectConstant) {
+      if (!op.addr.value_id() || *op.addr.value_id() != *op.addr_value) {
+        fail_verify("LirIndirectBrOp.addr",
+                    "direct constant use must match addr_value identity");
+      }
+      const auto direct = std::find_if(
+          function.direct_label_address_constants.begin(),
+          function.direct_label_address_constants.end(), [&](const auto& item) {
+            return item.value == *op.addr_value;
+          });
+      if (direct == function.direct_label_address_constants.end()) {
+        fail_verify("LirIndirectBrOp.addr",
+                    "direct constant use must resolve in the enclosing function");
+      }
+    }
   };
   for (const auto& block : function.blocks) {
     if (const auto* branch = std::get_if<LirCondBr>(&block.terminator)) {

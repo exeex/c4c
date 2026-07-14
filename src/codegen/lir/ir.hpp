@@ -93,6 +93,16 @@ struct LirConstFloat {
   double value = 0.0;
 };
 
+// LLVM label addresses are constants, not instructions.  Keep them owned by
+// the enclosing function because both their target block and value identity are
+// function-local.
+struct LirDirectLabelAddressConstant {
+  LinkNameId owner = kInvalidLinkName;
+  LirBlockId target = LirBlockId::invalid();
+  LirTypeRef type = LirTypeRef(LirBuiltinType::Pointer);
+  LirValueId value = LirValueId::invalid();
+};
+
 struct LirLoad {
   LirValueId result{};
   TypeSpec type{};
@@ -690,6 +700,7 @@ struct LirFunction {
   std::optional<LirTypeRef> signature_return_type_ref;
   std::vector<LirTypeRef> signature_param_type_refs;
   std::vector<LirBlock> blocks;
+  std::vector<LirDirectLabelAddressConstant> direct_label_address_constants;
   std::vector<LirStackObject> stack_objects;
   LirBlockId entry{};
 

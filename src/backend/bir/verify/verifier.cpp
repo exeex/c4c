@@ -193,10 +193,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              "constant identity, type, and payload must be well formed");
       continue;
     }
-    if (std::holds_alternative<IntegerConstant>(constant.payload) !=
-            integer_type(constant.type) ||
-        std::holds_alternative<FloatingConstant>(constant.payload) !=
-            floating_type(constant.type))
+    if ((std::holds_alternative<IntegerConstant>(constant.payload) !=
+             integer_type(constant.type)) ||
+        (std::holds_alternative<FloatingConstant>(constant.payload) !=
+             floating_type(constant.type)) ||
+        (std::holds_alternative<LabelAddressConstant>(constant.payload) &&
+             constant.type.kind != TypeKind::Pointer))
       report(result, VerificationRule::ConstantDefinition, {}, id,
              "constant payload alternative must match its exact type domain");
   }
@@ -1197,6 +1199,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                  value_id,
                  "constant value definition must resolve with its exact type");
         } else {
+          if (const auto* label = std::get_if<LabelAddressConstant>(
+                  &module.constants_[constant->constant.slot].payload);
+              label && (label->target.owner != function_id ||
+                        !function.blocks_.contains(function_id, label->target)))
+            report(result, VerificationRule::ConstantDefinition, function_id,
+                   value_id, "label-address constant target must resolve locally");
           ++constant_references[constant->constant];
         }
       }

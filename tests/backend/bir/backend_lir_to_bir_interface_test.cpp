@@ -3465,6 +3465,68 @@ void test_indirect_branch_terminator_receipt_and_rejections() {
          "foreign indirect target authority must publish neither Raw nor Canonical BIR");
 }
 
+void test_direct_label_address_constant_receipt_and_rejections() {
+  auto direct_module = [] {
+    auto module = selected_global_array_gep_module();
+    auto& function = module.functions.front();
+    function.link_name_id = module.link_names.intern("direct_label_owner");
+    function.direct_label_address_constants.push_back(
+        {function.link_name_id, lir::LirBlockId{1}, lir::LirTypeRef("ptr"),
+         lir::LirValueId{63}});
+    function.blocks[0].insts.push_back(lir::LirIndirectBrOp{
+        lir::LirOperand::direct_constant(lir::LirValueId{63}), lir::LirValueId{63},
+        {"target"}, {lir::LirBlockId{1}}});
+    function.blocks[0].terminator = lir::LirUnreachable{};
+    function.blocks.push_back(return_block(1, "target"));
+    return module;
+  };
+  const auto module = direct_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "direct label-address constant must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_id = view.functions()[0];
+  const auto function = view.function(function_id).value();
+  const auto term = function.terminator(function.blocks()[0]);
+  const auto* indirect = term ? std::get_if<bir::IndirectJumpTerm>(&term.value()) : nullptr;
+  expect(indirect && indirect->address ==
+                         function.source_value(bir::SourceValueId{function_id, 63}).value(),
+         "existing indirect jump must consume the direct label-address source value");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = direct_module();
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value() &&
+               !bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message);
+  };
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].value = lir::LirValueId::invalid();
+  }, "invalid direct label-address value must reject");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants.clear();
+  }, "missing direct label-address definition must reject");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants.push_back(
+        candidate.functions[0].direct_label_address_constants[0]);
+  }, "duplicate direct label-address value must reject");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].type = lir::LirTypeRef::integer(32);
+  }, "nonpointer direct label-address type must reject");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].owner = c4c::kInvalidLinkName;
+  }, "invalid direct label-address owner must reject");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions.push_back(void_definition("foreign_label_owner",
+                                                   {return_block(999, "foreign_target")}));
+    candidate.functions[0].direct_label_address_constants[0].target = lir::LirBlockId{999};
+  }, "foreign direct label-address target must reject");
+  rejected([](lir::LirModule& candidate) {
+    auto& op = std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back());
+    op.addr = lir::LirOperand::direct_constant(lir::LirValueId{61});
+  }, "mismatched direct use and address identity must reject");
+}
+
 void test_typed_computed_goto_receipt_and_rejections() {
   auto computed_goto_module = [] {
     auto module = selected_global_array_gep_module();
@@ -11590,6 +11652,7 @@ int main() {
   test_direct_global_integer_load_rejections();
   test_selected_global_array_gep_receipt();
   test_indirect_branch_terminator_receipt_and_rejections();
+  test_direct_label_address_constant_receipt_and_rejections();
   test_typed_computed_goto_receipt_and_rejections();
   test_switch_terminator_receipt_and_rejections();
   test_conditional_branch_terminator_receipt_and_rejections();

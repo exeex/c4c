@@ -33,7 +33,12 @@ struct FloatingConstant {
   std::uint64_t bits = 0;
 };
 
-using ConstantPayload = std::variant<IntegerConstant, FloatingConstant>;
+struct LabelAddressConstant {
+  BlockId target{};
+};
+
+using ConstantPayload = std::variant<IntegerConstant, FloatingConstant,
+                                     LabelAddressConstant>;
 
 struct ConstantDefinition {
   Type type{};

@@ -2340,6 +2340,18 @@ Result<void, ImportError> validate_function(const LirModule& module,
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   block_labels_by_id.reserve(function.blocks.size());
+  for (const auto& constant : function.direct_label_address_constants) {
+    const auto type = lower_lir_type(module, constant.type);
+    const bool target_is_current = constant.target.valid() && std::any_of(
+        function.blocks.begin(), function.blocks.end(), [&](const LirBlock& block) {
+          return block.id == constant.target;
+        });
+    if (!constant.value.valid() || !type || type->kind != TypeKind::Pointer ||
+        constant.owner != function.link_name_id || !target_is_current ||
+        !source_values.emplace(constant.value.value, *type).second)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "direct label-address constant must own a unique pointer value and current-function target");
+  }
   for (const auto& block : function.blocks) {
     if (block.label.empty())
       return fail<void>(ImportErrorCode::EmptyBlockLabel, name, {},
@@ -2374,6 +2386,17 @@ Result<void, ImportError> validate_function(const LirModule& module,
           return fail<void>(ImportErrorCode::MissingBranchTarget, name,
                             block.label,
                             "LirIndirectBrOp.successors must not be empty");
+        if (indirect_br->addr.kind() == codegen::lir::LirOperandKind::DirectConstant &&
+            (!indirect_br->addr.value_id() || !indirect_br->addr_value ||
+             *indirect_br->addr.value_id() != *indirect_br->addr_value ||
+             std::none_of(function.direct_label_address_constants.begin(),
+                          function.direct_label_address_constants.end(),
+                          [&](const auto& constant) {
+                            return constant.value == *indirect_br->addr_value;
+                          })))
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "direct label-address operand must match its current-function address value");
         continue;
       }
       if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
@@ -3464,6 +3487,32 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               return Result<void, BuildError>::failure(created_block.error());
             }
             blocks.emplace(block.id.value, created_block.value());
+          }
+
+          for (const auto& constant : function.direct_label_address_constants) {
+            auto reserved = function_builder.reserve_source_value(
+                constant.value.value, *lower_lir_type(module, constant.type));
+            if (!reserved) {
+              edit_error = builder_failure(name, {}, "reserve direct label-address value",
+                                           reserved.error());
+              return Result<void, BuildError>::failure(reserved.error());
+            }
+            source_values.emplace(constant.value.value, reserved.value());
+          }
+
+          for (const LirBlock& block : function.blocks) {
+            (void)block;
+            for (const auto& constant : function.direct_label_address_constants) {
+              auto defined = function_builder.define_label_address_constant(
+                  source_values.at(constant.value.value),
+                  blocks.at(constant.target.value));
+              if (!defined) {
+                edit_error = builder_failure(name, {}, "define direct label-address constant",
+                                             defined.error());
+                return defined;
+              }
+            }
+            break;
           }
 
           for (const LirBlock& block : function.blocks) {

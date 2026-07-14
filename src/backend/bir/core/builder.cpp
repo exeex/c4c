@@ -708,6 +708,34 @@ Result<void, BuildError> FunctionBuilder::define_float_constant_bits(
   return Result<void, BuildError>::success();
 }
 
+Result<void, BuildError> FunctionBuilder::define_label_address_constant(
+    ValueId value, BlockId target) {
+  auto function = mutable_function();
+  if (!function)
+    return Result<void, BuildError>::failure(function.error());
+  if (!same_owner(function_, value) || !same_owner(function_, target))
+    return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+  auto resolved = function.value().get().values_.get_mut(function_, value);
+  if (!resolved)
+    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+  if (!function.value().get().blocks_.get(function_, target))
+    return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+  auto& definition = resolved.value().get();
+  if (definition.kind != ValueKind::Ordinary || definition.type.kind != TypeKind::Pointer)
+    return Result<void, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  if (!std::holds_alternative<UnresolvedDef>(definition.definition))
+    return Result<void, BuildError>::failure(BuildError::ValueAlreadyDefined);
+  if (parent_->data_->constants_.size() >
+      static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<void, BuildError>::failure(BuildError::StorageExhausted);
+  const ConstantId constant{parent_->data_->epoch_,
+      static_cast<SlotIndex>(parent_->data_->constants_.size())};
+  parent_->data_->constants_.push_back(
+      ConstantDefinition{definition.type, LabelAddressConstant{target}});
+  definition.definition = ConstantDef{constant};
+  return Result<void, BuildError>::success();
+}
+
 Result<BlockId, BuildError> FunctionBuilder::create_block(
     std::string debug_name) {
   auto function = mutable_function();
