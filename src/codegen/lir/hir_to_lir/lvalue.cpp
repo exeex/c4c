@@ -359,7 +359,7 @@ LirOperand StmtEmitter::emit_indexed_lval_operand(FnCtx& ctx, const IndexExpr& i
     base = emit_structured_lvalue_base_operand(ctx, idx.base, obj_ts);
     base_ts = obj_ts;
   } else {
-    base = LirOperand::raw(emit_rval_id(ctx, idx.base, base_ts));
+    base = emit_rval_operand(ctx, idx.base, base_ts);
   }
   TypeSpec ix_ts{};
   LirOperand ix = emit_rval_operand(ctx, idx.index, ix_ts);
@@ -960,6 +960,8 @@ LirOperand StmtEmitter::emit_indexed_gep(FnCtx& ctx, const LirOperand& base_ptr,
                                          StructNameId elem_structured_name_id) {
   const bool supported_base =
       (base_ptr.kind() == LirOperandKind::SsaValue && base_ptr.value_id() &&
+       base_ptr.value_id()->valid()) ||
+      (base_ptr.kind() == LirOperandKind::DirectConstant && base_ptr.value_id() &&
        base_ptr.value_id()->valid()) ||
       (base_ptr.kind() == LirOperandKind::Global && base_ptr.link_name_id() &&
        *base_ptr.link_name_id() != kInvalidLinkName);

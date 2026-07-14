@@ -8,29 +8,31 @@ Current Step Title: Trace and repair the production GEP pointer authority loss
 
 ## Just Finished
 
-- 773 is closed as capability complete: `a4415f99c` accepted verifier
-  admission, `c64b78c48`/`97121c359` supplied typed Raw-BIR authority, and
-  `0d0f0725b` completed table-backed printer and typed lowering. Its fresh
-  build, exact `^backend_` proof (5/5), and matching monotonic guard are
-  accepted. 772 now resumes at its preserved Step 1 forwarding repair.
+- Plan Step 1 complete: `emit_indexed_lval_operand` now preserves the
+  `DirectConstant(LirValueId)` returned by the label-address producer, and the
+  typed `emit_indexed_gep` overload accepts that verified base into
+  `LirGepOp.ptr` rather than falling through to text. Nearby coverage proves a
+  direct label address reaches the structured GEP with its current-function ID
+  and that a foreign direct ID is rejected. Fresh build, focused `pr70460`, and
+  both label-address probes pass.
 
 ## Suggested Next
 
-- Executor: repair only the structured `emit_indexed_gep` direct-constant
-  forwarding seam, add nearby production and malformed-authority coverage,
-  fresh-build, and make `llvm_gcc_c_torture_src_pr70460_c` pass. Do not
-  revisit 773 contracts or evaluate a new baseline first.
+- Supervisor: evaluate the Step 1 handoff and select the next lifecycle or
+  baseline-validation action; do not widen this completed forwarding packet.
 
 ## Watchouts
 
-- Use the accepted table-backed typed direct-label-address authority only. Do
-  not recover labels from text, fabricate SSA/globals, coerce to a global base,
-  widen GEP authority, or edit baseline artifacts. The rejected pr70460
-  baseline remains rejected until this step passes.
+- The repair uses only the accepted table-backed direct-label-address value ID;
+  it does not recover labels from text, fabricate SSA/globals, or modify 773
+  verifier/printer/backend contracts. `test_after.log` contains the focused
+  `pr70460` proof only; any full-suite baseline decision remains supervisor-owned.
 
 ## Proof
 
-- Required for Step 1: fresh `cmake --build --preset default`, focused
-  `llvm_gcc_c_torture_src_pr70460_c` proof, and nearby production/malformed
-  authority coverage. The supervisor, not this packet, selects and evaluates
-  any subsequent full-suite candidate.
+- Passed: fresh `cmake --build --preset default`; `ctest --test-dir build
+  --output-on-failure -R '^llvm_gcc_c_torture_src_pr70460_c$'` (captured in
+  `test_after.log`); and `ctest --test-dir build --output-on-failure -R
+  '^frontend_lir_label_address_(rvalue_probe|table_decay_probe)$'` (2/2).
+  The selected focused proof is sufficient for this packet; baseline evaluation
+  remains supervisor-owned.

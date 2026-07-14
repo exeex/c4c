@@ -89,6 +89,32 @@ c4c::codegen::lir::LirStoreOp& require_pointer_initializer_store(
       require_pointer_initializer_store(static_cast<const c4c::codegen::lir::LirFunction&>(function)));
 }
 
+const c4c::codegen::lir::LirGepOp& require_direct_label_address_gep(
+    const c4c::codegen::lir::LirFunction& function) {
+  const c4c::codegen::lir::LirGepOp* result = nullptr;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
+      if (gep != nullptr &&
+          gep->ptr.kind() == c4c::codegen::lir::LirOperandKind::DirectConstant) {
+        expect_true(result == nullptr,
+                    "fixture should have one direct-label-address indexed GEP");
+        result = gep;
+      }
+    }
+  }
+  expect_true(result != nullptr,
+              "direct label address indexing should retain structured GEP pointer authority");
+  return *result;
+}
+
+c4c::codegen::lir::LirGepOp& require_direct_label_address_gep(
+    c4c::codegen::lir::LirFunction& function) {
+  return const_cast<c4c::codegen::lir::LirGepOp&>(
+      require_direct_label_address_gep(
+          static_cast<const c4c::codegen::lir::LirFunction&>(function)));
+}
+
 }  // namespace
 
 int main() {
@@ -222,6 +248,38 @@ second:
   expect_true(direct_store_count == 2,
               "two automatic local table elements must reach generic indexed stores as direct constants");
   c4c::codegen::lir::verify_module(table_lir_module);
+
+  const c4c::hir::Module indexed_hir_module = lower_hir_module(R"c(
+int indexed_direct_label_address(void) {
+  return ((unsigned char *)&&dispatch)[0];
+dispatch:
+  return 1;
+}
+)c");
+  const c4c::codegen::lir::LirModule indexed_lir_module =
+      c4c::codegen::lir::lower(indexed_hir_module);
+  const c4c::codegen::lir::LirFunction& indexed_function =
+      require_function(indexed_lir_module, "indexed_direct_label_address");
+  const c4c::codegen::lir::LirGepOp& indexed_gep =
+      require_direct_label_address_gep(indexed_function);
+  expect_true(indexed_gep.ptr.value_id() != nullptr && indexed_gep.ptr.value_id()->valid(),
+              "direct-label-address GEP must retain its typed value identity");
+  expect_true(indexed_gep.ptr.str().empty(),
+              "direct-label-address GEP must not recover pointer authority from text");
+  expect_true(std::any_of(indexed_function.direct_label_address_constants.begin(),
+                          indexed_function.direct_label_address_constants.end(),
+                          [&](const auto& direct) {
+                            return direct.value == *indexed_gep.ptr.value_id();
+                          }),
+              "direct-label-address GEP must use a current-function direct constant");
+  c4c::codegen::lir::verify_module(indexed_lir_module);
+
+  malformed = indexed_lir_module;
+  require_direct_label_address_gep(
+      require_function(malformed, "indexed_direct_label_address")).ptr =
+      c4c::codegen::lir::LirOperand::direct_constant(c4c::codegen::lir::LirValueId{999});
+  expect_verifier_rejects(std::move(malformed),
+                          "verifier must reject a GEP with foreign direct-label-address authority");
 
   std::cout << "PASS: frontend_lir_label_address_rvalue_probe\n";
   return 0;
