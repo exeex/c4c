@@ -722,19 +722,22 @@ void verify_integer_cmp_operand_authority(const LirCmpOp& op) {
 }
 
 bool is_integer_boolean_flag_call_claim(const LirCallOp& call) {
-  return call.intrinsic_kind == LirIntrinsicKind::Cttz;
+  return call.zero_count_behavior.has_value() ||
+         call.intrinsic_kind == LirIntrinsicKind::Cttz ||
+         call.intrinsic_kind == LirIntrinsicKind::Ctlz;
 }
 
 bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
   if (!is_integer_boolean_flag_call_claim(call) ||
-      call.intrinsic_kind != LirIntrinsicKind::Cttz ||
+      (call.intrinsic_kind != LirIntrinsicKind::Cttz &&
+       call.intrinsic_kind != LirIntrinsicKind::Ctlz) ||
       !call.result.value_id() ||
       call.return_type.kind() != LirTypeKind::Integer ||
       !call.callee.link_name_id() ||
       call.direct_callee_link_name_id != *call.callee.link_name_id() ||
       !call.callee_signature.has_value() ||
       !call.callee_signature->return_type_ref.has_value() ||
-      !call.cttz_zero_behavior.has_value()) {
+      !call.zero_count_behavior.has_value()) {
     return false;
   }
   const LirCallSignature& signature = *call.callee_signature;
@@ -747,7 +750,7 @@ bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
   const LirTypeRef& integer_type = call.return_type;
   const LirTypeRef i1_type = LirTypeRef::integer(1);
   const std::int64_t expected_flag =
-      *call.cttz_zero_behavior == LirCttzZeroBehavior::Defined ? 0 : 1;
+      *call.zero_count_behavior == LirZeroCountBehavior::Defined ? 0 : 1;
   return *signature.return_type_ref == integer_type &&
          signature.fixed_param_type_refs[0] == integer_type &&
          signature.fixed_param_type_refs[1] == i1_type &&

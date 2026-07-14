@@ -27,6 +27,7 @@ FPToSI/FPToUI casts in `emit_cast_rval_operand`, plus the Step-7.13 wide
 builtin-ffs select narrowing cast, Step-7.14 shared ffs add-one result,
 Step-7.15 shared ffs zero-comparison result, and Step-7.16 shared ffs cttz call
 result, plus the Step-7.17 builtin-ctz i32/i64 cttz call and i64 narrowing
+result, plus the Step-7.18 builtin-clz i32/i64 ctlz call and i64 narrowing
 result, plus the Step-7.2 integer / Step-7.6 floating ordinary
 scalar compare branches in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
 `emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
@@ -98,9 +99,9 @@ grouped only where they share one producer and disposition.
 | `LirLoadOp`: `result,ptr`; `type_str` | Active broadly in PR/PL/PX/PC/PV/PO; CC-LOAD-1 exact producer is PR selected-global branch | CC-LOAD-1 uses `fresh_value` result + global `LinkNameId`; all local/SSA/object routes use text-only operands and `fresh_tmp` | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global | Preserve CC-LOAD-1 as **regression neighbor**. Other routes depend on local/object pointer ownership; probes per route, starting `lir_local_load_identity.c`; **separate pointer/object family** |
 | `LirStoreOp`: `val,ptr`; `type_str` | Active in PL/PX/PC/PI/PV/PS/PO and PF parameter/local setup; CC-STORE-1 exact producer is PL `emit_set_assign_value` via `integer_store_operand_after_coercion` | CC-STORE-1 has native immediate + global `LinkNameId`; other routes text-only/monostate; no result | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global integer | Preserve CC-STORE-1 as **regression neighbor**. SSA value use can share generic propagation, pointer needs object authority; `lir_local_store_identity.c`; **mixed generic/separate** |
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
-| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Steps 7.1 and 7.7-7.12 own PX explicit scalar cast routes, Step 7.13 owns PI's wide builtin-ffs select narrowing, and Step 7.17 owns only PI's builtin-ctzll result narrowing | The focused routes use `fresh_value`, exact input `LirOperand`, and the operand-returning coercion wrapper. Steps 7.13 and 7.17 reuse the integer seam for authoritative i64 sources and exact i64-to-i32 Trunc results; other builtin narrowing and cast producers remain text-only with `fresh_tmp` | Native kind and exact endpoints; authoritative integer casts require coherent widths, floating casts and conversions require exact endpoint families, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The focused scalar cast probes close the representative PX routes plus only the wide ffs select-to-Trunc-to-use and ctz call-to-Trunc-to-use chains. Pointer, bitcast, vector, aggregate, implicit coercion, other builtins, and other producers remain unclaimed |
+| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Steps 7.1 and 7.7-7.12 own PX explicit scalar cast routes, Step 7.13 owns PI's wide builtin-ffs select narrowing, and Steps 7.17/7.18 own only PI's builtin-ctzll/clzll result narrowing | The focused routes use `fresh_value`, exact input `LirOperand`, and the operand-returning coercion wrapper. Steps 7.13, 7.17, and 7.18 reuse the integer seam for authoritative i64 sources and exact i64-to-i32 Trunc results; other builtin narrowing and cast producers remain text-only with `fresh_tmp` | Native kind and exact endpoints; authoritative integer casts require coherent widths, floating casts and conversions require exact endpoint families, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The focused scalar cast probes close the representative PX routes plus only the wide ffs select-to-Trunc-to-use, ctz call-to-Trunc-to-use, and clz call-to-Trunc-to-use chains. Pointer, bitcast, vector, aggregate, implicit coercion, other builtins, and other producers remain unclaimed |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
-| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `intrinsic_kind,cttz_zero_behavior`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active in PC and PI; common builders include `make_lir_call_op_with_return_type_ref` | Structured direct integer results use `fresh_value`; fixed integer arguments use `OwnedLirTypedCallArg`. Steps 7.16/7.17 publish PI's native Cttz kind, i32/i64 ffs/ctz results, module `LinkNameId` callees, exact nonvariadic integer/i1 signatures and refs, authority-free prepared SSA/immediate presentation, semantic defined/undefined zero behavior, and exact false/true immediates | Direct integer results have exact ownership. The fixed void rows and native Cttz rows have authority-first callee/signature/type/count/ext/argument/zero-behavior validation; authoritative prepared values must be current-function SSA, while monostate literal presentation stays compatible | Steps 3-5 and 7.16-7.17 close scalar result, fixed void arguments, the ffs cttz result-to-add edge, and the ctz call-to-optional-Trunc-to-i32-use edge. Other intrinsic, indirect, variadic, ABI, aggregate, and object rows remain unclaimed; text mirrors are presentation-only |
+| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `intrinsic_kind,zero_count_behavior`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active in PC and PI; common builders include `make_lir_call_op_with_return_type_ref` | Structured direct integer results use `fresh_value`; fixed integer arguments use `OwnedLirTypedCallArg`. Steps 7.16-7.18 publish PI's native Cttz/Ctlz kinds, i32/i64 ffs/ctz/clz results, module `LinkNameId` callees, exact nonvariadic integer/i1 signatures and refs, authority-free prepared SSA/immediate presentation, semantic defined/undefined zero behavior, and exact false/true immediates | Direct integer results have exact ownership. The fixed void rows and native zero-count rows have authority-first kind/callee/signature/type/count/ext/argument/zero-behavior validation; authoritative prepared values must be current-function SSA, while monostate literal presentation stays compatible | Steps 3-5 and 7.16-7.18 close scalar result, fixed void arguments, the ffs cttz result-to-add edge, and ctz/ctlz call-to-optional-Trunc-to-i32-use edges. Other intrinsic, indirect, variadic, ABI, aggregate, and object rows remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 ordinary scalar integer, Step-7.5 ordinary scalar floating arithmetic, and Step-7.14 PI i32/i64 ffs add-one use `fresh_value`. Ordinary integer immediates retain authority only when representable by the normalized operation type; Step 7.16 supplies the exact cttz result ID as the ffs lhs, while exact immediate one and the add-one-to-select edge remain authoritative | Native opcode/type refs plus exact ownership; authoritative floating opcode/type alternatives agree, and authoritative integer operand alternatives are SSA or representable integer immediates when present. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The ordinary scalar probes plus the focused i32/i64 ffs add-one/cttz probes close only those rows. Converted modulo/bit-pattern literals remain compatibility operands. Other builtins, complex/vector, pointer/object, logical-helper, and other producers remain distinct |
 | `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Steps 7.2 and 7.6 own PB ordinary scalar integer and floating comparisons, while Step 7.15 owns PI's shared i32/i64 ffs equality-to-zero row | The PB rows use `fresh_value` and feed the result into normalization. Step 7.15 uses `fresh_value`, native Eq/exact integer type, an honest monostate prepared argument, exact immediate zero, and the result ID as the select condition. Other comparison producers remain text-only | Native mode/predicate/type authority must agree; the authoritative integer select-condition edge accepts only SSA or representable integer-immediate comparison operands when authority is present. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | Focused probes close the two PB rows and only the shared ffs zero-comparison-to-condition edge. Other builtin, pointer, vector, complex/logical-helper, vaarg, and statement producers remain unclaimed |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
@@ -662,7 +663,7 @@ has exact matching integer return/first-parameter refs and an i1 second
 parameter. Structured arguments retain the prepared value as honest monostate
 SSA or literal Immediate presentation when unavailable and publish the
 structural false flag as `LirIntegerImmediate{0}` with exact i1 type.
-`LirCttzZeroBehavior::Defined` records why that false flag is required without
+`LirZeroCountBehavior::Defined` records why that false flag is required without
 creating a second intrinsic kind.
 
 The authority-first verifier recognizes the native Cttz kind and fixed
@@ -688,7 +689,7 @@ CFG/parameters, inline assembly, and BIR remain outside this packet.
 The claimed row is only PI's i32/i64 `emit_builtin_ctz_call` route. It reuses
 the native `LirIntrinsicKind::Cttz`, module-owned intrinsic `LinkNameId`, and
 exact fixed nonvariadic integer/i1 signature from Step 7.16. A separate native
-`LirCttzZeroBehavior::Undefined` fact requires the second argument to be exact
+`LirZeroCountBehavior::Undefined` fact requires the second argument to be exact
 i1 `LirIntegerImmediate{1}`; it distinguishes ctz from ffs structurally without
 matching callee spelling or inventing another intrinsic kind. Arg0 retains the
 same honest monostate SSA or Immediate presentation compatibility boundary.
@@ -703,10 +704,35 @@ call-to-trunc or final-use IDs, wrong cast kind/endpoints, and payload authority
 invented for compatible literal input. Misleading call/callee/argument/trunc/
 use displays pass when all native IDs and semantic facts remain unchanged.
 
-Step 7.16's ffs false/defined-zero contract remains exact. Clz, popcount,
+Step 7.16's ffs false/defined-zero contract remains exact. Clz is owned by
+Step 7.18. Popcount,
 parity, all other call/narrowing producers, ABI/variadic work, pointer/vector/
 aggregate/object families, CFG/parameters, inline assembly, and BIR remain
 outside this packet.
+
+## Step-7.18 builtin-clz call/narrow/final-use contract
+
+The claimed row is only PI's i32/i64 `emit_builtin_clz_call` route. It publishes
+native `LirIntrinsicKind::Ctlz`, a module-owned intrinsic `LinkNameId`, and an
+exact fixed nonvariadic integer/i1 signature. The shared native
+`LirZeroCountBehavior::Undefined` fact requires exact i1
+`LirIntegerImmediate{1}` without matching callee spelling. Arg0 retains the
+same honest monostate SSA or Immediate presentation compatibility boundary as
+the accepted Cttz routes.
+
+The call result is allocated through `fresh_value`. The i32 route returns that
+exact operand to a later ordinary i32 Add. The i64 route allocates a fresh
+authoritative `LirCastOp` Trunc, preserves the exact call result as its source,
+requires exact i64-to-i32 endpoints, and returns the exact trunc result to the
+later Add. Reachable verification rejects missing native kind or zero behavior,
+conflicting behavior/flag authority, malformed results, unknown call-to-trunc
+or final-use IDs, wrong cast kind/endpoints, and invented literal payload
+authority. Misleading call/callee/argument/trunc/use displays pass when native
+IDs and semantic facts remain unchanged.
+
+Steps 7.16/7.17 retain their exact Cttz contracts. Popcount, parity, all other
+call/narrowing producers, ABI/variadic work, pointer/vector/aggregate/object
+families, CFG/parameters, inline assembly, and BIR remain outside this packet.
 
 ## Mechanical coverage check
 
@@ -797,6 +823,11 @@ Current-source spot checks used for this baseline:
   condition respectively;
 - representative builtin ctz narrowing: the i32 route carries its exact native
   Cttz call result directly into a later i32 Add, while the i64 route carries
+  the exact call result through a fresh exact i64-to-i32 Trunc and the exact
+  trunc result into the Add; both widths publish native undefined-zero behavior
+  and exact i1 true without relying on displays;
+- representative builtin clz narrowing: the i32 route carries its exact native
+  Ctlz call result directly into a later i32 Add, while the i64 route carries
   the exact call result through a fresh exact i64-to-i32 Trunc and the exact
   trunc result into the Add; both widths publish native undefined-zero behavior
   and exact i1 true without relying on displays;

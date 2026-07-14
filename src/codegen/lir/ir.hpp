@@ -334,9 +334,10 @@ struct LirCallArg {
 
 enum class LirIntrinsicKind : unsigned char {
   Cttz,
+  Ctlz,
 };
 
-enum class LirCttzZeroBehavior : unsigned char {
+enum class LirZeroCountBehavior : unsigned char {
   Defined,
   Undefined,
 };
@@ -355,7 +356,7 @@ struct LirCallOp {
   std::vector<LirCallArg> structured_args;  // Generated argument facts; empty for raw compatibility.
   LirExtAttr return_ext_attr = LirExtAttr::None;
   std::optional<LirIntrinsicKind> intrinsic_kind;
-  std::optional<LirCttzZeroBehavior> cttz_zero_behavior;
+  std::optional<LirZeroCountBehavior> zero_count_behavior;
 };
 
 // Typed binary arithmetic/bitwise/unary operation.
