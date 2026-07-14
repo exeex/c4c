@@ -42,6 +42,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           frontend_lir_global_type_ref_test
                           frontend_lir_global_label_address_initializer_test
                           frontend_lir_label_address_rvalue_probe_test
+                          frontend_lir_label_address_table_decay_probe_test
                           frontend_lir_function_signature_type_ref_test
                           frontend_lir_extern_decl_type_ref_test
                           frontend_lir_call_type_ref_test)
@@ -58,6 +59,7 @@ endforeach()
 target_link_libraries(frontend_lir_global_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_global_label_address_initializer_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_label_address_rvalue_probe_test PRIVATE c4c_codegen)
+target_link_libraries(frontend_lir_label_address_table_decay_probe_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_function_signature_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_extern_decl_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_call_type_ref_test PRIVATE c4c_codegen)
@@ -154,6 +156,8 @@ add_test(NAME frontend_lir_global_label_address_initializer
          COMMAND frontend_lir_global_label_address_initializer_test)
 add_test(NAME frontend_lir_label_address_rvalue_probe
          COMMAND frontend_lir_label_address_rvalue_probe_test)
+add_test(NAME frontend_lir_label_address_table_decay_probe
+         COMMAND frontend_lir_label_address_table_decay_probe_test)
 add_test(NAME frontend_lir_function_signature_type_ref
          COMMAND frontend_lir_function_signature_type_ref_test)
 add_test(NAME frontend_lir_extern_decl_type_ref
@@ -240,6 +244,7 @@ set_tests_properties(cpp_hir_value_args_residual_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(frontend_lir_global_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_label_address_rvalue_probe PROPERTIES LABELS "internal;hir;lir")
+set_tests_properties(frontend_lir_label_address_table_decay_probe PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_function_signature_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_extern_decl_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_call_type_ref PROPERTIES LABELS "internal;hir;lir")

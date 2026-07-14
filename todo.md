@@ -8,24 +8,26 @@ Current Step Title: Extract direct frontend-LIR producer probes
 
 ## Just Finished
 
-- Plan Step 3: added the focused `frontend_lir_label_address_rvalue_probe`
-  diagnostic for an automatic local scalar initialized directly by `&&label`.
-  The harness fixes the immediate structured `LirStoreOp` pointer-store seam;
-  producer authority remains incomplete and is not accepted by this probe.
+- Plan Step 3: added and registered
+  `frontend_lir_label_address_table_decay_probe` for an automatic local table
+  of label addresses consumed as a pointer before indexing. The harness fixes
+  the immediate structured `LirGepOp` table-decay seam without accepting the
+  current raw/no-ID producer result.
 
 ## Suggested Next
 
-- Select and implement a producer capability only after preserving the probe's
-  required contract: typed pointer operand with valid current-function authority,
-  plus nearby malformed invalid, foreign, and non-pointer rejection coverage.
+- Select a capability that gives the local table slot and its zero-index decay
+  GEP/result typed authority: a valid current-function pointer base, typed zero
+  indices, and nearby malformed raw, invalid, foreign, and non-pointer rejection
+  coverage.
 
 ## Watchouts
 
-- The four-case missing-`addr_value` family predates 769 and is 768 producer
-  evidence, not a global-initializer regression or a Raw-BIR/importer boundary.
-- Do not reinterpret the raw direct label-address operand observed by this probe
-  as semantic authority. The probe intentionally leaves that producer boundary
-  unasserted until a typed authority capability is selected.
+- The table-decay harness intentionally asserts only the local table slot and
+  structured GEP shape, not emitted text or the present raw/no-ID result.
+- Do not reinterpret raw label-address or decay operands as semantic authority;
+  retain malformed raw, invalid, foreign, and non-pointer rejection coverage
+  beside the selected capability.
 
 ## Proof
 
