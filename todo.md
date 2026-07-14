@@ -1,40 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
+Source Idea Path: ideas/open/770_lir_to_bir_native_label_address_constant_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Repair and prove native direct LabelAddrExpr rvalue production
+Current Step ID: 2
+Current Step Title: Implement direct-constant ordinary pointer-store consumption
 
 ## Just Finished
 
-- 770 completed the bounded native direct-constant dependency
-  (`e8a0f70b4`; proof-state `6803f8c25`) with a fresh build and passing
-  `^backend_lir_to_bir_interface$` proof. That contract preserves a direct
-  label-address constant through Raw-BIR source-value and `IndirectJumpTerm`
-  consumption. 768 Steps 1--4 remain accepted; its prior synthetic
-  `LirLabelAddrOp` bridge remains rejected.
+- Lifecycle repair reopened 770 after 768 Step 5 found that its native direct
+  constant cannot yet feed the ordinary `LirStoreOp` pointer initializer. 768
+  made no code or test edits; its Steps 1--4 remain accepted and it will return
+  to Step 5 after this bounded repair.
 
 ## Suggested Next
 
-- Step 5: repair direct frontend-LIR `LabelAddrExpr` rvalue production using
-  770's completed native direct-constant contract. Preserve typed current
-  function, target-label, and produced-value authority and run the focused
-  frontend-LIR positive/malformed proof. Do not touch the carrier, 767, 769,
-  or automatic-table `DeclRef` decay.
+- Implement only legal `LirOperandKind::DirectConstant` pointer-store value
+  rendering and matching function-owned direct-definition verification. Add
+  focused positive/malformed store-consumer coverage, then build freshly and
+  run the selected native-contract proof.
 
 ## Watchouts
 
-- No `select`, `gep`, `bitcast`, or other synthetic materialization is an
-  acceptable label-address identity bridge. Do not add a carrier change,
-  raw-text recovery, testcase-shaped routing, or reopen accepted 767/769
-  contracts. The automatic local-table `DeclRef` decay-to-`LirGepOp`
-  local-slot/two-index authority contract is not in this packet.
+- Preserve accepted `e8a0f70b4`/`6803f8c25` indirect-jump behavior. No
+  `LabelAddrExpr` producer, carrier, table-decay, 767/769, broad backend, or
+  synthetic `select`/`gep`/`bitcast` bridge work belongs here.
 
 ## Proof
 
-- Accepted evidence retained for the rejected slice: fresh targeted build and
-  focused `frontend_lir_label_address_rvalue_probe` proof passed; the matching
-  regression guard passed with `allow-non-decreasing`; and
-  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'` was 7/7
-  green. None overrides the no-synthetic-bridge scope gate.
+- Required before return: fresh build plus focused native direct-constant
+  positive/malformed proof covering ordinary pointer-store consumption and
+  malformed owner/target/value/type/direct-use boundaries. Retain the accepted
+  indirect-jump proof; do not claim 768 producer or external integration proof.

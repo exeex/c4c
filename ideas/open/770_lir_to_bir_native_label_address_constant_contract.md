@@ -1,6 +1,6 @@
 # LIR-to-BIR Native Label-Address Constant Contract
 
-Status: Complete (closed blocker for
+Status: Open (reopened in-scope repair blocker for
 `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
 Step 5)
 Type: focused LIR-to-BIR/native label-address constant representation and lowering contract
@@ -37,9 +37,10 @@ here.
   the enclosing-function and target-label identity plus the produced
   `LirValueId` needed by the direct `LabelAddrExpr` producer.
 - Define the exact LIR-to-BIR lowering/consumption contract that preserves that
-  identity as a pointer value suitable for `LirIndirectBrOp.addr_value` and
-  `IndirectJumpTerm` consumption, without requiring an instruction-shaped SSA
-  bridge.
+  identity as a pointer value suitable for legal direct pointer consumers,
+  including `LirIndirectBrOp.addr_value`/`IndirectJumpTerm` and the ordinary
+  `LirStoreOp` pointer initializer value operand, without requiring an
+  instruction-shaped SSA bridge.
 - Implement only the representation and lowering surfaces demonstrably needed
   for that contract, including the minimal Raw-BIR/importer passage only where
   it is indispensable to carry this one native constant, and matching
@@ -73,8 +74,9 @@ here.
   from an instruction result while preserving its function, target label, and
   produced `LirValueId` authority.
 - LIR-to-BIR lowering preserves that native constant as an identity-bearing
-  pointer value that an indirect jump can consume; it does not require LLVM to
-  parse `blockaddress` as an opcode or manufacture an SSA bridge.
+  pointer value that an indirect jump and ordinary pointer store can consume;
+  it does not require LLVM to parse `blockaddress` as an opcode or manufacture
+  an SSA bridge.
 - Direct focused positive and malformed proofs cover the owned contract; a
   malformed authority or pointer-use form is rejected at the selected boundary.
 - The result names whether any Raw-BIR/importer/backend work remains beyond
@@ -121,3 +123,30 @@ Return: resume
 at Step 5 — Repair and prove native direct `LabelAddrExpr` rvalue production.
 Its Steps 1--4 remain accepted; replace only the rejected synthetic bridge
 using this completed native direct-constant contract.
+
+## Reopen Record — 2026-07-14 Ordinary Pointer-Store Consumer Gap
+
+Disposition: reopen this source as an **in-scope contract repair**, not a new
+blocker. The completed contract expressly supplies the `LirValueId` required
+by 768's direct `LabelAddrExpr` producer, so its legal ordinary pointer-store
+consumer is part of the same native direct-constant representation/lowering
+promise. The first implementation/proof only demonstrated direct
+constant -> Raw-BIR source value -> `IndirectJumpTerm` consumption.
+
+- New boundary evidence: 768 Step 5 needs
+  `LirOperandKind::DirectConstant` as `LirStoreOp.val`. The LIR printer's store
+  value operand does not admit that kind, and generic function value-use
+  verification requires its ID to name an instruction definition even though
+  this representation is function-owned and non-instruction.
+- Remaining owned repair: admit and render the structured direct constant in
+  the ordinary pointer-store value operand; make value-use verification
+  recognize its valid function-owned direct definition; and add focused
+  positive/malformed coverage for the store route. Preserve all first-closure
+  direct indirect-jump evidence.
+- Boundaries: no 768 producer recovery, carrier publication, external cases,
+  automatic-table decay, 767/769, scalar/broad backend redesign, or synthetic
+  instruction/value bridge. A need beyond legal direct-constant ordinary store
+  consumption is a separately scoped blocker.
+- Return: after fresh build and focused positive/malformed store-consumer
+  proof accept this repair, return to 768 Step 5 and retry its producer/test
+  packet unchanged.

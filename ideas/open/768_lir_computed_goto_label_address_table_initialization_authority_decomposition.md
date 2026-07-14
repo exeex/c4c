@@ -189,3 +189,36 @@ consumption decomposition, not a monolithic integration or carrier route.
   contract; retain the focused frontend-LIR positive/malformed proof
   obligation. Do not claim carrier publication, external integration, or
   automatic-table `DeclRef` decay.
+
+## Resumption Record — 2026-07-14 Native Constant Store-Consumer Repair
+
+- Last accepted progress: Steps 1--4 remain complete, with the same commit
+  references and accepted prerequisite boundaries recorded above. Step 5 made
+  no implementation or test edits after 770's first closure.
+- Interrupted step: Step 5 — Repair and prove native direct `LabelAddrExpr`
+  rvalue production.
+- Blocker and scope boundary: the resumed producer emits its native
+  `LirOperandKind::DirectConstant` into the ordinary `LirStoreOp` pointer
+  initializer consumer. The first 770 contract proved that constant only in
+  its direct Raw-BIR source-value to `IndirectJumpTerm` route. In the ordinary
+  store route, `LirStoreOp` printer operand admission excludes
+  `DirectConstant`, and function value-use verification accepts only an
+  instruction definition for the constant's `LirValueId`. This is not a 768
+  producer repair: legal direct-constant consumption and the corresponding
+  validation belong to the native-constant contract.
+- Successor/repair route: 770 is reopened under
+  `ideas/open/770_lir_to_bir_native_label_address_constant_contract.md` for
+  one bounded repair: permit the structured native direct label-address
+  constant in the ordinary pointer-store value operand, render it as a legal
+  direct `blockaddress(...)` constant, and validate its function-owned direct
+  definition rather than requiring an instruction definition. It must prove
+  this store-consumer route and malformed direct-constant authority/use forms;
+  it must not change producer recovery, carrier publication, table decay, or
+  broad lowering.
+- Exact return point: after the reopened 770 repair accepts native direct
+  constant use in the pointer-store consumer, resume this idea at **Step 5 —
+  Repair and prove native direct `LabelAddrExpr` rvalue production**. Retry
+  that producer/test packet without redoing Steps 1--4. Preserve the typed
+  current-function, target-label, and produced-value authority; then run the
+  selected frontend-LIR positive/malformed proof. Do not alter carrier
+  behavior, automatic-table `DeclRef` decay, or accepted 767/769 contracts.
