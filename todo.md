@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.30
-Current Step Title: Publish direct scalar x86_fp80 call-result authority
+Current Step ID: 7.31
+Current Step Title: Publish direct scalar fp128 call-result authority on AArch64
 
 ## Just Finished
 
@@ -20,20 +20,23 @@ Current Step Title: Publish direct scalar x86_fp80 call-result authority
 
 ## Suggested Next
 
-- Supervisor: select the next bounded active-plan packet; this packet does not
-  broaden direct call-result authority beyond the demonstrated native
-  zero-argument x86_fp80 row.
+- Bounded packet 7.31: on the AArch64 target, preserve the native `fp128`
+  result of one direct, fixed, nonvariadic, zero-argument scalar `long double`
+  call into a same-type ordinary FAdd. Keep the existing direct scalar
+  call-result producer/verifier seam; do not broaden the source contract.
 
 ## Watchouts
 
-- The completed x86_fp80 row excludes call arguments, indirect, variadic, and
+- Packet 7.31 excludes call arguments, indirect or variadic calls,
   ABI-expanded calls, conversions, other floating operations, BIR, and every
   separate family. Native IDs and type refs, never rendered spelling, govern
-  the route; no new cross-operation type-provenance carrier was introduced.
+  the route; no new cross-operation type-provenance carrier is authorized.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -R
-  '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log 2>&1`.
-  The focused test log is `test_after.log`.
-- Also passed: `git diff --check`.
+- Source boundary: the AArch64 direct, fixed, nonvariadic, zero-argument
+  scalar `long double` call-result row only; its actual native LIR return must
+  be `fp128` and its consumer a same-type ordinary FAdd.
+- Required packet proof: a fresh build plus the narrow focused call type-ref
+  coverage, including malformed native-authority and display-independence
+  checks for the fp128 row; retain `git diff --check`.
