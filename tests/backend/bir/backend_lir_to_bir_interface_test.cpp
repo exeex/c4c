@@ -9973,6 +9973,79 @@ void test_selected_global_i32_slt_compare_receipt_and_rejections() {
          "the following monostate ZExt must remain unsupported transactionally (Canonical rollback)");
 }
 
+lir::LirModule mixed_accepted_row_dispatcher_module() {
+  auto module = normalized_i32_add_module();
+  auto& function = module.functions[0];
+  function.return_type = scalar_type(c4c::TB_LONGLONG);
+  function.return_type.inner_rank = -1;
+  function.signature_return_type_ref = lir::LirTypeRef::integer(64);
+  auto& block = function.blocks[0];
+  block.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%mixed-sext", lir::LirValueId{34}),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = lir::LirTypeRef::integer(32),
+      .operand = lir::LirOperand::ssa("%mixed-add", lir::LirValueId{33}),
+      .to_type = lir::LirTypeRef::integer(64),
+  });
+  block.insts.push_back(lir::LirCmpOp{
+      lir::LirOperand::ssa("%mixed-slt", lir::LirValueId{35}),
+      false, lir::LirCmpPredicate::Slt, lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%mixed-load", lir::LirValueId{31}),
+      lir::LirOperand::integer("mixed-seven", 7)});
+  block.terminator = lir::LirRet{
+      lir::LirOperand::ssa("%mixed-return", lir::LirValueId{34}),
+      lir::LirTypeRef::integer(64)};
+  return module;
+}
+
+void test_mixed_accepted_row_dispatcher_transactionality() {
+  const auto module = mixed_accepted_row_dispatcher_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "mixed accepted Load/Add/SExt/SLT rows must publish verified Raw BIR");
+
+  const auto view = raw.value().view();
+  const auto function_id = view.functions()[0];
+  const auto function = view.function(function_id).value();
+  const auto instructions = function.instructions(function.blocks()[0]).value();
+  const auto load = function.instruction(instructions[0]).value();
+  const auto add = function.instruction(instructions[1]).value();
+  const auto sext = function.instruction(instructions[2]).value();
+  const auto compare = function.instruction(instructions[3]).value();
+  const auto terminator = function.terminator(function.blocks()[0]).value();
+  const auto* returned = std::get_if<bir::ReturnTerm>(&terminator);
+  expect(instructions.size() == 4 && load.load() && add.binary() &&
+             add.binary()->opcode == bir::BinaryOpcode::Add &&
+             add.binary()->type == bir::Type{bir::TypeKind::I32} &&
+             add.operands().size() == 2 && add.operands()[0] == load.results()[0] &&
+             sext.cast() && sext.cast()->kind == bir::CastKind::SExt &&
+             sext.cast()->from_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             sext.cast()->to_type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+             sext.operands() == std::vector<bir::ValueId>{add.results()[0]} &&
+             compare.compare() &&
+             compare.compare()->predicate == bir::ComparePredicate::Slt &&
+             compare.compare()->type == bir::Type{bir::TypeKind::I32} &&
+             compare.operands().size() == 2 && compare.operands()[0] == load.results()[0] &&
+             function.value(compare.operands()[1]).value().type == bir::Type{bir::TypeKind::I32} &&
+             function.value(add.results()[0]).value().source_id ==
+                 bir::SourceValueId{function_id, 33} &&
+             function.value(sext.results()[0]).value().source_id ==
+                 bir::SourceValueId{function_id, 34} &&
+             function.value(compare.results()[0]).value().source_id ==
+                 bir::SourceValueId{function_id, 35} && returned && returned->value &&
+             *returned->value == sext.results()[0],
+         "mixed dispatcher receipt must retain typed source-order and result-use authority");
+
+  auto malformed_final_compare = mixed_accepted_row_dispatcher_module();
+  auto& compare_authority = std::get<lir::LirCmpOp>(
+      malformed_final_compare.functions[0].blocks[0].insts[3]);
+  compare_authority.predicate = lir::LirCmpPredicate::Eq;
+  const auto rejected = bir::lower_lir_to_raw_bir(malformed_final_compare);
+  expect(!rejected.has_value() && rejected.error().code ==
+             bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+         "a malformed final admitted compare must reject the whole mixed module without Raw-BIR publication");
+}
+
 }  // namespace
 
 int main() {
@@ -10051,5 +10124,6 @@ int main() {
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
   test_selected_global_i32_slt_compare_receipt_and_rejections();
+  test_mixed_accepted_row_dispatcher_transactionality();
   return 0;
 }
