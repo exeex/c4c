@@ -3,28 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/769_lir_global_initializer_label_address_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map the static initializer representation boundary
+Current Step ID: 2
+Current Step Title: Implement structured publication and verifier validation
 
 ## Just Finished
 
-- Lifecycle switch: 768 Steps 1 and 2 remain accepted; its Step 3 static
-  initializer probe is parked pending this separately scoped contract.
+- Step 1 completed: mapped the one `LirGlobal` structured
+  initializer-element / global-lowering publisher / LIR-verifier seam in
+  `docs/lir_global_initializer_label_address_authority/step1_representation_map.md`.
+  Existing metadata retains only `LinkNameId`; a label-address element needs
+  the enclosing `LinkNameId` plus function-scoped `LirBlockId`. The first
+  downstream boundary is Raw-BIR/importer global lowering, which has no such
+  element and remains out of scope.
 
 ## Suggested Next
 
-- Inspect `ConstInitEmitter`, global lowering, `LirGlobal`, and verifier to map
-  the smallest structured label-address initializer element and identify any
-  Raw-BIR/importer boundary. Do not edit direct/local or carrier routes.
+- Implement only the mapped generic `LirGlobal` initializer-element,
+  publication from constant/global lowering, and matching LIR verifier checks;
+  add direct frontend-LIR positive and malformed proof. Do not cross the
+  Raw-BIR/importer boundary or touch direct/local/carrier routes.
 
 ## Watchouts
 
-- `blockaddress(...)` rendered text and function-ID-only metadata do not carry
-  target-label authority. A Raw-BIR/importer need is a downstream blocker, not
-  authorization to expand this plan.
+- `blockaddress(...)` rendered text and function-ID-only metadata remain
+  insufficient. `LirBlockId` needs its `LinkNameId` owner to avoid
+  cross-function ambiguity. Raw-BIR/importer consumption is a separately
+  scoped downstream blocker, not authorization to expand Step 2.
 
 ## Proof
 
-- Step 1 is evidence mapping only: use targeted source/AST queries and
-  `git diff --check`. Code-changing Steps 2–3 require a fresh build plus the
-  selected focused frontend-LIR positive/malformed proof.
+- Step 1 evidence: targeted AST/source queries and `git diff --check`; no
+  build or CTest. Step 2 requires a fresh build plus selected focused
+  frontend-LIR positive/malformed proof, recorded in `test_after.log`.
