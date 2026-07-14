@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/773_lir_gep_direct_label_address_constant_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Specify and verify the typed direct-label-address GEP base
+Current Step ID: 2
+Current Step Title: Carry the validated form through printer and backend/lowering
 
 ## Just Finished
 
@@ -17,8 +17,11 @@ Current Step Title: Specify and verify the typed direct-label-address GEP base
 
 ## Suggested Next
 
-- Supervisor: select the next 773 packet; keep any printer/backend receipt
-  work separate from this verifier-only Step 1 slice.
+- Step 2: carry the validated typed direct-label-address GEP base through the
+  printer and backend/lowering, with focused positive and malformed contract
+  coverage. Do not refresh or accept a full-suite baseline candidate; that
+  stays blocked until Step 3 hands 772 back and 772's structured forwarding
+  repair makes `pr70460` pass.
 
 ## Watchouts
 

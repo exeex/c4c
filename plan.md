@@ -21,6 +21,14 @@ Direct constants remain function-owned typed authority. Admit them only after
 the same form-specific validation proves current-function direct-label-address
 identity; neither display text nor synthetic SSA is authority.
 
+## Accepted Progress
+
+Step 1 is accepted in commit `a4415f99c` (`lir: verify direct label constants
+as GEP bases`). Its exact scope is verifier admission for the typed
+`DirectConstant(LirValueId)` GEP base plus nearby interface coverage; it does
+not include printer, backend/lowering, or the parent forwarding seam. A fresh
+build and `^backend_lir_to_bir_interface$` focused proof passed for that slice.
+
 ## Read First
 
 - `ideas/open/773_lir_gep_direct_label_address_constant_contract.md`
@@ -45,6 +53,11 @@ identity; neither display text nor synthetic SSA is authority.
    rendered text are never selectors or authority sources.
 4. Build fresh and run narrow proof before reporting the parent handoff. The
    supervisor, not this runbook, evaluates a later full-suite candidate.
+5. The rejected full-suite candidate is not accepted. Do not refresh or accept
+   another candidate until Steps 2 and 3 are proven, this idea hands 772 back
+   to Step 1, and 772's structured forwarding repair makes `pr70460` pass.
+   No baseline exception, expectation downgrade, failure exclusion, or
+   candidate acceptance is a substitute for that route.
 
 ## Ordered Steps
 
@@ -73,6 +86,8 @@ Completion check:
 
 - verifier tests show the exact allowed form passes and the relevant malformed
   forms fail closed with the existing contract strength preserved.
+- Accepted evidence: commit `a4415f99c`; fresh build plus
+  `^backend_lir_to_bir_interface$` focused proof passed.
 
 ### Step 2 - Carry the validated form through printer and backend/lowering
 
@@ -92,6 +107,7 @@ Actions:
   fabricated SSA value
 - retain fail-closed behavior for unverified or unsupported constants
 - prove the printer and lowering agree with verifier admission
+- do not refresh or accept a full-suite baseline candidate from this step
 
 Completion check:
 
@@ -108,8 +124,13 @@ Actions:
 - inspect that tests cover positive and malformed boundaries rather than a
   single named case
 - report changed contracts, exact proof, and the handoff to resume 772 Step 1
+- after this handoff, 772 must repair its structured `emit_indexed_gep`
+  forwarding seam and make `llvm_gcc_c_torture_src_pr70460_c` pass before the
+  supervisor evaluates any new full-suite candidate
 
 Completion check:
 
 - fresh build and narrow proof pass, acceptance evidence is ready for the
-  supervisor, and the parent return action is unambiguous.
+  supervisor, the parent return action is unambiguous, and the rejected
+  baseline route remains closed until 772's forwarding proof includes
+  `pr70460`.
