@@ -696,16 +696,34 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const auto callee =
             module.functions_.get(module.epoch_, call->callee);
         const bool exact_signature =
-            callee &&
-            callee.value().get().signature_.return_type.kind ==
-                TypeKind::Void &&
-            callee.value().get().signature_.parameter_types.empty() &&
-            !callee.value().get().signature_.is_variadic;
-        if (!instruction.operands.empty() || !instruction.results.empty() ||
-            !exact_signature)
+            callee && !callee.value().get().signature_.is_variadic;
+        bool exact_arguments = exact_signature &&
+            instruction.operands.size() ==
+                callee.value().get().signature_.parameter_types.size();
+        if (exact_arguments) {
+          for (std::size_t index = 0; index < instruction.operands.size(); ++index) {
+            const auto argument = function.values_.get(function_id, instruction.operands[index]);
+            exact_arguments = argument &&
+                argument.value().get().type ==
+                    callee.value().get().signature_.parameter_types[index];
+            if (!exact_arguments) break;
+          }
+        }
+        const bool exact_result = exact_signature &&
+            ((callee.value().get().signature_.return_type.kind == TypeKind::Void &&
+              instruction.results.empty()) ||
+             (callee.value().get().signature_.return_type.kind != TypeKind::Void &&
+              instruction.results.size() == 1 &&
+              [&] {
+                const auto value = function.values_.get(function_id, instruction.results[0]);
+                return value && value.value().get().type ==
+                    callee.value().get().signature_.return_type &&
+                    value.value().get().source_id.has_value();
+              }()));
+        if (!exact_arguments || !exact_result)
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
-                 "call must target one module-owned zero-parameter nonvariadic void function and have no operands or results");
+                 "call must target one module-owned nonvariadic function with exact ordered operands and result arity");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {

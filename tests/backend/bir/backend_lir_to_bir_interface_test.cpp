@@ -8768,6 +8768,138 @@ void test_direct_zero_argument_void_call_rejections() {
            "target signature disagreement must reject atomically");
 }
 
+lir::LirFunction direct_integer_function(std::string name, bool declaration,
+                                         std::vector<c4c::TypeBase> parameters = {}) {
+  lir::LirFunction function = declaration
+      ? void_declaration(std::move(name))
+      : void_definition(std::move(name), {return_block(0, "entry")});
+  function.return_type = scalar_type(c4c::TB_INT);
+  function.return_type.inner_rank = -1;
+  function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  for (const auto parameter : parameters) {
+    auto type = scalar_type(parameter);
+    type.inner_rank = -1;
+    function.params.emplace_back("%parameter-display", type);
+    function.signature_params.push_back({"%parameter-signature", type, false});
+    function.signature_param_type_refs.push_back(stable_parameter_mirror(parameter));
+  }
+  return function;
+}
+
+lir::LirCallOp direct_integer_call(c4c::LinkNameId target) {
+  lir::LirCallOp call;
+  call.result = lir::LirOperand::ssa("%misleading-result", lir::LirValueId{9});
+  call.return_type = lir::LirTypeRef::integer(32);
+  call.callee = lir::LirOperand::raw("%misleading-indirect-display");
+  call.direct_callee_link_name_id = target;
+  call.args_str = "i64 999 presentation-only";
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef::integer(32);
+  signature.fixed_param_types = {"i32", "i32"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef::integer(32),
+                                     lir::LirTypeRef::integer(32)};
+  call.callee_signature = std::move(signature);
+  call.arg_type_refs = {lir::LirTypeRef::integer(32), lir::LirTypeRef::integer(32)};
+  call.structured_args = {
+      {"i32", lir::LirOperand::integer("misleading-immediate", 7),
+       lir::LirTypeRef::integer(32)},
+      {"i32", lir::LirOperand::ssa("%misleading-ssa", lir::LirValueId{3}),
+       lir::LirTypeRef::integer(32)},
+  };
+  return call;
+}
+
+lir::LirModule direct_integer_call_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto caller_link = module.link_names.intern("direct_integer_caller");
+  const auto target_link = module.link_names.intern("direct_integer_target");
+
+  auto caller = direct_integer_function("misleading_caller", false);
+  caller.link_name_id = caller_link;
+  caller.blocks[0].insts.push_back(
+      lir::LirConstInt{lir::LirValueId{3}, scalar_type(c4c::TB_INT), 41});
+  caller.blocks[0].insts.push_back(direct_integer_call(target_link));
+  caller.blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::ssa("%misleading-return", lir::LirValueId{9}),
+      lir::LirTypeRef::integer(32)};
+  module.functions.push_back(std::move(caller));
+
+  auto target = direct_integer_function("misleading_target", true,
+                                        {c4c::TB_INT, c4c::TB_INT});
+  target.link_name_id = target_link;
+  module.functions.push_back(std::move(target));
+  return module;
+}
+
+void test_direct_integer_call_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto instructions = caller.instructions(caller.blocks()[0]).value();
+    expect(instructions.size() == 1, layer + " must retain one typed Call");
+    const auto call = caller.instruction(instructions[0]).value();
+    expect(call.opcode() == bir::Opcode::Call && call.call() &&
+               call.call()->callee == view.functions()[1] &&
+               call.operands().size() == 2 && call.results().size() == 1,
+           layer + " must retain typed direct callee, ordered arguments, and result");
+    const auto result = caller.value(call.results()[0]).value();
+    expect(result.type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               result.source_id == bir::SourceValueId{caller_id, 9},
+           layer + " Call result must retain the owning LirValueId");
+    expect(caller.source_value(bir::SourceValueId{caller_id, 9}).value() ==
+               call.results()[0],
+           layer + " Call result source lookup must be owner-scoped");
+  };
+
+  const auto module = direct_integer_call_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "structured direct integer call must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "structured direct integer call must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto rejected_module = direct_integer_call_module();
+    auto& call = std::get<lir::LirCallOp>(rejected_module.functions[0].blocks[0].insts[1]);
+    mutate(rejected_module, call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(rejected_module);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(rejected_module);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& call) { call.direct_callee_link_name_id = 999; },
+           "missing direct callee identity must reject");
+  rejected([](auto&, auto& call) {
+             call.structured_args[1].operand =
+                 lir::LirOperand::ssa("%foreign", lir::LirValueId{77});
+           }, "cross-owner or missing SSA authority must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->fixed_param_type_refs[1] =
+                 lir::LirTypeRef::integer(64);
+           }, "callee signature disagreement must reject");
+  rejected([](auto&, auto& call) {
+             call.structured_args[1].type_ref = lir::LirTypeRef::integer(64);
+           }, "argument type disagreement must reject");
+  rejected([](auto&, auto& call) {
+             call.structured_args.pop_back();
+           }, "argument count disagreement must reject");
+  rejected([](auto&, auto& call) {
+             call.structured_args[0].operand = lir::LirOperand::global("@alternative", 1);
+           }, "non-immediate non-SSA argument alternatives must reject");
+  rejected([](auto&, auto& call) { call.return_type = lir::LirTypeRef("double"); },
+           "floating calls must remain fail-closed");
+}
+
 }  // namespace
 
 int main() {
@@ -8833,5 +8965,6 @@ int main() {
   test_direct_zero_argument_void_call_receipt();
   test_direct_zero_argument_void_call_builder_contract();
   test_direct_zero_argument_void_call_rejections();
+  test_direct_integer_call_receipt_and_rejections();
   return 0;
 }

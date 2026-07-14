@@ -373,6 +373,70 @@ bool exact_direct_void_call(const LirModule& module, const LirCallOp& call) {
   return resolved;
 }
 
+bool exact_direct_integer_call(
+    const LirModule& module, const LirCallOp& call,
+    const std::unordered_map<std::uint32_t, Type>& source_values) {
+  const auto* result = call.result.value_id();
+  if (call.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || call.return_type.kind() != codegen::lir::LirTypeKind::Integer ||
+      call.return_ext_attr != LirExtAttr::None ||
+      call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
+      !call.callee_signature)
+    return false;
+  const auto return_type = lower_lir_type(module, call.return_type);
+  const auto& signature = *call.callee_signature;
+  if (!return_type || !is_integer_type(*return_type) ||
+      !signature.return_type_ref || *signature.return_type_ref != call.return_type ||
+      signature.return_ext_attr != LirExtAttr::None || signature.is_variadic ||
+      signature.has_unspecified_params || signature.has_void_param_list ||
+      signature.fixed_param_types.size() != signature.fixed_param_type_refs.size() ||
+      signature.fixed_param_type_refs.size() != call.structured_args.size() ||
+      call.arg_type_refs.size() != call.structured_args.size())
+    return false;
+  std::vector<Type> parameter_types;
+  parameter_types.reserve(signature.fixed_param_type_refs.size());
+  for (std::size_t index = 0; index < call.structured_args.size(); ++index) {
+    const auto& parameter_ref = signature.fixed_param_type_refs[index];
+    const auto& argument = call.structured_args[index];
+    const auto parameter_type = lower_lir_type(module, parameter_ref);
+    if (!parameter_type || !is_integer_type(*parameter_type) ||
+        signature.fixed_param_types[index] != parameter_ref.str() ||
+        call.arg_type_refs[index] != parameter_ref ||
+        argument.type != parameter_ref.str() || argument.type_ref != parameter_ref ||
+        argument.ext_attr != LirExtAttr::None)
+      return false;
+    if (argument.operand.kind() == codegen::lir::LirOperandKind::Immediate) {
+      const auto* immediate = argument.operand.integer_immediate();
+      if (!immediate || !parameter_ref.integer_bit_width() ||
+          !integer_immediate_representable(immediate->value,
+                                           *parameter_ref.integer_bit_width()))
+        return false;
+    } else if (argument.operand.kind() == codegen::lir::LirOperandKind::SsaValue) {
+      const auto* value_id = argument.operand.value_id();
+      const auto found = value_id ? source_values.find(value_id->value)
+                                  : source_values.end();
+      if (!value_id || !value_id->valid() || found == source_values.end() ||
+          found->second != *parameter_type)
+        return false;
+    } else {
+      return false;
+    }
+    parameter_types.push_back(*parameter_type);
+  }
+  bool resolved = false;
+  for (const auto& target : module.functions) {
+    if (target.link_name_id != call.direct_callee_link_name_id) continue;
+    const auto target_return = lower_signature_type(
+        module, target.return_type, target.signature_return_type_ref);
+    const auto target_params = lower_function_parameter_types(module, target);
+    if (!target_return || *target_return != *return_type || !target_params ||
+        *target_params != parameter_types || target.signature_is_variadic)
+      return false;
+    resolved = true;
+  }
+  return resolved;
+}
+
 std::optional<Type> lower_constant_type(const LirModule& module,
                                         const TypeSpec& type) {
   if (type.ptr_level != 0 || type.is_lvalue_ref || type.is_rvalue_ref ||
@@ -1739,11 +1803,17 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* call = std::get_if<LirCallOp>(&instruction)) {
-        if (!exact_direct_void_call(module, *call))
+        if (exact_direct_void_call(module, *call)) continue;
+        if (!exact_direct_integer_call(module, *call, source_values))
           return fail<void>(
               ImportErrorCode::UnsupportedOrdinaryInstruction, name,
               block.label,
-              "call requires a structured direct LinkNameId target and an exact zero-parameter nonvariadic void signature");
+              "call requires a structured direct LinkNameId target, exact fixed nonvariadic integer signature, and immediate or current-function SSA arguments");
+        const auto result_type = lower_lir_type(module, call->return_type);
+        if (!source_values.emplace(call->result.value_id()->value, *result_type).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "duplicate authoritative LirValueId definition");
         continue;
       }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
@@ -2330,20 +2400,73 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(
                       BuildError::InvalidFunction);
                 }
+                std::vector<ValueId> arguments;
+                arguments.reserve(call->structured_args.size());
+                for (const auto& argument : call->structured_args) {
+                  const Type type = *lower_lir_type(module, argument.type_ref);
+                  if (const auto* immediate = argument.operand.integer_immediate()) {
+                    auto reserved = function_builder.reserve_value(type);
+                    if (!reserved) {
+                      edit_error = builder_failure(name, block.label,
+                                                   "reserve call immediate argument",
+                                                   reserved.error());
+                      return Result<void, BuildError>::failure(reserved.error());
+                    }
+                    auto defined = function_builder.define_int_constant(
+                        reserved.value(), static_cast<std::int64_t>(immediate->value));
+                    if (!defined) {
+                      edit_error = builder_failure(name, block.label,
+                                                   "define call immediate argument",
+                                                   defined.error());
+                      return defined;
+                    }
+                    arguments.push_back(reserved.value());
+                  } else {
+                    const auto found = source_values.find(
+                        argument.operand.value_id()->value);
+                    if (found == source_values.end()) {
+                      edit_error = ImportError{
+                          ImportErrorCode::UnsupportedOrdinaryInstruction,
+                          name, block.label,
+                          "validated call SSA argument disappeared from the current-function registry"};
+                      return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                    }
+                    arguments.push_back(found->second);
+                  }
+                }
+                const bool integer_result =
+                    call->return_type.kind() == codegen::lir::LirTypeKind::Integer;
                 auto appended = function_builder.append(
-                    blocks.at(block.label), CallSpec{callee->second});
+                    blocks.at(block.label),
+                    CallSpec{callee->second, std::move(arguments),
+                             integer_result
+                                 ? std::optional<std::uint32_t>{call->result.value_id()->value}
+                                 : std::nullopt});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                "append call",
                                                appended.error());
                   return Result<void, BuildError>::failure(appended.error());
                 }
-                if (!appended.value().results.empty()) {
+                if ((integer_result && appended.value().results.size() != 1) ||
+                    (!integer_result && !appended.value().results.empty())) {
                   edit_error = ImportError{
                       ImportErrorCode::BuilderFailure, name, block.label,
-                      "void call builder returned an inconsistent result count"};
+                      "call builder returned an inconsistent result count"};
                   return Result<void, BuildError>::failure(
                       BuildError::StorageExhausted);
+                }
+                if (integer_result) {
+                  const auto registered = source_values.emplace(
+                      call->result.value_id()->value, appended.value().results[0]);
+                  if (!registered.second) {
+                    edit_error = ImportError{
+                        ImportErrorCode::UnsupportedOrdinaryInstruction,
+                        name, block.label,
+                        "call result collided in the current-function source registry"};
+                    return Result<void, BuildError>::failure(
+                        BuildError::DuplicateSourceValue);
+                  }
                 }
                 continue;
               }

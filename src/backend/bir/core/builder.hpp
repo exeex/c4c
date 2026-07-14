@@ -171,6 +171,8 @@ struct GetElementPtrSpec {
 
 struct CallSpec {
   FunctionId callee{};
+  std::vector<ValueId> arguments;
+  std::optional<std::uint32_t> source_result_id;
 };
 
 using TerminatorSpec = Terminator;

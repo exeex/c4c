@@ -1085,28 +1085,93 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   if (!callee)
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidFunction);
   const auto& signature = callee.value().get().signature_;
-  if (signature.return_type.kind != TypeKind::Void ||
-      !signature.parameter_types.empty() || signature.is_variadic)
+  if (signature.is_variadic ||
+      (signature.return_type.kind == TypeKind::Void) !=
+          !spec.source_result_id ||
+      (spec.source_result_id && !integer_type(signature.return_type)) ||
+      signature.parameter_types.size() != spec.arguments.size() ||
+      (!spec.source_result_id && !signature.parameter_types.empty()))
     return Result<BuildResult, BuildError>::failure(
         BuildError::UnsupportedOpcode);
+  for (std::size_t index = 0; index < spec.arguments.size(); ++index) {
+    const auto argument = function_data.values_.get(function_, spec.arguments[index]);
+    if (!argument)
+      return Result<BuildResult, BuildError>::failure(BuildError::InvalidValue);
+    if (argument.value().get().type != signature.parameter_types[index])
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::DefinitionTypeMismatch);
+  }
+  if (spec.source_result_id &&
+      function_data.values_by_source_id_.count(*spec.source_result_id) != 0)
+    return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
 
   detail::InstData instruction;
   instruction.opcode = Opcode::Call;
   instruction.payload = CallNode{spec.callee};
+  instruction.operands = std::move(spec.arguments);
   auto inserted =
       function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted)
     return Result<BuildResult, BuildError>::failure(
         storage_error(inserted.error()));
   const auto instruction_id = inserted.value();
+  std::optional<ValueId> result_id;
+  if (spec.source_result_id) {
+    ValueDef result;
+    result.kind = ValueKind::Ordinary;
+    result.type = signature.return_type;
+    result.source_id = SourceValueId{function_, *spec.source_result_id};
+    result.definition = InstResultDef{instruction_id, 0};
+    auto inserted_result = function_data.values_.emplace(function_, std::move(result));
+    if (!inserted_result) {
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(
+          storage_error(inserted_result.error()));
+    }
+    result_id = inserted_result.value();
+    auto stored_instruction = function_data.insts_.get_mut(function_, instruction_id);
+    if (!stored_instruction) {
+      function_data.values_.erase(function_, *result_id);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+    }
+    stored_instruction.value().get().results = {*result_id};
+    if (!function_data.value_order_.append(*result_id)) {
+      function_data.values_.erase(function_, *result_id);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+    }
+    try {
+      const auto indexed = function_data.values_by_source_id_.emplace(
+          *spec.source_result_id, *result_id);
+      if (!indexed.second) {
+        function_data.value_order_.erase(*result_id);
+        function_data.values_.erase(function_, *result_id);
+        function_data.insts_.erase(function_, instruction_id);
+        return Result<BuildResult, BuildError>::failure(
+            BuildError::DuplicateSourceValue);
+      }
+    } catch (...) {
+      function_data.value_order_.erase(*result_id);
+      function_data.values_.erase(function_, *result_id);
+      function_data.insts_.erase(function_, instruction_id);
+      throw;
+    }
+  }
   auto block_data = function_data.blocks_.get_mut(function_, block);
   if (!block_data ||
       !block_data.value().get().instruction_order_.append(instruction_id)) {
+    if (result_id) {
+      function_data.values_by_source_id_.erase(*spec.source_result_id);
+      function_data.value_order_.erase(*result_id);
+      function_data.values_.erase(function_, *result_id);
+    }
     function_data.insts_.erase(function_, instruction_id);
     return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
   }
   return Result<BuildResult, BuildError>::success(
-      BuildResult{instruction_id, {}});
+      BuildResult{instruction_id, result_id ? std::vector<ValueId>{*result_id}
+                                             : std::vector<ValueId>{}});
 }
 
 Result<void, BuildError> FunctionBuilder::set_terminator(
