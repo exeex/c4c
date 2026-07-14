@@ -1,6 +1,6 @@
 # Unresolved External Direct Scalar-Call Signature and Result Authority
 
-Status: Open (inactive)
+Status: Open (active)
 Type: producer-side unresolved-external call authority prerequisite
 Blocks: Plan Step 7.32 of ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 

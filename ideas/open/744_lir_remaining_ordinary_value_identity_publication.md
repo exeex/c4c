@@ -1,6 +1,6 @@
 # LIR Remaining Ordinary Value Identity Publication
 
-Status: Open (active)
+Status: Open (inactive; prerequisite 746 active)
 Type: producer-side ordinary value-authority decomposition
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
 Builds On: ideas/closed/741_lir_structured_operand_and_terminator_identity_decomposition.md
@@ -40,6 +40,16 @@ Closed idea 741 remains complete. Its four store/load/GEP/return contracts are
 the stable model and must not be reopened. Its exhaustive matrix explicitly
 classified the other ordinary rows as raw or unclaimed compatibility; those
 rows are the baseline inventory source for this initiative.
+
+## Active-Plan Routing Note
+
+The active runbook was switched to
+`ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md`
+because Plan Step 7.32 found the plain-`DeclRef` unresolved-external scalar
+call producer lacks both retained native `FnPtrSig` and a
+`fresh_value(ctx)`-allocated result `LirValueId`. This idea remains open and
+must not retry Step 7.32 until idea 746 hands off that bounded native-authority
+contract with accepted proof.
 
 ## Authority Contract
 
