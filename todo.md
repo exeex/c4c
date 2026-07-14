@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/759_lir_typed_ref_enum_foundation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add focused proof for typed authority
+Current Step ID: 5
+Current Step Title: Validate and hand off to 760
 
 ## Just Finished
 
