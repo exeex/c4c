@@ -1432,15 +1432,16 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   auto& function_data = function.value().get();
   const Type i1{TypeKind::I1, 1, "i1"};
   const Type i32{TypeKind::Integer, 32, "i32"};
+  const Type i64{TypeKind::Integer, 64, "i64"};
   const Type f64{TypeKind::F64, 64, "double"};
   if (spec.source_result_id == std::numeric_limits<std::uint32_t>::max())
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidSourceValueId);
   const auto lhs = function_data.values_.get(function_, spec.lhs);
   const auto rhs = function_data.values_.get(function_, spec.rhs);
   const auto* lhs_def = lhs ? std::get_if<InstResultDef>(&lhs.value().get().definition) : nullptr;
-  if (!lhs_def)
-    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  const auto lhs_producer = function_data.insts_.get(function_, lhs_def->instruction);
+  const auto lhs_producer = lhs_def
+      ? function_data.insts_.get(function_, lhs_def->instruction)
+      : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
   const auto* rhs_def = rhs ? std::get_if<ConstantDef>(&rhs.value().get().definition) : nullptr;
   const auto* integer = rhs_def && rhs_def->constant.valid() &&
           rhs_def->constant.epoch == parent_->data_->epoch_ &&
@@ -1457,7 +1458,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
         return binary && binary->opcode == BinaryOpcode::FMul && binary->type == f64;
       }();
-  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt) ||
+  const bool ffs_eq_zero = spec.predicate == ComparePredicate::Eq &&
+      (spec.type == i32 || spec.type == i64) && lhs && rhs &&
+      lhs.value().get().type == spec.type && rhs.value().get().type == spec.type &&
+      integer && integer->value == 0;
+  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt && !ffs_eq_zero) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   detail::InstData instruction;
@@ -1585,6 +1590,18 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, SelectSpe
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
   if ((spec.type != i32 && spec.type != i64) || function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (spec.condition) {
+    if (!same_owner(function_, *spec.condition))
+      return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+    const auto condition = function_data.values_.get(function_, *spec.condition);
+    const auto* definition = condition ? std::get_if<InstResultDef>(&condition.value().get().definition) : nullptr;
+    const auto producer = definition ? function_data.insts_.get(function_, definition->instruction)
+                                     : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+    const auto* compare = producer ? std::get_if<CompareNode>(&producer.value().get().payload) : nullptr;
+    if (!condition || condition.value().get().type != Type{TypeKind::I1, 1, "i1"} || !compare ||
+        compare->predicate != ComparePredicate::Eq || compare->type != spec.type)
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
   if (spec.false_value) {
     if (!same_owner(function_, *spec.false_value))
       return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
@@ -1596,13 +1613,14 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, SelectSpe
     if (!false_value || false_value.value().get().type != spec.type || !binary ||
         binary->opcode != BinaryOpcode::Add || binary->type != spec.type)
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  } else if (spec.type != i64) {
+  } else if (spec.type != i64 || spec.condition) {
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
   detail::InstData instruction;
   instruction.opcode = Opcode::Select;
   instruction.payload = SelectNode{spec.type};
-  if (spec.false_value) instruction.operands = {*spec.false_value};
+  if (spec.condition) instruction.operands.push_back(*spec.condition);
+  if (spec.false_value) instruction.operands.push_back(*spec.false_value);
   auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
   const auto instruction_id = inserted.value();

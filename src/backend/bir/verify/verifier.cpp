@@ -884,10 +884,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
       if (const auto* compare = std::get_if<CompareNode>(&instruction.payload)) {
         const Type i1{TypeKind::I1, 1, "i1"};
         const Type i32{TypeKind::Integer, 32, "i32"};
+        const Type i64{TypeKind::Integer, 64, "i64"};
         const Type f64{TypeKind::F64, 64, "double"};
         const bool slt = compare->predicate == ComparePredicate::Slt && compare->type == i32;
         const bool olt = compare->predicate == ComparePredicate::OLt && compare->type == f64;
-        bool exact = (slt || olt) && instruction.operands.size() == 2 &&
+        const bool ffs_eq_zero = compare->predicate == ComparePredicate::Eq &&
+            (compare->type == i32 || compare->type == i64);
+        bool exact = (slt || olt || ffs_eq_zero) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           const auto lhs = function.values_.get(function_id, instruction.operands[0]);
@@ -899,12 +902,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           const auto lhs_producer = lhs_def
               ? function.insts_.get(function_id, lhs_def->instruction)
               : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
-          exact = exact && lhs_producer && (slt
+          exact = exact && (ffs_eq_zero || (lhs_producer && (slt
               ? std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)
               : [&] {
                   const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
                   return binary && binary->opcode == BinaryOpcode::FMul && binary->type == f64;
-                }());
+                }())));
           const auto* rhs_def = exact
               ? std::get_if<ConstantDef>(&rhs.value().get().definition) : nullptr;
           const auto* integer = rhs_def && rhs_def->constant.valid() &&
@@ -912,7 +915,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                   rhs_def->constant.slot < module.constants_.size()
               ? std::get_if<IntegerConstant>(&module.constants_[rhs_def->constant.slot].payload)
               : nullptr;
-          exact = exact && (!slt || (integer && integer->value == 7));
+          exact = exact && (!slt || (integer && integer->value == 7)) &&
+              (!ffs_eq_zero || (integer && integer->value == 0));
           const auto result_value = exact
               ? function.values_.get(function_id, instruction.results[0])
               : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
@@ -1014,8 +1018,28 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const Type i32{TypeKind::Integer, 32, "i32"};
         const Type i64{TypeKind::Integer, 64, "i64"};
         bool exact = (select->type == i64 || select->type == i32) &&
-            ((select->type == i64 && instruction.operands.empty()) || instruction.operands.size() == 1) &&
+            ((select->type == i64 && instruction.operands.empty()) || instruction.operands.size() == 1 ||
+             instruction.operands.size() == 2) &&
             instruction.results.size() == 1;
+        if (exact && instruction.operands.size() == 2) {
+          const auto condition = function.values_.get(function_id, instruction.operands[0]);
+          const auto* definition = condition
+              ? std::get_if<InstResultDef>(&condition.value().get().definition) : nullptr;
+          const auto producer = definition ? function.insts_.get(function_id, definition->instruction)
+                                           : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+          const auto* compare = producer ? std::get_if<CompareNode>(&producer.value().get().payload) : nullptr;
+          const auto false_value = function.values_.get(function_id, instruction.operands[1]);
+          const auto* false_definition = false_value
+              ? std::get_if<InstResultDef>(&false_value.value().get().definition) : nullptr;
+          const auto false_producer = false_definition
+              ? function.insts_.get(function_id, false_definition->instruction)
+              : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+          const auto* binary = false_producer ? std::get_if<BinaryNode>(&false_producer.value().get().payload) : nullptr;
+          exact = condition && condition.value().get().type == Type{TypeKind::I1, 1, "i1"} && compare &&
+              compare->predicate == ComparePredicate::Eq && compare->type == select->type && false_value &&
+              false_value.value().get().type == select->type && binary &&
+              binary->opcode == BinaryOpcode::Add && binary->type == select->type;
+        }
         if (exact && instruction.operands.size() == 1) {
           const auto false_value = function.values_.get(function_id, instruction.operands[0]);
           const auto* definition = false_value

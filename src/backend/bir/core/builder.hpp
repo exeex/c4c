@@ -201,6 +201,7 @@ struct CompareSpec {
 
 struct SelectSpec {
   Type type{};
+  std::optional<ValueId> condition;
   std::optional<ValueId> false_value;
   std::uint32_t source_result_id = 0;
 };

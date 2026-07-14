@@ -10517,9 +10517,13 @@ lir::LirModule builtin_ffs_add_select_false_arm_module(unsigned width) {
       lir::LirBinaryOpcode::Add, type,
       lir::LirOperand::ssa("%cttz", lir::LirValueId{9}),
       lir::LirOperand::integer("one", 1)});
+  block.insts.push_back(lir::LirCmpOp{
+      lir::LirOperand::ssa("%ffs-is-zero", lir::LirValueId{12}), false,
+      lir::LirCmpPredicate::Eq, type,
+      lir::LirOperand::integer("value", 41), lir::LirOperand::integer("zero", 0)});
   block.insts.push_back(lir::LirSelectOp{
       lir::LirOperand::ssa("%ffs-select", lir::LirValueId{11}), type,
-      lir::LirOperand::raw("%producer-condition"), lir::LirOperand::raw("zero"),
+      lir::LirOperand::ssa("%ffs-is-zero", lir::LirValueId{12}), lir::LirOperand::raw("zero"),
       lir::LirOperand::ssa("%ffs-plus-one", lir::LirValueId{10})});
   caller.return_type = width == 64 ? scalar_type(c4c::TB_LONGLONG) : scalar_type(c4c::TB_INT);
   caller.return_type.inner_rank = -1;
@@ -10540,22 +10544,31 @@ void test_builtin_ffs_add_select_false_arm_receipt_and_rejections() {
     const auto function = view.function(view.functions()[0]).value();
     const auto insts = function.instructions(function.blocks()[0]).value();
     const auto add = function.instruction(insts[1]).value();
-    const auto select = function.instruction(insts[2]).value();
+    const auto compare = function.instruction(insts[2]).value();
+    const auto select = function.instruction(insts[3]).value();
     expect(add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
                add.binary()->type.bit_width == width && add.results().size() == 1 &&
+               compare.compare() && compare.compare()->predicate == bir::ComparePredicate::Eq &&
+               compare.compare()->type.bit_width == width && compare.results().size() == 1 &&
                select.select() && select.select()->type.bit_width == width &&
-               select.operands() == std::vector<bir::ValueId>{add.results()[0]},
-           "builtin ffs Select must retain its exact Add-one false-arm edge");
-    for (const auto& mutation : {0, 1, 2, 3, 4, 5}) {
+               select.operands() == std::vector<bir::ValueId>{compare.results()[0], add.results()[0]},
+           "builtin ffs Select must retain its exact Eq-zero condition and Add-one false-arm edges");
+    for (const auto& mutation : {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
       auto candidate = builtin_ffs_add_select_false_arm_module(width);
       auto& add_op = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
-      auto& select_op = std::get<lir::LirSelectOp>(candidate.functions[0].blocks[0].insts[3]);
+      auto& compare_op = std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[3]);
+      auto& select_op = std::get<lir::LirSelectOp>(candidate.functions[0].blocks[0].insts[4]);
       if (mutation == 0) add_op.result = lir::LirOperand::raw("%missing");
       if (mutation == 1) add_op.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9});
       if (mutation == 2) add_op.opcode = lir::LirBinaryOpcode::Mul;
       if (mutation == 3) add_op.rhs = lir::LirOperand::integer("two", 2);
       if (mutation == 4) select_op.false_val = lir::LirOperand::ssa("%missing", lir::LirValueId{77});
       if (mutation == 5) select_op.false_val = lir::LirOperand::integer("one", 1);
+      if (mutation == 6) compare_op.result = lir::LirOperand::raw("%missing");
+      if (mutation == 7) compare_op.predicate = lir::LirCmpPredicate::Slt;
+      if (mutation == 8) compare_op.rhs = lir::LirOperand::integer("one", 1);
+      if (mutation == 9) select_op.cond = lir::LirOperand::ssa("%missing", lir::LirValueId{77});
+      if (mutation == 10) compare_op.lhs = lir::LirOperand::ssa("%cttz", lir::LirValueId{9});
       expect(!bir::lower_lir_to_raw_bir(candidate).has_value(),
              "malformed builtin ffs Add/select linkage must roll back the complete module");
     }

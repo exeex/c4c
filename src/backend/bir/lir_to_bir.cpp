@@ -871,6 +871,25 @@ bool exact_builtin_ffs_add(const LirBinOp& bin,
       Type{TypeKind::Integer, *width, *width == 32 ? "i32" : "i64"};
 }
 
+bool exact_builtin_ffs_zero_compare(
+    const LirCmpOp& compare) {
+  using codegen::lir::LirOperandKind;
+  const auto* result = compare.result.value_id();
+  const auto* immediate = compare.rhs.integer_immediate();
+  const auto width = compare.type_str.integer_bit_width();
+  if (compare.result.kind() != LirOperandKind::SsaValue || !result || !result->valid() ||
+      compare.is_float ||
+      compare.predicate.typed() != std::optional{codegen::lir::LirCmpPredicate::Eq} ||
+      compare.type_str.kind() != codegen::lir::LirTypeKind::Integer || !width ||
+      (*width != 32 && *width != 64) || compare.rhs.kind() != LirOperandKind::Immediate ||
+      !immediate || immediate->value != 0 ||
+      !integer_immediate_representable(immediate->value, *width))
+    return false;
+  const auto* lhs = compare.lhs.integer_immediate();
+  return compare.lhs.kind() == LirOperandKind::Immediate && lhs &&
+      integer_immediate_representable(lhs->value, *width);
+}
+
 bool exact_selected_global_i32_abs(
     const LirAbsOp& abs,
     const std::unordered_map<std::uint32_t, Type>& source_values,
@@ -2194,6 +2213,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> native_i32_cttz_results;
   std::unordered_set<std::uint32_t> native_ffs_cttz_results;
   std::unordered_set<std::uint32_t> builtin_ffs_add_results;
+  std::unordered_set<std::uint32_t> builtin_ffs_zero_compare_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> downstream_double_fadd_results;
   std::unordered_set<std::uint32_t> downstream_double_fmul_results;
@@ -2559,16 +2579,19 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *compare, source_values, selected_global_i32_load_results);
         const bool olt = exact_downstream_double_olt_compare(
             *compare, source_values, downstream_double_fmul_results);
-        if ((!slt && !olt) ||
+        const bool ffs_zero = exact_builtin_ffs_zero_compare(*compare);
+        if ((!slt && !olt && !ffs_zero) ||
             !source_values.emplace(compare->result.value_id()->value,
                                    Type{TypeKind::I1, 1, "i1"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "compare requires one exact admitted source-authorized operand shape");
         if (olt) downstream_double_olt_compare_results.insert(compare->result.value_id()->value);
+        if (ffs_zero) builtin_ffs_zero_compare_results.insert(compare->result.value_id()->value);
         continue;
       }
       if (const auto* select = std::get_if<LirSelectOp>(&instruction)) {
+        const auto* condition_id = select->cond.value_id();
         const auto* false_id = select->false_val.value_id();
         const auto false_value = false_id ? source_values.find(false_id->value) : source_values.end();
         const bool ffs_false_arm = select->false_val.kind() == codegen::lir::LirOperandKind::SsaValue &&
@@ -2576,8 +2599,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
             builtin_ffs_add_results.count(false_id->value) == 1 &&
             select->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
             select->type_str.integer_bit_width() == false_value->second.bit_width;
+        const bool ffs_condition = select->cond.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            condition_id && condition_id->valid() &&
+            builtin_ffs_zero_compare_results.count(condition_id->value) == 1;
         const auto select_type = ffs_false_arm ? false_value->second : Type{TypeKind::Integer, 64, "i64"};
-        if ((!ffs_false_arm && !exact_wide_ffs_select(*select)) ||
+        if ((ffs_false_arm && !ffs_condition) || (!ffs_false_arm && !exact_wide_ffs_select(*select)) ||
             !source_values.emplace(select->result.value_id()->value, select_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
                             "select requires the one admitted typed wide ffs result receipt");
@@ -3036,6 +3062,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_set<std::uint32_t> wide_ffs_trunc_results;
           std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
           std::unordered_set<std::uint32_t> native_i32_cttz_results;
+          std::unordered_set<std::uint32_t> builtin_ffs_zero_compare_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
           std::unordered_set<std::uint32_t> scalar_sext_results;
@@ -3625,8 +3652,31 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               }
               if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {
                 const bool olt = compare->is_float;
-                const auto lhs = source_values.find(compare->lhs.value_id()->value);
-                if (lhs == source_values.end()) {
+                const bool ffs_zero = !olt &&
+                    compare->predicate.typed() == std::optional{codegen::lir::LirCmpPredicate::Eq};
+                ValueId lhs_value{};
+                if (compare->lhs.kind() == codegen::lir::LirOperandKind::SsaValue) {
+                  const auto lhs = source_values.find(compare->lhs.value_id()->value);
+                  if (lhs == source_values.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                             name, block.label,
+                                             "validated compare lhs disappeared from the current-function registry"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  lhs_value = lhs->second;
+                } else if (ffs_zero) {
+                  auto reserved = function_builder.reserve_value(*lower_lir_type(module, compare->type_str));
+                  if (!reserved) {
+                    edit_error = builder_failure(name, block.label, "reserve ffs compare lhs immediate", reserved.error());
+                    return Result<void, BuildError>::failure(reserved.error());
+                  }
+                  auto defined = function_builder.define_int_constant(reserved.value(), compare->lhs.integer_immediate()->value);
+                  if (!defined) {
+                    edit_error = builder_failure(name, block.label, "define ffs compare lhs immediate", defined.error());
+                    return defined;
+                  }
+                  lhs_value = reserved.value();
+                } else {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
                                            "validated compare lhs disappeared from the current-function registry"};
@@ -3643,13 +3693,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   }
                   rhs_value = rhs->second;
                 } else {
-                  auto reserved = function_builder.reserve_value(Type{TypeKind::Integer, 32, "i32"});
+                  auto reserved = function_builder.reserve_value(*lower_lir_type(module, compare->type_str));
                   if (!reserved) {
                     edit_error = builder_failure(name, block.label,
                                                  "reserve compare immediate-seven", reserved.error());
                     return Result<void, BuildError>::failure(reserved.error());
                   }
-                  auto defined = function_builder.define_int_constant(reserved.value(), 7);
+                  auto defined = function_builder.define_int_constant(reserved.value(), ffs_zero ? 0 : 7);
                   if (!defined) {
                     edit_error = builder_failure(name, block.label,
                                                  "define compare immediate-seven", defined.error());
@@ -3659,10 +3709,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
-                    CompareSpec{olt ? ComparePredicate::OLt : ComparePredicate::Slt,
+                    CompareSpec{olt ? ComparePredicate::OLt : ffs_zero ? ComparePredicate::Eq : ComparePredicate::Slt,
                                 olt ? Type{TypeKind::F64, 64, "double"}
-                                    : Type{TypeKind::Integer, 32, "i32"},
-                                lhs->second, rhs_value,
+                                    : *lower_lir_type(module, compare->type_str),
+                               lhs_value, rhs_value,
                                 compare->result.value_id()->value});
                 if (!appended || appended.value().results.size() != 1 ||
                     !source_values.emplace(compare->result.value_id()->value,
@@ -3677,12 +3727,20 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 if (olt) downstream_double_olt_compare_results.insert(
                     compare->result.value_id()->value);
+                if (ffs_zero) builtin_ffs_zero_compare_results.insert(
+                    compare->result.value_id()->value);
                 continue;
               }
               if (const auto* select = std::get_if<LirSelectOp>(&instruction)) {
+                const auto condition = select->cond.value_id();
+                const auto condition_value = condition ? source_values.find(condition->value)
+                                                       : source_values.end();
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     SelectSpec{*lower_lir_type(module, select->type_str),
+                               condition_value != source_values.end()
+                                   ? std::optional<ValueId>{condition_value->second}
+                                   : std::nullopt,
                                select->false_val.kind() == codegen::lir::LirOperandKind::SsaValue
                                    ? std::optional<ValueId>{source_values.at(select->false_val.value_id()->value)}
                                    : std::nullopt,
