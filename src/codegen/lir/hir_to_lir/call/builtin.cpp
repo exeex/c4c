@@ -39,8 +39,11 @@ LirOperand StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id,
                        LirOperand(is_zero), LirOperand::integer("0", 0),
                        LirOperand(plus1)});
   if (!arg.is_i64) return select_result;
-  return LirOperand::raw(
-      narrow_builtin_int_result(ctx, arg, select_result.str()));
+  TypeSpec select_ts{};
+  select_ts.base = TB_LONGLONG;
+  TypeSpec result_ts{};
+  result_ts.base = TB_INT;
+  return coerce_operand(ctx, select_result, select_ts, result_ts);
 }
 
 std::string StmtEmitter::emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {

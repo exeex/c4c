@@ -3709,6 +3709,197 @@ int lir_scalar_select_result_use_identity(void) {
       "verifier should reject immediate authority on scalar select condition");
 }
 
+void test_wide_ffs_select_trunc_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+long long lir_wide_ffs_select_trunc_source;
+int lir_wide_ffs_select_trunc_identity(void) {
+  return __builtin_ffsll(lir_wide_ffs_select_trunc_source) + 1;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_wide_ffs_select_trunc_identity");
+  lir::LirCallOp* cttz = nullptr;
+  lir::LirCmpOp* zero_cmp = nullptr;
+  lir::LirSelectOp* select = nullptr;
+  lir::LirCastOp* trunc = nullptr;
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst)) cttz = call;
+      if (auto* cmp = std::get_if<lir::LirCmpOp>(&inst)) zero_cmp = cmp;
+      if (auto* candidate = std::get_if<lir::LirSelectOp>(&inst)) {
+        select = candidate;
+      }
+      if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) trunc = cast;
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+        binary_ops.push_back(binary);
+      }
+    }
+  }
+  lir::LirBinOp* builtin_plus_one = nullptr;
+  lir::LirBinOp* later_use = nullptr;
+  for (lir::LirBinOp* binary : binary_ops) {
+    if (trunc && trunc->result.value_id() && binary->lhs.value_id() &&
+        *binary->lhs.value_id() == *trunc->result.value_id()) {
+      later_use = binary;
+    } else {
+      builtin_plus_one = binary;
+    }
+  }
+  expect_true(
+      cttz && zero_cmp && select && trunc && builtin_plus_one && later_use &&
+          binary_ops.size() == 2 && select->result.value_id() &&
+          select->result.value_id()->valid() &&
+          select->type_str.kind() == lir::LirTypeKind::Integer &&
+          select->type_str.integer_bit_width() == 64 &&
+          trunc->kind == lir::LirCastKind::Trunc &&
+          trunc->from_type.kind() == lir::LirTypeKind::Integer &&
+          trunc->from_type.integer_bit_width() == 64 &&
+          trunc->to_type.kind() == lir::LirTypeKind::Integer &&
+          trunc->to_type.integer_bit_width() == 32 &&
+          trunc->operand.value_id() &&
+          *trunc->operand.value_id() == *select->result.value_id() &&
+          trunc->result.value_id() && trunc->result.value_id()->valid() &&
+          later_use->opcode.typed() == lir::LirBinaryOpcode::Add &&
+          later_use->type_str.kind() == lir::LirTypeKind::Integer &&
+          later_use->type_str.integer_bit_width() == 32 &&
+          later_use->lhs.value_id() &&
+          *later_use->lhs.value_id() == *trunc->result.value_id(),
+      "wide ffs should preserve exact select-to-trunc-to-use identities");
+  expect_true(!cttz->result.has_authority() &&
+                  !builtin_plus_one->result.has_authority() &&
+                  !zero_cmp->result.has_authority() &&
+                  select->cond.kind() == lir::LirOperandKind::SsaValue &&
+                  !select->cond.has_authority() &&
+                  select->false_val.kind() == lir::LirOperandKind::SsaValue &&
+                  !select->false_val.has_authority(),
+              "wide ffs internal producers should remain honest compatibility");
+  lir::verify_module(lowered);
+
+  struct FocusedChain {
+    lir::LirSelectOp* select = nullptr;
+    lir::LirCastOp* trunc = nullptr;
+    lir::LirBinOp* later_use = nullptr;
+  };
+  const auto require_focused_chain = [](lir::LirModule& module) {
+    lir::LirFunction& focused =
+        require_function(module, "lir_wide_ffs_select_trunc_identity");
+    FocusedChain chain;
+    std::vector<lir::LirBinOp*> found_binary_ops;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirSelectOp>(&inst)) {
+          expect_true(chain.select == nullptr,
+                      "focused wide-ffs fixture should contain one select");
+          chain.select = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirCastOp>(&inst)) {
+          expect_true(chain.trunc == nullptr,
+                      "focused wide-ffs fixture should contain one cast");
+          chain.trunc = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) {
+          found_binary_ops.push_back(candidate);
+        }
+      }
+    }
+    expect_true(chain.select && chain.select->result.value_id() && chain.trunc &&
+                    chain.trunc->result.value_id(),
+                "focused wide-ffs fixture should contain authoritative select/cast results");
+    for (lir::LirBinOp* binary : found_binary_ops) {
+      if (binary->lhs.value_id() &&
+          *binary->lhs.value_id() == *chain.trunc->result.value_id()) {
+        chain.later_use = binary;
+      }
+    }
+    expect_true(chain.later_use,
+                "focused wide-ffs fixture should contain its later i32 use");
+    return chain;
+  };
+
+  lir::LirModule misleading = lowered;
+  FocusedChain misleading_chain = require_focused_chain(misleading);
+  misleading_chain.select->result.str() = "@rendered-not-wide-select";
+  misleading_chain.trunc->operand.str() = "7";
+  misleading_chain.trunc->result.str() = "@rendered-not-wide-trunc";
+  misleading_chain.later_use->lhs.str() = "8";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_select_result = lowered;
+  require_focused_chain(invalid_select_result).select->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_select_result, "verifier should reject invalid wide-ffs select result ID");
+
+  lir::LirModule invalid_cast_result = lowered;
+  require_focused_chain(invalid_cast_result).trunc->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_cast_result, "verifier should reject invalid wide-ffs trunc result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  FocusedChain duplicate_chain = require_focused_chain(duplicate_result);
+  duplicate_chain.trunc->result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_chain.select->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate wide-ffs result IDs");
+
+  lir::LirModule unknown_source = lowered;
+  require_focused_chain(unknown_source).trunc->operand =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_source, "verifier should reject unknown wide-ffs trunc source ID");
+
+  lir::LirModule cross_function_source = lowered;
+  cross_function_source.functions.push_back(
+      make_identity_test_function("wide_ffs_owner", lir::LirValueId{99}));
+  require_focused_chain(cross_function_source).trunc->operand =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_source,
+      "verifier should reject cross-function wide-ffs trunc source ID");
+
+  lir::LirModule unknown_later_use = lowered;
+  require_focused_chain(unknown_later_use).later_use->lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_later_use, "verifier should reject unknown wide-ffs trunc result use");
+
+  lir::LirModule wrong_kind = lowered;
+  require_focused_chain(wrong_kind).trunc->kind = lir::LirCastKind::ZExt;
+  expect_identity_verification_rejected(
+      wrong_kind, "verifier should reject non-Trunc wide-ffs narrowing kind");
+
+  lir::LirModule missing_from_type = lowered;
+  require_focused_chain(missing_from_type).trunc->from_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_from_type, "verifier should reject missing wide-ffs trunc source type");
+
+  lir::LirModule missing_to_type = lowered;
+  require_focused_chain(missing_to_type).trunc->to_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_to_type, "verifier should reject missing wide-ffs trunc destination type");
+
+  lir::LirModule conflicting_endpoint = lowered;
+  require_focused_chain(conflicting_endpoint).trunc->to_type =
+      lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      conflicting_endpoint,
+      "verifier should reject noninteger wide-ffs trunc destination type");
+
+  lir::LirModule conflicting_direction = lowered;
+  FocusedChain direction_chain = require_focused_chain(conflicting_direction);
+  direction_chain.trunc->from_type = lir::LirTypeRef::integer(32);
+  direction_chain.trunc->to_type = lir::LirTypeRef::integer(64);
+  direction_chain.later_use->type_str = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      conflicting_direction,
+      "verifier should reject nonnarrowing wide-ffs Trunc endpoints");
+}
+
 void test_scalar_abs_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -4271,6 +4462,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_compare_result_use_identity_boundary();
   test_scalar_floating_compare_result_use_identity_boundary();
   test_scalar_select_result_use_identity_boundary();
+  test_wide_ffs_select_trunc_result_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";

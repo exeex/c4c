@@ -23,8 +23,8 @@ Step-6 ordinary scalar integer and Step-7.5 ordinary scalar floating arithmetic
 branches in `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar
 integer, Steps 7.7/7.8 explicit scalar FPTrunc/FPExt casts, Steps 7.9/7.10
 explicit scalar SIToFP/UIToFP casts, and the Steps 7.11/7.12 explicit scalar
-FPToSI/FPToUI casts in
-`emit_cast_rval_operand`, and the Step-7.2 integer / Step-7.6 floating ordinary
+FPToSI/FPToUI casts in `emit_cast_rval_operand`, plus the Step-7.13 wide
+builtin-ffs select narrowing cast, and the Step-7.2 integer / Step-7.6 floating ordinary
 scalar compare branches in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
 `emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
 `emit_post_builtin_call_operand`. Other active modern result constructions
@@ -95,13 +95,13 @@ grouped only where they share one producer and disposition.
 | `LirLoadOp`: `result,ptr`; `type_str` | Active broadly in PR/PL/PX/PC/PV/PO; CC-LOAD-1 exact producer is PR selected-global branch | CC-LOAD-1 uses `fresh_value` result + global `LinkNameId`; all local/SSA/object routes use text-only operands and `fresh_tmp` | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global | Preserve CC-LOAD-1 as **regression neighbor**. Other routes depend on local/object pointer ownership; probes per route, starting `lir_local_load_identity.c`; **separate pointer/object family** |
 | `LirStoreOp`: `val,ptr`; `type_str` | Active in PL/PX/PC/PI/PV/PS/PO and PF parameter/local setup; CC-STORE-1 exact producer is PL `emit_set_assign_value` via `integer_store_operand_after_coercion` | CC-STORE-1 has native immediate + global `LinkNameId`; other routes text-only/monostate; no result | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global integer | Preserve CC-STORE-1 as **regression neighbor**. SSA value use can share generic propagation, pointer needs object authority; `lir_local_store_identity.c`; **mixed generic/separate** |
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
-| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Steps 7.1 and 7.7-7.12 own PX explicit scalar integer, FPTrunc/FPExt, SIToFP/UIToFP, and FPToSI/FPToUI `CastExpr` routes | The focused explicit routes use `fresh_value`, exact input `LirOperand`, and the operand-returning coercion wrapper. Floating sources require authoritative Step-7.5 results; integer sources require authoritative Step-6 results with production-selected signedness. Other cast producers remain text-only with `fresh_tmp` | Native kind and exact endpoints; authoritative integer casts require coherent widths, FPTrunc/FPExt require exact floating endpoints and direction, and both integer/floating conversion directions require exact endpoint families. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The focused scalar cast probes close only representative integer, FPTrunc, FPExt, SIToFP, UIToFP, FPToSI, and FPToUI chains. Pointer, bitcast, vector, aggregate, implicit coercion, and other producers remain unclaimed |
+| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Steps 7.1 and 7.7-7.12 own PX explicit scalar cast routes, while Step 7.13 owns only PI's wide builtin-ffs select narrowing | The focused routes use `fresh_value`, exact input `LirOperand`, and the operand-returning coercion wrapper. Step 7.13 reuses the integer seam for an authoritative i64 select source and exact i64-to-i32 Trunc; other builtin narrowing and cast producers remain text-only with `fresh_tmp` | Native kind and exact endpoints; authoritative integer casts require coherent widths, floating casts and conversions require exact endpoint families, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The focused scalar cast probes close the representative PX routes plus only the wide ffs select-to-Trunc-to-use chain. Pointer, bitcast, vector, aggregate, implicit coercion, other builtins, and other producers remain unclaimed |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
 | `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 normalized ordinary scalar integer and Step-7.5 ordinary scalar floating arithmetic use `fresh_value`; unchanged authoritative operands retain the common carrier, while floating literals and unavailable producers remain monostate. Complex/vector/pointer/logical and other producers remain text-only with `fresh_tmp` | Native opcode/type refs plus exact result/use ownership for the two scalar rows; authoritative floating opcode/type alternatives must agree, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_ordinary_value_chain_identity.c` and `lir_scalar_floating_binary_result_use_identity.c` close only the representative integer and floating scalar seams. Complex/vector, pointer/object, logical-helper, and other producer rows remain distinct |
 | `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Steps 7.2 and 7.6 own PB ordinary scalar integer and floating comparisons | The two PB scalar rows use `fresh_value`, preserve structurally available operands, and feed the exact result into the existing normalization cast; floating literals remain monostate. Other comparison producers remain text-only with `fresh_tmp` | Native mode/predicate/exact compared type must agree for authoritative integer and floating results; generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_compare_result_use_identity.c` and `lir_scalar_floating_compare_result_use_identity.c` close only the two PB ordinary scalar compare/use rows. Pointer, vector, complex/logical-helper, builtin, vaarg, and statement producers remain unclaimed |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
-| `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active only in PI `emit_builtin_ffs_call` | Step-7.3 i32 ffs route uses `fresh_value`, exact scalar type, native zero immediate, and returns the same result operand; condition/false arm remain honest monostate SSA compatibility and wider ffs narrowing remains raw | Authoritative integer select requires a native result and SSA condition shape; generic ownership rejects invalid/duplicate definitions and unknown/cross-function later uses | `lir_scalar_select_result_use_identity.c` closes the current i32 scalar select/use route. Wider narrowing and unavailable internal producer authority remain explicitly unclaimed |
+| `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active only in PI `emit_builtin_ffs_call` | Step-7.3 i32 and Step-7.13 i64 ffs routes use `fresh_value`, exact scalar type, and native zero immediate. The i64 result preserves its exact ID through a fresh authoritative Trunc; condition/false arm remain honest monostate SSA compatibility | Authoritative integer select requires a native result and SSA condition shape; generic ownership rejects invalid/duplicate definitions and unknown/cross-function select-to-cast and cast-to-use edges | `lir_scalar_select_result_use_identity.c` closes the direct i32 route; the wide focused probe closes only i64 select → i32 Trunc → later i32 use. Internal cttz/plus-one/zero-compare authority and other producers remain unclaimed |
 | `LirInsertElementOp`: `result,vec,elem,index`; `vec_type,elem_type` | Active, PB vector-scalar arithmetic branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_insertelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
 | `LirExtractElementOp`: `result,vec,index`; `vec_type,index_type` | Active, PX `emit_rval_payload(IndexExpr)` vector branch | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_extractelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
 | `LirShuffleVectorOp`: `result,vec1,vec2,mask`; `vec_type,mask_type` | Active, PB vector-scalar splat branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_shufflevector_identity.c`; mask needs distinct typed constant/vector carrier; **generic result/use plus distinct vector semantics** |
@@ -343,11 +343,11 @@ condition to retain SSA shape; missing or wrong-alternative condition authority
 rejects while honest monostate SSA compatibility remains accepted. Misleading
 select-result/use displays with unchanged IDs pass.
 
-The wider ffs route still narrows through a compatibility cast and does not
-publish its select result downstream. No internal cttz call, plus-one binary,
-or zero-comparison result authority is inferred. Step 7.4 separately owns the
-current integer abs route; aggregate/vector, pointer/object, CFG/parameters,
-other calls, inline assembly, and BIR are unchanged.
+Step 7.13 separately owns the wider ffs select-to-Trunc chain. No internal cttz
+call, plus-one binary, zero-comparison result, select condition, or false-arm
+authority is inferred. Step 7.4 separately owns the current integer abs route;
+aggregate/vector, pointer/object, CFG/parameters, other calls, inline assembly,
+and BIR are unchanged.
 
 ## Step-7.4 current integer abs contract
 
@@ -568,6 +568,29 @@ Pointer/bitcast/vector/complex/aggregate casts, implicit coercions,
 monostate-source conversions, and all other producer families remain
 compatibility or outside this packet.
 
+## Step-7.13 wide builtin-ffs select narrowing contract
+
+The claimed row is only PI's i64 `__builtin_ffsll` select result and its
+required i32 return narrowing. `emit_builtin_ffs_call` allocates the exact i64
+`LirSelectOp.result` through `fresh_value`, then passes that same operand to the
+existing integer `coerce_operand` seam. The seam allocates a second exact
+result through `fresh_value`, stores native Trunc with exact i64-to-i32
+endpoints, and returns the identical cast result operand through builtin
+CallExpr lowering to a later ordinary i32 Add.
+
+Generic ownership resolves both the select-to-Trunc and Trunc-to-Add edges,
+rejecting invalid/duplicate definitions and unknown or cross-function uses.
+Reachable cast verification requires native Trunc, exact integer endpoints,
+and strict narrowing direction; wrong kind, missing or noninteger endpoints,
+and equal/widening direction reject. Misleading select, cast, and later-use
+displays with unchanged IDs pass.
+
+The internal cttz call, plus-one binary, zero comparison, select condition, and
+false arm remain honest monostate compatibility. Other builtins and calls,
+other select or cast producers, pointer/vector/complex/aggregate/object work,
+implicit coercions, CFG/parameters, inline assembly, and BIR remain outside
+this packet.
+
 ## Mechanical coverage check
 
 Reproducible source-side extraction:
@@ -648,6 +671,10 @@ Current-source spot checks used for this baseline:
   through `fresh_value`, carries exact scalar type plus native zero authority,
   and returns the exact result ID to a later ordinary use while internal inputs
   remain compatibility;
+- representative wide scalar select narrowing: the i64 ffs select allocates an
+  exact result, preserves that ID into an exact fresh i64-to-i32 Trunc, and
+  preserves the cast result ID into a later i32 Add while cttz, plus-one,
+  zero-comparison, condition, and false-arm producers remain compatibility;
 - representative scalar abs: `call/builtin.cpp` routes the existing integer
   abs argument through the common operand/coercion seam, allocates its exact
   i32/i64 result through `fresh_value`, and preserves the result ID into a later
