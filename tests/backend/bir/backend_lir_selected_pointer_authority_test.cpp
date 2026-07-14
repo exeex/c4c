@@ -1,4 +1,6 @@
 #include "src/codegen/lir/ir.hpp"
+#include "src/codegen/lir/hir_to_lir.hpp"
+#include "src/frontend/hir/hir_ir.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -7,6 +9,7 @@
 #include <string>
 
 namespace lir = c4c::codegen::lir;
+namespace hir = c4c::hir;
 
 namespace {
 
@@ -60,6 +63,153 @@ void expect_rejected(lir::LirModule module, const std::string& message) {
   }
 }
 
+c4c::TypeSpec long_long_type() {
+  c4c::TypeSpec type{};
+  type.base = c4c::TB_LONGLONG;
+  type.enum_underlying_base = c4c::TB_VOID;
+  type.array_size = -1;
+  return type;
+}
+
+c4c::TypeSpec large_aggregate_type(c4c::TextId tag_id) {
+  c4c::TypeSpec type{};
+  type.base = c4c::TB_STRUCT;
+  type.enum_underlying_base = c4c::TB_VOID;
+  type.tag_text_id = tag_id;
+  type.array_size = -1;
+  return type;
+}
+
+hir::Module selected_byval_materialization_module() {
+  hir::Module module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+
+  const c4c::TextId aggregate_tag =
+      module.link_name_texts->intern("LargeAggregate");
+  hir::HirStructDef aggregate;
+  aggregate.tag = "LargeAggregate";
+  aggregate.tag_text_id = aggregate_tag;
+  aggregate.size_bytes = 24;
+  aggregate.align_bytes = 8;
+  aggregate.fields = {
+      hir::HirStructField{
+          .name = "a",
+          .elem_type = long_long_type(),
+          .llvm_idx = 0,
+          .offset_bytes = 0,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+      hir::HirStructField{
+          .name = "b",
+          .elem_type = long_long_type(),
+          .llvm_idx = 1,
+          .offset_bytes = 8,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+      hir::HirStructField{
+          .name = "c",
+          .elem_type = long_long_type(),
+          .llvm_idx = 2,
+          .offset_bytes = 16,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  module.struct_defs.emplace(aggregate.tag, aggregate);
+  module.struct_def_order.push_back(aggregate.tag);
+  module.index_struct_def_owner(aggregate, true);
+
+  const c4c::TypeSpec aggregate_type = large_aggregate_type(aggregate_tag);
+  c4c::TypeSpec aggregate_pointer_type = aggregate_type;
+  aggregate_pointer_type.ptr_level = 1;
+
+  hir::Expr parameter_ref;
+  parameter_ref.id = module.alloc_expr_id();
+  parameter_ref.type.spec = aggregate_type;
+  parameter_ref.type.category = hir::ValueCategory::LValue;
+  parameter_ref.payload = hir::DeclRef{
+      .name = "p",
+      .param_index = 0,
+  };
+
+  hir::Expr address_of_parameter;
+  address_of_parameter.id = module.alloc_expr_id();
+  address_of_parameter.type.spec = aggregate_pointer_type;
+  address_of_parameter.payload = hir::UnaryExpr{
+      .op = hir::UnaryOp::AddrOf,
+      .operand = parameter_ref.id,
+  };
+
+  hir::Function function;
+  function.id = module.alloc_function_id();
+  function.name = "selected_byval_materialization";
+  function.link_name_id = module.link_names.intern(function.name);
+  function.return_type.spec.base = c4c::TB_VOID;
+  function.return_type.spec.enum_underlying_base = c4c::TB_VOID;
+  function.return_type.spec.array_size = -1;
+  function.params.push_back(hir::Param{
+      .name = "p",
+      .type = hir::QualType{
+          .spec = aggregate_type,
+      },
+  });
+  function.entry = module.alloc_block_id();
+
+  hir::Block entry;
+  entry.id = function.entry;
+  entry.stmts.push_back(hir::Stmt{
+      .payload = hir::ExprStmt{address_of_parameter.id},
+  });
+  function.blocks.push_back(std::move(entry));
+
+  module.expr_pool.push_back(std::move(parameter_ref));
+  module.expr_pool.push_back(std::move(address_of_parameter));
+  module.index_function_decl(function);
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_selected_byval_materialization_populates_authority() {
+  lir::LirModule module =
+      lir::lower(selected_byval_materialization_module());
+  expect(module.functions.size() == 1,
+         "selected producer fixture should lower one function");
+  const lir::LirFunction& function = module.functions.front();
+  expect(function.selected_memcpy_pointer_authority.has_value(),
+         "selected byval materialization should publish pointer authority");
+
+  const auto& authority = *function.selected_memcpy_pointer_authority;
+  expect(authority.byval_parameter.role ==
+             lir::LirSelectedMemcpyPointerRole::ByvalParameter,
+         "selected parameter definition should carry byval role");
+  expect(authority.destination_alloca.role ==
+             lir::LirSelectedMemcpyPointerRole::DestinationAlloca,
+         "selected destination definition should carry destination role");
+  expect(authority.byval_parameter.object_owner == function.link_name_id &&
+             authority.destination_alloca.object_owner == function.link_name_id,
+         "selected definitions should be owned by the current function");
+  expect(authority.byval_parameter.value.valid() &&
+             authority.destination_alloca.value.valid() &&
+             authority.byval_parameter.value != authority.destination_alloca.value,
+         "selected definitions should use distinct value IDs");
+  expect(authority.byval_parameter.object.valid() &&
+             authority.destination_alloca.object.valid() &&
+             authority.byval_parameter.object != authority.destination_alloca.object,
+         "selected definitions should use distinct local objects");
+  expect(authority.byval_parameter.pointer_type.kind() ==
+             lir::LirTypeKind::Pointer &&
+             authority.destination_alloca.pointer_type.kind() ==
+                 lir::LirTypeKind::Pointer,
+         "selected definitions should carry pointer type authority");
+  expect(authority.byval_parameter.live_at_selected_site &&
+             authority.destination_alloca.live_at_selected_site,
+         "selected definitions should be live at the selected site");
+
+  lir::verify_module(module);
+}
+
 void test_selected_current_function_pointer_authority() {
   auto valid = selected_authority_module();
   lir::verify_module(valid);
@@ -106,5 +256,6 @@ void test_selected_current_function_pointer_authority() {
 
 int main() {
   test_selected_current_function_pointer_authority();
+  test_selected_byval_materialization_populates_authority();
   return 0;
 }

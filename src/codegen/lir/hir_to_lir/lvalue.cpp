@@ -61,6 +61,32 @@ std::optional<std::string> member_access_owner_tag_from_type(const c4c::hir::Mod
   return typespec_aggregate_compatibility_tag(mod, ts);
 }
 
+void populate_selected_byval_parameter_materialization_authority(
+    lir::LirFunction& function) {
+  if (function.selected_memcpy_pointer_authority.has_value()) return;
+  if (function.link_name_id == kInvalidLinkName) return;
+
+  function.selected_memcpy_pointer_authority =
+      lir::LirSelectedMemcpyPointerAuthority{
+          .byval_parameter = lir::LirCurrentFunctionPointerDefinition{
+              .value = function.alloc_value(),
+              .pointer_type = lir::LirTypeRef("ptr"),
+              .object = function.alloc_object(),
+              .object_owner = function.link_name_id,
+              .role = lir::LirSelectedMemcpyPointerRole::ByvalParameter,
+              .live_at_selected_site = true,
+          },
+          .destination_alloca = lir::LirCurrentFunctionPointerDefinition{
+              .value = function.alloc_value(),
+              .pointer_type = lir::LirTypeRef("ptr"),
+              .object = function.alloc_object(),
+              .object_owner = function.link_name_id,
+              .role = lir::LirSelectedMemcpyPointerRole::DestinationAlloca,
+              .live_at_selected_site = true,
+          },
+      };
+}
+
 LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
                                       lir::LirModule* module, StructNameId name_id,
                                       bool is_union) {
@@ -256,18 +282,6 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       const auto& param = ctx.fn->params[*r->param_index];
       pts = param.type.spec;
       const std::string pname = "%p." + sanitize_llvm_ident(param.name);
-      if (amd64_fixed_aggregate_byval(mod_, pts)) {
-        auto it = ctx.param_slots.find(*r->param_index + 0x80000000u);
-        if (it != ctx.param_slots.end()) {
-          return it->second;
-        }
-        const auto direct_it = ctx.param_slots.find(*r->param_index);
-        if (direct_it != ctx.param_slots.end()) {
-          return direct_it->second;
-        }
-        ctx.param_slots[*r->param_index] = pname;
-        return pname;
-      }
       auto it = ctx.param_slots.find(*r->param_index + 0x80000000u);
       if (it != ctx.param_slots.end()) {
         return it->second;
@@ -276,6 +290,10 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(mod_, pts), "", 0});
       if (amd64_fixed_aggregate_byval(mod_, pts)) {
         module_->need_memcpy = true;
+        if (ctx.lir_function) {
+          populate_selected_byval_parameter_materialization_authority(
+              *ctx.lir_function);
+        }
         emit_lir_op(ctx, lir::LirMemcpyOp{
                              slot, pname, std::to_string(llvm_cc::amd64_type_size_bytes(pts, mod_)),
                              false});

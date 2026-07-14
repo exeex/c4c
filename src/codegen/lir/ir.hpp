@@ -683,9 +683,11 @@ struct LirFunction {
   // ID generation for values and blocks within this function.
   uint32_t next_value_id = 0;
   uint32_t next_block_id = 0;
+  uint32_t next_object_id = 0;
 
   [[nodiscard]] LirValueId alloc_value() { return LirValueId{next_value_id++}; }
   [[nodiscard]] LirBlockId alloc_block() { return LirBlockId{next_block_id++}; }
+  [[nodiscard]] LirObjectId alloc_object() { return LirObjectId{next_object_id++}; }
 };
 
 // ── Global variable ──────────────────────────────────────────────────────────
