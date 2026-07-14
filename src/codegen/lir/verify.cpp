@@ -353,7 +353,8 @@ bool has_complete_direct_void_integer_ssa_authority(const LirCallOp& call) {
 
 bool is_native_scalar_floating_type(const LirTypeRef& type) {
   return type.kind() == LirTypeKind::Floating &&
-         (type.str() == "float" || type.str() == "double");
+         (type.str() == "float" || type.str() == "double" ||
+          type.str() == "x86_fp80");
 }
 
 bool is_direct_zero_arg_scalar_floating_result_claim(const LirCallOp& call) {
