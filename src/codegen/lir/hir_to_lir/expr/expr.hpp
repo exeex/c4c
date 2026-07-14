@@ -48,7 +48,7 @@ TypeSpec resolve_payload_type(FnCtx&, const T&);
 // Rvalue expression coordination.
 LirOperand emit_rval_operand(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
 std::string emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
-std::string emit_rval_expr(FnCtx& ctx, const Expr& e);
+LirOperand emit_rval_expr(FnCtx& ctx, const Expr& e);
 
 // Default payload fallback and literal payloads.
 template <typename T>
@@ -57,6 +57,7 @@ std::string emit_rval_payload(FnCtx&, const IntLiteral& x, const Expr& e);
 std::string emit_rval_payload(FnCtx&, const FloatLiteral& x, const Expr& e);
 std::string emit_rval_payload(FnCtx&, const CharLiteral& x, const Expr&);
 std::string emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& e);
+LirOperand emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e);
 
 // Binary expression helpers.

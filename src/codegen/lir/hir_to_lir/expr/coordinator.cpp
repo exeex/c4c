@@ -516,7 +516,7 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     LirOperand result = emit_cast_rval_operand(ctx, *cast);
     return result.has_authority() ? result : LirOperand::raw(result.str());
   }
-  return LirOperand::raw(emit_rval_expr(ctx, e));
+  return emit_rval_expr(ctx, e);
 }
 
 std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id,
@@ -524,8 +524,15 @@ std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id,
   return emit_rval_operand(ctx, id, out_ts).str();
 }
 
-std::string StmtEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e) {
-  return std::visit([&](const auto& p) -> std::string { return emit_rval_payload(ctx, p, e); }, e.payload);
+LirOperand StmtEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e) {
+  if (const auto* ref = std::get_if<DeclRef>(&e.payload);
+      ref && ((ref->param_index && ctx.fn && *ref->param_index < ctx.fn->params.size()) ||
+              ref->local)) {
+    return emit_decl_ref_rval_operand(ctx, *ref, e);
+  }
+  return LirOperand::raw(
+      std::visit([&](const auto& p) -> std::string { return emit_rval_payload(ctx, p, e); },
+                 e.payload));
 }
 
 template <typename T>
@@ -591,33 +598,34 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, 
   return tmp;
 }
 
-std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e) {
+LirOperand StmtEmitter::emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r,
+                                                    const Expr& e) {
   if (r.param_index && ctx.fn && *r.param_index < ctx.fn->params.size()) {
     const auto spill_it = ctx.param_slots.find(*r.param_index + 0x80000000u);
     if (spill_it != ctx.param_slots.end()) {
       const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
       const std::string ty = llvm_value_ty(mod_, pts);
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, spill_it->second});
-      return tmp;
+      const LirOperand result = fresh_value(ctx);
+      emit_lir_op(ctx, lir::LirLoadOp{result, ty, spill_it->second});
+      return result;
     }
     const auto it = ctx.param_slots.find(*r.param_index);
     if (it != ctx.param_slots.end()) {
       const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
       if (amd64_fixed_aggregate_byval(mod_, pts)) {
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_value_ty(mod_, pts), it->second});
-        return tmp;
+        const LirOperand result = fresh_value(ctx);
+        emit_lir_op(ctx, lir::LirLoadOp{result, llvm_value_ty(mod_, pts), it->second});
+        return result;
       }
-      return it->second;
+      return LirOperand::raw(it->second);
     }
     if (amd64_fixed_aggregate_byval(mod_, ctx.fn->params[*r.param_index].type.spec)) {
       const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
       const std::string pname = "%p." + sanitize_llvm_ident(ctx.fn->params[*r.param_index].name);
       ctx.param_slots[*r.param_index] = pname;
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_value_ty(mod_, pts), pname});
-      return tmp;
+      const LirOperand result = fresh_value(ctx);
+      emit_lir_op(ctx, lir::LirLoadOp{result, llvm_value_ty(mod_, pts), pname});
+      return result;
     }
   }
 
@@ -628,24 +636,32 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     const TypeSpec ts = ctx.local_types.at(r.local->value);
     const auto vit = ctx.local_is_vla.find(r.local->value);
     if (vit != ctx.local_is_vla.end() && vit->second) {
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), it->second});
-      return tmp;
+      const LirOperand result = fresh_value(ctx);
+      emit_lir_op(ctx, lir::LirLoadOp{result, std::string("ptr"), it->second});
+      return result;
     }
     if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
-      return it->second;
+      return LirOperand::raw(it->second);
     }
     if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(mod_, ts), it->second, false,
                                      {"i64 0", "i64 0"}});
-      return tmp;
+      return LirOperand::raw(tmp);
     }
     const std::string ty = llvm_value_ty(mod_, ts);
-    if (ty == "void") return "0";
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, it->second});
-    return tmp;
+    if (ty == "void") return LirOperand::raw("0");
+    const LirOperand result = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{result, ty, it->second});
+    return result;
+  }
+
+  return LirOperand::raw(emit_rval_payload(ctx, r, e));
+}
+
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e) {
+  if ((r.param_index && ctx.fn && *r.param_index < ctx.fn->params.size()) || r.local) {
+    return emit_decl_ref_rval_operand(ctx, r, e).str();
   }
 
   if (r.global) {

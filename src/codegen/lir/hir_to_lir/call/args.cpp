@@ -377,13 +377,10 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       out_arg_ts.ptr_level == 0 && out_arg_ts.array_rank == 0 &&
       is_any_int(out_arg_ts.base) &&
       llvm_value_ty(mod_, arg_ts) == out_llvm_ty;
-  const Expr& source_expr = get_expr(call.args[arg_index]);
-  const auto* source_ref = std::get_if<DeclRef>(&source_expr.payload);
-  const bool authoritative_selected_global_load =
-      source_operand.value_id() && source_ref && source_ref->global.has_value();
+  const bool authoritative_current_function_value = source_operand.value_id() != nullptr;
   const bool authoritative_fixed_integer_argument =
       authoritative_fixed_integer_path &&
-      (source_operand.integer_immediate() || authoritative_selected_global_load);
+      (source_operand.integer_immediate() || authoritative_current_function_value);
   LirOperand call_operand = authoritative_fixed_integer_argument
                                 ? source_operand
                                 : LirOperand(arg);

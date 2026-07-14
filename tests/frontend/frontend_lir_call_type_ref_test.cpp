@@ -3017,6 +3017,86 @@ void lir_direct_void_ssa_arg_identity(void) {
       extension_conflict, "verifier should reject extension on fixed SSA argument");
 }
 
+void test_local_and_parameter_rvalue_identity_route() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+void rvalue_identity_sink(int value);
+int rvalue_local_identity(int input) {
+  int local = input;
+  rvalue_identity_sink(local);
+  return local;
+}
+int rvalue_parameter_identity(int parameter) {
+  parameter = parameter + 1;
+  rvalue_identity_sink(parameter);
+  return parameter;
+}
+)c", "x86_64-linux-gnu");
+
+  const auto route_operand = [&](std::string_view function_name) -> lir::LirOperand& {
+    lir::LirFunction& function = require_function(lowered, function_name);
+    lir::LirCallOp& call = require_call_to(function, "@rvalue_identity_sink");
+    expect_true(call.structured_args.size() == 1,
+                "rvalue identity probe should lower one fixed call argument");
+    lir::LirOperand& operand = call.structured_args[0].operand;
+    expect_true(operand.value_id() && operand.value_id()->valid(),
+                "local and spilled-parameter rvalue call consumers must carry load IDs");
+    bool found_matching_load = false;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (const auto* load = std::get_if<lir::LirLoadOp>(&inst);
+            load && load->result.value_id() &&
+            *load->result.value_id() == *operand.value_id()) {
+          found_matching_load = true;
+        }
+      }
+    }
+    expect_true(found_matching_load,
+                "local and spilled-parameter call consumers must retain the exact load ID");
+    return operand;
+  };
+  const auto require_route_call = [](lir::LirModule& module,
+                                     std::string_view function_name) -> lir::LirCallOp& {
+    return require_call_to(require_function(module, function_name), "@rvalue_identity_sink");
+  };
+
+  lir::LirOperand& local_operand = route_operand("rvalue_local_identity");
+  lir::LirOperand& parameter_operand = route_operand("rvalue_parameter_identity");
+  const lir::LirValueId local_id = *local_operand.value_id();
+  const lir::LirValueId parameter_id = *parameter_operand.value_id();
+  local_operand.str() = "7";
+  parameter_operand.str() = "@misleading-parameter-display";
+  lir::verify_module(lowered);
+  expect_true(*local_operand.value_id() == local_id &&
+                  *parameter_operand.value_id() == parameter_id,
+              "misleading display spelling must not alter route identity");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = lowered;
+    mutate(malformed);
+    expect_identity_verification_rejected(malformed, message);
+  };
+  rejected([&](lir::LirModule& module) {
+    require_route_call(module, "rvalue_local_identity").structured_args[0].operand =
+        lir::LirOperand("%missing");
+  }, "missing local rvalue identity must fail closed");
+  rejected([&](lir::LirModule& module) {
+    require_route_call(module, "rvalue_parameter_identity").structured_args[0].operand =
+        lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  }, "invalid parameter rvalue identity must fail closed");
+  rejected([&](lir::LirModule& module) {
+    require_route_call(module, "rvalue_local_identity").structured_args[0].operand =
+        lir::LirOperand::global("%looks-like-local", c4c::kInvalidLinkName);
+  }, "unsuitable local rvalue authority must fail closed");
+  rejected([&](lir::LirModule& module) {
+    module.functions.push_back(make_identity_test_function("foreign_rvalue_owner",
+                                                            lir::LirValueId{99}));
+    require_route_call(module, "rvalue_parameter_identity").structured_args[0].operand =
+        lir::LirOperand::ssa("%foreign", lir::LirValueId{99});
+  }, "foreign parameter rvalue identity must fail closed");
+}
+
 void test_scalar_ordinary_value_chain_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -6607,6 +6687,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_aarch64_direct_long_double_result_call_identity_boundary();
   test_direct_void_immediate_arg_identity_boundary();
   test_direct_void_ssa_arg_identity_boundary();
+  test_local_and_parameter_rvalue_identity_route();
   test_scalar_ordinary_value_chain_identity_boundary();
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
