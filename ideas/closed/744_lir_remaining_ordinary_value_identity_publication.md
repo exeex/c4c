@@ -1,6 +1,6 @@
 # LIR Remaining Ordinary Value Identity Publication
 
-Status: Active (resumed at Step 7.32 after corrected idea-746 prerequisite)
+Status: Closed (capability complete)
 Type: producer-side ordinary value-authority decomposition
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
 Builds On: ideas/closed/741_lir_structured_operand_and_terminator_identity_decomposition.md
@@ -224,3 +224,27 @@ coherent generic result/use seam and its exact proof.
   producer capability.
 - Reject closure based on the four named probes alone if the remaining ordinary
   row matrix still has unclassified production result/use authority gaps.
+
+## Closure Record
+
+Disposition: capability complete.
+
+All source acceptance criteria are evidenced. The checked authority matrix and
+the Step-8 handoff enumerate all 38 current `LirInst` alternatives with an
+empty `comm -3` delta, preserve the closed idea-741 contracts, and explicitly
+fail-close producerless and separate families. The required focused probes and
+bounded generic seams publish native `LirValueId`, `LirIntegerImmediate`, and
+`LinkNameId` authority through the existing carrier with reachable ownership
+and type rejection; no parallel model or presentation-derived recovery was
+introduced.
+
+The final normal resolved external-double seam is accepted in `c2f0f13e9`;
+the checked receiver handoff is `69d91e613`. Supervisor acceptance evidence is
+a fresh default build, passing `frontend_lir_call_type_ref`, matching 4/4
+backend guard results without new failures, and matching full regression logs
+`test_before.log` / `test_after.log` at 3033/3033 with a zero-delta guard.
+
+No new-BIR receipt is claimed here. The remaining receiver work stays with
+open idea 734, resumed at its first newly authorized ordinary row: the resolved
+direct integer-result `LirCallOp` subrow in
+`docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`.

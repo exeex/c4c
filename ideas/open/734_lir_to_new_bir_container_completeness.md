@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (parked on ordinary value identity)
+Status: Open (active; resumed from accepted ordinary value-identity handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -99,11 +99,21 @@ limited to the bounded selected-global load/GEP seams delivered by closed idea
 variants.
 
 Idea 734 must not reconstruct these identities from result names, formatted
-operands, printer output, or testcase identity. Active idea 744 owns the
-remaining ordinary producer publication and verifier decomposition using the
-existing `LirOperand`/`LirValueId`/typed-immediate/`LinkNameId` model. Closed
-idea 741 remains complete and unchanged. CFG/terminator targets, stack/local
-objects, and body parameter identity remain separate blocked families.
+operands, printer output, or testcase identity. Closed idea 744 has now
+published the checked producer handoff in
+`docs/lir_remaining_ordinary_value_identity/handoff_to_734.md` (commit
+`69d91e613`), after the final resolved external-double verifier packet
+`c2f0f13e9` and accepted 3033/3033 regression proof. Resume only at the first
+newly authorized receiver row: resolved direct integer-result `LirCallOp` with
+an owning result `LirValueId`, direct `LinkNameId` callee, and matching
+structured fixed-void signature. The already received 741 regression-neighbor
+rows and accepted zero-argument void-call row are historical progress and must
+not be repeated.
+
+The handoff's other rows remain later bounded packets. CFG/terminator targets,
+stack/local objects, body parameters, producerless legacy alternatives, and
+every handoff fail-closed form remain separate and unsupported until their own
+typed source/receiver contracts are selected.
 
 ## Why This Exists
 

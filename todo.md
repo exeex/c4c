@@ -1,36 +1,30 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 9
-Current Step Title: Prove acceptance, close and resume idea 734
+Current Step ID: 5.2
+Current Step Title: Receive resolved direct integer-result calls
 
 ## Just Finished
 
-- Plan Step 8 completed: re-enumeration found 38 source and 38 checked-matrix
-  `LirInst` alternatives with an empty `comm -3` delta. The new
-  `handoff_to_734.md` names only proven source fields, carriers, producers,
-  verifier obligations, focused proof, and bounded receiver work, while
-  explicitly fail-closing producerless, presentation-only, separate-family,
-  ABI, aggregate/object, unresolved, and unproven forms.
+- Closed idea 744 after its accepted producer-side ordinary authority handoff;
+  this plan resumes at the first newly authorized receiver row, without
+  repeating earlier idea-741 or direct-void-call receipt work.
 
 ## Suggested Next
 
-- Begin Plan Step 9 acceptance proof: run the supervisor-selected fresh build,
-  focused producer/verifier and backend boundary tests, canonical regression
-  checkpoint, and final reject-signal audit before lifecycle closure review.
+- Execute Plan Step 5.2 for the resolved direct integer-result `LirCallOp`
+  handoff row only.
 
 ## Watchouts
 
-- Receiver readiness is source-side only. Keep the Step-7.32 external-double
-  row bounded to resolved zero-argument native-floating normal Functions; do
-  not turn the handoff into a BIR receipt or broaden text-only/separate rows.
+- Do not infer result, callee, signature, type, or argument facts from text.
+  Keep all handoff fail-closed forms unsupported until individually selected.
 
 ## Proof
 
-- Step 8 read-only audit: source/matrix extraction commands from the final
-  matrix section produced 38/38 alternatives and zero `comm -3` rows; targeted
-  `rg` inspection confirmed the cited call/builtin/binary/cast/inline-asm
-  producers and verifier seams. No build/test was required for this docs-only
-  packet; prior canonical backend proof remains in `test_after.log`.
+- Producer-side acceptance is recorded in `c2f0f13e9` and `69d91e613` with a
+  fresh default build, focused `frontend_lir_call_type_ref`, matching 4/4
+  backend guard, and matching 3033/3033 full regression logs. No receiver
+  proof has yet run for Step 5.2.
