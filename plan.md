@@ -23,6 +23,21 @@ compiler retains a real identity-bearing pointer value for consumption.
 an SSA identity with `select`, `gep`, `bitcast`, text recovery, or a dummy
 instruction; preserve the native constant through the owned lowering boundary.
 
+## Selected Contract (Step 1 complete)
+
+- The function owns a non-instruction `LirDirectLabelAddressConstant` carrying
+  its enclosing `LinkNameId`, `LirBlockId` target, pointer `LirTypeRef`, and
+  produced `LirValueId`.
+- `LirOperandKind::DirectConstant` consumes that value identity. The printer
+  resolves the structured record only in legal direct-operand contexts.
+- The selected Raw-BIR passage is `ConstantPayload { BlockId target }`, with a
+  builder definition method and foundation verification. The importer
+  pre-registers the source value and defines its mapped target before
+  terminator lowering; existing `IndirectJumpTerm ValueId` then consumes it.
+- Reject invalid, missing, or duplicate produced values; non-pointer types;
+  invalid or foreign owners/targets; and a direct-use identity mismatch or
+  non-pointer address.
+
 ## Read First
 
 - `ideas/open/770_lir_to_bir_native_label_address_constant_contract.md`
@@ -70,6 +85,8 @@ Completion check:
 - one bounded representation/lowering contract is named, including malformed
   authority and pointer-use rejection points, with no fabricated SSA route.
 
+Completed: selected the contract in **Selected Contract (Step 1 complete)**.
+
 ### Step 2 - Implement native representation and lowering consumption
 
 Goal: preserve the direct label-address constant as a typed identity-bearing
@@ -77,18 +94,23 @@ pointer value through the selected LIR-to-BIR and indirect-jump boundary.
 
 Actions:
 
-- implement only the selected native representation, validation, and lowering
-  surfaces
-- emit the legal direct `blockaddress(...)` constant form rather than an
-  instruction-shaped assignment
-- ensure the indirect-jump route consumes the resulting identity under the
-  stated contract; use only the selected minimal Raw-BIR/importer passage and
-  stop for a separate blocker if any broader backend work becomes necessary
+- add function-owned non-instruction `LirDirectLabelAddressConstant` and the
+  `LirOperandKind::DirectConstant` value-use path, with exact owner/target/
+  pointer/value validation
+- make the printer emit legal direct `blockaddress(...)` only from that
+  structured record in a legal direct operand context
+- add only the selected Raw-BIR `ConstantPayload { BlockId target }`, builder
+  definition method, foundation verifier checks, and importer pre-registration
+  plus mapped-target definition before terminator lowering
+- keep existing `IndirectJumpTerm ValueId` consumption; stop for a separate
+  blocker before changing `scalar.cpp`, legacy BIR, preparation, MIR, codegen,
+  carrier publication, or any broader backend route
 
 Completion check:
 
 - no synthetic bridge remains and the chosen direct constant reaches the
-  owned consumption boundary with its required identity intact.
+  owned consumption boundary with its required identity intact; malformed
+  owner/target/value/type/direct-use boundaries fail closed.
 
 ### Step 3 - Prove the owned contract and return to 768
 
