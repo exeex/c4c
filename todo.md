@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.16
-Current Step Title: Publish builtin-ffs cttz call-result/add-use authority (complete)
+Current Step ID: 7.17
+Current Step Title: Publish builtin-ctz call-result/use authority
 
 ## Just Finished
 
@@ -24,23 +24,28 @@ Current Step Title: Publish builtin-ffs cttz call-result/add-use authority (comp
 
 ## Suggested Next
 
-- Select the next bounded Step-7 ordinary-value identity row from the source
-  idea and establish its exact producer/use boundary before implementation.
+- Execute Step 7.17: publish the i32/i64 builtin-ctz Cttz call result through
+  its optional narrowing and one later ordinary i32 use.
 
 ## Watchouts
 
-- Preserve the Step-7.16 contract: only PI's i32/i64 ffs cttz call is newly
-  authoritative, with native Cttz kind, exact result/add edge, module callee
-  ID, fixed integer/i1 signature, prepared value compatibility, and immediate
-  false.
-- Preserve the repaired arg0 boundary: native authority must be a valid
-  current-function SSA ID, while monostate SSA or Immediate presentation is
-  accepted without acquiring literal payload authority.
-- Keep verifier recognition structural and authority-first; never infer the
-  intrinsic, arguments, result, or use from rendered call text.
-- Preserve Steps 3, 7.14, and 7.15. Continue excluding other intrinsic/builtin/
-  direct/indirect calls, ABI or variadic work, pointer/vector/aggregate/object
-  families, CFG/parameters, inline assembly, and BIR.
+- Own only PI's i32/i64 `emit_builtin_ctz_call` route. Reuse native Cttz kind,
+  module-owned intrinsic `LinkNameId`, and the exact nonvariadic integer/i1
+  signature, but publish the structural zero-undefined flag as exact i1 true.
+- Allocate the intrinsic result through `fresh_value`; return that exact ID for
+  i32 and preserve it through an authoritative i64-to-i32 Trunc for the wider
+  route, then carry the final exact operand into one later ordinary i32 use.
+- Preserve arg0's honest compatibility boundary: available native authority
+  must be a valid current-function SSA ID, while monostate SSA or Immediate
+  presentation does not acquire payload authority from spelling.
+- Require native callee/signature/type/count/flag agreement plus unique result
+  ownership and exact call-to-Trunc/use edges. Reject invalid/duplicate,
+  unknown/cross-function, unresolved callee, wrong-kind, argument, flag,
+  signature, endpoint, or narrowing conflicts.
+- Accept misleading displays only after authority is proven. Preserve Step
+  7.16's false-flag ffs contract; exclude clz/popcount/parity and all other
+  intrinsic/builtin/direct/indirect calls, ABI/variadic work, pointer/vector/
+  aggregate/object families, CFG/parameters, inline assembly, and BIR.
 
 ## Proof
 
