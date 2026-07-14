@@ -3,73 +3,74 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.26
-Current Step Title: Publish scalar read-write inline-asm binding authority
+Current Step ID: 7.27
+Current Step Title: Publish insn-r positional operand authority
 
 ## Just Finished
 
-- Accepted Plan Step 7.25 as width-generic production proof for PS's single
-  non-explicit-register output-only scalar i64 `LirInlineAsmOp` binding and
-  later type-matched Store use.
-- No production or schema specialization was needed: the accepted Step-7.21
-  output mechanism allocated the i64 result through `fresh_value`, retained
-  exact native Output/type/index facts, and preserved the exact Store edge.
-- Focused and matched full proof passed, and commit `8f6c25ff0` records the
-  coherent Step-7.25 slice.
-- Step 7 is not complete: a single scalar read/write binding remains an
-  unclaimed production disposition. Its paired native `ReadWrite` roles and
-  shared constraint index make the old-value/new-value shape carrier-ready
-  without opaque-text or fixture inference.
-- Parity, inline-asm multi-output/input-only, and producer-specific implicit
-  coercion retain their exact separately owned blockers and are not reopened.
+- Stopped Plan Step 7.26 without code changes and classified generic scalar
+  read/write inline-asm publication as an exact separately owned blocker.
+- Paired native `ReadWrite` roles and indices can encode distinct old/new IDs,
+  but cannot distinguish generic `+r` from the excluded explicit-register
+  `+{reg}` route. HIR/LIR retain that constraint/register-class distinction
+  only in opaque text.
+- Restricting verification by parsing that text is forbidden, while publishing
+  the common shape would silently widen the packet. Truthful classification
+  therefore requires a new native constraint/register-class carrier owned by a
+  separate future inline-assembly schema initiative.
+- Step 7 remains active: `.insn r` has native structured operand indices that
+  can identify its positional ordinary inputs/result without consulting
+  constraint text. That is a distinct carrier-ready production disposition.
+- Parity, multi-output/input-only inline assembly, and producer-specific
+  implicit coercion retain their exact separately owned blockers.
 
 ## Suggested Next
 
-- Executor: complete Plan Step 7.26 for only one PS single-output scalar i32
-  non-explicit-register read/write `LirInlineAsmOp` binding on a selected
-  global. Preserve the exact CC-LOAD-1 ID as the old-value semantic input,
-  allocate a distinct new-value semantic result through `fresh_value`, and
-  preserve that exact result ID into the later type-matched Store.
+- Executor: complete Plan Step 7.27 for only one scalar i32
+  `LirInlineAsmOp` carrying native `insn_r` metadata with positional rd/rs1/rs2
+  operand indices. Preserve two already-authoritative current-function scalar
+  inputs at the exact rs1/rs2 positions, allocate the distinct rd semantic
+  result through `fresh_value`, and preserve that result ID into one later
+  type-matched Store.
 
 ## Watchouts
 
-- Require exactly one native i32 `ReadWrite` input and one native i32
-  `ReadWrite` result at constraint index zero. Their IDs must be valid and
-  distinct; their role, type, index, and paired collection positions/counts
-  must agree.
-- The input use must resolve to the exact current-function selected-global load
-  result. The result is a new function-owned definition and the later Store
-  must consume that exact new ID, never the old input ID.
-- Preserve the selected-global load contract unchanged. Claim only the Store's
-  scalar value-use edge; do not expand local/object/pointer or general Store
-  authority.
-- Compatibility `result`, rendered operands/arguments, original assembly and
-  constraint text, clobbers, and every other mirror remain presentation/
-  opaque. They may observe native facts but never create, repair, select, pair,
-  or validate authority.
-- Reachable verification must reject missing or wrong-alternative input/result
-  authority; invalid, duplicate, equal, unknown, or cross-function IDs; role,
-  type, index, pair-count/position conflicts; a result used as the old input;
-  an old input used by the Store; and Store type conflicts. Misleading displays
-  with unchanged native facts must pass.
-- Exclude output-only Steps 7.21/7.25, input-only bindings, multi-output,
-  multiple-input, memory/address/immediate/clobber, explicit-register,
-  floating/vector/aggregate bindings, `insn_r`, opaque-text interpretation,
-  compatibility-result authority, stack/local/object/body parameters, CFG,
-  BIR receipt, parity, and all idea-741 work beyond preserving CC-LOAD-1.
-- This packet is carrier-ready only because the existing paired native
-  `ReadWrite` roles and shared index identify both sides. If truthful pairing
-  or old/new distinction requires constraint-text inference or a new semantic
-  carrier, stop and return that exact blocker rather than widening Step 7.26.
+- Own only ordinary value identity for the three positions named by native
+  `insn_r.operand_indices`: one i32 result/definition at rd and two i32
+  input/uses at rs1 and rs2. Require exact index, role, position/count, type,
+  uniqueness, and current-function ownership agreement.
+- The focused fixture may source rs1/rs2 from selected-global loads, but the
+  semantic contract is any valid authoritative current-function i32 producers;
+  do not invent selected-global provenance or reject another valid i32 source.
+- The rd result must be fresh and distinct from both inputs, and the later
+  Store must consume that exact result ID. Claim only the Store value-use edge,
+  not general pointer/object or Store authority.
+- Native `insn_r` opcode/function fields and positional indices remain exact.
+  Original/rendered assembly, constraint text, register names/classes,
+  clobbers, compatibility result, and other mirrors remain opaque or
+  presentation-only and must not create, select, repair, or validate IDs.
+- Reachable verification must reject missing/wrong-alternative inputs or
+  result; invalid, duplicate, aliased, unknown, or cross-function IDs; malformed
+  native R metadata or operand indices; binding role/type/index/count/position
+  conflicts; and wrong final Store ID/type. Misleading displays and constraint
+  spelling changes with unchanged native facts must not affect identity proof.
+- Exclude generic non-`insn_r` inline assembly, constraint/register-class
+  semantics, read/write old/new pairing, multi-output, memory/address/immediate/
+  clobber bindings, floating/vector/aggregate operands, stack/local/object/body
+  parameters, CFG, BIR receipt, parity, and idea-741 changes.
+- This packet is carrier-ready only on native `insn_r` positional metadata,
+  existing scalar binding facts, `fresh_value`, and generic ownership. If exact
+  rd/rs1/rs2 publication still needs constraint-text interpretation or a new
+  carrier, stop and return that blocker rather than widening Step 7.27.
 
 ## Proof
 
 - Fresh `cmake --build --preset default`.
 - Focused `ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure`
-  with a selected-global-load-to-read/write-input, distinct-result-to-Store
-  chain, misleading-display positives, and malformed pairing, identity,
-  role/type/index/count/position, old/new edge, and Store-use cases.
-- Preserve Steps 7.21/7.25 output-only behavior, CC-LOAD-1, neighboring
-  inline-asm metadata/diagnostics, and accepted generic identity coverage
-  unchanged; the supervisor owns matched regression logs and broader proof.
+  with exact rs1/rs2 input IDs, a distinct rd result-to-Store edge,
+  misleading-display/constraint positives, and malformed native R metadata,
+  position/index/count, identity, role/type, and final-use cases.
+- Preserve Steps 7.21/7.25 output-only behavior, existing `.insn r` metadata/
+  diagnostics, selected-global load contracts, and accepted generic identity
+  coverage unchanged; the supervisor owns matched regression and broader proof.
 - Run `git diff --check` before handoff.
