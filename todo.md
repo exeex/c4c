@@ -4,48 +4,45 @@ Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 7.2
-Current Step Title: Publish representative scalar compare result/use authority
+Current Step Title: Publish representative scalar compare result/use authority (complete)
 
 ## Just Finished
 
-- Completed Plan Step 7.1 for the representative explicit scalar integer
-  `LirCastOp` result/use chain.
-- Added an operand-returning explicit-cast seam: a width-changing scalar integer
-  cast allocates its result with `fresh_value`, preserves its source
-  `LirOperand`, and returns the exact result operand to a later same-type use.
-- Preserved native SExt and exact i32/i64 endpoint refs; verifier coherence now
-  requires authoritative integer casts to use Trunc for narrowing or ZExt/SExt
-  for widening.
+- Completed Plan Step 7.2 for the representative ordinary scalar integer
+  `LirCmpOp` result/use chain.
+- Allocated the integer comparison result through `fresh_value`, preserved
+  unchanged compared operands, and passed the exact result `LirOperand` into
+  the existing immediate i1-to-i32 normalization cast.
+- Preserved native Slt and exact i32 compared-type authority. The directly
+  coupled cast remains a monostate-result consumer and does not broaden the
+  Step-7.1 producer claim.
 - Added focused exact-ID and misleading-display positives plus invalid/
-  duplicate result, unknown/cross-function use, invalid kind, and missing or
-  conflicting from/to type rejections. Other cast producers remain
+  duplicate result, unknown/cross-function use, invalid predicate, and missing
+  or conflicting type rejections. Other comparison producers remain
   compatibility and the matrix records that boundary.
 
 ## Suggested Next
 
-- Execute Step 7.2: publish representative scalar compare result/use authority.
+- Select the next bounded Plan Step 7 ordinary producer row from the updated
+  matrix; select and abs remain unclaimed candidates.
 
 ## Watchouts
 
-- Own only one ordinary scalar integer `LirCmpOp` with native predicate/type
-  facts, a `fresh_value` result, and the exact result ID preserved into its
-  immediate same-function normalization or use.
-- Include a directly coupled cast use only when production lowering cannot
-  avoid it; treat it as a consumer and do not claim the cast producer anew.
-- Accept misleading display after native authority is proven; reject invalid
-  or duplicate results, unknown or cross-function uses, invalid predicates,
-  and type conflicts.
-- Keep select, abs, every other Step-7 row, pointer/object, aggregate/vector,
-  CFG/terminators, parameters, calls, inline assembly, and new-BIR work outside
-  Step 7.2.
+- Do not generalize Step 7.2 to float, pointer, vector, logical-helper, builtin,
+  vaarg, or statement comparisons; each remains unclaimed.
+- Select and abs may reuse the common allocator/operand mechanism but still
+  require separate opcode/type contracts and focused proof.
+- Preserve closed Step-3 through Step-7.2 rows and idea-741 regression
+  neighbors; keep pointer/object, aggregate/vector, CFG/parameters, calls,
+  inline assembly, ABI, and BIR outside the next packet.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed for the Step-7.1 cast producer,
-  verifier, and focused tests.
+- Fresh `cmake --build --preset default` passed for the Step-7.2 comparison
+  producer, verifier, and focused tests.
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log`
   passed 1/1; canonical proof is in `test_after.log`.
 - The supervisor clean-stashed full regression guard passed:
   `test_before.log` passed 3033/3033, `test_after.log` passed 3033/3033, and
   the monotonic delta was passed=0 and failed=0 with no new failures.
-- `git diff --check` passed for the complete Step-7.1 slice.
+- `git diff --check` passed for the complete Step-7.2 slice.

@@ -21,9 +21,10 @@ cover CC-LOAD-1 and CC-GEP-1 in `StmtEmitter::emit_rval_operand`, plus the
 Step-3 structured direct integer-call result in `emit_call_with_result` and the
 Step-6 ordinary scalar integer arithmetic branch in
 `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar integer cast in
-`emit_cast_rval_operand`. Other active modern result constructions identified
-below still use `fresh_tmp`, an equivalent direct `%t` increment, or a raw
-string returned by `emit_rval_id`.
+`emit_cast_rval_operand` and the Step-7.2 ordinary scalar integer compare branch
+in `emit_binary_rval_operand`. Other active modern result constructions
+identified below still use `fresh_tmp`, an equivalent direct `%t` increment,
+or a raw string returned by `emit_rval_id`.
 
 Verifier states used below:
 
@@ -93,7 +94,7 @@ grouped only where they share one producer and disposition.
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
 | `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 normalized ordinary scalar integer arithmetic uses `fresh_value` and preserves unchanged source `LirOperand` authority; complex/vector/pointer/logical and other producers remain text-only with `fresh_tmp` | Native opcode/type refs plus exact result/use ownership for the Step-6 row; generic verifier rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_ordinary_value_chain_identity.c` closes the representative generic scalar seam. Neighboring scalar producers may reuse the mechanism in later bounded packets; aggregate/vector, pointer/object, and CFG rows remain distinct |
-| `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers | Text-only operands; result `fresh_tmp` | Native predicate/type/bool; kind/type only and ownership-ready | Depends on generic scalar seam; `lir_scalar_cmp_chain_identity.c`; **generic scalar value** plus predicate agreement |
+| `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Step-7.2 representative is PB ordinary scalar integer comparison | Step-7.2 scalar integer comparison uses `fresh_value`, preserves unchanged source operands, and feeds the exact result operand into its existing normalization cast; other comparison producers remain text-only with `fresh_tmp` | Native integer predicate and exact compared type; authoritative integer results reject float mode/type/predicate conflict, while generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_compare_result_use_identity.c` closes only the representative ordinary integer compare/use row. Float, pointer, vector, logical-helper, builtin, vaarg, and statement comparison producers remain unclaimed |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
 | `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active, PI `emit_builtin_ffs_call` | Text-only operands; result `fresh_tmp` | Native type; kind/type only and ownership-ready | Depends on generic scalar seam; `lir_select_chain_identity.c`; **generic scalar value** |
 | `LirInsertElementOp`: `result,vec,elem,index`; `vec_type,elem_type` | Active, PB vector-scalar arithmetic branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_insertelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
@@ -258,11 +259,11 @@ reject through existing reachable checks, while misleading operand displays
 with unchanged IDs pass.
 
 This proves the common allocator/operand mechanism is reusable by neighboring
-ordinary scalar result/use rows. Step 7.1 publishes the representative explicit
-scalar integer cast; scalar compare, select, and abs remain later bounded
-packets. Aggregate/vector rows need their own type/index/mask semantics; CFG,
-parameters, pointer/object, inline-asm, call, and BIR families remain distinct
-or outside this idea.
+ordinary scalar result/use rows. Steps 7.1 and 7.2 publish the representative
+explicit scalar integer cast and ordinary scalar integer compare; select and
+abs remain later bounded packets. Aggregate/vector rows need their own
+type/index/mask semantics; CFG, parameters, pointer/object, inline-asm, call,
+and BIR families remain distinct or outside this idea.
 
 ## Step-7.1 explicit scalar integer cast contract
 
@@ -285,8 +286,33 @@ cast-result/use displays with unchanged IDs pass.
 
 This packet does not claim same-width no-op coercions because they emit no
 `LirCastOp`. Float, pointer, bitcast, vector, aggregate, implicit-coercion, and
-other explicit cast shapes remain compatibility rows. Compare, select, abs,
-CFG/parameters, object identity, calls, inline assembly, and BIR are unchanged.
+other explicit cast shapes remain compatibility rows. Step 7.2 separately owns
+the representative scalar integer compare; select, abs, CFG/parameters, object
+identity, calls, inline assembly, and BIR are unchanged.
+
+## Step-7.2 ordinary scalar integer compare contract
+
+The claimed row is a non-pointer, non-vector ordinary scalar integer comparison
+in PB's `BinaryExpr` comparison branch. It allocates `LirCmpOp.result` through
+`fresh_value`, preserves unchanged source operands through the common
+`LirOperand` carrier, and stores the native integer `LirCmpPredicateRef` with
+the exact compared `LirTypeRef`.
+
+Current lowering immediately normalizes the i1 comparison result to i32. That
+directly coupled `LirCastOp` remains a monostate-result compatibility producer,
+but its operand is the exact authoritative compare result ID. Generic function
+ownership therefore registers the compare result and resolves the cast use in
+the same function, rejecting invalid/duplicate results and unknown or
+cross-function uses. Reachable comparison verification rejects invalid or
+non-integer predicates, missing type authority, and float/type conflicts on an
+authoritative integer result. Misleading compare-result/cast-operand displays
+with unchanged IDs pass.
+
+This packet does not reopen the Step-7.1 cast producer claim: the normalization
+cast has no authoritative result. Float, pointer, vector, logical-helper,
+builtin, vaarg, and statement comparison producers remain compatibility.
+Select, abs, pointer/object, aggregate/vector, CFG/parameters, calls, inline
+assembly, and BIR are unchanged.
 
 ## Mechanical coverage check
 
@@ -328,6 +354,10 @@ Current-source spot checks used for this baseline:
   through `coerce_operand`; width-changing scalar integer casts allocate one
   authoritative result and preserve exact native kind/from/to authority, while
   other `coerce` producers remain compatibility;
+- representative scalar compare: `expr/binary.cpp` allocates the ordinary
+  integer comparison through `fresh_value`, retains native integer predicate
+  and compared type authority, and passes the exact result ID to its existing
+  monostate-result normalization cast;
 - 741 neighbors: `expr/coordinator.cpp:474,497` populate selected-global
   `LirGepOp`/`LirLoadOp`; Steps 3 and 6 add the direct integer-call and ordinary
   scalar integer binary result sites;

@@ -470,6 +470,37 @@ void verify_cast_op_authority(const LirCastOp& op) {
               "authoritative scalar integer cast requires trunc/zext/sext");
 }
 
+bool is_integer_cmp_predicate(LirCmpPredicate predicate) {
+  switch (predicate) {
+    case LirCmpPredicate::Eq:
+    case LirCmpPredicate::Ne:
+    case LirCmpPredicate::Sgt:
+    case LirCmpPredicate::Sge:
+    case LirCmpPredicate::Slt:
+    case LirCmpPredicate::Sle:
+    case LirCmpPredicate::Ugt:
+    case LirCmpPredicate::Uge:
+    case LirCmpPredicate::Ult:
+    case LirCmpPredicate::Ule:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void verify_cmp_op_authority(const LirCmpOp& op) {
+  if (!op.result.value_id()) return;
+  if (op.is_float || op.type_str.kind() != LirTypeKind::Integer) {
+    fail_verify("LirCmpOp.type_str",
+                "authoritative scalar integer compare requires integer type authority");
+  }
+  const std::optional<LirCmpPredicate> predicate = op.predicate.typed();
+  if (!predicate || !is_integer_cmp_predicate(*predicate)) {
+    fail_verify("LirCmpOp.predicate",
+                "authoritative scalar integer compare requires an integer predicate");
+  }
+}
+
 void verify_optional_count_operand(const LirOperand& operand,
                                    std::string_view field) {
   require_operand_kind(operand, field,
@@ -906,6 +937,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str");
     verify_value_operand(op->lhs, "LirCmpOp.lhs");
     verify_value_operand(op->rhs, "LirCmpOp.rhs");
+    verify_cmp_op_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirPhiOp>(&inst)) {

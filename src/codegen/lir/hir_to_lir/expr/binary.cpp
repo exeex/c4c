@@ -501,15 +501,37 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
              {BinaryOp::Ne, "ne", "ne", "une"}};
   for (const auto& row : cmp) {
     if (row.op == b.op) {
-      const std::string cmp_tmp = fresh_tmp(ctx);
+      const bool authoritative_scalar_integer_compare =
+          l_is_int && r_is_int && is_any_int(lts.base) &&
+          lts.ptr_level == 0 && lts.array_rank == 0 &&
+          !is_vector_value(lts);
+      const LirOperand cmp_result = authoritative_scalar_integer_compare
+                                        ? fresh_value(ctx)
+                                        : LirOperand(fresh_tmp(ctx));
+      const LirOperand lhs = authoritative_scalar_integer_compare &&
+                                     source_lv.has_authority() &&
+                                     source_lv.str() == lv
+                                 ? source_lv
+                                 : LirOperand(lv);
+      const LirOperand rhs = authoritative_scalar_integer_compare &&
+                                     source_rv.has_authority() &&
+                                     source_rv.str() == rv
+                                 ? source_rv
+                                 : LirOperand(rv);
       if (lf) {
-        emit_lir_op(ctx, lir::LirCmpOp{cmp_tmp, true, std::string(row.f), op_ty, lv, rv});
+        emit_lir_op(ctx, lir::LirCmpOp{cmp_result, true,
+                                       LirCmpPredicateRef(row.f),
+                                       LirTypeRef(op_ty), lhs, rhs});
       } else {
         const char* pred = ls ? row.is : row.iu;
-        emit_lir_op(ctx, lir::LirCmpOp{cmp_tmp, false, std::string(pred), op_ty, lv, rv});
+        emit_lir_op(ctx, lir::LirCmpOp{cmp_result, false,
+                                       LirCmpPredicateRef(pred),
+                                       LirTypeRef(op_ty), lhs, rhs});
       }
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp_tmp, "i32"});
+      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt,
+                                      LirTypeRef::integer(1), cmp_result,
+                                      LirTypeRef::integer(32)});
       return tmp;
     }
   }
