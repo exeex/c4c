@@ -51,6 +51,25 @@ lir::LirModule selected_authority_module() {
               .live_at_selected_site = true,
           },
       };
+  lir::LirBlock block;
+  block.insts.push_back(lir::LirMemcpyOp{
+      .dst = lir::LirOperand("%selected.dst"),
+      .src = lir::LirOperand("%selected.src"),
+      .size = lir::LirOperand("24"),
+      .selected_authority = lir::LirSelectedMemcpyAuthority{
+          .destination = lir::LirValueId{42},
+          .source = lir::LirValueId{41},
+          .size_type = lir::LirTypeRef::integer(64),
+          .size = lir::LirIntegerImmediate{24},
+          .destination_object = lir::LirObjectId{8},
+          .source_object = lir::LirObjectId{7},
+          .destination_object_owner = owner,
+          .source_object_owner = owner,
+          .destination_live_at_site = true,
+          .source_live_at_site = true,
+      },
+  });
+  function.blocks.push_back(std::move(block));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -232,10 +251,107 @@ void test_selected_byval_materialization_populates_authority() {
          "selected memcpy objects must retain current-function ownership");
   expect(memcpy_authority.destination_live_at_site &&
              memcpy_authority.source_live_at_site &&
+             memcpy_authority.size_type.kind() == lir::LirTypeKind::Integer &&
+             memcpy_authority.size_type.integer_bit_width() == 64 &&
              memcpy_authority.size.value == 24,
          "selected memcpy must publish live pointer authority and typed i64 size");
 
   lir::verify_module(module);
+}
+
+void test_selected_memcpy_authority_verifier_boundary() {
+  auto valid = lir::lower(selected_byval_materialization_module());
+  lir::verify_module(valid);
+
+  auto missing = valid;
+  for (lir::LirBlock& block : missing.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority.reset();
+      }
+    }
+  }
+  expect_rejected(std::move(missing),
+                  "selected producer must reject absent selected memcpy authority");
+
+  auto wrong_value = valid;
+  for (lir::LirBlock& block : wrong_value.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority->source = lir::LirValueId{999};
+      }
+    }
+  }
+  expect_rejected(std::move(wrong_value),
+                  "selected memcpy must reject pointer identity disagreement");
+
+  auto wrong_owner = valid;
+  const c4c::LinkNameId foreign = wrong_owner.link_names.intern("foreign_memcpy_owner");
+  for (lir::LirBlock& block : wrong_owner.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority->destination_object_owner = foreign;
+      }
+    }
+  }
+  expect_rejected(std::move(wrong_owner),
+                  "selected memcpy must reject foreign object ownership");
+
+  auto wrong_object = valid;
+  for (lir::LirBlock& block : wrong_object.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority->source_object = lir::LirObjectId{999};
+      }
+    }
+  }
+  expect_rejected(std::move(wrong_object),
+                  "selected memcpy must reject object-link disagreement");
+
+  auto wrong_size = valid;
+  for (lir::LirBlock& block : wrong_size.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority->size_type = lir::LirTypeRef::integer(32);
+      }
+    }
+  }
+  expect_rejected(std::move(wrong_size),
+                  "selected memcpy must reject non-i64 size authority");
+
+  auto nonpositive_size = valid;
+  for (lir::LirBlock& block : nonpositive_size.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority->size = lir::LirIntegerImmediate{0};
+      }
+    }
+  }
+  expect_rejected(std::move(nonpositive_size),
+                  "selected memcpy must reject nonpositive size authority");
+
+  auto dead = valid;
+  for (lir::LirBlock& block : dead.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        memcpy->selected_authority->source_live_at_site = false;
+      }
+    }
+  }
+  expect_rejected(std::move(dead),
+                  "selected memcpy must reject non-live pointer authority");
+
+  auto duplicate = valid;
+  for (lir::LirBlock& block : duplicate.functions[0].blocks) {
+    for (const lir::LirInst& inst : block.insts) {
+      if (const auto* memcpy = std::get_if<lir::LirMemcpyOp>(&inst)) {
+        block.insts.push_back(*memcpy);
+        break;
+      }
+    }
+  }
+  expect_rejected(std::move(duplicate),
+                  "selected pointer authority must reject duplicate selected rows");
 }
 
 void test_selected_current_function_pointer_authority() {
@@ -285,5 +401,6 @@ void test_selected_current_function_pointer_authority() {
 int main() {
   test_selected_current_function_pointer_authority();
   test_selected_byval_materialization_populates_authority();
+  test_selected_memcpy_authority_verifier_boundary();
   return 0;
 }

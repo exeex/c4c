@@ -1742,6 +1742,77 @@ void verify_selected_memcpy_pointer_authority(const LirModule& mod,
   }
 }
 
+void verify_selected_memcpy_authority(const LirFunction& function) {
+  const auto& pointer_authority = function.selected_memcpy_pointer_authority;
+  std::size_t selected_count = 0;
+
+  const auto verify_memcpy = [&](const LirMemcpyOp& memcpy) {
+    if (!memcpy.selected_authority.has_value()) return;
+    ++selected_count;
+    if (!pointer_authority.has_value()) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy authority requires current-function pointer authority");
+    }
+    if (memcpy.is_volatile) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy authority is only valid for the selected non-volatile row");
+    }
+
+    const auto& selected = *memcpy.selected_authority;
+    const auto& source = pointer_authority->byval_parameter;
+    const auto& destination = pointer_authority->destination_alloca;
+    if (!selected.destination.valid() || !selected.source.valid()) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy authority has an invalid pointer value ID");
+    }
+    if (selected.destination != destination.value || selected.source != source.value) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy pointer identities disagree with current-function authority");
+    }
+    if (selected.destination_object != destination.object ||
+        selected.source_object != source.object ||
+        !selected.destination_object.valid() || !selected.source_object.valid()) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy objects disagree with pointer authority");
+    }
+    if (selected.destination_object_owner != function.link_name_id ||
+        selected.source_object_owner != function.link_name_id ||
+        selected.destination_object_owner != destination.object_owner ||
+        selected.source_object_owner != source.object_owner) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy objects are not owned by the current function");
+    }
+    if (!selected.destination_live_at_site || !selected.source_live_at_site ||
+        !destination.live_at_selected_site || !source.live_at_selected_site) {
+      fail_verify("LirMemcpyOp.selected_authority",
+                  "selected memcpy pointer authority is not live at the selected site");
+    }
+    if (selected.size_type.kind() != LirTypeKind::Integer ||
+        selected.size_type.integer_bit_width() != std::optional<unsigned>{64}) {
+      fail_verify("LirMemcpyOp.selected_authority.size_type",
+                  "selected memcpy size authority must be i64");
+    }
+    if (selected.size.value <= 0) {
+      fail_verify("LirMemcpyOp.selected_authority.size",
+                  "selected memcpy size authority must be positive");
+    }
+  };
+
+  for (const auto& inst : function.alloca_insts) {
+    if (const auto* memcpy = std::get_if<LirMemcpyOp>(&inst)) verify_memcpy(*memcpy);
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* memcpy = std::get_if<LirMemcpyOp>(&inst)) verify_memcpy(*memcpy);
+    }
+  }
+
+  if (pointer_authority.has_value() && selected_count != 1) {
+    fail_verify("LirMemcpyOp.selected_authority",
+                "selected pointer authority requires exactly one selected memcpy row");
+  }
+}
+
 void verify_function_value_ownership(const LirModule& mod,
                                      const LirFunction& function) {
   std::unordered_set<uint32_t> definitions;
@@ -1749,6 +1820,7 @@ void verify_function_value_ownership(const LirModule& mod,
 
   verify_selected_memcpy_pointer_authority(mod, function, definitions,
                                            definition_insts);
+  verify_selected_memcpy_authority(function);
 
   const auto collect_operand_definition =
       [&](const LirInst& inst, const LirOperand* result) {

@@ -167,6 +167,7 @@ struct LirIntrinsic {
 struct LirSelectedMemcpyAuthority {
   LirValueId destination{};
   LirValueId source{};
+  LirTypeRef size_type = LirTypeRef::integer(64);
   LirIntegerImmediate size{};
   LirObjectId destination_object = LirObjectId::invalid();
   LirObjectId source_object = LirObjectId::invalid();
