@@ -9,16 +9,16 @@ Current Step Title: Repair the targeted warning-inventory route
 ## Just Finished
 
 - Step 6 targeted warning-inventory repair complete: added the deprecated,
-  searchable `LirTypeRef::parsed_typed_call_return_text` compatibility
-  boundary and used it only when `make_lir_call_op` re-owns parsed typed-call
-  return text. The existing parsed argument boundary remains unchanged; both
-  local boundaries retain dynamic aggregate, vector, struct, and function
-  spellings as runtime-text compatibility paths.
+  searchable `LirTypeRef::stored_extern_declaration_return_text` runtime-text
+  compatibility boundary and used it only for the non-struct path in
+  `LirModule::extern_return_type_ref`. Stored external declaration return text
+  remains dynamic; no builtin enum was guessed and the parsed call boundaries
+  remain unchanged.
 
 ## Suggested Next
 
-- Step 6: inspect the remaining warning inventory and select the next bounded
-  closed-set migration or retained runtime-text compatibility boundary.
+- Step 6: classify the `stmt.cpp` lowering-return type-text constructions as
+  the next bounded retained-runtime-text boundary or closed-set enum candidate.
 
 ## Watchouts
 
@@ -36,11 +36,15 @@ Current Step Title: Repair the targeted warning-inventory route
   that the generic `LirTypeRef` constructors should be deprecated.
 - The parsed typed-call return boundary is intentionally limited to
   `make_lir_call_op`; do not broaden it to unrelated return-type construction.
+- Extern declaration return type text is stored/external payload and may be
+  dynamic; retain its local compatibility boundary rather than guessing a
+  builtin enum.
 
 ## Proof
 
-- `cmake --build --preset default` succeeded. Its only deprecation warning
-  names were the deliberate local `parsed_typed_call_argument_text` and
-  `parsed_typed_call_return_text` inventory boundaries.
-- `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`
+- `cmake --build --preset default` succeeded. Its deprecation warnings named
+  only deliberate local inventory boundaries: parsed typed-call argument text,
+  parsed typed-call return text, and stored/re-owned extern-declaration return
+  text.
+- `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_extern_decl_type_ref$' > test_after.log`
   passed; `test_after.log` is the focused proof log.

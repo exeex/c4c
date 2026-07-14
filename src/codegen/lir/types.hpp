@@ -103,6 +103,15 @@ class LirTypeRef {
     return runtime_text(std::move(text));
   }
 
+  // Extern declarations retain return-type text from their external/stored
+  // declaration payload. This is runtime text, not a closed builtin set: it
+  // may spell dynamic aggregate, vector, struct, or function returns.
+  [[nodiscard, deprecated(
+      "stored/re-owned extern-declaration return text: audit this runtime-text compatibility boundary")]]
+  static LirTypeRef stored_extern_declaration_return_text(std::string text) {
+    return runtime_text(std::move(text));
+  }
+
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
     LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
     type.vrm_width_ = width;
