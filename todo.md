@@ -3,34 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/743_lir_i686_long_width_policy_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish the structured target-aware width policy
+Current Step ID: 3
+Current Step Title: Prove cross-target behavior and hand off
 
 ## Just Finished
 
-- Plan Step 2 is complete. `c4c::long_width_bits(const TargetProfile&)` in
-  `src/target_profile.hpp` is now the shared structured authority: I686 is 32
-  bits and every other supported LP64 profile is 64. Shared LLVM production
-  (`llvm_base`, therefore `llvm_ty`/`llvm_value_ty`) uses the active structured
-  profile; LIR verification passes `LirModule::target_profile` into
-  `exact_plain_scalar_mirror`; and new-BIR uses the helper in
-  `lower_constant_type` while admitting `TB_LONG`/`TB_ULONG` through the
-  existing plain parameter receipt path. Signature, return, and global receipt
-  therefore compare the same structured width rule without text or name
-  recovery.
-- Focused coverage now proves I686 i32 and LP64 i64 long/unsigned-long
-  parameter mirrors in frontend LIR production and verification; new-BIR
-  accepts I686 and LP64 parameter, return, and global receipt at the matching
-  widths, and rejects malformed I686 i64 parameter, return, and global mirrors
-  transactionally. Existing `int`, `long long`, float/double, and pointer
-  neighbor assertions remain in the same test families.
+- Plan Step 3 proof and handoff recording are complete. The accepted focused
+  checkpoint proves I686 `long`/`unsigned long` as i32 and LP64 as i64 across
+  LIR production and verification plus new-BIR parameter, return, and global
+  receipt; malformed I686 i64 parameter, return, and global mirrors reject
+  transactionally. Neighboring `int`, `long long`, floating, and pointer
+  behavior remains covered.
+- Bounded handoff: only the idea-734 `long`/`unsigned long` parameter rows may
+  be re-evaluated in a later, separate lifecycle decision. This record does
+  not activate, unblock, complete, supersede, retire, or close ideas 734, 744,
+  or 746.
 
 ## Suggested Next
 
-- Execute Step 3 only after supervisor acceptance: run the requested
-  cross-target proof/checkpoint and publish the exact bounded idea-734 handoff
-  for the `long`/`unsigned long` parameter rows. Do not treat this packet alone
-  as an idea-734 unblock or closure decision.
+- Hand the accepted evidence to the supervisor for any separate lifecycle
+  decision concerning the bounded idea-734 `long`/`unsigned long` parameter
+  rows. No implementation packet is selected by this completed runbook step.
 
 ## Watchouts
 
@@ -52,8 +45,9 @@ Current Step Title: Publish the structured target-aware width policy
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^(frontend_lir_function_signature_type_ref|backend_lir_to_bir_interface)$'
-  with CTest output in `test_after.log`; both focused tests passed. `git diff
-  --check` also passed. The supervisor still owns the Step 3 regression
-  checkpoint and handoff decision.
+- Supervisor accepted the fresh `cmake --build --preset default`, focused
+  `ctest --test-dir build -j --output-on-failure -R
+  '^(frontend_lir_function_signature_type_ref|backend_lir_to_bir_interface)$'
+  recorded in `test_after.log`, and the matching `test_before.log` versus
+  `test_after.log` regression comparison with `--allow-non-decreasing-passed`.
+  `git diff --check` remains required for this recording update.
