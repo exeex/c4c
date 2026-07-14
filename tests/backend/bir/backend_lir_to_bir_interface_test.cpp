@@ -10497,6 +10497,87 @@ void test_builtin_ffs_cttz_add_one_receipt_and_rejections() {
   }
 }
 
+lir::LirModule builtin_ctz_final_use_module(unsigned width) {
+  auto module = native_intrinsic_module();
+  auto& caller = module.functions[0];
+  auto& block = caller.blocks[0];
+  auto& cttz = std::get<lir::LirCallOp>(block.insts[1]);
+  const auto type = lir::LirTypeRef::integer(width);
+  cttz.return_type = type;
+  cttz.callee_signature->return_type_ref = type;
+  cttz.callee_signature->fixed_param_types[0] = width == 64 ? "i64" : "i32";
+  cttz.callee_signature->fixed_param_type_refs[0] = type;
+  cttz.arg_type_refs[0] = type;
+  cttz.structured_args[0] = {width == 64 ? "i64" : "i32",
+                              lir::LirOperand::integer("value", 41), type};
+  cttz.zero_count_behavior = lir::LirZeroCountBehavior::Undefined;
+  cttz.structured_args[1] = {"i1", lir::LirOperand::integer("undef", 1),
+                              lir::LirTypeRef::integer(1)};
+  block.insts.erase(block.insts.begin() + 2, block.insts.end());
+  if (width == 64) {
+    block.insts.push_back(lir::LirCastOp{
+        .result = lir::LirOperand::ssa("%ctz-trunc", lir::LirValueId{10}),
+        .kind = lir::LirCastKind::Trunc,
+        .from_type = lir::LirTypeRef::integer(64),
+        .operand = lir::LirOperand::ssa("%ctz-wide", lir::LirValueId{9}),
+        .to_type = lir::LirTypeRef::integer(32)});
+  }
+  const auto add_id = width == 64 ? lir::LirValueId{11} : lir::LirValueId{10};
+  const auto lhs_id = width == 64 ? lir::LirValueId{10} : lir::LirValueId{9};
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%ctz-final-add", add_id), lir::LirBinaryOpcode::Add,
+      lir::LirTypeRef::integer(32), lir::LirOperand::ssa("%ctz-final-lhs", lhs_id),
+      lir::LirOperand::integer("one", 1)});
+  caller.return_type = scalar_type(c4c::TB_INT);
+  caller.return_type.inner_rank = -1;
+  caller.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  block.terminator = lir::LirRet{lir::LirOperand::ssa("%ctz-return", add_id),
+                                 lir::LirTypeRef::integer(32)};
+  return module;
+}
+
+void test_builtin_ctz_call_narrow_final_use_receipt_and_rejections() {
+  for (const auto width : {32U, 64U}) {
+    const auto module = builtin_ctz_final_use_module(width);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+           "builtin ctz final-use chain must publish verified Raw BIR");
+    expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+           "builtin ctz final-use chain must canonicalize");
+    const auto rejected = [width](auto mutate, const std::string& message) {
+      auto candidate = builtin_ctz_final_use_module(width);
+      auto& block = candidate.functions[0].blocks[0];
+      auto& cttz = std::get<lir::LirCallOp>(block.insts[1]);
+      auto* trunc = width == 64 ? &std::get<lir::LirCastOp>(block.insts[2]) : nullptr;
+      auto& add = std::get<lir::LirBinOp>(block.insts[width == 64 ? 3 : 2]);
+      mutate(candidate, cttz, trunc, add);
+      expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+      expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+             message + " (Canonical rollback)");
+    };
+    rejected([](auto&, auto& cttz, auto*, auto&) { cttz.result = lir::LirOperand::raw("%raw"); },
+             "missing ctz result authority must reject atomically");
+    rejected([](auto&, auto& cttz, auto*, auto&) { cttz.intrinsic_kind = lir::LirIntrinsicKind::Ctlz; },
+             "other intrinsic kind must reject atomically");
+    rejected([](auto&, auto& cttz, auto*, auto&) { cttz.zero_count_behavior = lir::LirZeroCountBehavior::Defined; },
+             "defined-zero ctz must reject atomically");
+    rejected([](auto&, auto& cttz, auto*, auto&) { cttz.structured_args[1].operand = lir::LirOperand::integer("false", 0); },
+             "false ctz flag must reject atomically");
+    rejected([](auto&, auto&, auto*, auto& add) { add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); },
+             "unresolved ctz final use must reject atomically");
+    if (width == 64)
+      rejected([](auto&, auto&, auto* trunc, auto&) { trunc->kind = lir::LirCastKind::ZExt; },
+               "non-Trunc ctz narrowing must reject atomically");
+    auto misleading = builtin_ctz_final_use_module(width);
+    auto& call = std::get<lir::LirCallOp>(misleading.functions[0].blocks[0].insts[1]);
+    call.result.str() = "%display-only";
+    call.callee.str() = "@display-only";
+    call.args_str = "display-only";
+    expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
+           "ctz receipt must retain native authority despite misleading displays");
+  }
+}
+
 lir::LirModule builtin_ffs_add_select_false_arm_module(unsigned width) {
   auto module = native_intrinsic_module();
   auto& caller = module.functions[0];
@@ -11064,6 +11145,7 @@ int main() {
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_builtin_ffs_cttz_add_one_receipt_and_rejections();
+  test_builtin_ctz_call_narrow_final_use_receipt_and_rejections();
   test_builtin_ffs_add_select_false_arm_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
