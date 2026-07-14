@@ -1,8 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (resumed after accepted Step 7.21 and closed conditional-branch
-condition authority successor 755; the next packet is the bounded typed
-`LirCondBr` Raw-BIR receiver)
+Status: Open (paused after accepted Step 7.22; switch-selector value-authority
+successor 756 is active before the next receiver repair)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -292,6 +291,41 @@ After its accepted handoff, reactivate 734 and repair its runbook for one
 already accepted typed successor IDs. Do not repeat Step 7.21 or absorb switch,
 computed-goto, PHI, local/object, memory/va, aggregate/vector, body-parameter,
 or other remaining families.
+
+## Runbook Exhaustion Decision: post-Step 7.22
+
+Close rejected. Accepted Step 7.22 (`220a3b5ad`) received exactly typed
+`LirCondBr.condition`, `true_successor`, and `false_successor` into the
+verified Raw-BIR conditional-jump destination. It validates a local I1
+condition and distinct same-function targets before atomic Raw-BIR
+publication, with focused positive and malformed-authority rollback coverage.
+The supervisor acceptance evidence is a fresh build plus matching backend
+guard 5/5 before and after (non-decreasing); the focused cases are internal to
+an existing executable. A later full postcheck found 2961/3034 passing and 73
+failures, but no matching clean pre-change full baseline exists because the
+external c-testsuite submodule contents are absent. This is not full-suite
+green evidence.
+
+This bounded conditional receiver does not satisfy the source completion gate.
+The earliest next valid CFG row, `LirSwitch`, has typed
+`default_successor` and ordered `case_successors` from closed idea 750, but
+its semantic selector remains `selector_name`/`selector_type` presentation
+text without a current-function `LirValueId`. Idea 734 must not recover the
+selector from text. `LirIndirectBrOp` address authority, PHI, local/object,
+memory/va, aggregate/vector, body-parameter, and all other unreceived families
+remain separately scoped and fail closed.
+
+Classification: `separate-blocker`. Open idea
+`ideas/open/756_lir_switch_selector_value_identity_publication.md` owns only
+publication, verification, focused malformed-authority coverage, and a typed
+handoff for the active switch selector. This source is paused after completed
+Steps 1 through 7.22. After 756 closes with the exact structured handoff,
+reactivate 734 and repair its runbook for one bounded `LirSwitch` Raw-BIR
+receiver packet: consume only the typed selector with already typed default and
+ordered case successors, preserve case order and transactional rejection, and
+do not inspect selector or label text for semantic recovery. Do not repeat
+Step 7.22 or absorb computed-goto, PHI, local/object, memory/va,
+aggregate/vector, body-parameter, or other remaining families.
 
 ## Why This Exists
 
