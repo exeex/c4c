@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.2
-Current Step Title: Publish representative scalar compare result/use authority (complete)
+Current Step ID: 7.3
+Current Step Title: Publish representative scalar select result/use authority
 
 ## Just Finished
 
@@ -23,18 +23,22 @@ Current Step Title: Publish representative scalar compare result/use authority (
 
 ## Suggested Next
 
-- Select the next bounded Plan Step 7 ordinary producer row from the updated
-  matrix; select and abs remain unclaimed candidates.
+- Execute Step 7.3: publish representative scalar `LirSelectOp` result/use
+  authority.
 
 ## Watchouts
 
-- Do not generalize Step 7.2 to float, pointer, vector, logical-helper, builtin,
-  vaarg, or statement comparisons; each remains unclaimed.
-- Select and abs may reuse the common allocator/operand mechanism but still
-  require separate opcode/type contracts and focused proof.
-- Preserve closed Step-3 through Step-7.2 rows and idea-741 regression
-  neighbors; keep pointer/object, aggregate/vector, CFG/parameters, calls,
-  inline assembly, ABI, and BIR outside the next packet.
+- Own only the current scalar `LirSelectOp` producer route with exact result
+  type and condition/true/false operand authority where already structurally
+  available; do not invent missing operand identity.
+- Allocate the select result through `fresh_value` and preserve that exact
+  result ID into a later ordinary use in the same function.
+- Accept misleading display after native authority is proven; reject missing,
+  invalid, or duplicate results, unknown or cross-function uses, and type
+  conflicts.
+- Keep abs, every other Step-7 row, aggregate/vector, pointer/object,
+  CFG/terminators, parameters, calls, inline assembly, and new-BIR work outside
+  Step 7.3.
 
 ## Proof
 
