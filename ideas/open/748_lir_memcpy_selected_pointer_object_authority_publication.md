@@ -82,6 +82,34 @@ Raw-BIR container, importer dispatch, reachable Raw-BIR verifier ownership,
 and positive/negative transactional proof.  All other memory/object and
 adjacent families remain separate and fail closed.
 
+## Resumption Record: current-function pointer-definition prerequisite
+
+Lifecycle decision: switched to separate blocker
+`ideas/open/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md`.
+This source has no accepted implementation progress and no completed runbook
+step. It was interrupted at Step 1, `Define and populate the selected memcpy
+typed authority`, before any code or focused proof ran.
+
+The selected PL producer is
+`src/codegen/lir/hir_to_lir/lvalue.cpp:279-281`: fixed aggregate byval
+parameter materialization in `emit_lval_dispatch`, producing the non-volatile
+`%lv.param.<param> <- %p.<param>` memcpy. `LirMemcpyOp` and the involved
+alloca/parameter carriers currently provide text only; there is no populated
+current-function object/lifetime authority from which this idea can publish
+valid memcpy fields. Creating that typed definition/object/lifetime authority
+is outside this source's selected-memcpy publication and verifier scope.
+
+Return point after blocker acceptance: reactivate this source at Step 1 and
+retry exactly the `lvalue.cpp:279-281` selected row. Populate its memcpy fields
+only from the blocker-published typed current-function pointer definitions,
+local object IDs, owners, and live-lifetime relation; then resume the existing
+Step 2 verifier boundary and Step 3 handoff sequence.
+
+Last accepted baseline: root `test_before.log` records
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passing 4/4.
+Outgoing activation commit: `4adb768ab`. There is no Step 1 proof and no
+implementation commit to preserve.
+
 ## Reviewer Reject Signals
 
 - Reject text parsing, rendered-IR comparison, name lookup, or testcase-shaped
