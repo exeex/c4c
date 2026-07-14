@@ -1,7 +1,8 @@
 # LIR Computed-Goto Label-Address Table Initialization Authority Decomposition
 
-Status: Open (active blocker for
-`ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
+Status: Open (parked behind
+`ideas/open/769_lir_global_initializer_label_address_authority.md`, active
+blocker for `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
 Type: decomposition of upstream computed-goto label-address table producer seams
 Predecessor: 764 Step 1, after accepted 765, 766, and 767 prerequisites
 
@@ -79,3 +80,35 @@ consumption decomposition, not a monolithic integration or carrier route.
 - Reject text/printed-label recovery, synthetic bridges, expectation
   downgrades, or broad pointer/table/rvalue redesign before direct frontend-LIR
   probes identify the producer seam.
+
+## Resumption Record — 2026-07-14 Static-Storage Initializer Blocker
+
+- Last accepted progress: Step 1 baseline is accepted and committed as
+  `b04832c62`; after a fresh build the preserved five consumers remain 1 pass /
+  4 failures at missing `LirIndirectBrOp.addr_value` authority. Step 2 producer
+  mapping is accepted and committed as `05386c45c`; its AST-backed queries and
+  `git diff --check` are recorded in
+  `docs/lir_computed_goto_label_address_authority/step2_producer_map.md`.
+- Completed steps: Step 1 — Establish the blocked label-address table
+  failure-family baseline; Step 2 — Enumerate separated label-address table
+  producer forms.
+- Interrupted step: Step 3 — Extract direct frontend-LIR producer probes.
+- Blocker and scope boundary: the static-storage table initializer is not a
+  direct/local `LirOperand` rvalue route. `ConstInitEmitter` serializes
+  `blockaddress(...)`; global lowering retains only initializer function IDs;
+  `LirGlobal` and its verifier have no structured initializer element that
+  carries the enclosing-function `LinkNameId` and target `BlockLabelId` (or
+  equivalent identity). Publication and validation of that initializer contract
+  are a separately scoped global-initializer initiative, now
+  `ideas/open/769_lir_global_initializer_label_address_authority.md`.
+- Exact return point: after 769 accepts its representation, producer
+  publication, verifier validation, and direct focused frontend-LIR
+  positive/malformed proof, resume this idea at Step 3. Extract the static
+  initializer positive/malformed frontend-LIR probe using that accepted
+  representation, then complete the remaining automatic-table and direct-rvalue
+  probes and Step 4 seam selection. Do not reopen 765/766/767 or change
+  `IndirBrStmt`/carrier behavior.
+- Remaining work: finish Step 3 for all non-static forms after the accepted
+  static contract, complete Step 4 seam selection, then only the selected
+  upstream producer packet and handoff to 764. The accepted 767 static-table
+  decay control remains untouched.

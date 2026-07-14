@@ -1,39 +1,30 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
+Source Idea Path: ideas/open/769_lir_global_initializer_label_address_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract direct frontend-LIR producer probes
+Current Step ID: 1
+Current Step Title: Map the static initializer representation boundary
 
 ## Just Finished
 
-- Completed plan.md Step 2 producer mapping in
-  `docs/lir_computed_goto_label_address_authority/step2_producer_map.md`.
-  The source-form-neutral map separates static-storage constant initialization,
-  automatic scalar initialization, automatic/static table representation, and
-  direct rvalue consumption before the accepted table-element GEP/load result.
-  It preserves 765/766/767 and selects no repair.
+- Lifecycle switch: 768 Steps 1 and 2 remain accepted; its Step 3 static
+  initializer probe is parked pending this separately scoped contract.
 
 ## Suggested Next
 
-- Step 3: extract one focused frontend-LIR production probe for each mapped
-  form, with its structured positive assertion and nearby malformed contract;
-  do not use external integration cases, rendered text, carrier publication,
-  verifier changes, or any rework of 765/766/767.
+- Inspect `ConstInitEmitter`, global lowering, `LirGlobal`, and verifier to map
+  the smallest structured label-address initializer element and identify any
+  Raw-BIR/importer boundary. Do not edit direct/local or carrier routes.
 
 ## Watchouts
 
-- The static-storage decay row is a structured control form, while local-array
-  decay and direct label-address rvalue production reach raw presentation
-  earlier. This is a map observation, not a selected seam: Step 3 must prove
-  each row with focused positive/malformed contracts before any repair choice.
+- `blockaddress(...)` rendered text and function-ID-only metadata do not carry
+  target-label authority. A Raw-BIR/importer need is a downstream blocker, not
+  authorization to expand this plan.
 
 ## Proof
 
-- Documentation/evidence-only proof: ran the AST definition queries recorded
-  in `docs/lir_computed_goto_label_address_authority/step2_producer_map.md`
-  for `emit_rval_payload`, `emit_const_scalar_expr`,
-  `emit_rval_from_access_ptr`, and `emit_control_flow_stmt`, then ran
-  `git diff --check`. No build, CTest, or `test_after.log` was required or
-  written by this packet.
+- Step 1 is evidence mapping only: use targeted source/AST queries and
+  `git diff --check`. Code-changing Steps 2–3 require a fresh build plus the
+  selected focused frontend-LIR positive/malformed proof.
