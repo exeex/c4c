@@ -812,6 +812,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                         ((producer_cast->kind == CastKind::FPExt &&
                           producer_cast->from_type == Type{TypeKind::F32, 32, "float"}) ||
                          (producer_cast->kind == CastKind::SIToFP &&
+                          producer_cast->from_type == Type{TypeKind::Integer, 32, "i32"}) ||
+                         (producer_cast->kind == CastKind::UIToFP &&
                           producer_cast->from_type == Type{TypeKind::Integer, 32, "i32"})) &&
                         producer_cast->to_type == f64;
                   }()
@@ -943,7 +945,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             cast->from_type == f32 && cast->to_type == f64;
         const bool scalar_sitofp = cast->kind == CastKind::SIToFP &&
             cast->from_type == i32 && cast->to_type == f64;
-        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp) &&
+        const bool scalar_uitofp = cast->kind == CastKind::UIToFP &&
+            cast->from_type == i32 && cast->to_type == f64;
+        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp) &&
             instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
@@ -968,7 +972,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             exact = producer_cast && producer_cast->kind == CastKind::FPTrunc &&
                 producer_cast->from_type == f64 && producer_cast->to_type == f32;
           }
-          if (exact && scalar_sitofp) {
+          if (exact && (scalar_sitofp || scalar_uitofp)) {
             const auto producer = function.insts_.get(function_id, def->instruction);
             const auto* binary = producer
                 ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;

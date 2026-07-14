@@ -1311,6 +1311,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
         return !cast || ((cast->kind != CastKind::FPExt || cast->from_type != f32 ||
                           cast->to_type != f64) &&
                          (cast->kind != CastKind::SIToFP || cast->from_type != i32 ||
+                          cast->to_type != f64) &&
+                         (cast->kind != CastKind::UIToFP || cast->from_type != i32 ||
                           cast->to_type != f64));
       }()) ||
       (exact_float_fmul && [&] {
@@ -1575,7 +1577,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
       spec.kind == CastKind::FPExt && spec.from_type == f32 && spec.to_type == f64;
   const bool scalar_sitofp =
       spec.kind == CastKind::SIToFP && spec.from_type == i32 && spec.to_type == f64;
-  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp) || !operand ||
+  const bool scalar_uitofp =
+      spec.kind == CastKind::UIToFP && spec.from_type == i32 && spec.to_type == f64;
+  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp) || !operand ||
       operand.value().get().type != spec.from_type ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1601,7 +1605,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
     if (!cast || cast->kind != CastKind::FPTrunc || cast->from_type != f64 || cast->to_type != f32)
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
-  if (scalar_sitofp) {
+  if (scalar_sitofp || scalar_uitofp) {
     const auto producer = function_data.insts_.get(function_, operand_def->instruction);
     const auto* binary = producer ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
     if (!binary || binary->opcode != BinaryOpcode::Add || binary->type != i32)

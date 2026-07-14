@@ -8,30 +8,29 @@ Current Step Title: Receive the checked explicit scalar UIToFP result
 
 ## Just Finished
 
-- Step 7.9 complete: received only the checked explicit scalar signed
-  i32-to-double `LirCastOp::SIToFP` from the admitted i32 Add result and its
-  one exact later double `FMul` use, with typed Raw-BIR payload/builder/view,
-  reachable verification, source-ID registry receipt, and transactional
-  rejection coverage.
+- Step 7.10 complete: received only the checked explicit scalar unsigned
+  i32-to-double `LirCastOp::UIToFP` from the admitted i32 Add result and its
+  one exact later double `FMul` use, with a distinct typed Raw-BIR cast kind,
+  builder/view/verifier receipt, source-ID registry path, and transactional
+  rejection coverage. The positive receiver assertion proves that native
+  `UIToFP` maps to `CastKind::UIToFP`, preserving authority beyond signless
+  i32 endpoint types.
 
 ## Suggested Next
 
-- Execute Step 7.10 only: receive the producer-authorized explicit scalar
-  unsigned i32-to-double `LirCastOp::UIToFP` from the admitted unsigned i32
-  Add result through its one exact later double `FMul` use. Require native
-  `UIToFP` kind authority because signless i32 type refs do not independently
-  distinguish a UIToFP/SIToFP kind swap; retain all other conversion families
-  and presentation-derived authority fail-closed.
+- Request the supervisor's next bounded packet; Step 7.10 is complete and no
+  further cast family is authorized by this packet.
 
 ## Watchouts
 
 - UIToFP is a native-kind-authorized unsigned i32-to-double boundary only.
-  SIToFP is accepted historical work, while FPToSI, FPToUI, all other cast
-  families, non-scalar forms, and presentation-derived authority remain
-  fail-closed.
+  SIToFP remains independently accepted historical work; FPToSI, FPToUI, all
+  other cast families, non-scalar forms, and presentation-derived authority
+  remain fail-closed.
 
 ## Proof
 
 - Passed: `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2).
+  Proof output: `test_after.log`.
