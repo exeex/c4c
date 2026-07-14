@@ -67,3 +67,33 @@ returns only display spelling. Idea 757 therefore cannot obtain an address
 - Reject a route that still drops the emitted local/parameter value identity
   and merely renames the resulting raw spelling, or that broadens into new
   value creation or unrelated rvalue families.
+
+## Resumption Record - interrupted for idea 759
+
+Switch reason: the user promoted and prioritized
+`ideas/open/759_lir_typed_ref_enum_foundation.md`, a separately scoped LIR type
+authority foundation. It does not belong inside this rvalue/computed-goto
+prerequisite because it targets `src/codegen/lir/types.hpp` typed ref
+construction rather than the rvalue expression/operand identity route.
+
+Last accepted progress: this idea was activated as the active prerequisite for
+idea 757, but no implementation packet for 758 Step 1 had been accepted yet.
+
+Interrupted runbook pointer:
+
+- `Current Step ID: 1`
+- `Current Step Title: Preserve typed local and parameter rvalue identity`
+
+Exact return point: resume 758 Step 1 by tracing
+`emit_rval_payload`, `emit_rval_expr`, and `emit_rval_operand` in
+`src/codegen/lir/hir_to_lir/expr/coordinator.cpp`, then preserve existing
+current-function local/parameter `LirValueId` identity through that route
+without text recovery.
+
+Remaining next action: execute the original Step 1 only; do not add
+`LirIndirectBrOp` address fields, verifier authority, Raw-BIR work, or
+computed-goto successor changes while resuming this prerequisite.
+
+Accepted proof and commits: no 758 implementation proof or implementation
+commit exists yet. Activation/switch history before interruption is represented
+by commit `32b2f83fb` (`[plan+idea] plan: switch to rvalue identity blocker`).
