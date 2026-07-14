@@ -1,6 +1,6 @@
 # Production LIR GEP Pointer Authority for pr70460
 
-Status: Open (active baseline-clearing blocker)
+Status: Closed (capability complete)
 Type: bounded production LIR GEP pointer-authority repair
 Predecessor: closed
 `ideas/closed/764_lir_production_computed_goto_addr_value_publication.md`
@@ -130,3 +130,21 @@ capability complete at
   fresh-build and make `llvm_gcc_c_torture_src_pr70460_c` pass, then provide a
   supervisor-owned fresh full-suite candidate handoff. The rejected baseline
   stays rejected and must not be evaluated anew before this Step 1 result.
+
+## Closure Record
+
+Disposition: capability complete.
+
+- The repair commit `02364b3c1` keeps the verified typed direct constant at
+  `emit_indexed_lval_operand` / typed `emit_indexed_gep`, publishing it to
+  `LirGepOp.ptr` without text-derived recovery or a fabricated value.
+- Nearby production and malformed foreign-ID coverage retain the required
+  fail-closed contract. The fresh build passed; the focused `pr70460` guard
+  changed from 0/1 to 1/1; and the label-address probes passed 2/2.
+- Supervisor acceptance proof: the fresh full-suite candidate for
+  `02364b3c1`, recorded in `test_baseline.new.log`, passed 3037/3037 and was
+  accepted with `scripts/plan_review_state.py accept-baseline` (no pending
+  baseline review).
+- The direct-label-address prerequisite remains independently closed under
+  773, with contract commits `a4415f99c`, `c64b78c48`, `97121c359`, and
+  `0d0f0725b`. No durable intent remains for this bounded `pr70460` repair.
