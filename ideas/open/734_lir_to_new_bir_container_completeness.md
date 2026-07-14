@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active at repaired Step 7.15 builtin-ffs zero-comparison/select-condition packet)
+Status: Open (active at repaired Step 7.17 builtin-ctz call/narrow/final-use packet)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -139,6 +139,26 @@ The handoff's other rows remain later bounded packets. CFG/terminator targets,
 stack/local objects, body parameters, producerless legacy alternatives, and
 every handoff fail-closed form remain separate and unsupported until their own
 typed source/receiver contracts are selected.
+
+## Runbook Exhaustion Decision: Step 7.16
+
+Close rejected. Accepted Step 7.16 (`cf7f2cd8d`) has fresh focused 2/2 proof,
+non-decreasing matching regression guard, and fresh broader `^backend_` 4/4
+proof, but it does not satisfy this source's coverage-matrix completion gate.
+The matrix still records receiver-ready typed rows, beginning with PI's
+builtin-ctz i32/i64 Cttz call, i64 narrowing, and final-use chain under
+authority-matrix Step 7.17; builtin-clz, builtin-popcount, and later bounded
+rows remain after it. It also records valid current-LIR families with missing
+producer authority, including pointer/object, stack/local, body-parameter,
+aggregate/vector, va-list/memory, CFG, and opaque inline-asm forms.
+
+Classification: `repair-current-route` for Step 7.17 because its required
+authority and typed Raw-BIR receiving seams already exist; execute one bounded
+receiver packet without presentation recovery. The listed missing-authority
+families are not absorbed by that packet: each requires its own separately
+scoped successor/blocker before any receiver work. Return point after Step
+7.17 acceptance is the next matrix receiver-ready row, with the same source
+completion gate reapplied.
 
 ## Why This Exists
 
