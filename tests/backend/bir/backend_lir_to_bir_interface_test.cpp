@@ -237,7 +237,7 @@ void test_supported_import_and_views() {
   lir::LirBlock branch_entry;
   branch_entry.id = lir::LirBlockId{0};
   branch_entry.label = "entry";
-  branch_entry.terminator = lir::LirBr{"exit"};
+  branch_entry.terminator = lir::LirBr{"exit", lir::LirBlockId{1}};
   module.functions.push_back(void_definition(
       "branches", {std::move(branch_entry), return_block(1, "exit")}));
 
@@ -317,6 +317,93 @@ void test_supported_import_and_views() {
          "the same target-independent storage should pass canonical verification");
   expect(canonical.value().view().functions().size() == functions.size(),
          "canonical publication should preserve the verified graph");
+}
+
+lir::LirModule direct_branch_module() {
+  lir::LirBlock entry;
+  entry.id = lir::LirBlockId{10};
+  entry.label = "entry";
+  entry.terminator = lir::LirBr{"exit", lir::LirBlockId{11}};
+  auto exit = return_block(11, "exit");
+
+  lir::LirModule module;
+  module.functions.push_back(
+      void_definition("direct_branch", {std::move(entry), std::move(exit)}));
+  return module;
+}
+
+void test_direct_branch_successor_receipt_and_rejections() {
+  const auto module = direct_branch_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "direct LirBr successor must publish verified Raw BIR");
+  const auto function = raw.value().view().function(raw.value().view().functions()[0]).value();
+  const auto blocks = function.blocks();
+  const auto terminator = function.terminator(blocks[0]);
+  expect(terminator.has_value() &&
+             std::holds_alternative<bir::JumpTerm>(terminator.value()) &&
+             std::get<bir::JumpTerm>(terminator.value()).target == blocks[1],
+         "direct LirBr must retain its structural successor as the typed JumpTerm target");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "direct LirBr successor must canonicalize");
+
+  const auto rejected = [](auto mutate, bir::ImportErrorCode expected,
+                           const std::string& message) {
+    auto candidate = direct_branch_module();
+    mutate(candidate);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() &&
+               canonical_rejected.error().code == expected,
+           message + " (canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& candidate) {
+        std::get<lir::LirBr>(candidate.functions[0].blocks[0].terminator)
+            .successor = lir::LirBlockId::invalid();
+      },
+      bir::ImportErrorCode::MissingBranchTarget,
+      "missing direct successor authority must reject transactionally");
+  rejected(
+      [](lir::LirModule& candidate) {
+        std::get<lir::LirBr>(candidate.functions[0].blocks[0].terminator)
+            .successor = lir::LirBlockId{99};
+      },
+      bir::ImportErrorCode::MissingBranchTarget,
+      "unresolved direct successor authority must reject transactionally");
+  rejected(
+      [](lir::LirModule& candidate) {
+        std::get<lir::LirBr>(candidate.functions[0].blocks[0].terminator)
+            .target_label = "misleading display";
+      },
+      bir::ImportErrorCode::MissingBranchTarget,
+      "incoherent direct successor display shadow must reject without label recovery");
+  rejected(
+      [](lir::LirModule& candidate) {
+        candidate.functions[0].blocks[1].id = lir::LirBlockId{10};
+      },
+      bir::ImportErrorCode::DuplicateBlockId,
+      "duplicate current-function successor ownership must reject transactionally");
+
+  lir::LirBlock foreign_entry;
+  foreign_entry.id = lir::LirBlockId{20};
+  foreign_entry.label = "foreign_entry";
+  foreign_entry.terminator = lir::LirBr{"foreign_exit", lir::LirBlockId{21}};
+  lir::LirModule cross_owner;
+  cross_owner.functions.push_back(
+      void_definition("owner", {std::move(foreign_entry)}));
+  cross_owner.functions.push_back(
+      void_definition("other_owner", {return_block(21, "foreign_exit")}));
+  const auto cross_raw = bir::lower_lir_to_raw_bir(cross_owner);
+  expect(!cross_raw.has_value() &&
+             cross_raw.error().code == bir::ImportErrorCode::MissingBranchTarget,
+         "cross-function direct successor authority must publish no Raw BIR");
+  const auto cross_canonical = bir::lower_lir_to_canonical_bir(cross_owner);
+  expect(!cross_canonical.has_value() &&
+             cross_canonical.error().code == bir::ImportErrorCode::MissingBranchTarget,
+         "cross-function direct successor authority must publish no Canonical BIR");
 }
 
 void test_generic_inline_asm_ssa_edges() {
@@ -9715,6 +9802,7 @@ int main() {
   test_structured_gep_index_adapter();
   test_void_return_rejects_authoritative_value();
   test_supported_import_and_views();
+  test_direct_branch_successor_receipt_and_rejections();
   test_generic_inline_asm_ssa_edges();
   test_structured_lir_import_ssa_chain();
   test_structured_lir_import_rejections();

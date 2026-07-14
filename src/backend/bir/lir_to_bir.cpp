@@ -1770,6 +1770,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
 
   std::unordered_set<std::string> labels;
   std::unordered_set<std::uint32_t> block_ids;
+  std::unordered_map<std::uint32_t, std::string> block_labels_by_id;
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
   std::unordered_set<std::uint32_t> inline_asm_results;
@@ -1780,6 +1781,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
+  block_labels_by_id.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
     if (block.label.empty())
       return fail<void>(ImportErrorCode::EmptyBlockLabel, name, {},
@@ -1790,6 +1792,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (!block_ids.insert(block.id.value).second)
       return fail<void>(ImportErrorCode::DuplicateBlockId, name, block.label,
                         "LirBlockId values must be unique within a function");
+    block_labels_by_id.emplace(block.id.value, block.label);
     for (const auto& instruction : block.insts) {
       if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
         const auto type = lower_constant_type(module, constant->type);
@@ -2148,10 +2151,18 @@ Result<void, ImportError> validate_function(const LirModule& module,
               }
             }
           } else if constexpr (std::is_same_v<Term, LirBr>) {
-            if (terminator.target_label.empty() ||
-                labels.find(terminator.target_label) == labels.end())
+            const auto target = terminator.successor.valid()
+                                    ? block_labels_by_id.find(
+                                          terminator.successor.value)
+                                    : block_labels_by_id.end();
+            if (target == block_labels_by_id.end())
               return fail<void>(ImportErrorCode::MissingBranchTarget, name,
-                                block.label, terminator.target_label);
+                                block.label,
+                                "LirBr.successor must resolve exactly once in its current function");
+            if (terminator.target_label != target->second)
+              return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                block.label,
+                                "LirBr target_label must remain the selected successor's display shadow");
           } else if constexpr (std::is_same_v<Term, LirUnreachable>) {
             // Supported directly.
           } else if constexpr (std::is_same_v<Term, LirCondBr>) {
@@ -2185,17 +2196,16 @@ Result<Terminator, ImportError> lower_terminator(
     const codegen::lir::LirTerminator& terminator,
     const std::unordered_map<std::uint32_t, ValueId>& source_values,
     FunctionBuilder& function_builder,
-    const std::unordered_map<std::string, BlockId>& blocks,
+    const std::unordered_map<std::uint32_t, BlockId>& blocks,
     const std::string& function, const std::string& block) {
   return std::visit(
       [&](const auto& lir_terminator) -> Result<Terminator, ImportError> {
         using Term = std::decay_t<decltype(lir_terminator)>;
         if constexpr (std::is_same_v<Term, LirBr>) {
-          const auto target = blocks.find(lir_terminator.target_label);
+          const auto target = blocks.find(lir_terminator.successor.value);
           if (target == blocks.end())
             return fail<Terminator>(ImportErrorCode::MissingBranchTarget,
-                                    function, block,
-                                    lir_terminator.target_label);
+                                    function, block, "LirBr.successor");
           return Result<Terminator, ImportError>::success(
               JumpTerm{target->second});
         } else if constexpr (std::is_same_v<Term, LirRet>) {
@@ -2405,7 +2415,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     std::optional<ImportError> edit_error;
     auto edited = builder.with_function(
         function_ids[function_index], [&](FunctionBuilder& function_builder) {
-          std::unordered_map<std::string, BlockId> blocks;
+          std::unordered_map<std::uint32_t, BlockId> blocks;
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
@@ -2418,7 +2428,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                            created_block.error());
               return Result<void, BuildError>::failure(created_block.error());
             }
-            blocks.emplace(block.label, created_block.value());
+            blocks.emplace(block.id.value, created_block.value());
           }
 
           for (const LirBlock& block : function.blocks) {
@@ -2514,7 +2524,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       BuildError::InvalidGlobalObject);
                 }
                 auto appended = function_builder.append(
-                    blocks.at(block.label),
+                    blocks.at(block.id.value),
                     StoreSpec{destination->second, type, stored_value});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
@@ -2537,7 +2547,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       BuildError::InvalidGlobalObject);
                 }
                 auto appended = function_builder.append(
-                    blocks.at(block.label),
+                    blocks.at(block.id.value),
                     LoadSpec{source->second, type,
                              load->result.value_id()->value});
                 if (!appended) {
@@ -2633,7 +2643,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   }
                 }
                 auto appended = function_builder.append(
-                    blocks.at(block.label),
+                    blocks.at(block.id.value),
                     GetElementPtrSpec{
                         base->second, *lower_global_type(module, *selected),
                         gep->inbounds, std::move(indices),
@@ -2714,7 +2724,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                              codegen::lir::LirZeroCountBehavior::Undefined}
                       : std::nullopt;
                   auto appended = function_builder.append(
-                      blocks.at(block.label),
+                      blocks.at(block.id.value),
                       IntrinsicCallSpec{kind, link->second,
                                         *lower_lir_type(module, call->return_type),
                                         std::move(arguments), behavior,
@@ -2788,7 +2798,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool native_floating_result =
                     native_floating_call_type(module, call->return_type).has_value();
                 auto appended = function_builder.append(
-                    blocks.at(block.label),
+                    blocks.at(block.id.value),
                     CallSpec{callee->second, std::move(arguments),
                              (integer_result || native_floating_result)
                                  ? std::optional<std::uint32_t>{call->result.value_id()->value}
@@ -2874,7 +2884,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   rhs_value = reserved.value();
                 }
                 auto appended = function_builder.append(
-                    blocks.at(block.label),
+                    blocks.at(block.id.value),
                     BinarySpec{fadd ? BinaryOpcode::FAdd
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fadd ? Type{TypeKind::F64, 64, "double"}
@@ -2911,7 +2921,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 auto appended = function_builder.append(
-                    blocks.at(block.label),
+                    blocks.at(block.id.value),
                     CastSpec{CastKind::Trunc, *lower_lir_type(module, cast->from_type),
                              *lower_lir_type(module, cast->to_type), operand->second,
                              cast->result.value_id()->value});
@@ -2967,7 +2977,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 spec.source_result_id =
                     inline_asm.ordinary_results.front().value.value_id()->value;
               const auto source_result_id = spec.source_result_id;
-              auto appended = function_builder.append(blocks.at(block.label),
+              auto appended = function_builder.append(blocks.at(block.id.value),
                                                       std::move(spec));
               if (!appended) {
                 edit_error = builder_failure(name, block.label,
@@ -3007,7 +3017,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               return Result<void, BuildError>::failure(
                   BuildError::UnsupportedOpcode);
             }
-            auto set = function_builder.set_terminator(blocks.at(block.label),
+            auto set = function_builder.set_terminator(blocks.at(block.id.value),
                                                        std::move(terminator).value());
             if (!set) {
               edit_error = builder_failure(name, block.label, "set terminator",
