@@ -163,3 +163,39 @@ Completion check:
 
 - the supervisor has coherent evidence for closure or an explicit in-scope
   repair/successor route.
+
+### Step 6 - Repair the targeted warning-inventory route
+
+Goal: satisfy the source idea's warning-inventory criterion without reviving
+the rejected global `const char*` deprecation experiment.
+
+Accepted evidence before this repair:
+
+- `a1d6fd79a` added the explicit `build_type_decls` runtime-text boundary and
+  migrated its va_list literals; fresh build plus `^frontend_lir_call_type_ref$`
+  passed.
+- `c4c021559` migrated the static no-expression return literals; fresh build
+  plus `^frontend_hir_tests$` passed.
+- `896779447` migrated the selected-byval pointer-authority literals; fresh
+  build plus `^backend_lir_selected_pointer_authority$` passed.
+- The final fresh build and `^(frontend_lir_|backend_lir_)` focused run passed
+  6/6, and the accepted full baseline was 3034/3034 passing.
+
+Actions:
+
+- design and prove a narrowly scoped, targeted deprecation-warning inventory
+  boundary for one remaining construction category; it must not emit the
+  widespread unrelated warnings produced by the rejected global constructor
+  annotation
+- use that boundary to classify the selected remaining sites as closed-set
+  enum candidates or legitimate explicit runtime-text paths
+- record the resulting auditable remaining-boundary inventory and either
+  continue the next bounded migration group or return to this close gate with
+  evidence that the source criteria are satisfied
+
+Completion check:
+
+- a targeted warning inventory identifies real remaining construction sites
+  without blocking unrelated compilation, and every classified retained
+  runtime-text boundary is searchable and documented; otherwise the plan
+  names the exact in-scope repair still required.
