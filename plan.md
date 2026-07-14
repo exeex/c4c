@@ -1,155 +1,124 @@
-# Unresolved External Direct Scalar-Call Signature and Result Authority Runbook
+# Frontend Source Representation for Unresolved-External Direct Calls Runbook
 
 Status: Active
-Runbook State: Blocked on source-representation research idea 747
-Source Idea: ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md
-Supersedes: blocked idea-744 Plan Step 7.32 while this prerequisite is active
+Source Idea: ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md
+Activated from: blocked idea-746 runbook; idea 746 remains open and blocked pending this research
 
 ## Purpose
 
-Publish only the missing source-level authority for the plain-`DeclRef`
-unresolved-external direct, fixed-empty scalar-call route, then hand the exact
-contract back to idea 744.
-
-The runbook is blocked before implementation. The two source probes tried in
-Step 1 split the required properties: a declared fixed-empty call retains
-`target_fn`, while an undeclared call reaches unresolved-external handling but
-lacks native direct global/link identity. This does not prove no legal source
-representation exists. The separate documentation-only research initiative
-`ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md`
-must decide that representation question before this runbook can resume,
-retire, or be replaced.
+Answer the bounded source-language and frontend-representation question that
+blocks idea 746: whether a legal production-facing source form can produce a
+plain direct fixed-empty scalar call with native global/link identity while
+`target_fn` is absent.
 
 ## Goal
 
-Retain the native `FnPtrSig` for the authoritative unresolved-external
-declaration, use it for the structured fixed-empty signature, and allocate the
-actual scalar result with the owning function's `fresh_value(ctx)` path before
-rendering.
+Create exactly the required index and one evidence-bounded answer document
+under `docs/frontend_unresolved_external_direct_call_representation/`, giving
+idea 746 either a concrete compliant source/HIR carrier contract or evidence
+that the supported language surface cannot express one.
 
 ## Core Rule
 
-Source-level native authority precedes verification and presentation. Do not
-recover signatures, declaration identities, or result IDs from names, rendered
-operands, `%t*` spelling, type text, printer/LLVM output, declaration order, or
-testcase identity.
+Research and documentation only. Derive conclusions from a documented
+legal-source and parser/sema/HIR/LIR-ingress investigation; do not alter
+implementation, tests, expectations, runtime behavior, unsupported markers,
+allowlists, HIR, or lifecycle history.
 
 ## Read First
 
+- `ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md`
 - `ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md`
-- `ideas/open/744_lir_remaining_ordinary_value_identity_publication.md`
-- `src/codegen/lir/hir_to_lir/call/target.cpp`
-- ordinary call emission/result construction and `LirFunction::fresh_value`
-- `src/codegen/lir/ir.hpp` and `src/codegen/lir/verify.cpp`
-- existing unresolved-external declaration/link-ID construction and focused
-  frontend LIR call tests
+- current call-target ingress rooted at `src/codegen/lir/hir_to_lir/call/target.cpp`
+- parser, sema, and HIR declaration/call construction for legal direct-call
+  source forms
 
 ## Scope
 
-- plain-`DeclRef` unresolved external direct scalar calls
-- fixed, nonvariadic, zero-argument declarations only when the source
-  declaration supplies those facts
-- native declaration link identity, `FnPtrSig`, structured fixed-empty
-  signature, scalar result `LirValueId`, and reachable malformed rejection
-- one focused positive probe plus nearby malformed-neighbor coverage
-- an exact handoff sufficient to retry only idea-744 Step 7.32
+- enumerate relevant legal source declaration and direct-call forms
+- trace declaration retention, `DeclRef`, `target_fn`, and native link identity
+- classify candidates against the four required properties
+- author only the two required research Markdown files
 
 ## Non-Goals
 
-- no verifier-only acceptance of a text-only route
-- no HIR mutation, local-prototype relocation, parallel symbol/value table, or
+- implementation or test changes of any kind
+- HIR fabrication, prototype relocation, parallel authority storage, or
   text/name/type/result recovery
-- no call arguments, indirect/variadic/ABI-expanded calls, conversions,
-  floating-operation expansion, ABI lowering, new-BIR, or idea-734 receiver
-  work
-- no closure or supersession of idea 744
+- deciding that idea 746, its prerequisite, or idea 744 is complete,
+  unblocked, or superseded
+- ABI, indirect, variadic, receiver, new-BIR, or broad call-lowering work
 
 ## Execution Rules
 
-1. Keep every implementation packet bounded to one generic producer seam and
-   its exact malformed proof.
-2. Preserve the existing external declaration/link-ID route; augment it only
-   where the source declaration authoritatively carries the required facts.
-3. Allocate the result before presentation and propagate the same `LirValueId`
-   through the ordinary call result path.
-4. Keep unsupported external shapes fail-closed; do not generalize from this
-   focused fixed-empty route.
-5. Require fresh build, focused positive proof, malformed-neighbor proof, and
-   the supervisor-selected regression checkpoint for each code packet.
+1. Treat declared and undeclared fixtures as two observations, not a complete
+   language-surface conclusion.
+2. Every candidate must be traced through the production parser/sema/HIR and
+   LIR ingress path before it is classified.
+3. Keep the conclusion evidence-bounded: name the exact compliant contract, or
+   enumerate the supported-surface evidence for its absence.
+4. Write exactly `index.md` and `01_legal_source_to_hir_representation.md` in
+   the required directory; do not create extra research deliverables.
+5. Do not modify source, tests, existing ideas, or lifecycle artifacts while
+   executing the documentation steps.
 
 ## Ordered Steps
 
-### Step 1 - Trace and bind the authoritative producer seam
+### Step 1 - Collect and analyze legal source-to-HIR evidence
 
-Goal: identify the exact plain-`DeclRef` unresolved-external production path
-and bind a focused probe before changing carriers or verification.
+Goal: enumerate and trace every relevant legal source form before asserting a
+positive route or an absence.
 
-Actions:
+Primary targets:
 
-- trace declaration, link-ID, and call-target construction from source `DeclRef`
-  through `extern_decl_link_name_map` and `extern_decls`
-- identify where the source declaration can retain or construct native
-  `FnPtrSig`, fixed-empty signature facts, return type, and result allocation
-- create or bind one minimal unresolved-external fixed-empty scalar-call probe
-  to the producer and exact verifier rejection obligations
-- document the first bad fact and keep every unsupported external shape outside
-  the packet
-
-Completion check:
-
-- one exact source-level seam and probe show how native signature and result
-  authority must be published without text recovery or HIR fabrication
-
-Blocked checkpoint:
-
-- Step 1 cannot satisfy its positive-probe completion check from the current
-  fixtures. Do not advance to Step 2. Research idea 747 must establish either
-  a legal source-to-HIR representation carrying both required properties or
-  evidence sufficient to conclude that such a representation is unavailable;
-  the latter requires a lifecycle decision, not a fabricated route.
-
-### Step 2 - Publish signature and scalar-result authority
-
-Goal: make the bounded route emit its native fixed-empty signature and owned
-result identity before rendering.
+- parser, sema, and HIR declaration/direct-call construction
+- `src/codegen/lir/hir_to_lir/call/target.cpp`
+- existing declared and undeclared source fixtures as starting observations
 
 Actions:
 
-- retain or construct `FnPtrSig` at the authoritative producer seam only when
-  supplied by the source declaration
-- publish the structured fixed-empty signature from that native fact
-- allocate the scalar result with `fresh_value(ctx)` and propagate the exact
-  `LirValueId` through the ordinary call result path
-- preserve existing link-ID authority and unsupported-shape fail-closed behavior
+- identify the supported declaration and direct-call forms that could preserve
+  direct global/link identity while leaving `target_fn` absent
+- trace each candidate through declaration retention, `DeclRef`, `target_fn`,
+  link-identity construction, and fixed-empty declaration facts
+- record concrete source/HIR/LIR ingress evidence and classify the declared
+  and undeclared fixtures alongside any additional legal candidates
+- decide only whether the evidence supports a compliant native carrier
+  contract or a supported-surface absence conclusion
 
 Completion check:
 
-- the focused plain-`DeclRef` route has native link, signature, return, and
-  owned result authority with no display-derived fallback
+- a complete, evidence-cited candidate classification is ready for the
+  required answer document, without relying only on the two original fixtures
 
-### Step 3 - Verify malformed authority and hand off to idea 744
+### Step 2 - Author the required research delivery
 
-Goal: prove the new producer contract is reachable and narrowly sufficient to
-unblock a retry of idea-744 Step 7.32.
+Goal: publish the bounded conclusion in exactly the two required documents.
+
+Primary targets:
+
+- `docs/frontend_unresolved_external_direct_call_representation/index.md`
+- `docs/frontend_unresolved_external_direct_call_representation/01_legal_source_to_hir_representation.md`
 
 Actions:
 
-- cover absent, invalid, and mismatched declaration link identity; missing or
-  conflicting signature/return facts; and missing, invalid, duplicate,
-  cross-owner, or type-conflicting result identity
-- run fresh build, focused positive proof, malformed-neighbor proof, and the
-  supervisor-selected regression checkpoint
-- record the exact source fields, carrier guarantees, verifier obligations,
-  and proof that idea 744 may consume; leave all other external shapes
-  explicitly fail-closed
+- author the numbered answer with the source-to-HIR trace, classification
+  table, cited ingress surfaces, and evidence-bounded conclusion
+- state either the exact compliant source/HIR carrier contract that can let
+  idea 746 resume or the supported-language evidence requiring its runbook to
+  be retired or replaced
+- author `index.md` linking to the numbered answer and summarizing only that
+  overall result
+- structurally verify that the directory contains the index and exactly one
+  numbered answer file, and confirm the diff is documentation-only
 
 Completion check:
 
-- accepted evidence proves only the bounded native-authority contract and
-  supplies a precise handoff for a later idea-744 Step 7.32 retry
+- both required Markdown files exist, are internally linked, satisfy the
+  answer shape, and leave all implementation and test surfaces unchanged
 
-## Runbook Completion And Handoff
+## Handoff
 
-Completing this prerequisite does not complete idea 744 or idea 734. After
-accepted supervisor proof, plan-owner must re-evaluate and switch back to idea
-744 before Step 7.32 is retried.
+Completion of this research runbook does not itself resume, complete, unblock,
+supersede, or close idea 746 or idea 744. Hand the evidence and conclusion to
+the supervisor for a separate lifecycle decision on idea 746.
