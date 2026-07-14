@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.7
-Current Step Title: Publish explicit scalar floating cast result/use authority (complete)
+Current Step ID: 7.8
+Current Step Title: Publish explicit scalar floating extension result/use authority
 
 ## Just Finished
 
@@ -22,20 +22,28 @@ Current Step Title: Publish explicit scalar floating cast result/use authority (
 
 ## Suggested Next
 
-- Select the next bounded Step-7 row from the updated matrix without widening
-  the FPTrunc claim into its explicitly excluded neighboring cast families.
+- Execute Step 7.8: publish one explicit authoritative-source scalar `FPExt`
+  result/use chain.
 
 ## Watchouts
 
-- Native FPTrunc requires both an authoritative source ID and strict scalar
-  floating narrowing; do not infer a claim from kind/type spelling alone.
-- FPExt, integer/floating conversions, pointer/bitcast/vector/complex/
-  aggregate casts, implicit coercions, and monostate-source casts remain
-  compatibility.
-- The verifier's other authoritative cast path remains the Step-7.1 integer
-  Trunc/ZExt/SExt contract; do not weaken either endpoint/direction check.
-- Preserve Steps 3 through 7.7 and idea-741 neighbors. Keep other producers,
-  CFG/parameters, calls, inline assembly, and BIR outside the next packet.
+- Own only PX's explicit nonpointer, nonvector scalar floating-to-floating cast
+  with a wider destination; use a float FAdd source and preserve its exact ID
+  through FPExt into a later double floating operation.
+- Reuse the authoritative-source floating branch of `coerce_operand`: allocate
+  the cast through `fresh_value`, retain native `FPExt` with exact float source
+  and double destination type refs, and return the identical result operand to
+  the later use.
+- Require authoritative floating kind, endpoint family, and widening direction
+  to agree; reject invalid/duplicate results, unknown or cross-function uses,
+  missing/conflicting types, nonfloating endpoints, and nonwidening FPExt.
+- Accept misleading displays only after native authority is proven. Keep
+  same-representation no-op and monostate-source casts honest compatibility;
+  never reconstruct identity from rendered spelling.
+- Preserve Step-7.7 FPTrunc and Step-7.1 integer cast rules. Exclude integer/
+  floating conversions, pointer, bitcast, vector, complex, aggregate, implicit
+  coercion, other cast producers, CFG/parameters, calls, inline assembly, and
+  BIR.
 
 ## Proof
 
