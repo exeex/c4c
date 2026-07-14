@@ -1,78 +1,68 @@
-# Production Computed-Goto Address Authority Runbook
+# Production Member/Bitfield Rvalue Identity Runbook
 
 Status: Active
-Source Idea: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
-Activated from: switched from 734 after accepted Step 7.24; 734 remains open
-and resumable.
+Source Idea: ideas/open/765_lir_member_bitfield_rvalue_value_identity_publication.md
+Activated from: switched from 764 after its Step 1 established the upstream
+member/bitfield rvalue authority blocker; 764 remains open and resumable.
 
 ## Purpose
 
-Repair only the production computed-goto producer route that fails to publish
-the existing typed address authority required by the accepted Raw-BIR receiver.
+Repair only the first production rvalue owner that leaves the computed-goto
+pointer-add RHS without a structured current-function value identity.
 
 ## Goal
 
-For `comp-goto-1.c`, publish a verified current-function pointer `LirValueId`
-in `LirIndirectBrOp.addr_value` without any text-derived recovery.
+For `comp-goto-1.c`, carry a valid `LirValueId` for `insn.f1.offset` into the
+RHS index of its address-pointer GEP without weakening the GEP authority rule.
 
 ## Core Rule
 
-`addr_value` is the semantic address authority. `addr`, labels, printer output,
-rendered LLVM, and testcase names are never inputs for deriving or repairing it.
+A GEP result may receive authority only after both base and index are valid
+current-function structured values. Rendered text is never an authority source.
 
 ## Read First
 
+- `ideas/open/765_lir_member_bitfield_rvalue_value_identity_publication.md`
 - `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` resumption record
-- `ideas/closed/757_lir_computed_goto_address_value_identity_publication.md`
-- `src/codegen/lir/hir_to_lir/stmt.cpp` and the production rvalue path reached
-  by `IndirBrStmt`
+- the member/bitfield rvalue producer and `emit_indexed_gep` reached by
+  `tests/c/external/gcc_torture/src/comp-goto-1.c`
 
 ## Non-Goals
 
-- no Raw-BIR/importer receiver changes or rerun of 734 Step 7.24
-- no display-text recovery, successor/CFG redesign, or ownership of unrelated
-  full-suite failures
-- no broad HIR/parser/sema/rvalue, PHI, local/object, memory/va,
-  aggregate/vector, parameter, target-lowering, MIR, or emission expansion
+- no Raw-BIR/importer, 734 receiver, `IndirBrStmt`, or computed-goto carrier
+  changes
+- no GEP verifier relaxation, partial-authority publication, or text recovery
+- no general member/bitfield/rvalue or adjacent identity-family redesign
 
 ## Execution Rules
 
-1. Keep the repair at the first evidenced production owner that drops the
-   current-function pointer value identity.
-2. Preserve existing verifier fail-closed behavior; strengthen focused coverage
-   rather than weakening checks.
-3. Build and run focused producer proof before the handoff. The supervisor owns
-   regression logs and broader/full acceptance.
+1. Identify no more than the first actual production owner confirmed by the
+   `insn.f1.offset` expression before changing code.
+2. Preserve `verify_authoritative_gep` fail-closed behavior for raw, missing,
+   invalid, and foreign indexes.
+3. Build and run focused producer proof before the handoff; the supervisor owns
+   regression logs and broader acceptance.
 
 ## Ordered Steps
 
-### Step 1 - Trace and publish production computed-goto address authority
+### Step 1 - Publish the production member/bitfield RHS value identity
 
-Goal: identify the first production owner that leaves the `IndirBrStmt` target
-without a `LirValueId`, then minimally publish its existing pointer identity to
-`LirIndirectBrOp.addr_value`.
-
-Primary targets:
-
-- `src/codegen/lir/hir_to_lir/stmt.cpp`
-- only the immediate production rvalue/operand seam evidenced by
-  `comp-goto-1.c`
-- focused frontend or production-route test coverage
+Goal: confirm the first identity-loss owner for `insn.f1.offset`, then make
+only that owner emit the structured current-function `LirValueId` required by
+the RHS index of `emit_indexed_gep`.
 
 Actions:
 
-- reproduce `ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`
-  and trace the target operand to the first missing authority owner
-- publish the valid current-function pointer ID through the existing carrier;
-  do not parse any rendered spelling or invent a parallel identity model
-- retain verifier rejection for missing, invalid, foreign, non-pointer, and
-  display-mismatched authority
-- add focused production-path positive coverage and neighbouring malformed
-  authority proof, then record a handoff explicitly limited to this route
+- reproduce the preserved focused failure route and trace only through the
+  member/bitfield rvalue producer until the first missing ID owner is concrete
+- minimally publish the valid ID through that producer seam; do not create a
+  GEP-only fallback or a parallel text identity model
+- add focused positive production-seam coverage plus malformed/raw-index
+  rejection coverage that proves the existing GEP verifier remains fail-closed
+- record a handoff naming the owner, carried structured field, proof, and
+  return action to 764 Step 1 only
 
 Completion check:
 
-- fresh build plus focused proof establishes that the production computed-goto
-  carrier publishes valid `addr_value`; return to 734 after completed Step 7.24
-  for plan-owner disposition without modifying or repeating the receiver.
+- fresh build and focused proof establish a valid RHS `LirValueId` and retain
+  malformed-index rejection; 764 can then resume Step 1 for address publication.

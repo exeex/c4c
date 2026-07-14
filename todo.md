@@ -1,32 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
+Source Idea Path: ideas/open/765_lir_member_bitfield_rvalue_value_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Trace and publish production computed-goto address authority
+Current Step Title: Publish the production member/bitfield RHS value identity
 
 ## Just Finished
 
-- None; this blocker was activated after 734 Step 7.24 was accepted at the
-  receiver boundary and broader validation exposed the separate producer gap.
+- None; this upstream blocker was activated after 764 proved that the
+  computed-goto carrier and GEP verifier are behaving correctly and the RHS
+  member/bitfield rvalue is the first missing-authority seam.
 
 ## Suggested Next
 
-- Reproduce the focused production failure and identify the first rvalue/operand
-  owner that fails to carry the current-function pointer `LirValueId` to
-  `LirIndirectBrOp.addr_value`.
+- Trace `insn.f1.offset` in `comp-goto-1.c` to the first production
+  member/bitfield rvalue owner that drops its `LirValueId`, then repair only
+  that owner.
 
 ## Watchouts
 
-- Keep Raw-BIR/importer receiver code and the accepted 734 Step 7.24 packet
-  untouched; resume 734 only after this producer handoff is accepted.
-- Do not derive authority from `addr`, labels, rendered output, or testcase
-  text, and do not claim the four unrelated full-suite failures.
+- Do not change Raw-BIR/importer, 734, `IndirBrStmt`, or the computed-goto
+  address carrier. Do not publish a GEP result from a raw/partial RHS index.
+- Keep `verify_authoritative_gep` fail-closed and never derive identity from
+  rendered operands, labels, LLVM/printer text, or testcase identity.
 
 ## Proof
 
-- Initial reproduction: `ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`.
-- Before handoff: fresh `cmake --build --preset default` plus the focused
-  production-path proof selected during Step 1. The supervisor owns broader
-  acceptance and canonical regression logs.
+- Preserved baseline: `ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`
+  (recorded in `test_before.log`).
+- Before handoff: fresh `cmake --build --preset default` plus focused producer
+  and malformed-index proof selected during Step 1. The supervisor owns
+  broader acceptance and canonical regression logs.

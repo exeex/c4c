@@ -77,3 +77,31 @@ it does not reopen 757 or the 734 receiver.
 - Reject broad rvalue, CFG, PHI, local/object, memory/va, aggregate/vector, or
   target-lowering rewrites instead of a minimal repair at the first evidenced
   production authority-loss owner.
+
+## Resumption Record: member/bitfield rvalue identity blocker
+
+Paused at `Step 1 - Trace and publish production computed-goto address
+authority`; no implementation from this idea was accepted. A fresh clean build
+preceded the investigation, and the focused baseline is preserved in
+`test_before.log`:
+
+`ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`
+
+The exact first bad fact is that the test fails before Raw-BIR import because
+`LirIndirectBrOp.addr_value` is absent. The trace established that
+`IndirBrStmt` correctly copies `emit_rval_operand(...).value_id()`. In
+`comp-goto-1.c`, the target is `base_addr + insn.f1.offset`; binary lowering
+routes that expression through `emit_indexed_gep`, whose result remains
+string-only because the RHS member/bitfield rvalue has no ID. The exploratory
+patch was fully reverted. Its build passed, while focused
+`frontend_lir_call_type_ref` failed at the intentional raw-index guard:
+`verify_authoritative_gep` requires fully authoritative inputs. Thus a
+GEP-only ID publication, text recovery, or verifier weakening is rejected.
+
+The separate active blocker
+`ideas/open/765_lir_member_bitfield_rvalue_value_identity_publication.md` owns
+only the first confirmed production member/bitfield rvalue identity-loss seam
+for that RHS index. After it supplies a valid structured current-function
+identity and its focused handoff, reactivate this idea at Step 1 and reattempt
+only address publication. Do not resume 734's receiver; its accepted Step 7.24
+remains paused as recorded, and 734 is a later parent route.
