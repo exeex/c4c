@@ -121,6 +121,15 @@ class LirTypeRef {
     return runtime_text(std::move(text));
   }
 
+  // Aggregate, field, and signature type text rendered from HIR may not carry
+  // a structured aggregate identity (and fields may be array-backed). Preserve
+  // that runtime text through this local warning-inventory boundary.
+  [[nodiscard, deprecated(
+      "HIR-rendered aggregate/field/signature type text: audit this runtime-text compatibility boundary")]]
+  static LirTypeRef hir_rendered_aggregate_field_signature_type_text(std::string text) {
+    return runtime_text(std::move(text));
+  }
+
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
     LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
     type.vrm_width_ = width;

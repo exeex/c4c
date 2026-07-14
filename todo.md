@@ -9,10 +9,11 @@ Current Step Title: Repair the targeted warning-inventory route
 ## Just Finished
 
 - Step 6 targeted warning-inventory repair complete: added the deprecated,
-  searchable `LirTypeRef::hir_inline_asm_type_text` runtime-text compatibility
-  boundary and used it only for inline-assembly operand, result, and return
-  type text rendered by `llvm_ty(...)` from HIR `TypeSpec`. No enum authority
-  was guessed; normal return and switch lowering remain unchanged.
+  searchable `LirTypeRef::hir_rendered_aggregate_field_signature_type_text`
+  runtime-text compatibility boundary and used it only for HIR-rendered
+  aggregate, field, and signature fallback type text when structured aggregate
+  identity is unavailable or a field is array-backed. Existing
+  `struct_type`/`union_type` paths remain unchanged.
 
 ## Suggested Next
 
@@ -41,11 +42,14 @@ Current Step Title: Repair the targeted warning-inventory route
 - Inline-assembly type text comes from HIR `TypeSpec` through `llvm_ty(...)`;
   retain its dedicated local boundary rather than extending it to ordinary
   return or switch lowering.
+- HIR aggregate, field, and signature fallback text may lack `StructNameId` or
+  represent array-backed fields; preserve it through its dedicated boundary
+  without changing structured aggregate paths or the AArch64 vector ABI cast.
 
 ## Proof
 
 - `cmake --build --preset default` succeeded. Its deprecation warnings named
   only deliberate local inventory boundaries, including the new HIR
-  `TypeSpec`-derived inline-assembly type-text boundary.
-- `ctest --test-dir build -j --output-on-failure -R '^inline_asm_aarch64_simple$' > test_after.log`
+  aggregate/field/signature fallback type-text boundary.
+- `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref)$' > test_after.log`
   passed; `test_after.log` is the focused proof log.

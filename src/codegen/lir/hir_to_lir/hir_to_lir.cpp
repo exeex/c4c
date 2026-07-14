@@ -121,7 +121,9 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
 
 LirTypeRef lir_aggregate_type_ref(const std::string& rendered_text, LirModule* lir_module,
                                   StructNameId name_id, bool is_union) {
-  if (!lir_module || name_id == kInvalidStructName) return LirTypeRef(rendered_text);
+  if (!lir_module || name_id == kInvalidStructName) {
+    return LirTypeRef::hir_rendered_aggregate_field_signature_type_text(rendered_text);
+  }
   const std::string_view structured_text = lir_module->struct_names.spelling(name_id);
   const std::string mirror_text =
       structured_text.empty() ? rendered_text : std::string(structured_text);
@@ -190,7 +192,7 @@ LirTypeRef lir_field_type_ref(const std::string& rendered_text, LirModule* lir_m
                               const c4c::hir::Module& mod, const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0) {
-    return LirTypeRef(rendered_text);
+    return LirTypeRef::hir_rendered_aggregate_field_signature_type_text(rendered_text);
   }
   return lir_aggregate_type_ref(rendered_text, lir_module,
                                 lir_aggregate_structured_name_id(mod, lir_module,
@@ -216,7 +218,9 @@ std::string lir_field_ty(const c4c::hir::Module& mod, const HirStructField& fiel
 LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module,
                               const c4c::hir::Module& mod) {
   const std::string field_ty = lir_field_ty(mod, field);
-  if (field.array_first_dim >= 0) return LirTypeRef(field_ty);
+  if (field.array_first_dim >= 0) {
+    return LirTypeRef::hir_rendered_aggregate_field_signature_type_text(field_ty);
+  }
   return lir_field_type_ref(field_ty, lir_module, mod, field.elem_type);
 }
 
@@ -256,11 +260,13 @@ LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
   using namespace c4c::codegen::llvm_helpers;
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0) {
-    return LirTypeRef(rendered_text);
+    return LirTypeRef::hir_rendered_aggregate_field_signature_type_text(rendered_text);
   }
   const StructNameId name_id =
       lir_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
-  if (name_id == kInvalidStructName) return LirTypeRef(rendered_text);
+  if (name_id == kInvalidStructName) {
+    return LirTypeRef::hir_rendered_aggregate_field_signature_type_text(rendered_text);
+  }
   return lir_aggregate_type_ref(rendered_text, lir_module, name_id, type.base == TB_UNION);
 }
 
