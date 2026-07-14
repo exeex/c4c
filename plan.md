@@ -194,6 +194,61 @@ Completion check:
   transactional typed Raw-BIR `double FAdd` receipt directly linked to the
   accepted floating direct-call result, with every neighboring form fail-closed.
 
+#### Step 5.3.4 - Receive the checked normalized i32 Add result
+
+Goal: return from the exhausted Step 6.3 selection checkpoint to the earliest
+remaining concrete ordinary-identity handoff row: one normalized scalar i32
+`Add`. Do not generalize the existing double-`FAdd` binary receipt.
+
+Primary targets:
+
+- `src/backend/bir/core/ir.hpp`, builder, view, and reachable Raw-BIR
+  verification for one integer binary opcode/type pair
+- `src/backend/bir/lir_to_bir.cpp` binary dispatch and source-value registry
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp` and
+  `frontend_lir_call_type_ref`
+
+Typed source authority and destination:
+
+- admit only the Step-6 ordinary-scalar handoff subrow exercised by
+  `lir_scalar_ordinary_value_chain_identity`: `LirBinOp{result: valid
+  current-function LirValueId, opcode: Add, type_str: LirTypeRef::integer(32),
+  lhs: the exact current-function LirValueId of the already admitted
+  selected-global i32 Load, rhs: representable LirIntegerImmediate{1}}`
+- receive it as one source-backed i32 result of the existing typed Raw-BIR
+  `BinaryNode`/`BinarySpec`, adding only `BinaryOpcode::Add` and an exact i32
+  payload contract. Materialize the already-authorized native immediate through
+  the existing Raw-BIR integer-constant path; register the result by its exact
+  source ID.
+
+Actions:
+
+- extend the binary builder and reachable verifier from the accepted
+  double-`FAdd` shape only as far as `Add`/i32 with two ordered i32 operands;
+  preserve result source-ID ownership, uniqueness, instruction-result linkage,
+  and full-module rollback
+- import the selected Load-result/one-immediate `Add` directly from typed LIR
+  carriers. A focused receipt fixture may return that admitted Add result
+  through the already accepted scalar-i32 `LirRet` path so success is one
+  verified module; do not import the handoff fixture's following `Mul`
+- prove Raw and Canonical positive receipt plus missing/invalid/duplicate/
+  cross-function result IDs, unknown/cross-function or wrong-type lhs, invalid
+  or out-of-range immediate, non-`Add` opcode, non-i32 type, malformed result
+  linkage, and full rollback
+- keep `Mul`, every other integer opcode or width, floating forms other than
+  the accepted double `FAdd`, SSA rhs, nonselected immediates, unary,
+  presentation-derived, compound, complex, vector, pointer/object,
+  logical-helper, builtin, cast, compare, select, return expansion, and all
+  terminator/inline-assembly forms unsupported unless separately selected.
+
+Completion check:
+
+- a fresh build and
+  `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'`
+  prove one verified, transactional native-ID i32 `Add` receipt while the
+  accepted i32/i64 inline-assembly and double-`FAdd` rows remain regression
+  neighbors.
+
 ### Step 6 - Complete terminators and structured inline-assembly transport
 
 Goal: receive only a source-authorized terminator or inline-assembly row at a
@@ -308,17 +363,6 @@ Completion check:
 - a fresh build and focused interface/frontend proof show that the exact i64
   output-only binding and Store use reach verified Raw and Canonical BIR by
   native ID only, with malformed neighbors publishing neither module.
-
-#### Step 6.3 - Select the next authority-backed terminator or inline-assembly row
-
-Goal: after Step 6.2, select exactly one subsequent row only when its source
-authority and typed Raw-BIR destination are evidenced. CFG labels remain
-unavailable as typed successor authority and must not be recovered from text.
-
-Completion check:
-
-- the selected row names its exact typed source carriers, destination,
-  verifier ownership, transactional proof, and fail-closed neighbors.
 
 ### Step 7 - Integrate the dispatcher, verifier and build boundary
 

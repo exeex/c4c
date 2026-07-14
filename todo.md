@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 6.3
-Current Step Title: Select the next authority-backed terminator or inline-assembly row
+Current Step ID: 5.3.4
+Current Step Title: Receive the checked normalized i32 Add result
 
 ## Just Finished
 
@@ -17,18 +17,22 @@ Current Step Title: Select the next authority-backed terminator or inline-assemb
 
 ## Suggested Next
 
-- Select only the next source-authorized Step 6.3 terminator or inline-assembly
-  row with evidenced typed destination; do not infer CFG labels or semantic
-  facts from compatibility text.
+- Implement only Plan Step 5.3.4: receive the source-authorized normalized i32
+  `LirBinOp Add` with the already admitted selected-global i32 Load result as
+  lhs and native immediate one as rhs. Extend `BinaryNode`/`BinarySpec` only to
+  this Add/i32 shape and return the result through the accepted scalar-i32
+  return path in the focused receipt fixture; do not recover authority from
+  compatibility text.
 
 ## Watchouts
 
-- The accepted rows are only non-explicit-register i32/i64 `Output` index-zero
-  bindings and one same-ID direct-global Store. Inputs, read/write/tied values,
-  memory/address/immediate forms, clobber/explicit-register meaning,
-  vectors/aggregates/multiple results, `insn_r`, other widths, all opaque-text-
-  derived facts, and all CFG successor labels remain fail-closed. The preserved
-  payload is not semantic value or target authority.
+- Step 6.3 had no executable terminator/inline-assembly row: CFG labels remain
+  non-authoritative and all unadvertised inline-assembly bindings/payloads stay
+  fail-closed. For Step 5.3.4, accept neither `Mul` nor any other binary
+  opcode/width, SSA rhs, nonselected immediate, presentation-derived operand,
+  compound/complex/vector/pointer/object/logical-helper/builtin form, or a
+  malformed/cross-function result/use. The accepted inline-assembly i32/i64
+  and double-`FAdd` rows are regression neighbors, not authority for this row.
 
 ## Proof
 
@@ -37,3 +41,6 @@ Current Step Title: Select the next authority-backed terminator or inline-assemb
   --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'
   > test_after.log`.
   The focused subset passed; `test_after.log` is the proof log.
+- Plan Step 5.3.4 must run a fresh build and the same focused selection:
+  `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'`.
