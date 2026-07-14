@@ -20,6 +20,10 @@ available.
 7. Review the handoff, actual diff, proof logs, and build freshness.
 8. Accept and commit a coherent slice promptly, or reject it with the exact
    repair/blocker.
+9. After every accepted commit, re-read `plan.md`, `todo.md`, and the linked
+   source idea before dispatching more work or ending the run.
+10. If no bounded incomplete packet remains, treat the runbook as exhausted and
+    enter `lifecycle-operations.md` Close And Blocker Loop immediately.
 
 Do not dispatch new work while an accepted coherent slice awaits validation or
 commit.
@@ -85,13 +89,31 @@ hook baseline candidates by hand.
 
 ## Commit
 
-- The supervisor creates every final commit except the documented user-service
-  approved-idea intake exception.
-- Prefer code plus matching `todo.md` progress in one routine slice.
-- Stage only owned coherent files; never sweep unrelated changes.
-- Let hooks add lifecycle scope tags.
-- Use a subject describing the concrete action.
+Use this checklist for every accepted executor slice:
+
+1. Inspect the executor handoff, `git diff`, proof logs, build freshness, and
+   source/runbook scope.
+2. Accept only a coherent slice; otherwise return the exact bounded repair or
+   blocker.
+3. Stage only owned coherent files; never sweep unrelated changes.
+4. Prefer code plus matching `todo.md` progress in one routine execution
+   commit.
+5. Let hooks add lifecycle scope tags.
+6. Use a subject describing the concrete action.
+7. After the commit succeeds, re-read `plan.md`, `todo.md`, and the linked
+   source idea.
+8. Compare `todo.md` current-step metadata and latest progress with `plan.md`
+   to decide whether any bounded incomplete packet remains.
+9. If incomplete work remains, return to execution mode and select the next
+   bounded packet.
+10. If no bounded incomplete packet remains, do not dispatch another executor
+    and do not end the run. Treat the runbook as exhausted, read
+    `lifecycle-operations.md`, and delegate `to_subagent: c4c-plan-owner` for a
+    semantic close, repair, replace, deactivate, or successor decision.
+
+The supervisor creates every final commit except the documented user-service
+approved-idea intake exception.
 
 Finish only after the right owner handled mutations, validation is sufficient,
-post-delegation state is known, and the slice is committed or explicitly
-incomplete.
+post-delegation state is known, any accepted slice is committed, and any
+exhausted runbook has entered the lifecycle close/blocker loop.

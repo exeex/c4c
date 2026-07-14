@@ -94,6 +94,8 @@ retry the interrupted step or close decision.
 
 When a runbook is exhausted, delegate the semantic close decision to
 plan-owner and supply accepted supervisor proof.
+This loop is mandatory after any accepted commit whose post-commit state check
+finds no bounded incomplete packet remaining.
 
 - `close accepted`: inspect the lifecycle diff, run required final validation,
   and commit the closure.
