@@ -597,9 +597,9 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   const auto end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.end."));
 
   if (b.op == BinaryOp::LAnd) {
-    emit_condbr_and_open_lbl(ctx, lc, rhs_target.label, skip_target.label, rhs_target);
+    emit_condbr_and_open_lbl(ctx, lc, rhs_target, skip_target, rhs_target);
   } else {
-    emit_condbr_and_open_lbl(ctx, lc, skip_target.label, rhs_target.label, rhs_target);
+    emit_condbr_and_open_lbl(ctx, lc, skip_target, rhs_target, rhs_target);
   }
   TypeSpec rts{};
   const std::string rv = emit_rval_id(ctx, b.rhs, rts);

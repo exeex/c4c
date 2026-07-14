@@ -427,33 +427,32 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IfStmt& s) {
   TypeSpec cond_ts{};
   const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
   const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
-  const std::string then_lbl = block_lbl(s.then_block);
-  const std::string after_lbl = block_lbl(s.after_block);
+  const auto then_target = scheduled_target(s.then_block);
+  const auto after_target = scheduled_target(s.after_block);
   if (s.else_block) {
-    emit_term_condbr(ctx, cond_i1, then_lbl, block_lbl(*s.else_block));
+    emit_term_condbr(ctx, cond_i1, then_target, scheduled_target(*s.else_block));
   } else {
-    emit_term_condbr(ctx, cond_i1, then_lbl, after_lbl);
+    emit_term_condbr(ctx, cond_i1, then_target, after_target);
   }
   ctx.block_meta[s.then_block.value].break_label = std::nullopt;
   if (s.else_block) ctx.block_meta[s.else_block->value].break_label = std::nullopt;
-  (void)after_lbl;
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const WhileStmt& s) {
   const auto cond_target = s.continue_target
       ? scheduled_target(*s.continue_target)
       : fresh_direct_target(ctx, fresh_lbl(ctx, "while.cond."));
-  const std::string& cond_lbl = cond_target.label;
-  const std::string body_lbl = block_lbl(s.body_block);
-  const std::string end_lbl =
-      s.break_target ? block_lbl(*s.break_target) : fresh_lbl(ctx, "while.end.");
+  const auto body_target = scheduled_target(s.body_block);
+  const auto end_target = s.break_target
+      ? scheduled_target(*s.break_target)
+      : fresh_direct_target(ctx, fresh_lbl(ctx, "while.end."));
 
   ctx.continue_redirect[s.body_block.value] = cond_target;
 
   TypeSpec cond_ts{};
   const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
   const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
-  emit_term_condbr(ctx, cond_i1, body_lbl, end_lbl);
+  emit_term_condbr(ctx, cond_i1, body_target, end_target);
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s) {
@@ -462,9 +461,9 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s) {
     emit_rval_id(ctx, *s.init, ts);
   }
   const auto body_target = scheduled_target(s.body_block);
-  const std::string& body_lbl = body_target.label;
-  const std::string end_lbl =
-      s.break_target ? block_lbl(*s.break_target) : fresh_lbl(ctx, "for.end.");
+  const auto end_target = s.break_target
+      ? scheduled_target(*s.break_target)
+      : fresh_direct_target(ctx, fresh_lbl(ctx, "for.end."));
   const auto cond_target = fresh_direct_target(
       ctx, "for.cond." + std::to_string(s.body_block.value));
   const auto latch_target = fresh_direct_target(
@@ -476,7 +475,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s) {
     TypeSpec cts{};
     std::string cv = emit_rval_id(ctx, *s.cond, cts);
     cv = to_bool(ctx, cv, cts);
-    emit_condbr_and_open_sibling_lbl(ctx, cv, body_lbl, end_lbl, latch_target);
+    emit_condbr_and_open_sibling_lbl(ctx, cv, body_target, end_target, latch_target);
   } else {
     emit_br_and_open_lbl(ctx, body_target, latch_target);
   }
@@ -488,9 +487,10 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s) {
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s) {
-  const std::string body_lbl = block_lbl(s.body_block);
-  const std::string end_lbl =
-      s.break_target ? block_lbl(*s.break_target) : fresh_lbl(ctx, "dowhile.end.");
+  const auto body_target = scheduled_target(s.body_block);
+  const auto end_target = s.break_target
+      ? scheduled_target(*s.break_target)
+      : fresh_direct_target(ctx, fresh_lbl(ctx, "dowhile.end."));
   const auto cond_target = fresh_direct_target(
       ctx, "dowhile.cond." + std::to_string(s.body_block.value));
   ctx.continue_redirect[s.body_block.value] = cond_target;
@@ -498,7 +498,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s) {
   TypeSpec cond_ts{};
   const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
   const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
-  emit_term_condbr(ctx, cond_i1, body_lbl, end_lbl);
+  emit_term_condbr(ctx, cond_i1, body_target, end_target);
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
@@ -514,11 +514,11 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
     }
   }
   const std::string ty = llvm_ty(ts);
-  const std::string default_lbl =
-      s.default_block ? block_lbl(*s.default_block)
-                      : (s.break_block ? block_lbl(*s.break_block) : fresh_lbl(ctx, "sw.end."));
-  const std::string break_lbl = s.break_block ? block_lbl(*s.break_block) : default_lbl;
-  ctx.block_meta[s.body_block.value].break_label = break_lbl;
+  const auto default_target = s.default_block
+      ? scheduled_target(*s.default_block)
+      : (s.break_block ? scheduled_target(*s.break_block)
+                       : fresh_direct_target(ctx, fresh_lbl(ctx, "sw.end.")));
+  ctx.block_meta[s.body_block.value].break_label = default_target.label;
 
   const Block* body_blk = nullptr;
   for (const auto& blk : ctx.fn->blocks) {
@@ -528,7 +528,6 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
     }
   }
 
-  const std::string body_lbl = block_lbl(s.body_block);
   if (!s.case_range_blocks.empty()) {
     for (const auto& [lo, hi, bid] : s.case_range_blocks) {
       const char* pred_ge = is_signed_int(ts.base) ? "sge" : "uge";
@@ -540,24 +539,24 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
       const std::string t_and = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{t_and, "and", "i1", t_ge, t_le});
       const auto next_target = fresh_direct_target(ctx, fresh_lbl(ctx, "sw.range.next."));
-      emit_condbr_and_fallthrough_lbl(ctx, t_and, block_lbl(bid), next_target);
+      emit_condbr_and_fallthrough_lbl(ctx, t_and, scheduled_target(bid), next_target);
     }
   }
 
-  std::vector<std::pair<long long, std::string>> sw_cases;
+  std::vector<std::pair<long long, c4c::codegen::LirDirectBranchTarget>> sw_cases;
   if (!s.case_blocks.empty()) {
     for (const auto& [case_val, case_bid] : s.case_blocks) {
-      sw_cases.emplace_back(case_val, block_lbl(case_bid));
+      sw_cases.emplace_back(case_val, scheduled_target(case_bid));
     }
   } else if (body_blk) {
     for (const auto& stmt : body_blk->stmts) {
       if (const auto* cs = std::get_if<CaseStmt>(&stmt.payload)) {
-        sw_cases.emplace_back(cs->value, body_lbl);
+        sw_cases.emplace_back(cs->value, scheduled_target(s.body_block));
       } else if (std::get_if<CaseRangeStmt>(&stmt.payload)) {
       }
     }
   }
-  emit_term_switch(ctx, val, ty, default_lbl, std::move(sw_cases));
+  emit_term_switch(ctx, val, ty, default_target, std::move(sw_cases));
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s) {

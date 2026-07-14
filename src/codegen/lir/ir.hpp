@@ -561,6 +561,9 @@ struct LirCondBr {
   std::string cond_name;     // e.g. "%t5"
   std::string true_label;
   std::string false_label;
+  // Semantic CFG authority; labels remain display shadows only.
+  LirBlockId true_successor = LirBlockId::invalid();
+  LirBlockId false_successor = LirBlockId::invalid();
 };
 
 struct LirRet {
@@ -575,6 +578,9 @@ struct LirSwitch {
   std::string selector_type;   // e.g. "i32"
   std::string default_label;
   std::vector<std::pair<long long, std::string>> cases;  // {value, label}
+  // Semantic CFG authority for default and case entries, in case order.
+  LirBlockId default_successor = LirBlockId::invalid();
+  std::vector<LirBlockId> case_successors;
 };
 
 struct LirIndirectBr {

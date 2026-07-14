@@ -523,24 +523,26 @@ void open_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target) {
 }
 
 void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
-                              const std::string& true_label,
-                              const std::string& false_label,
+                              const c4c::codegen::LirDirectBranchTarget& true_target,
+                              const c4c::codegen::LirDirectBranchTarget& false_target,
                               const c4c::codegen::LirDirectBranchTarget& open_target) {
-  (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
+  (void)set_terminator_if_open(
+      ctx, lir::LirCondBr{cond, true_target.label, false_target.label,
+                           true_target.id, false_target.id});
   open_lbl(ctx, open_target);
 }
 
 void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
-                                      const std::string& true_label,
-                                      const std::string& false_label,
+                                      const c4c::codegen::LirDirectBranchTarget& true_target,
+                                      const c4c::codegen::LirDirectBranchTarget& false_target,
                                       const c4c::codegen::LirDirectBranchTarget& sibling_target) {
-  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, sibling_target);
+  emit_condbr_and_open_lbl(ctx, cond, true_target, false_target, sibling_target);
 }
 
 void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
-                                     const std::string& true_label,
+                                     const c4c::codegen::LirDirectBranchTarget& true_target,
                                      const c4c::codegen::LirDirectBranchTarget& false_target) {
-  emit_condbr_and_open_lbl(ctx, cond, true_label, false_target.label, false_target);
+  emit_condbr_and_open_lbl(ctx, cond, true_target, false_target, false_target);
 }
 
 bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator) {
@@ -1359,9 +1361,11 @@ void StmtEmitter::emit_term_br(
 }
 
 void StmtEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
-                                   const std::string& true_label,
-                                   const std::string& false_label) {
-  (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
+                                   const c4c::codegen::LirDirectBranchTarget& true_target,
+                                   const c4c::codegen::LirDirectBranchTarget& false_target) {
+  (void)set_terminator_if_open(
+      ctx, lir::LirCondBr{cond, true_target.label, false_target.label,
+                           true_target.id, false_target.id});
 }
 
 void StmtEmitter::emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
@@ -1372,9 +1376,18 @@ void StmtEmitter::emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
 
 void StmtEmitter::emit_term_switch(
     FnCtx& ctx, const std::string& sel_name, const std::string& sel_type,
-    const std::string& default_label, std::vector<std::pair<long long, std::string>> cases) {
-  (void)set_terminator_if_open(
-      ctx, lir::LirSwitch{sel_name, sel_type, default_label, std::move(cases)});
+    const c4c::codegen::LirDirectBranchTarget& default_target,
+    std::vector<std::pair<long long, c4c::codegen::LirDirectBranchTarget>> cases) {
+  lir::LirSwitch sw;
+  sw.selector_name = sel_name;
+  sw.selector_type = sel_type;
+  sw.default_label = default_target.label;
+  sw.default_successor = default_target.id;
+  for (const auto& [value, target] : cases) {
+    sw.cases.emplace_back(value, target.label);
+    sw.case_successors.push_back(target.id);
+  }
+  (void)set_terminator_if_open(ctx, std::move(sw));
 }
 
 void StmtEmitter::emit_term_unreachable(FnCtx& ctx) {

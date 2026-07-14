@@ -1917,23 +1917,28 @@ void verify_function_value_ownership(const LirModule& mod,
 }
 
 void verify_terminator(const LirFunction& function, const LirTerminator& terminator) {
-  if (const auto* br = std::get_if<LirBr>(&terminator)) {
-    if (!br->successor.valid()) {
-      fail_verify("LirBr.successor", "must carry a valid current-function LirBlockId");
+  const auto verify_successor = [&](LirBlockId successor, std::string_view label,
+                                    std::string_view authority_field,
+                                    std::string_view label_field) {
+    if (!successor.valid()) {
+      fail_verify(authority_field, "must carry a valid current-function LirBlockId");
     }
     const auto destination = std::find_if(
         function.blocks.begin(), function.blocks.end(), [&](const LirBlock& block) {
-          return block.id == br->successor;
+          return block.id == successor;
         });
     if (destination == function.blocks.end() ||
         std::count_if(function.blocks.begin(), function.blocks.end(),
-                      [&](const LirBlock& block) { return block.id == br->successor; }) != 1) {
-      fail_verify("LirBr.successor", "must identify exactly one current-function block");
+                      [&](const LirBlock& block) { return block.id == successor; }) != 1) {
+      fail_verify(authority_field, "must identify exactly one current-function block");
     }
-    if (br->target_label != destination->label) {
-      fail_verify("LirBr.target_label",
-                  "display label must match the successor-selected destination");
+    if (label != destination->label) {
+      fail_verify(label_field, "display label must match the successor-selected destination");
     }
+  };
+  if (const auto* br = std::get_if<LirBr>(&terminator)) {
+    verify_successor(br->successor, br->target_label, "LirBr.successor",
+                     "LirBr.target_label");
     return;
   }
   if (const auto* cbr = std::get_if<LirCondBr>(&terminator)) {
@@ -1942,6 +1947,10 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
                          {LirOperandKind::SsaValue,
                           LirOperandKind::Immediate,
                           LirOperandKind::SpecialToken});
+    verify_successor(cbr->true_successor, cbr->true_label,
+                     "LirCondBr.true_successor", "LirCondBr.true_label");
+    verify_successor(cbr->false_successor, cbr->false_label,
+                     "LirCondBr.false_successor", "LirCondBr.false_label");
     return;
   }
   if (const auto* ret = std::get_if<LirRet>(&terminator)) {
@@ -1988,6 +1997,16 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
   if (const auto* sw = std::get_if<LirSwitch>(&terminator)) {
     if (sw->selector_name.empty() || sw->selector_type.empty()) {
       fail_verify("LirSwitch", "must carry both selector name and selector type");
+    }
+    verify_successor(sw->default_successor, sw->default_label,
+                     "LirSwitch.default_successor", "LirSwitch.default_label");
+    if (sw->case_successors.size() != sw->cases.size()) {
+      fail_verify("LirSwitch.case_successors",
+                  "must carry one current-function LirBlockId for every case");
+    }
+    for (size_t i = 0; i < sw->cases.size(); ++i) {
+      verify_successor(sw->case_successors[i], sw->cases[i].second,
+                       "LirSwitch.case_successors", "LirSwitch.cases");
     }
     return;
   }

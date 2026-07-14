@@ -53,13 +53,13 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
 
   const std::string is_stack0 = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
-  emit_condbr_and_open_lbl(ctx, is_stack0, stack_target.label, reg_try_target.label, reg_try_target);
+  emit_condbr_and_open_lbl(ctx, is_stack0, stack_target, reg_try_target, reg_try_target);
   const std::string next_offs = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs, std::to_string(slot_bytes)});
   emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
   const std::string use_reg = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
-  emit_condbr_and_open_lbl(ctx, use_reg, reg_target.label, stack_target.label, reg_target);
+  emit_condbr_and_open_lbl(ctx, use_reg, reg_target, stack_target, reg_target);
   const std::string gr_top_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirGepOp{gr_top_ptr, va_list_tag_ty, ap_ptr, false,
                                  {"i32 0", "i32 1"}});
@@ -100,13 +100,13 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
 
   const std::string is_stack0 = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
-  emit_condbr_and_open_lbl(ctx, is_stack0, stack_target.label, reg_try_target.label, reg_try_target);
+  emit_condbr_and_open_lbl(ctx, is_stack0, stack_target, reg_try_target, reg_try_target);
   const std::string next_offs = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs, std::to_string(reg_slot_bytes)});
   emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
   const std::string use_reg = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
-  emit_condbr_and_open_lbl(ctx, use_reg, reg_target.label, stack_target.label, reg_target);
+  emit_condbr_and_open_lbl(ctx, use_reg, reg_target, stack_target, reg_target);
   const std::string vr_top_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirGepOp{vr_top_ptr, va_list_tag_ty, ap_ptr, false,
                                  {"i32 0", "i32 2"}});
@@ -178,7 +178,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_hfa(
 
   const std::string is_stack0 = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
-  emit_condbr_and_open_lbl(ctx, is_stack0, stack_target.label, reg_try_target.label, reg_try_target);
+  emit_condbr_and_open_lbl(ctx, is_stack0, stack_target, reg_try_target, reg_try_target);
 
   const int reg_slot_bytes = hfa.elem_count * 16;
   const std::string next_offs = fresh_tmp(ctx);
@@ -187,7 +187,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_hfa(
   emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
   const std::string use_reg = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
-  emit_condbr_and_open_lbl(ctx, use_reg, reg_target.label, stack_target.label, reg_target);
+  emit_condbr_and_open_lbl(ctx, use_reg, reg_target, stack_target, reg_target);
 
   const std::string vr_top_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirGepOp{vr_top_ptr, va_list_tag_ty, ap_ptr, false,

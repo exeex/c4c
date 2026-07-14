@@ -219,7 +219,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
   const std::string res_ty = llvm_ty(res_spec);
 
-  emit_condbr_and_open_lbl(ctx, cond_i1, then_target.label, else_target.label, then_target);
+  emit_condbr_and_open_lbl(ctx, cond_i1, then_target, else_target, then_target);
   TypeSpec then_ts{};
   std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
   then_v = coerce(ctx, then_v, then_ts, res_spec);

@@ -668,6 +668,131 @@ void test_direct_branch_successor_identity_contract() {
                                         "verifier should reject ID/display destination mismatch");
 }
 
+void test_conditional_and_switch_successor_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+  auto make_blocks = [] {
+    std::vector<lir::LirBlock> blocks(4);
+    blocks[0].id = lir::LirBlockId{0};
+    blocks[0].label = "entry";
+    blocks[1].id = lir::LirBlockId{1};
+    blocks[1].label = "true_target";
+    blocks[2].id = lir::LirBlockId{2};
+    blocks[2].label = "false_target";
+    blocks[3].id = lir::LirBlockId{3};
+    blocks[3].label = "default_target";
+    return blocks;
+  };
+  auto make_conditional = [&] {
+    lir::LirFunction fn;
+    fn.name = "conditional_ok";
+    fn.signature_text = "define void @conditional_ok() {";
+    fn.blocks = make_blocks();
+    fn.blocks[0].terminator = lir::LirCondBr{
+        .cond_name = "true",
+        .true_label = "true_target",
+        .false_label = "false_target",
+        .true_successor = lir::LirBlockId{1},
+        .false_successor = lir::LirBlockId{2},
+    };
+    return fn;
+  };
+  auto make_switch = [&] {
+    lir::LirFunction fn;
+    fn.name = "switch_ok";
+    fn.signature_text = "define void @switch_ok() {";
+    fn.blocks = make_blocks();
+    fn.blocks[0].terminator = lir::LirSwitch{
+        .selector_name = "0",
+        .selector_type = "i32",
+        .default_label = "default_target",
+        .cases = {{1, "true_target"}, {2, "false_target"}},
+        .default_successor = lir::LirBlockId{3},
+        .case_successors = {lir::LirBlockId{1}, lir::LirBlockId{2}},
+    };
+    return fn;
+  };
+
+  lir::LirModule conditional;
+  conditional.functions.push_back(make_conditional());
+  lir::verify_module(conditional);
+  const auto& cbr = std::get<lir::LirCondBr>(conditional.functions[0].blocks[0].terminator);
+  expect_true(cbr.true_successor.value == 1 && cbr.false_successor.value == 2,
+              "conditional targets should carry native block IDs");
+
+  lir::LirModule switch_module;
+  switch_module.functions.push_back(make_switch());
+  lir::verify_module(switch_module);
+  const auto& sw = std::get<lir::LirSwitch>(switch_module.functions[0].blocks[0].terminator);
+  expect_true(sw.default_successor.value == 3 && sw.case_successors.size() == 2 &&
+                  sw.case_successors[0].value == 1 && sw.case_successors[1].value == 2,
+              "switch default and case targets should carry native block IDs");
+
+  lir::LirModule missing_conditional;
+  missing_conditional.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(missing_conditional.functions[0].blocks[0].terminator)
+      .true_successor = lir::LirBlockId::invalid();
+  expect_identity_verification_rejected(missing_conditional,
+                                        "verifier should reject missing conditional target ID");
+  lir::LirModule misleading_conditional;
+  misleading_conditional.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(misleading_conditional.functions[0].blocks[0].terminator)
+      .true_label = "default_target";
+  expect_identity_verification_rejected(
+      misleading_conditional,
+      "misleading conditional label text must not select or repair a target ID");
+  lir::LirModule duplicate_conditional;
+  duplicate_conditional.functions.push_back(make_conditional());
+  duplicate_conditional.functions[0].blocks[2].id = lir::LirBlockId{1};
+  expect_identity_verification_rejected(duplicate_conditional,
+                                        "verifier should reject ambiguous conditional target ID");
+  lir::LirModule foreign_conditional;
+  foreign_conditional.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(foreign_conditional.functions[0].blocks[0].terminator)
+      .false_successor = lir::LirBlockId{9};
+  expect_identity_verification_rejected(foreign_conditional,
+                                        "verifier should reject foreign conditional target ID");
+
+  lir::LirModule missing_switch;
+  missing_switch.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(missing_switch.functions[0].blocks[0].terminator)
+      .case_successors.pop_back();
+  expect_identity_verification_rejected(missing_switch,
+                                        "verifier should reject missing switch case target ID");
+  lir::LirModule misleading_switch;
+  misleading_switch.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(misleading_switch.functions[0].blocks[0].terminator)
+      .default_label = "true_target";
+  expect_identity_verification_rejected(
+      misleading_switch, "misleading switch label text must not select or repair a target ID");
+  lir::LirModule foreign_switch;
+  foreign_switch.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(foreign_switch.functions[0].blocks[0].terminator)
+      .default_successor = lir::LirBlockId{99};
+  expect_identity_verification_rejected(foreign_switch,
+                                        "verifier should reject foreign switch default ID");
+
+  const lir::LirModule lowered = lower_lir_module_for_target(
+      "int f(int x) { if (x) return 1; switch (x) { case 2: return 2; default: return 3; } }",
+      "x86_64-unknown-linux-gnu");
+  bool saw_conditional = false;
+  bool saw_switch = false;
+  for (const auto& block : lowered.functions.front().blocks) {
+    if (const auto* lowered_cbr = std::get_if<lir::LirCondBr>(&block.terminator)) {
+      saw_conditional = true;
+      expect_true(lowered_cbr->true_successor.valid() && lowered_cbr->false_successor.valid(),
+                  "lowering should publish conditional successor IDs before verification");
+    }
+    if (const auto* lowered_sw = std::get_if<lir::LirSwitch>(&block.terminator)) {
+      saw_switch = true;
+      expect_true(lowered_sw->default_successor.valid() &&
+                      lowered_sw->case_successors.size() == lowered_sw->cases.size(),
+                  "lowering should publish switch successor IDs before verification");
+    }
+  }
+  expect_true(saw_conditional && saw_switch,
+              "forward control-flow lowering should publish conditional and switch authority");
+}
+
 void test_structured_operand_identity_foundation() {
   namespace lir = c4c::codegen::lir;
 
@@ -6219,6 +6344,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_structured_operand_identity_foundation();
   test_direct_branch_successor_identity_contract();
+  test_conditional_and_switch_successor_identity_contract();
   test_global_store_identity_contract();
   test_global_load_identity_contract();
   test_return_identity_contract();

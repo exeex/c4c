@@ -113,7 +113,7 @@ std::string StmtEmitter::emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
   const auto stack_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.amd64.stack."));
   const auto join_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.amd64.join."));
 
-  emit_condbr_and_open_lbl(ctx, regs_ok, reg_target.label, stack_target.label, reg_target);
+  emit_condbr_and_open_lbl(ctx, regs_ok, reg_target, stack_target, reg_target);
   const std::string reg_value =
       emit_amd64_va_arg_from_registers(ctx, res_ts, res_ty, layout, access, gp_offset, fp_offset);
   emit_br_and_open_lbl(ctx, join_target, stack_target);

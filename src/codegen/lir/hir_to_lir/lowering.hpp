@@ -258,15 +258,15 @@ bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator);
 
 void open_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
 void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
-                              const std::string& true_label,
-                              const std::string& false_label,
+                              const c4c::codegen::LirDirectBranchTarget& true_target,
+                              const c4c::codegen::LirDirectBranchTarget& false_target,
                               const c4c::codegen::LirDirectBranchTarget& open_target);
 void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
-                                      const std::string& true_label,
-                                      const std::string& false_label,
+                                      const c4c::codegen::LirDirectBranchTarget& true_target,
+                                      const c4c::codegen::LirDirectBranchTarget& false_target,
                                       const c4c::codegen::LirDirectBranchTarget& sibling_target);
 void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
-                                     const std::string& true_label,
+                                     const c4c::codegen::LirDirectBranchTarget& true_target,
                                      const c4c::codegen::LirDirectBranchTarget& false_target);
 
 TypeSpec sig_return_type(const FnPtrSig& sig);
@@ -372,12 +372,14 @@ class StmtEmitter {
   void emit_lir_op(FnCtx& ctx, lir::LirInst op);
   void emit_term_br(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
   void emit_term_condbr(FnCtx& ctx, const std::string& cond,
-                        const std::string& true_label, const std::string& false_label);
+                        const c4c::codegen::LirDirectBranchTarget& true_target,
+                        const c4c::codegen::LirDirectBranchTarget& false_target);
   void emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
                      std::optional<lir::LirOperand> value_str);
   void emit_term_switch(FnCtx& ctx, const std::string& sel_name,
-                        const std::string& sel_type, const std::string& default_label,
-                        std::vector<std::pair<long long, std::string>> cases);
+                        const std::string& sel_type,
+                        const c4c::codegen::LirDirectBranchTarget& default_target,
+                        std::vector<std::pair<long long, c4c::codegen::LirDirectBranchTarget>> cases);
   void emit_term_unreachable(FnCtx& ctx);
   void emit_br_and_open_lbl(FnCtx& ctx,
                             const c4c::codegen::LirDirectBranchTarget& branch_target,
