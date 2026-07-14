@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.1
-Current Step Title: Publish representative scalar cast result/use authority (complete)
+Current Step ID: 7.2
+Current Step Title: Publish representative scalar compare result/use authority
 
 ## Just Finished
 
@@ -23,19 +23,21 @@ Current Step Title: Publish representative scalar cast result/use authority (com
 
 ## Suggested Next
 
-- Select the next bounded Plan Step 7 ordinary producer row from the updated
-  matrix; compare, select, and abs remain unclaimed candidates.
+- Execute Step 7.2: publish representative scalar compare result/use authority.
 
 ## Watchouts
 
-- Group no additional cast shapes with Step 7.1: float, pointer, bitcast,
-  vector, aggregate, implicit-coercion, and same-width no-op paths remain
-  unclaimed or emit no `LirCastOp`.
-- Compare, select, and abs may reuse the common allocator/operand mechanism but
-  still need separate predicate/opcode/type contracts and focused proof.
-- Preserve closed Step-3 through Step-7.1 rows and idea-741 regression
-  neighbors; keep pointer/object, aggregate/vector, CFG/parameters, calls,
-  inline assembly, ABI, and BIR outside the next packet.
+- Own only one ordinary scalar integer `LirCmpOp` with native predicate/type
+  facts, a `fresh_value` result, and the exact result ID preserved into its
+  immediate same-function normalization or use.
+- Include a directly coupled cast use only when production lowering cannot
+  avoid it; treat it as a consumer and do not claim the cast producer anew.
+- Accept misleading display after native authority is proven; reject invalid
+  or duplicate results, unknown or cross-function uses, invalid predicates,
+  and type conflicts.
+- Keep select, abs, every other Step-7 row, pointer/object, aggregate/vector,
+  CFG/terminators, parameters, calls, inline assembly, and new-BIR work outside
+  Step 7.2.
 
 ## Proof
 
