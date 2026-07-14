@@ -293,6 +293,13 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call) {
   if (!call.callee_signature.has_value()) return;
 
   const LirCallSignature& sig = *call.callee_signature;
+  const bool direct_integer_result_contract =
+      call.return_type.kind() == LirTypeKind::Integer &&
+      call.direct_callee_link_name_id != kInvalidLinkName;
+  if (direct_integer_result_contract && !sig.return_type_ref.has_value()) {
+    fail_verify("LirCallOp.callee_signature.return_type_ref",
+                "structured direct integer call requires a return type ref");
+  }
   if (sig.return_type_ref.has_value()) {
     verify_call_return_type_ref_mirror(mod, *sig.return_type_ref);
     if (*sig.return_type_ref != call.return_type) {
@@ -635,9 +642,19 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
       fail_verify("LirCallOp.result",
                   "must hold an SSA result for non-void calls");
     }
-    if (!op->result.empty() && op->return_type == "void") {
+    if ((!op->result.empty() || op->result.has_authority()) &&
+        op->return_type == "void") {
       fail_verify("LirCallOp.return_type",
                   "void calls must not carry a result operand");
+    }
+    const bool authoritative_direct_integer_result =
+        op->return_type.kind() == LirTypeKind::Integer &&
+        op->direct_callee_link_name_id != kInvalidLinkName &&
+        op->callee_signature.has_value();
+    if (authoritative_direct_integer_result && !op->result.value_id()) {
+      fail_verify(
+          "LirCallOp.result",
+          "structured direct integer call requires LirValueId result authority");
     }
     return;
   }

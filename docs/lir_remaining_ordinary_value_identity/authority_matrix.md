@@ -17,10 +17,11 @@ neighbors only:
 LirIntegerImmediate`. `fresh_tmp(ctx)` allocates only display spelling;
 `fresh_value(ctx)` first calls the owning `LirFunction::alloc_value()` and then
 returns `LirOperand::ssa(display, id)`. Current production `fresh_value` calls
-exist only in `StmtEmitter::emit_rval_operand` for CC-LOAD-1 and CC-GEP-1
-(`expr/coordinator.cpp:474,497`). Every other active modern result construction
-identified below still uses `fresh_tmp`, an equivalent direct `%t` increment,
-or a raw string returned by `emit_rval_id`.
+cover CC-LOAD-1 and CC-GEP-1 in `StmtEmitter::emit_rval_operand`, plus the
+Step-3 structured direct integer-call result in `emit_call_with_result`. Every
+other active modern result construction identified below still uses
+`fresh_tmp`, an equivalent direct `%t` increment, or a raw string returned by
+`emit_rval_id`.
 
 Verifier states used below:
 
@@ -88,7 +89,7 @@ grouped only where they share one producer and disposition.
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
 | `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; representative scalar casts from PX `emit_rval_payload(CastExpr)` | Text-only/monostate operands; result `fresh_tmp` | Native cast enum and type refs; verifier checks kinds/types but not cast legality/ownership | Candidate representative non-call chain neighbor; `lir_scalar_cast_chain_identity.c`; **generic value** plus distinct cast legality |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
-| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Nonvoid result `fresh_tmp`; indirect callee and all structured args reconstructed as text-only `LirOperand`; direct target has native `LinkNameId`; void result empty. `OwnedLirTypedCallArg::operand` is currently raw `string` | Native return/signature/type/ext/ABI fields; result/use ownership-ready; verifier still parses `args_str` for parity and does not require structured arg authority | Step-2 probes: scalar result, immediate arg, selected-global-load SSA arg. **Generic result** for result; one **distinct call-argument carrier seam** for immediate/SSA; direct target is existing regression neighbor; text mirrors presentation-only |
+| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value` and the operand-taking maker; `emit_rval_call_operand` preserves that same operand into downstream return use. Other nonvoid results and all structured args remain text-only; direct target has native `LinkNameId`; void result is empty | Native return/signature/type/ext/ABI fields; direct structured integer result now has exact required ID plus generic definition/use ownership. Verifier still parses `args_str` for parity and does not require structured arg authority | Step 3 closes the focused scalar result. Immediate/SSA arguments remain one **distinct call-argument carrier seam**; indirect/intrinsic results remain unclaimed; direct target is an existing regression neighbor; text mirrors presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | All value operands text-only; result `fresh_tmp` | Native opcode ref/type ref; kind/type only and ownership-ready | Preferred Step-2 representative `lir_scalar_ordinary_value_chain_identity.c`; **generic scalar result/use** |
 | `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers | Text-only operands; result `fresh_tmp` | Native predicate/type/bool; kind/type only and ownership-ready | Depends on generic scalar seam; `lir_scalar_cmp_chain_identity.c`; **generic scalar value** plus predicate agreement |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
@@ -134,11 +135,9 @@ known current-function uses. It does not by itself solve:
 All four required focused probes are independently extractable from current
 production; there is no contradictory larger prerequisite.
 
-1. **Direct scalar call result**: `emit_call_with_result` has one isolated
-   `fresh_tmp` first bad fact. It can allocate a `LirOperand` with
-   `fresh_value`, pass it into `make_lir_call_op_with_return_type_ref`, and
-   return its display for the still-string expression API. No argument is
-   required.
+1. **Direct scalar call result**: completed in Step 3. The producer allocates
+   through `fresh_value`, the maker accepts the native operand, and the
+   CallExpr operand path preserves it through the downstream return use.
 2. **Void immediate argument**: `emit_rval_operand` already creates
    `LirIntegerImmediate`; `prepare_call_arg` discards it by calling
    `emit_rval_id`, and `OwnedLirTypedCallArg::operand` is raw `string`. The
@@ -167,7 +166,7 @@ rendered LLVM output is not used as identity evidence.
 
 | Probe and stable first bad fact | Producer and exact carrier transition | Required verifier rejection after publication | Forbidden fallback |
 |---|---|---|---|
-| `lir_direct_scalar_result_call_identity.c`: the sole nonvoid `LirCallOp.result` is classified `SsaValue` but has no `LirValueId` | PC `emit_call_with_result`: `fresh_tmp(ctx)` raw string -> `make_lir_call_op_with_return_type_ref(std::string result)` -> classified, monostate `LirOperand`; direct target `LinkNameId`, native i32 return ref, and structured signature are already present | Reject invalid/duplicate result IDs; register the result as a current-function definition; reject any authoritative call-result use that is unknown or owned by another function | Never derive an ID from `%tN`, call formatting, callee spelling, or instruction order |
+| `lir_direct_scalar_result_call_identity.c`: Step-2 first bad fact closed; the sole structured direct i32 `LirCallOp.result` and its return use now carry the same valid `LirValueId` | PC `emit_call_with_result`: `fresh_value(ctx)` -> operand-taking `make_lir_call_op_with_return_type_ref(LirOperand)`; `emit_rval_call_operand` returns the identical operand to the existing return path. Direct target `LinkNameId`, native i32 return ref, and structured signature remain unchanged | Implemented: reject missing/invalid/duplicate result IDs, unknown/cross-function downstream IDs, and any void-result authority through exact call checks plus generic current-function ownership | `%tN`, call formatting, callee spelling, and instruction order remain presentation only; misleading producer/use displays with the same ID verify successfully |
 | `lir_direct_void_immediate_arg_identity.c`: the sole `structured_args[0].operand` is classified `Immediate` but has no `LirIntegerImmediate` | PR produces the literal's native integer payload, then PC `prepare_call_arg` calls `emit_rval_id` and stores only `OwnedLirTypedCallArg::operand: string`; `lir_call_structured_args` reconstructs monostate `LirOperand`. Native fixed i32 type authority remains in `callee_signature`; scalar `structured_args[].type_ref` is currently empty | Once the common argument carrier is authoritative, reject a fixed integer argument without immediate/known-value authority, reject the wrong authority alternative, and reject an immediate outside the fixed parameter bit width | Never reparse `operand`, `args_str`, numeric spelling, or a rendered parameter type to manufacture authority |
 | `lir_direct_void_ssa_arg_identity.c`: CC-LOAD-1 produces a valid selected-global load result ID, but the sole call argument is classified `SsaValue` with no ID | PR selected-global `emit_rval_operand` returns authoritative `LirOperand`; the same PC raw-string `OwnedLirTypedCallArg` transition used by the immediate probe discards it before `structured_args` construction | Reuse the immediate probe's common carrier; reject unknown/cross-function argument IDs and require the argument ID to equal an already registered current-function definition. Keep selected-global load verification unchanged | Never compare the load/result and argument displays, scan `%tN`, or add an SSA-only side carrier |
 | `lir_scalar_ordinary_value_chain_identity.c`: both PB binary results are classified SSA text without IDs, so the second operation's SSA lhs cannot retain the first result authority | PB scalar `emit_rval_payload(BinaryExpr)`: native Add/Mul opcode refs and i32 type refs surround `fresh_tmp` result strings and string operands; the selected-global source load remains a CC-LOAD-1 neighbor | Register each authoritative binary result exactly once; reject invalid/duplicate result IDs and unknown/cross-function authoritative operands; require the second lhs ID to resolve to the first binary definition | Never infer producer/use equality from shared `%tN` spelling, opcode text, rendered LLVM, or adjacency |
@@ -176,6 +175,25 @@ The SSA-argument probe is therefore distinct evidence but not a distinct
 implementation seam: it must consume the common native argument carrier first
 introduced for the immediate-argument path. CFG labels, body parameters,
 stack/local objects, and alloca identity remain outside these four contracts.
+
+## Step-3 direct integer-call result contract
+
+The claimed row is deliberately structural and narrow: nonvoid integer
+`LirCallOp` with a valid `direct_callee_link_name_id` and a structured
+`callee_signature`. Its producer allocates a function-owned value before
+rendering, stores that exact operand in the call, and returns the same operand
+from CallExpr lowering. Void calls remain empty/no-authority. Indirect calls,
+intrinsic/raw calls, non-integer results, argument carriers, and ABI expansion
+remain compatibility rows.
+
+Reachable verification requires the claimed call result to carry a valid
+`LirValueId` and its present structured callee signature to carry an exact
+return type ref agreeing with the call return type; the generic ownership pass
+rejects invalid or duplicate definitions and unknown or cross-function
+downstream uses. Focused malformed fixtures cover missing result authority,
+missing/mismatched return refs, invalid, duplicate, unknown, cross-function,
+and void-result cases; misleading result/use displays prove that no name
+recovery participates.
 
 ## Mechanical coverage check
 
@@ -201,13 +219,16 @@ unique, and the production scan finds **12 producerless legacy alternatives +
 
 Current-source spot checks used for this baseline:
 
-- call result: `call/target.cpp:307-320` uses `fresh_tmp`; arguments:
+- direct structured integer call result: `call/target.cpp` uses `fresh_value`,
+  the operand-taking call maker retains it, and `emit_rval_call_operand` keeps
+  the same carrier through CallExpr lowering; arguments:
   `call/args.cpp:133-185` calls `emit_rval_id`, `call_args.hpp` stores a raw
   string, and `call_args_ops.hpp:61-76` reconstructs `LirOperand(text)`;
 - representative scalar chain: `expr/binary.cpp` constructs `LirBinOp` from
   `fresh_tmp` results and string operands while carrying native
   `LirBinaryOpcodeRef`/`LirTypeRef`;
-- 741 neighbors: `expr/coordinator.cpp:474,497` are the only current
-  `fresh_value` call sites and populate selected-global `LirGepOp`/`LirLoadOp`;
+- 741 neighbors: `expr/coordinator.cpp:474,497` populate selected-global
+  `LirGepOp`/`LirLoadOp`; Step 3 adds the direct integer-call result as the
+  third `fresh_value` production site;
   `lvalue.cpp:399` retains the authoritative store RHS operand, and
   `stmt.cpp:381` retains the authoritative return operand.

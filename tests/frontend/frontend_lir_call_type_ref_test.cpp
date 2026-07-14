@@ -1634,9 +1634,127 @@ int lir_direct_scalar_result_call_identity(void) {
                   !call.callee_signature->is_variadic &&
                   !call.callee_signature->has_unspecified_params,
               "direct scalar call should retain its structured callee contract");
+  lir::LirRet* return_value = nullptr;
+  for (auto& block : caller.blocks) {
+    if (auto* ret = std::get_if<lir::LirRet>(&block.terminator)) {
+      return_value = ret;
+    }
+  }
   expect_true(call.result.kind() == lir::LirOperandKind::SsaValue &&
-                  !call.result.has_authority() && !call.result.value_id(),
-              "first bad fact: scalar call result is classified SSA text without a value ID");
+                  call.result.value_id() && call.result.value_id()->valid(),
+              "direct scalar call result should own a valid native value ID");
+  expect_true(return_value && return_value->value_str &&
+                  return_value->value_str->value_id() &&
+                  *return_value->value_str->value_id() ==
+                      *call.result.value_id(),
+              "direct scalar call return should preserve the exact result ID");
+
+  const auto scalar_signature = [] {
+    lir::LirCallSignature signature;
+    signature.return_type_ref = lir::LirTypeRef::integer(32);
+    signature.has_void_param_list = true;
+    return signature;
+  };
+  const auto scalar_call = [&](lir::LirOperand result) {
+    return lir::LirCallOp{std::move(result), lir::LirTypeRef::integer(32),
+                          lir::LirOperand("@direct_scalar_target"),
+                          c4c::LinkNameId{1}, "", "", {},
+                          scalar_signature(), {}};
+  };
+  const auto scalar_function = [&](std::string name, lir::LirCallOp call_op,
+                                   lir::LirOperand returned) {
+    lir::LirFunction function;
+    function.name = std::move(name);
+    function.signature_text = "define i32 @" + function.name + "() {";
+    function.blocks.push_back(lir::LirBlock{});
+    function.blocks.back().label = "entry";
+    function.blocks.back().insts.push_back(std::move(call_op));
+    function.blocks.back().terminator =
+        lir::LirRet{std::move(returned), lir::LirTypeRef::integer(32)};
+    return function;
+  };
+
+  lir::LirModule misleading;
+  misleading.functions.push_back(scalar_function(
+      "misleading_call_result",
+      scalar_call(lir::LirOperand::ssa("@not-result-display",
+                                       lir::LirValueId{4})),
+      lir::LirOperand::ssa("7", lir::LirValueId{4})));
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_return_ref;
+  lir::LirCallOp missing_return_ref_call =
+      scalar_call(lir::LirOperand::ssa("%typed", lir::LirValueId{6}));
+  missing_return_ref_call.callee_signature->return_type_ref.reset();
+  missing_return_ref.functions.push_back(scalar_function(
+      "missing_call_return_ref", std::move(missing_return_ref_call),
+      lir::LirOperand::ssa("%typed-return", lir::LirValueId{6})));
+  expect_identity_verification_rejected(
+      missing_return_ref,
+      "verifier should reject direct scalar call without structured return ref");
+
+  lir::LirModule missing;
+  missing.functions.push_back(scalar_function(
+      "missing_call_result", scalar_call(lir::LirOperand("%missing")),
+      lir::LirOperand::integer("0", 0)));
+  expect_identity_verification_rejected(
+      missing, "verifier should reject direct scalar call without result authority");
+
+  lir::LirModule invalid;
+  invalid.functions.push_back(scalar_function(
+      "invalid_call_result",
+      scalar_call(lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid())),
+      lir::LirOperand::integer("0", 0)));
+  expect_identity_verification_rejected(
+      invalid, "verifier should reject invalid direct scalar call result ID");
+
+  lir::LirModule duplicate;
+  duplicate.functions.push_back(scalar_function(
+      "duplicate_call_result",
+      scalar_call(lir::LirOperand::ssa("%first", lir::LirValueId{5})),
+      lir::LirOperand::ssa("%first-return", lir::LirValueId{5})));
+  duplicate.functions[0].blocks[0].insts.push_back(
+      scalar_call(lir::LirOperand::ssa("%second", lir::LirValueId{5})));
+  expect_identity_verification_rejected(
+      duplicate, "verifier should reject duplicate direct scalar call result IDs");
+
+  lir::LirModule unknown_use;
+  unknown_use.functions.push_back(scalar_function(
+      "unknown_call_result_use",
+      scalar_call(lir::LirOperand::ssa("%defined", lir::LirValueId{2})),
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{9})));
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown downstream call result ID");
+
+  lir::LirModule cross_function;
+  cross_function.functions.push_back(scalar_function(
+      "call_result_owner",
+      scalar_call(lir::LirOperand::ssa("%owned", lir::LirValueId{7})),
+      lir::LirOperand::ssa("%owned-return", lir::LirValueId{7})));
+  cross_function.functions.push_back(make_return_test_function(
+      "cross_function_call_result",
+      lir::LirRet{lir::LirOperand::ssa("%cross", lir::LirValueId{7}),
+                  lir::LirTypeRef::integer(32)}));
+  expect_identity_verification_rejected(
+      cross_function, "verifier should reject cross-function call result use");
+
+  lir::LirCallSignature void_signature;
+  void_signature.return_type_ref = lir::LirTypeRef("void");
+  void_signature.has_void_param_list = true;
+  lir::LirFunction void_function;
+  void_function.name = "void_result_authority";
+  void_function.signature_text = "define void @void_result_authority() {";
+  void_function.blocks.push_back(lir::LirBlock{});
+  void_function.blocks.back().label = "entry";
+  void_function.blocks.back().insts.push_back(lir::LirCallOp{
+      lir::LirOperand::ssa("%forbidden", lir::LirValueId{1}),
+      lir::LirTypeRef("void"), lir::LirOperand("@void_target"),
+      c4c::LinkNameId{2}, "", "", {}, void_signature, {}});
+  void_function.blocks.back().terminator = lir::LirRet{};
+  lir::LirModule void_result;
+  void_result.functions.push_back(std::move(void_function));
+  expect_identity_verification_rejected(
+      void_result, "verifier should reject result authority on a void call");
 }
 
 void test_direct_void_immediate_arg_identity_boundary() {

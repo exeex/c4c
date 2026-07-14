@@ -297,8 +297,8 @@ std::string StmtEmitter::emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id,
   return trunc;
 }
 
-std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
-                                                const CallTargetInfo& call_target) {
+LirOperand StmtEmitter::emit_post_builtin_call_operand(
+    FnCtx& ctx, const CallExpr& call, const CallTargetInfo& call_target) {
   const BuiltinId builtin_id = call_target.builtin_id;
 
   if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
@@ -314,7 +314,7 @@ std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call
     const std::string tmp = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirAbsOp{tmp, arg, ity});
     module_->need_abs = true;
-    return tmp;
+    return LirOperand::raw(tmp);
   }
 
   if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 && call_target.fn_name == "alloca") {
@@ -325,15 +325,35 @@ std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call
     size = coerce(ctx, size, size_ts, i64_ts);
     const std::string tmp = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirAllocaOp{tmp, "i8", size, 16});
-    return tmp;
+    return LirOperand::raw(tmp);
   }
 
   const auto args = prepare_call_args(ctx, call, call_target);
   if (call_target.ret_ty == "void") {
     emit_void_call(ctx, call_target, args);
-    return "";
+    return {};
   }
   return emit_call_with_result(ctx, call_target, args);
+}
+
+std::string StmtEmitter::emit_post_builtin_call(
+    FnCtx& ctx, const CallExpr& call, const CallTargetInfo& call_target) {
+  return emit_post_builtin_call_operand(ctx, call, call_target).str();
+}
+
+LirOperand StmtEmitter::emit_rval_call_operand(FnCtx& ctx,
+                                               const CallExpr& call,
+                                               const Expr& e) {
+  const CallTargetInfo call_target = resolve_call_target_info(ctx, call, e);
+  if (call_target.builtin_id == BuiltinId::Unknown &&
+      has_builtin_prefix(call_target.fn_name)) {
+    throw std::runtime_error("StmtEmitter: unsupported builtin call: " +
+                             call_target.fn_name);
+  }
+  if (!call_target.builtin_special) {
+    return emit_post_builtin_call_operand(ctx, call, call_target);
+  }
+  return LirOperand::raw(emit_rval_payload(ctx, call, e));
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e) {

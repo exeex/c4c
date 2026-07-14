@@ -505,6 +505,9 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
       }
     }
   }
+  if (const auto* call = std::get_if<CallExpr>(&e.payload)) {
+    return emit_rval_call_operand(ctx, *call, e);
+  }
   return LirOperand::raw(emit_rval_expr(ctx, e));
 }
 

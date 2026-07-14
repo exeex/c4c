@@ -79,7 +79,7 @@ inline std::vector<LirCallArg> lir_call_structured_args(
 }
 
 inline LirCallOp make_lir_call_op_with_return_type_ref(
-    std::string result,
+    LirOperand result,
     LirTypeRef return_type,
     std::string callee,
     std::string_view callee_type_suffix,
@@ -87,9 +87,10 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
     LinkNameId direct_callee_link_name_id = kInvalidLinkName,
     std::optional<LirCallSignature> callee_signature = std::nullopt) {
   const auto formatted = format_lir_call_fields(callee_type_suffix, args);
+  result.str() = std::string(trim_lir_arg_text(result.str()));
   const LirExtAttr return_ext_attr =
       callee_signature ? callee_signature->return_ext_attr : LirExtAttr::None;
-  return LirCallOp{std::string(trim_lir_arg_text(result)),
+  return LirCallOp{std::move(result),
                    std::move(return_type),
                    std::string(trim_lir_arg_text(callee)),
                    direct_callee_link_name_id,
@@ -109,7 +110,7 @@ inline LirCallOp make_lir_call_op(std::string result,
                                   LinkNameId direct_callee_link_name_id = kInvalidLinkName,
                                   std::optional<LirCallSignature> callee_signature = std::nullopt) {
   return make_lir_call_op_with_return_type_ref(
-      std::move(result),
+      LirOperand(std::string(trim_lir_arg_text(result))),
       LirTypeRef(std::string(trim_lir_arg_text(return_type))),
       std::move(callee),
       callee_type_suffix,

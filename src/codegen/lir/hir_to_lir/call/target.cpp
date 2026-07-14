@@ -304,21 +304,31 @@ void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                                         mod_, module_, call_target)));
 }
 
-std::string StmtEmitter::emit_call_with_result(
+LirOperand StmtEmitter::emit_call_with_result(
     FnCtx& ctx, const CallTargetInfo& call_target,
     const std::vector<OwnedLirTypedCallArg>& args) {
-  const std::string tmp = fresh_tmp(ctx);
+  std::optional<LirCallSignature> callee_signature =
+      structured_callee_signature(mod_, module_, call_target);
+  LirTypeRef return_type =
+      lir_call_type_ref(call_target.ret_ty, module_, mod_, call_target.ret_spec);
+  const bool authoritative_direct_result =
+      call_target.callee_link_name_id != kInvalidLinkName &&
+      callee_signature.has_value() &&
+      return_type.kind() == LirTypeKind::Integer;
+  const LirOperand result = authoritative_direct_result
+                                ? fresh_value(ctx)
+                                : LirOperand(fresh_tmp(ctx));
   emit_lir_op(
       ctx,
       make_lir_call_op_with_return_type_ref(
-          tmp,
-          lir_call_type_ref(call_target.ret_ty, module_, mod_, call_target.ret_spec),
+          result,
+          std::move(return_type),
           call_target.callee_val,
           call_target.callee_type_suffix,
           args,
           call_target.callee_link_name_id,
-          structured_callee_signature(mod_, module_, call_target)));
-  return tmp;
+          std::move(callee_signature)));
+  return result;
 }
 
 }  // namespace c4c::codegen::lir

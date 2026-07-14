@@ -76,8 +76,8 @@ std::vector<OwnedLirTypedCallArg> prepare_call_args(FnCtx& ctx, const CallExpr& 
                                                     const CallTargetInfo& call_target);
 void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                     const std::vector<OwnedLirTypedCallArg>& args);
-std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
-                                  const std::vector<OwnedLirTypedCallArg>& args);
+LirOperand emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
+                                 const std::vector<OwnedLirTypedCallArg>& args);
 CallTargetInfo resolve_call_target_info(FnCtx& ctx, const CallExpr& call, const Expr& e);
 
 // Builtin-call lowering helpers.
@@ -113,9 +113,13 @@ void promote_builtin_signbit_arg(FnCtx& ctx, std::string& value, TypeSpec& value
 std::string emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                    const CallTargetInfo& call_target);
+LirOperand emit_post_builtin_call_operand(FnCtx& ctx, const CallExpr& call,
+                                          const CallTargetInfo& call_target);
 
 // Call and va_arg expression payload entry points.
 std::string emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e);
+LirOperand emit_rval_call_operand(FnCtx& ctx, const CallExpr& call,
+                                  const Expr& e);
 
 struct Amd64VaListPtrs {
   std::string gp_offset_ptr;
