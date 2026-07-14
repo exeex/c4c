@@ -8,16 +8,17 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: the closed comparison
-  predicate table in `src/codegen/lir/hir_to_lir/expr/binary.cpp` now stores
-  `LirCmpPredicate` values and constructs `LirCmpPredicateRef` from those
-  enums at emission, preserving signed/unsigned integer and ordered/unordered
-  floating predicate output.
+- Step 6 targeted warning-inventory repair complete: the closed boolean-
+  coercion comparison predicates in `src/codegen/lir/hir_to_lir/core.cpp`
+  now use `LirCmpPredicate::Ne` and `LirCmpPredicate::UNe` in `to_bool` and
+  `to_bool_operand`, preserving all type-text handling, operands, and emitted
+  comparison semantics.
 
 ## Suggested Next
 
-- Step 6: select the next targeted warning-inventory family, preferring a
-  closed known-value set that can construct its LIR reference from an enum.
+- Step 6: select the next targeted warning-inventory family, excluding the
+  completed boolean-coercion predicates and preferring another closed
+  known-value set that can construct its LIR reference from an enum.
 
 ## Watchouts
 
@@ -55,6 +56,9 @@ Current Step Title: Repair the targeted warning-inventory route
   widening it to HFA GEP/store text.
 - The comparison table is a closed known set; keep it enum-backed and do not
   reintroduce predicate text merely for reparsing.
+- Boolean-coercion `ne`/`une` predicates in `to_bool` and `to_bool_operand`
+  are a closed known set and now enum-backed; dynamic `ty` paths remain
+  intentionally outside this packet.
 
 ## Proof
 
