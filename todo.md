@@ -3,21 +3,22 @@
 Status: Active
 Source Idea Path: ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the table-element failure-family baseline
+Current Step ID: 2
+Current Step Title: Inventory table-element producer and result seams
 
 ## Just Finished
 
-- Switched from 764 Step 1 after 765 and 766 resolved the arithmetic route but
-  the fresh preserved five-case proof reached only 1/5 passing. The remaining
-  four failures share missing `LirIndirectBrOp.addr_value` authority and are
-  table-element source forms, not a generic `IndirBrStmt` publication defect.
+- Completed 767 Step 1 baseline: `comp-goto-1` passes (1/5), while
+  `20040302-1`, `20041214-1`, `920501-4`, and `920501-5` fail (4/5) at the
+  same missing `LirIndirectBrOp.addr_value` authority check. The split confirms
+  the remaining family is table-element source forms, not generic indirect-
+  branch publication.
 
 ## Suggested Next
 
-- Reproduce the exact five-case baseline, preserve the 1/5 versus 4/5 split,
-  then inventory static-local and local table-element load/result producers
-  before creating any focused frontend-LIR capability probe.
+- Inventory only the static-local versus local table-element source forms and
+  their direct producer/result seams. Do not repair, add probes, or change
+  publication in this packet.
 
 ## Watchouts
 
@@ -29,10 +30,7 @@ Current Step Title: Establish the table-element failure-family baseline
 
 ## Proof
 
-- Incoming exact proof: fresh `cmake --build --preset default`, then
+- Step 1 ran fresh `cmake --build --preset default` successfully, then exactly
   `ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`;
-  `comp-goto-1` passes and the remaining four fail at the same missing carrier
-  authority.
-- Step 1 repeats that build-plus-command baseline before source-form probes;
-  later steps use directly relevant frontend-LIR production proof selected from
-  the mapped producer/result contracts.
+  `comp-goto-1` passed and the remaining four failed at the same missing
+  carrier authority. No canonical test logs were overwritten.
