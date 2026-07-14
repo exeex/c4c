@@ -1,0 +1,86 @@
+# Unresolved External Direct Scalar-Call Signature and Result Authority
+
+Status: Open (inactive)
+Type: producer-side unresolved-external call authority prerequisite
+Blocks: Plan Step 7.32 of ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
+
+## Goal
+
+Give the production plain-`DeclRef` unresolved-external direct scalar-call
+route native signature and result authority before LIR verification or any
+idea-734 receiver work relies on that call.
+
+## Why This Exists
+
+The Step 7.32 probe for a direct, fixed, nonvariadic, zero-argument external
+`double` call found that production records link-ID declaration facts in
+`extern_decl_link_name_map` and `extern_decls`, but does not retain a
+`FnPtrSig` for a plain `DeclRef`. Therefore the route has neither a structured
+fixed-empty signature nor a `fresh_value(ctx)`-allocated call-result
+`LirValueId`. A verifier-only packet cannot establish facts the producer never
+publishes.
+
+## In Scope
+
+- trace the source-level producer path for unresolved direct external scalar
+  calls originating from plain `DeclRef`
+- retain or construct the native `FnPtrSig` at the authoritative producer seam
+  and use it to publish the structured fixed-empty signature where the source
+  declaration actually supplies that fact
+- allocate the scalar call result through the owning function's
+  `fresh_value(ctx)` path before rendering, and propagate the same
+  `LirValueId` through the ordinary call result path
+- bind a focused unresolved-external fixed-empty scalar-call probe to the
+  producer, signature, result, and reachable verifier obligations
+- prove neighboring malformed cases reject: absent/invalid/mismatched external
+  declaration link identity, missing or conflicting signature/return facts,
+  and missing/invalid/duplicate/cross-owner result identity
+- hand off only an exact native-authority contract that can unblock a later
+  idea-744 Step 7.32 verifier packet
+
+## Out Of Scope
+
+- verifier-only acceptance of text-only unresolved external calls
+- recovery from callee names, result spellings, rendered operands, type text,
+  LLVM/printer output, declaration order, testcase paths, or any other text
+- moving local prototypes into external-declaration rows or mutating HIR
+  authority to fabricate the positive route
+- call arguments, indirect calls, variadic calls, ABI-expanded calls, other
+  external call shapes, conversions, floating-operation expansion, or ABI
+  lowering
+- new-BIR containers, receivers, importers, or any idea-734 implementation
+- activation of this idea as part of recording it, or closure/supersession of
+  idea 744
+
+## Acceptance Criteria
+
+- A plain-`DeclRef` unresolved external direct scalar call has a source-level,
+  native `FnPtrSig` retained at the producer seam; a fixed zero-argument
+  declaration yields a structured fixed-empty signature without text recovery.
+- The producer allocates the actual scalar result with `fresh_value(ctx)` and
+  all later ordinary uses receive that exact owned `LirValueId`.
+- Focused positive and malformed-neighbor coverage proves declaration-link,
+  signature, return-type, ownership, uniqueness, and result/type conflicts
+  through reachable LIR verification.
+- The handoff names the exact source fields and guarantees available to the
+  later idea-744 verifier packet, with every unsupported external shape kept
+  fail-closed.
+- No verifier relaxation or idea-734 receiver claim is accepted until the
+  source-level production facts above are proven.
+
+## Reviewer Reject Signals
+
+- Reject parsing or matching external names, `%t*` result spelling, formatted
+  arguments, type text, printer/LLVM output, declaration order, or testcase
+  identity to invent a `FnPtrSig`, signature, or result ID.
+- Reject a verifier-only change that accepts a plain `DeclRef` call while the
+  producer still lacks native fixed-empty signature and `fresh_value(ctx)`
+  result authority.
+- Reject moving a local prototype into `extern_decls`, mutating HIR facts, or
+  adding a parallel symbol/value table solely to make the probe pass.
+- Reject named-case branches, expectation downgrades, supported-to-unsupported
+  changes, or display parity claimed as source-level capability progress.
+- Reject broad call lowering, ABI, variadic, indirect-call, new-BIR, or
+  receiver rewrites beyond the bounded unresolved-external scalar-call seam.
+- Reject a handoff that omits malformed declaration/signature/result authority
+  rejection or leaves the former text-only path behind a renamed abstraction.

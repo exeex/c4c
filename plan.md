@@ -263,6 +263,22 @@ Completion check:
   authority and proof, or an exact separately owned blocker with no false
   receiver-ready claim
 
+#### Step 7.32 status — blocked external direct scalar-call prerequisite
+
+The attempted direct, fixed, nonvariadic, zero-argument unresolved external
+`double` call is blocked before verifier work. The plain `DeclRef` production
+route records its `extern_decl_link_name_map`/`extern_decls` link-ID facts but
+does not retain a native `FnPtrSig`; consequently it cannot produce the
+structured fixed-empty signature or allocate the required
+`fresh_value(ctx)` result `LirValueId`.
+
+Do not relax or extend verifier acceptance for this route, and do not claim an
+idea-734 receiver row is ready. The source-level producer prerequisite is
+owned separately by
+`ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md`.
+Step 7.32 may be retried only after that inactive initiative proves the native
+signature and result-authority production path without text recovery.
+
 ### Step 8 - Audit verification and publish the idea-734 handoff
 
 Goal: prove the producer boundary is complete and give the receiver exact
