@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Complete bounded generic ordinary producer seams
+Current Step ID: 7.1
+Current Step Title: Publish representative scalar cast result/use authority
 
 ## Just Finished
 
@@ -24,21 +24,22 @@ Current Step Title: Complete bounded generic ordinary producer seams
 
 ## Suggested Next
 
-- Execute the first coherent Plan Step 7 generic ordinary producer group
-  justified by the updated matrix.
+- Execute Step 7.1: publish representative scalar cast result/use authority.
 
 ## Watchouts
 
-- Group Step-7 rows only when result allocation, operand propagation, type
-  authority, and verifier rules are identical; use one bounded executor packet
-  per group.
-- Scalar compare, cast, select, and abs can reuse the common allocator/operand
-  mechanism, but each still needs its opcode/predicate/type contract checked
-  before publication.
-- Keep aggregate/vector type/index/mask semantics and pointer/object, CFG,
-  parameter, inline-asm, call, ABI, and BIR families separate.
-- Preserve the closed Step-3 through Step-6 rows and all four idea-741
-  regression neighbors while extending production coverage.
+- Own only one representation-preserving ordinary scalar integer `LirCastOp`
+  chain with a later ordinary use in the same function.
+- Allocate the cast result through the common `fresh_value`/`LirOperand`
+  ownership path and preserve that exact ID into the later use.
+- Preserve native cast-kind authority plus exact from/to type refs; do not
+  infer semantics from rendered operands or type spelling.
+- Accept misleading display after native authority is proven; reject invalid
+  or duplicate results, unknown or cross-function uses, invalid cast kind, and
+  from/to type conflicts.
+- Keep compare, select, abs, every other Step-7 row, pointer/object,
+  aggregate/vector, CFG/terminators, parameters, calls, inline assembly, and
+  new-BIR work outside Step 7.1.
 
 ## Proof
 
