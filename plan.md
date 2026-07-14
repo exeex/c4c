@@ -290,6 +290,49 @@ Completion check:
   Cttz-to-Add-one receipt with no select or compare admission; the frontend
   test remains the producer-authority regression neighbor.
 
+Accepted in `2f7055845`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional typed i32 Cttz-to-Add-one receipt. This completed
+packet did not admit the following comparison or Select.
+
+### Step 7.4 - Receive the checked fixed-void external double call result
+
+Goal: receive only the authority-matrix Step-7.32 resolved external
+`double target(void)` `LirCallOp` result and its exact later `FAdd` use. Do not
+receive the FAdd itself or widen floating/direct-call receipt.
+
+Primary targets:
+
+- typed Raw-BIR direct-call payload/builder/view and reachable verification
+- LIR-to-Raw-BIR direct-call dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the Step-7.32
+  `LirCallOp{result: valid current-function LirValueId, direct_callee_link_name_id:
+  module LinkNameId, return_type: double, callee_signature: exact empty fixed-void
+  native-double signature}` to one typed Raw-BIR direct-call result; preserve
+  declaration/callee identity, source-result identity, source order, and the
+  exact later double `FAdd` lhs use without reading names or rendering
+- require exactly one matching module Function declaration, matching native
+  floating return and fixed-void signature, result ownership/uniqueness, and
+  instruction-result/use linkage; reject missing/duplicate declaration,
+  unresolved or cross-owner callee/result/use, signature/type conflict, and
+  malformed linkage with no module publication
+- prove the positive fixed-void external-double call and its exact `FAdd` use,
+  plus neighboring transactional failures. Keep the FAdd receipt, indirect,
+  variadic, argument-bearing, ABI-expanded, aggregate/object, nonmatching
+  floating, ffs compare/Select, and presentation-derived forms fail-closed
+
+Completion check:
+
+- a fresh build and the focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional resolved
+  fixed-void external-double call result and later typed FAdd use without
+  admitting FAdd or broader call forms; the frontend test remains the
+  producer-authority regression neighbor.
+
 ### Source completion gate (not an executor packet)
 
 Do not execute this as a placeholder. This source cannot close until its
