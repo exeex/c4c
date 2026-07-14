@@ -8,14 +8,17 @@ Current Step Title: Inspect existing ref wrapper authority
 
 ## Just Finished
 
-- Switched from paused 758 Step 1 to 759 at the user's request.
-- Recorded 758's exact interrupted step and return point in its source idea.
-- Generated the active runbook for 759 and linked 760 as the intended follow-up.
+- Plan Step 1 complete: audited `src/codegen/lir/types.hpp` authority for the
+  closed-set `LirBinaryOpcodeRef` and `LirCmpPredicateRef` wrappers. Each owns
+  a closed enum plus a cached optional typed value; text construction parses
+  once and `typed()` returns that cache without reparsing. Enum construction
+  renders through `to_string`. `LirTypeRef` remains intentionally open-ended
+  (`LirTypeKind::RawText`) and separately derives integer/VRM detail from text.
 
 ## Suggested Next
 
-- Execute Step 1 only: inspect `src/codegen/lir/types.hpp` for current
-  `LirTypeRef` and related closed-set wrapper authority before editing code.
+- Step 2 implementation: make the closed-set wrapper enum path the explicit
+  authority while retaining existing runtime string construction.
 
 ## Watchouts
 
@@ -24,9 +27,10 @@ Current Step Title: Inspect existing ref wrapper authority
   accepted and closed.
 - Do not relax verifier rules or change HIR/BIR/backend semantics to make the
   enum foundation pass.
+- `typed()` presently exposes cached parse state, so Step 2 should avoid any
+  typed query path that reparses `text_`.
 
 ## Proof
 
-- Plan-owner switch only; no code proof has been run for 759 yet.
-- Executor should run a fresh build and focused LIR/frontend/backend tests after
-  code changes.
+- No build or test proof run: this read-only audit packet explicitly required
+  none. No root-level test log was created or modified.
