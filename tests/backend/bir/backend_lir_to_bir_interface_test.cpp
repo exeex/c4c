@@ -9275,6 +9275,11 @@ lir::LirModule downstream_double_fadd_module() {
       lir::LirBinaryOpcode::FAdd, lir::LirTypeRef("double"),
       lir::LirOperand::ssa("%presentation-only-call-use", lir::LirValueId{9}),
       lir::LirOperand::ssa("%presentation-only-rhs", lir::LirValueId{10})});
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%misleading-double-fmul", lir::LirValueId{12}),
+      lir::LirBinaryOpcode::FMul, lir::LirTypeRef("double"),
+      lir::LirOperand::ssa("%presentation-only-fadd-use", lir::LirValueId{11}),
+      lir::LirOperand::ssa("%presentation-only-rhs", lir::LirValueId{10})});
   return module;
 }
 
@@ -9284,10 +9289,11 @@ void test_downstream_double_fadd_receipt_and_rejections() {
     const auto caller_id = view.functions()[0];
     const auto caller = view.function(caller_id).value();
     const auto insts = caller.instructions(caller.blocks()[0]).value();
-    expect(insts.size() == 2,
-           layer + " must retain the direct double Call and one FAdd instruction");
+    expect(insts.size() == 3,
+           layer + " must retain the direct double Call, FAdd, and FMul instructions");
     const auto call = caller.instruction(insts[0]).value();
     const auto fadd = caller.instruction(insts[1]).value();
+    const auto fmul = caller.instruction(insts[2]).value();
     const auto result = caller.value(fadd.results()[0]).value();
     expect(call.opcode() == bir::Opcode::Call && call.results().size() == 1 &&
                fadd.opcode() == bir::Opcode::Binary && fadd.binary() &&
@@ -9300,8 +9306,15 @@ void test_downstream_double_fadd_receipt_and_rejections() {
                fadd.results().size() == 1 &&
                result.type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
                result.source_id == bir::SourceValueId{caller_id, 11} &&
-               caller.source_value(*result.source_id).value() == fadd.results()[0],
-           layer + " must retain one source-backed F64 FAdd with ordered call-result and current-function SSA operands");
+               caller.source_value(*result.source_id).value() == fadd.results()[0] &&
+               fmul.opcode() == bir::Opcode::Binary && fmul.binary() &&
+               fmul.binary()->opcode == bir::BinaryOpcode::FMul &&
+               fmul.binary()->type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fmul.operands().size() == 2 && fmul.operands()[0] == fadd.results()[0] &&
+               fmul.results().size() == 1 &&
+               caller.value(fmul.results()[0]).value().source_id ==
+                   bir::SourceValueId{caller_id, 12},
+           layer + " must retain one source-backed F64 FAdd-to-FMul chain with ordered current-function SSA edges");
   };
 
   const auto module = downstream_double_fadd_module();
@@ -9316,7 +9329,8 @@ void test_downstream_double_fadd_receipt_and_rejections() {
   const auto rejected = [](auto mutate, const std::string& message) {
     auto candidate = downstream_double_fadd_module();
     auto& fadd = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
-    mutate(candidate, fadd);
+    auto& fmul = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[3]);
+    mutate(candidate, fadd, fmul);
     const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
     expect(!raw_rejected.has_value() && raw_rejected.error().code ==
                bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -9326,24 +9340,37 @@ void test_downstream_double_fadd_receipt_and_rejections() {
                bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
            message + " (Canonical rollback)");
   };
-  rejected([](auto&, auto& fadd) {
+  rejected([](auto&, auto& fadd, auto&) {
              fadd.lhs = lir::LirOperand::ssa("%missing", lir::LirValueId{77});
            }, "missing accepted direct-call result must reject");
-  rejected([](auto&, auto& fadd) {
+  rejected([](auto&, auto& fadd, auto&) {
              fadd.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9});
            }, "duplicate FAdd result identity must reject");
-  rejected([](auto&, auto& fadd) {
+  rejected([](auto&, auto& fadd, auto&) {
              fadd.rhs = lir::LirOperand::ssa("%foreign", lir::LirValueId{77});
            }, "cross-owner or missing RHS SSA authority must reject");
-  rejected([](auto&, auto& fadd) { fadd.type_str = lir::LirTypeRef("float"); },
+  rejected([](auto&, auto& fadd, auto&) { fadd.type_str = lir::LirTypeRef("float"); },
            "wrong FAdd type must reject");
-  rejected([](auto&, auto& fadd) { fadd.opcode = lir::LirBinaryOpcode::FSub; },
+  rejected([](auto&, auto& fadd, auto&) { fadd.opcode = lir::LirBinaryOpcode::FSub; },
            "non-FAdd opcode must reject");
-  rejected([](auto&, auto& fadd) {
+  rejected([](auto&, auto& fadd, auto&) {
              fadd.rhs = lir::LirOperand::integer("literal", 1);
            }, "non-SSA FAdd operand must reject");
-  rejected([](auto&, auto& fadd) { fadd.result = lir::LirOperand::raw("%raw"); },
+  rejected([](auto&, auto& fadd, auto&) { fadd.result = lir::LirOperand::raw("%raw"); },
            "malformed FAdd result authority must reject");
+  rejected([](auto&, auto&, auto& fmul) {
+             fmul.lhs = lir::LirOperand::ssa("%missing-fadd", lir::LirValueId{77});
+           }, "missing FAdd-to-FMul linkage must reject");
+  rejected([](auto&, auto&, auto& fmul) {
+             fmul.result = lir::LirOperand::ssa("%duplicate-fmul", lir::LirValueId{11});
+           }, "duplicate FMul result identity must reject");
+  rejected([](auto&, auto&, auto& fmul) {
+             fmul.rhs = lir::LirOperand::ssa("%foreign-fmul", lir::LirValueId{77});
+           }, "unresolved FMul rhs authority must reject");
+  rejected([](auto&, auto&, auto& fmul) { fmul.opcode = lir::LirBinaryOpcode::FAdd; },
+           "non-FMul opcode must reject");
+  rejected([](auto&, auto&, auto& fmul) { fmul.type_str = lir::LirTypeRef("float"); },
+           "wrong FMul type must reject");
 }
 
 lir::LirModule normalized_i32_add_module() {

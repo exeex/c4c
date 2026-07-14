@@ -518,6 +518,30 @@ bool exact_downstream_double_fadd(
          lhs_value->second == f64 && rhs_value->second == f64;
 }
 
+bool exact_downstream_double_fmul(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& downstream_double_fadd_results) {
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* rhs = bin.rhs.value_id();
+  if (bin.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || !bin.opcode.typed() ||
+      *bin.opcode.typed() != codegen::lir::LirBinaryOpcode::FMul ||
+      bin.type_str.kind() != codegen::lir::LirTypeKind::Floating ||
+      bin.type_str.str() != "double" ||
+      bin.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs ||
+      !lhs->valid() || bin.rhs.kind() != codegen::lir::LirOperandKind::SsaValue ||
+      !rhs || !rhs->valid() ||
+      downstream_double_fadd_results.count(lhs->value) == 0)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  const auto rhs_value = source_values.find(rhs->value);
+  return lhs_value != source_values.end() && rhs_value != source_values.end() &&
+         lhs_value->second == f64 && rhs_value->second == f64;
+}
+
 bool exact_normalized_i32_add(
     const LirBinOp& bin,
     const std::unordered_map<std::uint32_t, Type>& source_values,
@@ -1868,6 +1892,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> intrinsic_results;
   std::unordered_set<std::uint32_t> native_i32_cttz_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
+  std::unordered_set<std::uint32_t> downstream_double_fadd_results;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
   std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
@@ -2137,6 +2162,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
       if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
         const bool fadd = exact_downstream_double_fadd(
             *bin, source_values, native_floating_call_results);
+        const bool fmul = exact_downstream_double_fmul(
+            *bin, source_values, downstream_double_fadd_results);
         const bool add = exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
@@ -2151,15 +2178,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, normalized_i32_add_results);
         const bool sext_add = exact_downstream_i64_sext_add(
             *bin, source_values, scalar_sext_results);
-        const Type result_type = fadd ? Type{TypeKind::F64, 64, "double"}
+        const Type result_type = (fadd || fmul) ? Type{TypeKind::F64, 64, "double"}
             : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !add && !mul && !sext_add) ||
+        if ((!fadd && !fmul && !add && !mul && !sext_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "binary requires one exact admitted source-authorized operand shape");
         if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
+        if (fadd) downstream_double_fadd_results.insert(bin->result.value_id()->value);
         continue;
       }
       if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
@@ -2552,6 +2580,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
+          std::unordered_set<std::uint32_t> downstream_double_fadd_results;
           std::unordered_set<std::uint32_t> native_i32_cttz_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
@@ -2979,6 +3008,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
                 const bool fadd = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
+                const bool fmul = bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::FMul};
                 const bool add = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
                 const bool abs_add = add &&
@@ -2991,7 +3022,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
+                    (fmul && downstream_double_fadd_results.count(
+                        bin->lhs.value_id()->value) == 0) ||
+                    (!fadd && !fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -2999,7 +3032,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 ValueId rhs_value{};
-                if (fadd) {
+                if (fadd || fmul) {
                   const auto rhs = source_values.find(bin->rhs.value_id()->value);
                   if (rhs == source_values.end()) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -3035,8 +3068,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     BinarySpec{fadd ? BinaryOpcode::FAdd
+                                    : fmul ? BinaryOpcode::FMul
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fadd ? Type{TypeKind::F64, 64, "double"}
+                                    : fmul ? Type{TypeKind::F64, 64, "double"}
                                     : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                                                : Type{TypeKind::Integer, 32, "i32"},
                                lhs->second, rhs_value,
@@ -3044,6 +3079,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                fadd ? "append double FAdd"
+                                                    : fmul ? "append double FMul"
                                                     : add ? sext_add ? "append SExt i64 Add"
                                                                      : "append normalized i32 Add"
                                                           : "append normalized i32 Mul",
@@ -3061,6 +3097,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 if (add && !sext_add)
                   normalized_i32_add_results.insert(bin->result.value_id()->value);
+                if (fadd)
+                  downstream_double_fadd_results.insert(bin->result.value_id()->value);
                 continue;
               }
               if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {

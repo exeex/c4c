@@ -1275,6 +1275,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   const auto rhs = function_data.values_.get(function_, spec.rhs);
   const bool exact_fadd = spec.opcode == BinaryOpcode::FAdd && spec.type == f64 &&
       lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
+  const bool exact_fmul = spec.opcode == BinaryOpcode::FMul && spec.type == f64 &&
+      lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
   const bool exact_add = spec.opcode == BinaryOpcode::Add && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
   const bool exact_sext_add = spec.opcode == BinaryOpcode::Add && spec.type == i64 &&
@@ -1291,13 +1293,17 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
     return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == i32;
   }();
-  if ((!exact_fadd && !exact_add && !exact_sext_add && !exact_mul) ||
+  if ((!exact_fadd && !exact_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (!lhs_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
+      (exact_fmul && [&] {
+        const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
+        return !binary || binary->opcode != BinaryOpcode::FAdd || binary->type != f64;
+      }()) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
        !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
        !exact_cttz_add) ||

@@ -767,10 +767,11 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const Type i32{TypeKind::Integer, 32, "i32"};
         const Type i64{TypeKind::Integer, 64, "i64"};
         const bool fadd = binary->opcode == BinaryOpcode::FAdd && binary->type == f64;
+        const bool fmul = binary->opcode == BinaryOpcode::FMul && binary->type == f64;
         const bool add = binary->opcode == BinaryOpcode::Add && binary->type == i32;
         const bool sext_add = binary->opcode == BinaryOpcode::Add && binary->type == i64;
         const bool mul = binary->opcode == BinaryOpcode::Mul && binary->type == i32;
-        bool exact = (fadd || add || sext_add || mul) && instruction.operands.size() == 2 &&
+        bool exact = (fadd || fmul || add || sext_add || mul) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           for (const auto operand_id : instruction.operands) {
@@ -797,6 +798,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             }();
             exact = producer && (fadd
                 ? std::holds_alternative<CallNode>(producer.value().get().payload)
+                : fmul ? [&] {
+                    const auto* producer_binary = std::get_if<BinaryNode>(
+                        &producer.value().get().payload);
+                    return producer_binary &&
+                        producer_binary->opcode == BinaryOpcode::FAdd &&
+                        producer_binary->type == f64;
+                  }()
                 : add ? (std::holds_alternative<LoadNode>(producer.value().get().payload) ||
                          std::holds_alternative<AbsNode>(producer.value().get().payload) ||
                          cttz_add)
