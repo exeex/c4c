@@ -3,33 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.8
-Current Step Title: Receive the checked explicit scalar FPExt result
+Current Step ID: 7.9
+Current Step Title: Receive the checked explicit scalar SIToFP result
 
 ## Just Finished
 
-- Step 7.8 complete: received only the producer-verified explicit scalar
-  `float`-to-`double` `LirCastOp::FPExt` from the admitted scalar FPTrunc
-  result and its one exact later double `FMul` use, preserving native cast,
-  endpoint types, source IDs, and current-function SSA edges. Other floating
-  casts, malformed/implicit/non-SSA/duplicate/unresolved/cross-owner/wrong
-  endpoint inputs, and missing or malformed downstream uses reject
-  transactionally.
+- Step 7.8 complete in `dff35977c`: received only the producer-verified
+  explicit scalar `float`-to-`double` `LirCastOp::FPExt` from the admitted
+  scalar FPTrunc result and its one exact later double `FMul` use, preserving
+  native cast, endpoint types, source IDs, and current-function SSA edges.
 
 ## Suggested Next
 
-- Send the exhausted Step-7 runbook to plan-owner for an explicit close,
-  repair, replacement, or conclude decision; do not infer source completion.
+- Execute Step 7.9 only: receive the authority-matrix explicit signed
+  i32-to-double `LirCastOp::SIToFP` from the admitted signed i32 Add result
+  and its exact later double `FMul` use, with typed Raw-BIR receipt,
+  verification, rollback coverage, and focused backend/producer proof.
 
 ## Watchouts
 
-- Step 7.8 admits only the checked scalar float-to-double FPExt boundary;
-  all other casts, non-scalar forms, and presentation-derived authority remain
-  fail-closed. Runbook exhaustion is not source completion.
+- Step 7.9 admits only the checked signed scalar i32-to-double SIToFP
+  boundary. UIToFP, all reverse and other cast families, non-scalar forms,
+  and presentation-derived authority remain fail-closed. The source remains
+  incomplete until every valid current-LIR row has an evidenced typed receiver
+  disposition.
 
 ## Proof
 
-- Step 7.8 passed the supervisor-selected proof: `cmake --build --preset
-  default && ctest --test-dir build -j --output-on-failure -R
-  '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
-  proof log: `test_after.log`.
+- Required after Step 7.9: `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R
+  '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2), plus
+  the supervisor-selected regression and broader checkpoints when requested.

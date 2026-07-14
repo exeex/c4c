@@ -8,8 +8,8 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 
 Continue the bounded target-independent Raw-BIR receiver route without
 repeating accepted work. Receive exactly one producer-published explicit
-scalar floating widening-cast result/use chain from native kind, endpoints,
-and value authority.
+signed scalar integer-to-floating conversion result/use chain from native
+kind, endpoints, and value authority.
 
 ## Goal
 
@@ -20,15 +20,15 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-The selected explicit scalar floating `LirCastOp::FPExt` native kind and
-endpoints, current-function source/result IDs, and later typed use are the
-sole authority. Presentation is display only.
+The selected explicit scalar `LirCastOp::SIToFP` native kind and endpoints,
+current-function source/result IDs, and later typed use are the sole
+authority. Presentation is display only.
 
 ## Read First
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.8)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.9)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -65,6 +65,8 @@ sole authority. Presentation is display only.
   non-materialized exact ZExt use (`c0534153e`). Do not generalize compare.
 - Step 7.7: explicit scalar double-to-float FPTrunc receipt and exact later
   float FMul use (`d90f32090`). Do not generalize floating casts.
+- Step 7.8: explicit scalar float-to-double FPExt receipt and exact later
+  double FMul use (`dff35977c`). Do not repeat or generalize this cast row.
 
 ## Non-Goals
 
@@ -79,7 +81,7 @@ sole authority. Presentation is display only.
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected FPExt only through its native kind/endpoints and
+3. Resolve the selected SIToFP only through its native kind/endpoints and
    current-function source IDs; names and rendering are diagnostics only after
    structured authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
@@ -504,6 +506,47 @@ Completion check:
   `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
   2/2. The backend coverage demonstrates one verified transactional explicit
   scalar FPExt chain; the frontend test remains the producer-authority
+  regression neighbor.
+
+Accepted in `dff35977c`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional explicit scalar float-to-double FPExt chain. The
+matching regression guard passed with its allowed non-decreasing fixed-test
+count, and fresh broader `^backend_` proof passed 4/4.
+
+### Step 7.9 - Receive the checked explicit scalar SIToFP result
+
+Goal: receive only the authority-matrix Step-7.9 explicit nonpointer,
+nonvector scalar signed i32-to-double `LirCastOp::SIToFP` and its exact later
+double `FMul` use. Do not generalize integer-to-floating casts.
+
+Primary targets:
+
+- typed Raw-BIR SIToFP payload, builder/view, and reachable verifier
+- LIR-to-Raw-BIR cast dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified explicit scalar `LirCastOp{result: valid
+  current-function LirValueId, operand: exact admitted signed i32 Add result
+  ID, kind: SIToFP, from_type: i32, to_type: double}` to one typed Raw-BIR
+  result, preserving its exact later double FMul use
+- require valid, unique current-function results; resolved source/result use
+  edges; exact SIToFP kind and signed-i32-to-double endpoints; strict
+  integer-to-floating direction; instruction-result linkage; and full-module
+  rollback for missing, invalid, duplicate, cross-owner, unresolved-use,
+  wrong-kind/endpoints/direction, or malformed-linkage authority
+- prove the positive Add-to-SIToFP-to-FMul chain plus neighboring transactional
+  failures. Keep UIToFP, FPTrunc/FPExt, floating-to-integer, pointer/bitcast/
+  vector/complex/aggregate, implicit, no-op, monostate-source, and
+  presentation-derived casts fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional explicit
+  scalar SIToFP chain; the frontend test remains the producer-authority
   regression neighbor.
 
 ### Source completion gate (not an executor packet)
