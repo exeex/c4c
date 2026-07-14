@@ -249,6 +249,59 @@ Completion check:
   accepted i32/i64 inline-assembly and double-`FAdd` rows remain regression
   neighbors.
 
+#### Step 5.3.5 - Receive the checked normalized i32 Mul result
+
+Goal: receive the one remaining operation in the same producer-verified
+ordinary scalar chain, preserving the accepted Step 5.3.4 `Add` result as its
+only source-backed SSA operand. Do not generalize integer binary receipt.
+
+Primary targets:
+
+- `src/backend/bir/core/ir.hpp`, builder, view, and reachable Raw-BIR
+  verification for one additional integer binary opcode/type pair
+- `src/backend/bir/lir_to_bir.cpp` binary dispatch and source-value registry
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp` and
+  `frontend_lir_call_type_ref`
+
+Typed source authority and destination:
+
+- admit only the second `LirBinOp` in the producer-verified
+  `lir_scalar_ordinary_value_chain_identity` subrow:
+  `LirBinOp{result: valid current-function LirValueId, opcode: Mul,
+  type_str: LirTypeRef::integer(32), lhs: the exact Step 5.3.4 i32 Add-result
+  LirValueId, rhs: representable LirIntegerImmediate{2}}`
+- receive it as one source-backed i32 result of the existing typed Raw-BIR
+  `BinaryNode`/`BinarySpec`, adding only `BinaryOpcode::Mul` and its exact i32
+  payload contract. Materialize the native immediate through the existing
+  Raw-BIR integer-constant path and register the result by its exact source ID.
+
+Actions:
+
+- extend the binary builder and reachable verifier only to `Mul`/i32 with two
+  ordered i32 operands, requiring the lhs to be the accepted source-backed
+  i32 `Add` result and the rhs to be an i32 constant of exactly two; preserve
+  source-ID ownership/uniqueness, instruction-result linkage, and rollback
+- import this Add-result/two-immediate `Mul` directly from typed LIR carriers.
+  A focused receipt fixture may return its result through the accepted
+  scalar-i32 `LirRet` path, but must retain the preceding admitted Load-plus-one
+  Add edge; do not accept a standalone Mul or reproduce authority from text
+- prove Raw and Canonical positive receipt plus missing/invalid/duplicate/
+  cross-function result IDs, unknown/cross-function or non-Add lhs, invalid or
+  out-of-range immediate, non-two immediate, SSA rhs, non-`Mul` opcode,
+  non-i32 type, malformed linkage, and full rollback
+- keep every other integer opcode/width, different Add/Mul operand pattern,
+  floating forms except accepted double `FAdd`, unary, presentation-derived,
+  compound, complex, vector, pointer/object, logical-helper, builtin, cast,
+  compare, select, CFG, and inline-assembly form unsupported unless separately
+  selected.
+
+Completion check:
+
+- a fresh build and
+  `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'`
+  prove one verified, transactional native-ID i32 `Mul` receipt linked to the
+  accepted Load-plus-one Add result, with all neighboring forms fail-closed.
+
 ### Step 6 - Complete terminators and structured inline-assembly transport
 
 Goal: receive only a source-authorized terminator or inline-assembly row at a
