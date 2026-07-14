@@ -139,6 +139,5 @@ conversation opened in a repo with lifecycle files.
   equivalent to an empty `ideas/open/` inventory.
 - Neither present, no open ideas: print `WAIT_FOR_NEW_IDEA` and stop.
 
-Prompts under `prompts/` are compatibility references; role skills are
-authoritative workflows. Use the explicit scripted marker, not prompt presence
-or conversational tone, to choose between supervisor and user service.
+Role skills are the authoritative workflows. Use the explicit scripted marker,
+not conversational tone, to choose between supervisor and user service.

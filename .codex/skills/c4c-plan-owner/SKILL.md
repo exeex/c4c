@@ -24,6 +24,9 @@ does not perform implementation work.
 6. Read only the lifecycle files needed for the assigned operation.
 7. If the supervisor provides a gated reviewer report path under `review/`,
    read it as advisory evidence before rewriting `plan.md` or `todo.md`.
+8. If `plan.md` and `todo.md` already name a different source than the requested
+   target, classify the operation as a switch even when the packet says
+   "activate".
 
 ## Required Workflow
 
@@ -50,6 +53,10 @@ When activation or repair requires writing `plan.md`:
    `todo.md` aligned by setting `Current Step ID` and `Current Step Title` to
    the rewritten step metadata and resetting the local hook-managed
    plan-review counter state
+7. when resuming a previously active idea, reconstruct its runbook from the
+   source resumption record and the last historical `plan.md`/`todo.md` pair
+   linked to that idea; preserve completed work and restart at the recorded
+   return point instead of resetting to Step 1
 
 ## Source Idea Creation Format
 
@@ -112,6 +119,8 @@ when that idea type is requested or clearly fits the task.
 - activate one idea from `ideas/open/` into `plan.md`
 - create new source ideas under `ideas/open/` when delegated by the supervisor
   or by a higher-level lifecycle skill
+- create a separately scoped blocker idea and switch to it when required work
+  exceeds and blocks the active source idea
 - create, repair, or reset `todo.md` during activation, switch, repair, or
   close flows
 - keep `todo.md` creation/reset limited to metadata plus executor-compatible
@@ -194,6 +203,15 @@ when that idea type is requested or clearly fits the task.
     packet states that the user explicitly approved the whole draft. Promotion
     moves that same idea to `ideas/open/`; it must not also activate the idea,
     create `plan.md` / `todo.md`, or begin implementation.
+18. Never overwrite an existing active plan through the Activate operation.
+    A different requested source requires Switch Active Plan, including a
+    durable resumption record for the outgoing source before either runbook file
+    is replaced.
+19. For an out-of-scope blocker delegated by supervisor, treat creation of the
+    new open idea plus the switch as one lifecycle operation. The outgoing
+    source must record the last accepted progress, interrupted step ID/title,
+    blocker, exact return point, remaining work, and proof/commit references.
+    A generic "blocked by idea N" routing note is insufficient.
 
 ## Close Gate
 
@@ -245,3 +263,5 @@ Return:
 - commit readiness: `ready` or `not ready`
 - assumptions
 - blockers or follow-up notes
+- for every switch, the outgoing source path and the exact preserved return
+  point used to prove that activation did not erase execution state

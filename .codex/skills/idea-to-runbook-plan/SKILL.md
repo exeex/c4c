@@ -20,6 +20,11 @@ Expect these files:
 
 Read the current `plan.md` before rewriting it so you preserve useful runbook conventions already adopted in this repo.
 
+For a previously active target, also read its durable resumption record and use
+git history to recover the last `plan.md` and `todo.md` that named that source.
+Historical recovery is execution input for resume, not permission to copy stale
+scope over current user intent.
+
 ## Goal
 
 Turn proposal-style planning into a runbook that an implementation agent can execute in order.
@@ -102,6 +107,12 @@ Apply these rules consistently:
     into the source idea as part of plan generation.
 11. For code-changing steps, make build proof explicit and call out where a
     broader or full validation checkpoint is required.
+12. On resume, preserve completed steps and the exact interrupted return point
+    from the last target-linked runbook. Do not regenerate a previously active
+    idea as a fresh Step 1 plan merely because another idea replaced its files.
+13. If the source lacks enough resumption detail to distinguish completed from
+    remaining work, reject regeneration and request lifecycle repair instead
+    of guessing from the idea memo.
 
 ## c4c Style
 
@@ -127,5 +138,7 @@ Before finishing, check:
 - Would this discourage broad rewrites and encourage small, testable slices?
 - Does it keep source-idea edits unnecessary unless source intent really
   changed?
+- When resuming, can the agent identify the last accepted progress and exact
+  next step without redoing completed work?
 
 If not, tighten the runbook before handing it off.

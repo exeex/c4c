@@ -45,6 +45,9 @@ If work is interrupted by a more important idea:
    back into the linked file under `ideas/open/`
 3. activate a different idea into the new [`plan.md`](/workspaces/c4c/plan.md)
 
+This is always a **switch**, not a second activation. The label used by the
+caller does not change the operation selected from the existing file state.
+
 ## Required Invariants
 
 Always preserve these invariants:
@@ -167,13 +170,18 @@ Do this:
 
 1. read the source `ideas/open/*.md`
 2. check whether [`plan.md`](/workspaces/c4c/plan.md) and [`todo.md`](/workspaces/c4c/todo.md) exist
-3. if both exist, another plan is already active
+3. if both exist, do not overwrite them; if they name another source, route the
+   request to **Switch Active Plan** even when the caller requested activation
 4. if only one exists, repair the inconsistent state first
 5. rewrite [`plan.md`](/workspaces/c4c/plan.md) as a runbook derived from the chosen idea
 6. include the source-idea link in [`plan.md`](/workspaces/c4c/plan.md)
 7. create or reset [`todo.md`](/workspaces/c4c/todo.md) for the new active plan
 8. when doing so, write only metadata plus an executor-compatible skeleton;
    routine packet content belongs to later executor updates
+9. if the source was previously active, treat this as resume: recover its
+   durable resumption record and last target-linked historical
+   `plan.md`/`todo.md`, preserve completed work, and point `todo.md` at the
+   recorded return step rather than resetting execution to Step 1
 
 ### Execute Plan
 
@@ -223,12 +231,27 @@ Use when deactivating one idea and activating another in one task.
 
 Do this in order:
 
-1. deactivate the old active plan
-2. preserve relevant execution knowledge back into the old source idea
-3. activate the new source idea into [`plan.md`](/workspaces/c4c/plan.md)
-4. reset [`todo.md`](/workspaces/c4c/todo.md) to the new plan using metadata
+1. read and snapshot the outgoing `plan.md`, `todo.md`, and linked source before
+   replacing either runbook file
+2. deactivate the old active plan
+3. write a compact resumption record into the old source idea containing:
+   - last accepted progress and completed runbook steps
+   - interrupted `Current Step ID` and `Current Step Title`
+   - blocker and why it is outside the source scope
+   - exact return point and remaining next action
+   - accepted proof and implementation commit references
+4. verify that this record is sufficient to reconstruct execution without the
+   outgoing `plan.md` or `todo.md`; a routing note naming only the blocker idea
+   is not sufficient
+5. activate the new source idea into [`plan.md`](/workspaces/c4c/plan.md)
+6. reset [`todo.md`](/workspaces/c4c/todo.md) to the new plan using metadata
    plus an executor-compatible skeleton, not a separate plan-owner packet
    format
+
+When the target is a newly discovered blocker outside the active idea's scope,
+plan-owner must first create a distinct source under `ideas/open/`, then perform
+the switch above as the same lifecycle operation. Do not create the blocker and
+invoke plain activation afterward.
 
 ### Close Or Conclude Plan
 
@@ -269,6 +292,9 @@ When new work appears during execution:
   intent must have a named open successor first.
 - If it is adjacent but not required, prefer a new file under `ideas/open/`
   over mutating the linked source idea.
+- If it is outside the active idea and blocks the current step, require
+  plan-owner to create a separate open idea and switch to it, preserving the
+  parent's resumption record first.
 - If it is more important than the current active runbook, perform a deactivation/switch instead of mutating the plan ad hoc.
 
 ## Quality Bar
@@ -279,6 +305,9 @@ Before finishing any lifecycle operation, check:
 - Can it tell where execution state lives?
 - Can it tell whether the current plan is active, parked, or closed?
 - If switched, was knowledge preserved back into the old idea?
+- Does the outgoing source name completed work, interrupted step, blocker,
+  exact return point, remaining action, and accepted proof rather than only the
+  successor idea?
 - Did you avoid promoting `todo.md` or `plan.md` churn into the source idea?
 - For interactive intake, did the user approve the whole draft before it moved
   to `ideas/open/`?
