@@ -1311,6 +1311,10 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     return cast && cast->kind == CastKind::Trunc &&
         cast->from_type == i64 && cast->to_type == i32;
   }();
+  const bool exact_ffs_add = (exact_add || exact_sext_add) && lhs_producer && [&] {
+    const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
+    return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == spec.type;
+  }();
   if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1337,11 +1341,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       }()) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
        !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
-       !exact_cttz_add && !exact_fptosi_add && !exact_fptoui_add && !exact_wide_ffs_trunc_add) ||
+       !exact_cttz_add && !exact_fptosi_add && !exact_fptoui_add && !exact_wide_ffs_trunc_add && !exact_ffs_add) ||
       (exact_sext_add && [&] {
         const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
-        return !cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||
-            cast->to_type != i64;
+        return !exact_ffs_add && (!cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||
+            cast->to_type != i64);
       }()) ||
       (exact_mul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
@@ -1575,14 +1579,30 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, SelectSpe
   if (!same_owner(function_, block))
     return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
   auto& function_data = function.value().get();
+  const Type i32{TypeKind::Integer, 32, "i32"};
   const Type i64{TypeKind::Integer, 64, "i64"};
   if (!function_data.blocks_.contains(function_, block))
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
-  if (spec.type != i64 || function_data.values_by_source_id_.count(spec.source_result_id) != 0)
+  if ((spec.type != i32 && spec.type != i64) || function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (spec.false_value) {
+    if (!same_owner(function_, *spec.false_value))
+      return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+    const auto false_value = function_data.values_.get(function_, *spec.false_value);
+    const auto* definition = false_value ? std::get_if<InstResultDef>(&false_value.value().get().definition) : nullptr;
+    const auto producer = definition ? function_data.insts_.get(function_, definition->instruction)
+                                     : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+    const auto* binary = producer ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
+    if (!false_value || false_value.value().get().type != spec.type || !binary ||
+        binary->opcode != BinaryOpcode::Add || binary->type != spec.type)
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  } else if (spec.type != i64) {
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
   detail::InstData instruction;
   instruction.opcode = Opcode::Select;
   instruction.payload = SelectNode{spec.type};
+  if (spec.false_value) instruction.operands = {*spec.false_value};
   auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
   const auto instruction_id = inserted.value();

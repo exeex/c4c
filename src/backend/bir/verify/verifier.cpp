@@ -838,6 +838,11 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                                  producer_cast->to_type == i32));
                          }())
                       : sext_add ? [&] {
+                          const auto* intrinsic = std::get_if<IntrinsicCallNode>(
+                              &producer.value().get().payload);
+                          if (intrinsic && intrinsic->kind == IntrinsicKind::Cttz &&
+                              intrinsic->type == i64)
+                            return true;
                           const auto* cast = std::get_if<CastNode>(
                               &producer.value().get().payload);
                           return cast && cast->kind == CastKind::SExt &&
@@ -1006,12 +1011,24 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                            "cast must retain an admitted typed current-function scalar receipt");
       }
       if (const auto* select = std::get_if<SelectNode>(&instruction.payload)) {
+        const Type i32{TypeKind::Integer, 32, "i32"};
         const Type i64{TypeKind::Integer, 64, "i64"};
-        bool exact = select->type == i64 && instruction.operands.empty() &&
+        bool exact = (select->type == i64 || select->type == i32) &&
+            ((select->type == i64 && instruction.operands.empty()) || instruction.operands.size() == 1) &&
             instruction.results.size() == 1;
+        if (exact && instruction.operands.size() == 1) {
+          const auto false_value = function.values_.get(function_id, instruction.operands[0]);
+          const auto* definition = false_value
+              ? std::get_if<InstResultDef>(&false_value.value().get().definition) : nullptr;
+          const auto producer = definition ? function.insts_.get(function_id, definition->instruction)
+                                           : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+          const auto* binary = producer ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
+          exact = false_value && false_value.value().get().type == select->type && binary &&
+              binary->opcode == BinaryOpcode::Add && binary->type == select->type;
+        }
         if (exact) {
           const auto value = function.values_.get(function_id, instruction.results[0]);
-          exact = value && value.value().get().type == i64 &&
+          exact = value && value.value().get().type == select->type &&
               value.value().get().source_id.has_value() &&
               value.value().get().source_id->owner == function_id;
         }

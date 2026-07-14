@@ -8,22 +8,22 @@ Current Step Title: Receive the checked builtin-ffs add-one/select false arm
 
 ## Just Finished
 
-- Step 7.13 complete: received the producer-verified operand-free i64 ffs
-  `LirSelectOp`, its exact i64-to-i32 `LirCastOp::Trunc`, and later ordinary
-  i32 `Add` in `f88276157`, with focused 2/2 and fresh `^backend_` 4/4 proof.
+- Step 7.14 complete: received the checked i32/i64 builtin-ffs native Add-one
+  result and its exact `LirSelectOp.false_val` edge, with transactional
+  malformed-authority/linkage rollback coverage.
 
 ## Suggested Next
 
-- Execute `plan.md` Step 7.14: the bounded builtin-ffs add-one/select false-arm
-  receiver packet.
+- Ask plan-owner to repair or replace the exhausted receiver runbook; the
+  source completion gate requires an explicit next route or conclusion.
 
 ## Watchouts
 
-- Do not receive the ffs Cttz lhs, equality-to-zero condition, or select
-  condition while receiving only the exact Add-one false-arm edge.
+- The operand-free wide i64 select receipt remains separate; its arms stay
+  unmaterialized unless the false arm is the exact checked builtin-ffs Add-one.
 
 ## Proof
 
-- Required after implementation: a fresh build and focused 2/2
-  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof. The
-  supervisor selects any broader proof and owns canonical regression logs.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'`
+  (2/2). The supervisor owns canonical regression logs.

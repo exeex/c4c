@@ -9905,7 +9905,7 @@ lir::LirModule wide_ffs_select_trunc_module() {
       lir::LirTypeRef::integer(64),
       lir::LirOperand::ssa("%producer-verified-condition", lir::LirValueId{70}),
       lir::LirOperand::integer("zero", 0),
-      lir::LirOperand::ssa("%producer-verified-plus-one", lir::LirValueId{71})});
+      lir::LirOperand::raw("%producer-verified-plus-one")});
   block.insts.push_back(lir::LirCastOp{
       lir::LirOperand::ssa("%wide-ffs-trunc", lir::LirValueId{41}),
       lir::LirCastKind::Trunc, lir::LirTypeRef::integer(64),
@@ -10498,6 +10498,70 @@ void test_native_i32_cttz_add_one_receipt_and_rejections() {
          "the following Cttz Select must remain unsupported transactionally");
 }
 
+lir::LirModule builtin_ffs_add_select_false_arm_module(unsigned width) {
+  auto module = native_intrinsic_module();
+  auto& caller = module.functions[0];
+  auto& block = caller.blocks[0];
+  auto& cttz = std::get<lir::LirCallOp>(block.insts[1]);
+  const auto type = lir::LirTypeRef::integer(width);
+  cttz.return_type = type;
+  cttz.callee_signature->return_type_ref = type;
+  cttz.callee_signature->fixed_param_types[0] = width == 64 ? "i64" : "i32";
+  cttz.callee_signature->fixed_param_type_refs[0] = type;
+  cttz.arg_type_refs[0] = type;
+  cttz.structured_args[0] = {width == 64 ? "i64" : "i32",
+                              lir::LirOperand::integer("value", 41), type};
+  block.insts.erase(block.insts.begin() + 2, block.insts.end());
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%ffs-plus-one", lir::LirValueId{10}),
+      lir::LirBinaryOpcode::Add, type,
+      lir::LirOperand::ssa("%cttz", lir::LirValueId{9}),
+      lir::LirOperand::integer("one", 1)});
+  block.insts.push_back(lir::LirSelectOp{
+      lir::LirOperand::ssa("%ffs-select", lir::LirValueId{11}), type,
+      lir::LirOperand::raw("%producer-condition"), lir::LirOperand::raw("zero"),
+      lir::LirOperand::ssa("%ffs-plus-one", lir::LirValueId{10})});
+  caller.return_type = width == 64 ? scalar_type(c4c::TB_LONGLONG) : scalar_type(c4c::TB_INT);
+  caller.return_type.inner_rank = -1;
+  caller.signature_return_type_ref = type;
+  block.terminator = lir::LirRet{lir::LirOperand::ssa("%return", lir::LirValueId{11}), type};
+  return module;
+}
+
+void test_builtin_ffs_add_select_false_arm_receipt_and_rejections() {
+  for (const auto width : {32U, 64U}) {
+    const auto module = builtin_ffs_add_select_false_arm_module(width);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+           "builtin ffs Add-one false-arm chain must publish verified Raw BIR" +
+               (raw.has_value() ? std::string{} : ": " + raw.error().detail +
+                   (raw.error().verification_errors.empty() ? "" : ": " + raw.error().verification_errors.front().message)));
+    const auto view = raw.value().view();
+    const auto function = view.function(view.functions()[0]).value();
+    const auto insts = function.instructions(function.blocks()[0]).value();
+    const auto add = function.instruction(insts[1]).value();
+    const auto select = function.instruction(insts[2]).value();
+    expect(add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.binary()->type.bit_width == width && add.results().size() == 1 &&
+               select.select() && select.select()->type.bit_width == width &&
+               select.operands() == std::vector<bir::ValueId>{add.results()[0]},
+           "builtin ffs Select must retain its exact Add-one false-arm edge");
+    for (const auto& mutation : {0, 1, 2, 3, 4, 5}) {
+      auto candidate = builtin_ffs_add_select_false_arm_module(width);
+      auto& add_op = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
+      auto& select_op = std::get<lir::LirSelectOp>(candidate.functions[0].blocks[0].insts[3]);
+      if (mutation == 0) add_op.result = lir::LirOperand::raw("%missing");
+      if (mutation == 1) add_op.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9});
+      if (mutation == 2) add_op.opcode = lir::LirBinaryOpcode::Mul;
+      if (mutation == 3) add_op.rhs = lir::LirOperand::integer("two", 2);
+      if (mutation == 4) select_op.false_val = lir::LirOperand::ssa("%missing", lir::LirValueId{77});
+      if (mutation == 5) select_op.false_val = lir::LirOperand::integer("one", 1);
+      expect(!bir::lower_lir_to_raw_bir(candidate).has_value(),
+             "malformed builtin ffs Add/select linkage must roll back the complete module");
+    }
+  }
+}
+
 lir::LirModule intrinsic_i64_trunc_module() {
   auto module = native_intrinsic_module();
   auto& caller = module.functions[0];
@@ -10988,6 +11052,7 @@ int main() {
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_native_i32_cttz_add_one_receipt_and_rejections();
+  test_builtin_ffs_add_select_false_arm_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
   test_selected_global_i32_slt_compare_receipt_and_rejections();

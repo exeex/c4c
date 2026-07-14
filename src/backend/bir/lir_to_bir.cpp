@@ -776,7 +776,8 @@ bool exact_wide_ffs_select(const LirSelectOp& select) {
   const auto* result = select.result.value_id();
   return select.result.kind() == LirOperandKind::SsaValue && result && result->valid() &&
       select.type_str.kind() == codegen::lir::LirTypeKind::Integer &&
-      select.type_str.integer_bit_width() == 64;
+      select.type_str.integer_bit_width() == 64 &&
+      select.false_val.kind() == LirOperandKind::RawText;
 }
 
 bool exact_wide_ffs_trunc(const LirModule& module, const LirCastOp& cast,
@@ -846,6 +847,28 @@ bool exact_native_i32_cttz_add(
     const std::unordered_map<std::uint32_t, Type>& source_values,
     const std::unordered_set<std::uint32_t>& native_i32_cttz_results) {
   return exact_normalized_i32_add(bin, source_values, native_i32_cttz_results);
+}
+
+bool exact_builtin_ffs_add(const LirBinOp& bin,
+                           const std::unordered_map<std::uint32_t, Type>& source_values,
+                           const std::unordered_set<std::uint32_t>& cttz_results) {
+  using codegen::lir::LirOperandKind;
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* immediate = bin.rhs.integer_immediate();
+  const auto width = bin.type_str.integer_bit_width();
+  if (bin.result.kind() != LirOperandKind::SsaValue || !result || !result->valid() ||
+      bin.opcode.typed() != std::optional{codegen::lir::LirBinaryOpcode::Add} ||
+      bin.type_str.kind() != codegen::lir::LirTypeKind::Integer || !width ||
+      (*width != 32 && *width != 64) || bin.lhs.kind() != LirOperandKind::SsaValue ||
+      !lhs || !lhs->valid() || bin.rhs.kind() != LirOperandKind::Immediate ||
+      !immediate || immediate->value != 1 ||
+      !integer_immediate_representable(immediate->value, *width) ||
+      cttz_results.count(lhs->value) != 1)
+    return false;
+  const auto found = source_values.find(lhs->value);
+  return found != source_values.end() && found->second ==
+      Type{TypeKind::Integer, *width, *width == 32 ? "i32" : "i64"};
 }
 
 bool exact_selected_global_i32_abs(
@@ -2169,6 +2192,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::size_t> inline_asm_store_uses;
   std::unordered_set<std::uint32_t> intrinsic_results;
   std::unordered_set<std::uint32_t> native_i32_cttz_results;
+  std::unordered_set<std::uint32_t> native_ffs_cttz_results;
+  std::unordered_set<std::uint32_t> builtin_ffs_add_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> downstream_double_fadd_results;
   std::unordered_set<std::uint32_t> downstream_double_fmul_results;
@@ -2431,6 +2456,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
           if (*call->intrinsic_kind == LirIntrinsicKind::Cttz &&
               *result_type == Type{TypeKind::Integer, 32, "i32"})
             native_i32_cttz_results.insert(call->result.value_id()->value);
+          if (*call->intrinsic_kind == LirIntrinsicKind::Cttz &&
+              (*result_type == Type{TypeKind::Integer, 32, "i32"} ||
+               *result_type == Type{TypeKind::Integer, 64, "i64"}))
+            native_ffs_cttz_results.insert(call->result.value_id()->value);
           continue;
         }
         if (exact_direct_void_call(module, *call)) continue;
@@ -2484,20 +2513,23 @@ Result<void, ImportError> validate_function(const LirModule& module,
                   exact_normalized_i32_add(*bin, source_values,
                       selected_global_i32_abs_results);
             }();
+        const bool ffs_add = exact_builtin_ffs_add(*bin, source_values,
+                                                    native_ffs_cttz_results);
         const bool mul = exact_normalized_i32_mul(
             *bin, source_values, normalized_i32_add_results);
         const bool sext_add = exact_downstream_i64_sext_add(
             *bin, source_values, scalar_sext_results);
         const Type result_type = (fadd || fmul || fpext_fmul || sitofp_fmul || uitofp_fmul) ? Type{TypeKind::F64, 64, "double"}
             : float_fmul ? Type{TypeKind::F32, 32, "float"}
-            : sext_add ? Type{TypeKind::Integer, 64, "i64"}
+            : (sext_add || (ffs_add && bin->type_str.integer_bit_width() == 64)) ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !mul && !sext_add) ||
+        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !mul && !sext_add && !ffs_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "binary requires one exact admitted source-authorized operand shape");
         if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
+        if (ffs_add) builtin_ffs_add_results.insert(bin->result.value_id()->value);
         if (fadd) downstream_double_fadd_results.insert(bin->result.value_id()->value);
         if (fmul) downstream_double_fmul_results.insert(bin->result.value_id()->value);
         if (float_fmul) {
@@ -2537,9 +2569,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* select = std::get_if<LirSelectOp>(&instruction)) {
-        if (!exact_wide_ffs_select(*select) ||
-            !source_values.emplace(select->result.value_id()->value,
-                                   Type{TypeKind::Integer, 64, "i64"}).second)
+        const auto* false_id = select->false_val.value_id();
+        const auto false_value = false_id ? source_values.find(false_id->value) : source_values.end();
+        const bool ffs_false_arm = select->false_val.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            false_id && false_id->valid() && false_value != source_values.end() &&
+            builtin_ffs_add_results.count(false_id->value) == 1 &&
+            select->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+            select->type_str.integer_bit_width() == false_value->second.bit_width;
+        const auto select_type = ffs_false_arm ? false_value->second : Type{TypeKind::Integer, 64, "i64"};
+        if ((!ffs_false_arm && !exact_wide_ffs_select(*select)) ||
+            !source_values.emplace(select->result.value_id()->value, select_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
                             "select requires the one admitted typed wide ffs result receipt");
         wide_ffs_select_results.insert(select->result.value_id()->value);
@@ -3485,9 +3524,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   }
                   rhs_value = rhs->second;
                 } else {
+                  const bool i64_add = add && bin->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+                      bin->type_str.integer_bit_width() == 64;
                   auto reserved = function_builder.reserve_value(
-                      sext_add ? Type{TypeKind::Integer, 64, "i64"}
-                               : Type{TypeKind::Integer, 32, "i32"});
+                      (sext_add || i64_add) ? Type{TypeKind::Integer, 64, "i64"}
+                                               : Type{TypeKind::Integer, 32, "i32"});
                   if (!reserved) {
                     edit_error = builder_failure(name, block.label,
                                                  add ? "reserve normalized Add immediate"
@@ -3519,7 +3560,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                     : sitofp_fmul ? Type{TypeKind::F64, 64, "double"}
                                     : uitofp_fmul ? Type{TypeKind::F64, 64, "double"}
                                     : float_fmul ? Type{TypeKind::F32, 32, "float"}
-                                    : sext_add ? Type{TypeKind::Integer, 64, "i64"}
+                                    : (sext_add || (add && bin->type_str.integer_bit_width() == 64)) ? Type{TypeKind::Integer, 64, "i64"}
                                                : Type{TypeKind::Integer, 32, "i32"},
                                lhs->second, rhs_value,
                                bin->result.value_id()->value});
@@ -3641,7 +3682,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               if (const auto* select = std::get_if<LirSelectOp>(&instruction)) {
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
-                    SelectSpec{Type{TypeKind::Integer, 64, "i64"},
+                    SelectSpec{*lower_lir_type(module, select->type_str),
+                               select->false_val.kind() == codegen::lir::LirOperandKind::SsaValue
+                                   ? std::optional<ValueId>{source_values.at(select->false_val.value_id()->value)}
+                                   : std::nullopt,
                                select->result.value_id()->value});
                 if (!appended || appended.value().results.size() != 1 ||
                     !source_values.emplace(select->result.value_id()->value,
