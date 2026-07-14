@@ -624,6 +624,50 @@ void expect_identity_verification_rejected(
   }
 }
 
+void test_direct_branch_successor_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+  auto make = [](std::string name, lir::LirBlockId successor, std::string label = "exit") {
+    lir::LirFunction fn;
+    fn.name = std::move(name);
+    fn.signature_text = "define void @" + fn.name + "() {";
+    lir::LirBlock entry;
+    entry.id = lir::LirBlockId{0};
+    entry.label = "entry";
+    entry.terminator = lir::LirBr{std::move(label), successor};
+    lir::LirBlock exit;
+    exit.id = lir::LirBlockId{1};
+    exit.label = "exit";
+    fn.blocks = {std::move(entry), std::move(exit)};
+    return fn;
+  };
+  lir::LirModule valid;
+  valid.functions.push_back(make("branch_ok", lir::LirBlockId{1}));
+  lir::verify_module(valid);
+  const auto& br = std::get<lir::LirBr>(valid.functions[0].blocks[0].terminator);
+  expect_true(br.successor.value == valid.functions[0].blocks[1].id.value,
+              "direct branch should carry the destination's native block ID");
+
+  lir::LirModule missing;
+  missing.functions.push_back(make("branch_missing", lir::LirBlockId::invalid()));
+  expect_identity_verification_rejected(missing, "verifier should reject missing branch ID");
+  lir::LirModule invalid;
+  invalid.functions.push_back(make("branch_invalid", lir::LirBlockId{9}));
+  expect_identity_verification_rejected(invalid, "verifier should reject invalid branch ID");
+  lir::LirModule cross_function;
+  cross_function.functions.push_back(make("branch_left", lir::LirBlockId{2}));
+  auto foreign = make("branch_right", lir::LirBlockId::invalid());
+  foreign.blocks[0].id = lir::LirBlockId{2};
+  foreign.blocks[0].label = "foreign";
+  foreign.blocks[0].terminator = lir::LirUnreachable{};
+  cross_function.functions.push_back(std::move(foreign));
+  expect_identity_verification_rejected(cross_function,
+                                        "verifier should reject cross-function branch ID");
+  lir::LirModule mismatch;
+  mismatch.functions.push_back(make("branch_mismatch", lir::LirBlockId{1}, "misleading"));
+  expect_identity_verification_rejected(mismatch,
+                                        "verifier should reject ID/display destination mismatch");
+}
+
 void test_structured_operand_identity_foundation() {
   namespace lir = c4c::codegen::lir;
 
@@ -6174,6 +6218,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_structured_operand_identity_foundation();
+  test_direct_branch_successor_identity_contract();
   test_global_store_identity_contract();
   test_global_load_identity_contract();
   test_return_identity_contract();

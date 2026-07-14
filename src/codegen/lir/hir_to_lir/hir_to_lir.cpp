@@ -1239,6 +1239,11 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
   c4c::codegen::FnCtx ctx;
   ctx.fn = &fn;
   ctx.lir_function = &lir_function;
+  uint32_t next_dynamic_block_id = 0;
+  for (const auto& block : fn.blocks) {
+    next_dynamic_block_id = std::max(next_dynamic_block_id, block.id.value + 1);
+  }
+  lir_function.next_block_id = next_dynamic_block_id;
 
   // Set up fn_ptr_sig metadata for parameters and globals.
   for (size_t i = 0; i < fn.params.size(); ++i) {
@@ -1288,7 +1293,7 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
 
   // Create entry block.
   LirBlock entry_blk;
-  entry_blk.id = LirBlockId{0};
+  entry_blk.id = LirBlockId{fn.entry.value};
   entry_blk.label = "entry";
   ctx.lir_blocks.push_back(std::move(entry_blk));
   ctx.current_block_idx = 0;
@@ -1313,10 +1318,11 @@ std::string block_lbl(c4c::hir::BlockId id) {
   return "block_" + std::to_string(id.value);
 }
 
-void emit_lbl(c4c::codegen::FnCtx& ctx, const std::string& lbl) {
+void emit_lbl(c4c::codegen::FnCtx& ctx,
+              const c4c::codegen::LirDirectBranchTarget& target) {
   LirBlock blk;
-  blk.id = LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
-  blk.label = lbl;
+  blk.id = target.id;
+  blk.label = target.label;
   ctx.lir_blocks.push_back(std::move(blk));
   ctx.current_block_idx = ctx.lir_blocks.size() - 1;
   ctx.last_term = false;
@@ -1637,7 +1643,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
         const auto* blk = block_order[bi];
         ctx.current_block_id = blk->id.value;
         if (bi > 0) {
-          emit_lbl(ctx, block_lbl(blk->id));
+          emit_lbl(ctx, {block_lbl(blk->id), LirBlockId{blk->id.value}});
         }
         for (const auto& stmt : blk->stmts) {
           emitter.emit_stmt(ctx, stmt);

@@ -22,6 +22,11 @@ struct BlockMeta {
   std::optional<std::string> continue_label;
 };
 
+struct LirDirectBranchTarget {
+  std::string label;
+  lir::LirBlockId id = lir::LirBlockId::invalid();
+};
+
 struct FnCtx {
   const c4c::hir::Function* fn = nullptr;
   // Non-owning pointer to the local function shell that owns this emission.
@@ -46,8 +51,8 @@ struct FnCtx {
   std::vector<lir::LirInst> alloca_insts;
   // legacy per-block metadata (kept for compatibility; mostly unused now)
   std::unordered_map<uint32_t, BlockMeta> block_meta;
-  // body_block -> continue branch target label
-  std::unordered_map<uint32_t, std::string> continue_redirect;
+  // body_block -> structural direct branch target. label is display-only.
+  std::unordered_map<uint32_t, LirDirectBranchTarget> continue_redirect;
   // user label name → LLVM label
   std::unordered_map<std::string, std::string> user_labels;
   // local_id.value / param_index / global_id.value → fn-ptr signature metadata.

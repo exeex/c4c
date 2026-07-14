@@ -1775,7 +1775,26 @@ void verify_function_value_ownership(const LirFunction& function) {
   }
 }
 
-void verify_terminator(const LirTerminator& terminator) {
+void verify_terminator(const LirFunction& function, const LirTerminator& terminator) {
+  if (const auto* br = std::get_if<LirBr>(&terminator)) {
+    if (!br->successor.valid()) {
+      fail_verify("LirBr.successor", "must carry a valid current-function LirBlockId");
+    }
+    const auto destination = std::find_if(
+        function.blocks.begin(), function.blocks.end(), [&](const LirBlock& block) {
+          return block.id == br->successor;
+        });
+    if (destination == function.blocks.end() ||
+        std::count_if(function.blocks.begin(), function.blocks.end(),
+                      [&](const LirBlock& block) { return block.id == br->successor; }) != 1) {
+      fail_verify("LirBr.successor", "must identify exactly one current-function block");
+    }
+    if (br->target_label != destination->label) {
+      fail_verify("LirBr.target_label",
+                  "display label must match the successor-selected destination");
+    }
+    return;
+  }
   if (const auto* cbr = std::get_if<LirCondBr>(&terminator)) {
     const LirOperand cond(cbr->cond_name);
     require_operand_kind(cond, "LirCondBr.cond_name",
@@ -2504,7 +2523,7 @@ void verify_module(const LirModule& mod) {
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
       for (const auto& inst : block.insts) verify_inst(mod, inst);
-      verify_terminator(block.terminator);
+      verify_terminator(function, block.terminator);
     }
   }
 }

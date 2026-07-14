@@ -591,15 +591,15 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   const std::string lv = emit_rval_id(ctx, b.lhs, lts);
   const std::string lc = to_bool(ctx, lv, lts);
 
-  const std::string rhs_lbl = fresh_lbl(ctx, "logic.rhs.");
-  const std::string skip_lbl = fresh_lbl(ctx, "logic.skip.");
-  const std::string rhs_end_lbl = fresh_lbl(ctx, "logic.rhs.end.");
-  const std::string end_lbl = fresh_lbl(ctx, "logic.end.");
+  const auto rhs_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.rhs."));
+  const auto skip_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.skip."));
+  const auto rhs_end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.rhs.end."));
+  const auto end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.end."));
 
   if (b.op == BinaryOp::LAnd) {
-    emit_condbr_and_open_lbl(ctx, lc, rhs_lbl, skip_lbl, rhs_lbl);
+    emit_condbr_and_open_lbl(ctx, lc, rhs_target.label, skip_target.label, rhs_target);
   } else {
-    emit_condbr_and_open_lbl(ctx, lc, skip_lbl, rhs_lbl, rhs_lbl);
+    emit_condbr_and_open_lbl(ctx, lc, skip_target.label, rhs_target.label, rhs_target);
   }
   TypeSpec rts{};
   const std::string rv = emit_rval_id(ctx, b.rhs, rts);
@@ -617,8 +617,8 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
     rhs_val = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCastOp{rhs_val, lir::LirCastKind::ZExt, "i1", rc, res_ty});
   }
-  emit_fallthrough_lbl(ctx, rhs_end_lbl);
-  emit_br_and_open_lbl(ctx, end_lbl, skip_lbl);
+  emit_fallthrough_lbl(ctx, rhs_end_target);
+  emit_br_and_open_lbl(ctx, end_target, skip_target);
   std::string skip_val;
   if (res_ty == "i1") {
     skip_val = (b.op == BinaryOp::LAnd) ? "false" : "true";
@@ -627,10 +627,11 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   } else {
     skip_val = (b.op == BinaryOp::LAnd) ? "0" : "1";
   }
-  emit_fallthrough_lbl(ctx, end_lbl);
+  emit_fallthrough_lbl(ctx, end_target);
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(
-      ctx, lir::LirPhiOp{tmp, res_ty, {{rhs_val, rhs_end_lbl}, {skip_val, skip_lbl}}});
+      ctx, lir::LirPhiOp{tmp, res_ty,
+                          {{rhs_val, rhs_end_target.label}, {skip_val, skip_target.label}}});
   return tmp;
 }
 

@@ -513,10 +513,10 @@ bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts) {
          llvm_cc::amd64_fixed_aggregate_passed_byval(ts, mod);
 }
 
-void open_lbl(FnCtx& ctx, const std::string& lbl) {
+void open_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target) {
   lir::LirBlock blk;
-  blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
-  blk.label = lbl;
+  blk.id = target.id;
+  blk.label = target.label;
   ctx.lir_blocks.push_back(std::move(blk));
   ctx.current_block_idx = ctx.lir_blocks.size() - 1;
   ctx.last_term = false;
@@ -525,22 +525,22 @@ void open_lbl(FnCtx& ctx, const std::string& lbl) {
 void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
                               const std::string& true_label,
                               const std::string& false_label,
-                              const std::string& open_label) {
+                              const c4c::codegen::LirDirectBranchTarget& open_target) {
   (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
-  open_lbl(ctx, open_label);
+  open_lbl(ctx, open_target);
 }
 
 void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
                                       const std::string& true_label,
                                       const std::string& false_label,
-                                      const std::string& sibling_label) {
-  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, sibling_label);
+                                      const c4c::codegen::LirDirectBranchTarget& sibling_target) {
+  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, sibling_target);
 }
 
 void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
                                      const std::string& true_label,
-                                     const std::string& false_label) {
-  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, false_label);
+                                     const c4c::codegen::LirDirectBranchTarget& false_target) {
+  emit_condbr_and_open_lbl(ctx, cond, true_label, false_target.label, false_target);
 }
 
 bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator) {
@@ -1349,10 +1349,13 @@ const GlobalVar* StmtEmitter::select_global_object(const DeclRef& ref) const {
   return select_global_object(ref.name);
 }
 
-void StmtEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl) { open_lbl(ctx, lbl); }
+void StmtEmitter::emit_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target) {
+  open_lbl(ctx, target);
+}
 
-void StmtEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label) {
-  (void)set_terminator_if_open(ctx, lir::LirBr{target_label});
+void StmtEmitter::emit_term_br(
+    FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target) {
+  (void)set_terminator_if_open(ctx, lir::LirBr{target.label, target.id});
 }
 
 void StmtEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
@@ -1380,14 +1383,25 @@ void StmtEmitter::emit_term_unreachable(FnCtx& ctx) {
   }
 }
 
-void StmtEmitter::emit_br_and_open_lbl(FnCtx& ctx, const std::string& branch_label,
-                                       const std::string& open_label) {
-  emit_term_br(ctx, branch_label);
-  emit_lbl(ctx, open_label);
+void StmtEmitter::emit_br_and_open_lbl(
+    FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& branch_target,
+    const c4c::codegen::LirDirectBranchTarget& open_target) {
+  emit_term_br(ctx, branch_target);
+  emit_lbl(ctx, open_target);
 }
 
-void StmtEmitter::emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl) {
-  emit_br_and_open_lbl(ctx, lbl, lbl);
+void StmtEmitter::emit_fallthrough_lbl(
+    FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target) {
+  emit_br_and_open_lbl(ctx, target, target);
+}
+
+c4c::codegen::LirDirectBranchTarget StmtEmitter::fresh_direct_target(
+    FnCtx& ctx, std::string label) {
+  return {std::move(label), ctx.lir_function->alloc_block()};
+}
+
+c4c::codegen::LirDirectBranchTarget StmtEmitter::scheduled_target(BlockId id) const {
+  return {block_lbl(id), lir::LirBlockId{id.value}};
 }
 
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx) { return "%t" + std::to_string(ctx.tmp_idx++); }

@@ -210,26 +210,26 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   const std::string cond_v = emit_rval_id(ctx, t.cond, cond_ts);
   const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
 
-  const std::string then_lbl = fresh_lbl(ctx, "tern.then.");
-  const std::string then_end_lbl = fresh_lbl(ctx, "tern.then.end.");
-  const std::string else_lbl = fresh_lbl(ctx, "tern.else.");
-  const std::string else_end_lbl = fresh_lbl(ctx, "tern.else.end.");
-  const std::string end_lbl = fresh_lbl(ctx, "tern.end.");
+  const auto then_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.then."));
+  const auto then_end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.then.end."));
+  const auto else_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.else."));
+  const auto else_end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.else.end."));
+  const auto end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.end."));
   TypeSpec res_spec = resolve_expr_type(ctx, e);
   if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
   const std::string res_ty = llvm_ty(res_spec);
 
-  emit_condbr_and_open_lbl(ctx, cond_i1, then_lbl, else_lbl, then_lbl);
+  emit_condbr_and_open_lbl(ctx, cond_i1, then_target.label, else_target.label, then_target);
   TypeSpec then_ts{};
   std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
   then_v = coerce(ctx, then_v, then_ts, res_spec);
-  emit_fallthrough_lbl(ctx, then_end_lbl);
-  emit_br_and_open_lbl(ctx, end_lbl, else_lbl);
+  emit_fallthrough_lbl(ctx, then_end_target);
+  emit_br_and_open_lbl(ctx, end_target, else_target);
   TypeSpec else_ts{};
   std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
   else_v = coerce(ctx, else_v, else_ts, res_spec);
-  emit_fallthrough_lbl(ctx, else_end_lbl);
-  emit_fallthrough_lbl(ctx, end_lbl);
+  emit_fallthrough_lbl(ctx, else_end_target);
+  emit_fallthrough_lbl(ctx, end_target);
   if (res_ty == "void") return "";
   auto void_to_zero = [&](const std::string& v) -> std::string {
     if (!v.empty()) return v;
@@ -239,7 +239,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   };
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirPhiOp{
-                       tmp, res_ty, {{void_to_zero(then_v), then_end_lbl}, {void_to_zero(else_v), else_end_lbl}}});
+                       tmp, res_ty, {{void_to_zero(then_v), then_end_target.label}, {void_to_zero(else_v), else_end_target.label}}});
   return tmp;
 }
 

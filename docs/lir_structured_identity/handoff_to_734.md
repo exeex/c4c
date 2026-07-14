@@ -81,6 +81,29 @@ separate existing facts; 741 neither replaced nor claimed them.
 
 ## Resume point
 
+## Direct-branch receiver return point (idea 747)
+
+`LirBr.successor` now carries the sole semantic destination as a
+current-function `LirBlockId`. `target_label` is retained only as the display
+shadow of the block selected by that ID. Direct-target objects are allocated
+when generated control-flow targets are scheduled, threaded through the direct
+branch helpers, and used again when the destination block opens; scheduled HIR
+blocks use their exact structural IDs. No producer, verifier, or receiver
+looks up, parses, or reconstructs a successor from label text.
+
+`verify_module` rejects a missing or invalid successor, an ID not owned by the
+current function (including an ID found only in another function), duplicate
+same-function ownership, and a display label that disagrees with the
+successor-selected block. `frontend_lir_call_type_ref` exercises a native
+valid `LirBr` plus those malformed neighbours. Focused proof:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`
+
+Idea 734 resumes at its recorded Step 6.3 direct-branch receiver packet: map
+this carried `LirBlockId` directly to the typed Raw-BIR jump destination and
+verify same-function ownership/rollback. It must not recover an edge from
+`target_label`; conditional, switch, indirect, and phi work remain separate.
+
 After lifecycle closure of idea 741, idea 734 can reactivate at its blocked
 function-body Step 4 boundary. The smallest receiver sequence is generic
 source-value/global/immediate mapping, then the exact store/load/GEP subrows,

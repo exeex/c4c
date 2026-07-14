@@ -57,6 +57,10 @@ struct LirBlockId {
   [[nodiscard]] static constexpr LirBlockId invalid() { return LirBlockId{kInvalid}; }
 };
 
+[[nodiscard]] constexpr bool operator==(LirBlockId lhs, LirBlockId rhs) {
+  return lhs.value == rhs.value;
+}
+
 struct LirStackSlotId {
   uint32_t value = 0;
   static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
@@ -531,6 +535,8 @@ using LirInst = std::variant<
 
 struct LirBr {
   std::string target_label;  // e.g. "block_3"
+  // Semantic CFG authority; the label remains a display shadow only.
+  LirBlockId successor = LirBlockId::invalid();
 };
 
 struct LirCondBr {

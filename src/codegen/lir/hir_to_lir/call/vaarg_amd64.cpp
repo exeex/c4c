@@ -109,20 +109,21 @@ std::string StmtEmitter::emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
     regs_ok = fp_ok;
   }
 
-  const std::string reg_lbl = fresh_lbl(ctx, "vaarg.amd64.reg.");
-  const std::string stack_lbl = fresh_lbl(ctx, "vaarg.amd64.stack.");
-  const std::string join_lbl = fresh_lbl(ctx, "vaarg.amd64.join.");
+  const auto reg_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.amd64.reg."));
+  const auto stack_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.amd64.stack."));
+  const auto join_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.amd64.join."));
 
-  emit_condbr_and_open_lbl(ctx, regs_ok, reg_lbl, stack_lbl, reg_lbl);
+  emit_condbr_and_open_lbl(ctx, regs_ok, reg_target.label, stack_target.label, reg_target);
   const std::string reg_value =
       emit_amd64_va_arg_from_registers(ctx, res_ts, res_ty, layout, access, gp_offset, fp_offset);
-  emit_br_and_open_lbl(ctx, join_lbl, stack_lbl);
+  emit_br_and_open_lbl(ctx, join_target, stack_target);
   const std::string stack_value =
       emit_amd64_va_arg_from_overflow(ctx, res_ts, res_ty, access, layout.size_bytes);
-  emit_br_and_open_lbl(ctx, join_lbl, join_lbl);
+  emit_br_and_open_lbl(ctx, join_target, join_target);
 
   const std::string phi = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirPhiOp{phi, res_ty, {{reg_value, reg_lbl}, {stack_value, stack_lbl}}});
+  emit_lir_op(ctx, lir::LirPhiOp{phi, res_ty,
+                                 {{reg_value, reg_target.label}, {stack_value, stack_target.label}}});
   return phi;
 }
 

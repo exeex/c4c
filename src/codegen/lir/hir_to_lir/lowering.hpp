@@ -148,7 +148,7 @@ FnCtx init_fn_ctx(const Module& mod, const Function& fn,
 std::string block_lbl(BlockId id);
 
 /// Create a new LIR block with the given label and make it current in ctx.
-void emit_lbl(FnCtx& ctx, const std::string& lbl);
+void emit_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
 
 // ── Constant initializer lowering ──────────────────────────────────────────
 
@@ -256,18 +256,18 @@ bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts);
 
 bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator);
 
-void open_lbl(FnCtx& ctx, const std::string& lbl);
+void open_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
 void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
                               const std::string& true_label,
                               const std::string& false_label,
-                              const std::string& open_label);
+                              const c4c::codegen::LirDirectBranchTarget& open_target);
 void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
                                       const std::string& true_label,
                                       const std::string& false_label,
-                                      const std::string& sibling_label);
+                                      const c4c::codegen::LirDirectBranchTarget& sibling_target);
 void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
                                      const std::string& true_label,
-                                     const std::string& false_label);
+                                     const c4c::codegen::LirDirectBranchTarget& false_target);
 
 TypeSpec sig_return_type(const FnPtrSig& sig);
 TypeSpec sig_param_type(const FnPtrSig& sig, size_t i);
@@ -361,7 +361,7 @@ class StmtEmitter {
   mutable std::unordered_map<uint32_t, FnPtrSig> inferred_direct_fn_sigs_;
 
   /// Create a new LIR block with the given label and make it current in ctx.
-  void emit_lbl(FnCtx& ctx, const std::string& lbl);
+  void emit_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
 
   /// Map a HIR BlockId to its LLVM IR label string.
   static std::string block_lbl(BlockId id);
@@ -370,7 +370,7 @@ class StmtEmitter {
 
   // Push a typed LIR instruction (non-terminator) into the current block.
   void emit_lir_op(FnCtx& ctx, lir::LirInst op);
-  void emit_term_br(FnCtx& ctx, const std::string& target_label);
+  void emit_term_br(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
   void emit_term_condbr(FnCtx& ctx, const std::string& cond,
                         const std::string& true_label, const std::string& false_label);
   void emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
@@ -379,9 +379,14 @@ class StmtEmitter {
                         const std::string& sel_type, const std::string& default_label,
                         std::vector<std::pair<long long, std::string>> cases);
   void emit_term_unreachable(FnCtx& ctx);
-  void emit_br_and_open_lbl(FnCtx& ctx, const std::string& branch_label,
-                            const std::string& open_label);
-  void emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl);
+  void emit_br_and_open_lbl(FnCtx& ctx,
+                            const c4c::codegen::LirDirectBranchTarget& branch_target,
+                            const c4c::codegen::LirDirectBranchTarget& open_target);
+  void emit_fallthrough_lbl(FnCtx& ctx,
+                            const c4c::codegen::LirDirectBranchTarget& target);
+  c4c::codegen::LirDirectBranchTarget fresh_direct_target(FnCtx& ctx,
+                                                            std::string label);
+  c4c::codegen::LirDirectBranchTarget scheduled_target(BlockId id) const;
   std::string fresh_tmp(FnCtx& ctx);
   lir::LirOperand fresh_value(FnCtx& ctx);
   void record_extern_call_decl(const std::string& name, const std::string& ret_ty,
