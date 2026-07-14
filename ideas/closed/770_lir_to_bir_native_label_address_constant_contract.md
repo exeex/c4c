@@ -1,6 +1,6 @@
 # LIR-to-BIR Native Label-Address Constant Contract
 
-Status: Open (reopened in-scope repair blocker for
+Status: Closed (reopened in-scope repair blocker for
 `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
 Step 5)
 Type: focused LIR-to-BIR/native label-address constant representation and lowering contract
@@ -150,3 +150,24 @@ constant -> Raw-BIR source value -> `IndirectJumpTerm` consumption.
 - Return: after fresh build and focused positive/malformed store-consumer
   proof accept this repair, return to 768 Step 5 and retry its producer/test
   packet unchanged.
+
+## Closure Record — 2026-07-14 Reopened Store-Consumer Repair Accepted
+
+Disposition: capability complete for the bounded native label-address constant
+contract, including its legal ordinary pointer-store consumer.
+
+- `e8a0f70b4` establishes the function-owned non-instruction direct constant,
+  direct Raw-BIR source-value passage, and `IndirectJumpTerm` consumption.
+- `6803f8c25` records the accepted initial focused positive/malformed proof.
+- `0a2778f0d` adds the structured `LirStoreOp.val` direct-constant admission,
+  printing, function-owned definition authority, and focused positive/malformed
+  ordinary pointer-store coverage. It preserves the accepted indirect-jump
+  route and does not perform producer recovery.
+- Supervisor-accepted evidence is a fresh `cmake --build --preset default`
+  followed by `ctest --test-dir build -j --output-on-failure -R
+  '^backend_lir_to_bir_interface$'`, passing with matching retained root logs.
+
+No producer recovery, frontend carrier publication, automatic-table decay,
+external integration, or reopening of 767/769 is claimed. Resume 768 exactly
+at Step 5 — Repair and prove native direct `LabelAddrExpr` rvalue production;
+its Steps 1--4 remain accepted.

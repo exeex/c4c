@@ -222,3 +222,17 @@ consumption decomposition, not a monolithic integration or carrier route.
   current-function, target-label, and produced-value authority; then run the
   selected frontend-LIR positive/malformed proof. Do not alter carrier
   behavior, automatic-table `DeclRef` decay, or accepted 767/769 contracts.
+
+## Resumption Update — 2026-07-14 Store-Consumer Repair Accepted
+
+- 770's reopened in-scope repair is complete: `0a2778f0d` makes the structured
+  native direct constant legal as the ordinary pointer-store value operand,
+  with focused positive/malformed coverage. Together with `e8a0f70b4` and
+  `6803f8c25`, it is accepted after a fresh build and the passing focused
+  `^backend_lir_to_bir_interface$` proof retained in the matching root logs.
+- Exact active return: Steps 1--4 stay accepted. Resume **Step 5 — Repair and
+  prove native direct `LabelAddrExpr` rvalue production**. Use the completed
+  native constant without a synthetic bridge, then run the selected focused
+  frontend-LIR positive/malformed proof. Do not claim producer recovery,
+  carrier publication, external integration, automatic-table decay, or any
+  change to 767/769 before that packet earns its own acceptance.

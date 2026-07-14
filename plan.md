@@ -1,119 +1,111 @@
-# LIR-to-BIR Native Label-Address Constant Store-Consumer Repair Runbook
+# Computed-Goto Label-Address Table Initialization Authority Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/770_lir_to_bir_native_label_address_constant_contract.md
-Reopened from: closed 770 after 768 Step 5 found the unproven ordinary
-`LirStoreOp` direct-constant consumer boundary.
+Source Idea: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
+Resumed from: 770 after accepted native direct-constant contract and ordinary
+pointer-store consumer repair; continue at preserved Step 5
 
 ## Purpose
 
-Repair the bounded native direct label-address constant contract so the direct
-pointer value can legally feed its ordinary pointer-store initializer consumer
-without becoming an instruction-shaped SSA bridge.
+Replace the repeatedly moving carrier route with focused frontend-LIR producer
+probes for label-address table initialization, representation, and rvalue
+consumption seams.
 
 ## Goal
 
-Preserve the accepted function-owned `LirDirectLabelAddressConstant` and make
-its `LirOperandKind::DirectConstant` use legal, printable, and verifiable as
-`LirStoreOp.val` for a pointer store.
+Identify the narrowest generic upstream producer/result authority seam before
+any implementation packet, without consuming 764's downstream carrier work.
 
 ## Core Rule
 
-`blockaddress` remains a direct pointer constant, not an instruction. Extend
-only the established direct-constant consumer contract; do not manufacture an
-SSA identity with `select`, `gep`, `bitcast`, text recovery, or a dummy result.
+The `IndirBrStmt` carrier already copies `emit_rval_operand(target).value_id()`
+exactly. Focused probes must find authority before that consumer; external
+cases remain integration evidence, never implementation selectors.
 
 ## Read First
 
-- `ideas/open/770_lir_to_bir_native_label_address_constant_contract.md`
 - `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
-- `src/codegen/lir/lir_printer.cpp` `LirStoreOp` rendering
-- `src/codegen/lir/verify.cpp` function value-use and store validation
-- accepted 770 commits `e8a0f70b4` and `6803f8c25`
+- `ideas/closed/770_lir_to_bir_native_label_address_constant_contract.md`
+- direct frontend-LIR producers for label-address table initialization,
+  representation, and rvalue consumption
 
 ## Non-Goals
 
-- no 768 `LabelAddrExpr` producer changes, frontend carrier publication, or
-  764/external integration work
-- no automatic-table `DeclRef` decay, 767/769 reopening, or changes to their
-  accepted contracts
-- no scalar/broad backend, Raw-BIR/importer, MIR, codegen, or 734 expansion
-  beyond the already accepted direct-constant passage
-- no synthetic bridge, rendered-text authority, testcase branching, verifier
-  relaxation, or expectation downgrade
+- no `IndirBrStmt`/`LirIndirectBrOp.addr_value` publication or verifier change
+- no Raw-BIR/importer, 734, backend/case ownership absent new evidence, or
+  rework of accepted 765/766/767
+- no text recovery, testcase-specific logic, synthetic bridge, or automatic
+  local-table `DeclRef` decay implementation
 
 ## Execution Rules
 
-1. Preserve the accepted direct constant -> Raw-BIR -> `IndirectJumpTerm`
-   route and proof; the repair adds only the legal ordinary store consumer.
-2. The store printer must resolve the same structured function-owned constant,
-   not recover or parse printed text.
-3. Verification must accept only the matching valid direct constant in the
-   enclosing function and reject invalid, foreign, missing, duplicate, wrong
-   type, or mismatched value authority/use.
-4. Use focused positive and nearby malformed coverage; build freshly before
-   the selected proof. Stop for a separate blocker before any unowned route.
+1. Use the preserved five-case command for baseline/integration evidence only.
+2. Use direct frontend-LIR production probes for ownership until evidence moves
+   the fault downstream; do not make reduced external-test copies.
+3. Record a positive and nearby malformed contract for every separated form.
+4. Do not choose an implementation seam until producer maps show a shared
+   generic owner or a precise separately scoped blocker.
 
 ## Ordered Steps
 
-### Step 1 - Preserve the accepted first contract and isolate the store gap
+### Step 1 - Establish the blocked label-address table failure-family baseline
 
-Goal: confirm that the existing direct constant record/indirect-jump route is
-the reusable authority and that only ordinary store printing/value-use
-admission is missing.
+Completed: `b04832c62` accepted the 1/5 versus 4/5 baseline and preserved the
+carrier evidence.
 
-Actions:
+### Step 2 - Enumerate separated label-address table producer forms
 
-- inspect `e8a0f70b4`/`6803f8c25`, `LirStoreOp` rendering, and function
-  value-use verification
-- name the exact legal store value representation and malformed boundary
-- do not alter the first accepted consumer route
+Completed: `05386c45c` records the producer map.
 
-Completion check:
+### Step 3 - Extract direct frontend-LIR producer probes
 
-- the repair is bounded to direct-constant store consumption and preserves the
-  original native representation/indirect-jump contract.
+Completed: the static structured-initializer contract is accepted in 769;
+direct automatic-rvalue and table-decay probe work is retained in
+`707062aeb` and `85ac8d42c`. The accepted 767 static-table decay control
+remains untouched.
 
-Completed: lifecycle diagnosis established this boundary; no source, test, or
-proof artifact changed in 768 Step 5.
+### Step 4 - Bind probes and select the narrowest generic producer seam
 
-### Step 2 - Implement direct-constant ordinary pointer-store consumption
+Completed: `34df925db` selects direct frontend-LIR `LabelAddrExpr` rvalue
+production as the shared unresolved producer for automatic scalar
+initializer/direct-rvalue consumption and automatic table element
+initialization. Its result must retain valid current-function, target-label,
+and produced-value identity. Automatic local-table `DeclRef` decay remains a
+separate later authority contract, not Step 5 scope.
 
-Goal: make the structured native direct constant legal for `LirStoreOp.val`
-and validation without treating it as an instruction definition.
+### Step 5 - Repair and prove native direct LabelAddrExpr rvalue production
 
-Actions:
-
-- admit `LirOperandKind::DirectConstant` only where the ordinary store value
-  grammar permits this direct pointer constant and render it via the structured
-  direct-constant resolver
-- extend function value-use/owned store checks to recognize the matching valid
-  function-owned direct constant as a definition authority
-- preserve pointer type, enclosing function, target label, and produced
-  `LirValueId` identity; reject malformed ownership, target, value, pointer
-  type, and mismatched direct use
-- touch no producer or downstream carrier/integration code
-
-Completion check:
-
-- a pointer store prints a legal direct `blockaddress(...)` value and verifier
-  admission is limited to the matching structured direct constant.
-
-### Step 3 - Prove the repaired contract and return to 768
-
-Goal: prove the ordinary store consumer route while retaining the accepted
-indirect-jump route, then restore the interrupted producer packet.
+Goal: implement only direct frontend-LIR `LabelAddrExpr` rvalue production as
+a typed structured result and activate its focused proof.
 
 Actions:
 
-- add focused positive store-consumer coverage plus nearby malformed cases for
-  invalid/missing/foreign owner, target, or value; non-pointer/wrong type; and
-  mismatched direct use
-- run a fresh build and selected focused proof for the native contract
-- record accepted proof and return 768 exactly to Step 5; do not claim 768
-  producer recovery or external integration
+- make only selected producer/result and direct frontend-LIR test changes,
+  yielding valid current-function, target-label, and produced-value identity
+- use 770's function-owned native direct constant, including the accepted
+  ordinary pointer-store consumer, without `select`, `gep`, `bitcast`, or any
+  other synthetic materialization used only to manufacture an SSA identity
+- add focused frontend-LIR positive coverage and nearby malformed verifier
+  coverage for raw, invalid/foreign function or target, non-pointer, and
+  missing/invalid/foreign value identity
+- run a fresh build and the selected focused proof; retain external cases and
+  automatic local-table `DeclRef` decay as later integration/dependency probes
+- report accepted capability, proof, and exact return to 764 Step 1
 
 Completion check:
 
-- focused proof passes, malformed forms reject at the owned boundary, and 768
-  can retry Step 5 without redoing Steps 1--4.
+- the selected producer capability and focused proof pass without carrier or
+  verifier mutation, text recovery, testcase branching, reopening 767/769, or
+  automatic-table decay implementation, and without `select`, `gep`,
+  `bitcast`, or another synthetic label-address value bridge.
+
+### Step 6 - Hand off the resolved producer capability to 764
+
+Goal: preserve the accepted upstream authority seam so 764 can resume only its
+downstream carrier/integration responsibility.
+
+Completion check:
+
+- lifecycle handoff names the accepted capability and exact return: 764 reruns
+  all five consumers and publishes carrier authority only if necessary, then
+  returns to 734 for plan-owner disposition.
