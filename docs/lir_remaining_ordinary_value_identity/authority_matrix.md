@@ -23,9 +23,10 @@ Step-6 ordinary scalar integer arithmetic branch in
 `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar integer cast in
 `emit_cast_rval_operand` and the Step-7.2 ordinary scalar integer compare branch
 in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
-`emit_builtin_ffs_call`. Other active modern result constructions identified
-below still use `fresh_tmp`, an equivalent direct `%t` increment, or a raw
-string returned by `emit_rval_id`.
+`emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
+`emit_post_builtin_call_operand`. Other active modern result constructions
+identified below still use `fresh_tmp`, an equivalent direct `%t` increment,
+or a raw string returned by `emit_rval_id`.
 
 Verifier states used below:
 
@@ -84,7 +85,7 @@ grouped only where they share one producer and disposition.
 | `LirVaCopyOp`: `dst_ptr,src_ptr` | Active, PI `emit_post_builtin_call` | Text-only/monostate `LirOperand`; no result | Verifier pointer kinds only | `lir_vacopy_pointer_identity.c`; **separate va-list/object family** |
 | `LirStackSaveOp`: `result` | Active, PF `lower_function` VLA setup | Text-only/monostate `LirOperand`; direct `%t` increment, equivalent to `fresh_tmp` | Result kind only; ownership-ready once populated | `lir_vla_stacksave_identity.c`; **separate stack/local family**, despite generic result shape |
 | `LirStackRestoreOp`: `saved_ptr` | Active, PS `emit_control_flow_stmt(GotoStmt)` | Text-only/monostate `LirOperand` copied from saved display | Pointer kind only | Depends on stack-save identity; `lir_vla_stackrestore_identity.c`; **separate stack/local family** |
-| `LirAbsOp`: `result,arg`; `int_type` | Active, PI `emit_post_builtin_call` | Text-only/monostate operands; result from `fresh_tmp` | Native `LirTypeRef`; kind/type only and ownership-ready | `lir_builtin_abs_value_chain_identity.c`; **generic scalar value** after representative PB seam |
+| `LirAbsOp`: `result,arg`; `int_type` | Active, PI `emit_post_builtin_call_operand` for integer `abs`/`labs`/`llabs` | Step-7.4 uses `fresh_value`, exact integer type, and the common operand/coercion path; unchanged selected-global SSA and integer-immediate arguments retain native authority, while structurally unavailable sources remain honest monostate SSA compatibility | Authoritative integer abs requires a native result, exact integer type, and SSA/immediate argument shape; generic ownership rejects invalid/duplicate results and unknown/cross-function uses | `lir_scalar_abs_result_use_identity.c` closes the current integer builtin route and its later ordinary use; other call families and noninteger/aggregate/vector routes remain unclaimed |
 | `LirIndirectBrOp`: `addr`; `targets` | Active, PS `emit_control_flow_stmt(IndirBrStmt)` | Address text-only from `emit_rval_id`; targets raw `vector<string>` | Address kind plus nonempty target vector; no target identity | Address could use generic value, but targets require `LirBlockId`; `lir_indirectbr_identity.c`; **separate CFG family** |
 | `LirExtractValueOp`: `result,agg`; `agg_type,index` | Active in PX unary/cast paths, PB `emit_complex_binary_arith` / `emit_rval_payload(BinaryExpr)`, PI complex/overflow builtins, and PO `coerce` | Value operands text-only; result `fresh_tmp` | Native `LirTypeRef,int`; kind/type only and ownership-ready | Aggregate type/index validation is additional; `lir_extractvalue_chain_identity.c`; **generic result/use plus distinct aggregate semantics** |
 | `LirInsertValueOp`: `result,agg,elem`; `agg_type,elem_type,index` | Active in PX unary paths, PB `emit_complex_binary_arith` / `emit_rval_payload(BinaryExpr)`, PI complex builtins, and PO `coerce` | Value operands text-only; result `fresh_tmp` | Native types/index; kind/type only and ownership-ready | `lir_insertvalue_chain_identity.c`; **generic result/use plus distinct aggregate semantics** |
@@ -260,11 +261,11 @@ reject through existing reachable checks, while misleading operand displays
 with unchanged IDs pass.
 
 This proves the common allocator/operand mechanism is reusable by neighboring
-ordinary scalar result/use rows. Steps 7.1 and 7.2 publish the representative
-explicit scalar integer cast, ordinary scalar integer compare, and current i32
-scalar select; abs remains a later bounded packet. Aggregate/vector rows need
-their own type/index/mask semantics; CFG, parameters, pointer/object,
-inline-asm, call, and BIR families remain distinct or outside this idea.
+ordinary scalar result/use rows. Steps 7.1 through 7.4 publish the
+representative explicit scalar integer cast, ordinary scalar integer compare,
+current i32 scalar select, and current integer abs route. Aggregate/vector rows
+need their own type/index/mask semantics; CFG, parameters, pointer/object,
+inline-asm, other call families, and BIR remain distinct or outside this idea.
 
 ## Step-7.1 explicit scalar integer cast contract
 
@@ -287,9 +288,10 @@ cast-result/use displays with unchanged IDs pass.
 
 This packet does not claim same-width no-op coercions because they emit no
 `LirCastOp`. Float, pointer, bitcast, vector, aggregate, implicit-coercion, and
-other explicit cast shapes remain compatibility rows. Step 7.2 separately owns
-the representative scalar integer compare; select, abs, CFG/parameters, object
-identity, calls, inline assembly, and BIR are unchanged.
+other explicit cast shapes remain compatibility rows. Steps 7.2 through 7.4
+separately own the representative scalar integer compare, current select, and
+integer abs route; CFG/parameters, object identity, other calls, inline
+assembly, and BIR are unchanged.
 
 ## Step-7.2 ordinary scalar integer compare contract
 
@@ -311,9 +313,10 @@ with unchanged IDs pass.
 
 This packet does not reopen the Step-7.1 cast producer claim: the normalization
 cast has no authoritative result. Float, pointer, vector, logical-helper,
-builtin, vaarg, and statement comparison producers remain compatibility. Step
-7.3 separately owns the current scalar select; abs, pointer/object,
-aggregate/vector, CFG/parameters, calls, inline assembly, and BIR are unchanged.
+builtin, vaarg, and statement comparison producers remain compatibility. Steps
+7.3 and 7.4 separately own the current scalar select and integer abs route;
+pointer/object, aggregate/vector, CFG/parameters, other calls, inline assembly,
+and BIR are unchanged.
 
 ## Step-7.3 current scalar select contract
 
@@ -335,9 +338,35 @@ select-result/use displays with unchanged IDs pass.
 
 The wider ffs route still narrows through a compatibility cast and does not
 publish its select result downstream. No internal cttz call, plus-one binary,
-or zero-comparison result authority is inferred. Abs, aggregate/vector,
-pointer/object, CFG/parameters, calls generally, inline assembly, and BIR are
-unchanged.
+or zero-comparison result authority is inferred. Step 7.4 separately owns the
+current integer abs route; aggregate/vector, pointer/object, CFG/parameters,
+other calls, inline assembly, and BIR are unchanged.
+
+## Step-7.4 current integer abs contract
+
+The active `LirAbsOp` producer is the existing integer `abs`/`labs`/`llabs`
+branch in `emit_post_builtin_call_operand`. It now obtains the argument through
+the common `emit_rval_operand` carrier, applies the existing scalar-integer
+`coerce_operand` contract, allocates the abs result through `fresh_value`, and
+stores exact i32 or i64 `LirTypeRef` authority. Argument authority survives
+only when structurally available: the focused selected-global load keeps its
+exact current-function ID and the immediate neighbor keeps its native integer
+payload; monostate SSA remains valid for sources without native identity.
+
+The focused i32 abs result feeds one later ordinary Add without a representation
+change, so the Add lhs carries the exact abs result ID. Generic function
+ownership registers the result, resolves native argument/result uses in the
+current function, and rejects invalid/duplicate results plus unknown or
+cross-function uses. Reachable abs verification requires a native result for
+the integer route, rejects authoritative noninteger or missing type conflicts,
+and confines the argument to SSA/immediate shape. Missing arguments and wrong
+global-authority alternatives reject, while misleading argument/result/use
+displays with unchanged authority pass.
+
+This packet does not broaden call publication: it changes only the existing
+integer abs special branch. Other builtin/direct/indirect calls, noninteger
+operations, aggregate/vector, pointer/object, CFG/parameters, inline assembly,
+and BIR remain unchanged.
 
 ## Mechanical coverage check
 
@@ -387,6 +416,10 @@ Current-source spot checks used for this baseline:
   through `fresh_value`, carries exact scalar type plus native zero authority,
   and returns the exact result ID to a later ordinary use while internal inputs
   remain compatibility;
+- representative scalar abs: `call/builtin.cpp` routes the existing integer
+  abs argument through the common operand/coercion seam, allocates its exact
+  i32/i64 result through `fresh_value`, and preserves the result ID into a later
+  ordinary use while unavailable source authority remains compatibility;
 - 741 neighbors: `expr/coordinator.cpp:474,497` populate selected-global
   `LirGepOp`/`LirLoadOp`; Steps 3 and 6 add the direct integer-call and ordinary
   scalar integer binary result sites;

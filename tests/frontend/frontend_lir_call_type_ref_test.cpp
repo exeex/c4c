@@ -2583,6 +2583,175 @@ int lir_scalar_select_result_use_identity(void) {
       "verifier should reject immediate authority on scalar select condition");
 }
 
+void test_scalar_abs_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int abs(int);
+long long llabs(long long);
+int lir_scalar_abs_result_use_source;
+int lir_scalar_abs_result_use_identity(void) {
+  return abs(lir_scalar_abs_result_use_source) + 1;
+}
+int lir_scalar_abs_immediate_authority(void) {
+  return abs(7);
+}
+long long lir_scalar_llabs_immediate_authority(void) {
+  return llabs(7LL);
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_scalar_abs_result_use_identity");
+  lir::LirLoadOp* load = nullptr;
+  lir::LirAbsOp* abs = nullptr;
+  lir::LirBinOp* later_use = nullptr;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirLoadOp>(&inst)) load = candidate;
+      if (auto* candidate = std::get_if<lir::LirAbsOp>(&inst)) abs = candidate;
+      if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) {
+        later_use = candidate;
+      }
+    }
+  }
+  expect_true(load && abs && later_use && load->result.value_id() &&
+                  abs->arg.value_id() &&
+                  *abs->arg.value_id() == *load->result.value_id() &&
+                  abs->result.value_id() && abs->result.value_id()->valid() &&
+                  abs->int_type.kind() == lir::LirTypeKind::Integer &&
+                  abs->int_type.integer_bit_width() == 32 &&
+                  later_use->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  later_use->type_str.kind() == lir::LirTypeKind::Integer &&
+                  later_use->type_str.integer_bit_width() == 32 &&
+                  later_use->lhs.value_id() &&
+                  *later_use->lhs.value_id() == *abs->result.value_id(),
+              "scalar abs should preserve its source and exact result IDs through a later ordinary use");
+
+  lir::LirFunction& immediate_function =
+      require_function(lowered, "lir_scalar_abs_immediate_authority");
+  lir::LirAbsOp* immediate_abs = nullptr;
+  for (auto& block : immediate_function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirAbsOp>(&inst)) {
+        immediate_abs = candidate;
+      }
+    }
+  }
+  expect_true(immediate_abs && immediate_abs->result.value_id() &&
+                  immediate_abs->arg.integer_immediate() &&
+                  immediate_abs->arg.integer_immediate()->value == 7 &&
+                  immediate_abs->int_type.kind() == lir::LirTypeKind::Integer &&
+                  immediate_abs->int_type.integer_bit_width() == 32,
+              "scalar abs should preserve structurally available immediate argument authority");
+
+  lir::LirFunction& immediate_ll_function =
+      require_function(lowered, "lir_scalar_llabs_immediate_authority");
+  lir::LirAbsOp* immediate_llabs = nullptr;
+  for (auto& block : immediate_ll_function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirAbsOp>(&inst)) {
+        immediate_llabs = candidate;
+      }
+    }
+  }
+  expect_true(immediate_llabs && immediate_llabs->result.value_id() &&
+                  immediate_llabs->arg.integer_immediate() &&
+                  immediate_llabs->arg.integer_immediate()->value == 7 &&
+                  immediate_llabs->int_type.kind() == lir::LirTypeKind::Integer &&
+                  immediate_llabs->int_type.integer_bit_width() == 64,
+              "scalar llabs should retain exact i64 and immediate argument authority");
+  lir::verify_module(lowered);
+
+  const auto require_focused_abs = [](lir::LirModule& module)
+      -> std::pair<lir::LirAbsOp&, lir::LirBinOp&> {
+    lir::LirFunction& focused =
+        require_function(module, "lir_scalar_abs_result_use_identity");
+    lir::LirAbsOp* found_abs = nullptr;
+    lir::LirBinOp* found_use = nullptr;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirAbsOp>(&inst)) {
+          expect_true(found_abs == nullptr,
+                      "focused scalar-abs fixture should contain one abs operation");
+          found_abs = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) {
+          expect_true(found_use == nullptr,
+                      "focused scalar-abs fixture should contain one later binary use");
+          found_use = candidate;
+        }
+      }
+    }
+    expect_true(found_abs && found_abs->result.value_id() && found_use,
+                "focused scalar-abs fixture should contain its result/use pair");
+    return {*found_abs, *found_use};
+  };
+
+  lir::LirModule misleading = lowered;
+  auto [misleading_abs, misleading_use] = require_focused_abs(misleading);
+  misleading_abs.arg.str() = "@rendered-not-abs-argument";
+  misleading_abs.result.str() = "7";
+  misleading_use.lhs.str() = "@rendered-not-abs-result";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_result = lowered;
+  require_focused_abs(missing_result).first.result = lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject scalar abs without result authority");
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_abs(invalid_result).first.result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid scalar abs result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_abs, duplicate_use] = require_focused_abs(duplicate_result);
+  duplicate_use.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_abs.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate scalar abs result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_abs(unknown_use).second.lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown scalar abs result use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_abs_owner", lir::LirValueId{99}));
+  require_focused_abs(cross_function_use).second.lhs =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function scalar abs result use");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_abs(missing_type).first.int_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type, "verifier should reject missing scalar abs type authority");
+
+  lir::LirModule conflicting_type = lowered;
+  require_focused_abs(conflicting_type).first.int_type = lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      conflicting_type,
+      "verifier should reject noninteger type on authoritative scalar abs");
+
+  lir::LirModule missing_argument = lowered;
+  require_focused_abs(missing_argument).first.arg = lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing_argument, "verifier should reject missing scalar abs argument");
+
+  lir::LirModule wrong_argument_authority = lowered;
+  require_focused_abs(wrong_argument_authority).first.arg =
+      lir::LirOperand::global("@wrong", c4c::LinkNameId{99});
+  expect_identity_verification_rejected(
+      wrong_argument_authority,
+      "verifier should reject global authority on scalar abs argument");
+}
+
 }  // namespace
 
 int main() {
@@ -2968,6 +3137,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_scalar_compare_result_use_identity_boundary();
   test_scalar_select_result_use_identity_boundary();
+  test_scalar_abs_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

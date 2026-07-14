@@ -517,6 +517,23 @@ void verify_select_op_authority(const LirSelectOp& op) {
                        {LirOperandKind::SsaValue});
 }
 
+void verify_abs_op_authority(const LirAbsOp& op) {
+  const bool scalar_integer_claim =
+      op.int_type.kind() == LirTypeKind::Integer;
+  if (scalar_integer_claim && !op.result.value_id()) {
+    fail_verify("LirAbsOp.result",
+                "scalar integer abs requires native result authority");
+  }
+  if (op.result.value_id() && !scalar_integer_claim) {
+    fail_verify("LirAbsOp.int_type",
+                "authoritative scalar abs requires integer type authority");
+  }
+  if (!scalar_integer_claim) return;
+  require_operand_kind(op.arg, "LirAbsOp.arg",
+                       {LirOperandKind::SsaValue,
+                        LirOperandKind::Immediate});
+}
+
 void verify_optional_count_operand(const LirOperand& operand,
                                    std::string_view field) {
   require_operand_kind(operand, field,
@@ -813,6 +830,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_result_operand(op->result, "LirAbsOp.result");
     verify_value_operand(op->arg, "LirAbsOp.arg");
     require_module_type_ref(mod, op->int_type, "LirAbsOp.int_type");
+    verify_abs_op_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {

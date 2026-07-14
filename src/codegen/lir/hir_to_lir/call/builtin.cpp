@@ -311,16 +311,16 @@ LirOperand StmtEmitter::emit_post_builtin_call_operand(
       (call_target.fn_name == "abs" || call_target.fn_name == "labs" ||
        call_target.fn_name == "llabs")) {
     TypeSpec arg_ts{};
-    std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+    LirOperand arg = emit_rval_operand(ctx, call.args[0], arg_ts);
     const bool is_ll = (call_target.fn_name == "llabs" || call_target.fn_name == "labs");
     const std::string ity = is_ll ? "i64" : "i32";
     TypeSpec target_ts{};
     target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-    arg = coerce(ctx, arg, arg_ts, target_ts);
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirAbsOp{tmp, arg, ity});
+    arg = coerce_operand(ctx, arg, arg_ts, target_ts);
+    const LirOperand result = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirAbsOp{result, arg, LirTypeRef(ity)});
     module_->need_abs = true;
-    return LirOperand::raw(tmp);
+    return result;
   }
 
   if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 && call_target.fn_name == "alloca") {
