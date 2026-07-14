@@ -7,8 +7,9 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 ## Purpose
 
 Continue the bounded target-independent Raw-BIR receiver route without
-repeating accepted work. Receive exactly one producer-published i32 integer
-absolute-value result/use row from native type and value authority.
+repeating accepted work. Receive exactly one producer-published ordinary
+scalar floating binary result/use chain from native opcode, type, and value
+authority.
 
 ## Goal
 
@@ -19,14 +20,15 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-The selected `LirAbsOp` native i32 type, current-function argument/result IDs,
-and later typed use are the sole authority. Presentation is display only.
+The selected ordinary scalar floating `LirBinOp` native opcode/type,
+current-function argument/result IDs, and later typed use are the sole
+authority. Presentation is display only.
 
 ## Read First
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.4)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.5)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -53,6 +55,10 @@ and later typed use are the sole authority. Presentation is display only.
 - Step 7.2: selected i32 `LirAbsOp` receipt, its source-backed result, and its
   exact later i32 Add use (`0c44e810a`). Do not repeat or generalize this Abs
   row.
+- Step 7.3: selected i32 `Cttz`-to-Add-one receipt (`2f7055845`). Do not
+  repeat or generalize this intrinsic-use row.
+- Step 7.4: resolved fixed-void external native-double direct-call result and
+  its later typed FAdd use (`2eee4d6dd`). Do not receive FAdd in that packet.
 
 ## Non-Goals
 
@@ -67,7 +73,7 @@ and later typed use are the sole authority. Presentation is display only.
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected Abs only through its native integer type and
+3. Resolve the selected floating binary only through its native opcode/type and
    current-function source IDs; names and rendering are diagnostics only after
    structured authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
@@ -332,6 +338,45 @@ Completion check:
   fixed-void external-double call result and later typed FAdd use without
   admitting FAdd or broader call forms; the frontend test remains the
   producer-authority regression neighbor.
+
+Accepted in `2eee4d6dd`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional resolved fixed-void native-double direct-call result
+and its later typed FAdd use without receiving FAdd.
+
+### Step 7.5 - Receive the checked ordinary scalar floating binary result
+
+Goal: receive only the authority-matrix Step-7.5 ordinary scalar floating
+double FAdd-to-FMul chain. Do not infer literal values from presentation or
+widen scalar binary receipt.
+
+Primary targets:
+
+- typed Raw-BIR floating binary payload, builder/view, and reachable verifier
+- LIR-to-Raw-BIR binary dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified ordinary, nonpointer, nonvector scalar
+  floating `LirBinOp` double FAdd-to-FMul chain, preserving each native
+  opcode/type and exact result/source-ID edge; the FMul lhs must be the FAdd
+  result ID
+- require valid, unique current-function results; resolved operands; native
+  floating opcode/type coherence; instruction-result linkage; and full-module
+  rollback for missing, invalid, duplicate, cross-owner, unresolved-use,
+  opcode/type-conflict, or malformed-linkage authority
+- prove the positive chain plus neighboring transactional failures. Keep
+  floating literal authority, integer/nonfloating opcode/type mixes, casts,
+  comparisons, complex/vector/pointer/logical-helper/compound/builtin/vaarg/
+  statement producers, and presentation-derived forms fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional ordinary
+  scalar floating chain; the frontend test remains the producer-authority
+  regression neighbor.
 
 ### Source completion gate (not an executor packet)
 
