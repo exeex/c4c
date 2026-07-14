@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active at repaired Step 7.17 builtin-ctz call/narrow/final-use packet)
+Status: Open (active at repaired Step 7.19 builtin-popcount call/narrow/final-use packet)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -159,6 +159,31 @@ families are not absorbed by that packet: each requires its own separately
 scoped successor/blocker before any receiver work. Return point after Step
 7.18 acceptance is the next matrix receiver-ready row, with the same source
 completion gate reapplied.
+
+## Runbook Repair Decision: Step 7.19
+
+Close rejected. Accepted Step 7.18 builtin-clz receipt (`93a075d34`) has a
+fresh build, focused 2/2 proof, non-decreasing matching regression guard, and
+fresh broader `^backend_` 4/4 proof, but it does not satisfy this source's
+coverage-matrix completion gate. Step 7.17 builtin-ctz remains accepted
+historical progress. The next receiver-ready typed row is PI's builtin-popcount
+i32/i64 `Ctpop` call, i64 narrowing, and final-use chain under
+authority-matrix Step 7.19. Later bounded rows remain after it. Valid
+current-LIR families with missing producer authority, including pointer/object,
+stack/local, body-parameter, aggregate/vector, va-list/memory, CFG, and opaque
+inline-asm forms, remain separately scoped.
+
+Classification: `repair-current-route` for Step 7.19 because its required
+authority and typed Raw-BIR receiving seams already exist; execute exactly one
+bounded receiver packet without presentation recovery. Receive only a native
+`Ctpop` i32/i64 result with direct module `LinkNameId`, fixed nonvariadic
+one-integer signature, no `zero_count_behavior`, and its exact direct i32 Add
+or i64-to-i32 Trunc-to-Add final-use chain. Do not absorb parity,
+prepared-argument receipt, or any other intrinsic/call/cast/binary family. The
+listed missing-authority families are not absorbed by this packet: each
+requires its own separately scoped successor/blocker before any receiver work.
+Return point after Step 7.19 acceptance is the next matrix receiver-ready row,
+with the same source completion gate reapplied.
 
 ## Why This Exists
 
