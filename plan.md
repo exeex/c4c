@@ -641,6 +641,48 @@ Completion check:
   scalar FPToSI chain; the frontend test remains the producer-authority
   regression neighbor.
 
+Accepted in `3e45cef35`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional explicit scalar double-to-signed-i32 FPToSI chain.
+The matching regression guard passed non-decreasing 2/2, and fresh broader
+`^backend_` proof passed 4/4.
+
+### Step 7.12 - Receive the checked explicit scalar FPToUI result
+
+Goal: receive only the authority-matrix Step-7.12 explicit nonpointer,
+nonvector scalar double-to-unsigned-i32 `LirCastOp::FPToUI` and its exact later
+unsigned i32 Add use. Do not generalize floating-to-integer casts.
+
+Primary targets:
+
+- typed Raw-BIR FPToUI payload, builder/view, and reachable verifier
+- LIR-to-Raw-BIR cast dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified explicit scalar `LirCastOp{result: valid
+  current-function LirValueId, operand: exact admitted double FAdd result ID,
+  kind: FPToUI, from_type: double, to_type: i32}` to one typed Raw-BIR result,
+  preserving its exact later unsigned i32 Add use
+- require valid, unique current-function results; resolved source/result use
+  edges; exact FPToUI kind and double-to-unsigned-i32 endpoints; strict
+  floating-to-integer direction; instruction-result linkage; and full-module
+  rollback for missing, invalid, duplicate, cross-owner, unresolved-use,
+  wrong-kind/endpoints/direction, or malformed-linkage authority
+- prove the positive FAdd-to-FPToUI-to-Add chain plus neighboring transactional
+  failures. Require native FPToUI kind authority: signless i32 type refs do
+  not independently distinguish an FPToUI/FPToSI kind swap. Keep FPToSI,
+  SIToFP/UIToFP, FPTrunc/FPExt, pointer/bitcast/vector/complex/aggregate,
+  implicit, no-op, monostate-source, and presentation-derived casts fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional explicit
+  scalar FPToUI chain; the frontend test remains the producer-authority
+  regression neighbor.
+
 ### Source completion gate (not an executor packet)
 
 Do not execute this as a placeholder. This source cannot close until its
