@@ -4,7 +4,7 @@ Status: Active
 Source Idea Path: ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Extract direct frontend-LIR capability probes
+Current Step Title: Extract and record direct frontend-LIR probe harnesses
 
 ## Just Finished
 
@@ -24,9 +24,11 @@ Current Step Title: Extract direct frontend-LIR capability probes
 
 ## Suggested Next
 
-- Extract one direct frontend-LIR production capability probe for each
-  static-local and local table-element producer/result contract, including the
-  nearby malformed authority rejection. Do not repair or change publication.
+- Extract or record one direct frontend-LIR harness for each static-local and
+  local table-element producer/result contract. Record the exact future
+  positive structured-result and malformed-authority assertions, but do not
+  mark current raw behavior as a passing capability or repair/change
+  publication in this packet.
 
 ## Watchouts
 
@@ -35,6 +37,9 @@ Current Step Title: Extract direct frontend-LIR capability probes
 - Use frontend-LIR direct production tests; backend/case and the four external
   cases are integration proof only. Do not touch Raw-BIR/importer, 734, or
   accepted 765/766 work.
+- A positive capability probe cannot pass until the Step 4-selected generic
+  producer/result seam is implemented in the distinct Step 5 packet. Do not
+  weaken expectations, accept raw behavior, or return to 764 beforehand.
 - Evidence map: `src/codegen/lir/hir_to_lir/lvalue.cpp`:
   `emit_lval_dispatch`, string `emit_indexed_gep`, and
   `emit_rval_from_access_ptr`; `src/codegen/lir/hir_to_lir/expr/misc.cpp`:
@@ -50,3 +55,6 @@ Current Step Title: Extract direct frontend-LIR capability probes
   carrier authority. No canonical test logs were overwritten.
 - Step 2 was read-only: source-form observation used HIR output and the direct
   production symbols above; no tests or logs were changed.
+- Step 3 proof is a contract/harness record only. Passing positive and
+  malformed focused proof is deferred to the post-selection implementation
+  packet, followed by an explicit lifecycle handoff to 764.
