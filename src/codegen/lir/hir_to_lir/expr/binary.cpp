@@ -522,15 +522,21 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
 
   static const struct {
     BinaryOp op;
-    const char* is;
-    const char* iu;
-    const char* f;
-  } cmp[] = {{BinaryOp::Lt, "slt", "ult", "olt"},
-             {BinaryOp::Le, "sle", "ule", "ole"},
-             {BinaryOp::Gt, "sgt", "ugt", "ogt"},
-             {BinaryOp::Ge, "sge", "uge", "oge"},
-             {BinaryOp::Eq, "eq", "eq", "oeq"},
-             {BinaryOp::Ne, "ne", "ne", "une"}};
+    LirCmpPredicate is;
+    LirCmpPredicate iu;
+    LirCmpPredicate f;
+  } cmp[] = {{BinaryOp::Lt, LirCmpPredicate::Slt, LirCmpPredicate::Ult,
+              LirCmpPredicate::OLt},
+             {BinaryOp::Le, LirCmpPredicate::Sle, LirCmpPredicate::Ule,
+              LirCmpPredicate::OLe},
+             {BinaryOp::Gt, LirCmpPredicate::Sgt, LirCmpPredicate::Ugt,
+              LirCmpPredicate::OGt},
+             {BinaryOp::Ge, LirCmpPredicate::Sge, LirCmpPredicate::Uge,
+              LirCmpPredicate::OGe},
+             {BinaryOp::Eq, LirCmpPredicate::Eq, LirCmpPredicate::Eq,
+              LirCmpPredicate::OEq},
+             {BinaryOp::Ne, LirCmpPredicate::Ne, LirCmpPredicate::Ne,
+              LirCmpPredicate::UNe}};
   for (const auto& row : cmp) {
     if (row.op == b.op) {
       const bool authoritative_scalar_integer_compare =
@@ -562,7 +568,7 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                        LirCmpPredicateRef(row.f),
                                        LirTypeRef(op_ty), lhs, rhs});
       } else {
-        const char* pred = ls ? row.is : row.iu;
+        const LirCmpPredicate pred = ls ? row.is : row.iu;
         emit_lir_op(ctx, lir::LirCmpOp{cmp_result, false,
                                        LirCmpPredicateRef(pred),
                                        LirTypeRef(op_ty), lhs, rhs});

@@ -8,16 +8,16 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: both no-`LirModule`
-  fixed `%struct.__va_list_tag_` fallbacks now use searchable deprecated
-  runtime-text boundaries because no structured name ID is available. Their
-  module-present `LirTypeRef::struct_type` paths remain unchanged.
+- Step 6 targeted warning-inventory repair complete: the closed comparison
+  predicate table in `src/codegen/lir/hir_to_lir/expr/binary.cpp` now stores
+  `LirCmpPredicate` values and constructs `LirCmpPredicateRef` from those
+  enums at emission, preserving signed/unsigned integer and ordered/unordered
+  floating predicate output.
 
 ## Suggested Next
 
-- Step 6: select the next targeted warning-inventory family; retain
-  compatibility boundaries where source provenance cannot provide a builtin
-  enum or structured name ID.
+- Step 6: select the next targeted warning-inventory family, preferring a
+  closed known-value set that can construct its LIR reference from an enum.
 
 ## Watchouts
 
@@ -53,10 +53,12 @@ Current Step Title: Repair the targeted warning-inventory route
 - The AArch64 fixed-vector parameter ABI bitcast has a closed `i32` target and
   a HIR-rendered vector source; retain the source-only local boundary without
   widening it to HFA GEP/store text.
+- The comparison table is a closed known set; keep it enum-backed and do not
+  reintroduce predicate text merely for reparsing.
 
 ## Proof
 
-- `cmake --build --preset default` succeeded; its warnings are deliberate
+- `cmake --build --preset default` succeeded; remaining warnings are deliberate
   local inventory boundaries.
-- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-  passed (5/5); `test_after.log` is the focused proof log.
+- `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' >
+  test_after.log` passed (1/1); `test_after.log` is the focused proof log.
