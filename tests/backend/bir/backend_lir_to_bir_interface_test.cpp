@@ -10298,13 +10298,13 @@ lir::LirModule native_intrinsic_module() {
   module.struct_names.attach_text_table(module.link_name_texts.get());
   const auto caller_link = module.link_names.intern("native_intrinsic_caller");
   const auto cttz_link = module.link_names.intern("llvm.cttz.i32");
-  const auto ctpop_link = module.link_names.intern("llvm.ctpop.i32");
+  const auto ctlz_link = module.link_names.intern("llvm.ctlz.i32");
   auto caller = direct_integer_function("intrinsic_caller", false);
   caller.link_name_id = caller_link;
   caller.blocks[0].insts.push_back({lir::LirConstInt{lir::LirValueId{3}, scalar_type(c4c::TB_INT), 41}});
   caller.blocks[0].insts.push_back(native_intrinsic(cttz_link, lir::LirIntrinsicKind::Cttz,
       lir::LirValueId{9}, lir::LirOperand::ssa("%value", lir::LirValueId{3})));
-  caller.blocks[0].insts.push_back(native_intrinsic(ctpop_link, lir::LirIntrinsicKind::Ctpop,
+  caller.blocks[0].insts.push_back(native_intrinsic(ctlz_link, lir::LirIntrinsicKind::Ctlz,
       lir::LirValueId{10}, lir::LirOperand::ssa("%value", lir::LirValueId{9})));
   caller.blocks[0].terminator = lir::LirRet{lir::LirOperand::ssa("%return", lir::LirValueId{10}), lir::LirTypeRef::integer(32)};
   module.functions.push_back(std::move(caller));
@@ -10319,20 +10319,21 @@ void test_native_intrinsic_receipt_and_rejections() {
     const auto insts = caller.instructions(caller.blocks()[0]).value();
     expect(insts.size() == 2, layer + " must retain both native intrinsic instructions");
     const auto cttz = caller.instruction(insts[0]).value();
-    const auto ctpop = caller.instruction(insts[1]).value();
+    const auto ctlz = caller.instruction(insts[1]).value();
     expect(cttz.opcode() == bir::Opcode::Call && !cttz.call() && cttz.intrinsic_call() &&
                cttz.intrinsic_call()->kind == bir::IntrinsicKind::Cttz &&
                cttz.intrinsic_call()->zero_count_is_undef == std::optional<bool>{false} &&
                cttz.operands().size() == 2 && cttz.results().size() == 1,
            layer + " must retain separately tagged cttz and native flag");
-    expect(ctpop.opcode() == bir::Opcode::Call && !ctpop.call() && ctpop.intrinsic_call() &&
-               ctpop.intrinsic_call()->kind == bir::IntrinsicKind::Ctpop &&
-               !ctpop.intrinsic_call()->zero_count_is_undef && ctpop.operands().size() == 1,
-           layer + " must retain separately tagged ctpop without behavior");
+    expect(ctlz.opcode() == bir::Opcode::Call && !ctlz.call() && ctlz.intrinsic_call() &&
+               ctlz.intrinsic_call()->kind == bir::IntrinsicKind::Ctlz &&
+               ctlz.intrinsic_call()->zero_count_is_undef == std::optional<bool>{false} &&
+               ctlz.operands().size() == 2,
+           layer + " must retain separately tagged ctlz and native flag");
     expect(view.source_id(cttz.intrinsic_call()->callee_link_name).value() == 2 &&
-               view.source_id(ctpop.intrinsic_call()->callee_link_name).value() == 3 &&
+               view.source_id(ctlz.intrinsic_call()->callee_link_name).value() == 3 &&
                caller.value(cttz.results()[0]).value().source_id == bir::SourceValueId{caller_id, 9} &&
-               caller.value(ctpop.results()[0]).value().source_id == bir::SourceValueId{caller_id, 10},
+               caller.value(ctlz.results()[0]).value().source_id == bir::SourceValueId{caller_id, 10},
            layer + " must retain LinkNameId and source-backed owning results");
   };
   const auto module = native_intrinsic_module();
@@ -10624,6 +10625,91 @@ void test_builtin_clz_call_narrow_final_use_receipt_and_rejections() {
     call.args_str = "display-only";
     expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
            "clz receipt must retain native authority despite misleading displays");
+  }
+}
+
+lir::LirModule builtin_popcount_final_use_module(unsigned width) {
+  auto module = builtin_ctz_final_use_module(width);
+  auto& ctpop = std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[1]);
+  ctpop.intrinsic_kind = lir::LirIntrinsicKind::Ctpop;
+  const auto link = module.link_names.intern(width == 64 ? "llvm.ctpop.i64" : "llvm.ctpop.i32");
+  ctpop.callee = lir::LirOperand::global("@display", link);
+  ctpop.direct_callee_link_name_id = link;
+  ctpop.zero_count_behavior.reset();
+  ctpop.callee_signature->fixed_param_types.pop_back();
+  ctpop.callee_signature->fixed_param_type_refs.pop_back();
+  ctpop.arg_type_refs.pop_back();
+  ctpop.structured_args.pop_back();
+  return module;
+}
+
+void test_builtin_popcount_call_narrow_final_use_receipt_and_rejections() {
+  for (const auto width : {32U, 64U}) {
+    const auto module = builtin_popcount_final_use_module(width);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+           "builtin popcount final-use chain must publish verified Raw BIR");
+    expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+           "builtin popcount final-use chain must canonicalize");
+    const auto rejected = [width](auto mutate, const std::string& message) {
+      auto candidate = builtin_popcount_final_use_module(width);
+      auto& block = candidate.functions[0].blocks[0];
+      auto& ctpop = std::get<lir::LirCallOp>(block.insts[1]);
+      auto* trunc = width == 64 ? &std::get<lir::LirCastOp>(block.insts[2]) : nullptr;
+      auto& add = std::get<lir::LirBinOp>(block.insts[width == 64 ? 3 : 2]);
+      mutate(candidate, ctpop, trunc, add);
+      expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+      expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+             message + " (Canonical rollback)");
+    };
+    rejected([](auto&, auto& ctpop, auto*, auto&) { ctpop.result = lir::LirOperand::raw("%raw"); },
+             "missing popcount result authority must reject atomically");
+    rejected([](auto&, auto& ctpop, auto*, auto&) {
+               ctpop.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{3});
+             }, "duplicate popcount result identity must reject atomically");
+    rejected([](auto&, auto& ctpop, auto*, auto&) { ctpop.intrinsic_kind = lir::LirIntrinsicKind::Ctlz; },
+             "other intrinsic kind must reject atomically");
+    rejected([](auto& candidate, auto& ctpop, auto*, auto&) {
+               ctpop.direct_callee_link_name_id = candidate.functions[0].link_name_id;
+             }, "mismatched direct popcount LinkNameId must reject atomically");
+    rejected([](auto&, auto& ctpop, auto*, auto&) { ctpop.callee_signature->is_variadic = true; },
+             "variadic popcount signature must reject atomically");
+    rejected([](auto&, auto& ctpop, auto*, auto&) {
+               ctpop.callee_signature->fixed_param_types[0] = "i1";
+             }, "wrong popcount signature must reject atomically");
+    rejected([](auto&, auto& ctpop, auto*, auto&) {
+               ctpop.zero_count_behavior = lir::LirZeroCountBehavior::Undefined;
+             }, "popcount zero-count behavior must reject atomically");
+    rejected([](auto&, auto& ctpop, auto*, auto&) {
+               ctpop.structured_args.push_back({"i1", lir::LirOperand::integer("extra", 1),
+                                                lir::LirTypeRef::integer(1)});
+             }, "wrong popcount argument count must reject atomically");
+    rejected([](auto&, auto&, auto*, auto& add) {
+               add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77});
+             }, "unresolved popcount final use must reject atomically");
+    if (width == 64)
+      rejected([](auto&, auto&, auto* trunc, auto&) { trunc->kind = lir::LirCastKind::ZExt; },
+               "non-Trunc popcount narrowing must reject atomically");
+    if (width == 64)
+      rejected([](auto&, auto&, auto* trunc, auto&) {
+                 trunc->from_type = lir::LirTypeRef::integer(32);
+               }, "wrong popcount narrowing endpoints must reject atomically");
+    rejected([](auto& candidate, auto&, auto*, auto& add) {
+               auto foreign = candidate.functions[0];
+               foreign.name = "foreign_popcount_owner";
+               foreign.link_name_id = candidate.link_names.intern("foreign_popcount_owner");
+               auto& foreign_ctpop = std::get<lir::LirCallOp>(foreign.blocks[0].insts[1]);
+               foreign_ctpop.result = lir::LirOperand::ssa("%foreign-popcount", lir::LirValueId{77});
+               candidate.functions.push_back(std::move(foreign));
+               add.lhs = lir::LirOperand::ssa("%foreign-popcount", lir::LirValueId{77});
+             }, "cross-owner popcount result use must reject atomically");
+    auto misleading = builtin_popcount_final_use_module(width);
+    auto& ctpop = std::get<lir::LirCallOp>(misleading.functions[0].blocks[0].insts[1]);
+    ctpop.result.str() = "%display-only";
+    ctpop.callee.str() = "@display-only";
+    ctpop.args_str = "display-only";
+    expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
+           "popcount receipt must retain native authority despite misleading displays");
   }
 }
 
@@ -11196,6 +11282,7 @@ int main() {
   test_builtin_ffs_cttz_add_one_receipt_and_rejections();
   test_builtin_ctz_call_narrow_final_use_receipt_and_rejections();
   test_builtin_clz_call_narrow_final_use_receipt_and_rejections();
+  test_builtin_popcount_call_narrow_final_use_receipt_and_rejections();
   test_builtin_ffs_add_select_false_arm_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();

@@ -1301,6 +1301,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     return intrinsic && intrinsic->kind == IntrinsicKind::Ctlz && intrinsic->type == i32 &&
         intrinsic->zero_count_is_undef == std::optional<bool>{true};
   }();
+  const bool exact_ctpop_add = exact_add && lhs_producer && [&] {
+    const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
+    return intrinsic && intrinsic->kind == IntrinsicKind::Ctpop && intrinsic->type == i32 &&
+        !intrinsic->zero_count_is_undef.has_value();
+  }();
   const bool exact_fptosi_add = exact_add && lhs_producer && [&] {
     const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
     return cast && cast->kind == CastKind::FPToSI && cast->from_type == f64 &&
@@ -1346,7 +1351,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       }()) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
        !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
-       !exact_cttz_add && !exact_ctlz_add && !exact_fptosi_add && !exact_fptoui_add && !exact_wide_ffs_trunc_add && !exact_ffs_add) ||
+       !exact_cttz_add && !exact_ctlz_add && !exact_ctpop_add && !exact_fptosi_add && !exact_fptoui_add && !exact_wide_ffs_trunc_add && !exact_ffs_add) ||
       (exact_sext_add && [&] {
         const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
         return !exact_ffs_add && (!cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||

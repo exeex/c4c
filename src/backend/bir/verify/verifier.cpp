@@ -807,6 +807,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                   intrinsic->type == i32 &&
                   intrinsic->zero_count_is_undef == std::optional<bool>{true};
             }();
+            const bool ctpop_add = add && producer && [&] {
+              const auto* intrinsic = std::get_if<IntrinsicCallNode>(
+                  &producer.value().get().payload);
+              return intrinsic && intrinsic->kind == IntrinsicKind::Ctpop &&
+                  intrinsic->type == i32 && !intrinsic->zero_count_is_undef.has_value();
+            }();
             exact = producer && (fadd
                 ? std::holds_alternative<CallNode>(producer.value().get().payload)
                 : fmul ? [&] {
@@ -834,7 +840,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                   }()
                 : add ? (std::holds_alternative<LoadNode>(producer.value().get().payload) ||
                          std::holds_alternative<AbsNode>(producer.value().get().payload) ||
-                         cttz_add || ctlz_add || [&] {
+                         cttz_add || ctlz_add || ctpop_add || [&] {
                            const auto* producer_cast = std::get_if<CastNode>(
                                &producer.value().get().payload);
                            return producer_cast && (producer_cast->kind == CastKind::FPToSI ||

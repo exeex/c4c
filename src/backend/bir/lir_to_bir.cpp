@@ -1095,6 +1095,16 @@ bool exact_builtin_clz_call(const LirModule& module, const LirCallOp& call,
        *type == Type{TypeKind::Integer, 64, "i64"});
 }
 
+bool exact_builtin_popcount_call(const LirModule& module, const LirCallOp& call,
+                                 const std::unordered_map<std::uint32_t, Type>& source_values) {
+  const auto type = lower_lir_type(module, call.return_type);
+  return exact_integer_intrinsic_call(module, call, source_values) &&
+      call.intrinsic_kind == codegen::lir::LirIntrinsicKind::Ctpop &&
+      !call.zero_count_behavior.has_value() && type &&
+      (*type == Type{TypeKind::Integer, 32, "i32"} ||
+       *type == Type{TypeKind::Integer, 64, "i64"});
+}
+
 std::optional<Type> lower_constant_type(const LirModule& module,
                                         const TypeSpec& type) {
   if (type.ptr_level != 0 || type.is_lvalue_ref || type.is_rvalue_ref ||
@@ -2241,6 +2251,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::size_t> builtin_clz_direct_add_uses;
   std::unordered_map<std::uint32_t, std::size_t> builtin_clz_trunc_uses;
   std::unordered_map<std::uint32_t, std::size_t> builtin_clz_trunc_add_uses;
+  std::unordered_set<std::uint32_t> builtin_ctpop_results;
+  std::unordered_set<std::uint32_t> builtin_ctpop_trunc_results;
+  std::unordered_map<std::uint32_t, std::size_t> builtin_ctpop_direct_add_uses;
+  std::unordered_map<std::uint32_t, std::size_t> builtin_ctpop_trunc_uses;
+  std::unordered_map<std::uint32_t, std::size_t> builtin_ctpop_trunc_add_uses;
   std::unordered_set<std::uint32_t> native_ffs_cttz_results;
   std::unordered_set<std::uint32_t> builtin_ffs_add_results;
   std::unordered_set<std::uint32_t> builtin_ffs_zero_compare_results;
@@ -2507,6 +2522,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
             builtin_ctz_results.insert(call->result.value_id()->value);
           if (exact_builtin_clz_call(module, *call, source_values))
             builtin_clz_results.insert(call->result.value_id()->value);
+          if (exact_builtin_popcount_call(module, *call, source_values))
+            builtin_ctpop_results.insert(call->result.value_id()->value);
           if (*call->intrinsic_kind == LirIntrinsicKind::Cttz &&
               *result_type == Type{TypeKind::Integer, 32, "i32"})
             native_i32_cttz_results.insert(call->result.value_id()->value);
@@ -2581,6 +2598,12 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool clz_trunc_add = add_lhs &&
             builtin_clz_trunc_results.count(add_lhs->value) == 1 &&
             exact_native_i32_cttz_add(*bin, source_values, builtin_clz_trunc_results);
+        const bool ctpop_direct_add = add_lhs &&
+            builtin_ctpop_results.count(add_lhs->value) == 1 &&
+            exact_native_i32_cttz_add(*bin, source_values, builtin_ctpop_results);
+        const bool ctpop_trunc_add = add_lhs &&
+            builtin_ctpop_trunc_results.count(add_lhs->value) == 1 &&
+            exact_native_i32_cttz_add(*bin, source_values, builtin_ctpop_trunc_results);
         const bool ffs_add = exact_builtin_ffs_add(*bin, source_values,
                                                     native_ffs_cttz_results);
         const bool mul = exact_normalized_i32_mul(
@@ -2591,7 +2614,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
             : float_fmul ? Type{TypeKind::F32, 32, "float"}
             : (sext_add || (ffs_add && bin->type_str.integer_bit_width() == 64)) ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !ctz_direct_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !mul && !sext_add && !ffs_add) ||
+        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !ctz_direct_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !mul && !sext_add && !ffs_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2601,6 +2624,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (ctz_trunc_add) ++builtin_ctz_trunc_add_uses[add_lhs->value];
         if (clz_direct_add) ++builtin_clz_direct_add_uses[add_lhs->value];
         if (clz_trunc_add) ++builtin_clz_trunc_add_uses[add_lhs->value];
+        if (ctpop_direct_add) ++builtin_ctpop_direct_add_uses[add_lhs->value];
+        if (ctpop_trunc_add) ++builtin_ctpop_trunc_add_uses[add_lhs->value];
         if (ffs_add) builtin_ffs_add_results.insert(bin->result.value_id()->value);
         if (fadd) downstream_double_fadd_results.insert(bin->result.value_id()->value);
         if (fmul) downstream_double_fmul_results.insert(bin->result.value_id()->value);
@@ -2674,6 +2699,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
             builtin_ctz_results.count(trunc_operand->value) == 1;
         const bool clz_trunc = intrinsic_trunc && trunc_operand &&
             builtin_clz_results.count(trunc_operand->value) == 1;
+        const bool ctpop_trunc = intrinsic_trunc && trunc_operand &&
+            builtin_ctpop_results.count(trunc_operand->value) == 1;
         const bool scalar_sext = exact_scalar_i32_to_i64_sext(
             module, *cast, source_values);
         const bool scalar_fptrunc = exact_double_to_float_fptrunc(
@@ -2716,6 +2743,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (clz_trunc) {
           builtin_clz_trunc_results.insert(cast->result.value_id()->value);
           ++builtin_clz_trunc_uses[trunc_operand->value];
+        }
+        if (ctpop_trunc) {
+          builtin_ctpop_trunc_results.insert(cast->result.value_id()->value);
+          ++builtin_ctpop_trunc_uses[trunc_operand->value];
         }
         continue;
       }
@@ -2776,6 +2807,26 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (builtin_clz_trunc_add_uses[result] != 1)
       return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                         "builtin clz Trunc result lacks its one exact later i32 Add use");
+  }
+  for (const auto result : builtin_ctpop_results) {
+    const auto type = source_values.find(result);
+    if (type == source_values.end())
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "builtin popcount result disappeared from the current-function registry");
+    if (type->second == Type{TypeKind::Integer, 32, "i32"}) {
+      if (builtin_ctpop_direct_add_uses[result] != 1)
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                          "builtin popcount i32 result lacks its one exact later i32 Add use");
+    } else if (type->second == Type{TypeKind::Integer, 64, "i64"}) {
+      if (builtin_ctpop_trunc_uses[result] != 1)
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                          "builtin popcount i64 result lacks its one exact i64-to-i32 Trunc use");
+    }
+  }
+  for (const auto result : builtin_ctpop_trunc_results) {
+    if (builtin_ctpop_trunc_add_uses[result] != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "builtin popcount Trunc result lacks its one exact later i32 Add use");
   }
 
   for (const auto result : scalar_fptrunc_results) {
@@ -3172,6 +3223,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_set<std::uint32_t> builtin_ctz_trunc_results;
           std::unordered_set<std::uint32_t> builtin_clz_results;
           std::unordered_set<std::uint32_t> builtin_clz_trunc_results;
+          std::unordered_set<std::uint32_t> builtin_ctpop_results;
+          std::unordered_set<std::uint32_t> builtin_ctpop_trunc_results;
           std::unordered_set<std::uint32_t> builtin_ffs_zero_compare_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
@@ -3515,6 +3568,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       call->zero_count_behavior ==
                           codegen::lir::LirZeroCountBehavior::Undefined)
                     builtin_clz_results.insert(call->result.value_id()->value);
+                  if (*call->intrinsic_kind == codegen::lir::LirIntrinsicKind::Ctpop)
+                    builtin_ctpop_results.insert(call->result.value_id()->value);
                   continue;
                 }
                 const auto callee = functions_by_link_name_id.find(
@@ -3651,13 +3706,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     builtin_clz_results.count(bin->lhs.value_id()->value) == 1;
                 const bool clz_trunc_add = add &&
                     builtin_clz_trunc_results.count(bin->lhs.value_id()->value) == 1;
+                const bool ctpop_direct_add = add &&
+                    builtin_ctpop_results.count(bin->lhs.value_id()->value) == 1;
+                const bool ctpop_trunc_add = add &&
+                    builtin_ctpop_trunc_results.count(bin->lhs.value_id()->value) == 1;
                 const bool sext_add = add &&
                     scalar_sext_results.count(bin->lhs.value_id()->value) == 1;
                 const auto lhs = source_values.find(bin->lhs.value_id()->value);
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !add && normalized_i32_add_results.count(
+                    (!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -3965,6 +4024,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     cast->operand.value_id() &&
                     builtin_clz_results.count(cast->operand.value_id()->value) == 1)
                   builtin_clz_trunc_results.insert(cast->result.value_id()->value);
+                if (cast->kind == codegen::lir::LirCastKind::Trunc &&
+                    cast->operand.value_id() &&
+                    builtin_ctpop_results.count(cast->operand.value_id()->value) == 1)
+                  builtin_ctpop_trunc_results.insert(cast->result.value_id()->value);
                 continue;
               }
               const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);
