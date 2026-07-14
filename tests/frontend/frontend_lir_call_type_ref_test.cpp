@@ -1954,6 +1954,86 @@ double lir_block_scope_extern_void_caller(void) {
                   add->type_str == call->return_type && add->lhs.value_id() &&
                   *add->lhs.value_id() == *call->result.value_id(),
               "block-scope extern scalar call result should retain its exact ID into the downstream use");
+
+  const auto require_focused = [](lir::LirModule& module)
+      -> std::pair<lir::LirCallOp&, lir::LirBinOp&> {
+    lir::LirFunction& caller =
+        require_function(module, "lir_block_scope_extern_void_caller");
+    lir::LirCallOp* focused_call = nullptr;
+    lir::LirBinOp* focused_add = nullptr;
+    for (auto& block : caller.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) focused_call = candidate;
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) focused_add = candidate;
+      }
+    }
+    expect_true(focused_call && focused_add,
+                "block-scope extern fixture should retain its direct call and FAdd");
+    return {*focused_call, *focused_add};
+  };
+  const auto require_declaration = [](lir::LirModule& module) -> lir::LirFunction& {
+    for (lir::LirFunction& function : module.functions) {
+      if (function.name == "lir_block_scope_extern_void_target" &&
+          function.is_declaration) {
+        return function;
+      }
+    }
+    throw std::runtime_error("missing block-scope extern declaration");
+  };
+
+  lir::LirModule missing_declaration = lowered;
+  require_declaration(missing_declaration).link_name_id = c4c::LinkNameId{999};
+  expect_identity_verification_rejected(
+      missing_declaration,
+      "verifier should reject a block-scope extern call without its Function declaration");
+
+  lir::LirModule duplicate_declaration = lowered;
+  lir::LirFunction duplicate = require_declaration(duplicate_declaration);
+  duplicate.name = "lir_block_scope_extern_void_target_duplicate";
+  duplicate_declaration.functions.push_back(std::move(duplicate));
+  expect_identity_verification_rejected(
+      duplicate_declaration,
+      "verifier should reject duplicate block-scope extern Function LinkNameIds");
+
+  lir::LirModule declaration_signature_conflict = lowered;
+  require_declaration(declaration_signature_conflict).signature_return_type_ref =
+      lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      declaration_signature_conflict,
+      "verifier should reject a block-scope extern declaration signature conflict");
+
+  lir::LirModule call_signature_conflict = lowered;
+  require_focused(call_signature_conflict).first.callee_signature->is_variadic = true;
+  expect_identity_verification_rejected(
+      call_signature_conflict,
+      "verifier should reject a block-scope extern call signature conflict");
+
+  lir::LirModule missing_result = lowered;
+  require_focused(missing_result).first.result = lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_result,
+      "verifier should reject missing block-scope extern double result authority");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_call, duplicate_add] = require_focused(duplicate_result);
+  duplicate_add.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_call.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result,
+      "verifier should reject duplicate block-scope extern double result authority");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused(unknown_use).second.lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use,
+      "verifier should reject unknown block-scope extern double FAdd use");
+
+  lir::LirModule type_conflict = lowered;
+  require_focused(type_conflict).second.type_str = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      type_conflict,
+      "verifier should reject block-scope extern double FAdd type conflict");
 }
 
 void test_direct_scalar_float_result_call_identity_boundary() {

@@ -396,11 +396,16 @@ void verify_direct_zero_arg_scalar_floating_result_call(const LirModule& mod,
     fail_verify("LirCallOp.callee_signature",
                 "direct zero-argument scalar floating call requires a fixed nonvariadic empty signature");
   }
-  const bool module_owns_callee = std::any_of(
-      mod.functions.begin(), mod.functions.end(), [&](const LirFunction& function) {
-        return function.link_name_id == call.direct_callee_link_name_id;
-      });
-  if (!module_owns_callee) {
+  const LirFunction* callee_function = nullptr;
+  for (const LirFunction& function : mod.functions) {
+    if (function.link_name_id != call.direct_callee_link_name_id) continue;
+    if (callee_function) {
+      fail_verify("LirCallOp.direct_callee_link_name_id",
+                  "direct zero-argument scalar floating call requires a unique module Function LinkNameId");
+    }
+    callee_function = &function;
+  }
+  if (!callee_function) {
     fail_verify("LirCallOp.direct_callee_link_name_id",
                 "direct zero-argument scalar floating call requires a module-owned LinkNameId");
   }
@@ -412,6 +417,15 @@ void verify_direct_zero_arg_scalar_floating_result_call(const LirModule& mod,
       signature.return_ext_attr != LirExtAttr::None) {
     fail_verify("LirCallOp.callee_signature",
                 "direct zero-argument scalar floating call requires matching native return authority");
+  }
+  if (!callee_function->signature_return_type_ref.has_value() ||
+      *callee_function->signature_return_type_ref != call.return_type ||
+      callee_function->signature_is_variadic ||
+      !callee_function->signature_has_void_param_list ||
+      !callee_function->signature_params.empty() ||
+      !callee_function->signature_param_type_refs.empty()) {
+    fail_verify("LirCallOp.direct_callee_link_name_id",
+                "direct zero-argument scalar floating call requires a matching module Function signature");
   }
 }
 

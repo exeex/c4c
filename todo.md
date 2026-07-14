@@ -3,32 +3,36 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.32
-Current Step Title: Resume direct external double call-result authority
+Current Step ID: 8
+Current Step Title: Audit verification and publish the idea-734 handoff
 
 ## Just Finished
 
-- Idea 746 closed after commit `0d3781e70` proved the corrected prerequisite:
-  a block-scope fixed-void extern declaration becomes a normal bodyless extern
-  HIR `Function`; its LIR declaration/direct call share `LinkNameId` and
-  structured signature, and its scalar result owns the `LirValueId` used by
-  `FAdd`.
+- Plan Step 7.32 completed: the normal resolved bodyless-extern `Function`
+  route uses `emit_call_with_result` and its existing `fresh_value` producer
+  seam to bind the direct double result ID through the downstream `FAdd`.
+  Reachable focused variants now reject missing/ambiguous Function declaration
+  identity, declaration/call signature conflicts, missing and duplicate result
+  IDs, unknown uses, and the floating-use type conflict; the checked authority
+  matrix records the exact bounded disposition.
 
 ## Suggested Next
 
-- Resume Plan Step 7.32 at the interrupted external-double packet. Finish its
-  focused producer/verifier/matrix contract using the normal resolved extern
-  `Function` route, including reachable malformed declaration, signature,
-  result-ownership, uniqueness, and type-conflict obligations.
+- Begin Plan Step 8's bounded audit: re-enumerate the current ordinary
+  producer/matrix rows and prepare the exact idea-734 receiver handoff without
+  claiming separate-family or presentation-only routes.
 
 ## Watchouts
 
-- Do not redo Steps 1-6 or earlier Step 7 packets. Do not create a separate
-  extern-function list, recover facts from display text, or restore the stale
-  absent-`target_fn` route. Step 7.32 is unblocked, not yet complete.
+- Do not reopen Steps 1-6 or completed Step-7 packets. The external-double
+  claim is only the resolved, zero-argument native floating normal-Function
+  route; indirect, variadic, argument-bearing, ABI, aggregate/object, and BIR
+  rows remain outside it.
 
 ## Proof
 
-- Accepted prerequisite proof: fresh default build; 8/8 related
-  parser/HIR/LIR/BIR tests; matching `frontend_lir_call_type_ref` guard 1/1
-  before and 1/1 after with no new failures.
+- Step 7.32 focused proof: fresh `cmake --build --preset default`; direct
+  `build/tests/frontend/frontend_lir_call_type_ref_test` PASS; matching
+  `ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  1/1 PASS. Canonical required backend checkpoint follows the final fresh build
+  in `test_after.log`.

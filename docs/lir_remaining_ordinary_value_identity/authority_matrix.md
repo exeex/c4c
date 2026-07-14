@@ -804,6 +804,29 @@ opaque-text interpretation, compatibility-result authority, stack/local/
 object/body-parameter publication, CFG, BIR receipt, parity, and idea-741
 contracts remain outside this packet.
 
+## Step-7.32 direct external double call-result contract
+
+The claimed row is the normal resolved `hir::Function` route for a block-scope
+`extern double target(void)` declaration. The bodyless extern Function lowers
+as the single fixed-void LIR declaration, and `emit_call_with_result` uses the
+existing generic resolved-direct-call seam: `fresh_value(ctx)` allocates the
+caller-owned result before construction, while the same `LirOperand` becomes
+the direct `LirCallOp.result` and the following double `FAdd` lhs. The call and
+declaration share one `LinkNameId`; their native floating return and fixed-void
+signatures are structured facts, not recovered from names or rendered text.
+
+The focused `test_block_scope_extern_void_prototype_uses_direct_function_entity`
+fixture proves the positive declaration, direct-call, result-to-`FAdd` chain.
+Its reachable malformed variants reject a missing matching declaration,
+declaration or call-signature conflicts, missing result authority, duplicate
+result IDs, unknown downstream IDs, and the `FAdd` type conflict. The verifier
+requires exactly one module Function with the direct `LinkNameId` and a
+matching fixed-void structured signature, then generic function ownership
+checks the result/use ID edge. This disposition covers only resolved,
+zero-argument native floating direct Function calls; indirect, variadic,
+argument-bearing, aggregate/object, ABI, and BIR routes remain outside this
+packet.
+
 ## Mechanical coverage check
 
 Reproducible source-side extraction:
