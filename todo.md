@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract direct frontend-LIR producer probes
+Current Step ID: 4
+Current Step Title: Bind probes and select the narrowest generic producer seam
 
 ## Just Finished
 
-- Plan Step 3 disposition: the static-storage initializer row is complete via
+- Plan Step 3 is complete: the static-storage initializer row is complete via
   769 (`56d86556a`), including structured owner/target positive and malformed
   verifier coverage; the static-table decay control remains satisfied by 767
   (`403e86afd`). The direct `&&label` automatic-local harness
@@ -16,29 +16,26 @@ Current Step Title: Extract direct frontend-LIR producer probes
   direct-rvalue rows at their shared immediate `LirStoreOp` seam, while the
   automatic-table decay harness (`85ac8d42c`) fixes its local-slot/two-index
   `LirGepOp` seam.
-- Step 3 is not complete: both automatic probes intentionally decline the
-  required explicit positive/malformed producer-authority contract. No
-  production seam has been selected.
+- `22bd5885b` records the remaining automatic-form future positive/malformed
+  producer-authority contracts. These records complete contract extraction;
+  they do not accept current raw/no-ID behavior or select a production seam.
 
 ## Suggested Next
 
-- Finish Step 3's contract extraction without choosing an implementation seam:
-  record the direct-label rvalue/store positive as a typed pointer producer with
-  valid enclosing-function and target-label identity plus a valid produced value
-  identity, and require rejection of raw, invalid/foreign owner or target,
-  non-pointer, and missing/invalid/foreign-value variants. Record the
-  automatic-table decay positive as a current-function local-slot base with two
-  typed zero indices and a valid GEP result identity, and require rejection of
-  raw/non-pointer/invalid/foreign bases, raw or wrongly typed indices, and
-  missing/invalid/foreign results. Then re-evaluate all five rows for Step 4.
+- Bind all focused rows to their direct generic producer/result contracts and
+  compare their ownership before choosing any repair. Authorize one narrow
+  producer seam only if it satisfies the static initializer, static-table
+  control, direct-label rvalue/store, and automatic-table decay maps without
+  raw/no-ID authority, carrier changes, or testcase-shaped routing; otherwise
+  name the exact separately scoped blocker and proof packet.
 
 ## Watchouts
 
-- The two automatic probes currently establish source-form/immediate-consumer
-  seams only; their green results do not make raw/no-ID operands authority or
-  satisfy the Step 3 malformed-contract requirement.
-- Do not reinterpret raw label-address or decay operands as semantic authority,
-  select a producer seam, or reopen 767/769 while completing this extraction.
+- The automatic probes establish source-form/immediate-consumer seams and their
+  future malformed contracts; neither makes current raw/no-ID operands semantic
+  authority.
+- Step 4 is a selection decision only. Do not implement, reinterpret raw
+  label-address or decay operands as authority, or reopen 767/769.
 
 ## Proof
 
