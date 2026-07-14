@@ -569,7 +569,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s) {
   if (s.target.resolved_block.valid()) {
     emit_term_br(ctx, scheduled_target(s.target.resolved_block));
   } else {
-    emit_term_br(ctx, fresh_direct_target(ctx, "ulbl_" + s.target.user_name));
+    emit_term_br(ctx, user_label_target(ctx, s.target.user_name));
   }
 }
 
@@ -591,7 +591,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IndirBrStmt& s) {
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const LabelStmt& s) {
-  emit_fallthrough_lbl(ctx, fresh_direct_target(ctx, "ulbl_" + s.name));
+  emit_fallthrough_lbl(ctx, user_label_target(ctx, s.name));
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const BreakStmt& s) {

@@ -387,6 +387,8 @@ class StmtEmitter {
   c4c::codegen::LirDirectBranchTarget fresh_direct_target(FnCtx& ctx,
                                                             std::string label);
   c4c::codegen::LirDirectBranchTarget scheduled_target(BlockId id) const;
+  c4c::codegen::LirDirectBranchTarget user_label_target(FnCtx& ctx,
+                                                        std::string name);
   std::string fresh_tmp(FnCtx& ctx);
   lir::LirOperand fresh_value(FnCtx& ctx);
   void record_extern_call_decl(const std::string& name, const std::string& ret_ty,

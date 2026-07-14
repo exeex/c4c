@@ -1404,6 +1404,15 @@ c4c::codegen::LirDirectBranchTarget StmtEmitter::scheduled_target(BlockId id) co
   return {block_lbl(id), lir::LirBlockId{id.value}};
 }
 
+c4c::codegen::LirDirectBranchTarget StmtEmitter::user_label_target(
+    FnCtx& ctx, std::string name) {
+  auto [it, inserted] = ctx.user_labels.emplace(name, c4c::codegen::LirDirectBranchTarget{});
+  if (inserted) {
+    it->second = fresh_direct_target(ctx, "ulbl_" + it->first);
+  }
+  return it->second;
+}
+
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx) { return "%t" + std::to_string(ctx.tmp_idx++); }
 
 lir::LirOperand StmtEmitter::fresh_value(FnCtx& ctx) {

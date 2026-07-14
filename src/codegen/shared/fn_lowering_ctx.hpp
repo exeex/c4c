@@ -53,8 +53,8 @@ struct FnCtx {
   std::unordered_map<uint32_t, BlockMeta> block_meta;
   // body_block -> structural direct branch target. label is display-only.
   std::unordered_map<uint32_t, LirDirectBranchTarget> continue_redirect;
-  // user label name → LLVM label
-  std::unordered_map<std::string, std::string> user_labels;
+  // user label name -> structural direct branch target. label is display-only.
+  std::unordered_map<std::string, LirDirectBranchTarget> user_labels;
   // local_id.value / param_index / global_id.value → fn-ptr signature metadata.
   std::unordered_map<uint32_t, c4c::hir::FnPtrSig> local_fn_ptr_sigs;
   std::unordered_map<uint32_t, c4c::hir::FnPtrSig> param_fn_ptr_sigs;
