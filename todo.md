@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.11
-Current Step Title: Publish explicit floating-to-signed-integer cast authority (complete)
+Current Step ID: 7.12
+Current Step Title: Publish explicit floating-to-unsigned-integer cast authority
 
 ## Just Finished
 
@@ -22,19 +22,28 @@ Current Step Title: Publish explicit floating-to-signed-integer cast authority (
 
 ## Suggested Next
 
-- Select the next bounded Step-7 matrix row whose result allocation, operand
-  propagation, type authority, and verifier rules form one coherent packet.
+- Execute Step 7.12: publish one explicit authoritative-source scalar `FPToUI`
+  result/use chain.
 
 ## Watchouts
 
-- Preserve Step-7.11's authoritative floating source, production-selected
-  FPToSI kind, exact floating/integer endpoints, and result/use identity.
-- Native LIR integer refs are signless: production selects FPToSI from signed
-  destination `TypeSpec`; verification must not infer signedness or identity
-  from rendered spelling.
-- Exclude `FPToUI`, pointer, bitcast, vector, complex, aggregate, implicit
-  coercion, other cast producers, CFG/parameters, calls, inline assembly, and
-  BIR from this completed packet.
+- Own only PX's explicit nonpointer, nonvector conversion from a scalar floating
+  type to an unsigned scalar integer. Use an authoritative Step-7.5 floating
+  result as the exact `FPToUI` operand and preserve the cast result into a later
+  ordinary unsigned-integer operation.
+- Reuse the authoritative-source scalar conversion seam: allocate through
+  `fresh_value`, retain native `FPToUI` plus exact floating source and integer
+  destination type refs, and return the identical result operand to the later
+  use.
+- Require authoritative kind and endpoint families to agree; reject invalid or
+  duplicate results, unknown or cross-function uses, missing/conflicting
+  endpoints, integer sources, floating destinations, and non-FPToUI kinds.
+- Accept misleading displays only after native authority is proven. Native LIR
+  integer refs are signless, so production must select FPToUI from destination
+  `TypeSpec`; never infer unsignedness or identity from rendered spelling.
+- Preserve FPToSI, SIToFP/UIToFP, and earlier scalar cast rules. Exclude
+  pointer, bitcast, vector, complex, aggregate, implicit coercion, other cast
+  producers, CFG/parameters, calls, inline assembly, and BIR.
 
 ## Proof
 
