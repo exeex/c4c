@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish direct scalar call result identity (complete)
+Current Step ID: 4
+Current Step Title: Publish direct void scalar immediate argument authority
 
 ## Just Finished
 
@@ -23,13 +23,17 @@ Current Step Title: Publish direct scalar call result identity (complete)
 
 ## Watchouts
 
-- Reuse the operand-taking call maker for Step 4; do not reintroduce a
-  text-shaped result or argument reconstruction path.
-- Step 4 owns the common immediate argument carrier only. SSA argument reuse
-  remains Step 5 and must consume that same carrier rather than a side channel.
-- Keep indirect/intrinsic call results, ABI work, CFG/terminator targets,
-  stack/local/object ownership, and body-parameter identity outside Step 4.
-- Do not add a text-to-ID map or recover result identity from display spelling.
+- The common call-argument carrier must hold the native `LirOperand` and exact
+  scalar type authority before any formatting.
+- Step 4 owns only the immediate path for one fixed, nonvariadic, direct void
+  call.
+- `args_str` and type spelling are presentation only; do not parse them to
+  create or repair argument authority.
+- SSA argument reuse remains Step 5 and must consume the same common carrier,
+  not an SSA-only side channel.
+- Keep ABI, variadic, aggregate, indirect-call, CFG/terminator, stack/local/
+  object, and body-parameter work outside Step 4.
+- Preserve the accepted Step-3 scalar call-result path unchanged.
 
 ## Proof
 
