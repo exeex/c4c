@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.20; closed CFG successor-authority
-successor 750 supplies the next inactive receiver route)
+Status: Open (active at resumed Step 7.21; closed CFG successor-authority
+successor 750 supplies the bounded receiver route)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
