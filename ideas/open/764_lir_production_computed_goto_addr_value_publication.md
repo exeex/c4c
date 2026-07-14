@@ -241,3 +241,37 @@ result. Do not reimplement 767, claim its work published the carrier, change
 Raw-BIR/importer or the 734 receiver, weaken the verifier, recover from text,
 or broaden pointer/table scope. After the five-consumer/carrier proof is
 accepted, return to 734 for plan-owner disposition.
+
+## Resumption Record: label-address table initialization authority decomposition
+
+Paused at `Step 1 - Publish and prove production computed-goto address carrier
+authority`; no carrier-publication implementation from 764 was accepted. The
+accepted prerequisites remain 765 (`1e24e2081`) for member/bitfield RHS
+identity, 766 (`74379f4a2`) for SSA indexed-GEP pointer results, and 767
+(`403e86afd`) for static-global/current-function-local table-element
+GEP/load pointer results. 767 accepted a fresh build, direct frontend-LIR test,
+aggregate `^frontend_cxx_` CTest 1/1, and matching allow-non-decreasing guard.
+
+After those prerequisites, a fresh `cmake --build --preset default` followed
+by exactly:
+
+`ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`
+
+still yields 1/5: `comp-goto-1` passes and `20040302-1`, `20041214-1`,
+`920501-4`, and `920501-5` fail only at missing
+`LirIndirectBrOp.addr_value` authority. Direct inspection of
+`StmtEmitter::emit_control_flow_stmt(IndirBrStmt)` at `stmt.cpp:619-624`
+established that it obtains `addr = emit_rval_operand(target)` and copies
+`addr.value_id()` exactly to `addr_value`; the target itself arrives without
+an ID. Another carrier change is therefore invalid.
+
+This upstream producer work is outside 764's bounded carrier-publication
+scope. The separately active blocker
+`ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
+owns direct frontend-LIR decomposition of label-address table initialization,
+representation, and rvalue-consumption producer seams before the accepted
+table-element result. It must not change the carrier/verifier, Raw-BIR/importer
+or 734, reopen 765/766/767, derive authority from text, or use testcase-shaped
+logic. After it accepts a generic upstream producer capability, resume 764 at
+Step 1: freshly rerun all five consumers and publish `addr_value` only if
+necessary, then return to 734 for plan-owner disposition.

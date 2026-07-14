@@ -1,97 +1,160 @@
-# Production Computed-Goto Address Authority Runbook
+# Computed-Goto Label-Address Table Initialization Authority Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
-Resumed from: completed 767 (`403e86afd`), which now supplies the verified
-static-local and local table-element pointer result required by this carrier
-repair.
+Source Idea: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
+Activated from: interrupted 764 Step 1 after accepted 765/766/767 prerequisites
+left the same four integration failures without target operand authority.
 
 ## Purpose
 
-Complete only the downstream production computed-goto carrier publication
-after accepted 765, 766, and 767 producer/result handoffs. The five affected
-tests remain one consumer family and are not acceptable baseline debt.
+Replace the repeatedly moving carrier route with focused frontend-LIR producer
+probes for label-address table initialization, representation, and rvalue
+consumption seams.
 
 ## Goal
 
-Publish the verified current-function pointer `LirValueId` into
-`LirIndirectBrOp.addr_value` so `comp-goto-1`, `20040302-1`, `20041214-1`,
-`920501-4`, and `920501-5` no longer fail at that carrier check.
+Identify the narrowest generic upstream producer/result authority seam before
+any implementation packet, without consuming 764's downstream carrier work.
 
 ## Core Rule
 
-`addr_value` is semantic authority and may be published only from a verified,
-current-function pointer address result. `addr`, labels, printer output,
-rendered LLVM, and testcase names are never authority sources.
+The `IndirBrStmt` carrier already copies `emit_rval_operand(target).value_id()`
+exactly. Focused probes must therefore find authority before that consumer;
+external cases remain integration evidence, never implementation selectors.
 
 ## Read First
 
+- `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
 - `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
 - `ideas/closed/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
 - `ideas/closed/766_lir_ssa_indexed_gep_pointer_result_authority.md`
 - `ideas/closed/765_lir_member_bitfield_rvalue_value_identity_publication.md`
-- the computed-goto `IndirBrStmt` publication seam and existing
-  `LirIndirectBrOp` verifier checks
-
-## Landed Prerequisites
-
-- 765 accepted in `1e24e2081` supplies the `insn.f1.offset` RHS identity.
-- 766 accepted in `74379f4a2` supplies the structured SSA-based GEP pointer
-  result and nearby malformed-authority coverage.
-- 767 accepted in `403e86afd` supplies structured static-global and
-  current-function-local table-element GEP/load pointer results. Its fresh
-  build, direct frontend-LIR test, aggregate `^frontend_cxx_` CTest 1/1, and
-  matching allow-non-decreasing guard are accepted; it did not publish the
-  downstream carrier field.
+- direct frontend-LIR producers for label-address table initialization,
+  representation, and rvalue consumption
 
 ## Non-Goals
 
-- no Raw-BIR/importer changes or re-execution of 734 Step 7.24
-- no reimplementation of accepted 765/766/767 producer contracts,
-  GEP-contract/verifier change, partial/raw authority, display-text recovery,
-  failure exclusion, expectation downgrade, or baseline exception
-- no rvalue, CFG, PHI, local/object, memory/va, aggregate/vector,
-  target-lowering, MIR, or emission-family redesign
+- no `IndirBrStmt`/`LirIndirectBrOp.addr_value` publication or verifier change
+- no Raw-BIR/importer, 734, backend/case ownership absent new evidence, or
+  rework of accepted 765/766/767
+- no text recovery, testcase-specific logic, synthetic bridge, or broad
+  rvalue/pointer/table/CFG/PHI/local-object/memory/va/aggregate-vector redesign
 
 ## Execution Rules
 
-1. Rerun the exact five-consumer command before changing the carrier route;
-   classify results by the shared downstream authority boundary, not testcase.
-2. Repair only the common `IndirBrStmt` address-to-carrier seam if verified
-   upstream authority reaches it; preserve all existing fail-closed checks.
-3. The accepted 767 table-element route is a prerequisite, not implementation
-   scope. Do not reopen it or use its producer-only unverified-lowering fixture
-   as carrier proof.
-4. Prove the repaired family before a future supervisor full-baseline gate; no
-   candidate may be accepted if it expands baseline failures.
+1. Use the preserved five-case command for baseline/integration evidence only.
+2. Use direct frontend-LIR production probes for ownership until evidence moves
+   the fault downstream; do not make reduced external-test copies.
+3. Record a positive and nearby malformed contract for every separated form,
+   but do not accept raw behavior as a passing capability.
+4. Do not choose an implementation seam until producer maps show a shared
+   generic owner or a precise separately scoped blocker.
 
 ## Ordered Steps
 
-### Step 1 - Publish and prove production computed-goto address carrier authority
+### Step 1 - Establish the blocked label-address table failure-family baseline
 
-Goal: retain the accepted 765/766/767 pointer identity through the immediate
-address-to-`LirIndirectBrOp` publication seam and eliminate the same missing
-carrier-authority failure across all five consumers.
-
-Primary targets:
-
-- the direct computed-goto address-to-`LirIndirectBrOp` publication seam
-- nearby carrier verifier and focused production-path coverage
+Goal: retain the exact boundary after accepted 765/766/767 and prove why a
+new upstream decomposition—not another carrier patch—is required.
 
 Actions:
 
-- fresh-build and rerun all five preserved consumers; confirm whether the
-  verified table-element pointer result now reaches `IndirBrStmt`
-- if needed, minimally publish that valid current-function pointer
-  `LirValueId` into `addr_value`, retaining all malformed-authority checks
-- add or extend focused production-path coverage without testcase-specific
-  branching, then rerun all five preserved consumers
-- report the typed-field handoff and proof for plan-owner disposition to 734;
-  do not re-execute 734 Step 7.24
+- run the preserved five-case command after a fresh build
+- record the 1/5 versus 4/5 result and classify the four failures only by the
+  shared missing target authority
+- retain the carrier evidence that `IndirBrStmt` copies `addr.value_id()`
+  exactly; do not patch the external cases or carrier
 
 Completion check:
 
-- a fresh build, focused positive/malformed proof, and all five affected
-  consumers have no `LirIndirectBrOp.addr_value` missing-authority failure; a
-  later supervisor full-suite candidate shows no new baseline failures before
-  acceptance.
+- the baseline records the same family boundary and no conclusion assigns
+  producer ownership by testcase name or claims carrier progress.
+
+### Step 2 - Enumerate separated label-address table producer forms
+
+Goal: trace only far enough to distinguish generic label-address table
+initialization, table representation, and rvalue-consumption forms before the
+accepted table-element GEP/load result.
+
+Actions:
+
+- inventory static and local source forms only where their upstream producer
+  contract differs
+- name each direct frontend-LIR producer, structured input/result candidate,
+  and first missing-authority boundary
+- do not select a repair or reopen accepted prerequisite contracts
+
+Completion check:
+
+- a compact map names source-form producer/result contracts without external
+  testcase numbers as ownership labels.
+
+### Step 3 - Extract direct frontend-LIR producer probes
+
+Goal: make each separated source form executable as a focused production-path
+harness with one precise future positive and malformed contract.
+
+Actions:
+
+- add or extend directly relevant frontend-LIR harnesses, one primary producer
+  contract per probe
+- record the exact structured authority assertion and nearby malformed
+  rejection each probe will require; do not mark raw behavior passing
+- document why frontend-LIR owns the probe or record evidence that moves it to
+  backend/case before creating a backend probe
+
+Completion check:
+
+- every form has a focused non-monolithic probe and explicit positive/malformed
+  contract, without expectation downgrade or carrier assertion.
+
+### Step 4 - Bind probes and select the narrowest generic producer seam
+
+Goal: compare the focused producer/result maps and authorize one implementation
+packet or identify a precise separately scoped blocker.
+
+Actions:
+
+- bind each probe to its direct generic producer/result contract
+- select a shared or separate seam only when evidence is sufficient
+- state the selected proof packet and exact post-acceptance return to 764
+
+Completion check:
+
+- the decomposition authorizes one narrow generic implementation/proof packet,
+  or names a precise blocker; it does not publish the carrier or claim external
+  integration success.
+
+### Step 5 - Implement and prove the selected producer seam
+
+Goal: implement only the Step 4-selected generic upstream contract and activate
+its focused frontend-LIR positive/malformed proof.
+
+Actions:
+
+- make only selected producer/result and direct frontend-LIR test changes
+- run a fresh build and the Step 4-selected focused proof; retain external
+  cases as later integration probes
+- report accepted capability, proof, and exact return to 764 Step 1
+
+Completion check:
+
+- the selected producer capability and focused proof pass without carrier or
+  verifier mutation, text recovery, testcase branching, or broad redesign.
+
+### Step 6 - Hand off the resolved producer capability to 764
+
+Goal: preserve the accepted upstream authority seam so 764 can resume only its
+downstream carrier/integration responsibility.
+
+Actions:
+
+- record the accepted producer/result contract, direct proof, and remaining
+  integration obligation for lifecycle handoff
+- request return to 764 Step 1 only after Step 5 acceptance
+
+Completion check:
+
+- lifecycle handoff names the accepted capability and exact return: 764 reruns
+  all five consumers and publishes carrier authority only if necessary, then
+  returns to 734 for plan-owner disposition.
