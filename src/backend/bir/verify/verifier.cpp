@@ -1303,6 +1303,28 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                          block_id,
                          "indirect jump targets must be unique and resolve in their owner");
               }
+            } else if constexpr (std::is_same_v<Term, SwitchTerm>) {
+              const auto selector = function.values_.get(function_id, term.selector);
+              if (term.selector.owner != function_id || !selector ||
+                  !integer_type(selector.value().get().type))
+                report(result, VerificationRule::Terminator, function_id,
+                       block_id,
+                       "switch selector must resolve to a local integer value");
+              std::unordered_set<std::uint32_t> targets;
+              const auto check_target = [&](BlockId target) {
+                return target.owner == function_id &&
+                       function.blocks_.contains(function_id, target) &&
+                       targets.insert(target.slot).second;
+              };
+              if (!check_target(term.default_target))
+                report(result, VerificationRule::Terminator, function_id,
+                       block_id,
+                       "switch default target must resolve uniquely in its owner");
+              for (const auto target : term.case_targets)
+                if (!check_target(target))
+                  report(result, VerificationRule::Terminator, function_id,
+                         block_id,
+                         "switch case targets must be distinct and resolve in their owner");
             } else if constexpr (std::is_same_v<Term, ReturnTerm>) {
               const bool returns_void =
                   function.signature_.return_type.kind == TypeKind::Void;

@@ -3032,8 +3032,34 @@ Result<void, ImportError> validate_function(const LirModule& module,
                                 block.label,
                                 "LirCondBr successors must be distinct and resolve exactly once in their current function");
           } else if constexpr (std::is_same_v<Term, LirSwitch>) {
-            return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
-                              block.label, "switch");
+            const auto selector = terminator.selector.valid()
+                                      ? source_values.find(terminator.selector.value)
+                                      : source_values.end();
+            if (selector == source_values.end() || !is_integer_type(selector->second))
+              return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
+                                block.label,
+                                "LirSwitch.selector must resolve to a current-function integer value");
+            if (terminator.case_successors.size() != terminator.cases.size())
+              return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                block.label,
+                                "LirSwitch ordered case successor authority is incoherent");
+            std::unordered_set<std::uint32_t> targets;
+            const auto validate_target = [&](codegen::lir::LirBlockId target_id) {
+              const auto target = target_id.valid()
+                                      ? block_labels_by_id.find(target_id.value)
+                                      : block_labels_by_id.end();
+              return target != block_labels_by_id.end() &&
+                     targets.insert(target_id.value).second;
+            };
+            if (!validate_target(terminator.default_successor))
+              return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                block.label,
+                                "LirSwitch.default_successor must resolve uniquely in its current function");
+            for (const auto target : terminator.case_successors)
+              if (!validate_target(target))
+                return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                  block.label,
+                                  "LirSwitch.case_successors must resolve uniquely in current-function order");
           } else if constexpr (std::is_same_v<Term, LirIndirectBr>) {
             const auto address = terminator.addr.valid()
                                      ? source_values.find(terminator.addr.value)
@@ -3154,8 +3180,34 @@ Result<Terminator, ImportError> lower_terminator(
           return Result<Terminator, ImportError>::success(CondJumpTerm{
               condition->second, true_target->second, false_target->second});
         } else if constexpr (std::is_same_v<Term, LirSwitch>) {
-          return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
-                                  function, block, "switch");
+          const auto selector = lir_terminator.selector.valid()
+                                    ? source_values.find(lir_terminator.selector.value)
+                                    : source_values.end();
+          if (selector == source_values.end())
+            return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
+                                    function, block,
+                                    "validated switch selector disappeared from the current-function registry");
+          const auto default_target = lir_terminator.default_successor.valid()
+                                          ? blocks.find(lir_terminator.default_successor.value)
+                                          : blocks.end();
+          if (default_target == blocks.end())
+            return fail<Terminator>(ImportErrorCode::MissingBranchTarget,
+                                    function, block,
+                                    "validated switch default successor disappeared from the current-function registry");
+          std::vector<BlockId> case_targets;
+          case_targets.reserve(lir_terminator.case_successors.size());
+          for (const auto source_target : lir_terminator.case_successors) {
+            const auto target = source_target.valid()
+                                    ? blocks.find(source_target.value)
+                                    : blocks.end();
+            if (target == blocks.end())
+              return fail<Terminator>(ImportErrorCode::MissingBranchTarget,
+                                      function, block,
+                                      "validated switch case successor disappeared from the current-function registry");
+            case_targets.push_back(target->second);
+          }
+          return Result<Terminator, ImportError>::success(SwitchTerm{
+              selector->second, default_target->second, std::move(case_targets)});
         } else {
           static_assert(std::is_same_v<Term, LirIndirectBr>);
           const auto address = lir_terminator.addr.valid()

@@ -3467,6 +3467,97 @@ void test_indirect_branch_terminator_receipt_and_rejections() {
 
 lir::LirModule selected_global_i32_slt_compare_module();
 
+void test_switch_terminator_receipt_and_rejections() {
+  auto switch_module = [] {
+    auto module = selected_global_i32_slt_compare_module();
+    auto& function = module.functions[0];
+    function.blocks[0].terminator = lir::LirSwitch{
+        "%misleading-selector-display", "misleading-selector-type",
+        "misleading-default-label", {{7, "misleading-case-label"}},
+        lir::LirBlockId{2}, {lir::LirBlockId{1}}, lir::LirValueId{33}};
+    function.blocks.push_back(return_block(1, "case-display"));
+    function.blocks.push_back(return_block(2, "default-display"));
+    return module;
+  };
+
+  const auto module = switch_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed switch must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_id = view.functions()[0];
+  const auto function = view.function(function_id).value();
+  const auto blocks = function.blocks();
+  const auto terminator = function.terminator(blocks[0]);
+  const auto* sw = terminator.has_value()
+                       ? std::get_if<bir::SwitchTerm>(&terminator.value())
+                       : nullptr;
+  expect(sw && sw->selector ==
+                   function.source_value(bir::SourceValueId{function_id, 33}).value() &&
+             sw->default_target == blocks[2] &&
+             sw->case_targets == std::vector<bir::BlockId>({blocks[1]}) &&
+             function.successors(blocks[0]).value() ==
+                 std::vector<bir::BlockId>({blocks[2], blocks[1]}),
+         "switch must retain typed selector/default/case order without display recovery");
+  expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+         "typed switch must canonicalize");
+
+  const auto rejected = [&](auto mutate, bir::ImportErrorCode expected,
+                            const std::string& message) {
+    auto candidate = switch_module();
+    mutate(candidate);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator).selector =
+        lir::LirValueId::invalid();
+  }, bir::ImportErrorCode::UnsupportedTerminator,
+  "missing switch selector authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator).selector =
+        lir::LirValueId{999};
+  }, bir::ImportErrorCode::UnsupportedTerminator,
+  "invalid switch selector authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& sw = std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator);
+    sw.default_successor = lir::LirBlockId::invalid();
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "missing switch default authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& sw = std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator);
+    sw.case_successors = {lir::LirBlockId{2}};
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "duplicate switch target authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& sw = std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator);
+    sw.case_successors.clear();
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "incoherent switch case authority must reject transactionally");
+
+  auto non_integer = selected_global_array_gep_module();
+  non_integer.functions[0].blocks[0].terminator = lir::LirSwitch{
+      "misleading-pointer-selector", "i32", "default", {},
+      lir::LirBlockId{1}, {}, lir::LirValueId{61}};
+  non_integer.functions[0].blocks.push_back(return_block(1, "default"));
+  expect(!bir::lower_lir_to_raw_bir(non_integer).has_value() &&
+             !bir::lower_lir_to_canonical_bir(non_integer).has_value(),
+         "non-integer switch selector authority must reject transactionally");
+
+  auto foreign = switch_module();
+  foreign.functions.push_back(void_definition(
+      "foreign_switch_owner", {return_block(3, "foreign-target")}));
+  std::get<lir::LirSwitch>(foreign.functions[0].blocks[0].terminator)
+      .default_successor = lir::LirBlockId{3};
+  expect(!bir::lower_lir_to_raw_bir(foreign).has_value() &&
+             !bir::lower_lir_to_canonical_bir(foreign).has_value(),
+         "foreign switch target authority must publish neither Raw nor Canonical BIR");
+}
+
 void test_conditional_branch_terminator_receipt_and_rejections() {
   auto conditional_branch_module = [] {
     auto module = selected_global_i32_slt_compare_module();
@@ -11406,6 +11497,7 @@ int main() {
   test_direct_global_integer_load_rejections();
   test_selected_global_array_gep_receipt();
   test_indirect_branch_terminator_receipt_and_rejections();
+  test_switch_terminator_receipt_and_rejections();
   test_conditional_branch_terminator_receipt_and_rejections();
   test_selected_global_array_gep_ssa_index_receipt();
   test_selected_global_array_gep_builder_contract();

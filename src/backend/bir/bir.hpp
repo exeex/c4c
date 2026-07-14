@@ -59,6 +59,7 @@ struct InlineAsmNode;
 struct JumpTerm;
 struct CondJumpTerm;
 struct IndirectJumpTerm;
+struct SwitchTerm;
 struct ReturnTerm;
 struct UnreachableTerm;
 struct FunctionSignature;

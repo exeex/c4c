@@ -267,6 +267,15 @@ struct IndirectJumpTerm {
   std::vector<BlockId> targets;
 };
 
+// A switch retains only the target-independent CFG authority: the integer
+// selector, its default destination, and the ordered case destinations.  LIR
+// presentation labels and case spellings are deliberately not carried here.
+struct SwitchTerm {
+  ValueId selector{};
+  BlockId default_target{};
+  std::vector<BlockId> case_targets;
+};
+
 struct ReturnTerm {
   std::optional<ValueId> value;
 };
@@ -274,7 +283,7 @@ struct ReturnTerm {
 struct UnreachableTerm {};
 
 using Terminator =
-    std::variant<JumpTerm, CondJumpTerm, IndirectJumpTerm, ReturnTerm,
+    std::variant<JumpTerm, CondJumpTerm, IndirectJumpTerm, SwitchTerm, ReturnTerm,
                  UnreachableTerm>;
 
 struct FunctionSignature {

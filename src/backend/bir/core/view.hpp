@@ -155,6 +155,13 @@ class FunctionView {
             return {term.true_target, term.false_target};
           } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
             return term.targets;
+          } else if constexpr (std::is_same_v<Term, SwitchTerm>) {
+            std::vector<BlockId> targets;
+            targets.reserve(1 + term.case_targets.size());
+            targets.push_back(term.default_target);
+            targets.insert(targets.end(), term.case_targets.begin(),
+                           term.case_targets.end());
+            return targets;
           } else {
             return {};
           }

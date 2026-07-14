@@ -1867,6 +1867,27 @@ Result<void, BuildError> FunctionBuilder::set_terminator(
                 !targets.insert(target.slot).second)
               return Result<void, BuildError>::failure(BuildError::InvalidBlock);
           }
+        } else if constexpr (std::is_same_v<Term, SwitchTerm>) {
+          if (!same_owner(function_, term.selector) ||
+              !same_owner(function_, term.default_target))
+            return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+          const auto selector = function.values_.get(function_, term.selector);
+          if (!selector)
+            return Result<void, BuildError>::failure(BuildError::InvalidValue);
+          if (!integer_type(selector.value().get().type))
+            return Result<void, BuildError>::failure(BuildError::InvalidValueType);
+          if (!function.blocks_.contains(function_, term.default_target))
+            return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+          std::unordered_set<std::uint32_t> targets;
+          if (!targets.insert(term.default_target.slot).second)
+            return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+          for (const auto target : term.case_targets) {
+            if (!same_owner(function_, target))
+              return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+            if (!function.blocks_.contains(function_, target) ||
+                !targets.insert(target.slot).second)
+              return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+          }
         } else if constexpr (std::is_same_v<Term, ReturnTerm>) {
           const bool returns_void =
               function.signature_.return_type.kind == TypeKind::Void;
