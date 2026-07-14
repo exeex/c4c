@@ -23,7 +23,8 @@ std::string StmtEmitter::narrow_builtin_int_result(FnCtx& ctx,
   return trunc;
 }
 
-std::string StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
+LirOperand StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id,
+                                              BuiltinId builtin_id) {
   const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
   const std::string cttz = fresh_tmp(ctx);
   emit_lir_op(ctx, make_lir_call_op(cttz, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
@@ -32,9 +33,14 @@ std::string StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, Builti
   emit_lir_op(ctx, lir::LirBinOp{plus1, "add", arg.llvm_ty, cttz, "1"});
   const std::string is_zero = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{is_zero, false, "eq", arg.llvm_ty, arg.value, "0"});
-  const std::string sel = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirSelectOp{sel, arg.llvm_ty, is_zero, "0", plus1});
-  return narrow_builtin_int_result(ctx, arg, sel);
+  const LirOperand select_result = fresh_value(ctx);
+  emit_lir_op(ctx, lir::LirSelectOp{
+                       select_result, LirTypeRef(arg.llvm_ty),
+                       LirOperand(is_zero), LirOperand::integer("0", 0),
+                       LirOperand(plus1)});
+  if (!arg.is_i64) return select_result;
+  return LirOperand::raw(
+      narrow_builtin_int_result(ctx, arg, select_result.str()));
 }
 
 std::string StmtEmitter::emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
@@ -353,6 +359,9 @@ LirOperand StmtEmitter::emit_rval_call_operand(FnCtx& ctx,
   if (!call_target.builtin_special) {
     return emit_post_builtin_call_operand(ctx, call, call_target);
   }
+  if (builtin_is_ffs(call_target.builtin_id) && call.args.size() == 1) {
+    return emit_builtin_ffs_call(ctx, call.args[0], call_target.builtin_id);
+  }
   return LirOperand::raw(emit_rval_payload(ctx, call, e));
 }
 
@@ -559,7 +568,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       return emit_builtin_fabs_call(ctx, call.args[0], builtin_id);
     }
     if (builtin_is_ffs(builtin_id) && call.args.size() == 1) {
-      return emit_builtin_ffs_call(ctx, call.args[0], builtin_id);
+      return emit_builtin_ffs_call(ctx, call.args[0], builtin_id).str();
     }
     if (builtin_is_ctz(builtin_id) && call.args.size() == 1) {
       return emit_builtin_ctz_call(ctx, call.args[0], builtin_id);

@@ -22,9 +22,10 @@ Step-3 structured direct integer-call result in `emit_call_with_result` and the
 Step-6 ordinary scalar integer arithmetic branch in
 `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar integer cast in
 `emit_cast_rval_operand` and the Step-7.2 ordinary scalar integer compare branch
-in `emit_binary_rval_operand`. Other active modern result constructions
-identified below still use `fresh_tmp`, an equivalent direct `%t` increment,
-or a raw string returned by `emit_rval_id`.
+in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
+`emit_builtin_ffs_call`. Other active modern result constructions identified
+below still use `fresh_tmp`, an equivalent direct `%t` increment, or a raw
+string returned by `emit_rval_id`.
 
 Verifier states used below:
 
@@ -96,7 +97,7 @@ grouped only where they share one producer and disposition.
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 normalized ordinary scalar integer arithmetic uses `fresh_value` and preserves unchanged source `LirOperand` authority; complex/vector/pointer/logical and other producers remain text-only with `fresh_tmp` | Native opcode/type refs plus exact result/use ownership for the Step-6 row; generic verifier rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_ordinary_value_chain_identity.c` closes the representative generic scalar seam. Neighboring scalar producers may reuse the mechanism in later bounded packets; aggregate/vector, pointer/object, and CFG rows remain distinct |
 | `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Step-7.2 representative is PB ordinary scalar integer comparison | Step-7.2 scalar integer comparison uses `fresh_value`, preserves unchanged source operands, and feeds the exact result operand into its existing normalization cast; other comparison producers remain text-only with `fresh_tmp` | Native integer predicate and exact compared type; authoritative integer results reject float mode/type/predicate conflict, while generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_compare_result_use_identity.c` closes only the representative ordinary integer compare/use row. Float, pointer, vector, logical-helper, builtin, vaarg, and statement comparison producers remain unclaimed |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
-| `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active, PI `emit_builtin_ffs_call` | Text-only operands; result `fresh_tmp` | Native type; kind/type only and ownership-ready | Depends on generic scalar seam; `lir_select_chain_identity.c`; **generic scalar value** |
+| `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active only in PI `emit_builtin_ffs_call` | Step-7.3 i32 ffs route uses `fresh_value`, exact scalar type, native zero immediate, and returns the same result operand; condition/false arm remain honest monostate SSA compatibility and wider ffs narrowing remains raw | Authoritative integer select requires a native result and SSA condition shape; generic ownership rejects invalid/duplicate definitions and unknown/cross-function later uses | `lir_scalar_select_result_use_identity.c` closes the current i32 scalar select/use route. Wider narrowing and unavailable internal producer authority remain explicitly unclaimed |
 | `LirInsertElementOp`: `result,vec,elem,index`; `vec_type,elem_type` | Active, PB vector-scalar arithmetic branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_insertelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
 | `LirExtractElementOp`: `result,vec,index`; `vec_type,index_type` | Active, PX `emit_rval_payload(IndexExpr)` vector branch | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_extractelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
 | `LirShuffleVectorOp`: `result,vec1,vec2,mask`; `vec_type,mask_type` | Active, PB vector-scalar splat branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_shufflevector_identity.c`; mask needs distinct typed constant/vector carrier; **generic result/use plus distinct vector semantics** |
@@ -260,10 +261,10 @@ with unchanged IDs pass.
 
 This proves the common allocator/operand mechanism is reusable by neighboring
 ordinary scalar result/use rows. Steps 7.1 and 7.2 publish the representative
-explicit scalar integer cast and ordinary scalar integer compare; select and
-abs remain later bounded packets. Aggregate/vector rows need their own
-type/index/mask semantics; CFG, parameters, pointer/object, inline-asm, call,
-and BIR families remain distinct or outside this idea.
+explicit scalar integer cast, ordinary scalar integer compare, and current i32
+scalar select; abs remains a later bounded packet. Aggregate/vector rows need
+their own type/index/mask semantics; CFG, parameters, pointer/object,
+inline-asm, call, and BIR families remain distinct or outside this idea.
 
 ## Step-7.1 explicit scalar integer cast contract
 
@@ -310,9 +311,33 @@ with unchanged IDs pass.
 
 This packet does not reopen the Step-7.1 cast producer claim: the normalization
 cast has no authoritative result. Float, pointer, vector, logical-helper,
-builtin, vaarg, and statement comparison producers remain compatibility.
-Select, abs, pointer/object, aggregate/vector, CFG/parameters, calls, inline
-assembly, and BIR are unchanged.
+builtin, vaarg, and statement comparison producers remain compatibility. Step
+7.3 separately owns the current scalar select; abs, pointer/object,
+aggregate/vector, CFG/parameters, calls, inline assembly, and BIR are unchanged.
+
+## Step-7.3 current scalar select contract
+
+The only active `LirSelectOp` producer is the i32 `__builtin_ffs` route.
+`emit_builtin_ffs_call` allocates its select result through `fresh_value`,
+stores exact integer `LirTypeRef` authority, publishes the structurally known
+zero arm as `LirIntegerImmediate{0}`, and returns the same result operand through
+the builtin CallExpr path. The condition and false arm originate in internal
+compatibility producers and therefore remain monostate SSA operands.
+
+The focused ffs result feeds one later ordinary i32 Add without a representation
+change, so the Add lhs carries the exact select result ID. Generic function
+ownership rejects invalid/duplicate results and unknown/cross-function uses.
+Reachable select verification requires an authoritative result for the integer
+route, rejects authoritative non-integer type conflicts, and requires the
+condition to retain SSA shape; missing or wrong-alternative condition authority
+rejects while honest monostate SSA compatibility remains accepted. Misleading
+select-result/use displays with unchanged IDs pass.
+
+The wider ffs route still narrows through a compatibility cast and does not
+publish its select result downstream. No internal cttz call, plus-one binary,
+or zero-comparison result authority is inferred. Abs, aggregate/vector,
+pointer/object, CFG/parameters, calls generally, inline assembly, and BIR are
+unchanged.
 
 ## Mechanical coverage check
 
@@ -358,6 +383,10 @@ Current-source spot checks used for this baseline:
   integer comparison through `fresh_value`, retains native integer predicate
   and compared type authority, and passes the exact result ID to its existing
   monostate-result normalization cast;
+- representative scalar select: `call/builtin.cpp` allocates the i32 ffs select
+  through `fresh_value`, carries exact scalar type plus native zero authority,
+  and returns the exact result ID to a later ordinary use while internal inputs
+  remain compatibility;
 - 741 neighbors: `expr/coordinator.cpp:474,497` populate selected-global
   `LirGepOp`/`LirLoadOp`; Steps 3 and 6 add the direct integer-call and ordinary
   scalar integer binary result sites;

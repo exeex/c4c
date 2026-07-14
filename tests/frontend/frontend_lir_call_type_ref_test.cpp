@@ -2434,6 +2434,155 @@ int lir_scalar_compare_result_use_identity(void) {
       "verifier should reject floating type on authoritative integer compare");
 }
 
+void test_scalar_select_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_scalar_select_result_use_source;
+int lir_scalar_select_result_use_identity(void) {
+  return __builtin_ffs(lir_scalar_select_result_use_source) + 1;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_scalar_select_result_use_identity");
+  std::vector<lir::LirSelectOp*> selects;
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* select = std::get_if<lir::LirSelectOp>(&inst)) {
+        selects.push_back(select);
+      }
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+        binary_ops.push_back(binary);
+      }
+    }
+  }
+  expect_true(selects.size() == 1 && binary_ops.size() == 2,
+              "scalar-select probe should lower one select and its builtin/later binary operations");
+  lir::LirSelectOp& select = *selects[0];
+  lir::LirBinOp* later_use = nullptr;
+  for (lir::LirBinOp* binary : binary_ops) {
+    if (select.result.value_id() && binary->lhs.value_id() &&
+        *binary->lhs.value_id() == *select.result.value_id()) {
+      later_use = binary;
+    }
+  }
+  expect_true(select.type_str.kind() == lir::LirTypeKind::Integer &&
+                  select.type_str.integer_bit_width() == 32 &&
+                  select.result.value_id() && select.result.value_id()->valid() &&
+                  select.cond.kind() == lir::LirOperandKind::SsaValue &&
+                  !select.cond.has_authority() &&
+                  select.true_val.integer_immediate() &&
+                  select.true_val.integer_immediate()->value == 0 &&
+                  select.false_val.kind() == lir::LirOperandKind::SsaValue &&
+                  !select.false_val.has_authority(),
+              "scalar select should retain exact i32 result type and honest available operand authority");
+  expect_true(later_use && later_use->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  later_use->type_str.kind() == lir::LirTypeKind::Integer &&
+                  later_use->type_str.integer_bit_width() == 32 &&
+                  later_use->lhs.value_id() &&
+                  *later_use->lhs.value_id() == *select.result.value_id(),
+              "later ordinary use should carry the exact scalar select result ID");
+  lir::verify_module(lowered);
+
+  const auto require_focused_select = [](lir::LirModule& module)
+      -> std::pair<lir::LirSelectOp&, lir::LirBinOp&> {
+    lir::LirFunction& focused =
+        require_function(module, "lir_scalar_select_result_use_identity");
+    lir::LirSelectOp* found_select = nullptr;
+    std::vector<lir::LirBinOp*> found_binary_ops;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirSelectOp>(&inst)) {
+          expect_true(found_select == nullptr,
+                      "focused scalar-select fixture should contain one select");
+          found_select = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) {
+          found_binary_ops.push_back(candidate);
+        }
+      }
+    }
+    expect_true(found_select && found_select->result.value_id(),
+                "focused scalar-select fixture should contain an authoritative select");
+    lir::LirBinOp* found_use = nullptr;
+    for (lir::LirBinOp* binary : found_binary_ops) {
+      if (binary->lhs.value_id() &&
+          *binary->lhs.value_id() == *found_select->result.value_id()) {
+        found_use = binary;
+      }
+    }
+    expect_true(found_use,
+                "focused scalar-select fixture should contain its later ordinary use");
+    return {*found_select, *found_use};
+  };
+
+  lir::LirModule misleading = lowered;
+  auto [misleading_select, misleading_use] = require_focused_select(misleading);
+  misleading_select.result.str() = "@rendered-not-select-result";
+  misleading_use.lhs.str() = "7";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_result = lowered;
+  require_focused_select(missing_result).first.result =
+      lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject scalar select without result authority");
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_select(invalid_result).first.result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid scalar select result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_select, duplicate_use] = require_focused_select(duplicate_result);
+  duplicate_use.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_select.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate scalar select result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_select(unknown_use).second.lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown scalar select result use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_select_owner", lir::LirValueId{99}));
+  require_focused_select(cross_function_use).second.lhs =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function scalar select result use");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_select(missing_type).first.type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type, "verifier should reject missing scalar select type authority");
+
+  lir::LirModule conflicting_type = lowered;
+  require_focused_select(conflicting_type).first.type_str =
+      lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      conflicting_type,
+      "verifier should reject noninteger type on authoritative scalar select");
+
+  lir::LirModule missing_condition = lowered;
+  require_focused_select(missing_condition).first.cond = lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing_condition, "verifier should reject missing scalar select condition");
+
+  lir::LirModule wrong_condition_authority = lowered;
+  require_focused_select(wrong_condition_authority).first.cond =
+      lir::LirOperand::integer("1", 1);
+  expect_identity_verification_rejected(
+      wrong_condition_authority,
+      "verifier should reject immediate authority on scalar select condition");
+}
+
 }  // namespace
 
 int main() {
@@ -2818,6 +2967,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_ordinary_value_chain_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
   test_scalar_compare_result_use_identity_boundary();
+  test_scalar_select_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

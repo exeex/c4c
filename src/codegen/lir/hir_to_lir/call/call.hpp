@@ -85,7 +85,8 @@ PreparedBuiltinIntArg prepare_builtin_int_arg(FnCtx& ctx, ExprId arg_id,
                                               BuiltinId builtin_id);
 std::string narrow_builtin_int_result(FnCtx& ctx, const PreparedBuiltinIntArg& arg,
                                       const std::string& value);
-std::string emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+LirOperand emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id,
+                                 BuiltinId builtin_id);
 std::string emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 std::string emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 std::string emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);

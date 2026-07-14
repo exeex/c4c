@@ -501,6 +501,22 @@ void verify_cmp_op_authority(const LirCmpOp& op) {
   }
 }
 
+void verify_select_op_authority(const LirSelectOp& op) {
+  const bool scalar_integer_claim =
+      op.type_str.kind() == LirTypeKind::Integer;
+  if (scalar_integer_claim && !op.result.value_id()) {
+    fail_verify("LirSelectOp.result",
+                "scalar integer select requires native result authority");
+  }
+  if (op.result.value_id() && !scalar_integer_claim) {
+    fail_verify("LirSelectOp.type_str",
+                "authoritative scalar select requires integer type authority");
+  }
+  if (!scalar_integer_claim) return;
+  require_operand_kind(op.cond, "LirSelectOp.cond",
+                       {LirOperandKind::SsaValue});
+}
+
 void verify_optional_count_operand(const LirOperand& operand,
                                    std::string_view field) {
   require_operand_kind(operand, field,
@@ -954,6 +970,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_value_operand(op->cond, "LirSelectOp.cond");
     verify_value_operand(op->true_val, "LirSelectOp.true_val");
     verify_value_operand(op->false_val, "LirSelectOp.false_val");
+    verify_select_op_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {

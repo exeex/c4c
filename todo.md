@@ -4,49 +4,48 @@ Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 7.3
-Current Step Title: Publish representative scalar select result/use authority
+Current Step Title: Publish representative scalar select result/use authority (complete)
 
 ## Just Finished
 
-- Completed Plan Step 7.2 for the representative ordinary scalar integer
-  `LirCmpOp` result/use chain.
-- Allocated the integer comparison result through `fresh_value`, preserved
-  unchanged compared operands, and passed the exact result `LirOperand` into
-  the existing immediate i1-to-i32 normalization cast.
-- Preserved native Slt and exact i32 compared-type authority. The directly
-  coupled cast remains a monostate-result consumer and does not broaden the
-  Step-7.1 producer claim.
-- Added focused exact-ID and misleading-display positives plus invalid/
-  duplicate result, unknown/cross-function use, invalid predicate, and missing
-  or conflicting type rejections. Other comparison producers remain
-  compatibility and the matrix records that boundary.
+- Completed Plan Step 7.3 for the current i32 scalar builtin-ffs `LirSelectOp`
+  result/use route.
+- Allocated the select result through `fresh_value`, preserved exact i32 type
+  authority and native zero-immediate authority, and returned the exact result
+  operand into a later ordinary Add use.
+- Kept the condition and false arm as honest monostate SSA compatibility
+  because their internal producers lack authority; wider ffs narrowing also
+  remains compatibility.
+- Added focused exact-ID and misleading-display positives plus missing,
+  invalid, duplicate, unknown/cross-function, type, and malformed-condition
+  rejections. The matrix records this exact current-producer boundary.
 
 ## Suggested Next
 
-- Execute Step 7.3: publish representative scalar `LirSelectOp` result/use
-  authority.
+- Select the next bounded Plan Step 7 ordinary producer row from the updated
+  matrix; abs remains the immediate unclaimed scalar candidate.
 
 ## Watchouts
 
-- Own only the current scalar `LirSelectOp` producer route with exact result
-  type and condition/true/false operand authority where already structurally
-  available; do not invent missing operand identity.
-- Allocate the select result through `fresh_value` and preserve that exact
-  result ID into a later ordinary use in the same function.
-- Accept misleading display after native authority is proven; reject missing,
-  invalid, or duplicate results, unknown or cross-function uses, and type
-  conflicts.
-- Keep abs, every other Step-7 row, aggregate/vector, pointer/object,
-  CFG/terminators, parameters, calls, inline assembly, and new-BIR work outside
-  Step 7.3.
+- Do not infer identity for the select's internal cttz call, plus-one binary, or
+  zero comparison; their producers remain compatibility.
+- Keep wider ffs narrowing and unavailable condition/false-arm authority
+  unclaimed; do not reconstruct IDs from their displays.
+- Abs may reuse the common allocator/operand mechanism but still requires its
+  own producer/type contract and focused proof.
+- Preserve closed Step-3 through Step-7.3 rows and idea-741 regression
+  neighbors; keep pointer/object, aggregate/vector, CFG/parameters, calls,
+  inline assembly, ABI, and BIR outside the next packet.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed for the Step-7.2 comparison
+- Fresh `cmake --build --preset default` passed for the Step-7.3 select
   producer, verifier, and focused tests.
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log`
-  passed 1/1; canonical proof is in `test_after.log`.
-- The supervisor clean-stashed full regression guard passed:
-  `test_before.log` passed 3033/3033, `test_after.log` passed 3033/3033, and
-  the monotonic delta was passed=0 and failed=0 with no new failures.
-- `git diff --check` passed for the complete Step-7.2 slice.
+  passed 1/1 as the focused Step-7.3 proof.
+- The matching narrow `test_before.log` / `test_after.log` monotonic guard
+  passed with non-decreasing passed tests and no new failures.
+- The supervisor's clean-stashed full regression passed 3033/3033 both before
+  and after this slice, with delta 0 passed / 0 failed and no new failures;
+  canonical full-regression proof is in `test_before.log` and `test_after.log`.
+- `git diff --check` passed for the complete Step-7.3 slice.
