@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.15
-Current Step Title: Publish builtin-ffs zero-comparison/select-condition authority (complete)
+Current Step ID: 7.16
+Current Step Title: Publish builtin-ffs cttz call-result/add-use authority
 
 ## Just Finished
 
@@ -23,19 +23,27 @@ Current Step Title: Publish builtin-ffs zero-comparison/select-condition authori
 
 ## Suggested Next
 
-- Select the next bounded Step-7 ordinary-value identity row from the source
-  idea and establish its exact producer/use boundary before implementation.
+- Execute Step 7.16: publish the builtin-ffs i32/i64 cttz call result as the
+  exact lhs use of the accepted add-one `LirBinOp`.
 
 ## Watchouts
 
-- Preserve the Step-7.15 contract: only PI's shared i32/i64 equality-to-zero
-  comparison is newly authoritative, with exact fresh result, integer Eq/type,
-  immediate zero, and exact select-condition identity.
-- Keep the prepared argument honest monostate when unavailable and never infer
-  the argument result or select edge from rendered text.
-- Preserve Steps 7.2, 7.3, 7.13, and 7.14. Continue excluding the cttz result
-  and other builtin comparisons/calls/selects, pointer/vector/aggregate/object
-  work, CFG/parameters, inline assembly, and BIR.
+- Own only PI's i32/i64 `llvm.cttz` call inside `emit_builtin_ffs_call` and the
+  exact use of its result as the accepted Step-7.14 add-one lhs.
+- Allocate the call result through `fresh_value`; publish the intrinsic callee
+  through module-owned `LinkNameId` authority and an exact nonvariadic
+  structured signature with matching integer return and parameter type refs.
+- Preserve the prepared value argument as honest monostate when unavailable
+  and publish the structural `false` flag as an exact i1 integer immediate;
+  never reconstruct either argument, callee, or result from call text.
+- Require valid/unique current-function result ownership, resolvable native
+  callee identity, exact return/signature/argument agreement, and the exact
+  result-to-add lhs edge. Reject invalid/duplicate, unknown/cross-function,
+  wrong-alternative, count, type, signature, or callee-authority conflicts.
+- Accept misleading call/result/add displays only after native authority is
+  proven. Preserve Steps 3, 7.14, and 7.15; exclude other intrinsic/builtin/
+  direct/indirect calls, ABI or variadic work, pointer/vector/aggregate/object
+  families, CFG/parameters, inline assembly, and BIR.
 
 ## Proof
 
