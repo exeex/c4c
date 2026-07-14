@@ -70,7 +70,7 @@ void populate_selected_byval_parameter_materialization_authority(
       lir::LirSelectedMemcpyPointerAuthority{
           .byval_parameter = lir::LirCurrentFunctionPointerDefinition{
               .value = function.alloc_value(),
-              .pointer_type = lir::LirTypeRef("ptr"),
+              .pointer_type = lir::LirTypeRef(lir::LirBuiltinType::Pointer),
               .object = function.alloc_object(),
               .object_owner = function.link_name_id,
               .role = lir::LirSelectedMemcpyPointerRole::ByvalParameter,
@@ -78,7 +78,7 @@ void populate_selected_byval_parameter_materialization_authority(
           },
           .destination_alloca = lir::LirCurrentFunctionPointerDefinition{
               .value = function.alloc_value(),
-              .pointer_type = lir::LirTypeRef("ptr"),
+              .pointer_type = lir::LirTypeRef(lir::LirBuiltinType::Pointer),
               .object = function.alloc_object(),
               .object_owner = function.link_name_id,
               .role = lir::LirSelectedMemcpyPointerRole::DestinationAlloca,
