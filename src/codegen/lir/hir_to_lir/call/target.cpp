@@ -317,7 +317,7 @@ LirOperand StmtEmitter::emit_call_with_result(
       (return_type.kind() == LirTypeKind::Integer ||
        (return_type.kind() == LirTypeKind::Floating &&
         (return_type.str() == "double" || return_type.str() == "float" ||
-         return_type.str() == "x86_fp80") &&
+         return_type.str() == "x86_fp80" || return_type.str() == "fp128") &&
         !callee_signature->is_variadic &&
         !callee_signature->has_unspecified_params &&
         callee_signature->has_void_param_list &&

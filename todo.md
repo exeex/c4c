@@ -8,35 +8,31 @@ Current Step Title: Publish direct scalar fp128 call-result authority on AArch64
 
 ## Just Finished
 
-- Completed Plan Step 7.30: a direct, fixed, nonvariadic, zero-argument
-  native `long double` call now allocates a fresh `LirValueId` when its actual
-  default-target LIR return is `x86_fp80`, and preserves it into a same-type
+- Completed Plan Step 7.31: a direct, fixed, nonvariadic, zero-argument
+  native `long double` call on AArch64 now allocates a fresh `LirValueId` for
+  its actual `fp128` LIR return and preserves that exact ID into a same-type
   ordinary FAdd.
-- The native-only floating verifier admits `x86_fp80` alongside float/double
-  without source-spelling recovery. Focused x86_fp80 coverage
+- The native-only floating verifier admits `fp128` alongside float, double,
+  and x86_fp80 without source-spelling recovery. Focused AArch64 coverage
   rejects missing, invalid, duplicate, unknown, cross-owner, callee,
   signature, return, opcode, and binary-type authority conflicts while
   display-only mutations remain compatible.
 
 ## Suggested Next
 
-- Bounded packet 7.31: on the AArch64 target, preserve the native `fp128`
-  result of one direct, fixed, nonvariadic, zero-argument scalar `long double`
-  call into a same-type ordinary FAdd. Keep the existing direct scalar
-  call-result producer/verifier seam; do not broaden the source contract.
+- Select the next bounded packet from Plan Step 7 after supervisor review;
+  retain the direct scalar call-result producer/verifier seam.
 
 ## Watchouts
 
-- Packet 7.31 excludes call arguments, indirect or variadic calls,
+- Step 7.31 excludes call arguments, indirect or variadic calls,
   ABI-expanded calls, conversions, other floating operations, BIR, and every
   separate family. Native IDs and type refs, never rendered spelling, govern
   the route; no new cross-operation type-provenance carrier is authorized.
 
 ## Proof
 
-- Source boundary: the AArch64 direct, fixed, nonvariadic, zero-argument
-  scalar `long double` call-result row only; its actual native LIR return must
-  be `fp128` and its consumer a same-type ordinary FAdd.
-- Required packet proof: a fresh build plus the narrow focused call type-ref
-  coverage, including malformed native-authority and display-independence
-  checks for the fp128 row; retain `git diff --check`.
+- Passed: `cmake --build --preset default && ctest --test-dir build -R
+  '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log 2>&1`.
+  The focused fp128 native-authority and display-independence checks ran in the
+  call type-ref subset; proof log: `test_after.log`.

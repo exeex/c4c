@@ -2063,6 +2063,87 @@ long double lir_direct_long_double_result_call_identity(void) {
   expect_identity_verification_rejected(cross_owner, "cross-owner long-double FAdd use must fail");
 }
 
+void test_aarch64_direct_long_double_result_call_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+long double lir_aarch64_direct_long_double_result_target(void) { return 1.25L; }
+long double lir_aarch64_direct_long_double_result_call_identity(void) {
+  return lir_aarch64_direct_long_double_result_target() + 2.5L;
+}
+)c", "aarch64-linux-gnu");
+  const auto focused = [](lir::LirModule& module)
+      -> std::pair<lir::LirCallOp&, lir::LirBinOp&> {
+    lir::LirFunction& function = require_function(
+        module, "lir_aarch64_direct_long_double_result_call_identity");
+    lir::LirCallOp* call = nullptr;
+    lir::LirBinOp* add = nullptr;
+    for (auto& block : function.blocks) for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) call = candidate;
+      if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) add = candidate;
+    }
+    expect_true(call && add, "AArch64 long-double fixture should contain a direct call and FAdd");
+    return {*call, *add};
+  };
+  auto [call, add] = focused(lowered);
+  expect_true(call.return_type == lir::LirTypeRef("fp128") &&
+                  call.callee_signature && call.callee_signature->return_type_ref &&
+                  *call.callee_signature->return_type_ref == call.return_type &&
+                  call.callee_signature->has_void_param_list &&
+                  !call.callee_signature->is_variadic &&
+                  !call.callee_signature->has_unspecified_params &&
+                  call.callee_signature->fixed_param_type_refs.empty() &&
+                  call.structured_args.empty() && call.arg_type_refs.empty() &&
+                  call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
+                  call.result.value_id() && call.result.value_id()->valid() &&
+                  add.opcode.typed() == lir::LirBinaryOpcode::FAdd &&
+                  add.type_str == call.return_type && add.lhs.value_id() &&
+                  *add.lhs.value_id() == *call.result.value_id(),
+              "AArch64 long-double call must preserve native fp128 authority into FAdd");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  focused(misleading).first.result.str() = "@display-only";
+  focused(misleading).second.lhs.str() = "42";
+  lir::verify_module(misleading);
+  const auto rejected = [&focused, &lowered](const std::string& message,
+                                              const auto& mutate) {
+    lir::LirModule candidate = lowered;
+    mutate(focused(candidate));
+    expect_identity_verification_rejected(candidate, message);
+  };
+  rejected("missing AArch64 long-double call result must fail", [](auto pair) {
+    pair.first.result = lir::LirOperand("%missing"); });
+  rejected("invalid AArch64 long-double call result must fail", [](auto pair) {
+    pair.first.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid()); });
+  rejected("wrong AArch64 long-double callee must fail", [](auto pair) {
+    pair.first.direct_callee_link_name_id = c4c::LinkNameId{999}; });
+  rejected("variadic AArch64 long-double signature must fail", [](auto pair) {
+    pair.first.callee_signature->is_variadic = true; });
+  rejected("nonempty AArch64 long-double signature must fail", [](auto pair) {
+    pair.first.callee_signature->has_void_param_list = false;
+    pair.first.callee_signature->fixed_param_types = {"fp128"};
+    pair.first.callee_signature->fixed_param_type_refs = {lir::LirTypeRef("fp128")}; });
+  rejected("mismatched AArch64 long-double return must fail", [](auto pair) {
+    pair.first.callee_signature->return_type_ref = lir::LirTypeRef("x86_fp80"); });
+  rejected("wrong AArch64 long-double FAdd opcode must fail", [](auto pair) {
+    pair.second.opcode = lir::LirBinaryOpcode::Add; });
+  rejected("wrong AArch64 long-double FAdd type must fail", [](auto pair) {
+    pair.second.type_str = lir::LirTypeRef::integer(32); });
+  rejected("unknown AArch64 long-double FAdd use must fail", [](auto pair) {
+    pair.second.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{99}); });
+  lir::LirModule duplicate = lowered;
+  auto [duplicate_call, duplicate_add] = focused(duplicate);
+  duplicate_add.result = lir::LirOperand::ssa("%duplicate", *duplicate_call.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate, "duplicate AArch64 long-double result must fail");
+  lir::LirModule cross_owner = lowered;
+  cross_owner.functions.push_back(make_identity_test_function(
+      "aarch64_long_double_cross_owner", lir::LirValueId{99}));
+  focused(cross_owner).second.lhs = lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_owner, "cross-owner AArch64 long-double FAdd use must fail");
+}
+
 void test_direct_void_immediate_arg_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -5941,6 +6022,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_direct_scalar_floating_result_call_identity_boundary();
   test_direct_scalar_float_result_call_identity_boundary();
   test_direct_long_double_result_call_identity_boundary();
+  test_aarch64_direct_long_double_result_call_identity_boundary();
   test_direct_void_immediate_arg_identity_boundary();
   test_direct_void_ssa_arg_identity_boundary();
   test_scalar_ordinary_value_chain_identity_boundary();
