@@ -97,3 +97,28 @@ computed-goto successor changes while resuming this prerequisite.
 Accepted proof and commits: no 758 implementation proof or implementation
 commit exists yet. Activation/switch history before interruption is represented
 by commit `32b2f83fb` (`[plan+idea] plan: switch to rvalue identity blocker`).
+
+## Closure Record
+
+Disposition: capability complete.
+
+Accepted implementation: commit `c8a205218` preserves the exact existing
+current-function `LirValueId` for eligible local and parameter rvalues through
+`emit_rval_payload`, `emit_rval_expr`, and `emit_rval_operand` into fixed typed
+call arguments. Display spelling remains a compatibility mirror and is not
+semantic authority.
+
+Accepted proof: a fresh build plus
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+passed. Matching `^backend_` pre/post baselines passed 5/5 with the accepted
+non-decreasing guard, and the accepted full-suite hook candidate was 3034/3034
+pre/post.
+
+Handoff and failure boundary: immediate consumers receive the preserved typed
+result. Absent, invalid, foreign, and unsuitable authority is rejected at the
+typed-call verifier boundary without display-text recovery.
+
+Return path: reactivate idea 757 at Step 1, `Publish computed-goto address
+authority`, and publish `LirIndirectBrOp`'s typed address field from this
+preserved rvalue identity. Its own verifier and malformed-authority proof
+remain 757 work.
