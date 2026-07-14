@@ -8,28 +8,31 @@ Current Step Title: Repair and prove native direct LabelAddrExpr rvalue producti
 
 ## Just Finished
 
-- 771 closed capability-complete after `9cb82f9cb` preserved direct constants
-  through the generic automatic local initializer consumer. Its fresh build,
-  focused probe, and `^frontend_lir_` guard passed 7/7. 768 Steps 1--4 remain
-  accepted, while the stacked Step 5 producer code and focused-probe hunk
-  remain uncommitted and unaccepted.
+- Step 5 independently confirmed native direct `LabelAddrExpr` rvalue
+  production: the current-function/target/pointer/produced-value constant is
+  emitted in `emit_rval_operand`, preserved through the automatic-local
+  initializer seam, and covered for a scalar local plus two indexed automatic
+  table elements. Nearby malformed direct-constant authority cases remain in
+  the focused probe. The fresh build, focused probe, and `^frontend_lir_`
+  guard passed 7/7; `test_after.log` contains the guard output.
 
 ## Suggested Next
 
-- Step 5 must reassess the direct `LabelAddrExpr` producer packet on its own
-  merits using the accepted 770 and 771 prerequisites. Do not redo Steps 1--4
-  or treat the 771 consumer proof as acceptance of the stacked producer work.
+- Supervisor should review and commit this validated Step 5 producer slice,
+  then route the remaining active-plan state according to the runbook.
 
 ## Watchouts
 
-- No synthetic bridge, raw-text recovery, testcase-shaped routing, carrier or
-  verifier change, 767/769/771 reopening, or automatic-table `DeclRef` decay.
-  Keep the current producer code unaccepted until fresh independent proof and
-  scope review complete.
+- The producer and consumer seams are deliberately separate: 771 owns the
+  generic assignable-value consumer, while this Step 5 local-declaration path
+  is required for direct initializers. No synthetic bridge, raw-text recovery,
+  carrier/verifier change, or automatic-table `DeclRef` decay was introduced.
 
 ## Proof
 
-- 771 acceptance evidence is retained only as prerequisite evidence:
-  `cmake --build --preset default`,
-  `^frontend_lir_label_address_rvalue_probe$`, and `^frontend_lir_` passed
-  7/7. Step 5 requires its own fresh build and focused/broader proof decision.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_label_address_rvalue_probe$' && ctest
+  --test-dir build -j --output-on-failure -R '^frontend_lir_' | tee
+  test_after.log` passed: focused probe 1/1 and guard 7/7. The
+  supervisor-selected proof is sufficient for this packet; log:
+  `test_after.log`.

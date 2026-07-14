@@ -165,6 +165,14 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
   if (!d.init) return;
   const std::string slot = ctx.local_slots.at(d.id.value);
   TypeSpec rhs_ts{};
+  if (std::holds_alternative<LabelAddrExpr>(get_expr(*d.init).payload)) {
+    const lir::LirOperand direct = emit_rval_operand(ctx, *d.init, rhs_ts);
+    const std::string ty =
+        (d.type.spec.array_rank > 0) ? llvm_alloca_ty(mod_, d.type.spec)
+                                     : llvm_value_ty(mod_, d.type.spec);
+    emit_lir_op(ctx, lir::LirStoreOp{ty, coerce_operand(ctx, direct, rhs_ts, d.type.spec), slot});
+    return;
+  }
   std::string rhs = emit_rval_id(ctx, *d.init, rhs_ts);
   const std::string ty =
       (d.type.spec.array_rank > 0) ? llvm_alloca_ty(mod_, d.type.spec)

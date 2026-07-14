@@ -1828,6 +1828,10 @@ LirOperand StmtEmitter::coerce_operand(FnCtx& ctx, const LirOperand& val,
       is_float_base(from_ts.base) && from_floating_width > 0 &&
       is_any_int(to_ts.base) &&
       int_bits(llvm_storage_base(to_ts)) > 0;
+  if (val.kind() == LirOperandKind::DirectConstant && from_type == "ptr" &&
+      to_type == "ptr") {
+    return val;
+  }
   if (!scalar_integer_cast && !authoritative_scalar_floating_cast &&
       !authoritative_scalar_integer_to_floating &&
       !authoritative_scalar_floating_to_integer) {
