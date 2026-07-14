@@ -1397,6 +1397,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   auto& function_data = function.value().get();
   const Type i1{TypeKind::I1, 1, "i1"};
   const Type i32{TypeKind::Integer, 32, "i32"};
+  const Type f64{TypeKind::F64, 64, "double"};
   if (spec.source_result_id == std::numeric_limits<std::uint32_t>::max())
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidSourceValueId);
   const auto lhs = function_data.values_.get(function_, spec.lhs);
@@ -1411,11 +1412,17 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
           rhs_def->constant.slot < parent_->data_->constants_.size()
       ? std::get_if<IntegerConstant>(&parent_->data_->constants_[rhs_def->constant.slot].payload)
       : nullptr;
-  if (!function_data.blocks_.contains(function_, block) ||
-      spec.predicate != ComparePredicate::Slt || spec.type != i32 || !lhs || !rhs ||
-      lhs.value().get().type != i32 || rhs.value().get().type != i32 || !lhs_producer ||
-      !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) ||
-      !integer || integer->value != 7 ||
+  const bool slt = spec.predicate == ComparePredicate::Slt && spec.type == i32 &&
+      lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32 &&
+      lhs_producer && std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
+      integer && integer->value == 7;
+  const bool olt = spec.predicate == ComparePredicate::OLt && spec.type == f64 &&
+      lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64 &&
+      lhs_producer && [&] {
+        const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
+        return binary && binary->opcode == BinaryOpcode::FMul && binary->type == f64;
+      }();
+  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   detail::InstData instruction;

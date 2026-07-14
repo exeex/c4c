@@ -542,6 +542,41 @@ bool exact_downstream_double_fmul(
          lhs_value->second == f64 && rhs_value->second == f64;
 }
 
+bool exact_downstream_double_olt_compare(
+    const LirCmpOp& compare,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& downstream_double_fmul_results) {
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = compare.result.value_id();
+  const auto* lhs = compare.lhs.value_id();
+  const auto* rhs = compare.rhs.value_id();
+  if (compare.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || !compare.is_float ||
+      compare.predicate.typed() != std::optional{codegen::lir::LirCmpPredicate::OLt} ||
+      compare.type_str.kind() != codegen::lir::LirTypeKind::Floating ||
+      compare.type_str.str() != "double" ||
+      compare.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs || !lhs->valid() ||
+      compare.rhs.kind() != codegen::lir::LirOperandKind::SsaValue || !rhs || !rhs->valid() ||
+      downstream_double_fmul_results.count(lhs->value) != 1)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  const auto rhs_value = source_values.find(rhs->value);
+  return lhs_value != source_values.end() && rhs_value != source_values.end() &&
+      lhs_value->second == f64 && rhs_value->second == f64;
+}
+
+bool exact_double_olt_zext_use(
+    const LirCastOp& cast,
+    const std::unordered_set<std::uint32_t>& double_olt_compare_results) {
+  using codegen::lir::LirOperandKind;
+  const auto* operand = cast.operand.value_id();
+  return cast.kind == codegen::lir::LirCastKind::ZExt && !cast.result.has_authority() &&
+      cast.operand.kind() == LirOperandKind::SsaValue && operand && operand->valid() &&
+      cast.from_type == codegen::lir::LirTypeRef::integer(1) &&
+      cast.to_type == codegen::lir::LirTypeRef::integer(32) &&
+      double_olt_compare_results.count(operand->value) == 1;
+}
+
 bool exact_normalized_i32_add(
     const LirBinOp& bin,
     const std::unordered_map<std::uint32_t, Type>& source_values,
@@ -1893,6 +1928,9 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> native_i32_cttz_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> downstream_double_fadd_results;
+  std::unordered_set<std::uint32_t> downstream_double_fmul_results;
+  std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
+  std::unordered_map<std::uint32_t, std::size_t> downstream_double_olt_zext_uses;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
   std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
@@ -2188,6 +2226,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "binary requires one exact admitted source-authorized operand shape");
         if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
         if (fadd) downstream_double_fadd_results.insert(bin->result.value_id()->value);
+        if (fmul) downstream_double_fmul_results.insert(bin->result.value_id()->value);
         continue;
       }
       if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
@@ -2202,16 +2241,24 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {
-        if (!exact_selected_global_i32_slt_compare(
-                *compare, source_values, selected_global_i32_load_results) ||
+        const bool slt = exact_selected_global_i32_slt_compare(
+            *compare, source_values, selected_global_i32_load_results);
+        const bool olt = exact_downstream_double_olt_compare(
+            *compare, source_values, downstream_double_fmul_results);
+        if ((!slt && !olt) ||
             !source_values.emplace(compare->result.value_id()->value,
                                    Type{TypeKind::I1, 1, "i1"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
-                            "compare requires the exact native i32 SLT selected-load/immediate-seven shape");
+                            "compare requires one exact admitted source-authorized operand shape");
+        if (olt) downstream_double_olt_compare_results.insert(compare->result.value_id()->value);
         continue;
       }
       if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
+        if (exact_double_olt_zext_use(*cast, downstream_double_olt_compare_results)) {
+          ++downstream_double_olt_zext_uses[cast->operand.value_id()->value];
+          continue;
+        }
         const bool intrinsic_trunc = exact_i64_intrinsic_trunc_cast(
             module, *cast, source_values, intrinsic_results);
         const bool scalar_sext = exact_scalar_i32_to_i64_sext(
@@ -2236,6 +2283,12 @@ Result<void, ImportError> validate_function(const LirModule& module,
           inline_asm_results);
       if (!checked) return checked;
     }
+  }
+
+  for (const auto result : downstream_double_olt_compare_results) {
+    if (downstream_double_olt_zext_uses[result] != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "double OLt result lacks its one exact compatibility ZExt use");
   }
 
   for (const auto result : inline_asm_results) {
@@ -2581,6 +2634,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
           std::unordered_set<std::uint32_t> downstream_double_fadd_results;
+          std::unordered_set<std::uint32_t> downstream_double_fmul_results;
+          std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
           std::unordered_set<std::uint32_t> native_i32_cttz_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
@@ -3099,6 +3154,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   normalized_i32_add_results.insert(bin->result.value_id()->value);
                 if (fadd)
                   downstream_double_fadd_results.insert(bin->result.value_id()->value);
+                if (fmul)
+                  downstream_double_fmul_results.insert(bin->result.value_id()->value);
                 continue;
               }
               if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
@@ -3130,6 +3187,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 continue;
               }
               if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {
+                const bool olt = compare->is_float;
                 const auto lhs = source_values.find(compare->lhs.value_id()->value);
                 if (lhs == source_values.end()) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -3137,22 +3195,37 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                            "validated compare lhs disappeared from the current-function registry"};
                   return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
-                auto reserved = function_builder.reserve_value(Type{TypeKind::Integer, 32, "i32"});
-                if (!reserved) {
-                  edit_error = builder_failure(name, block.label,
-                                               "reserve compare immediate-seven", reserved.error());
-                  return Result<void, BuildError>::failure(reserved.error());
-                }
-                auto defined = function_builder.define_int_constant(reserved.value(), 7);
-                if (!defined) {
-                  edit_error = builder_failure(name, block.label,
-                                               "define compare immediate-seven", defined.error());
-                  return defined;
+                ValueId rhs_value{};
+                if (olt) {
+                  const auto rhs = source_values.find(compare->rhs.value_id()->value);
+                  if (rhs == source_values.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                             name, block.label,
+                                             "validated double OLt rhs disappeared from the current-function registry"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  rhs_value = rhs->second;
+                } else {
+                  auto reserved = function_builder.reserve_value(Type{TypeKind::Integer, 32, "i32"});
+                  if (!reserved) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "reserve compare immediate-seven", reserved.error());
+                    return Result<void, BuildError>::failure(reserved.error());
+                  }
+                  auto defined = function_builder.define_int_constant(reserved.value(), 7);
+                  if (!defined) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "define compare immediate-seven", defined.error());
+                    return defined;
+                  }
+                  rhs_value = reserved.value();
                 }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
-                    CompareSpec{ComparePredicate::Slt, Type{TypeKind::Integer, 32, "i32"},
-                                lhs->second, reserved.value(),
+                    CompareSpec{olt ? ComparePredicate::OLt : ComparePredicate::Slt,
+                                olt ? Type{TypeKind::F64, 64, "double"}
+                                    : Type{TypeKind::Integer, 32, "i32"},
+                                lhs->second, rhs_value,
                                 compare->result.value_id()->value});
                 if (!appended || appended.value().results.size() != 1 ||
                     !source_values.emplace(compare->result.value_id()->value,
@@ -3165,9 +3238,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(
                       appended ? BuildError::DuplicateSourceValue : appended.error());
                 }
+                if (olt) downstream_double_olt_compare_results.insert(
+                    compare->result.value_id()->value);
                 continue;
               }
               if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
+                if (exact_double_olt_zext_use(*cast, downstream_double_olt_compare_results))
+                  continue;
                 const auto operand = source_values.find(cast->operand.value_id()->value);
                 if (operand == source_values.end()) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,

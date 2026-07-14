@@ -9373,6 +9373,74 @@ void test_downstream_double_fadd_receipt_and_rejections() {
            "wrong FMul type must reject");
 }
 
+lir::LirModule downstream_double_olt_compare_module() {
+  auto module = downstream_double_fadd_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.push_back(lir::LirCmpOp{
+      lir::LirOperand::ssa("%misleading-double-olt", lir::LirValueId{13}), true,
+      lir::LirCmpPredicate::OLt, lir::LirTypeRef("double"),
+      lir::LirOperand::ssa("%presentation-only-fmul-use", lir::LirValueId{12}),
+      lir::LirOperand::ssa("%presentation-only-call-use", lir::LirValueId{9})});
+  block.insts.push_back(lir::LirCastOp{
+      .kind = lir::LirCastKind::ZExt,
+      .from_type = lir::LirTypeRef::integer(1),
+      .operand = lir::LirOperand::ssa("%presentation-only-olt-use", lir::LirValueId{13}),
+      .to_type = lir::LirTypeRef::integer(32),
+  });
+  return module;
+}
+
+void test_downstream_double_olt_compare_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller = view.function(view.functions()[0]).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 4, layer + " must retain the compare but not the compatibility ZExt");
+    const auto compare = caller.instruction(insts[3]).value();
+    const auto result = caller.value(compare.results()[0]).value();
+    expect(compare.opcode() == bir::Opcode::Compare && compare.compare() &&
+               compare.compare()->predicate == bir::ComparePredicate::OLt &&
+               compare.compare()->type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               compare.operands().size() == 2 && compare.operands()[0] ==
+                   caller.instruction(insts[2]).value().results()[0] &&
+               compare.results().size() == 1 && result.type == bir::Type{bir::TypeKind::I1, 1, "i1"} &&
+               result.source_id == bir::SourceValueId{view.functions()[0], 13},
+           layer + " must retain the native double OLt result and its F64 producer edge");
+  };
+  const auto module = downstream_double_olt_compare_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "double OLt with its compatibility use must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = downstream_double_olt_compare_module();
+    auto& compare = std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[4]);
+    auto& use = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[5]);
+    mutate(candidate, compare, use);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+  };
+  rejected([](auto&, auto& compare, auto&) { compare.result = lir::LirOperand::ssa("%bad", lir::LirValueId::invalid()); },
+           "invalid compare result must reject");
+  rejected([](auto&, auto& compare, auto&) { compare.predicate = lir::LirCmpPredicate::OEq; },
+           "wrong floating predicate must reject");
+  rejected([](auto&, auto& compare, auto&) { compare.is_float = false; },
+           "wrong compare mode must reject");
+  rejected([](auto&, auto& compare, auto&) { compare.type_str = lir::LirTypeRef("float"); },
+           "wrong compare type must reject");
+  rejected([](auto&, auto& compare, auto&) { compare.lhs = lir::LirOperand::ssa("%missing", lir::LirValueId{77}); },
+           "unresolved compare producer must reject");
+  rejected([](auto&, auto&, auto& use) { use.operand = lir::LirOperand::ssa("%missing", lir::LirValueId{77}); },
+           "unresolved compatibility use must reject");
+  rejected([](auto&, auto&, auto& use) { use.result = lir::LirOperand::ssa("%received", lir::LirValueId{14}); },
+           "compatibility ZExt result must remain unreceived");
+  rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); },
+           "missing compatibility use must reject");
+}
+
 lir::LirModule normalized_i32_add_module() {
   auto module = direct_global_integer_load_module();
   auto& function = module.functions[0];
@@ -10378,6 +10446,7 @@ int main() {
   test_direct_integer_call_receipt_and_rejections();
   test_direct_native_floating_call_receipt_and_rejections();
   test_downstream_double_fadd_receipt_and_rejections();
+  test_downstream_double_olt_compare_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();

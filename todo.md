@@ -8,33 +8,30 @@ Current Step Title: Receive the checked ordinary scalar floating compare result
 
 ## Just Finished
 
-- Step 7.5 complete: received only the producer-verified ordinary scalar
-  `double` `LirBinOp` chain: native `FAdd` from the admitted direct-call result
-  followed by native `FMul` whose lhs is that FAdd result. The importer, core
-  builder, and Raw-BIR verifier preserve opcode/type and current-function
-  source IDs, reject malformed/missing/invalid/duplicate/unresolved/cross-owner
-  linkage transactionally, and do not admit general floating binary handling.
+- Step 7.6 complete: received only the producer-verified ordinary scalar
+  floating `double` `LirCmpOp` `OLt` result whose lhs is the admitted `FMul`
+  result, preserving native mode, predicate, type, and current-function source
+  ID. The exact `ZExt i1 to i32` is validated as one downstream compatibility
+  use but is not received as a Raw-BIR result; malformed/missing/invalid/
+  duplicate/unresolved/cross-owner/mode/predicate/type/use-linkage inputs
+  reject transactionally.
 
 ## Suggested Next
 
-- Execute Step 7.6 as one bounded receiver packet: import only the
-  producer-verified ordinary scalar floating double OLt comparison and its
-  compatibility-result ZExt use through native mode, predicate, type, and
-  current-function IDs. Do not receive the ZExt result or widen compare,
-  literal, complex/vector/pointer/logical-helper/builtin, or text-derived
-  authority.
+- Ask the supervisor for the next bounded receiver packet from the active
+  runbook; do not generalize the admitted floating comparison or compatibility
+  use boundary.
 
 ## Watchouts
 
-- This is an in-scope runbook repair, not source completion: the coverage
-  matrix still identifies receiver-ready rows. Step 7.6 admits only the
-  checked floating comparison boundary; unsupported non-scalar and
-  presentation-derived forms remain fail-closed.
+- This is an in-scope runbook repair, not source completion. Step 7.6 admits
+  only the checked scalar-double `OLt` boundary and a non-materialized exact
+  `ZExt` use; other comparisons, cast receipts, non-scalar forms, and
+  presentation-derived authority remain fail-closed.
 
 ## Proof
 
-- Step 7.5 passed the supervisor-selected proof: `cmake --build --preset
+- Step 7.6 passed the supervisor-selected proof: `cmake --build --preset
   default && ctest --test-dir build -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
-  proof log: `test_after.log`. The matching regression guard passed 2/2
-  before/after, and fresh broader `^backend_` proof passed 4/4.
+  proof log: `test_after.log`.

@@ -184,7 +184,7 @@ struct BinaryNode {
   Type type{};
 };
 
-enum class ComparePredicate : std::uint8_t { Slt };
+enum class ComparePredicate : std::uint8_t { Slt, OLt };
 
 struct CompareNode {
   ComparePredicate predicate = ComparePredicate::Slt;
