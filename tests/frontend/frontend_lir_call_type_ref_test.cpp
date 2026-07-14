@@ -2715,6 +2715,150 @@ double lir_scalar_fpext_result_use_identity(void) {
       "verifier should reject nonwidening authoritative FPExt endpoints");
 }
 
+void test_scalar_sitofp_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_scalar_sitofp_result_use_source;
+double lir_scalar_sitofp_result_use_identity(void) {
+  return (double)(lir_scalar_sitofp_result_use_source + 1) * 4.0;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_scalar_sitofp_result_use_identity");
+  std::vector<lir::LirBinOp*> binary_ops;
+  lir::LirCastOp* conversion = nullptr;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+        binary_ops.push_back(binary);
+      }
+      if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) conversion = cast;
+    }
+  }
+  expect_true(
+      binary_ops.size() == 2 && conversion &&
+          binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::Add &&
+          binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+          binary_ops[0]->type_str.integer_bit_width() == 32 &&
+          binary_ops[0]->result.value_id() &&
+          conversion->kind == lir::LirCastKind::SIToFP &&
+          conversion->from_type.kind() == lir::LirTypeKind::Integer &&
+          conversion->from_type.integer_bit_width() == 32 &&
+          conversion->to_type.kind() == lir::LirTypeKind::Floating &&
+          conversion->to_type.str() == "double" &&
+          conversion->operand.value_id() &&
+          *conversion->operand.value_id() ==
+              *binary_ops[0]->result.value_id() &&
+          conversion->result.value_id() &&
+          conversion->result.value_id()->valid() &&
+          binary_ops[1]->opcode.typed() == lir::LirBinaryOpcode::FMul &&
+          binary_ops[1]->type_str.kind() == lir::LirTypeKind::Floating &&
+          binary_ops[1]->type_str.str() == "double" &&
+          binary_ops[1]->lhs.value_id() &&
+          *binary_ops[1]->lhs.value_id() ==
+              *conversion->result.value_id(),
+      "explicit SIToFP should preserve exact integer source and floating result/use IDs");
+  lir::verify_module(lowered);
+
+  const auto require_focused_cast = [](lir::LirModule& module)
+      -> std::pair<lir::LirCastOp&, lir::LirBinOp&> {
+    lir::LirFunction& focused =
+        require_function(module, "lir_scalar_sitofp_result_use_identity");
+    lir::LirCastOp* found_cast = nullptr;
+    std::vector<lir::LirBinOp*> found_binary_ops;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCastOp>(&inst)) {
+          expect_true(found_cast == nullptr,
+                      "focused SIToFP fixture should contain one cast");
+          found_cast = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) {
+          found_binary_ops.push_back(candidate);
+        }
+      }
+    }
+    expect_true(found_cast && found_cast->result.value_id(),
+                "focused SIToFP fixture should contain an authoritative cast");
+    lir::LirBinOp* found_use = nullptr;
+    for (lir::LirBinOp* binary : found_binary_ops) {
+      if (binary->lhs.value_id() &&
+          *binary->lhs.value_id() == *found_cast->result.value_id()) {
+        found_use = binary;
+      }
+    }
+    expect_true(found_use,
+                "focused SIToFP fixture should contain its later floating use");
+    return {*found_cast, *found_use};
+  };
+
+  lir::LirModule misleading = lowered;
+  auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
+  misleading_cast.operand.str() = "@rendered-not-sitofp-source";
+  misleading_cast.result.str() = "7";
+  misleading_use.lhs.str() = "@rendered-not-sitofp-result";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_cast(invalid_result).first.result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid SIToFP result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_cast, duplicate_use] = require_focused_cast(duplicate_result);
+  duplicate_use.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_cast.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate SIToFP result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_cast(unknown_use).first.operand =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown SIToFP source use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_sitofp_owner", lir::LirValueId{99}));
+  require_focused_cast(cross_function_use).first.operand =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function SIToFP source use");
+
+  lir::LirModule wrong_kind = lowered;
+  require_focused_cast(wrong_kind).first.kind = lir::LirCastKind::UIToFP;
+  expect_identity_verification_rejected(
+      wrong_kind, "verifier should reject UIToFP on the authoritative SIToFP route");
+
+  lir::LirModule missing_from_type = lowered;
+  require_focused_cast(missing_from_type).first.from_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_from_type, "verifier should reject missing SIToFP source type");
+
+  lir::LirModule missing_to_type = lowered;
+  require_focused_cast(missing_to_type).first.to_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_to_type, "verifier should reject missing SIToFP destination type");
+
+  lir::LirModule conflicting_from_type = lowered;
+  require_focused_cast(conflicting_from_type).first.from_type =
+      lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      conflicting_from_type,
+      "verifier should reject floating SIToFP source type authority");
+
+  lir::LirModule conflicting_to_type = lowered;
+  require_focused_cast(conflicting_to_type).first.to_type =
+      lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      conflicting_to_type,
+      "verifier should reject integer SIToFP destination type authority");
+}
+
 void test_scalar_compare_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -3690,6 +3834,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
   test_scalar_fpext_result_use_identity_boundary();
+  test_scalar_sitofp_result_use_identity_boundary();
   test_scalar_compare_result_use_identity_boundary();
   test_scalar_floating_compare_result_use_identity_boundary();
   test_scalar_select_result_use_identity_boundary();

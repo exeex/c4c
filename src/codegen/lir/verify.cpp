@@ -440,6 +440,26 @@ void verify_cast_op_authority(const LirCastOp& op) {
   }
 
   if (!op.result.value_id()) return;
+  if (op.kind == LirCastKind::SIToFP) {
+    if (op.from_type.kind() != LirTypeKind::Integer ||
+        op.to_type.kind() != LirTypeKind::Floating) {
+      fail_verify(
+          "LirCastOp.from_type",
+          "authoritative SIToFP requires integer-to-floating endpoint type refs");
+    }
+    if (!op.from_type.integer_bit_width()) {
+      fail_verify("LirCastOp.from_type",
+                  "authoritative SIToFP requires an exact integer source type");
+    }
+    const std::string_view to_type = op.to_type.str();
+    if (to_type != "half" && to_type != "float" && to_type != "double" &&
+        to_type != "x86_fp80" && to_type != "fp128") {
+      fail_verify(
+          "LirCastOp.to_type",
+          "authoritative SIToFP requires an exact floating destination type");
+    }
+    return;
+  }
   if (op.kind == LirCastKind::FPTrunc || op.kind == LirCastKind::FPExt) {
     if (op.from_type.kind() != LirTypeKind::Floating ||
         op.to_type.kind() != LirTypeKind::Floating) {
