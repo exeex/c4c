@@ -1281,18 +1281,26 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       lhs && rhs && lhs.value().get().type == i64 && rhs.value().get().type == i64;
   const bool exact_mul = spec.opcode == BinaryOpcode::Mul && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
+  const auto* lhs_def = lhs ? std::get_if<InstResultDef>(&lhs.value().get().definition)
+                            : nullptr;
+  const auto lhs_producer = lhs_def
+      ? function_data.insts_.get(function_, lhs_def->instruction)
+      : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(
+            ResolveError::OutOfRange);
+  const bool exact_cttz_add = exact_add && lhs_producer && [&] {
+    const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
+    return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == i32;
+  }();
   if ((!exact_fadd && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  const auto* lhs_def = std::get_if<InstResultDef>(&lhs.value().get().definition);
   if (!lhs_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  const auto lhs_producer =
-      function_data.insts_.get(function_, lhs_def->instruction);
   if (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
-       !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload)) ||
+       !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
+       !exact_cttz_add) ||
       (exact_sext_add && [&] {
         const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
         return !cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||

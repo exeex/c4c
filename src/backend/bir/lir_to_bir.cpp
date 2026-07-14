@@ -35,6 +35,7 @@ using codegen::lir::LirIndirectBr;
 using codegen::lir::LirInlineAsmOp;
 using codegen::lir::LirInlineAsmValueBinding;
 using codegen::lir::LirInlineAsmValueRole;
+using codegen::lir::LirIntrinsicKind;
 using codegen::lir::LirModule;
 using codegen::lir::LirLoadOp;
 using codegen::lir::LirRet;
@@ -531,6 +532,13 @@ bool exact_normalized_i32_add(
     return false;
   const auto lhs_value = source_values.find(lhs->value);
   return lhs_value != source_values.end() && lhs_value->second == i32;
+}
+
+bool exact_native_i32_cttz_add(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& native_i32_cttz_results) {
+  return exact_normalized_i32_add(bin, source_values, native_i32_cttz_results);
 }
 
 bool exact_selected_global_i32_abs(
@@ -1853,6 +1861,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> inline_asm_results;
   std::unordered_map<std::uint32_t, std::size_t> inline_asm_store_uses;
   std::unordered_set<std::uint32_t> intrinsic_results;
+  std::unordered_set<std::uint32_t> native_i32_cttz_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
   std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
@@ -2093,6 +2102,9 @@ Result<void, ImportError> validate_function(const LirModule& module,
                               name, block.label,
                             "duplicate authoritative LirValueId definition");
           intrinsic_results.insert(call->result.value_id()->value);
+          if (*call->intrinsic_kind == LirIntrinsicKind::Cttz &&
+              *result_type == Type{TypeKind::Integer, 32, "i32"})
+            native_i32_cttz_results.insert(call->result.value_id()->value);
           continue;
         }
         if (exact_direct_void_call(module, *call)) continue;
@@ -2122,6 +2134,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, native_floating_call_results);
         const bool add = exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
+            exact_native_i32_cttz_add(
+                *bin, source_values, native_i32_cttz_results) ||
             [&] {
               const auto* lhs = bin->lhs.value_id();
               return lhs && selected_global_i32_abs_results.count(lhs->value) == 1 &&
@@ -2533,6 +2547,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
+          std::unordered_set<std::uint32_t> native_i32_cttz_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
           std::unordered_set<std::uint32_t> scalar_sext_results;
@@ -2863,6 +2878,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                              "intrinsic result collided in the current-function source registry"};
                     return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
                   }
+                  if (*call->intrinsic_kind == codegen::lir::LirIntrinsicKind::Cttz &&
+                      *lower_lir_type(module, call->return_type) ==
+                          Type{TypeKind::Integer, 32, "i32"})
+                    native_i32_cttz_results.insert(call->result.value_id()->value);
                   continue;
                 }
                 const auto callee = functions_by_link_name_id.find(
@@ -2959,13 +2978,15 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
                 const bool abs_add = add &&
                     selected_global_i32_abs_results.count(bin->lhs.value_id()->value) == 1;
+                const bool cttz_add = add &&
+                    native_i32_cttz_results.count(bin->lhs.value_id()->value) == 1;
                 const bool sext_add = add &&
                     scalar_sext_results.count(bin->lhs.value_id()->value) == 1;
                 const auto lhs = source_values.find(bin->lhs.value_id()->value);
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !sext_add && !abs_add && !add && normalized_i32_add_results.count(
+                    (!fadd && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,

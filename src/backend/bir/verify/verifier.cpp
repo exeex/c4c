@@ -789,10 +789,17 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           } else {
             const auto producer =
                 function.insts_.get(function_id, lhs_def->instruction);
+            const bool cttz_add = add && producer && [&] {
+              const auto* intrinsic = std::get_if<IntrinsicCallNode>(
+                  &producer.value().get().payload);
+              return intrinsic && intrinsic->kind == IntrinsicKind::Cttz &&
+                  intrinsic->type == i32;
+            }();
             exact = producer && (fadd
                 ? std::holds_alternative<CallNode>(producer.value().get().payload)
                 : add ? (std::holds_alternative<LoadNode>(producer.value().get().payload) ||
-                         std::holds_alternative<AbsNode>(producer.value().get().payload))
+                         std::holds_alternative<AbsNode>(producer.value().get().payload) ||
+                         cttz_add)
                       : sext_add ? [&] {
                           const auto* cast = std::get_if<CastNode>(
                               &producer.value().get().payload);
