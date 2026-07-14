@@ -50,6 +50,9 @@ and later typed use are the sole authority. Presentation is display only.
   this compare row.
 - Step 7.1: mixed accepted-row source-order and full-rollback dispatcher proof
   (`7c259b660`). It added no instruction receipt. Do not widen it.
+- Step 7.2: selected i32 `LirAbsOp` receipt, its source-backed result, and its
+  exact later i32 Add use (`0c44e810a`). Do not repeat or generalize this Abs
+  row.
 
 ## Non-Goals
 
@@ -246,6 +249,46 @@ Completion check:
   `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
   2/2. The backend coverage demonstrates typed i32 Abs receipt and rollback;
   the frontend test remains the producer-authority regression neighbor.
+
+Accepted in `0c44e810a`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional typed i32 Abs receipt and its admitted i32 Add use.
+
+### Step 7.3 - Receive the checked ffs `Cttz`-to-Add-one result
+
+Goal: receive only the authority-matrix Step-7.14 shared builtin-ffs
+add-one subrow whose lhs is the already admitted native i32 `Cttz` result.
+Do not yet receive the following zero comparison or Select.
+
+Primary targets:
+
+- typed Raw-BIR binary payload/builder/view and reachable verification
+- LIR-to-Raw-BIR binary dispatch and source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the selected `LirBinOp{result: valid current-function LirValueId,
+  opcode: Add, type_str: i32, lhs: exact admitted i32 Cttz result ID,
+  rhs: LirIntegerImmediate{1}}` from the ffs chain to one typed Raw-BIR i32
+  Add result; preserve its exact source ordering and source-ID identity
+- extend the existing admitted i32 Add contract only to permit that checked
+  intrinsic-result lhs. Require the native Cttz provenance, ordered operand
+  identity, representable immediate one, result ownership/uniqueness,
+  instruction-result linkage, and full-module rollback for missing, invalid,
+  duplicate, cross-owner, wrong-provenance, wrong-opcode/type/immediate, or
+  malformed-linkage authority
+- prove the positive Cttz-to-Add-one receipt and neighboring transactional
+  failures. Keep all other builtin arithmetic, different operands/immediates,
+  select/compare receipt, other integer widths/opcodes, floating, pointer,
+  vector, aggregate, logical-helper, and presentation-derived forms fail-closed
+
+Completion check:
+
+- a fresh build and the focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional i32
+  Cttz-to-Add-one receipt with no select or compare admission; the frontend
+  test remains the producer-authority regression neighbor.
 
 ### Source completion gate (not an executor packet)
 

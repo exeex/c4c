@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.2
-Current Step Title: Receive the checked i32 integer Abs result
+Current Step ID: 7.3
+Current Step Title: Receive the checked ffs Cttz-to-Add-one result
 
 ## Just Finished
 
@@ -15,8 +15,8 @@ Current Step Title: Receive the checked i32 integer Abs result
 
 ## Suggested Next
 
-- Supervisor packet selection required: choose the next source-idea row after
-  the completed selected-load i32 Abs receipt.
+- Execute Step 7.3 only: receive the native i32 Cttz-result plus immediate-one
+  Add row that precedes the still-unsupported ffs zero comparison and Select.
 
 ## Watchouts
 
@@ -24,6 +24,9 @@ Current Step Title: Receive the checked i32 integer Abs result
   `labs`/`llabs`, immediate inputs, non-i32/vector/aggregate forms, malformed
   typed linkage, presentation-derived recovery, and other builtin/call forms
   remain fail-closed.
+- The repaired route is not a closure claim. Every remaining matrix row stays
+  unsupported until its own bounded receiver packet or separately scoped
+  producer-authority blocker is selected.
 
 ## Proof
 
