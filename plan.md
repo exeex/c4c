@@ -77,19 +77,48 @@ Completion check:
 - focused positive LIR retains both identities and malformed function or label
   identity is rejected by the verifier.
 
-### Step 3 - Prove the contract and hand off to 768
+### Step 3 - Diagnose the expanded full-suite regression gate
+
+Goal: establish exact causality for the four newly failing expanded-suite
+cases before accepting the focused LIR contract, committing further work, or
+making a Raw-BIR/importer lifecycle decision.
+
+Actions:
+
+- reproduce and preserve exact evidence for the new failures:
+  `llvm gcc torture 20040302_1`, `20041214_1`, `920501_4`, and `920501_5`
+- compare the failures against the pre-commit green baseline and the accepted
+  Step 2 structured-initializer change to determine whether that owned change
+  caused the expansion
+- inspect the production authority path generically; do not make a named-case
+  matcher, rendered-text workaround, or testcase-shaped fix
+- if the evidence shows the structured element is merely unconsumed at the
+  Raw-BIR/importer boundary, stop and create/switch atomically to a distinct
+  downstream importer blocker; do not expand 769
+
+Completion check:
+
+- exact reproduction and causality are recorded, and either the expanded
+  baseline is restored with a generic in-scope correction or an explicitly
+  separate downstream importer blocker is active with 769's return point
+  preserved. The focused 5/5 result alone is not acceptance.
+
+### Step 4 - Accept the contract and hand off to 768
 
 Goal: accept the focused static initializer capability or identify the exact
 downstream importer blocker.
 
 Actions:
 
-- run a fresh build and the direct focused positive/malformed proof
-- assess whether existing downstream consumption needs Raw-BIR/importer work
-- if required, create a distinct downstream blocker; otherwise record the
-  accepted representation and return 768 to Step 3
+- after Step 3 eliminates the expanded-baseline regression, run the selected
+  fresh build, direct focused positive/malformed proof, and accepted expanded
+  baseline comparison
+- assess whether existing downstream consumption needs Raw-BIR/importer work;
+  if it does, use only the separately scoped blocker created by Step 3
+- otherwise record the accepted representation and return 768 to Step 3
 
 Completion check:
 
-- proof is accepted and lifecycle handoff states either 768’s exact return
-  point or a separately scoped named downstream blocker.
+- the focused proof and expanded baseline are accepted and lifecycle handoff
+  states either 768’s exact return point or a separately scoped named
+  downstream blocker.
