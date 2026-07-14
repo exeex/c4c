@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish direct void scalar immediate argument authority (complete)
+Current Step ID: 5
+Current Step Title: Publish direct void scalar SSA argument authority
 
 ## Just Finished
 
@@ -26,15 +26,20 @@ Current Step Title: Publish direct void scalar immediate argument authority (com
 
 ## Watchouts
 
-- Step 5 must retain the existing source `LirValueId` through the same
-  `OwnedLirTypedCallArg::operand`; do not add an SSA-only side carrier.
-- Keep complete structured rows authority-first. Raw `args_str`, suffix, and
-  operand/type spelling remain compatibility presentation only.
-- Operand `kind()` alone is not a claim marker: raw character/numeric spelling
-  may classify as immediate without native authority or exact typed facts.
-- Keep ABI, variadic, aggregate, indirect-call, CFG/terminator, stack/local/
-  object, and body-parameter work outside Step 5.
-- Preserve the accepted Step-3 scalar call-result path unchanged.
+- Reuse the common `LirOperand` call-argument carrier; do not add an SSA-only
+  carrier or any new carrier type.
+- Own only one direct `LinkNameId`-resolved, fixed, nonvariadic void call with
+  one integer parameter.
+- Source the argument from the already-authoritative selected-global scalar
+  load in CC-LOAD-1 and preserve that exact `LirValueId` into the structured
+  call argument.
+- Verification must be authority-first, require exact argument type refs, and
+  resolve a known value ID owned by the current function.
+- Accept misleading presentation after native authority is proven; reject
+  missing or wrong alternatives, invalid, unknown, cross-function IDs, and
+  type, count, or extension conflicts.
+- Do not change immediate handling or enter indirect, variadic, ABI, aggregate,
+  object, CFG/terminator, body-parameter, or new-BIR work.
 
 ## Proof
 
